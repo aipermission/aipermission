@@ -43,7 +43,7 @@ jobs:
             frontend/package-lock.json
             packages/mcp/package-lock.json
 
-      - uses: github/codeql-action/init@dc73d59c2d7bd4f8194098a91219eeee6d8a1719
+      - uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -53,6 +53,6 @@ jobs:
         working-directory: backend
         run: go build ./...
 
-      - uses: github/codeql-action/analyze@dc73d59c2d7bd4f8194098a91219eeee6d8a1719
+      - uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
         with:
           category: "/language:${{ matrix.language }}"
