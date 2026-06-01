@@ -19,15 +19,15 @@
     "lucide-react": "^1.17.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.15.1",
+    "react-router-dom": "^7.16.0",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "^4.3.0",
     "@vitejs/plugin-react": "^4.3.4",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.4.3"
   }
 }
