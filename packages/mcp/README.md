@@ -6,6 +6,10 @@ AIPermission lets AI coding assistants use scoped server access through a local 
 
 The gateway is intentionally local-only. Run it on the developer machine and keep the URL on `localhost`; remote servers are SSH targets, not places to host the gateway for LAN or internet users.
 
+![AIPermission demo: AI installs Uptime Kuma through approval-based SSH access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
+
+[Watch the demo video](https://github.com/aipermission/aipermission/releases/download/v0.1.0-rc.1/aipermission-demo.mp4) to see an AI assistant install Uptime Kuma on a VPS while the user approves commands and changes the plan mid-run.
+
 `@aipermission/mcp` is the official MCP bridge package. The unscoped `aipermission` npm package is only a placeholder that points users here.
 
 The package includes MCP Registry metadata:

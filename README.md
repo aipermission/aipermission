@@ -94,6 +94,10 @@ With `aipermission`, the AI can inspect approved servers directly through MCP wh
 
 The UI is built around the live control loop: approve commands, watch the persistent console, send notes while the AI works, and audit what happened afterwards.
 
+![AIPermission demo: AI installs Uptime Kuma through approval-based SSH access](docs/assets/demo/aipermission-demo.gif)
+
+[Watch the accelerated demo video](https://github.com/aipermission/aipermission/releases/download/v0.1.0-rc.1/aipermission-demo.mp4)
+
 | Human approval before execution | Live console with AI/user messages |
 | --- | --- |
 | ![AIPermission approval prompt before running a read-only VPS health snapshot](docs/assets/screenshots/07-approval-health-snapshot.png) | ![AIPermission persistent console with AI/user messages after Docker installation](docs/assets/screenshots/09-console-messages.png) |
