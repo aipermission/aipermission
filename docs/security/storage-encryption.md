@@ -70,6 +70,20 @@ Settings rekeys the active database with SQLCipher `rekey`.
 
 Previously downloaded `.aipdb` backups keep the password they had when created. Backups downloaded after Change Password use the new password.
 
+## Delete Database
+
+Settings can delete a named local database. Deletion is intentionally a two-step
+operation:
+
+- the UI shows the selected database name for review
+- the user must enter the current database password
+- the backend verifies that password against the selected SQLCipher database
+  before deleting the local file
+
+This is local destructive cleanup only. It does not connect to remote servers,
+remove remote `authorized_keys` lines, or revoke credentials outside the local
+database file.
+
 ## Forgotten Password
 
 If the database password is forgotten, the encrypted SQLite file cannot be opened. This is the expected security behavior and does not create a vulnerability.
