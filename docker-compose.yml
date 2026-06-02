@@ -1,3 +1,5 @@
+name: aipermission
+
 services:
   backend:
     build:
