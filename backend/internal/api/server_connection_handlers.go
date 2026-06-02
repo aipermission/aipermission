@@ -53,7 +53,7 @@ func (s serverConnectionHandlers) testServer(w http.ResponseWriter, r *http.Requ
 		if writeUnknownHostKeyError(w, err) {
 			return
 		}
-		writeError(w, http.StatusBadGateway, "server connection test failed")
+		writeError(w, http.StatusBadGateway, sshConnectionFailureMessage(err))
 		return
 	}
 
@@ -122,7 +122,7 @@ func (s serverConnectionHandlers) testServerConnection(w http.ResponseWriter, r 
 		if writeUnknownHostKeyError(w, err) {
 			return
 		}
-		writeError(w, http.StatusBadGateway, "server connection test failed")
+		writeError(w, http.StatusBadGateway, sshConnectionFailureMessage(err))
 		return
 	}
 
@@ -188,7 +188,7 @@ func (s serverConnectionHandlers) consoleExec(w http.ResponseWriter, r *http.Req
 		s.writeAudit(r.Context(), runtime, "user", nil, request.ServerID, "console.exec.failed", map[string]any{
 			"command": request.Command,
 		})
-		writeError(w, http.StatusBadGateway, "command execution failed")
+		writeError(w, http.StatusBadGateway, sshCommandFailureMessage(err))
 		return
 	}
 	runtime := s.activeRuntime()
@@ -223,6 +223,43 @@ func (s *Server) serverSSHMaterial(ctx context.Context, serverID int64) (servers
 		return servers.Server{}, sshkeys.PrivateKey{}, err
 	}
 	return server, privateKey, nil
+}
+
+func sshConnectionFailureMessage(err error) string {
+	detail := safeSSHErrorDetail(err)
+	switch {
+	case detail == "":
+		return "server connection test failed"
+	case strings.Contains(detail, "unable to authenticate") || strings.Contains(detail, "no supported methods remain") || strings.Contains(detail, "permission denied"):
+		return "server connection test failed: authentication failed. Install the selected SSH public key on the server, then try again."
+	case strings.Contains(detail, "connection refused"):
+		return "server connection test failed: SSH port refused the connection. Check the host, port, and SSH service."
+	case strings.Contains(detail, "i/o timeout") || strings.Contains(detail, "timed out") || strings.Contains(detail, "deadline exceeded"):
+		return "server connection test failed: SSH connection timed out. Check network access, firewall rules, host, and port."
+	case strings.Contains(detail, "no route to host") || strings.Contains(detail, "network is unreachable"):
+		return "server connection test failed: the host is not reachable from the local gateway."
+	case strings.Contains(detail, "host key"):
+		return "server connection test failed: SSH host key verification failed."
+	case strings.Contains(detail, "parse private key"):
+		return "server connection test failed: selected SSH key could not be parsed."
+	default:
+		return "server connection test failed: " + detail
+	}
+}
+
+func sshCommandFailureMessage(err error) string {
+	detail := safeSSHErrorDetail(err)
+	if detail == "" {
+		return "command execution failed"
+	}
+	return "command execution failed: " + detail
+}
+
+func safeSSHErrorDetail(err error) string {
+	if err == nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.ToLower(err.Error()))
 }
 
 func (s *Server) serverSSHMaterialForRuntime(runtime *databaseRuntime) func(context.Context, int64) (servers.Server, sshkeys.PrivateKey, error) {
