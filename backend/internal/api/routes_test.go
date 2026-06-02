@@ -264,7 +264,7 @@ func TestApprovalAndMCPRequestRoutes(t *testing.T) {
 	if record.UserNote == nil || *record.UserNote != "use another path" {
 		t.Fatalf("decline note not stored: %#v", record)
 	}
-	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", nil); response.Code != http.StatusConflict {
+	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", runApprovalRequest{}); response.Code != http.StatusConflict {
 		t.Fatalf("running declined request should conflict, got %d", response.Code)
 	}
 }

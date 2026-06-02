@@ -1,9 +1,31 @@
-export const appVersion = "0.1.0-rc.1";
+export const appVersion = "0.1.1";
 
 export const changelogEntries = [
   {
+    version: "0.1.1",
+    label: "Dogfooding polish",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Manual update checks from the Changelog dialog.",
+          "Bulk token permission updates across all servers.",
+          "Optional approval-run notes that are delivered back to the AI.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Console side panels can collapse for narrower screens.",
+          "Browser title shows MCP runtime state and active database name after unlock.",
+          "Database deletion now requires a second confirmation with the current password.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.1.0-rc.1",
-    label: "Unreleased RC",
+    label: "Public RC",
     sections: [
       {
         title: "Added",

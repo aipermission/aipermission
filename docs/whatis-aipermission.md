@@ -292,7 +292,7 @@ The user can:
 - Decline
 - Add a note
 
-If the user clicks Run, the gateway executes the command in the persistent console session. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` is reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
+If the user clicks Run, the gateway executes the command in the persistent console session. If the user typed a note while approving, the gateway delivers it through the message queue to the matching MCP token. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` is reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
 
 If the user clicks Decline, the request becomes `declined`; any operator note is returned as `user_note`.
 

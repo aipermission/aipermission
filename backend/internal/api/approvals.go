@@ -29,6 +29,10 @@ type declineApprovalRequest struct {
 	UserNote string `json:"user_note"`
 }
 
+type runApprovalRequest struct {
+	UserNote string `json:"user_note"`
+}
+
 func (s approvalHandlers) listApprovals(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -101,6 +105,16 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	var request runApprovalRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	request.UserNote = strings.TrimSpace(request.UserNote)
+	if err := validateTextLimit("user_note", request.UserNote, maxMessageBytes); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	item, err := s.getCommandRequest(r.Context(), runtime, id, 0)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -120,17 +134,29 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	command, err := s.commandRequestExecutionCommand(r.Context(), runtime, id)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if request.UserNote != "" && item.TokenID != nil {
+		_, err := s.insertMessage(r.Context(), runtime, createMessageRequest{
+			TokenID:   *item.TokenID,
+			ServerID:  &item.ServerID,
+			SessionID: item.SessionID,
+			Direction: "user_to_ai",
+			Message:   request.UserNote,
+		})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if err := s.markCommandRequestRunning(r.Context(), runtime, id); err != nil {
 		if errors.Is(err, errCommandRequestNotPending) {
 			writeError(w, http.StatusConflict, "approval request is no longer pending")
 			return
 		}
-		writeInternalError(w)
-		return
-	}
-	command, err := s.commandRequestExecutionCommand(r.Context(), runtime, id)
-	if err != nil {
-		_ = s.finishCommandRequest(r.Context(), runtime, id, "error", 0, "", "", 0, "command payload is unavailable")
 		writeInternalError(w)
 		return
 	}
@@ -141,6 +167,7 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 	s.writeAudit(r.Context(), runtime, "user", item.TokenID, item.ServerID, "approval.run", map[string]any{
 		"request_id": id,
 		"command":    item.Command,
+		"note":       request.UserNote != "",
 	})
 	writeJSON(w, http.StatusOK, item)
 }

@@ -75,8 +75,14 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	if !server.isUnlocked() {
 		t.Fatalf("failed rename validation should not lock the active database")
 	}
-	if response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "wrong"}); response.Code != http.StatusBadRequest {
+	if response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "wrong", CurrentPassword: "LongPassword123"}); response.Code != http.StatusBadRequest {
 		t.Fatalf("delete with wrong confirmation should fail, got %d", response.Code)
+	}
+	if response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "project one"}); response.Code != http.StatusBadRequest {
+		t.Fatalf("delete without current password should fail, got %d", response.Code)
+	}
+	if response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "project one", CurrentPassword: "wrong-password"}); response.Code != http.StatusUnauthorized {
+		t.Fatalf("delete with wrong current password should fail, got %d", response.Code)
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/databases/change-password", "", changeDatabasePasswordRequest{
 		CurrentPassword: "wrong-password",
@@ -127,7 +133,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/unlock", "", unlockRequest{DatabaseID: "renamed-database", Password: "ChangedPassword123"}); response.Code != http.StatusOK {
 		t.Fatalf("unlock after lock failed: %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "renamed database"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
+	if response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "renamed database", CurrentPassword: "ChangedPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
 		t.Fatalf("delete database failed: %d %s", response.Code, response.Body.String())
 	}
 }
@@ -654,7 +660,7 @@ func TestDeleteActiveDatabasePromotesRemainingUnlockedWorkspace(t *testing.T) {
 		t.Fatalf("import failed: %d %s", importResponse.Code, importResponse.Body.String())
 	}
 
-	response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "imported project"})
+	response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "imported project", CurrentPassword: "import-password"})
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"unlocked"`) || !strings.Contains(response.Body.String(), `"project-one"`) {
 		t.Fatalf("delete should promote project-one, got %d %s", response.Code, response.Body.String())
 	}

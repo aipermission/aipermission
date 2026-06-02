@@ -77,5 +77,57 @@ export function useTokenPermissions(initialTokens = []) {
     }
   }
 
-  return { permissionState, loadAllTokenPermissions, setTokenServerRule };
+  async function setTokenAllServerRules(token, servers, rule) {
+    const tokenID = Number(token.id);
+    const savingKey = `${tokenID}:all`;
+    const currentMap = permissionState.data[tokenID] || {};
+    const nextMap = {};
+    if (rule) {
+      servers.forEach((server) => {
+        nextMap[Number(server.id)] = rule;
+      });
+    }
+
+    setPermissionState((current) => ({
+      ...current,
+      data: {
+        ...current.data,
+        [tokenID]: nextMap,
+      },
+      savingKey,
+      error: null,
+    }));
+
+    try {
+      const permissions = await apiPut(`/api/tokens/${tokenID}/permissions`, {
+        permissions: Object.entries(nextMap).map(([id, executionRule]) => ({
+          server_id: Number(id),
+          execution_rule: executionRule,
+        })),
+      });
+      setPermissionState((current) => ({
+        ...current,
+        state: "ready",
+        data: {
+          ...current.data,
+          [tokenID]: permissionsToMap(permissions),
+        },
+        savingKey: "",
+        error: null,
+      }));
+    } catch (error) {
+      setPermissionState((current) => ({
+        ...current,
+        data: {
+          ...current.data,
+          [tokenID]: currentMap,
+        },
+        state: "error",
+        savingKey: "",
+        error: error.message,
+      }));
+    }
+  }
+
+  return { permissionState, loadAllTokenPermissions, setTokenServerRule, setTokenAllServerRules };
 }

@@ -13,7 +13,8 @@ type renameDatabaseRequest struct {
 }
 
 type deleteDatabaseRequest struct {
-	ConfirmName string `json:"confirm_name"`
+	ConfirmName     string `json:"confirm_name"`
+	CurrentPassword string `json:"current_password"`
 }
 
 type switchDatabaseRequest struct {
@@ -78,7 +79,12 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
+	defer clearStringReferences(&request.CurrentPassword)
 	request.ConfirmName = strings.TrimSpace(request.ConfirmName)
+	if request.CurrentPassword == "" {
+		writeError(w, http.StatusBadRequest, "current password is required")
+		return
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -90,6 +96,15 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 	expectedName := s.currentDatabaseNameLocked()
 	if request.ConfirmName != expectedName {
 		writeError(w, http.StatusBadRequest, "database name confirmation does not match")
+		return
+	}
+	runtime := s.workspaces[s.activeDatabase]
+	if runtime == nil || runtime.database == nil {
+		writeError(w, http.StatusLocked, "database is locked")
+		return
+	}
+	if err := dbpkg.ValidateEncrypted(runtime.path, request.CurrentPassword); err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid current database password")
 		return
 	}
 

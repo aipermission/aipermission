@@ -65,9 +65,9 @@ Approval-required MCP requests are non-blocking. The gateway stores the command 
 - Decline
 - Add a note
 
-When the user runs the request, the backend executes the command in the target server's persistent console session. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` is reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
+When the user runs the request, the backend executes the command in the target server's persistent console session. If the operator entered a note while clicking Run, the gateway delivers that note to the matching MCP token through the message queue. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` is reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
 
-The approval note is stored as `user_note` on that command request and returned by `get_request`.
+When the user declines the request, the decline note is stored as `user_note` on that command request and returned by `get_request`.
 
 The live message queue is separate. A user can send a message from the Console UI; the gateway injects it as `user_note` into the next matching MCP response.
 

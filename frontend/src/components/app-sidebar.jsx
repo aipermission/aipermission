@@ -5,6 +5,7 @@ import { appVersion, changelogEntries } from "../lib/release";
 import { Badge, CountBadge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
+import { checkForUpdates } from "../lib/update-check";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: Home },
@@ -25,7 +26,9 @@ const npmUrl = "https://www.npmjs.com/package/@aipermission/mcp";
 export function AppSidebar({ pathname, consoleAttentionCount, gatewayState, mcpRuntime, theme, onSetTheme, onSetMCPRuntimeEnabled, onSwitchDatabase, onLockDatabase }) {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [mcpAction, setMCPAction] = useState({ state: "idle", error: null });
+  const [updateState, setUpdateState] = useState({ state: "idle", data: null, error: null });
   const mcpStarted = Boolean(mcpRuntime?.data?.enabled);
+
   async function toggleMCPRuntime() {
     setMCPAction({ state: "saving", error: null });
     try {
@@ -35,6 +38,17 @@ export function AppSidebar({ pathname, consoleAttentionCount, gatewayState, mcpR
       setMCPAction({ state: "error", error: error.message });
     }
   }
+
+  async function runUpdateCheck() {
+    setUpdateState({ state: "checking", data: null, error: null });
+    try {
+      const data = await checkForUpdates(appVersion);
+      setUpdateState({ state: "ready", data, error: null });
+    } catch (error) {
+      setUpdateState({ state: "error", data: null, error: error.message || "Update check failed." });
+    }
+  }
+
   return (
     <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 overflow-y-auto border-r border-stone-200 bg-white lg:block">
       <div className="flex h-full flex-col">
@@ -122,6 +136,26 @@ export function AppSidebar({ pathname, consoleAttentionCount, gatewayState, mcpR
       </div>
       <Dialog open={changelogOpen} title="Changelog" description={`Current app version: ${appVersion}`} onClose={() => setChangelogOpen(false)} size="lg">
         <div className="grid gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 bg-stone-50 p-3">
+            <div>
+              <p className="text-sm font-semibold text-stone-950">Updates</p>
+              <p className="text-xs text-stone-500">Check GitHub Releases manually. No background update checks run.</p>
+            </div>
+            <Button type="button" variant="outline" onClick={runUpdateCheck} disabled={updateState.state === "checking"}>
+              {updateState.state === "checking" ? "Checking..." : "Check for updates"}
+            </Button>
+            {updateState.state === "ready" ? (
+              <p className={`basis-full text-sm ${updateState.data.updateAvailable ? "text-amber-700" : "text-emerald-700"}`}>
+                {updateState.data.updateAvailable
+                  ? `Update available: ${updateState.data.latestVersion}.`
+                  : `You are up to date. Latest release: ${updateState.data.latestVersion}.`}{" "}
+                <a className="font-semibold underline" href={updateState.data.releaseUrl} target="_blank" rel="noreferrer">
+                  View releases
+                </a>
+              </p>
+            ) : null}
+            {updateState.state === "error" ? <p className="basis-full text-sm text-red-700">{updateState.error}</p> : null}
+          </div>
           {changelogEntries.map((entry) => (
             <section key={entry.version} className="grid gap-3">
               <div className="flex items-center justify-between gap-3 border-b border-stone-200 pb-2">

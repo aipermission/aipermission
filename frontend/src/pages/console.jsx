@@ -181,7 +181,7 @@ export function ConsolePage() {
     if (!activeApproval) return;
     setApprovalAction({ state: "running", error: null });
     try {
-      await runApproval(activeApproval.id);
+      await runApproval(activeApproval.id, approvalNote);
       setDismissedApprovalIDs((current) => {
         const next = { ...current };
         delete next[activeApproval.id];
@@ -213,8 +213,6 @@ export function ConsolePage() {
     }
   }
 
-
-
   return (
     <section
       className="grid h-[calc(100vh-40px)] min-h-[640px] gap-4"
@@ -244,10 +242,11 @@ export function ConsolePage() {
           {servers.data.map((server) => {
             const session = latestSessionForServer(sessions, server.id) || emptySession;
             const active = selectedServer && Number(selectedServer.id) === Number(server.id);
-            const connected = session.status === "connected" || session.status === "connecting";
             const pendingCount = pendingApprovals.filter((approval) => Number(approval.server_id) === Number(server.id)).length;
+            const runningCount = approvals.data.filter((approval) => approval.status === "running" && Number(approval.server_id) === Number(server.id)).length;
             const unreadCount = unreadMessages.filter((message) => Number(message.server_id) === Number(server.id)).length;
             const attentionCount = pendingCount + unreadCount;
+            const status = selectedServerStatus({ session, pendingCount, runningCount });
             return (
               <button
                 type="button"
@@ -261,25 +260,17 @@ export function ConsolePage() {
                 {serversCompact ? (
                   <span className="relative grid h-full w-full place-items-center">
                     <Server className="h-4 w-4" />
-                    {attentionCount > 0 ? (
-                      <CountBadge className="absolute -right-1 -top-1">{attentionCount}</CountBadge>
-                    ) : connected ? (
-                      <Circle className="absolute right-1 top-1 h-2.5 w-2.5 fill-amber-400 text-amber-400" />
-                    ) : (
-                      <Circle className={`absolute right-1 top-1 h-2.5 w-2.5 ${active ? "text-emerald-200" : "text-stone-300"}`} />
-                    )}
+                    {attentionCount > 0 ? <CountBadge className="absolute -right-1 -top-1">{attentionCount}</CountBadge> : null}
+                    <ConsoleStatusDot status={status} className="absolute right-1 top-1 h-2.5 w-2.5" />
                   </span>
                 ) : (
                   <>
                     <span className="flex min-w-0 items-center justify-between gap-2">
                       <span className="truncate text-sm font-semibold">{server.name}</span>
-                      {attentionCount > 0 ? (
-                        <CountBadge>{attentionCount}</CountBadge>
-                      ) : connected ? (
-                        <Circle className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" />
-                      ) : (
-                        <Circle className={`h-3 w-3 shrink-0 ${active ? "text-emerald-200" : "text-stone-300"}`} />
-                      )}
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        {attentionCount > 0 ? <CountBadge>{attentionCount}</CountBadge> : null}
+                        <ConsoleStatusDot status={status} className={active && status === "offline" ? "text-red-200" : ""} />
+                      </span>
                     </span>
                     <span className={`truncate text-xs ${active ? "text-emerald-100" : "text-stone-500"}`}>
                       {server.username}@{server.host}
@@ -304,11 +295,13 @@ export function ConsolePage() {
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex gap-1.5">
-              <span className="h-3 w-3 rounded-full bg-red-500" />
-              <span className="h-3 w-3 rounded-full bg-amber-400" />
-              <span className="h-3 w-3 rounded-full bg-emerald-500" />
-            </div>
+            <ConsoleStatusDot
+              status={selectedServerStatus({
+                session: selectedSession,
+                pendingCount: selectedPendingApprovals.length,
+                runningCount: approvals.data.filter((approval) => approval.status === "running" && selectedServer && Number(approval.server_id) === Number(selectedServer.id)).length,
+              })}
+            />
             <div className="min-w-0">
               <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
                 <TerminalSquare className="h-4 w-4 shrink-0" />
@@ -453,4 +446,24 @@ export function ConsolePage() {
       />
     </section>
   );
+}
+
+function selectedServerStatus({ session, pendingCount = 0, runningCount = 0 }) {
+  if (pendingCount > 0 || runningCount > 0) return "busy";
+  if (session?.status === "connected" || session?.status === "connecting") return "idle";
+  return "offline";
+}
+
+function ConsoleStatusDot({ status, className = "" }) {
+  const colors = {
+    offline: "fill-red-500 text-red-500",
+    idle: "fill-emerald-500 text-emerald-500",
+    busy: "fill-amber-400 text-amber-400",
+  };
+  const label = {
+    offline: "No live session",
+    idle: "Live session idle",
+    busy: "Pending or running work",
+  };
+  return <Circle className={`h-3 w-3 shrink-0 ${colors[status] || colors.offline} ${className}`} aria-label={label[status] || label.offline} />;
 }

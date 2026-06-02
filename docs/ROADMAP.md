@@ -1,8 +1,8 @@
 # Roadmap
 
-AIPermission is preparing its first public release candidate. The project is
-feature-complete for the local-only MVP; the remaining work is release
-packaging, final dogfooding, and small post-RC hardening.
+AIPermission has published its first public release candidate. The local-only
+SSH/MCP MVP is usable today; the next releases focus on dogfooding polish,
+small safety improvements, and clearer contributor paths.
 
 Related notes:
 
@@ -17,7 +17,7 @@ Related notes:
 
 ## Current Status
 
-`0.1.0-rc.1` is code-complete for the first local developer workflow:
+`0.1.0-rc.1` shipped the first local developer workflow:
 
 - Docker Compose local runtime at `http://localhost:3210`.
 - SQLCipher encrypted named `.aipdb` databases.
@@ -60,20 +60,20 @@ closed as `wontfix`:
 - LAN-accessible gateway mode.
 - Cloud-managed command execution.
 
-## Before Public RC
+## 0.1.1 Dogfooding Polish
 
-- [ ] Create the clean public repository state on `main`.
-- [ ] Publish the organization profile repository `aipermission/.github`.
-- [ ] Apply the initial GitHub label set.
-- [ ] Run the release checklist from a clean clone.
-- [ ] Verify README screenshots render on GitHub.
-- [ ] Publish `@aipermission/mcp@0.1.0` with public npm access.
-- [ ] Publish the unscoped `aipermission` placeholder package after the npm
-  unpublish cooldown, using a new version such as `0.0.3`.
-- [ ] Create the `v0.1.0-rc.1` GitHub release.
-- [ ] Run one final real SSH/MCP dogfooding pass.
+This small follow-up release focuses on daily-use friction found while using
+AIPermission against real VPS maintenance tasks:
 
-## Early Post-RC
+- [ ] Collapsible Console side panels for smaller screens.
+- [ ] Meaningful Console status dots for no live session, idle, and busy states.
+- [ ] Browser title that shows MCP Started/Stopped and the active database.
+- [ ] Safer database deletion with a second password confirmation.
+- [ ] Manual update checks from the in-app Changelog dialog.
+- [ ] Bulk token permission updates across all servers.
+- [ ] Approval-run notes delivered back to the AI.
+
+## Early RC Follow-Ups
 
 These are good candidates for small follow-up releases after the first public
 tag:

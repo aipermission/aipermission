@@ -44,11 +44,11 @@ export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, on
           </div>
           <div className="grid gap-3 border-t border-stone-200 bg-white p-5 shadow-[0_-8px_18px_rgba(15,23,42,0.06)]">
             <label className="grid gap-2 text-sm font-medium text-stone-800">
-              Note for AI
-              <Textarea
-                value={note}
-                onChange={(event) => onNoteChange(event.target.value)}
-                placeholder="If you decline, write the reason or an alternative path."
+	              Note for AI
+	              <Textarea
+	                value={note}
+	                onChange={(event) => onNoteChange(event.target.value)}
+	                placeholder="Optional. Run sends this note to the AI; Decline stores it as the reason or alternative path."
                 rows={2}
                 className="!min-h-16 resize-none"
               />

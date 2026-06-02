@@ -147,6 +147,16 @@ export function Shell({ theme, setTheme }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (databaseStatus.state !== "ready" || !databaseStatus.data?.unlocked) {
+      document.title = "AIPermission";
+      return;
+    }
+    const runtimeLabel = mcpRuntime.data?.enabled ? "Started" : "Stopped";
+    const databaseName = databaseStatus.data?.database_name || databaseStatus.data?.database_id || "Database";
+    document.title = `${runtimeLabel} - ${databaseName}`;
+  }, [databaseStatus.state, databaseStatus.data?.unlocked, databaseStatus.data?.database_name, databaseStatus.data?.database_id, mcpRuntime.data?.enabled]);
+
   const gatewayState = useMemo(() => {
     if (status.state === "ready") return "running";
     if (status.state === "error") return "unreachable";
@@ -293,8 +303,8 @@ export function Shell({ theme, setTheme }) {
     patchConsoleSession(sessionID, () => ({ status: "closed" }));
   }
 
-  async function runApproval(requestID) {
-    const item = await apiPost(`/api/approvals/${requestID}/run`, {});
+  async function runApproval(requestID, userNote = "") {
+    const item = await apiPost(`/api/approvals/${requestID}/run`, { user_note: userNote });
     await Promise.all([loadApprovals(), loadConsoleSessions()]);
     return item;
   }

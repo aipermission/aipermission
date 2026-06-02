@@ -355,9 +355,9 @@ The paginated response is an envelope:
 
 Paginated list responses omit full stdout/stderr. `GET /api/approvals/{id}` returns the detail payload with captured output.
 
-Run changes a `pending_approval` request to `running` and starts execution in the backend-owned console session. The request later becomes `completed`, `failed`, or `error`.
+Run changes a `pending_approval` request to `running` and starts execution in the backend-owned console session. It accepts an optional JSON body with `user_note`; when provided, the note is delivered to the matching MCP token through the message queue. The request later becomes `completed`, `failed`, or `error`.
 
-Decline changes the request to `declined`. The optional note is returned to MCP as `user_note`.
+Decline changes the request to `declined`. The optional `user_note` is stored on the command request and returned to MCP as operator guidance.
 
 ## Messages
 

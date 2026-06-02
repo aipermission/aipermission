@@ -8,6 +8,7 @@ import { useTokenPermissions } from "../lib/use-token-permissions";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CopyButton } from "../components/ui/copy-button";
+import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
@@ -29,8 +30,9 @@ export function TokensPage() {
   const [form, setForm] = useState(emptyForm);
   const [createdToken, setCreatedToken] = useState(null);
   const [permissionDialog, setPermissionDialog] = useState(null);
-  const { permissionState, loadAllTokenPermissions, setTokenServerRule } = useTokenPermissions(tokens.data);
+  const { permissionState, loadAllTokenPermissions, setTokenServerRule, setTokenAllServerRules } = useTokenPermissions(tokens.data);
   const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
+  const [bulkDialog, setBulkDialog] = useState({ open: false, token: null, rule: "approval_required" });
   const { actionState: state, runAction } = useAsyncAction();
   const [tokenFilter, setTokenFilter] = useState("active");
 
@@ -88,7 +90,12 @@ export function TokensPage() {
     });
   }
 
-
+  async function applyBulkPermissions(event) {
+    event.preventDefault();
+    if (!bulkDialog.token) return;
+    await setTokenAllServerRules(bulkDialog.token, servers.data, bulkDialog.rule);
+    setBulkDialog({ open: false, token: null, rule: "approval_required" });
+  }
 
   return (
     <section className="mx-auto grid w-full max-w-7xl gap-5">
@@ -164,11 +171,11 @@ export function TokensPage() {
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
-              <th className="w-[30%] px-4 py-3 font-semibold">Name</th>
-              <th className="w-[24%] px-4 py-3 font-semibold">Servers</th>
-              <th className="w-[12%] px-4 py-3 font-semibold">Status</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">Created / expires</th>
-              <th className="w-[16%] px-4 py-3 text-right font-semibold">Actions</th>
+              <th className="w-[28%] px-4 py-3 font-semibold">Name</th>
+              <th className="w-[22%] px-4 py-3 font-semibold">Servers</th>
+              <th className="w-[11%] px-4 py-3 font-semibold">Status</th>
+              <th className="w-[17%] px-4 py-3 font-semibold">Created / expires</th>
+              <th className="w-[22%] px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
@@ -241,6 +248,16 @@ export function TokensPage() {
                         type="button"
                         variant="outline"
                         className="h-9 px-3"
+                        onClick={() => setBulkDialog({ open: true, token, rule: "approval_required" })}
+                        disabled={inactive || servers.data.length === 0 || permissionState.savingKey === `${token.id}:all`}
+                        title="Set this token's permission for all servers"
+                      >
+                        Bulk
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 px-3"
                         onClick={() => setInstallDialog({ open: true, token, provider: "manual" })}
                         disabled={inactive || !token.token}
                         title={token.token ? "Install MCP with this token" : "Create a new token or enable reusable token copy in Settings"}
@@ -306,12 +323,34 @@ export function TokensPage() {
         </form>
       </Drawer>
 
-      <PermissionDialog
-        value={permissionDialog}
-        permissionState={permissionState}
-        onClose={() => setPermissionDialog(null)}
-        onSetRule={setTokenServerRule}
-      />
+      <PermissionDialog value={permissionDialog} permissionState={permissionState} onClose={() => setPermissionDialog(null)} onSetRule={setTokenServerRule} />
+      <Dialog
+        open={bulkDialog.open}
+        title="Set all server permissions"
+        description={bulkDialog.token ? `Apply one permission rule to every server for ${bulkDialog.token.name}.` : ""}
+        onClose={() => setBulkDialog({ open: false, token: null, rule: "approval_required" })}
+        size="md"
+      >
+        <form className="grid gap-4" onSubmit={applyBulkPermissions}>
+          <Notice>Use this for broad maintenance windows. You can still override individual servers afterwards.</Notice>
+          <Field>
+            Permission rule
+            <Select value={bulkDialog.rule} onChange={(event) => setBulkDialog((current) => ({ ...current, rule: event.target.value }))}>
+              <option value="">Disabled for all servers</option>
+              <option value="approval_required">Prompt for all servers</option>
+              <option value="always_run">Always run for all servers</option>
+            </Select>
+          </Field>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={() => setBulkDialog({ open: false, token: null, rule: "approval_required" })}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!bulkDialog.token || permissionState.savingKey === `${bulkDialog.token?.id}:all`}>
+              Apply to all servers
+            </Button>
+          </div>
+        </form>
+      </Dialog>
       <TokenInstallDialog
         state={installDialog}
         onChange={setInstallDialog}

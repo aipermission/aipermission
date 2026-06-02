@@ -7,7 +7,26 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
-## [0.1.0-rc.1] - Unreleased
+## [0.1.1] - Unreleased
+
+### Added
+
+- Manual GitHub release update check in the in-app changelog dialog.
+- Bulk token permission updates for applying one rule to every server.
+- Optional approval-run notes that are delivered back to the AI after approval.
+
+### Changed
+
+- Console side panels can collapse for narrower screens.
+- Browser title now shows the MCP runtime state and active database name after unlock.
+- Console server status dots now reflect live session, pending, and running state instead of decorative window controls.
+- Database deletion now requires a second confirmation dialog with the current database password.
+
+### Notes
+
+- This release is focused on dogfooding polish after the first public RC.
+
+## [0.1.0-rc.1] - 2026-06-02
 
 ### Added
 

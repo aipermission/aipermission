@@ -5,6 +5,7 @@ import { useAsyncAction } from "../lib/use-async-action";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { CopyButton } from "../components/ui/copy-button";
+import { Dialog } from "../components/ui/dialog";
 import { Field, Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
@@ -27,6 +28,8 @@ export function SettingsPage() {
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [renameName, setRenameName] = useState("");
   const [deleteName, setDeleteName] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
 
   async function loadDatabase() {
     try {
@@ -89,14 +92,25 @@ export function SettingsPage() {
     });
   }
 
+  function requestDeleteDatabase(event) {
+    event.preventDefault();
+    setDeleteDialogOpen(true);
+  }
+
   async function deleteDatabase(event) {
     event.preventDefault();
     const result = await runDeleteAction({
       pending: "deleting",
       successMessage: "Database deleted.",
-      action: () => apiPost("/api/databases/delete", { confirm_name: deleteName }),
+      action: () => apiPost("/api/databases/delete", { confirm_name: deleteName, current_password: deletePassword }),
     });
     if (result !== undefined) window.setTimeout(() => window.location.reload(), 800);
+  }
+
+  function closeDeleteDialog() {
+    if (deleteState.state === "deleting") return;
+    setDeleteDialogOpen(false);
+    setDeletePassword("");
   }
 
   function updateRetentionField(field, value) {
@@ -312,7 +326,7 @@ export function SettingsPage() {
           <CardDescription>This permanently removes the current database file from the local Docker volume.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-4" onSubmit={deleteDatabase}>
+          <form className="grid gap-4" onSubmit={requestDeleteDatabase}>
             <Notice tone="bad">
               <span className="flex flex-nowrap items-center gap-2 text-xs">
                 <span className="min-w-0 shrink">Take a backup first. To confirm deletion, type the database name exactly:</span>
@@ -334,6 +348,36 @@ export function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={deleteDialogOpen}
+        title="Delete database"
+        description={`This permanently removes ${databaseName} from the local Docker volume.`}
+        onClose={closeDeleteDialog}
+        size="md"
+      >
+        <form className="grid gap-4" onSubmit={deleteDatabase}>
+          <Notice tone="bad">This cannot be undone. Take a backup first, then confirm with the database name and current password.</Notice>
+          <Field>
+            Confirm database name
+            <Input value={deleteName} onChange={(event) => setDeleteName(event.target.value)} required />
+          </Field>
+          <Field>
+            Current database password
+            <Input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} autoComplete="current-password" required />
+          </Field>
+          {deleteState.state === "error" ? <Notice tone="bad">{deleteState.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={closeDeleteDialog} disabled={deleteState.state === "deleting"}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="danger" disabled={deleteState.state === "deleting" || deleteName !== databaseName || !deletePassword}>
+              <Trash2 className="h-4 w-4" />
+              {deleteState.state === "deleting" ? "Deleting..." : "Delete permanently"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </section>
   );
 }

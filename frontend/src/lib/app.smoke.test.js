@@ -33,8 +33,9 @@ test("MCP setup defaults to the local Docker frontend origin", () => {
   assert.doesNotMatch(apiSource, /mcpApiUrl[\s\S]*"http:\/\/localhost:8080"/);
 });
 
-test("nginx CSP keeps browser connections same-origin", () => {
+test("nginx CSP keeps browser connections local plus manual update checks", () => {
   assert.match(nginxSource, /connect-src 'self'/);
+  assert.match(nginxSource, /https:\/\/api\.github\.com/);
   assert.doesNotMatch(nginxSource, /ws:\/\/localhost:3210/);
   assert.doesNotMatch(nginxSource, /ws:\/\/localhost:\*/);
 });
@@ -53,7 +54,7 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /onSetTheme\("dark"\)/);
   assert.match(sidebarSource, /onSetTheme\("light"\)/);
   assert.match(sidebarSource, /Changelog/);
-  assert.match(releaseSource, /appVersion = "0\.1\.0-rc\.1"/);
+  assert.match(releaseSource, /appVersion = "0\.1\.1"/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
