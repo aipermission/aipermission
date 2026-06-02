@@ -44,6 +44,10 @@ Build MCP bridge:
 npm run build --workspace @aipermission/mcp
 ```
 
+If your AI client runs from the monorepo root, use the workspace MCP command in
+[MCP Client Setup](docs/setup/mcp-client-setup.md#local-package-development)
+instead of the normal `npx -y @aipermission/mcp` command.
+
 Run the full local stack:
 
 ```bash

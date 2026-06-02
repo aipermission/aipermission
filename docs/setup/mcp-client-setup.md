@@ -129,6 +129,31 @@ npm test
 npm run build
 ```
 
+If an AI client is launched from the AIPermission monorepo root, `npx -y
+@aipermission/mcp` can resolve the local workspace package instead of the
+published npm package. In that development-only case, configure the MCP server
+with the workspace command:
+
+```json
+{
+  "command": "npm",
+  "args": [
+    "exec",
+    "--yes",
+    "--workspace",
+    "packages/mcp",
+    "--",
+    "aipermission-mcp"
+  ],
+  "env": {
+    "AIPERMISSION_API_URL": "http://localhost:3210",
+    "AIPERMISSION_API_TOKEN": "TOKEN"
+  }
+}
+```
+
+For normal user projects, keep the standard `npx -y @aipermission/mcp` setup.
+
 ## Operator Instructions
 
 Use [aipermission Operator Skill](../skills/aipermission-operator/SKILL.md) to standardize AI behavior around `approval_pending`, `running`, console polling, reasons, and secret hygiene.
