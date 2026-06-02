@@ -13,6 +13,7 @@ const unlockSource = readFileSync(join(currentDir, "..", "pages", "unlock.jsx"),
 const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
 const approvalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "approval-dialog.jsx"), "utf8");
 const serversSource = readFileSync(join(currentDir, "..", "pages", "servers.jsx"), "utf8");
+const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -75,4 +76,12 @@ test("Server host key dialog handles first approval and changed fingerprints", (
   assert.match(serversSource, /Replace trusted fingerprint/);
   assert.match(serversSource, /Previously trusted/);
   assert.match(serversSource, /replace: Boolean\(hostKey\.changed\)/);
+});
+
+test("Settings database delete requires a confirmation dialog and current password", () => {
+  assert.match(settingsSource, /onSubmit=\{requestDeleteDatabase\}/);
+  assert.match(settingsSource, /setDeleteDialogOpen\(true\)/);
+  assert.match(settingsSource, /Current database password/);
+  assert.match(settingsSource, /current_password: deletePassword/);
+  assert.doesNotMatch(settingsSource, /onSubmit=\{deleteDatabase\}[\s\S]*Delete<\/CardTitle>/);
 });
