@@ -108,7 +108,7 @@ export function ServersPage() {
   }
 
   function showHostKeyApproval(error, action) {
-    if (error.status !== 409 || error.data?.code !== "unknown_ssh_host_key" || !error.data?.host_key) {
+    if (error.status !== 409 || !["unknown_ssh_host_key", "changed_ssh_host_key"].includes(error.data?.code) || !error.data?.host_key) {
       return false;
     }
     setHostKeyDialog({ open: true, hostKey: error.data.host_key, action, state: "idle", error: null });
@@ -124,6 +124,7 @@ export function ServersPage() {
         host: hostKey.host,
         port: hostKey.port,
         public_key: hostKey.public_key,
+        replace: Boolean(hostKey.changed),
       });
       setHostKeyDialog({ open: false, hostKey: null, action: null, state: "idle", error: null });
       if (action.type === "test") {
@@ -361,19 +362,41 @@ export function ServersPage() {
 
 function HostKeyApprovalDialog({ value, onApprove, onClose }) {
   const hostKey = value.hostKey;
+  const changed = Boolean(hostKey?.changed);
   return (
-    <Dialog open={value.open} title="Approve SSH host fingerprint" description="First connection requires you to trust the server identity." onClose={onClose} size="md">
+    <Dialog
+      open={value.open}
+      title={changed ? "SSH host fingerprint changed" : "Approve SSH host fingerprint"}
+      description={changed ? "The server is sending a different identity than the one previously trusted." : "First connection requires you to trust the server identity."}
+      onClose={onClose}
+      size={changed ? "lg" : "md"}
+    >
       {hostKey ? (
         <div className="grid gap-4">
-          <Notice tone="warn">
-            Verify this fingerprint from your provider console or from a trusted terminal before approving. AIPermission will reject future changes for this host.
-          </Notice>
+          {changed ? (
+            <Notice tone="bad">
+              This can happen after a rebuild or IP reuse, but it can also indicate a man-in-the-middle attack. Verify the new fingerprint from your provider console before replacing the trusted key.
+            </Notice>
+          ) : (
+            <Notice tone="warn">
+              Verify this fingerprint from your provider console or from a trusted terminal before approving. AIPermission will reject future changes for this host.
+            </Notice>
+          )}
           <div className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm">
             <div className="flex items-center gap-2 font-semibold text-stone-900">
               <ShieldCheck className="h-4 w-4 text-stone-500" />
               {hostKey.hostname}
             </div>
             <p className="text-xs text-stone-500">Type: {hostKey.key_type}</p>
+            {changed && hostKey.existing_fingerprints?.length ? (
+              <div className="grid gap-1">
+                <p className="text-xs font-semibold uppercase text-stone-500">Previously trusted</p>
+                {hostKey.existing_fingerprints.map((fingerprint) => (
+                  <code className="break-all rounded bg-white p-2 text-xs text-stone-800" key={fingerprint}>{fingerprint}</code>
+                ))}
+              </div>
+            ) : null}
+            <p className="text-xs font-semibold uppercase text-stone-500">{changed ? "New fingerprint" : "Fingerprint"}</p>
             <code className="break-all rounded bg-white p-2 text-xs text-stone-800">{hostKey.fingerprint_sha256}</code>
           </div>
           {value.state === "error" ? <Notice tone="bad">{value.error}</Notice> : null}
@@ -381,8 +404,8 @@ function HostKeyApprovalDialog({ value, onApprove, onClose }) {
             <Button type="button" variant="outline" onClick={onClose} disabled={value.state === "approving"}>
               Cancel
             </Button>
-            <Button type="button" onClick={onApprove} disabled={value.state === "approving"}>
-              {value.state === "approving" ? "Approving..." : "Approve fingerprint"}
+            <Button type="button" className="whitespace-nowrap" onClick={onApprove} disabled={value.state === "approving"}>
+              {value.state === "approving" ? "Approving..." : changed ? "Replace trusted fingerprint" : "Approve fingerprint"}
             </Button>
           </div>
         </div>

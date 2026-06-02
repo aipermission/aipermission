@@ -17,6 +17,7 @@ type hostKeyApprovalRequest struct {
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
 	PublicKey string `json:"public_key"`
+	Replace   bool   `json:"replace"`
 }
 
 type hostKeyApprovalResponse struct {
@@ -33,12 +34,14 @@ type unknownHostKeyResponse struct {
 }
 
 type unknownHostKeyDTO struct {
-	Host              string `json:"host"`
-	Port              int    `json:"port"`
-	Hostname          string `json:"hostname"`
-	KeyType           string `json:"key_type"`
-	FingerprintSHA256 string `json:"fingerprint_sha256"`
-	PublicKey         string `json:"public_key"`
+	Host                 string   `json:"host"`
+	Port                 int      `json:"port"`
+	Hostname             string   `json:"hostname"`
+	KeyType              string   `json:"key_type"`
+	FingerprintSHA256    string   `json:"fingerprint_sha256"`
+	PublicKey            string   `json:"public_key"`
+	Changed              bool     `json:"changed"`
+	ExistingFingerprints []string `json:"existing_fingerprints,omitempty"`
 }
 
 func (s sshHostKeyHandlers) approveSSHHostKey(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +71,13 @@ func (s sshHostKeyHandlers) approveSSHHostKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 	hostname := net.JoinHostPort(request.Host, fmt.Sprintf("%d", request.Port))
-	if err := execution.TrustHostKey(s.knownHostsPath(), hostname, request.PublicKey); err != nil {
+	var err error
+	if request.Replace {
+		err = execution.ReplaceHostKey(s.knownHostsPath(), hostname, request.PublicKey)
+	} else {
+		err = execution.TrustHostKey(s.knownHostsPath(), hostname, request.PublicKey)
+	}
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -87,29 +96,61 @@ func (s sshHostKeyHandlers) approveSSHHostKey(w http.ResponseWriter, r *http.Req
 
 func writeUnknownHostKeyError(w http.ResponseWriter, err error) bool {
 	var hostKeyErr *execution.UnknownHostKeyError
-	if !errors.As(err, &hostKeyErr) {
-		return false
+	if errors.As(err, &hostKeyErr) {
+		writeHostKeyConflict(w, "ssh host key approval required", "unknown_ssh_host_key", unknownHostKeyDTOFromUnknown(hostKeyErr))
+		return true
 	}
-	host, portText, splitErr := net.SplitHostPort(hostKeyErr.Hostname)
+	var changedHostKeyErr *execution.ChangedHostKeyError
+	if errors.As(err, &changedHostKeyErr) {
+		writeHostKeyConflict(w, "ssh host key changed; replace trusted fingerprint only if this change is expected", "changed_ssh_host_key", unknownHostKeyDTOFromChanged(changedHostKeyErr))
+		return true
+	}
+	return false
+}
+
+func writeHostKeyConflict(w http.ResponseWriter, errorMessage string, code string, hostKey unknownHostKeyDTO) {
+	writeJSON(w, http.StatusConflict, unknownHostKeyResponse{
+		Error:   errorMessage,
+		Code:    code,
+		HostKey: hostKey,
+	})
+}
+
+func unknownHostKeyDTOFromUnknown(hostKeyErr *execution.UnknownHostKeyError) unknownHostKeyDTO {
+	host, port := splitHostKeyHostPort(hostKeyErr.Hostname)
+	return unknownHostKeyDTO{
+		Host:              host,
+		Port:              port,
+		Hostname:          hostKeyErr.Hostname,
+		KeyType:           hostKeyErr.KeyType,
+		FingerprintSHA256: hostKeyErr.FingerprintSHA256,
+		PublicKey:         hostKeyErr.PublicKey,
+	}
+}
+
+func unknownHostKeyDTOFromChanged(hostKeyErr *execution.ChangedHostKeyError) unknownHostKeyDTO {
+	host, port := splitHostKeyHostPort(hostKeyErr.Hostname)
+	return unknownHostKeyDTO{
+		Host:                 host,
+		Port:                 port,
+		Hostname:             hostKeyErr.Hostname,
+		KeyType:              hostKeyErr.KeyType,
+		FingerprintSHA256:    hostKeyErr.FingerprintSHA256,
+		PublicKey:            hostKeyErr.PublicKey,
+		Changed:              true,
+		ExistingFingerprints: hostKeyErr.ExistingFingerprints,
+	}
+}
+
+func splitHostKeyHostPort(hostname string) (string, int) {
+	host, portText, splitErr := net.SplitHostPort(hostname)
 	port := 22
 	if splitErr != nil {
-		host = hostKeyErr.Hostname
+		host = hostname
 	} else if parsed, parseErr := strconv.Atoi(portText); parseErr == nil {
 		port = parsed
 	}
-	writeJSON(w, http.StatusConflict, unknownHostKeyResponse{
-		Error: "ssh host key approval required",
-		Code:  "unknown_ssh_host_key",
-		HostKey: unknownHostKeyDTO{
-			Host:              host,
-			Port:              port,
-			Hostname:          hostKeyErr.Hostname,
-			KeyType:           hostKeyErr.KeyType,
-			FingerprintSHA256: hostKeyErr.FingerprintSHA256,
-			PublicKey:         hostKeyErr.PublicKey,
-		},
-	})
-	return true
+	return host, port
 }
 
 func (s *Server) knownHostsPath() string {

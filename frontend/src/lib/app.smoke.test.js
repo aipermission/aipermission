@@ -12,6 +12,7 @@ const sidebarSource = readFileSync(join(currentDir, "..", "components", "app-sid
 const unlockSource = readFileSync(join(currentDir, "..", "pages", "unlock.jsx"), "utf8");
 const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
 const approvalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "approval-dialog.jsx"), "utf8");
+const serversSource = readFileSync(join(currentDir, "..", "pages", "servers.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -65,4 +66,12 @@ test("Approval dialog warns before persisting command context", () => {
   assert.match(approvalDialogSource, /shell command body/);
   assert.match(approvalDialogSource, /may be persisted/);
   assert.match(approvalDialogSource, /redaction is best-effort/i);
+});
+
+test("Server host key dialog handles first approval and changed fingerprints", () => {
+  assert.match(serversSource, /unknown_ssh_host_key/);
+  assert.match(serversSource, /changed_ssh_host_key/);
+  assert.match(serversSource, /Replace trusted fingerprint/);
+  assert.match(serversSource, /Previously trusted/);
+  assert.match(serversSource, /replace: Boolean\(hostKey\.changed\)/);
 });
