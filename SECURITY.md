@@ -79,7 +79,17 @@ Known risks:
 - Database passwords are necessarily present in backend process memory while an unlock, import, or password-change request is being handled. The password is not stored as a bearer token or written to audit logs, but process memory should be treated as trusted while the gateway is running.
 - UI sessions and auth rate-limit counters are in-memory process state. Restarting the backend clears them. Auth rate limiting is local hardening friction, not a remote security boundary. This matches the local single-user design and is not a remote account/session system.
 - A malicious browser extension is treated as local machine compromise, not as a supported remote-web threat. HttpOnly cookies, SameSite cookies, CSRF checks, CORS, Host checks, and CSP reduce normal web-page and cross-site request risk, but an installed extension with broad host/page permissions may read visible UI data, observe user actions, inject UI actions, or make privileged extension-origin requests to localhost. Use a trusted browser/profile for AIPermission and avoid running untrusted extensions while the gateway is unlocked.
-- UI session and CSRF cookies intentionally omit the `Secure` flag because the supported gateway URL is local HTTP on `localhost`. HTTPS reverse-proxy/LAN deployment is unsupported and should not be used to reinterpret these cookies as remote auth.
+- UI session and CSRF cookies use `Secure`, `SameSite=Strict`, and local-only browser/session checks. The supported gateway URL remains local HTTP on `localhost`; HTTPS reverse-proxy/LAN deployment is unsupported and should not be used to reinterpret these cookies as remote auth.
 - The gateway vault secret protects encrypted SSH key and reusable token payloads inside the SQLCipher database. If that secret is lost, those payloads cannot be decrypted; if it is exposed together with the unlocked database contents, vault-protected payloads should be treated as compromised.
 - `always_run` should be used only for trusted, temporary maintenance flows.
 - The frontend CSP is intentionally compatible with the current Vite/React build and nginx deployment; future hardening can remove any remaining inline-style allowances when the UI build supports it cleanly.
+
+Expected CodeQL notes:
+
+- SSH command execution is expected. AIPermission intentionally sends approved
+  command text to the target server shell after token permission checks,
+  approval policy checks, audit logging, and local user approval when required.
+- SQLCipher `PRAGMA rekey` does not support parameter binding through the
+  current driver. The rekey path escapes double quotes before constructing the
+  SQLCipher passphrase literal, and regression tests cover quotes, semicolons,
+  and SQL-looking password text.

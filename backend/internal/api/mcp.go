@@ -12,6 +12,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
+const (
+	defaultMCPConsoleTailBytes = 20000
+	maxMCPConsoleTailBytes     = 100000
+)
+
 func (s mcpHandlers) mcpListServers(w http.ResponseWriter, r *http.Request) {
 	auth, ok := s.authenticateMCP(w, r)
 	if !ok {
@@ -279,17 +284,17 @@ func (s mcpHandlers) mcpReadConsole(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "server_id is required")
 		return
 	}
-	tail := int64(20000)
+	tail := defaultMCPConsoleTailBytes
 	if rawTail := strings.TrimSpace(r.URL.Query().Get("tail")); rawTail != "" {
-		parsed, err := strconv.ParseInt(rawTail, 10, 64)
+		parsed, err := strconv.Atoi(rawTail)
 		if err != nil || parsed < 1 {
 			writeError(w, http.StatusBadRequest, "invalid tail")
 			return
 		}
 		tail = parsed
 	}
-	if tail > 100000 {
-		tail = 100000
+	if tail > maxMCPConsoleTailBytes {
+		tail = maxMCPConsoleTailBytes
 	}
 
 	serverName, rule, allowed, err := s.mcpPermission(r.Context(), auth.runtime, auth.TokenID, serverID)
@@ -332,7 +337,7 @@ func (s mcpHandlers) mcpReadConsole(w http.ResponseWriter, r *http.Request) {
 
 	session := sessions[0]
 	transcript := session.Transcript
-	transcript = console.TailStringByBytes(transcript, int(tail))
+	transcript = console.TailStringByBytes(transcript, tail)
 	transcript = s.redactForPersistence(r.Context(), auth.runtime, transcript)
 	userNote, _ := s.consumeNextUserMessage(r.Context(), auth.runtime, auth.TokenID, serverID, session.ID)
 	writeJSON(w, http.StatusOK, mcpConsoleResponse{

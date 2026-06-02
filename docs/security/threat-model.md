@@ -45,7 +45,10 @@ Mitigations:
 - CSRF header/cookie pair for mutating web REST requests
 - loopback-only CORS origin validation; configured origins cannot point at non-loopback hosts
 
-UI session and CSRF cookies intentionally omit the `Secure` flag because the supported gateway URL is local HTTP on `localhost`. HTTPS reverse-proxy/LAN deployment is unsupported.
+UI session and CSRF cookies use `Secure` and `SameSite=Strict` for defense in
+depth on the supported local `localhost` gateway URL. HTTPS reverse-proxy/LAN
+deployment is unsupported and must not be used to reinterpret these cookies as
+remote authentication.
 
 Browser extension boundary:
 
