@@ -81,7 +81,9 @@ test("Server host key dialog handles first approval and changed fingerprints", (
 test("Settings database delete requires a confirmation dialog and current password", () => {
   assert.match(settingsSource, /onSubmit=\{requestDeleteDatabase\}/);
   assert.match(settingsSource, /setDeleteDialogOpen\(true\)/);
+  assert.match(settingsSource, /autoFocusClose=\{false\}/);
   assert.match(settingsSource, /Current database password/);
+  assert.match(settingsSource, /deletePasswordRef/);
   assert.match(settingsSource, /current_password: deletePassword/);
   assert.doesNotMatch(settingsSource, /onSubmit=\{deleteDatabase\}[\s\S]*Delete<\/CardTitle>/);
 });

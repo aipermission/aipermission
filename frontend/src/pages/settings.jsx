@@ -1,5 +1,5 @@
 import { Clock3, Download, Edit3, KeyRound, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiDownload, apiGet, apiPost, apiPut } from "../lib/api";
 import { useAsyncAction } from "../lib/use-async-action";
 import { Button } from "../components/ui/button";
@@ -30,6 +30,7 @@ export function SettingsPage() {
   const [deleteName, setDeleteName] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
+  const deletePasswordRef = useRef(null);
 
   async function loadDatabase() {
     try {
@@ -112,6 +113,11 @@ export function SettingsPage() {
     setDeleteDialogOpen(false);
     setDeletePassword("");
   }
+
+  useEffect(() => {
+    if (!deleteDialogOpen) return;
+    window.setTimeout(() => deletePasswordRef.current?.focus(), 0);
+  }, [deleteDialogOpen]);
 
   function updateRetentionField(field, value) {
     const numeric = Number.parseInt(value, 10);
@@ -355,16 +361,24 @@ export function SettingsPage() {
         description={`This permanently removes ${databaseName} from the local Docker volume.`}
         onClose={closeDeleteDialog}
         size="md"
+        autoFocusClose={false}
       >
         <form className="grid gap-4" onSubmit={deleteDatabase}>
-          <Notice tone="bad">This cannot be undone. Take a backup first, then confirm with the database name and current password.</Notice>
-          <Field>
-            Confirm database name
-            <Input value={deleteName} onChange={(event) => setDeleteName(event.target.value)} required />
-          </Field>
+          <Notice tone="bad">This cannot be undone. Take a backup first, then enter the current database password.</Notice>
+          <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+            <p className="text-xs font-semibold uppercase text-stone-500">Database name</p>
+            <p className="mt-1 truncate text-sm font-semibold text-stone-950">{databaseName}</p>
+          </div>
           <Field>
             Current database password
-            <Input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} autoComplete="current-password" required />
+            <Input
+              ref={deletePasswordRef}
+              type="password"
+              value={deletePassword}
+              onChange={(event) => setDeletePassword(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
           </Field>
           {deleteState.state === "error" ? <Notice tone="bad">{deleteState.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">

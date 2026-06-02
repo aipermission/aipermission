@@ -11,7 +11,7 @@ const sizes = {
   wide: "max-w-[calc(100vw-80px)]",
 };
 
-export function Dialog({ open, title, description, children, onClose, size = "sm", className = "", bodyClassName = "" }) {
+export function Dialog({ open, title, description, children, onClose, size = "sm", className = "", bodyClassName = "", autoFocusClose = true }) {
   const closeButtonRef = useRef(null);
   const onCloseRef = useRef(onClose);
 
@@ -22,7 +22,9 @@ export function Dialog({ open, title, description, children, onClose, size = "sm
   useEffect(() => {
     if (!open) return undefined;
     const previous = document.activeElement;
-    closeButtonRef.current?.focus();
+    if (autoFocusClose) {
+      closeButtonRef.current?.focus();
+    }
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
         onCloseRef.current?.();
