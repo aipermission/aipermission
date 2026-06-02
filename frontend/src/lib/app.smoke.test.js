@@ -42,6 +42,8 @@ test("nginx accepts encrypted database imports without HTML error pages", () => 
   assert.match(nginxSource, /client_max_body_size 256m/);
   assert.match(nginxSource, /error_page 413 = @payload_too_large/);
   assert.match(nginxSource, /Uploaded database is too large/);
+  assert.doesNotMatch(nginxSource, /proxy_intercept_errors\s+on/);
+  assert.doesNotMatch(nginxSource, /error_page 502 503 504/);
 });
 
 test("App applies the persisted theme before unlock and exposes bundled changelog metadata", () => {
