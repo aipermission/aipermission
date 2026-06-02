@@ -418,8 +418,12 @@ async function protectGitIgnoredConfig(filePath) {
   const entries = current.split(/\r?\n/).map((line) => line.trim());
   if (!entries.includes(relativePath)) {
     const prefix = current && !current.endsWith("\n") ? "\n" : "";
-    await fs.mkdir(path.dirname(excludePath), { recursive: true });
-    await fs.appendFile(excludePath, `${prefix}${relativePath}\n`, { mode: 0o600 });
+    try {
+      await fs.mkdir(path.dirname(excludePath), { recursive: true });
+      await fs.appendFile(excludePath, `${prefix}${relativePath}\n`, { mode: 0o600 });
+    } catch {
+      return {};
+    }
   }
   return { gitExcluded: true, gitExcludeEntry: relativePath };
 }
