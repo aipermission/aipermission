@@ -80,4 +80,8 @@ AIPERMISSION_BACKEND_PORT=8080
 AIPERMISSION_FRONTEND_PORT=3210
 ```
 
-`AIPERMISSION_GATEWAY_SECRET` can be omitted for automatic generation. If explicitly set, use at least 32 random characters. This secret enters the backup payload but is not the database password.
+`AIPERMISSION_GATEWAY_SECRET` is optional and should be left unset for normal
+local installs. On first start, the gateway generates a high-entropy local vault
+secret and stores it in the Docker data volume. If explicitly set for advanced
+local testing, use at least 32 random characters. This secret enters the backup
+payload but is not the database password.
