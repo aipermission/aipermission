@@ -83,7 +83,9 @@ tag:
 - [ ] Add command policy/risk scoring primitives without turning the product
   into a DevOps platform.
 - [ ] Add optional deny/warn rules for common high-risk command patterns.
-- [ ] Add structured manual command event parsing for History.
+- [ ] Add structured manual command event parsing for History, including busy
+  Console status dots for user-typed commands. Do this with a deliberate
+  terminal parsing model instead of a quick frontend-only guess.
 - [ ] Add optional safety backup before import.
 - [ ] Add more Playwright browser tests for Settings, import, token permission,
   and approval workflows.

@@ -134,7 +134,14 @@ export function AppSidebar({ pathname, consoleAttentionCount, gatewayState, mcpR
           </div>
         </div>
       </div>
-      <Dialog open={changelogOpen} title="Changelog" description={`Current app version: ${appVersion}`} onClose={() => setChangelogOpen(false)} size="lg">
+      <Dialog
+        open={changelogOpen}
+        title="Changelog"
+        description={`Current app version: ${appVersion}`}
+        onClose={() => setChangelogOpen(false)}
+        size="lg"
+        bodyClassName="max-h-[calc(100vh-180px)] overflow-y-auto"
+      >
         <div className="grid gap-5">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 bg-stone-50 p-3">
             <div>

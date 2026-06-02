@@ -148,14 +148,15 @@ export function Shell({ theme, setTheme }) {
   }, []);
 
   useEffect(() => {
-    if (databaseStatus.state !== "ready" || !databaseStatus.data?.unlocked) {
+    const unlocked = databaseStatus.data?.unlocked === true || databaseStatus.data?.state === "unlocked";
+    if (databaseStatus.state !== "ready" || !unlocked) {
       document.title = "AIPermission";
       return;
     }
     const runtimeLabel = mcpRuntime.data?.enabled ? "Started" : "Stopped";
     const databaseName = databaseStatus.data?.database_name || databaseStatus.data?.database_id || "Database";
     document.title = `${runtimeLabel} - ${databaseName}`;
-  }, [databaseStatus.state, databaseStatus.data?.unlocked, databaseStatus.data?.database_name, databaseStatus.data?.database_id, mcpRuntime.data?.enabled]);
+  }, [databaseStatus.state, databaseStatus.data?.unlocked, databaseStatus.data?.state, databaseStatus.data?.database_name, databaseStatus.data?.database_id, mcpRuntime.data?.enabled]);
 
   const gatewayState = useMemo(() => {
     if (status.state === "ready") return "running";

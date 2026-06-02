@@ -14,6 +14,7 @@ const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
 const approvalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "approval-dialog.jsx"), "utf8");
 const serversSource = readFileSync(join(currentDir, "..", "pages", "servers.jsx"), "utf8");
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
+const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -55,6 +56,9 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /onSetTheme\("dark"\)/);
   assert.match(sidebarSource, /onSetTheme\("light"\)/);
   assert.match(sidebarSource, /Changelog/);
+  assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
+  assert.match(shellSource, /data\?\.state === "unlocked"/);
+  assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
   assert.match(releaseSource, /appVersion = "0\.1\.1"/);
 });
 

@@ -1,11 +1,5 @@
 export async function checkForUpdates(currentVersion) {
-  const response = await fetch("https://api.github.com/repos/aipermission/aipermission/releases/latest", {
-    headers: { Accept: "application/vnd.github+json" },
-  });
-  if (!response.ok) {
-    throw new Error(`GitHub release check failed with ${response.status}`);
-  }
-  const release = await response.json();
+  const release = await fetchLatestRelease();
   const latestVersion = normalizeVersion(release.tag_name || release.name || "");
   const localVersion = normalizeVersion(currentVersion);
   return {
@@ -14,6 +8,30 @@ export async function checkForUpdates(currentVersion) {
     releaseUrl: release.html_url || "https://github.com/aipermission/aipermission/releases",
     updateAvailable: compareVersions(latestVersion, localVersion) > 0,
   };
+}
+
+async function fetchLatestRelease() {
+  const latestResponse = await fetch("https://api.github.com/repos/aipermission/aipermission/releases/latest", {
+    headers: { Accept: "application/vnd.github+json" },
+  });
+  if (latestResponse.ok) {
+    return latestResponse.json();
+  }
+  if (latestResponse.status !== 404) {
+    throw new Error(`GitHub release check failed with ${latestResponse.status}`);
+  }
+
+  const releasesResponse = await fetch("https://api.github.com/repos/aipermission/aipermission/releases?per_page=1", {
+    headers: { Accept: "application/vnd.github+json" },
+  });
+  if (!releasesResponse.ok) {
+    throw new Error(`GitHub release check failed with ${releasesResponse.status}`);
+  }
+  const releases = await releasesResponse.json();
+  if (!Array.isArray(releases) || releases.length === 0) {
+    throw new Error("No GitHub releases found.");
+  }
+  return releases[0];
 }
 
 function normalizeVersion(value) {
@@ -38,4 +56,3 @@ function versionParts(value) {
   const parts = numbers.split(".").map((part) => Number.parseInt(part, 10));
   return [parts[0] || 0, parts[1] || 0, parts[2] || 0, prerelease];
 }
-
