@@ -60,18 +60,27 @@ closed as `wontfix`:
 - LAN-accessible gateway mode.
 - Cloud-managed command execution.
 
-## 0.1.1 Dogfooding Polish
+## Shipped Follow-Up Polish
 
-This small follow-up release focuses on daily-use friction found while using
-AIPermission against real VPS maintenance tasks:
+Small follow-up releases focus on daily-use friction found while using
+AIPermission against real VPS maintenance tasks.
 
-- [ ] Collapsible Console side panels for smaller screens.
-- [ ] Meaningful Console status dots for no live session, idle, and busy states.
-- [ ] Browser title that shows MCP Started/Stopped and the active database.
-- [ ] Safer database deletion with a second password confirmation.
-- [ ] Manual update checks from the in-app Changelog dialog.
-- [ ] Bulk token permission updates across all servers.
-- [ ] Approval-run notes delivered back to the AI.
+`0.1.1` shipped:
+
+- Collapsible Console side panels for smaller screens.
+- Meaningful Console status dots for no live session, idle, and busy states.
+- Browser title that shows MCP Started/Stopped and the active database.
+- Safer database deletion with a second password confirmation.
+- Manual update checks from the in-app Changelog dialog.
+- Bulk token permission updates across all servers.
+- Approval-run notes delivered back to the AI.
+
+`0.1.2` ships:
+
+- History labels for tagging command requests and filtering History by label.
+- History label cleanup from Settings without deleting command history records.
+- On-demand Docker quick checks from the Servers page.
+- Docker container details and tail-configurable Docker logs dialogs.
 
 ## Early RC Follow-Ups
 

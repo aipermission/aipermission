@@ -1,6 +1,21 @@
-export const appVersion = "0.1.1";
+export const appVersion = "0.1.2";
 
 export const changelogEntries = [
+  {
+    version: "0.1.2",
+    label: "History labels and Docker checks",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "History labels for tagging command requests and filtering History by label.",
+          "History label cleanup from Settings without deleting command history records.",
+          "On-demand Docker quick checks from the Servers page.",
+          "Docker container details and tail-configurable Docker logs dialogs.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.1",
     label: "Dogfooding polish",

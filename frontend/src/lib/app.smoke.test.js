@@ -60,7 +60,8 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.1\.1"/);
+  assert.match(releaseSource, /appVersion = "0\.1\.2"/);
+  assert.match(releaseSource, /History labels and Docker checks/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
