@@ -63,6 +63,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/servers/{id}", serverResources.updateServer)
 	s.mux.HandleFunc("DELETE /api/servers/{id}", serverResources.deleteServer)
 	s.mux.HandleFunc("POST /api/servers/{id}/test", serverConnections.testServer)
+	s.mux.HandleFunc("POST /api/servers/{id}/docker-check", serverConnections.checkDocker)
+	s.mux.HandleFunc("POST /api/servers/{id}/docker-logs", serverConnections.readDockerLogs)
 	s.mux.HandleFunc("POST /api/servers/test-connection", serverConnections.testServerConnection)
 	s.mux.HandleFunc("POST /api/ssh-host-keys/approve", sshHostKeys.approveSSHHostKey)
 	s.mux.HandleFunc("GET /api/ssh-keys", sshKeys.listSSHKeys)

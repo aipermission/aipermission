@@ -59,8 +59,18 @@ textarea {
   overflow: hidden;
 }
 
+.terminal-log-surface {
+  background: #ffffff;
+  color: #1c1917;
+}
+
 :root[data-theme="dark"] body {
   background: #1e1e1e;
+}
+
+:root[data-theme="dark"] .terminal-log-surface {
+  background: #0e0e0e;
+  color: #f4f4f5;
 }
 
 :root[data-theme="dark"] .bg-white {

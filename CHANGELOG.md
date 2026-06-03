@@ -10,6 +10,7 @@ and this project uses semantic versioning once public releases begin.
 ### Added
 
 - History labels for tagging command requests, filtering history by label, and cleaning up labels from Settings without deleting history records.
+- On-demand Docker quick checks from the Servers page for current container status and exposed ports.
 
 ## [0.1.1] - 2026-06-02
 

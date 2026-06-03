@@ -390,6 +390,47 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	}
 }
 
+func TestParseDockerPSOutput(t *testing.T) {
+	output := `{"ID":"abc123","Image":"nginx:alpine","Command":"nginx -g daemon off;","CreatedAt":"2026-06-03 10:00:00 +0000 UTC","Names":"web","Status":"Up 2 minutes","State":"running","Ports":"0.0.0.0:8080->80/tcp","RunningFor":"2 minutes ago","Size":"1.2MB","Labels":"com.example=true","Mounts":"/data","Networks":"bridge"}`
+	containers, available := parseDockerPSOutput(output)
+	if !available {
+		t.Fatalf("docker should be available")
+	}
+	if len(containers) != 1 {
+		t.Fatalf("expected one container, got %#v", containers)
+	}
+	if containers[0].Name != "web" || containers[0].Image != "nginx:alpine" || containers[0].Command == "" || containers[0].Ports == "" || containers[0].Networks != "bridge" {
+		t.Fatalf("unexpected container parse: %#v", containers[0])
+	}
+
+	containers, available = parseDockerPSOutput("__AIPERMISSION_DOCKER_UNAVAILABLE__")
+	if available || len(containers) != 0 {
+		t.Fatalf("docker unavailable marker should produce unavailable empty response")
+	}
+}
+
+func TestDockerContainerRefValidationAndShellQuote(t *testing.T) {
+	for _, value := range []string{"web", "abc123", "compose_service_1"} {
+		if err := validateDockerContainerRef(value); err != nil {
+			t.Fatalf("valid container ref failed: %s: %v", value, err)
+		}
+	}
+	for _, value := range []string{"", "bad\nname", strings.Repeat("a", 129)} {
+		if err := validateDockerContainerRef(value); err == nil {
+			t.Fatalf("invalid container ref should fail: %q", value)
+		}
+	}
+	if got := shellQuote("name'withquote"); got != `'name'\''withquote'` {
+		t.Fatalf("unexpected shell quote: %s", got)
+	}
+	if normalizeDockerLogsTail(0) != 300 || normalizeDockerLogsTail(-5) != 300 {
+		t.Fatalf("empty docker log tail should default to 300")
+	}
+	if normalizeDockerLogsTail(42) != 42 || normalizeDockerLogsTail(6000) != 5000 {
+		t.Fatalf("docker log tail should preserve valid values and cap large values")
+	}
+}
+
 func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "agent"})

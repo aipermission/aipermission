@@ -1,5 +1,5 @@
-import { CircleCheck, CircleX, Copy, Edit3, PlugZap, Plus, RefreshCcw, Server, ShieldCheck, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CircleCheck, CircleX, Container, Copy, Edit3, FileText, Info, PlugZap, Plus, RefreshCcw, Server, ShieldCheck, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGateway } from "../lib/gateway-context";
 import { apiDelete, apiPost, apiPut } from "../lib/api";
 import { Badge } from "../components/ui/badge";
@@ -17,6 +17,8 @@ export function ServersPage() {
   const [drawer, setDrawer] = useState({ open: false, mode: "create", server: null });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, server: null });
   const [installDialog, setInstallDialog] = useState({ open: false, server: null });
+  const [dockerDialog, setDockerDialog] = useState({ open: false, server: null, state: "idle", data: null, error: null });
+  const [dockerLogsDialog, setDockerLogsDialog] = useState({ open: false, server: null, container: null, state: "idle", data: null, error: null });
   const [hostKeyDialog, setHostKeyDialog] = useState({ open: false, hostKey: null, action: null, state: "idle", error: null });
   const [form, setForm] = useState(emptyForm);
   const [state, setState] = useState({ state: "idle", error: null });
@@ -107,6 +109,41 @@ export function ServersPage() {
     }
   }
 
+  async function checkDocker(server) {
+    setDockerDialog({ open: true, server, state: "loading", data: null, error: null });
+    try {
+      const data = await apiPost(`/api/servers/${server.id}/docker-check`, {});
+      setDockerDialog({ open: true, server, state: "ready", data, error: null });
+    } catch (error) {
+      if (showHostKeyApproval(error, { type: "docker", server })) {
+        setDockerDialog({ open: false, server: null, state: "idle", data: null, error: null });
+        return;
+      }
+      setDockerDialog({ open: true, server, state: "error", data: null, error: error.message });
+    }
+  }
+
+  async function readDockerLogs(server, container, tail = 300) {
+    setDockerLogsDialog((current) => ({
+      open: true,
+      server,
+      container,
+      state: "loading",
+      data: current.open && (current.container?.id || current.container?.name) === (container.id || container.name) ? current.data : null,
+      error: null,
+    }));
+    try {
+      const data = await apiPost(`/api/servers/${server.id}/docker-logs`, { container_ref: container.id || container.name, tail: Number(tail) || 300 });
+      setDockerLogsDialog({ open: true, server, container, state: "ready", data, error: null });
+    } catch (error) {
+      if (showHostKeyApproval(error, { type: "docker-logs", server, container })) {
+        setDockerLogsDialog({ open: false, server: null, container: null, state: "idle", data: null, error: null });
+        return;
+      }
+      setDockerLogsDialog((current) => ({ open: true, server, container, state: "error", data: current.data, error: error.message }));
+    }
+  }
+
   function showHostKeyApproval(error, action) {
     if (error.status !== 409 || !["unknown_ssh_host_key", "changed_ssh_host_key"].includes(error.data?.code) || !error.data?.host_key) {
       return false;
@@ -129,6 +166,10 @@ export function ServersPage() {
       setHostKeyDialog({ open: false, hostKey: null, action: null, state: "idle", error: null });
       if (action.type === "test") {
         await testServer(action.serverID);
+      } else if (action.type === "docker") {
+        await checkDocker(action.server);
+      } else if (action.type === "docker-logs") {
+        await readDockerLogs(action.server, action.container);
       } else if (action.type === "save") {
         setState({ state: "saving", error: null });
         const test = await apiPost("/api/servers/test-connection", action.payload);
@@ -180,10 +221,10 @@ export function ServersPage() {
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
               <th className="w-[18%] px-4 py-3 font-semibold">Name</th>
-              <th className="w-[27%] px-4 py-3 font-semibold">Endpoint</th>
+              <th className="w-[25%] px-4 py-3 font-semibold">Endpoint</th>
               <th className="w-[18%] px-4 py-3 font-semibold">SSH key</th>
-              <th className="w-[17%] px-4 py-3 font-semibold">Status</th>
-              <th className="w-[20%] px-4 py-3 text-right font-semibold">Actions</th>
+              <th className="w-[15%] px-4 py-3 font-semibold">Status</th>
+              <th className="w-[24%] px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
@@ -229,6 +270,9 @@ export function ServersPage() {
                       </Button>
                       <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Install key" onClick={() => setInstallDialog({ open: true, server })}>
                         <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Check Docker" onClick={() => checkDocker(server)}>
+                        <Container className="h-4 w-4" />
                       </Button>
                       <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Edit server" onClick={() => openEditDrawer(server)}>
                         <Edit3 className="h-4 w-4" />
@@ -328,6 +372,17 @@ export function ServersPage() {
         onClose={() => setHostKeyDialog({ open: false, hostKey: null, action: null, state: "idle", error: null })}
       />
 
+      <DockerCheckDialog
+        value={dockerDialog}
+        onReadLogs={readDockerLogs}
+        onClose={() => setDockerDialog({ open: false, server: null, state: "idle", data: null, error: null })}
+      />
+      <DockerLogsDialog
+        value={dockerLogsDialog}
+        onRefresh={readDockerLogs}
+        onClose={() => setDockerLogsDialog({ open: false, server: null, container: null, state: "idle", data: null, error: null })}
+      />
+
       <Dialog
         open={deleteDialog.open}
         title={deleteDialog.server ? `Uninstall ${deleteDialog.server.name}` : "Uninstall server"}
@@ -411,6 +466,213 @@ function HostKeyApprovalDialog({ value, onApprove, onClose }) {
         </div>
       ) : null}
     </Dialog>
+  );
+}
+
+function DockerCheckDialog({ value, onReadLogs, onClose }) {
+  const data = value.data;
+  const [detailContainer, setDetailContainer] = useState(null);
+  return (
+    <>
+      <Dialog
+        open={value.open}
+        title={value.server ? `${value.server.name} Docker` : "Docker check"}
+        description="On-demand Docker status from the selected server."
+        onClose={onClose}
+        size="xl"
+      >
+        <div className="grid gap-4">
+          {value.state === "loading" ? <Notice>Checking Docker on the server...</Notice> : null}
+          {value.state === "error" ? <Notice tone="bad">{value.error}</Notice> : null}
+          {data && !data.available ? <Notice tone="warn">Docker is not installed or the docker command is not available on this server.</Notice> : null}
+          {data?.available && !data.ok ? (
+            <Notice tone="bad">
+              Docker is available, but the status command failed. Check Docker daemon access, permissions, or service state on the server.
+            </Notice>
+          ) : null}
+          {data?.available && data.ok ? (
+            <div className="grid gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+                <span className="font-medium text-stone-800">
+                  {data.containers?.length || 0} running container{data.containers?.length === 1 ? "" : "s"}
+                </span>
+                <span className="text-xs text-stone-500">
+                  exit {data.exit_code} · {data.duration_ms}ms
+                </span>
+              </div>
+              {data.containers?.length ? (
+                <div className="max-h-[min(45vh,360px)] overflow-auto rounded-md border border-stone-200">
+                  <table className="w-full table-fixed border-collapse text-left text-sm">
+                    <thead className="sticky top-0 z-10 bg-stone-50 text-xs uppercase text-stone-500">
+                      <tr>
+                        <th className="w-[28%] px-3 py-2 font-semibold">Name</th>
+                        <th className="w-[26%] px-3 py-2 font-semibold">Status</th>
+                        <th className="w-[30%] px-3 py-2 font-semibold">Ports</th>
+                        <th className="w-[16%] px-3 py-2 text-right font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {data.containers.map((container) => (
+                        <tr key={container.id || container.name}>
+                          <td className="truncate px-3 py-2 font-semibold text-stone-900">{container.name || container.id}</td>
+                          <td className="truncate px-3 py-2 text-stone-700">{container.status || container.state}</td>
+                          <td className="truncate px-3 py-2 font-mono text-xs text-stone-600">{container.ports || "-"}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-8 w-8 px-0"
+                                title="Details"
+                                onClick={() => setDetailContainer(container)}
+                              >
+                                <Info className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-8 w-8 px-0"
+                                title="Logs"
+                                onClick={() => onReadLogs(value.server, container)}
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Notice>No running Docker containers.</Notice>
+              )}
+            </div>
+          ) : null}
+          {data?.stderr ? (
+            <pre className="max-h-40 overflow-auto rounded-md bg-stone-950 p-3 text-xs leading-5 text-stone-50">{data.stderr}</pre>
+          ) : null}
+        </div>
+      </Dialog>
+      <DockerContainerDetailDialog container={detailContainer} onClose={() => setDetailContainer(null)} />
+    </>
+  );
+}
+
+function DockerContainerDetailDialog({ container, onClose }) {
+  return (
+    <Dialog
+      open={Boolean(container)}
+      title={container ? `${container.name || container.id} details` : "Container details"}
+      description="Full Docker status fields from the latest on-demand check."
+      onClose={onClose}
+      size="wide"
+    >
+      {container ? (
+        <div className="grid max-h-[min(70vh,620px)] gap-3 overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
+          <DockerDetailField label="Name" value={container.name} />
+          <DockerDetailField label="ID" value={container.id} mono />
+          <DockerDetailField label="Image" value={container.image} mono />
+          <DockerDetailField label="State" value={container.state} />
+          <DockerDetailField label="Status" value={container.status} />
+          <DockerDetailField label="Running for" value={container.running_for} />
+          <DockerDetailField label="Created at" value={container.created_at} />
+          <DockerDetailField label="Size" value={container.size} />
+          <DockerDetailField label="Ports" value={container.ports} mono wide />
+          <DockerDetailField label="Command" value={container.command} mono wide />
+          <DockerDetailField label="Networks" value={container.networks} mono />
+          <DockerDetailField label="Mounts" value={container.mounts} mono />
+          <DockerDetailField label="Labels" value={container.labels} mono wide />
+        </div>
+      ) : null}
+    </Dialog>
+  );
+}
+
+function DockerLogsDialog({ value, onRefresh, onClose }) {
+  const [tail, setTail] = useState(300);
+  const outputRef = useRef(null);
+  const output = [value.data?.stdout, value.data?.stderr].filter(Boolean).join("\n\n");
+  const canRefresh = Boolean(value.server && value.container) && value.state !== "loading";
+
+  useEffect(() => {
+    if (value.open) {
+      setTail(300);
+    }
+  }, [value.open, value.container?.id, value.container?.name]);
+
+  useEffect(() => {
+    if (value.state === "ready" || value.state === "loading") {
+      window.setTimeout(() => {
+        const node = outputRef.current;
+        if (node) node.scrollTop = node.scrollHeight;
+      }, 0);
+    }
+  }, [value.state, output]);
+
+  function refreshLogs(event) {
+    event?.preventDefault();
+    if (!canRefresh) return;
+    const boundedTail = Math.max(1, Math.min(5000, Number(tail) || 300));
+    setTail(boundedTail);
+    void onRefresh(value.server, value.container, boundedTail);
+  }
+
+  return (
+    <Dialog
+      open={value.open}
+      title={value.container ? `${value.container.name || value.container.id} logs` : "Container logs"}
+      description={value.server ? `${value.server.name} · Docker logs` : "Latest Docker logs from the selected server."}
+      onClose={onClose}
+      size="wide"
+      className="h-[calc(100vh-120px)] grid-rows-[auto_minmax(0,1fr)]"
+      bodyClassName="min-h-0 overflow-hidden"
+    >
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+        <form className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500" onSubmit={refreshLogs}>
+          <span className="min-w-0 flex-1 truncate">
+            {value.state === "loading" ? "Loading logs..." : null}
+            {value.state === "error" ? value.error : null}
+            {value.state !== "loading" && value.data ? `exit ${value.data.exit_code} · ${value.data.duration_ms}ms${value.data.ok ? "" : " · command failed"}` : null}
+            {value.state === "idle" ? "No log request yet." : null}
+          </span>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2">
+              <span>Tail</span>
+              <Input
+                type="number"
+                min="1"
+                max="5000"
+                step="1"
+                value={tail}
+                onChange={(event) => setTail(event.target.value)}
+                className="h-8 w-24 px-2 text-xs"
+              />
+            </label>
+            <Button type="submit" variant="outline" className="h-8 px-2" disabled={!canRefresh}>
+              <RefreshCcw className="h-3.5 w-3.5" />
+              Refresh
+            </Button>
+            <CopyButton value={output || ""} variant="outline" className="h-8 px-2" iconClassName="h-3.5 w-3.5" />
+          </div>
+        </form>
+        <pre
+          ref={outputRef}
+          className="terminal-log-surface min-h-0 overflow-auto whitespace-pre-wrap break-words rounded-md p-4 text-xs leading-5"
+        >
+          {output || (value.state === "ready" ? "No logs returned." : "")}
+        </pre>
+      </div>
+    </Dialog>
+  );
+}
+
+function DockerDetailField({ label, value, mono = false, wide = false }) {
+  return (
+    <div className={`min-w-0 rounded-md border border-stone-200 bg-stone-50 p-3 ${wide ? "sm:col-span-2 xl:col-span-3" : ""}`}>
+      <p className="text-xs font-semibold uppercase text-stone-500">{label}</p>
+      <p className={`mt-1 break-words text-sm text-stone-900 ${mono ? "font-mono text-xs leading-5" : "font-medium"}`}>{value || "-"}</p>
+    </div>
   );
 }
 

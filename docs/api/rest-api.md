@@ -51,6 +51,8 @@ GET    /api/servers/{id}
 PUT    /api/servers/{id}
 DELETE /api/servers/{id}
 POST   /api/servers/{id}/test
+POST   /api/servers/{id}/docker-check
+POST   /api/servers/{id}/docker-logs
 POST   /api/servers/test-connection
 POST   /api/ssh-host-keys/approve
 ```
@@ -73,6 +75,41 @@ Create/update shape:
 Server-specific custom hints are not accepted by the server CRUD API in the current MVP. MCP `list_servers` may still return gateway-generated operational hints, such as safe package verification or bounded log commands.
 
 `POST /api/servers/test-connection` tests an unsaved form payload before save, unless the user chooses to set up the server later.
+
+`POST /api/servers/{id}/docker-check` runs a read-only, on-demand Docker status command over the server's SSH connection. It does not persist inventory or poll in the background. The response includes whether Docker is available and the current running containers:
+
+```json
+{
+  "server_id": 3,
+  "server_name": "worker-2",
+  "available": true,
+  "ok": true,
+  "containers": [
+    {
+      "id": "abc123",
+      "name": "web",
+      "image": "nginx:alpine",
+      "status": "Up 2 minutes",
+      "ports": "0.0.0.0:8080->80/tcp"
+    }
+  ],
+  "exit_code": 0,
+  "duration_ms": 320
+}
+```
+
+If Docker is installed but the status command fails, the response keeps `available: true` and returns `ok: false` with stderr/stdout details. The UI shows this as a Docker access/service problem rather than as an empty container list.
+
+`POST /api/servers/{id}/docker-logs` reads the latest logs for one container from the selected server. The request body is:
+
+```json
+{
+  "container_ref": "abc123",
+  "tail": 300
+}
+```
+
+The backend runs a bounded `docker logs --tail N --timestamps` command over SSH and returns stdout, stderr, exit code, and duration. `tail` is optional, defaults to 300, and is capped at 5000 lines. This endpoint is on-demand; it does not poll or persist Docker inventory.
 
 If a test or SSH-backed action reaches an unknown host key, the backend returns:
 

@@ -83,6 +83,15 @@ test("Server host key dialog handles first approval and changed fingerprints", (
   assert.match(serversSource, /replace: Boolean\(hostKey\.changed\)/);
 });
 
+test("Servers page exposes on-demand Docker checks", () => {
+  assert.match(serversSource, /\/api\/servers\/\$\{server\.id\}\/docker-check/);
+  assert.match(serversSource, /\/api\/servers\/\$\{server\.id\}\/docker-logs/);
+  assert.match(serversSource, /Check Docker/);
+  assert.match(serversSource, /Container details/);
+  assert.match(serversSource, /Container logs/);
+  assert.match(serversSource, /No running Docker containers/);
+});
+
 test("Settings database delete requires a confirmation dialog and current password", () => {
   assert.match(settingsSource, /onSubmit=\{requestDeleteDatabase\}/);
   assert.match(settingsSource, /setDeleteDialogOpen\(true\)/);
