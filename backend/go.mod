@@ -2,7 +2,7 @@ module github.com/aipermission/aipermission/backend
 
 go 1.25.0
 
-toolchain go1.25.10
+toolchain go1.25.11
 
 require (
 	github.com/gorilla/websocket v1.5.3
