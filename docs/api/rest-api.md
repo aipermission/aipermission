@@ -331,14 +331,19 @@ GET  /api/approvals
 GET  /api/approvals/{id}
 POST /api/approvals/{id}/run
 POST /api/approvals/{id}/decline
+POST /api/approvals/{id}/labels
+DELETE /api/approvals/{id}/labels/{label_id}
+GET  /api/history-labels
+POST /api/history-labels
+DELETE /api/history-labels/{id}
 ```
 
-`GET /api/approvals` returns recent command requests. Optional filters include `status` and `server_id`.
+`GET /api/approvals` returns recent command requests. Optional filters include `status`, `server_id`, and `label_id`.
 
 The History page uses paginated search. `q` searches command text, reason, status, captured output, error, server name, and token name. Command text and output fields use SQLCipher-backed FTS4 indexes; server and token names remain regular filtered fields:
 
 ```txt
-GET /api/approvals?paginated=true&limit=50&offset=0&q=docker&status=completed&server_id=3
+GET /api/approvals?paginated=true&limit=50&offset=0&q=docker&status=completed&server_id=3&label_id=4
 ```
 
 The paginated response is an envelope:
@@ -354,6 +359,25 @@ The paginated response is an envelope:
 ```
 
 Paginated list responses omit full stdout/stderr. `GET /api/approvals/{id}` returns the detail payload with captured output.
+
+History labels are user-managed tags for command requests. They do not change command execution or audit behavior. Use `POST /api/history-labels` to create or return an existing label. New labels return `201 Created`; reused labels return `200 OK`:
+
+```json
+{
+  "name": "issue-440",
+  "color": "#0f766e"
+}
+```
+
+Use `POST /api/approvals/{id}/labels` to attach an existing label by `label_id`, or create-and-attach by `name`:
+
+```json
+{
+  "name": "docker"
+}
+```
+
+Deleting a label removes its command-request relationships. The command history records remain intact, and filtering by the deleted label returns no entries.
 
 Run changes a `pending_approval` request to `running` and starts execution in the backend-owned console session. It accepts an optional JSON body with `user_note`; when provided, the note is delivered to the matching MCP token through the message queue. The request later becomes `completed`, `failed`, or `error`.
 

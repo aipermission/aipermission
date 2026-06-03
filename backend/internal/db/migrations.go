@@ -144,6 +144,24 @@ var baseSchemaStatements = []string{
 	);`,
 }
 
+var historyLabelStatements = []string{
+	`CREATE TABLE IF NOT EXISTS history_labels (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+		color TEXT NOT NULL DEFAULT '#0f766e',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);`,
+	`CREATE TABLE IF NOT EXISTS command_request_labels (
+		command_request_id INTEGER NOT NULL,
+		label_id INTEGER NOT NULL,
+		created_at TEXT NOT NULL,
+		PRIMARY KEY(command_request_id, label_id),
+		FOREIGN KEY(command_request_id) REFERENCES command_requests(id) ON DELETE CASCADE,
+		FOREIGN KEY(label_id) REFERENCES history_labels(id) ON DELETE CASCADE
+	);`,
+}
+
 var commonIndexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_servers_name ON servers(name);`,
 	`CREATE INDEX IF NOT EXISTS idx_ssh_keys_name ON ssh_keys(name);`,
@@ -165,6 +183,10 @@ var commonIndexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_type, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_server_created ON audit_logs(server_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_redaction_rules_enabled ON redaction_rules(enabled);`,
+}
+
+var historyLabelIndexStatements = []string{
+	`CREATE INDEX IF NOT EXISTS idx_command_request_labels_label ON command_request_labels(label_id);`,
 }
 
 var searchIndexStatements = []string{
@@ -206,6 +228,11 @@ var migrations = []migration{
 		description: "initial schema",
 		statements:  sqlStatements(baseSchemaStatements, commonIndexStatements, searchIndexStatements),
 	},
+	{
+		version:     2,
+		description: "history labels",
+		statements:  sqlStatements(historyLabelStatements, historyLabelIndexStatements),
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {
@@ -230,8 +257,20 @@ func migrate(database *sql.DB) error {
 	if err := runSchemaMigrations(database); err != nil {
 		return err
 	}
+	if err := ensureCurrentSchema(database); err != nil {
+		return err
+	}
 	if err := runMigrationMaintenance(database); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ensureCurrentSchema(database *sql.DB) error {
+	for _, statement := range sqlStatements(historyLabelStatements, historyLabelIndexStatements) {
+		if _, err := database.Exec(statement); err != nil {
+			return fmt.Errorf("ensure current schema: %w", err)
+		}
 	}
 	return nil
 }

@@ -15,6 +15,7 @@ const approvalDialogSource = readFileSync(join(currentDir, "..", "components", "
 const serversSource = readFileSync(join(currentDir, "..", "pages", "servers.jsx"), "utf8");
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
+const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -90,4 +91,18 @@ test("Settings database delete requires a confirmation dialog and current passwo
   assert.match(settingsSource, /deletePasswordRef/);
   assert.match(settingsSource, /current_password: deletePassword/);
   assert.doesNotMatch(settingsSource, /onSubmit=\{deleteDatabase\}[\s\S]*Delete<\/CardTitle>/);
+});
+
+test("History page exposes label filtering and item label endpoints", () => {
+  assert.match(historySource, /\/api\/history-labels/);
+  assert.match(historySource, /label_id/);
+  assert.match(historySource, /\/api\/approvals\/\$\{id\}\/labels/);
+  assert.doesNotMatch(historySource, /setLabelDialogOpen/);
+});
+
+test("Settings page exposes history label management", () => {
+  assert.match(settingsSource, /\/api\/history-labels/);
+  assert.match(settingsSource, /History labels/);
+  assert.match(settingsSource, /Delete history label/);
+  assert.match(settingsSource, /removes the label from every related history entry/i);
 });

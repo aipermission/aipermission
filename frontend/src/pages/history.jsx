@@ -1,6 +1,6 @@
-import { RefreshCcw, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { apiGet } from "../lib/api";
+import { RefreshCcw, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { apiDelete, apiGet, apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -22,7 +22,7 @@ const statusOptions = [
 
 export function HistoryPage() {
   const { servers, approvals, loadApprovals } = useGateway();
-  const [filters, setFilters] = useState({ query: "", status: "", serverID: "" });
+  const [filters, setFilters] = useState({ query: "", status: "", serverID: "", labelID: "" });
   const [state, setState] = useState({
     state: "idle",
     data: [],
@@ -33,6 +33,7 @@ export function HistoryPage() {
     error: null,
   });
   const [selected, setSelected] = useState(null);
+  const [labels, setLabels] = useState({ state: "idle", data: [], error: null });
 
   const stats = useMemo(() => {
     const data = state.data;
@@ -45,11 +46,25 @@ export function HistoryPage() {
   }, [state.data, state.total]);
 
   useEffect(() => {
+    void loadLabels();
+  }, []);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadHistory(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.status, filters.serverID]);
+  }, [filters.query, filters.status, filters.serverID, filters.labelID]);
+
+  async function loadLabels() {
+    setLabels((current) => ({ ...current, state: "loading", error: null }));
+    try {
+      const data = await apiGet("/api/history-labels");
+      setLabels({ state: "ready", data: data || [], error: null });
+    } catch (error) {
+      setLabels({ state: "error", data: [], error: error.message });
+    }
+  }
 
   async function loadHistory(offset = state.offset) {
     setState((current) => ({ ...current, state: "loading", error: null }));
@@ -61,6 +76,7 @@ export function HistoryPage() {
     if (filters.query.trim()) params.set("q", filters.query.trim());
     if (filters.status) params.set("status", filters.status);
     if (filters.serverID) params.set("server_id", filters.serverID);
+    if (filters.labelID) params.set("label_id", filters.labelID);
     try {
       const data = await apiGet(`/api/approvals?${params.toString()}`);
       setState({
@@ -88,6 +104,32 @@ export function HistoryPage() {
     }
   }
 
+  function updateItemLabels(id, nextLabels) {
+    setSelected((current) => (current?.id === id ? { ...current, labels: nextLabels } : current));
+    setState((current) => ({
+      ...current,
+      data: current.data.map((item) => (item.id === id ? { ...item, labels: nextLabels } : item)),
+    }));
+  }
+
+  async function attachLabel(id, payload) {
+    const nextLabels = await apiPost(`/api/approvals/${id}/labels`, payload);
+    updateItemLabels(id, nextLabels || []);
+    await loadLabels();
+  }
+
+  async function detachLabel(id, labelID) {
+    const nextLabels = await apiDelete(`/api/approvals/${id}/labels/${labelID}`);
+    updateItemLabels(id, nextLabels || []);
+    if (filters.labelID && String(labelID) === String(filters.labelID)) {
+      setState((current) => ({
+        ...current,
+        data: current.data.filter((item) => item.id !== id),
+        total: Math.max(0, current.total - 1),
+      }));
+    }
+  }
+
   const pageStart = state.total === 0 ? 0 : state.offset + 1;
   const pageEnd = Math.min(state.offset + state.data.length, state.total);
 
@@ -111,7 +153,7 @@ export function HistoryPage() {
         <HistoryStat label="Failed/error" value={stats.failed} tone="bad" />
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_220px_220px]">
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_190px_190px_190px]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <Input
@@ -133,6 +175,17 @@ export function HistoryPage() {
           ))}
         </Select>
         <Select
+          value={filters.labelID}
+          onChange={(event) => setFilters((current) => ({ ...current, labelID: event.target.value }))}
+        >
+          <option value="">All labels</option>
+          {labels.data.map((label) => (
+            <option key={label.id} value={label.id}>
+              {label.name}
+            </option>
+          ))}
+        </Select>
+        <Select
           value={filters.status}
           onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
         >
@@ -146,6 +199,7 @@ export function HistoryPage() {
 
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       {approvals.state === "error" ? <Notice tone="bad">{approvals.error}</Notice> : null}
+      {labels.state === "error" ? <Notice tone="bad">{labels.error}</Notice> : null}
 
       <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
         <table className="w-full table-fixed border-collapse text-left text-sm">
@@ -154,7 +208,8 @@ export function HistoryPage() {
               <th className="w-[12%] px-4 py-3 font-semibold">Status</th>
               <th className="w-[16%] px-4 py-3 font-semibold">Server</th>
               <th className="w-[18%] px-4 py-3 font-semibold">Token</th>
-              <th className="w-[34%] px-4 py-3 font-semibold">Command</th>
+              <th className="w-[26%] px-4 py-3 font-semibold">Command</th>
+              <th className="w-[8%] px-4 py-3 font-semibold">Labels</th>
               <th className="w-[12%] px-4 py-3 font-semibold">Exit</th>
               <th className="w-[8%] px-4 py-3 text-right font-semibold">Time</th>
             </tr>
@@ -162,14 +217,14 @@ export function HistoryPage() {
           <tbody className="divide-y divide-stone-100">
             {state.state === "loading" ? (
               <tr>
-                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={6}>
+                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={7}>
                   Loading history...
                 </td>
               </tr>
             ) : null}
             {state.state !== "loading" && state.data.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={6}>
+                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={7}>
                   No command history yet.
                 </td>
               </tr>
@@ -187,6 +242,9 @@ export function HistoryPage() {
                     <td className="truncate px-4 py-3 font-medium text-stone-900">{item.server_name}</td>
                     <td className="truncate px-4 py-3 text-stone-600">{item.token_name || "manual"}</td>
                     <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{oneLine(item.command)}</td>
+                    <td className="px-4 py-3">
+                      <LabelPreview labels={item.labels || []} />
+                    </td>
                     <td className="px-4 py-3 text-stone-600">{item.exit_code ?? "-"}</td>
                     <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>
                   </tr>
@@ -207,7 +265,13 @@ export function HistoryPage() {
         hasNext={state.next_offset !== null && state.next_offset !== undefined}
       />
 
-      <HistoryDialog item={selected} onClose={() => setSelected(null)} />
+      <HistoryDialog
+        item={selected}
+        labels={labels.data}
+        onClose={() => setSelected(null)}
+        onAttachLabel={attachLabel}
+        onDetachLabel={detachLabel}
+      />
     </section>
   );
 }
@@ -223,9 +287,96 @@ function HistoryStat({ label, value, tone = "neutral" }) {
   );
 }
 
-function HistoryDialog({ item, onClose }) {
+function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabel }) {
+  const [labelName, setLabelName] = useState("");
+  const [state, setState] = useState({ state: "idle", error: null });
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const labelInputRef = useRef(null);
+
+  useEffect(() => {
+    setLabelName("");
+    setState({ state: "idle", error: null });
+    setSuggestionsOpen(false);
+    setActiveSuggestion(0);
+  }, [item?.id]);
+
   if (!item) return null;
   const output = [item.stdout, item.stderr, item.error].filter(Boolean).join("\n\n");
+  const attachedLabels = item.labels || [];
+  const attachedNames = new Set(attachedLabels.map((label) => label.name.toLowerCase()));
+  const labelQuery = labelName.trim().toLowerCase();
+  const suggestions = labels
+    .filter((label) => !attachedNames.has(label.name.toLowerCase()))
+    .filter((label) => !labelQuery || label.name.toLowerCase().includes(labelQuery))
+    .slice(0, 8);
+  const showSuggestions = suggestionsOpen && labelQuery && suggestions.length > 0;
+
+  function focusLabelInput() {
+    window.setTimeout(() => labelInputRef.current?.focus(), 0);
+  }
+
+  async function addLabel(value = labelName) {
+    const name = value.trim();
+    if (!name) return;
+    const normalized = name.toLowerCase();
+    if (attachedNames.has(normalized)) {
+      setLabelName("");
+      return;
+    }
+    setState({ state: "saving", error: null });
+    try {
+      await onAttachLabel(item.id, { name });
+      setLabelName("");
+      setSuggestionsOpen(false);
+      setActiveSuggestion(0);
+      setState({ state: "idle", error: null });
+      focusLabelInput();
+    } catch (error) {
+      setState({ state: "error", error: error.message });
+      focusLabelInput();
+    }
+  }
+
+  function handleLabelKeyDown(event) {
+    if (event.key === "ArrowDown" && labelQuery && suggestions.length > 0) {
+      event.preventDefault();
+      setSuggestionsOpen(true);
+      setActiveSuggestion((current) => Math.min(current + 1, suggestions.length - 1));
+      return;
+    }
+    if (event.key === "ArrowUp" && labelQuery && suggestions.length > 0) {
+      event.preventDefault();
+      setSuggestionsOpen(true);
+      setActiveSuggestion((current) => Math.max(current - 1, 0));
+      return;
+    }
+    if (event.key === "Escape") {
+      setSuggestionsOpen(false);
+      return;
+    }
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      void addLabel(showSuggestions ? suggestions[activeSuggestion]?.name : labelName);
+    }
+  }
+
+  function submitLabel(event) {
+    event.preventDefault();
+    void addLabel();
+  }
+
+  async function removeLabel(labelID) {
+    setState({ state: "saving", error: null });
+    try {
+      await onDetachLabel(item.id, labelID);
+      setState({ state: "idle", error: null });
+      focusLabelInput();
+    } catch (error) {
+      setState({ state: "error", error: error.message });
+      focusLabelInput();
+    }
+  }
 
   return (
     <Dialog
@@ -255,6 +406,62 @@ function HistoryDialog({ item, onClose }) {
               <span className="font-semibold">User note:</span> {item.user_note}
             </p>
           ) : null}
+          <div className="grid gap-2">
+            <form className="relative min-w-0" onSubmit={submitLabel}>
+              <div className="flex min-h-10 min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-md border border-stone-200 bg-white px-2 py-1.5 focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/15">
+                {attachedLabels.map((label) => (
+                  <button
+                    key={label.id}
+                    type="button"
+                    className="inline-flex max-w-44 shrink-0 items-center gap-1 rounded-full border bg-transparent px-2.5 py-1 text-xs font-semibold"
+                    style={labelStyle(label)}
+                    onClick={() => removeLabel(label.id)}
+                    disabled={state.state === "saving"}
+                    title="Remove label"
+                  >
+                    <span className="truncate">{label.name}</span>
+                    <X className="h-3 w-3" />
+                  </button>
+                ))}
+                <input
+                  ref={labelInputRef}
+                  value={labelName}
+                  onChange={(event) => {
+                    setLabelName(event.target.value);
+                    setSuggestionsOpen(true);
+                    setActiveSuggestion(0);
+                  }}
+                  onFocus={() => setSuggestionsOpen(Boolean(labelName.trim()))}
+                  onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+                  onKeyDown={handleLabelKeyDown}
+                  placeholder={attachedLabels.length === 0 ? "Type a label and press Enter" : "Add another label"}
+                  disabled={state.state === "saving"}
+                  className="h-7 min-w-40 flex-1 shrink-0 border-0 bg-transparent px-1 text-sm outline-none placeholder:text-stone-400"
+                />
+              </div>
+              {showSuggestions ? (
+                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-stone-200 bg-white shadow-lg">
+                  {suggestions.map((label, index) => (
+                    <button
+                      key={label.id}
+                      type="button"
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
+                        index === activeSuggestion ? "bg-emerald-50 text-emerald-950" : "text-stone-800 hover:bg-stone-50"
+                      }`}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        void addLabel(label.name);
+                      }}
+                    >
+                      <span className="truncate">{label.name}</span>
+                      <span className="text-xs text-stone-400">Enter</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </form>
+          </div>
+          {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
         </div>
 
         <div className="grid min-h-0 gap-4 p-5 lg:grid-cols-2">
@@ -273,6 +480,22 @@ function HistoryDialog({ item, onClose }) {
         </div>
       </div>
     </Dialog>
+  );
+}
+
+function LabelPreview({ labels }) {
+  if (!labels.length) {
+    return <span className="text-xs text-stone-400">-</span>;
+  }
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1">
+      {labels.slice(0, 2).map((label) => (
+        <Badge key={label.id} className="max-w-24 truncate bg-transparent" style={labelStyle(label)}>
+          {label.name}
+        </Badge>
+      ))}
+      {labels.length > 2 ? <Badge>+{labels.length - 2}</Badge> : null}
+    </div>
   );
 }
 
@@ -295,6 +518,14 @@ function StatusBadge({ status }) {
     error: "bad",
   }[status] || "neutral";
   return <Badge tone={tone}>{statusLabel(status)}</Badge>;
+}
+
+function labelStyle(label) {
+  const color = label?.color || "#0f766e";
+  return {
+    borderColor: color,
+    color,
+  };
 }
 
 function statusLabel(status) {

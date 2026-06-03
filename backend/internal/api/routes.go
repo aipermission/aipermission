@@ -20,6 +20,7 @@ type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
 type messageHandlers struct{ *Server }
 type approvalHandlers struct{ *Server }
+type historyLabelHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 
 func (s *Server) routes() {
@@ -38,6 +39,7 @@ func (s *Server) routes() {
 	approvals := approvalHandlers{s}
 	messages := messageHandlers{s}
 	audit := auditHandlers{s}
+	historyLabels := historyLabelHandlers{s}
 	mcp := mcpHandlers{s}
 
 	s.mux.HandleFunc("GET /health", s.health)
@@ -89,6 +91,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/approvals/{id}", approvals.getApproval)
 	s.mux.HandleFunc("POST /api/approvals/{id}/run", approvals.runApproval)
 	s.mux.HandleFunc("POST /api/approvals/{id}/decline", approvals.declineApproval)
+	s.mux.HandleFunc("POST /api/approvals/{id}/labels", historyLabels.attachHistoryLabel)
+	s.mux.HandleFunc("DELETE /api/approvals/{id}/labels/{label_id}", historyLabels.detachHistoryLabel)
+	s.mux.HandleFunc("GET /api/history-labels", historyLabels.listHistoryLabels)
+	s.mux.HandleFunc("POST /api/history-labels", historyLabels.createHistoryLabel)
+	s.mux.HandleFunc("DELETE /api/history-labels/{id}", historyLabels.deleteHistoryLabel)
 	s.mux.HandleFunc("GET /api/messages", messages.listMessages)
 	s.mux.HandleFunc("POST /api/messages", messages.createMessage)
 	s.mux.HandleFunc("POST /api/messages/read", messages.markMessagesRead)

@@ -322,6 +322,52 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if historyDetailResponse.Code != http.StatusOK || !strings.Contains(historyDetailResponse.Body.String(), "docker output body") {
 		t.Fatalf("history detail should include output: %d %s", historyDetailResponse.Code, historyDetailResponse.Body.String())
 	}
+	labelResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/history-labels", "", createHistoryLabelRequest{Name: "issue-440"})
+	if labelResponse.Code != http.StatusCreated {
+		t.Fatalf("create history label failed: %d %s", labelResponse.Code, labelResponse.Body.String())
+	}
+	label := decodeRouteResponse[historyLabelRecord](t, labelResponse.Body.Bytes())
+	reusedLabelResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/history-labels", "", createHistoryLabelRequest{Name: "issue-440"})
+	if reusedLabelResponse.Code != http.StatusOK {
+		t.Fatalf("reused history label should return ok, got %d %s", reusedLabelResponse.Code, reusedLabelResponse.Body.String())
+	}
+	attachResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(dockerID, 10)+"/labels", "", attachHistoryLabelRequest{Name: "docker"})
+	if attachResponse.Code != http.StatusOK || !strings.Contains(attachResponse.Body.String(), `"docker"`) {
+		t.Fatalf("attach history label by name failed: %d %s", attachResponse.Code, attachResponse.Body.String())
+	}
+	attachExistingResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(dockerID, 10)+"/labels", "", attachHistoryLabelRequest{LabelID: label.ID})
+	if attachExistingResponse.Code != http.StatusOK || !strings.Contains(attachExistingResponse.Body.String(), `"issue-440"`) {
+		t.Fatalf("attach existing history label failed: %d %s", attachExistingResponse.Code, attachExistingResponse.Body.String())
+	}
+	labelListResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history-labels", "", nil)
+	if labelListResponse.Code != http.StatusOK || !strings.Contains(labelListResponse.Body.String(), `"issue-440"`) || !strings.Contains(labelListResponse.Body.String(), `"docker"`) {
+		t.Fatalf("list history labels failed: %d %s", labelListResponse.Code, labelListResponse.Body.String())
+	}
+	filteredByLabelResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?paginated=true&label_id="+strconv.FormatInt(label.ID, 10), "", nil)
+	if filteredByLabelResponse.Code != http.StatusOK {
+		t.Fatalf("history label filter failed: %d %s", filteredByLabelResponse.Code, filteredByLabelResponse.Body.String())
+	}
+	filteredByLabelPage := decodeRouteResponse[pageResponse[commandRequestRecord]](t, filteredByLabelResponse.Body.Bytes())
+	if filteredByLabelPage.Total != 1 || len(filteredByLabelPage.Items) != 1 || filteredByLabelPage.Items[0].ID != dockerID || len(filteredByLabelPage.Items[0].Labels) != 2 {
+		t.Fatalf("unexpected label filtered page: %#v", filteredByLabelPage)
+	}
+	detachResponse := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/approvals/"+strconv.FormatInt(dockerID, 10)+"/labels/"+strconv.FormatInt(label.ID, 10), "", nil)
+	if detachResponse.Code != http.StatusOK || strings.Contains(detachResponse.Body.String(), `"issue-440"`) {
+		t.Fatalf("detach history label failed: %d %s", detachResponse.Code, detachResponse.Body.String())
+	}
+	missingDetachResponse := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/approvals/"+strconv.FormatInt(dockerID, 10)+"/labels/"+strconv.FormatInt(label.ID, 10), "", nil)
+	if missingDetachResponse.Code != http.StatusNotFound {
+		t.Fatalf("missing label relationship should return not found, got %d %s", missingDetachResponse.Code, missingDetachResponse.Body.String())
+	}
+	deleteLabelResponse := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/history-labels/"+strconv.FormatInt(label.ID, 10), "", nil)
+	if deleteLabelResponse.Code != http.StatusOK {
+		t.Fatalf("delete history label failed: %d %s", deleteLabelResponse.Code, deleteLabelResponse.Body.String())
+	}
+	filterDeletedLabelResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?paginated=true&label_id="+strconv.FormatInt(label.ID, 10), "", nil)
+	filterDeletedLabelPage := decodeRouteResponse[pageResponse[commandRequestRecord]](t, filterDeletedLabelResponse.Body.Bytes())
+	if filterDeletedLabelResponse.Code != http.StatusOK || filterDeletedLabelPage.Total != 0 {
+		t.Fatalf("deleted label should filter as empty: %d %#v", filterDeletedLabelResponse.Code, filterDeletedLabelPage)
+	}
 
 	sensitivePayload := strings.Repeat("x", 700) + " docker image scan"
 	fixture.server.writeAudit(ctx, fixture.server.activeRuntime(), "user", &token.ID, server.ID, "docker.audit", map[string]any{

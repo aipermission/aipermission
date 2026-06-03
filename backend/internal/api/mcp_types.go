@@ -62,24 +62,33 @@ type mcpConsoleResponse struct {
 }
 
 type commandRequestRecord struct {
-	ID                int64   `json:"id"`
-	TokenID           *int64  `json:"token_id,omitempty"`
-	TokenName         string  `json:"token_name,omitempty"`
-	ServerID          int64   `json:"server_id"`
-	ServerName        string  `json:"server_name"`
-	Command           string  `json:"command"`
-	Reason            string  `json:"reason"`
-	Status            string  `json:"status"`
-	Stdout            string  `json:"stdout,omitempty"`
-	Stderr            string  `json:"stderr,omitempty"`
-	ExitCode          *int    `json:"exit_code,omitempty"`
-	SessionID         *int64  `json:"session_id,omitempty"`
-	UserNote          *string `json:"user_note,omitempty"`
-	Error             string  `json:"error,omitempty"`
-	CreatedAt         string  `json:"created_at"`
-	CompletedAt       *string `json:"completed_at,omitempty"`
-	RetryAfterSeconds int     `json:"retry_after_seconds,omitempty"`
-	AssistantHint     string  `json:"assistant_hint,omitempty"`
+	ID                int64                `json:"id"`
+	TokenID           *int64               `json:"token_id,omitempty"`
+	TokenName         string               `json:"token_name,omitempty"`
+	ServerID          int64                `json:"server_id"`
+	ServerName        string               `json:"server_name"`
+	Command           string               `json:"command"`
+	Reason            string               `json:"reason"`
+	Status            string               `json:"status"`
+	Stdout            string               `json:"stdout,omitempty"`
+	Stderr            string               `json:"stderr,omitempty"`
+	ExitCode          *int                 `json:"exit_code,omitempty"`
+	SessionID         *int64               `json:"session_id,omitempty"`
+	UserNote          *string              `json:"user_note,omitempty"`
+	Error             string               `json:"error,omitempty"`
+	CreatedAt         string               `json:"created_at"`
+	CompletedAt       *string              `json:"completed_at,omitempty"`
+	RetryAfterSeconds int                  `json:"retry_after_seconds,omitempty"`
+	AssistantHint     string               `json:"assistant_hint,omitempty"`
+	Labels            []historyLabelRecord `json:"labels"`
+}
+
+type historyLabelRecord struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Color     string `json:"color"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 func mcpServerHints(executionRule string) []string {

@@ -39,6 +39,12 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !tableExists(t, database, "console_session_chunks") {
 		t.Fatalf("console_session_chunks table was not created")
 	}
+	if !tableExists(t, database, "history_labels") {
+		t.Fatalf("history_labels table was not created")
+	}
+	if !tableExists(t, database, "command_request_labels") {
+		t.Fatalf("command_request_labels table was not created")
+	}
 	if !columnExists(t, database, "api_tokens", "expires_at") {
 		t.Fatalf("api_tokens.expires_at column was not created")
 	}
@@ -62,6 +68,35 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if wrong, err := OpenEncrypted(path, "wrong-password"); err == nil {
 		_ = wrong.Close()
 		t.Fatalf("expected wrong password to fail")
+	}
+}
+
+func TestOpenEncryptedRepairsMissingHistoryLabelSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secure.db")
+	database, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	if _, err := database.Exec(`DROP TABLE command_request_labels`); err != nil {
+		t.Fatalf("drop command_request_labels: %v", err)
+	}
+	if _, err := database.Exec(`DROP TABLE history_labels`); err != nil {
+		t.Fatalf("drop history_labels: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("reopen encrypted db: %v", err)
+	}
+	defer reopened.Close()
+	if !tableExists(t, reopened, "history_labels") {
+		t.Fatalf("history_labels table should be repaired")
+	}
+	if !tableExists(t, reopened, "command_request_labels") {
+		t.Fatalf("command_request_labels table should be repaired")
 	}
 }
 

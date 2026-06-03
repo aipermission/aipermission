@@ -7,6 +7,10 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+### Added
+
+- History labels for tagging command requests, filtering history by label, and cleaning up labels from Settings without deleting history records.
+
 ## [0.1.1] - 2026-06-02
 
 ### Added

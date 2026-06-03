@@ -1,12 +1,12 @@
-import { Clock3, Download, Edit3, KeyRound, Trash2 } from "lucide-react";
+import { Clock3, Download, Edit3, KeyRound, Tags, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { apiDownload, apiGet, apiPost, apiPut } from "../lib/api";
+import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../lib/api";
 import { useAsyncAction } from "../lib/use-async-action";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { CopyButton } from "../components/ui/copy-button";
 import { Dialog } from "../components/ui/dialog";
-import { Field, Input } from "../components/ui/form";
+import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
 
@@ -20,11 +20,15 @@ export function SettingsPage() {
   const { actionState: deleteState, runAction: runDeleteAction } = useAsyncAction(emptyState);
   const { actionState: retentionState, runAction: runRetentionAction } = useAsyncAction(emptyState);
   const { actionState: purgeState, runAction: runPurgeAction } = useAsyncAction(emptyState);
+  const { actionState: labelDeleteState, runAction: runLabelDeleteAction } = useAsyncAction(emptyState);
   const [retention, setRetention] = useState({
     state: "loading",
     data: { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 },
     error: null,
   });
+  const [labels, setLabels] = useState({ state: "loading", data: [], error: null });
+  const [selectedLabelID, setSelectedLabelID] = useState("");
+  const [labelDeleteDialogOpen, setLabelDeleteDialogOpen] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [renameName, setRenameName] = useState("");
   const [deleteName, setDeleteName] = useState("");
@@ -51,13 +55,24 @@ export function SettingsPage() {
     }
   }
 
+  async function loadHistoryLabels() {
+    try {
+      const data = await apiGet("/api/history-labels");
+      setLabels({ state: "ready", data: data || [], error: null });
+    } catch (error) {
+      setLabels({ state: "error", data: [], error: error.message });
+    }
+  }
+
   useEffect(() => {
     void loadDatabase();
     void loadRetention();
+    void loadHistoryLabels();
   }, []);
 
   const databaseName = database.data?.database_name || "Unknown";
   const newPasswordValid = isValidDatabasePassword(passwordForm.new_password);
+  const selectedLabel = labels.data.find((label) => String(label.id) === String(selectedLabelID));
 
   async function downloadDatabase() {
     await runBackupAction({
@@ -152,6 +167,27 @@ export function SettingsPage() {
     });
   }
 
+  async function deleteHistoryLabel(event) {
+    event.preventDefault();
+    if (!selectedLabel) return;
+    const deletedLabel = selectedLabel;
+    await runLabelDeleteAction({
+      pending: "deleting",
+      successMessage: `Deleted history label "${deletedLabel.name}".`,
+      action: async () => {
+        await apiDelete(`/api/history-labels/${deletedLabel.id}`);
+        setSelectedLabelID("");
+        setLabelDeleteDialogOpen(false);
+        await loadHistoryLabels();
+      },
+    });
+  }
+
+  function closeLabelDeleteDialog() {
+    if (labelDeleteState.state === "deleting") return;
+    setLabelDeleteDialogOpen(false);
+  }
+
   return (
     <section className="mx-auto grid w-full max-w-2xl gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -242,6 +278,43 @@ export function SettingsPage() {
               {purgeState.state === "error" ? <Notice tone="bad">{purgeState.error}</Notice> : null}
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>History labels</CardTitle>
+          <CardDescription>Manage labels used to organize command history.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <Notice>Deleting a label removes it from related history entries. The history records stay intact.</Notice>
+          {labels.state === "error" ? <Notice tone="bad">{labels.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <Select
+              value={selectedLabelID}
+              onChange={(event) => setSelectedLabelID(event.target.value)}
+              disabled={labels.state === "loading" || labels.data.length === 0}
+            >
+              <option value="">{labels.state === "loading" ? "Loading labels..." : "Select a label"}</option>
+              {labels.data.map((label) => (
+                <option key={label.id} value={label.id}>
+                  {label.name}
+                </option>
+              ))}
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLabelDeleteDialogOpen(true)}
+              disabled={!selectedLabel || labelDeleteState.state === "deleting"}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete label
+            </Button>
+          </div>
+          {labels.state === "ready" && labels.data.length === 0 ? <Notice>No labels yet. Add labels from a history detail.</Notice> : null}
+          {labelDeleteState.message ? <Notice tone="good">{labelDeleteState.message}</Notice> : null}
+          {labelDeleteState.state === "error" ? <Notice tone="bad">{labelDeleteState.error}</Notice> : null}
         </CardContent>
       </Card>
 
@@ -388,6 +461,34 @@ export function SettingsPage() {
             <Button type="submit" variant="danger" disabled={deleteState.state === "deleting" || deleteName !== databaseName || !deletePassword}>
               <Trash2 className="h-4 w-4" />
               {deleteState.state === "deleting" ? "Deleting..." : "Delete permanently"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={labelDeleteDialogOpen}
+        title="Delete history label"
+        description={selectedLabel ? `Remove "${selectedLabel.name}" from history?` : "Select a history label first."}
+        onClose={closeLabelDeleteDialog}
+        size="md"
+      >
+        <form className="grid gap-4" onSubmit={deleteHistoryLabel}>
+          <Notice tone="bad">
+            This removes the label from every related history entry. Command history records, outputs, and audit logs are not deleted.
+          </Notice>
+          <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+            <p className="text-xs font-semibold uppercase text-stone-500">Selected label</p>
+            <p className="mt-1 truncate text-sm font-semibold text-stone-950">{selectedLabel?.name || "-"}</p>
+          </div>
+          {labelDeleteState.state === "error" ? <Notice tone="bad">{labelDeleteState.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={closeLabelDeleteDialog} disabled={labelDeleteState.state === "deleting"}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="danger" disabled={!selectedLabel || labelDeleteState.state === "deleting"}>
+              <Tags className="h-4 w-4" />
+              {labelDeleteState.state === "deleting" ? "Deleting..." : "Delete label"}
             </Button>
           </div>
         </form>

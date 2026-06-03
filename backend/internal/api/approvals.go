@@ -20,6 +20,7 @@ type commandRequestFilter struct {
 	TokenID  int64
 	Status   string
 	ServerID int64
+	LabelID  int64
 	Query    string
 	Limit    int
 	Offset   int
@@ -47,6 +48,13 @@ func (s approvalHandlers) listApprovals(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		filter.ServerID = id
+	}
+	if rawLabelID := strings.TrimSpace(r.URL.Query().Get("label_id")); rawLabelID != "" {
+		id, ok := parseInt64Query(w, rawLabelID, "label_id")
+		if !ok {
+			return
+		}
+		filter.LabelID = id
 	}
 
 	if r.URL.Query().Get("paginated") == "true" {
@@ -286,6 +294,10 @@ func requireAffected(result sql.Result) error {
 func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRuntime, filter commandRequestFilter) ([]commandRequestRecord, error) {
 	where := []string{"(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.server_id = ?)", "(? = '' OR cr.status = ?)"}
 	args := []any{filter.TokenID, filter.TokenID, filter.ServerID, filter.ServerID, filter.Status, filter.Status}
+	if filter.LabelID != 0 {
+		where = append(where, `cr.id IN (SELECT command_request_id FROM command_request_labels WHERE label_id = ?)`)
+		args = append(args, filter.LabelID)
+	}
 	query := `
 		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.command, cr.reason, cr.status,
 		       cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
@@ -309,12 +321,22 @@ func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRunti
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.attachLabelsToCommandRequests(ctx, runtime, items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *databaseRuntime, filter commandRequestFilter) ([]commandRequestRecord, int, error) {
 	where := []string{"(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.server_id = ?)", "(? = '' OR cr.status = ?)"}
 	args := []any{filter.TokenID, filter.TokenID, filter.ServerID, filter.ServerID, filter.Status, filter.Status}
+	if filter.LabelID != 0 {
+		where = append(where, `cr.id IN (SELECT command_request_id FROM command_request_labels WHERE label_id = ?)`)
+		args = append(args, filter.LabelID)
+	}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
 		if ftsQuery := buildFTSQuery(filter.Query); ftsQuery != "" {
@@ -363,7 +385,13 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 		}
 		items = append(items, item)
 	}
-	return items, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if err := s.attachLabelsToCommandRequests(ctx, runtime, items); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
 }
 
 func (s *Server) getCommandRequest(ctx context.Context, runtime *databaseRuntime, id int64, tokenID int64) (commandRequestRecord, error) {
@@ -378,7 +406,16 @@ func (s *Server) getCommandRequest(ctx context.Context, runtime *databaseRuntime
 		tokenID,
 		tokenID,
 	)
-	return scanCommandRequest(row)
+	item, err := scanCommandRequest(row)
+	if err != nil {
+		return commandRequestRecord{}, err
+	}
+	labels, err := s.labelsForCommandRequest(ctx, runtime, item.ID)
+	if err != nil {
+		return commandRequestRecord{}, err
+	}
+	item.Labels = labels
+	return item, nil
 }
 
 func scanCommandRequest(scanner interface {
