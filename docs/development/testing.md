@@ -44,12 +44,14 @@ Then verify:
 1. The UI opens on `http://localhost:3210` or the configured localhost port.
 2. An encrypted database can be created or unlocked.
 3. SSH key creation shows an install command.
-4. Server connection test asks for host fingerprint approval on first contact.
-5. A token can be created and scoped to one server.
-6. An `approval_required` MCP command appears in Console and can be Run or Declined.
-7. An `always_run` MCP command streams to the persistent console.
-8. History and Audit Logs show the command lifecycle.
-9. Settings can download an `.aipdb` backup and import it as a named database.
+4. Existing SSH private key import stores the key without returning private material in API responses.
+5. SSH config discovery or parsing can prefill a server form without silently importing private keys.
+6. Server connection test asks for host fingerprint approval on first contact.
+7. A token can be created and scoped to one server.
+8. An `approval_required` MCP command appears in Console and can be Run or Declined.
+9. An `always_run` MCP command streams to the persistent console.
+10. History and Audit Logs show the command lifecycle.
+11. Settings can download an `.aipdb` backup and import it as a named database.
 
 ## npm Publish Checks
 

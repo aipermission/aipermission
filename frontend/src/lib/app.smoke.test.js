@@ -16,6 +16,7 @@ const serversSource = readFileSync(join(currentDir, "..", "pages", "servers.jsx"
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
 const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
+const sshKeysSource = readFileSync(join(currentDir, "..", "pages", "ssh-keys.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -60,8 +61,8 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.1\.2"/);
-  assert.match(releaseSource, /History labels and Docker checks/);
+  assert.match(releaseSource, /appVersion = "0\.1\.3"/);
+  assert.match(releaseSource, /SSH key and host import/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
@@ -93,6 +94,18 @@ test("Servers page exposes on-demand Docker checks", () => {
   assert.match(serversSource, /No running Docker containers/);
 });
 
+test("Servers page can prefill servers from host config", () => {
+  assert.match(serversSource, /\/api\/ssh-config\/discover/);
+  assert.match(serversSource, /\/api\/ssh-config\/parse/);
+  assert.match(serversSource, /Import SSH hosts/);
+  assert.match(serversSource, /imports host metadata only/i);
+  assert.match(serversSource, /Import from this computer/);
+  assert.match(serversSource, /Container config/);
+  assert.match(serversSource, /Choose host config file/);
+  assert.match(serversSource, /Scan container config/);
+  assert.match(serversSource, /Parse pasted hosts/);
+});
+
 test("Settings database delete requires a confirmation dialog and current password", () => {
   assert.match(settingsSource, /onSubmit=\{requestDeleteDatabase\}/);
   assert.match(settingsSource, /setDeleteDialogOpen\(true\)/);
@@ -115,4 +128,13 @@ test("Settings page exposes history label management", () => {
   assert.match(settingsSource, /History labels/);
   assert.match(settingsSource, /Delete history label/);
   assert.match(settingsSource, /removes the label from every related history entry/i);
+});
+
+test("SSH keys page supports explicit private key import", () => {
+  assert.match(sshKeysSource, /\/api\/ssh-keys\/import/);
+  assert.match(sshKeysSource, /Import key/);
+  assert.match(sshKeysSource, /Choose key file/);
+  assert.match(sshKeysSource, /type="file" onChange=\{readImportFile\}/);
+  assert.match(sshKeysSource, /privateKeyPlaceholder/);
+  assert.match(sshKeysSource, /The passphrase is not saved/);
 });

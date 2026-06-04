@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
 :root {
+  --terminal-font-family: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --terminal-font-size: 13px;
+  --terminal-line-height: 1.65;
+  --terminal-surface-dark: #1e1e1e;
+  --terminal-foreground-dark: #d4d4d4;
+  --terminal-surface-light: #ffffff;
+  --terminal-foreground-light: #1c1917;
   background: #f7f7f4;
   color: #1c1917;
   font-family:
@@ -44,13 +51,13 @@ textarea {
 .terminal-surface-light,
 .terminal-surface-light .xterm,
 .terminal-surface-light .xterm-viewport {
-  background-color: #ffffff !important;
+  background-color: var(--terminal-surface-light) !important;
 }
 
 .terminal-surface-dark,
 .terminal-surface-dark .xterm,
 .terminal-surface-dark .xterm-viewport {
-  background-color: #1e1e1e !important;
+  background-color: var(--terminal-surface-dark) !important;
 }
 
 .terminal-surface-light .xterm,
@@ -60,8 +67,20 @@ textarea {
 }
 
 .terminal-log-surface {
-  background: #ffffff;
-  color: #1c1917;
+  background: var(--terminal-surface-light);
+  color: var(--terminal-foreground-light);
+}
+
+.terminal-text {
+  font-family: var(--terminal-font-family);
+  font-size: var(--terminal-font-size);
+  line-height: var(--terminal-line-height);
+  tab-size: 2;
+}
+
+.terminal-output-surface {
+  background: var(--terminal-surface-dark);
+  color: var(--terminal-foreground-dark);
 }
 
 :root[data-theme="dark"] body {
@@ -69,8 +88,8 @@ textarea {
 }
 
 :root[data-theme="dark"] .terminal-log-surface {
-  background: #0e0e0e;
-  color: #f4f4f5;
+  background: var(--terminal-surface-dark);
+  color: var(--terminal-foreground-dark);
 }
 
 :root[data-theme="dark"] .bg-white {

@@ -6,14 +6,17 @@ The core security rule:
 
 The AI assistant, MCP client, and API token never receive SSH private keys, SSH passwords, database passwords, or decrypted connection strings.
 
-The preferred MVP model is Dokploy-style SSH bootstrap. aipermission does not ask for a VPS SSH password. The gateway generates SSH keypairs, stores private keys in the local encrypted vault, and shows the user a public key install command to paste on the server.
+The preferred MVP model is Dokploy-style SSH bootstrap. aipermission does not
+ask for a VPS SSH password. The gateway can generate SSH keypairs, store private
+keys in the local encrypted vault, and show the user a public key install
+command to paste on the server. Users may also explicitly import an existing
+private key into the same encrypted local vault.
 
 ## Stored Secrets
 
 The gateway vault may store:
 
-- gateway-generated SSH private keys
-- gateway-generated SSH private key passphrases, if used
+- gateway-generated or explicitly imported SSH private keys
 - future PostgreSQL or database credentials
 - future connection secrets
 
@@ -23,12 +26,15 @@ The database password is unrecoverable. If it is lost, the local DB cannot be op
 
 ## SSH Key Install Model
 
-The user creates an SSH key in the web UI:
+The user creates or imports an SSH key in the web UI:
 
-- type: `ed25519` or `rsa`
+- type: generated keys support `ed25519` or `rsa`; imported keys may also use
+  other supported OpenSSH private key formats
 - name: for example `main`, `production`, or `dev`
 
-The gateway stores the private key in its encrypted vault. The public key is shown to the user.
+The gateway stores the private key in its encrypted vault. The public key is
+shown to the user. If an imported key is passphrase-protected, the passphrase is
+used only during import and is not saved.
 
 Install command shape:
 

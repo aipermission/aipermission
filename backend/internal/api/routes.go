@@ -7,6 +7,7 @@ import (
 
 type tokenHandlers struct{ *Server }
 type sshKeyHandlers struct{ *Server }
+type sshConfigHandlers struct{ *Server }
 type sshHostKeyHandlers struct{ *Server }
 type serverResourceHandlers struct{ *Server }
 type serverConnectionHandlers struct{ *Server }
@@ -32,6 +33,7 @@ func (s *Server) routes() {
 	serverConnections := serverConnectionHandlers{s}
 	sshHostKeys := sshHostKeyHandlers{s}
 	sshKeys := sshKeyHandlers{s}
+	sshConfig := sshConfigHandlers{s}
 	tokens := tokenHandlers{s}
 	backup := backupHandlers{s}
 	databases := databaseHandlers{s}
@@ -69,8 +71,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/ssh-host-keys/approve", sshHostKeys.approveSSHHostKey)
 	s.mux.HandleFunc("GET /api/ssh-keys", sshKeys.listSSHKeys)
 	s.mux.HandleFunc("POST /api/ssh-keys", sshKeys.createSSHKey)
+	s.mux.HandleFunc("POST /api/ssh-keys/import", sshKeys.importSSHKey)
 	s.mux.HandleFunc("GET /api/ssh-keys/{id}", sshKeys.getSSHKey)
 	s.mux.HandleFunc("DELETE /api/ssh-keys/{id}", sshKeys.deleteSSHKey)
+	s.mux.HandleFunc("GET /api/ssh-config/discover", sshConfig.discoverSSHConfig)
+	s.mux.HandleFunc("POST /api/ssh-config/parse", sshConfig.parseSSHConfig)
 	s.mux.HandleFunc("GET /api/tokens", tokens.listTokens)
 	s.mux.HandleFunc("POST /api/tokens", tokens.createToken)
 	s.mux.HandleFunc("POST /api/tokens/{id}/revoke", tokens.revokeToken)

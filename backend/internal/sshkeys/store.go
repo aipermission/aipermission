@@ -20,6 +20,10 @@ import (
 const (
 	TypeED25519 = "ed25519"
 	TypeRSA     = "rsa"
+	TypeECDSA   = "ecdsa"
+
+	maxImportedPrivateKeyBytes = 64 * 1024
+	minImportedRSABits         = 2048
 )
 
 type SSHKey struct {
@@ -36,6 +40,12 @@ type SSHKey struct {
 type CreateRequest struct {
 	Name    string `json:"name"`
 	KeyType string `json:"key_type"`
+}
+
+type ImportRequest struct {
+	Name       string `json:"name"`
+	PrivateKey string `json:"private_key"`
+	Passphrase string `json:"passphrase,omitempty"`
 }
 
 type privateKeySecret struct {
@@ -162,6 +172,57 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (SSHKey, erro
 	return s.Get(ctx, id)
 }
 
+func (s *Store) Import(ctx context.Context, request ImportRequest) (SSHKey, error) {
+	request.Name = strings.TrimSpace(request.Name)
+	request.PrivateKey = strings.TrimSpace(request.PrivateKey)
+	if request.Name == "" {
+		return SSHKey{}, ValidationError("name is required")
+	}
+	if err := validateName(request.Name); err != nil {
+		return SSHKey{}, err
+	}
+	if request.PrivateKey == "" {
+		return SSHKey{}, ValidationError("private_key is required")
+	}
+	if len([]byte(request.PrivateKey)) > maxImportedPrivateKeyBytes {
+		return SSHKey{}, ValidationError("private_key is too large")
+	}
+
+	privateKey, publicKey, fingerprint, keyType, err := parseImportedKey(request.Name, request.PrivateKey, request.Passphrase)
+	if err != nil {
+		return SSHKey{}, err
+	}
+
+	encrypted, err := s.vault.EncryptJSON(privateKeySecret{PrivateKey: privateKey})
+	if err != nil {
+		return SSHKey{}, err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO ssh_keys (name, key_type, public_key, encrypted_private_key, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		request.Name,
+		keyType,
+		publicKey,
+		encrypted,
+		fingerprint,
+		now,
+		now,
+	)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return SSHKey{}, ValidationError("ssh key name already exists")
+		}
+		return SSHKey{}, fmt.Errorf("import ssh key: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return SSHKey{}, fmt.Errorf("read ssh key id: %w", err)
+	}
+	return s.Get(ctx, id)
+}
+
 func validateName(name string) error {
 	if len([]rune(name)) > 80 {
 		return ValidationError("name must be 80 characters or fewer")
@@ -232,6 +293,63 @@ func marshalKey(private any, public any, comment string) (string, string, string
 	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPublic))) + " " + comment
 	fingerprint := ssh.FingerprintSHA256(sshPublic)
 	return privateKey, publicKey, fingerprint, nil
+}
+
+func parseImportedKey(name string, privateKey string, passphrase string) (string, string, string, string, error) {
+	raw, err := parseRawPrivateKey([]byte(privateKey), passphrase)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	if private, ok := raw.(*rsa.PrivateKey); ok && private.N.BitLen() < minImportedRSABits {
+		return "", "", "", "", ValidationError("private_key rsa keys must be at least 2048 bits")
+	}
+
+	signer, err := ssh.NewSignerFromKey(raw)
+	if err != nil {
+		return "", "", "", "", ValidationError("private_key could not be parsed")
+	}
+	keyType, err := importedKeyType(signer.PublicKey().Type())
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	comment := "aipermission-" + name
+	privateBlock, err := ssh.MarshalPrivateKey(raw, comment)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("marshal imported private key: %w", err)
+	}
+	normalizedPrivateKey := string(pem.EncodeToMemory(privateBlock))
+	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey()))) + " " + comment
+	fingerprint := ssh.FingerprintSHA256(signer.PublicKey())
+	return normalizedPrivateKey, publicKey, fingerprint, keyType, nil
+}
+
+func parseRawPrivateKey(privateKey []byte, passphrase string) (any, error) {
+	if strings.TrimSpace(passphrase) != "" {
+		raw, err := ssh.ParseRawPrivateKeyWithPassphrase(privateKey, []byte(passphrase))
+		if err != nil {
+			return nil, ValidationError("private_key could not be parsed with the provided passphrase")
+		}
+		return raw, nil
+	}
+	raw, err := ssh.ParseRawPrivateKey(privateKey)
+	if err != nil {
+		return nil, ValidationError("private_key could not be parsed")
+	}
+	return raw, nil
+}
+
+func importedKeyType(publicType string) (string, error) {
+	switch publicType {
+	case ssh.KeyAlgoED25519:
+		return TypeED25519, nil
+	case ssh.KeyAlgoRSA:
+		return TypeRSA, nil
+	case ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521:
+		return TypeECDSA, nil
+	default:
+		return "", ValidationError("private_key type is not supported")
+	}
 }
 
 func InstallCommand(publicKey string) string {

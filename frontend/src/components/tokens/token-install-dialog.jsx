@@ -2,6 +2,7 @@ import { mcpApiUrl } from "../../lib/api";
 import { CopyButton } from "../ui/copy-button";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
+import { TerminalBlock } from "../ui/terminal-block";
 
 export const installProviders = [
   { id: "manual", label: "Manual" },
@@ -61,9 +62,7 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
               </div>
               <CopyButton value={copyValue} variant="outline" />
             </div>
-            <pre className="max-h-[420px] overflow-auto rounded-lg bg-stone-950 p-4 text-xs leading-6 text-stone-50">
-              <code>{copyValue}</code>
-            </pre>
+            <TerminalBlock className="max-h-[420px] whitespace-pre">{copyValue}</TerminalBlock>
           </div>
 
           <Notice>

@@ -38,6 +38,25 @@ func (s sshKeyHandlers) createSSHKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, item)
 }
 
+func (s sshKeyHandlers) importSSHKey(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	var request sshkeys.ImportRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	item, err := runtime.sshKeys.Import(r.Context(), request)
+	if err != nil {
+		handleSSHKeyError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, item)
+}
+
 func (s sshKeyHandlers) getSSHKey(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {

@@ -29,7 +29,7 @@ var baseSchemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS ssh_keys (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL UNIQUE,
-		key_type TEXT NOT NULL CHECK (key_type IN ('ed25519', 'rsa')),
+		key_type TEXT NOT NULL CHECK (key_type IN ('ed25519', 'rsa', 'ecdsa')),
 		public_key TEXT NOT NULL,
 		encrypted_private_key TEXT NOT NULL,
 		fingerprint TEXT NOT NULL,
@@ -222,6 +222,25 @@ var searchIndexStatements = []string{
 	END;`,
 }
 
+var ecdsaSSHKeyStatements = []string{
+	`DROP TABLE IF EXISTS ssh_keys_next;`,
+	`CREATE TABLE IF NOT EXISTS ssh_keys_next (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL UNIQUE,
+		key_type TEXT NOT NULL CHECK (key_type IN ('ed25519', 'rsa', 'ecdsa')),
+		public_key TEXT NOT NULL,
+		encrypted_private_key TEXT NOT NULL,
+		fingerprint TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);`,
+	`INSERT INTO ssh_keys_next (id, name, key_type, public_key, encrypted_private_key, fingerprint, created_at, updated_at)
+		SELECT id, name, key_type, public_key, encrypted_private_key, fingerprint, created_at, updated_at FROM ssh_keys;`,
+	`DROP TABLE ssh_keys;`,
+	`ALTER TABLE ssh_keys_next RENAME TO ssh_keys;`,
+	`CREATE INDEX IF NOT EXISTS idx_ssh_keys_name ON ssh_keys(name);`,
+}
+
 var migrations = []migration{
 	{
 		version:     1,
@@ -232,6 +251,11 @@ var migrations = []migration{
 		version:     2,
 		description: "history labels",
 		statements:  sqlStatements(historyLabelStatements, historyLabelIndexStatements),
+	},
+	{
+		version:     3,
+		description: "allow imported ecdsa ssh keys",
+		statements:  ecdsaSSHKeyStatements,
 	},
 }
 

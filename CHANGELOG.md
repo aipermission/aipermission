@@ -7,6 +7,20 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-04
+
+### Added
+
+- Existing SSH private key import with optional import-time passphrase handling.
+- SSH host import from OpenSSH config files and pasted config content for prefilling server records.
+
+### Changed
+
+- Terminal-like command, output, log, and setup code blocks now share consistent typography.
+- SSH host import avoids sending `IdentityFile` paths into server descriptions and reports `ProxyCommand` without returning the raw command.
+- SSH config parsing follows OpenSSH-style first-value-wins behavior for matching `Host` blocks.
+- Imported RSA private keys must be at least 2048 bits.
+
 ## [0.1.2] - 2026-06-03
 
 ### Added

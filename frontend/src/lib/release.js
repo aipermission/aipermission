@@ -1,6 +1,26 @@
-export const appVersion = "0.1.2";
+export const appVersion = "0.1.3";
 
 export const changelogEntries = [
+  {
+    version: "0.1.3",
+    label: "SSH key and host import",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Import existing SSH private keys into the local encrypted vault.",
+          "Import SSH host entries from OpenSSH config files or pasted config content.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Command, output, log, and setup code blocks now use consistent terminal typography.",
+          "SSH host import avoids sending IdentityFile paths into server descriptions.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.2",
     label: "History labels and Docker checks",

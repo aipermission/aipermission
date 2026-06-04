@@ -13,9 +13,9 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
       cursorBlink: true,
       convertEol: true,
       scrollback: 5000,
-      fontFamily: '"Ubuntu Mono", "DejaVu Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontSize: 14,
-      lineHeight: 1.25,
+      fontFamily: '"JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+      fontSize: 13,
+      lineHeight: 1.65,
       theme: terminalTheme(theme),
     });
     const fit = new FitAddon();

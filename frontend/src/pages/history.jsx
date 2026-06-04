@@ -9,6 +9,7 @@ import { Dialog } from "../components/ui/dialog";
 import { Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { PaginationBar } from "../components/ui/pagination-bar";
+import { TerminalBlock } from "../components/ui/terminal-block";
 
 const statusOptions = [
   { value: "", label: "All statuses" },
@@ -467,15 +468,11 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
         <div className="grid min-h-0 gap-4 p-5 lg:grid-cols-2">
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
             <SectionHeader label="Command" value={item.command} />
-            <pre className="min-h-0 overflow-auto whitespace-pre-wrap break-words rounded-md bg-stone-950 p-4 text-xs leading-5 text-stone-100">
-              {item.command}
-            </pre>
+            <TerminalBlock>{item.command}</TerminalBlock>
           </div>
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
             <SectionHeader label="Output" value={output} />
-            <pre className="min-h-0 overflow-auto whitespace-pre-wrap break-words rounded-md bg-stone-950 p-4 text-xs leading-5 text-stone-100">
-              {output || "No output captured."}
-            </pre>
+            <TerminalBlock>{output || "No output captured."}</TerminalBlock>
           </div>
         </div>
       </div>

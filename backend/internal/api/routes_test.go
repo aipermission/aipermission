@@ -44,14 +44,40 @@ func TestManagementRoutesCoverSSHKeysServersTokensAndPermissions(t *testing.T) {
 		t.Fatalf("create key failed: %d %s", keyResponse.Code, keyResponse.Body.String())
 	}
 	key := decodeRouteResponse[sshkeys.SSHKey](t, keyResponse.Body.Bytes())
+	privateKey, err := fixture.sshKeys.GetPrivateKey(context.Background(), key.ID)
+	if err != nil {
+		t.Fatalf("get private key fixture: %v", err)
+	}
+
+	importResponse := performJSON(handler, http.MethodPost, "/api/ssh-keys/import", "", sshkeys.ImportRequest{Name: "imported", PrivateKey: privateKey.PrivateKey})
+	if importResponse.Code != http.StatusCreated {
+		t.Fatalf("import key failed: %d %s", importResponse.Code, importResponse.Body.String())
+	}
+	importedKey := decodeRouteResponse[sshkeys.SSHKey](t, importResponse.Body.Bytes())
+	if importedKey.Fingerprint != key.Fingerprint || importedKey.Name != "imported" {
+		t.Fatalf("unexpected imported key: %#v", importedKey)
+	}
 
 	keyListResponse := performJSON(handler, http.MethodGet, "/api/ssh-keys", "", nil)
-	if keyListResponse.Code != http.StatusOK || !strings.Contains(keyListResponse.Body.String(), `"name":"main"`) {
+	if keyListResponse.Code != http.StatusOK || !strings.Contains(keyListResponse.Body.String(), `"name":"main"`) || !strings.Contains(keyListResponse.Body.String(), `"name":"imported"`) {
 		t.Fatalf("list keys failed: %d %s", keyListResponse.Code, keyListResponse.Body.String())
 	}
 	keyGetResponse := performJSON(handler, http.MethodGet, "/api/ssh-keys/"+strconv.FormatInt(key.ID, 10), "", nil)
 	if keyGetResponse.Code != http.StatusOK {
 		t.Fatalf("get key failed: %d %s", keyGetResponse.Code, keyGetResponse.Body.String())
+	}
+	sshConfigResponse := performJSON(handler, http.MethodPost, "/api/ssh-config/parse", "", parseSSHConfigRequest{Content: `
+Host worker-from-config
+  HostName 10.0.0.42
+  User ubuntu
+  Port 2222
+  IdentityFile ~/.ssh/id_ed25519
+
+Host *
+  User ignored
+`})
+	if sshConfigResponse.Code != http.StatusOK || !strings.Contains(sshConfigResponse.Body.String(), "worker-from-config") || strings.Contains(sshConfigResponse.Body.String(), `"ignored"`) {
+		t.Fatalf("parse ssh config failed: %d %s", sshConfigResponse.Code, sshConfigResponse.Body.String())
 	}
 
 	serverResponse := performJSON(handler, http.MethodPost, "/api/servers", "", servers.CreateRequest{
@@ -131,6 +157,9 @@ func TestManagementRoutesCoverSSHKeysServersTokensAndPermissions(t *testing.T) {
 	}
 	if response := performJSON(handler, http.MethodDelete, "/api/ssh-keys/"+strconv.FormatInt(key.ID, 10), "", nil); response.Code != http.StatusNoContent {
 		t.Fatalf("delete key failed: %d %s", response.Code, response.Body.String())
+	}
+	if response := performJSON(handler, http.MethodDelete, "/api/ssh-keys/"+strconv.FormatInt(importedKey.ID, 10), "", nil); response.Code != http.StatusNoContent {
+		t.Fatalf("delete imported key failed: %d %s", response.Code, response.Body.String())
 	}
 }
 

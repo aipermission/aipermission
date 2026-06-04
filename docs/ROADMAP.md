@@ -22,7 +22,8 @@ Related notes:
 - Docker Compose local runtime at `http://localhost:3210`.
 - SQLCipher encrypted named `.aipdb` databases.
 - Local UI session and CSRF protection for web REST mutations.
-- Gateway-owned SSH keys, SSH host fingerprint approval, and `known_hosts`
+- Gateway-owned and explicitly imported SSH keys, SSH host fingerprint approval,
+  SSH host import from OpenSSH config files, and `known_hosts`
   pinning.
 - Server inventory, server hints, SSH key install commands, and uninstall
   cleanup.

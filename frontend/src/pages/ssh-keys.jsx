@@ -1,4 +1,4 @@
-import { KeyRound, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Plus, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { useGateway } from "../lib/gateway-context";
 import { apiDelete, apiPost } from "../lib/api";
@@ -11,12 +11,40 @@ import { Field, Input, Textarea } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 
 const emptyForm = { name: "main", key_type: "ed25519" };
+const emptyImportForm = { name: "imported-key", private_key: "", passphrase: "" };
+const privateKeyPlaceholder = "-----BEGIN OPENSSH " + "PRIVATE KEY-----";
 
 export function SSHKeysPage() {
   const { sshKeys, servers, loadSSHKeys } = useGateway();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mode, setMode] = useState("generate");
   const [form, setForm] = useState(emptyForm);
+  const [importForm, setImportForm] = useState(emptyImportForm);
   const { actionState: state, runAction } = useAsyncAction();
+
+  function openDrawer() {
+    setForm(emptyForm);
+    setImportForm(emptyImportForm);
+    setMode("generate");
+    setDrawerOpen(true);
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+    setForm(emptyForm);
+    setImportForm(emptyImportForm);
+    setMode("generate");
+  }
+
+  function switchMode(nextMode) {
+    if (nextMode !== "import") {
+      setImportForm(emptyImportForm);
+    }
+    if (nextMode !== "generate") {
+      setForm(emptyForm);
+    }
+    setMode(nextMode);
+  }
 
   async function createKey(event) {
     event.preventDefault();
@@ -26,10 +54,36 @@ export function SSHKeysPage() {
       action: async () => {
         await apiPost("/api/ssh-keys", form);
         setForm(emptyForm);
-        setDrawerOpen(false);
+        closeDrawer();
         await loadSSHKeys();
       },
     });
+  }
+
+  async function importKey(event) {
+    event.preventDefault();
+    await runAction({
+      pending: "importing",
+      successMessage: "SSH key imported.",
+      action: async () => {
+        await apiPost("/api/ssh-keys/import", importForm);
+        setImportForm(emptyImportForm);
+        closeDrawer();
+        await loadSSHKeys();
+      },
+    });
+  }
+
+  async function readImportFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setImportForm((current) => ({
+      ...current,
+      name: current.name === emptyImportForm.name ? keyNameFromFilename(file.name) : current.name,
+      private_key: text,
+    }));
+    event.target.value = "";
   }
 
   async function deleteKey(id) {
@@ -50,7 +104,7 @@ export function SSHKeysPage() {
           <h3 className="text-lg font-semibold">Gateway SSH keys</h3>
           <p className="text-sm text-stone-500">Create named keys and attach them to servers.</p>
         </div>
-        <Button type="button" onClick={() => setDrawerOpen(true)}>
+        <Button type="button" onClick={openDrawer}>
           <Plus className="h-4 w-4" />
           Add key
         </Button>
@@ -137,47 +191,122 @@ export function SSHKeysPage() {
       <Drawer
         open={drawerOpen}
         title="Add SSH key"
-        description="ed25519 is recommended. RSA is available for older systems."
-        onClose={() => setDrawerOpen(false)}
+        description={mode === "generate" ? "Generate a gateway-owned SSH key." : "Import an existing private key into the local encrypted vault."}
+        onClose={closeDrawer}
       >
-        <form className="grid gap-4" onSubmit={createKey}>
-          <Field>
-            Name
-            <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-          </Field>
+        <div className="grid gap-4">
           <div className="grid grid-cols-2 gap-2 rounded-md bg-stone-100 p-1">
-            {["ed25519", "rsa"].map((type) => (
+            {[
+              ["generate", "Generate"],
+              ["import", "Import"],
+            ].map(([value, label]) => (
               <button
                 className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
-                  form.key_type === type ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"
+                  mode === value ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"
                 }`}
-                key={type}
+                key={value}
                 type="button"
-                onClick={() => setForm({ ...form, key_type: type })}
+                onClick={() => switchMode(value)}
               >
-                {type}
+                {label}
               </button>
             ))}
           </div>
-          {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-          <Button type="submit" disabled={state.state === "saving"}>
-            <Plus className="h-4 w-4" />
-            {state.state === "saving" ? "Creating..." : `Generate ${form.key_type} key`}
-          </Button>
-          <Notice>
-            After creating the key, copy the install command from the table and paste it on the VPS.
-          </Notice>
-          <Field>
-            Install command preview
-            <Textarea
-              readOnly
-              rows={4}
-              className="font-mono text-xs"
-              value={`mkdir -p ~/.ssh && chmod 700 ~/.ssh && printf '%s\\n' 'ssh-${form.key_type} ... aipermission-${form.name || "key"}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`}
-            />
-          </Field>
-        </form>
+          {mode === "generate" ? (
+            <form className="grid gap-4" onSubmit={createKey}>
+              <Field>
+                Name
+                <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+              </Field>
+              <div className="grid grid-cols-2 gap-2 rounded-md bg-stone-100 p-1">
+                {["ed25519", "rsa"].map((type) => (
+                  <button
+                    className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                      form.key_type === type ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"
+                    }`}
+                    key={type}
+                    type="button"
+                    onClick={() => setForm({ ...form, key_type: type })}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+              <Button type="submit" disabled={state.state === "saving"}>
+                <Plus className="h-4 w-4" />
+                {state.state === "saving" ? "Creating..." : `Generate ${form.key_type} key`}
+              </Button>
+              <Notice>
+                After creating the key, copy the install command from the table and paste it on the VPS.
+              </Notice>
+              <Field>
+                Install command preview
+                <Textarea
+                  readOnly
+                  rows={4}
+                  className="font-mono text-xs"
+                  value={`mkdir -p ~/.ssh && chmod 700 ~/.ssh && printf '%s\\n' 'ssh-${form.key_type} ... aipermission-${form.name || "key"}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`}
+                />
+              </Field>
+            </form>
+          ) : (
+            <form className="grid gap-4" onSubmit={importKey}>
+              <Field>
+                Name
+                <Input value={importForm.name} onChange={(event) => setImportForm({ ...importForm, name: event.target.value })} required />
+              </Field>
+              <Field>
+                Private key
+                <Textarea
+                  value={importForm.private_key}
+                  onChange={(event) => setImportForm({ ...importForm, private_key: event.target.value })}
+                  rows={9}
+                  className="font-mono text-xs"
+                  placeholder={privateKeyPlaceholder}
+                  required
+                />
+              </Field>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" asChild>
+                  <label>
+                    <Upload className="h-4 w-4" />
+                    Choose key file
+                    <input className="hidden" type="file" onChange={readImportFile} />
+                  </label>
+                </Button>
+                <span className="text-xs text-stone-500">The file is read locally and imported only after you press Import.</span>
+              </div>
+              <Field>
+                Passphrase
+                <Input
+                  type="password"
+                  value={importForm.passphrase}
+                  onChange={(event) => setImportForm({ ...importForm, passphrase: event.target.value })}
+                  placeholder="Only needed for passphrase-protected keys"
+                />
+              </Field>
+              {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+              <Button type="submit" disabled={state.state === "importing"}>
+                <Upload className="h-4 w-4" />
+                {state.state === "importing" ? "Importing..." : "Import key"}
+              </Button>
+              <Notice tone="warn">
+                Imported keys are decrypted once during import, normalized, and then stored in the encrypted local vault.
+                The passphrase is not saved.
+              </Notice>
+            </form>
+          )}
+        </div>
       </Drawer>
     </section>
   );
+}
+
+function keyNameFromFilename(filename) {
+  return filename
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-zA-Z0-9_. -]+/g, "-")
+    .trim()
+    .slice(0, 80) || emptyImportForm.name;
 }

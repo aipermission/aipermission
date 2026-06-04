@@ -1,7 +1,7 @@
-import { CircleCheck, CircleX, Container, Copy, Edit3, FileText, Info, PlugZap, Plus, RefreshCcw, Server, ShieldCheck, Trash2 } from "lucide-react";
+import { CircleCheck, CircleX, Container, Copy, Edit3, FileText, Info, PlugZap, Plus, RefreshCcw, Server, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGateway } from "../lib/gateway-context";
-import { apiDelete, apiPost, apiPut } from "../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "../lib/api";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CopyButton } from "../components/ui/copy-button";
@@ -9,6 +9,7 @@ import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Checkbox, Field, Input, Select, Textarea } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
+import { TerminalBlock } from "../components/ui/terminal-block";
 
 const emptyForm = { name: "", host: "", port: 22, username: "root", ssh_key_id: "", description: "", setup_later: false };
 
@@ -17,6 +18,9 @@ export function ServersPage() {
   const [drawer, setDrawer] = useState({ open: false, mode: "create", server: null });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, server: null });
   const [installDialog, setInstallDialog] = useState({ open: false, server: null });
+  const [sshConfigDialog, setSSHConfigDialog] = useState({ open: false, state: "idle", items: [], error: null });
+  const [sshConfigContent, setSSHConfigContent] = useState("");
+  const [sshConfigResultSource, setSSHConfigResultSource] = useState(null);
   const [dockerDialog, setDockerDialog] = useState({ open: false, server: null, state: "idle", data: null, error: null });
   const [dockerLogsDialog, setDockerLogsDialog] = useState({ open: false, server: null, container: null, state: "idle", data: null, error: null });
   const [hostKeyDialog, setHostKeyDialog] = useState({ open: false, hostKey: null, action: null, state: "idle", error: null });
@@ -36,6 +40,57 @@ export function ServersPage() {
   function openCreateDrawer() {
     setState({ state: "idle", error: null });
     setForm({ ...emptyForm, ssh_key_id: firstKeyID });
+    setDrawer({ open: true, mode: "create", server: null });
+  }
+
+  async function scanSSHConfig() {
+    setSSHConfigDialog({ open: true, state: "loading", items: [], error: null });
+    setSSHConfigResultSource("container");
+    try {
+      const data = await apiGet("/api/ssh-config/discover");
+      setSSHConfigDialog({ open: true, state: "ready", items: data.items || [], error: null });
+    } catch (error) {
+      setSSHConfigDialog({ open: true, state: "error", items: [], error: error.message });
+    }
+  }
+
+  async function parseSSHConfigContent(content) {
+    setSSHConfigDialog({ open: true, state: "loading", items: [], error: null });
+    setSSHConfigResultSource("local");
+    try {
+      const data = await apiPost("/api/ssh-config/parse", { content });
+      setSSHConfigDialog({ open: true, state: "ready", items: data.items || [], error: null });
+    } catch (error) {
+      setSSHConfigDialog({ open: true, state: "error", items: [], error: error.message });
+    }
+  }
+
+  async function parseSSHConfigFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const content = await file.text();
+      setSSHConfigContent(content);
+      await parseSSHConfigContent(content);
+    } catch (error) {
+      setSSHConfigDialog({ open: true, state: "error", items: [], error: error.message });
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function useSSHConfigEntry(entry) {
+    setState({ state: "idle", error: null });
+    setForm({
+      ...emptyForm,
+      name: entry.alias || entry.host,
+      host: entry.host || entry.alias,
+      port: entry.port || 22,
+      username: entry.username || "root",
+      ssh_key_id: firstKeyID,
+      description: "Imported from host config.",
+    });
+    setSSHConfigDialog({ open: false, state: "idle", items: [], error: null });
     setDrawer({ open: true, mode: "create", server: null });
   }
 
@@ -206,6 +261,10 @@ export function ServersPage() {
             <RefreshCcw className="h-4 w-4" />
             Refresh
           </Button>
+          <Button type="button" variant="outline" onClick={() => setSSHConfigDialog({ open: true, state: "idle", items: [], error: null })}>
+            <FileText className="h-4 w-4" />
+            Import hosts
+          </Button>
           <Button type="button" onClick={openCreateDrawer} disabled={sshKeys.data.length === 0}>
             <Plus className="h-4 w-4" />
             Add server
@@ -364,6 +423,23 @@ export function ServersPage() {
         value={installDialog}
         sshKeys={sshKeys.data}
         onClose={() => setInstallDialog({ open: false, server: null })}
+      />
+
+      <SSHConfigDialog
+        value={sshConfigDialog}
+        hasSSHKeys={sshKeys.data.length > 0}
+        onScan={scanSSHConfig}
+        onParseFile={parseSSHConfigFile}
+        content={sshConfigContent}
+        resultSource={sshConfigResultSource}
+        onContentChange={setSSHConfigContent}
+        onParseContent={() => parseSSHConfigContent(sshConfigContent)}
+        onUse={useSSHConfigEntry}
+        onClose={() => {
+          setSSHConfigDialog({ open: false, state: "idle", items: [], error: null });
+          setSSHConfigContent("");
+          setSSHConfigResultSource(null);
+        }}
       />
 
       <HostKeyApprovalDialog
@@ -549,9 +625,7 @@ function DockerCheckDialog({ value, onReadLogs, onClose }) {
               )}
             </div>
           ) : null}
-          {data?.stderr ? (
-            <pre className="max-h-40 overflow-auto rounded-md bg-stone-950 p-3 text-xs leading-5 text-stone-50">{data.stderr}</pre>
-          ) : null}
+          {data?.stderr ? <TerminalBlock className="max-h-40 p-3">{data.stderr}</TerminalBlock> : null}
         </div>
       </Dialog>
       <DockerContainerDetailDialog container={detailContainer} onClose={() => setDetailContainer(null)} />
@@ -656,12 +730,9 @@ function DockerLogsDialog({ value, onRefresh, onClose }) {
             <CopyButton value={output || ""} variant="outline" className="h-8 px-2" iconClassName="h-3.5 w-3.5" />
           </div>
         </form>
-        <pre
-          ref={outputRef}
-          className="terminal-log-surface min-h-0 overflow-auto whitespace-pre-wrap break-words rounded-md p-4 text-xs leading-5"
-        >
+        <TerminalBlock ref={outputRef} surface="log">
           {output || (value.state === "ready" ? "No logs returned." : "")}
-        </pre>
+        </TerminalBlock>
       </div>
     </Dialog>
   );
@@ -673,6 +744,152 @@ function DockerDetailField({ label, value, mono = false, wide = false }) {
       <p className="text-xs font-semibold uppercase text-stone-500">{label}</p>
       <p className={`mt-1 break-words text-sm text-stone-900 ${mono ? "font-mono text-xs leading-5" : "font-medium"}`}>{value || "-"}</p>
     </div>
+  );
+}
+
+function SSHConfigDialog({ value, hasSSHKeys, onScan, onParseFile, content, resultSource, onContentChange, onParseContent, onUse, onClose }) {
+  const [activeTab, setActiveTab] = useState("local");
+  const tabs = [
+    ["local", "Import from this computer"],
+    ["container", "Container config"],
+  ];
+  const showCurrentResult = value.state === "ready" && resultSource === activeTab;
+
+  return (
+    <Dialog
+      open={value.open}
+      title="Import SSH hosts"
+      description="Read host, user, and port entries, then choose one to prefill the server form."
+      onClose={onClose}
+      size="lg"
+    >
+      <div className="grid gap-4">
+        <Notice>
+          AIPermission imports host metadata only: alias, hostname, user, port, and identity file path. It does not
+          import private keys from this step. Import existing private keys from the SSH Keys page.
+        </Notice>
+
+        <div className="grid rounded-md border border-stone-200 bg-stone-100 p-1 dark-soft-panel" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+          {tabs.map(([tab, label]) => (
+            <button
+              key={tab}
+              type="button"
+              className={`rounded px-3 py-2 text-sm font-semibold transition ${
+                activeTab === tab ? "bg-white text-stone-950 shadow-sm dark-card-surface" : "text-stone-500 hover:text-stone-900"
+              }`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "local" ? (
+          <div className="grid gap-4">
+            <Notice tone="good">
+              On Linux and macOS this is usually <span className="font-mono">~/.ssh/config</span>. On Windows, choose the
+              OpenSSH config file from your user profile, for example{" "}
+              <span className="font-mono">C:\Users\you\.ssh\config</span>. If the file picker does not show the file,
+              paste the config content below.
+            </Notice>
+            <div className="grid gap-2">
+              <Field>
+                Paste host config
+                <Textarea
+                  value={content}
+                  onChange={(event) => onContentChange(event.target.value)}
+                  rows={5}
+                  className="font-mono text-xs"
+                  placeholder={"Host worker-1\n  HostName 203.0.113.10\n  User root\n  IdentityFile ~/.ssh/id_ed25519"}
+                />
+              </Field>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Button type="button" asChild>
+                  <label>
+                    <Upload className="h-4 w-4" />
+                    Choose host config file
+                    <input className="hidden" type="file" onChange={onParseFile} />
+                  </label>
+                </Button>
+                <Button type="button" variant="outline" onClick={onParseContent} disabled={value.state === "loading" || !content.trim()}>
+                  Parse pasted hosts
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            <Notice tone="warn">
+              This scans the gateway process user's <span className="font-mono">~/.ssh/config</span>. In Docker, that
+              means the container filesystem, not your workstation. Use this only if you mounted an SSH config into the
+              container or run the gateway natively on your machine.
+            </Notice>
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" onClick={onScan} disabled={value.state === "loading"}>
+                <RefreshCcw className="h-4 w-4" />
+                {value.state === "loading" ? "Scanning..." : "Scan container config"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!hasSSHKeys ? <Notice tone="warn">Create or import an SSH key before saving discovered servers.</Notice> : null}
+        {value.state === "error" ? <Notice tone="bad">{value.error}</Notice> : null}
+        {showCurrentResult && value.items.length === 0 ? (
+          <Notice>
+            No server entries were found. Choose your host config file, paste its content above, or add a server manually.
+            Blocks like <span className="font-mono">Host *</span> are only defaults, so they are not shown as server
+            entries.
+          </Notice>
+        ) : null}
+        {showCurrentResult && value.items.length > 0 ? (
+          <div className="max-h-[420px] overflow-y-auto rounded-md border border-stone-200">
+            <table className="w-full table-fixed border-collapse text-left text-sm">
+              <thead className="sticky top-0 bg-stone-50 text-xs uppercase text-stone-500">
+                <tr>
+                  <th className="w-[22%] px-3 py-2 font-semibold">Alias</th>
+                  <th className="w-[25%] px-3 py-2 font-semibold">Host</th>
+                  <th className="w-[18%] px-3 py-2 font-semibold">User</th>
+                  <th className="w-[23%] px-3 py-2 font-semibold">Identity</th>
+                  <th className="w-[12%] px-3 py-2 text-right font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-200">
+                {value.items.map((item, index) => (
+                  <tr key={`${item.alias}-${index}`} className="align-top">
+                    <td className="px-3 py-3 font-semibold">{item.alias}</td>
+                    <td className="px-3 py-3">
+                      <span className="block truncate font-mono text-xs">
+                        {item.host}:{item.port || 22}
+                      </span>
+                      {item.proxy_jump || item.proxy_command_configured ? (
+                        <span className="mt-1 block truncate text-xs text-stone-500">
+                          {item.proxy_jump ? `ProxyJump ${item.proxy_jump}` : "ProxyCommand configured"}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3">{item.username || <span className="text-stone-400">root default</span>}</td>
+                    <td className="px-3 py-3">
+                      {item.identity_file ? (
+                        <span className="block truncate font-mono text-xs text-stone-500">{item.identity_file}</span>
+                      ) : (
+                        <span className="text-stone-400">None</span>
+                      )}
+                      {item.warnings?.length ? <span className="mt-1 block text-xs text-amber-800">{item.warnings[0]}</span> : null}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <Button type="button" variant="outline" className="h-8 px-3" onClick={() => onUse(item)} disabled={!hasSSHKeys}>
+                        Use
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+    </Dialog>
   );
 }
 
@@ -710,9 +927,7 @@ function InstallCommandPanel({ command, title, description }) {
         </div>
         <CopyButton value={command} variant="outline" className="h-9 shrink-0 px-3" />
       </div>
-      <pre className="max-h-44 max-w-full overflow-x-auto overflow-y-auto rounded-md bg-stone-950 p-3 text-xs leading-5 text-stone-50">
-        <code>{command}</code>
-      </pre>
+      <TerminalBlock className="max-h-44 max-w-full whitespace-pre p-3">{command}</TerminalBlock>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { CopyButton } from "../ui/copy-button";
 import { Dialog } from "../ui/dialog";
 import { Textarea } from "../ui/form";
 import { Notice } from "../ui/notice";
+import { TerminalBlock } from "../ui/terminal-block";
 
 export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }) {
   return (
@@ -37,9 +38,7 @@ export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, on
               <Notice tone="warn" className="py-2 text-xs">
                 Review this as a shell command body. Command text, output, notes, and transcript may be persisted in the encrypted local database; redaction is best-effort.
               </Notice>
-              <pre className="min-h-0 overflow-auto whitespace-pre-wrap break-words rounded-md bg-stone-950 p-4 text-xs leading-5 text-stone-100">
-                {approval.command}
-              </pre>
+              <TerminalBlock>{approval.command}</TerminalBlock>
             </div>
           </div>
           <div className="grid gap-3 border-t border-stone-200 bg-white p-5 shadow-[0_-8px_18px_rgba(15,23,42,0.06)]">

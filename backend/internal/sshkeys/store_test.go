@@ -2,7 +2,13 @@ package sshkeys
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
 	"database/sql"
+	"encoding/pem"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -11,6 +17,7 @@ import (
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/vault"
+	"golang.org/x/crypto/ssh"
 )
 
 func openSSHKeyTestStore(t *testing.T) (*sql.DB, *Store) {
@@ -93,6 +100,126 @@ func TestSSHKeyStoreCreatesRSAKey(t *testing.T) {
 	}
 	if created.KeyType != TypeRSA || !strings.HasPrefix(created.PublicKey, "ssh-rsa ") {
 		t.Fatalf("unexpected rsa key: %#v", created)
+	}
+}
+
+func TestSSHKeyStoreImportsExistingPrivateKey(t *testing.T) {
+	ctx := context.Background()
+	_, store := openSSHKeyTestStore(t)
+
+	source, err := store.Create(ctx, CreateRequest{Name: "source", KeyType: TypeED25519})
+	if err != nil {
+		t.Fatalf("create source key: %v", err)
+	}
+	sourcePrivate, err := store.GetPrivateKey(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("get source private key: %v", err)
+	}
+
+	imported, err := store.Import(ctx, ImportRequest{Name: "imported", PrivateKey: sourcePrivate.PrivateKey})
+	if err != nil {
+		t.Fatalf("import private key: %v", err)
+	}
+	if imported.Name != "imported" || imported.KeyType != TypeED25519 {
+		t.Fatalf("unexpected imported key: %#v", imported)
+	}
+	if imported.Fingerprint != source.Fingerprint {
+		t.Fatalf("import should preserve fingerprint, got %q want %q", imported.Fingerprint, source.Fingerprint)
+	}
+	if strings.Contains(imported.PublicKey, "source") || !strings.Contains(imported.PublicKey, "aipermission-imported") {
+		t.Fatalf("import should rewrite public key comment: %s", imported.PublicKey)
+	}
+
+	private, err := store.GetPrivateKey(ctx, imported.ID)
+	if err != nil {
+		t.Fatalf("get imported private key: %v", err)
+	}
+	if _, err := ssh.ParsePrivateKey([]byte(private.PrivateKey)); err != nil {
+		t.Fatalf("stored imported private key should be parseable without passphrase: %v", err)
+	}
+}
+
+func TestSSHKeyStoreImportsECDSAPrivateKey(t *testing.T) {
+	ctx := context.Background()
+	_, store := openSSHKeyTestStore(t)
+
+	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ecdsa key: %v", err)
+	}
+	block, err := ssh.MarshalPrivateKey(private, "test-ecdsa")
+	if err != nil {
+		t.Fatalf("marshal ecdsa key: %v", err)
+	}
+	privateKey := string(pem.EncodeToMemory(block))
+
+	imported, err := store.Import(ctx, ImportRequest{Name: "ecdsa", PrivateKey: privateKey})
+	if err != nil {
+		t.Fatalf("import ecdsa private key: %v", err)
+	}
+	if imported.KeyType != TypeECDSA || !strings.HasPrefix(imported.PublicKey, "ecdsa-sha2-nistp256 ") {
+		t.Fatalf("unexpected imported ecdsa key: %#v", imported)
+	}
+}
+
+func TestSSHKeyStoreRejectsWeakRSAImport(t *testing.T) {
+	ctx := context.Background()
+	_, store := openSSHKeyTestStore(t)
+
+	private, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatalf("generate weak rsa key: %v", err)
+	}
+	block, err := ssh.MarshalPrivateKey(private, "weak-rsa")
+	if err != nil {
+		t.Fatalf("marshal weak rsa key: %v", err)
+	}
+
+	_, err = store.Import(ctx, ImportRequest{Name: "weak-rsa", PrivateKey: string(pem.EncodeToMemory(block))})
+	if err == nil || !strings.Contains(err.Error(), "at least 2048 bits") {
+		t.Fatalf("expected weak rsa import to fail, got %v", err)
+	}
+}
+
+func TestSSHKeyStoreImportsPassphraseProtectedPrivateKey(t *testing.T) {
+	ctx := context.Background()
+	_, store := openSSHKeyTestStore(t)
+
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ed25519 key: %v", err)
+	}
+	block, err := ssh.MarshalPrivateKeyWithPassphrase(private, "test-key", []byte("correct horse"))
+	if err != nil {
+		t.Fatalf("marshal encrypted key: %v", err)
+	}
+	encryptedPrivateKey := string(pem.EncodeToMemory(block))
+	sshPublic, err := ssh.NewPublicKey(public)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	expectedFingerprint := ssh.FingerprintSHA256(sshPublic)
+
+	if _, err := store.Import(ctx, ImportRequest{Name: "missing-passphrase", PrivateKey: encryptedPrivateKey}); err == nil {
+		t.Fatalf("expected encrypted key import without passphrase to fail")
+	}
+	imported, err := store.Import(ctx, ImportRequest{Name: "encrypted", PrivateKey: encryptedPrivateKey, Passphrase: "correct horse"})
+	if err != nil {
+		t.Fatalf("import encrypted private key: %v", err)
+	}
+	if imported.Fingerprint != expectedFingerprint {
+		t.Fatalf("unexpected fingerprint: got %q want %q", imported.Fingerprint, expectedFingerprint)
+	}
+
+	privateKey, err := store.GetPrivateKey(ctx, imported.ID)
+	if err != nil {
+		t.Fatalf("get private key: %v", err)
+	}
+	if strings.Contains(privateKey.PrivateKey, "ENCRYPTED") {
+		t.Fatalf("stored key should be normalized into the local encrypted vault, not kept passphrase-encrypted")
+	}
+	if _, err := ssh.ParsePrivateKey([]byte(privateKey.PrivateKey)); err != nil {
+		t.Fatalf("stored private key should be usable without original passphrase: %v", err)
 	}
 }
 

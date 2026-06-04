@@ -4,6 +4,7 @@ import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { CopyButton } from "../components/ui/copy-button";
 import { Notice } from "../components/ui/notice";
+import { TerminalBlock } from "../components/ui/terminal-block";
 
 const packageName = "@aipermission/mcp";
 const initCommand = `npx -y ${packageName} init \\
@@ -147,9 +148,7 @@ function CodeBlock({ value }) {
       <div className="flex justify-end">
         <CopyButton value={value} variant="outline" className="h-9 px-3" />
       </div>
-      <pre className="overflow-auto rounded-lg bg-stone-950 p-4 text-xs leading-6 text-stone-50">
-        <code>{value}</code>
-      </pre>
+      <TerminalBlock className="whitespace-pre">{value}</TerminalBlock>
     </div>
   );
 }

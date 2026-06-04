@@ -139,8 +139,11 @@ The UI asks the user to verify and approve the fingerprint. `POST /api/ssh-host-
 ```txt
 GET    /api/ssh-keys
 POST   /api/ssh-keys
+POST   /api/ssh-keys/import
 GET    /api/ssh-keys/{id}
 DELETE /api/ssh-keys/{id}
+GET    /api/ssh-config/discover
+POST   /api/ssh-config/parse
 ```
 
 Create shape:
@@ -159,7 +162,46 @@ ed25519
 rsa
 ```
 
+Import shape:
+
+```json
+{
+  "name": "existing-laptop-key",
+  "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
+  "passphrase": "optional import-time passphrase"
+}
+```
+
+Imported keys support common OpenSSH private key formats, including ed25519,
+rsa, and ecdsa keys that the backend can parse. Imported RSA keys must be at
+least 2048 bits. If the source key is
+passphrase-protected, the passphrase is used only to parse the key during
+import. AIPermission then stores a normalized private key inside the encrypted
+local vault. The original passphrase is not stored.
+
 Response may include public key, fingerprint, and install command. It must not include the private key.
+
+`GET /api/ssh-config/discover` reads SSH host metadata from the gateway process user's
+`~/.ssh/config` when that file is available. Docker installs may not expose the
+host user's SSH config unless the user mounted it deliberately.
+
+`POST /api/ssh-config/parse` parses explicit SSH host config content selected
+from a local file or pasted by the user:
+
+```json
+{
+  "content": "Host worker\n  HostName 10.0.0.42\n  User ubuntu\n"
+}
+```
+
+Host import returns concrete host entries with alias, host, port, username,
+identity file path, proxy jump metadata, whether a `ProxyCommand` is configured,
+and warnings where OpenSSH tokens are present. The raw `ProxyCommand` value is
+not returned. It does not import private key material silently. Wildcard-only
+blocks such as `Host *` are not returned as servers, but matching fields are
+applied in OpenSSH-style first-value-wins order. Docker installs should use
+explicit file parsing or pasted config content unless the host SSH config was
+deliberately mounted into the gateway container.
 
 ## Tokens
 

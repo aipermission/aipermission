@@ -168,7 +168,7 @@ Credentials are stored only inside the local gateway.
 Examples:
 
 - gateway-generated SSH private key
-- SSH private key passphrase, if used
+- explicitly imported SSH private key
 - SSH username
 - future PostgreSQL connection data
 - future database passwords
@@ -182,6 +182,7 @@ Rules:
 - credentials are never shown to the AI assistant
 - credentials are never embedded in prompts
 - credentials are used only by the gateway while executing approved or permitted actions
+- private key passphrases are used only during import and are not stored
 
 aipermission should not ask the user for a VPS SSH password. The preferred model is Dokploy-style:
 

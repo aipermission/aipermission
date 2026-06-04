@@ -26,7 +26,8 @@ The backend is not a LAN service. Docker Compose publishes the UI on `127.0.0.1`
 - `internal/console`: persistent SSH console sessions, PTY websocket attach, AI command execution inside a shell session, transcript display cleanup, and transcript redaction before persistence. Console persistence uses a bounded session snapshot plus append-only transcript chunks so long-running sessions do not rewrite one large transcript row on every flush.
 - `internal/db`: SQLCipher open, schema migrations, database catalog, encrypted database lifecycle.
 - `internal/tokens`: API token create/hash/revoke/permission storage.
-- `internal/sshkeys`: gateway-owned SSH key generation and vault-backed private key storage.
+- `internal/sshkeys`: gateway-owned SSH key generation, explicit private key import, and vault-backed private key storage.
+- `internal/sshconfig`: conservative SSH config host discovery/parsing for server form prefill.
 - `internal/servers`: SSH target records.
 - `internal/execution`: SSH command execution and host key verification.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.

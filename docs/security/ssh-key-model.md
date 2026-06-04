@@ -2,21 +2,29 @@
 
 The preferred SSH model is Dokploy-style key bootstrap.
 
-aipermission does not collect VPS SSH passwords. The gateway generates SSH keypairs, stores private keys in the local encrypted vault, and shows the public key to the user.
+aipermission does not collect VPS SSH passwords. The gateway can generate SSH
+keypairs or explicitly import an existing private key. In both cases, private
+keys are stored in the local encrypted vault and the public key/install command
+is shown to the user.
 
 ## Key Types
 
-Supported key types:
+Generated key types:
 
 - `ed25519`
 - `rsa`
 
 The recommended default is `ed25519`.
 
+Imported keys support common OpenSSH private key formats that the backend can
+parse, including ed25519, rsa, and ecdsa keys. Imported RSA keys must be at
+least 2048 bits. Passphrase-protected imports use the passphrase only during
+import; the passphrase is not saved.
+
 ## User Flow
 
 1. The user opens the SSH Keys page.
-2. The user creates an `ed25519` or `rsa` key.
+2. The user creates an `ed25519` or `rsa` key, or imports an existing private key.
 3. The gateway stores the private key in the encrypted vault.
 4. The gateway shows the public key and install command.
 5. The user runs the install command on the VPS from their own terminal.
@@ -24,6 +32,14 @@ The recommended default is `ed25519`.
 7. The gateway opens SSH connections with that private key.
 8. On the first connection, the gateway returns the remote host key fingerprint for explicit approval.
 9. After approval, the remote host key is stored in the gateway `known_hosts` file.
+
+The Servers page can also import SSH host entries to prefill server forms.
+This imports host metadata only; it does not silently read or import private key
+material referenced by `IdentityFile`. Wildcard-only blocks such as `Host *` are
+used only as defaults for concrete hosts and are not shown as standalone server
+entries. `ProxyCommand` is reported as configured, but the raw command is not
+returned. In Docker, gateway config scan reads the container user's config;
+choose a config file or paste config content to parse a local workstation config.
 
 ## Install Command
 

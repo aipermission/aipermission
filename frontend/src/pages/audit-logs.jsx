@@ -9,6 +9,7 @@ import { Dialog } from "../components/ui/dialog";
 import { Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { PaginationBar } from "../components/ui/pagination-bar";
+import { TerminalBlock } from "../components/ui/terminal-block";
 
 const actorOptions = [
   { value: "", label: "All actors" },
@@ -256,9 +257,7 @@ function AuditDialog({ item, onClose }) {
             <span className="text-xs font-semibold uppercase text-stone-500">Payload</span>
             <CopyButton value={payload} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" />
           </div>
-          <pre className="min-h-0 overflow-auto whitespace-pre-wrap break-words rounded-md bg-stone-950 p-4 text-xs leading-5 text-stone-100">
-            {payload}
-          </pre>
+          <TerminalBlock>{payload}</TerminalBlock>
         </div>
       </div>
     </Dialog>
