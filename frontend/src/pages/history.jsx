@@ -330,8 +330,8 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
   const suggestions = labels
     .filter((label) => !attachedNames.has(label.name.toLowerCase()))
     .filter((label) => !labelQuery || label.name.toLowerCase().includes(labelQuery))
-    .slice(0, 8);
-  const showSuggestions = suggestionsOpen && labelQuery && suggestions.length > 0;
+    .slice(0, 10);
+  const showSuggestions = suggestionsOpen && suggestions.length > 0;
 
   function focusLabelInput() {
     window.setTimeout(() => labelInputRef.current?.focus(), 0);
@@ -360,13 +360,13 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
   }
 
   function handleLabelKeyDown(event) {
-    if (event.key === "ArrowDown" && labelQuery && suggestions.length > 0) {
+    if (event.key === "ArrowDown" && suggestions.length > 0) {
       event.preventDefault();
       setSuggestionsOpen(true);
       setActiveSuggestion((current) => Math.min(current + 1, suggestions.length - 1));
       return;
     }
-    if (event.key === "ArrowUp" && labelQuery && suggestions.length > 0) {
+    if (event.key === "ArrowUp" && suggestions.length > 0) {
       event.preventDefault();
       setSuggestionsOpen(true);
       setActiveSuggestion((current) => Math.max(current - 1, 0));
@@ -459,7 +459,10 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
                     setSuggestionsOpen(true);
                     setActiveSuggestion(0);
                   }}
-                  onFocus={() => setSuggestionsOpen(Boolean(labelName.trim()))}
+                  onFocus={() => {
+                    setSuggestionsOpen(true);
+                    setActiveSuggestion(0);
+                  }}
                   onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
                   onKeyDown={handleLabelKeyDown}
                   placeholder={attachedLabels.length === 0 ? "Type a label and press Enter" : "Add another label"}
