@@ -83,6 +83,13 @@ AIPermission against real VPS maintenance tasks.
 - On-demand Docker quick checks from the Servers page.
 - Docker container details and tail-configurable Docker logs dialogs.
 
+`0.1.4` ships:
+
+- Source-aware History groundwork for future manual Console History.
+- History source filters and badges for MCP and future manual command records.
+- MCP request APIs explicitly scoped to MCP-origin command requests.
+- No shell hooks or manual terminal parsing yet; normal Console terminal behavior is unchanged.
+
 ## Early RC Follow-Ups
 
 These are good candidates for small follow-up releases after the first public
@@ -93,9 +100,10 @@ tag:
 - [ ] Add command policy/risk scoring primitives without turning the product
   into a DevOps platform.
 - [ ] Add optional deny/warn rules for common high-risk command patterns.
-- [ ] Add structured manual command event parsing for History, including busy
-  Console status dots for user-typed commands. Do this with a deliberate
-  terminal parsing model instead of a quick frontend-only guess.
+- [ ] Add structured manual command event parsing for History on top of the
+  source-aware History groundwork. Do this with a deliberate terminal parsing
+  model instead of a quick frontend-only guess, and preserve normal terminal
+  behavior as the first invariant.
 - [ ] Add optional safety backup before import.
 - [ ] Add more Playwright browser tests for Settings, import, token permission,
   and approval workflows.

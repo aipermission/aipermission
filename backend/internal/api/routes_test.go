@@ -281,12 +281,23 @@ func TestApprovalAndMCPRequestRoutes(t *testing.T) {
 	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/requests/"+strconv.FormatInt(requestID, 10), token.TokenValue, nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), pendingApprovalAssistantHint) {
 		t.Fatalf("mcp get request failed: %d %s", response.Code, response.Body.String())
 	}
+	manualID := insertManualRouteCommandRequest(t, fixture.db, server.ID, "nano /etc/hosts ...", "interactive_editor")
+	historyManualResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?paginated=true&source=manual", "", nil)
+	if historyManualResponse.Code != http.StatusOK || !strings.Contains(historyManualResponse.Body.String(), `"source":"manual"`) || !strings.Contains(historyManualResponse.Body.String(), `"tracking_reason":"interactive_editor"`) {
+		t.Fatalf("manual history source filter failed: %d %s", historyManualResponse.Code, historyManualResponse.Body.String())
+	}
+	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/requests", token.TokenValue, nil); response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"source":"manual"`) || strings.Contains(response.Body.String(), "nano /etc/hosts") {
+		t.Fatalf("mcp list requests should not expose manual history rows: %d %s", response.Code, response.Body.String())
+	}
+	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/requests/"+strconv.FormatInt(manualID, 10), token.TokenValue, nil); response.Code != http.StatusNotFound {
+		t.Fatalf("mcp get request should not expose manual history row, got %d %s", response.Code, response.Body.String())
+	}
 
 	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(requestID, 10)+"/decline", "", declineApprovalRequest{UserNote: "use another path"})
 	if declineResponse.Code != http.StatusOK || !strings.Contains(declineResponse.Body.String(), `"declined"`) {
 		t.Fatalf("decline approval failed: %d %s", declineResponse.Code, declineResponse.Body.String())
 	}
-	record, err := fixture.server.getCommandRequest(ctx, runtime, requestID, token.ID)
+	record, err := fixture.server.getCommandRequest(ctx, runtime, requestID, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get declined command request: %v", err)
 	}
@@ -605,6 +616,28 @@ func insertRouteCommandRequest(t *testing.T, database *sql.DB, tokenID int64, se
 	id, err := result.LastInsertId()
 	if err != nil {
 		t.Fatalf("command request id: %v", err)
+	}
+	return id
+}
+
+func insertManualRouteCommandRequest(t *testing.T, database *sql.DB, serverID int64, command string, reason string) int64 {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := database.Exec(`
+		INSERT INTO command_requests (server_id, source, command, reason, status, tracking_reason, stdout, stderr, created_at, completed_at)
+		VALUES (?, 'manual', ?, 'manual command not tracked', 'untracked', ?, '', '', ?, ?)`,
+		serverID,
+		command,
+		reason,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert manual command request: %v", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("manual command request id: %v", err)
 	}
 	return id
 }

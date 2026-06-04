@@ -94,7 +94,7 @@ func TestCommandRequestKeepsEncryptedRawCommandForExecution(t *testing.T) {
 		t.Fatalf("insert command request: %v", err)
 	}
 
-	record, err := fixture.server.getCommandRequest(ctx, runtime, id, token.ID)
+	record, err := fixture.server.getCommandRequest(ctx, runtime, id, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestCommandRequestErrorsAreRedactedBeforePersistence(t *testing.T) {
 	if err := fixture.server.finishCommandRequest(ctx, runtime, id, "error", 0, "", "", 1, "ssh failed password=super-secret"); err != nil {
 		t.Fatalf("finish command request: %v", err)
 	}
-	record, err := fixture.server.getCommandRequest(ctx, runtime, id, token.ID)
+	record, err := fixture.server.getCommandRequest(ctx, runtime, id, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}

@@ -7,6 +7,22 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-04
+
+### Added
+
+- Source-aware History groundwork for future manual Console History.
+- History source filters and badges for MCP and future manual command records.
+- `source`, `tracking_reason`, and `output_truncated` command request fields for future not-tracked manual command records.
+
+### Security
+
+- MCP request list/detail APIs explicitly remain scoped to MCP-origin command requests so future manual History rows cannot leak through MCP tools.
+
+### Notes
+
+- This release does not install shell hooks, parse manual terminal input, or change normal Console terminal behavior.
+
 ## [0.1.3] - 2026-06-04
 
 ### Added

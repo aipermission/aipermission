@@ -353,7 +353,7 @@ func TestMCPExecApprovalPendingCreatesAuditableRequestAndConsumesUserNote(t *tes
 		t.Fatalf("expected user note to be consumed, got %#v", body.UserNote)
 	}
 
-	record, err := fixture.server.getCommandRequest(ctx, runtime, body.RequestID, token.ID)
+	record, err := fixture.server.getCommandRequest(ctx, runtime, body.RequestID, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestMCPExecDoesNotAttachNewRequestToExistingActiveCommand(t *testing.T) {
 	if !strings.Contains(body.Error, "another command is already running") {
 		t.Fatalf("expected active command guidance, got %q", body.Error)
 	}
-	record, err := fixture.server.getCommandRequest(ctx, runtime, body.RequestID, token.ID)
+	record, err := fixture.server.getCommandRequest(ctx, runtime, body.RequestID, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}

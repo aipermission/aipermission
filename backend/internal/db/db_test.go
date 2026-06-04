@@ -48,6 +48,15 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !columnExists(t, database, "api_tokens", "expires_at") {
 		t.Fatalf("api_tokens.expires_at column was not created")
 	}
+	if !columnExists(t, database, "command_requests", "source") {
+		t.Fatalf("command_requests.source column was not created")
+	}
+	if !columnExists(t, database, "command_requests", "tracking_reason") {
+		t.Fatalf("command_requests.tracking_reason column was not created")
+	}
+	if !columnExists(t, database, "command_requests", "output_truncated") {
+		t.Fatalf("command_requests.output_truncated column was not created")
+	}
 	var foreignKeys int
 	if err := database.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
 		t.Fatalf("query foreign keys pragma: %v", err)

@@ -233,7 +233,7 @@ func (s mcpHandlers) mcpListRequests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	items, err := s.listCommandRequests(r.Context(), auth.runtime, commandRequestFilter{TokenID: auth.TokenID, Status: status})
+	items, err := s.listCommandRequests(r.Context(), auth.runtime, commandRequestFilter{TokenID: auth.TokenID, Source: commandRequestSourceMCP, Status: status})
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -250,7 +250,7 @@ func (s mcpHandlers) mcpGetRequest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := s.getCommandRequest(r.Context(), auth.runtime, id, auth.TokenID)
+	item, err := s.getCommandRequest(r.Context(), auth.runtime, id, auth.TokenID, commandRequestSourceMCP)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "request not found")
 		return

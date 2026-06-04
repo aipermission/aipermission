@@ -1,6 +1,26 @@
-export const appVersion = "0.1.3";
+export const appVersion = "0.1.4";
 
 export const changelogEntries = [
+  {
+    version: "0.1.4",
+    label: "Manual history groundwork",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Source-aware History groundwork for future manual Console History.",
+          "History source filters and badges for MCP and future manual command records.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "MCP request APIs now explicitly stay scoped to MCP-origin command requests.",
+          "Manual History groundwork does not install shell hooks or change terminal behavior.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.3",
     label: "SSH key and host import",

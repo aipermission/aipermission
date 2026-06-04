@@ -417,13 +417,15 @@ POST /api/history-labels
 DELETE /api/history-labels/{id}
 ```
 
-`GET /api/approvals` returns recent command requests. Optional filters include `status`, `server_id`, and `label_id`.
+`GET /api/approvals` returns recent command requests. Optional filters include `status`, `source`, `server_id`, and `label_id`. `source` is `mcp` for MCP/approval command requests and `manual` for future manual Console History records.
 
 The History page uses paginated search. `q` searches command text, reason, status, captured output, error, server name, and token name. Command text and output fields use SQLCipher-backed FTS4 indexes; server and token names remain regular filtered fields:
 
 ```txt
-GET /api/approvals?paginated=true&limit=50&offset=0&q=docker&status=completed&server_id=3&label_id=4
+GET /api/approvals?paginated=true&limit=50&offset=0&q=docker&source=mcp&status=completed&server_id=3&label_id=4
 ```
+
+History response items include `source`, `tracking_reason`, and `output_truncated`. Manual Console History is groundwork only in this release; the Console does not yet install shell hooks or parse manual terminal input.
 
 The paginated response is an envelope:
 

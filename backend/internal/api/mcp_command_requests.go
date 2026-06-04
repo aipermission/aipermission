@@ -20,10 +20,11 @@ func (s *Server) insertCommandRequest(ctx context.Context, runtime *databaseRunt
 	storedCommand := s.redactForPersistence(ctx, runtime, command)
 	storedReason := s.redactForPersistence(ctx, runtime, reason)
 	result, err := runtime.database.ExecContext(ctx, `
-		INSERT INTO command_requests (token_id, server_id, command, encrypted_command, reason, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO command_requests (token_id, server_id, source, command, encrypted_command, reason, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		tokenID,
 		serverID,
+		commandRequestSourceMCP,
 		storedCommand,
 		encryptedCommand,
 		storedReason,

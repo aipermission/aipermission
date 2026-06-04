@@ -14,10 +14,14 @@ import (
 const (
 	pendingApprovalAssistantHint = "Wait 3 seconds, then call get_request. Continue polling get_request until terminal status."
 	runningAssistantHint         = "Wait 3 seconds, then call get_request again. Use read_console to inspect live output before sending another command to this server."
+
+	commandRequestSourceMCP    = "mcp"
+	commandRequestSourceManual = "manual"
 )
 
 type commandRequestFilter struct {
 	TokenID  int64
+	Source   string
 	Status   string
 	ServerID int64
 	LabelID  int64
@@ -41,6 +45,11 @@ func (s approvalHandlers) listApprovals(w http.ResponseWriter, r *http.Request) 
 	}
 	filter := commandRequestFilter{
 		Status: strings.TrimSpace(r.URL.Query().Get("status")),
+		Source: strings.TrimSpace(r.URL.Query().Get("source")),
+	}
+	if filter.Source != "" && filter.Source != commandRequestSourceMCP && filter.Source != commandRequestSourceManual {
+		writeError(w, http.StatusBadRequest, "invalid source")
+		return
 	}
 	if rawServerID := strings.TrimSpace(r.URL.Query().Get("server_id")); rawServerID != "" {
 		id, ok := parseInt64Query(w, rawServerID, "server_id")
@@ -92,7 +101,7 @@ func (s approvalHandlers) getApproval(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := s.getCommandRequest(r.Context(), runtime, id, 0)
+	item, err := s.getCommandRequest(r.Context(), runtime, id, 0, "")
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "command request not found")
 		return
@@ -124,7 +133,7 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := s.getCommandRequest(r.Context(), runtime, id, 0)
+	item, err := s.getCommandRequest(r.Context(), runtime, id, 0, "")
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "approval request not found")
 		return
@@ -197,7 +206,7 @@ func (s approvalHandlers) declineApproval(w http.ResponseWriter, r *http.Request
 	}
 	request.UserNote = strings.TrimSpace(request.UserNote)
 
-	item, err := s.getCommandRequest(r.Context(), runtime, id, 0)
+	item, err := s.getCommandRequest(r.Context(), runtime, id, 0, "")
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "approval request not found")
 		return
@@ -292,20 +301,20 @@ func requireAffected(result sql.Result) error {
 }
 
 func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRuntime, filter commandRequestFilter) ([]commandRequestRecord, error) {
-	where := []string{"(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.server_id = ?)", "(? = '' OR cr.status = ?)"}
-	args := []any{filter.TokenID, filter.TokenID, filter.ServerID, filter.ServerID, filter.Status, filter.Status}
+	where := []string{"(? = '' OR cr.source = ?)", "(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.server_id = ?)", "(? = '' OR cr.status = ?)"}
+	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.ServerID, filter.ServerID, filter.Status, filter.Status}
 	if filter.LabelID != 0 {
 		where = append(where, `cr.id IN (SELECT command_request_id FROM command_request_labels WHERE label_id = ?)`)
 		args = append(args, filter.LabelID)
 	}
 	query := `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.command, cr.reason, cr.status,
-		       cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.source, cr.command, cr.reason, cr.status,
+		       cr.tracking_reason, cr.output_truncated, cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
 		JOIN servers srv ON srv.id = cr.server_id
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY cr.created_at DESC
+		ORDER BY cr.created_at DESC, cr.id DESC
 		LIMIT 100`
 	rows, err := runtime.database.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -331,8 +340,8 @@ func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRunti
 }
 
 func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *databaseRuntime, filter commandRequestFilter) ([]commandRequestRecord, int, error) {
-	where := []string{"(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.server_id = ?)", "(? = '' OR cr.status = ?)"}
-	args := []any{filter.TokenID, filter.TokenID, filter.ServerID, filter.ServerID, filter.Status, filter.Status}
+	where := []string{"(? = '' OR cr.source = ?)", "(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.server_id = ?)", "(? = '' OR cr.status = ?)"}
+	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.ServerID, filter.ServerID, filter.Status, filter.Status}
 	if filter.LabelID != 0 {
 		where = append(where, `cr.id IN (SELECT command_request_id FROM command_request_labels WHERE label_id = ?)`)
 		args = append(args, filter.LabelID)
@@ -343,8 +352,8 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 			where = append(where, `(cr.id IN (SELECT rowid FROM command_requests_fts WHERE command_requests_fts MATCH ?) OR srv.name LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
 			args = append(args, ftsQuery, like, like)
 		} else {
-			where = append(where, `(cr.command LIKE ? OR cr.reason LIKE ? OR cr.status LIKE ? OR cr.stdout LIKE ? OR cr.stderr LIKE ? OR cr.error LIKE ? OR srv.name LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
-			args = append(args, like, like, like, like, like, like, like, like)
+			where = append(where, `(cr.command LIKE ? OR cr.reason LIKE ? OR cr.status LIKE ? OR cr.source LIKE ? OR cr.tracking_reason LIKE ? OR cr.stdout LIKE ? OR cr.stderr LIKE ? OR cr.error LIKE ? OR srv.name LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
+			args = append(args, like, like, like, like, like, like, like, like, like, like)
 		}
 	}
 	whereSQL := strings.Join(where, " AND ")
@@ -362,8 +371,8 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 
 	queryArgs := append(append([]any{}, args...), filter.Limit, filter.Offset)
 	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.command, cr.reason, cr.status,
-		       '' AS stdout, '' AS stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.source, cr.command, cr.reason, cr.status,
+		       cr.tracking_reason, cr.output_truncated, '' AS stdout, '' AS stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
 		JOIN servers srv ON srv.id = cr.server_id
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
@@ -394,15 +403,17 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 	return items, total, nil
 }
 
-func (s *Server) getCommandRequest(ctx context.Context, runtime *databaseRuntime, id int64, tokenID int64) (commandRequestRecord, error) {
+func (s *Server) getCommandRequest(ctx context.Context, runtime *databaseRuntime, id int64, tokenID int64, source string) (commandRequestRecord, error) {
 	row := runtime.database.QueryRowContext(ctx, `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.command, cr.reason, cr.status,
-		       cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.source, cr.command, cr.reason, cr.status,
+		       cr.tracking_reason, cr.output_truncated, cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
 		JOIN servers srv ON srv.id = cr.server_id
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
-		WHERE cr.id = ? AND (? = 0 OR cr.token_id = ?)`,
+		WHERE cr.id = ? AND (? = '' OR cr.source = ?) AND (? = 0 OR cr.token_id = ?)`,
 		id,
+		source,
+		source,
 		tokenID,
 		tokenID,
 	)
@@ -427,15 +438,19 @@ func scanCommandRequest(scanner interface {
 	var sessionID sql.NullInt64
 	var userNote sql.NullString
 	var completedAt sql.NullString
+	var outputTruncated int
 	err := scanner.Scan(
 		&item.ID,
 		&tokenID,
 		&item.TokenName,
 		&item.ServerID,
 		&item.ServerName,
+		&item.Source,
 		&item.Command,
 		&item.Reason,
 		&item.Status,
+		&item.TrackingReason,
+		&outputTruncated,
 		&item.Stdout,
 		&item.Stderr,
 		&exitCode,
@@ -448,6 +463,10 @@ func scanCommandRequest(scanner interface {
 	if err != nil {
 		return commandRequestRecord{}, err
 	}
+	if item.Source == "" {
+		item.Source = commandRequestSourceMCP
+	}
+	item.OutputTruncated = outputTruncated != 0
 	item.Stdout = console.PlainOutput(item.Stdout)
 	item.Stderr = console.PlainOutput(item.Stderr)
 	if tokenID.Valid {

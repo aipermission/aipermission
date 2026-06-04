@@ -67,9 +67,12 @@ type commandRequestRecord struct {
 	TokenName         string               `json:"token_name,omitempty"`
 	ServerID          int64                `json:"server_id"`
 	ServerName        string               `json:"server_name"`
+	Source            string               `json:"source"`
 	Command           string               `json:"command"`
 	Reason            string               `json:"reason"`
 	Status            string               `json:"status"`
+	TrackingReason    string               `json:"tracking_reason,omitempty"`
+	OutputTruncated   bool                 `json:"output_truncated,omitempty"`
 	Stdout            string               `json:"stdout,omitempty"`
 	Stderr            string               `json:"stderr,omitempty"`
 	ExitCode          *int                 `json:"exit_code,omitempty"`

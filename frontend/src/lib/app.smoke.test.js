@@ -61,8 +61,8 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.1\.3"/);
-  assert.match(releaseSource, /SSH key and host import/);
+  assert.match(releaseSource, /appVersion = "0\.1\.4"/);
+  assert.match(releaseSource, /Manual history groundwork/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
@@ -119,6 +119,9 @@ test("Settings database delete requires a confirmation dialog and current passwo
 test("History page exposes label filtering and item label endpoints", () => {
   assert.match(historySource, /\/api\/history-labels/);
   assert.match(historySource, /label_id/);
+  assert.match(historySource, /source/);
+  assert.match(historySource, /SourceBadge/);
+  assert.match(historySource, /Not tracked/);
   assert.match(historySource, /\/api\/approvals\/\$\{id\}\/labels/);
   assert.doesNotMatch(historySource, /setLabelDialogOpen/);
 });

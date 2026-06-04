@@ -19,11 +19,18 @@ const statusOptions = [
   { value: "failed", label: "Failed" },
   { value: "declined", label: "Declined" },
   { value: "error", label: "Error" },
+  { value: "untracked", label: "Not tracked" },
+];
+
+const sourceOptions = [
+  { value: "", label: "All sources" },
+  { value: "mcp", label: "MCP" },
+  { value: "manual", label: "Manual" },
 ];
 
 export function HistoryPage() {
   const { servers, approvals, loadApprovals } = useGateway();
-  const [filters, setFilters] = useState({ query: "", status: "", serverID: "", labelID: "" });
+  const [filters, setFilters] = useState({ query: "", status: "", source: "", serverID: "", labelID: "" });
   const [state, setState] = useState({
     state: "idle",
     data: [],
@@ -55,7 +62,7 @@ export function HistoryPage() {
       void loadHistory(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.status, filters.serverID, filters.labelID]);
+  }, [filters.query, filters.status, filters.source, filters.serverID, filters.labelID]);
 
   async function loadLabels() {
     setLabels((current) => ({ ...current, state: "loading", error: null }));
@@ -76,6 +83,7 @@ export function HistoryPage() {
     });
     if (filters.query.trim()) params.set("q", filters.query.trim());
     if (filters.status) params.set("status", filters.status);
+    if (filters.source) params.set("source", filters.source);
     if (filters.serverID) params.set("server_id", filters.serverID);
     if (filters.labelID) params.set("label_id", filters.labelID);
     try {
@@ -154,7 +162,7 @@ export function HistoryPage() {
         <HistoryStat label="Failed/error" value={stats.failed} tone="bad" />
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_190px_190px_190px]">
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_150px_180px_180px_180px]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <Input
@@ -164,6 +172,16 @@ export function HistoryPage() {
             className="pl-9"
           />
         </div>
+        <Select
+          value={filters.source}
+          onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}
+        >
+          {sourceOptions.map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
         <Select
           value={filters.serverID}
           onChange={(event) => setFilters((current) => ({ ...current, serverID: event.target.value }))}
@@ -208,7 +226,7 @@ export function HistoryPage() {
             <tr>
               <th className="w-[12%] px-4 py-3 font-semibold">Status</th>
               <th className="w-[16%] px-4 py-3 font-semibold">Server</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">Token</th>
+              <th className="w-[18%] px-4 py-3 font-semibold">Source</th>
               <th className="w-[26%] px-4 py-3 font-semibold">Command</th>
               <th className="w-[8%] px-4 py-3 font-semibold">Labels</th>
               <th className="w-[12%] px-4 py-3 font-semibold">Exit</th>
@@ -241,7 +259,9 @@ export function HistoryPage() {
                       <StatusBadge status={item.status} />
                     </td>
                     <td className="truncate px-4 py-3 font-medium text-stone-900">{item.server_name}</td>
-                    <td className="truncate px-4 py-3 text-stone-600">{item.token_name || "manual"}</td>
+                    <td className="px-4 py-3">
+                      <SourceCell item={item} />
+                    </td>
                     <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{oneLine(item.command)}</td>
                     <td className="px-4 py-3">
                       <LabelPreview labels={item.labels || []} />
@@ -398,10 +418,17 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
             <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
               <StatusBadge status={item.status} />
               {item.token_name ? <Badge>{item.token_name}</Badge> : null}
+              <SourceBadge source={item.source} />
               {item.session_id ? <Badge>session {item.session_id}</Badge> : null}
               {item.exit_code !== undefined && item.exit_code !== null ? <Badge>exit {item.exit_code}</Badge> : null}
+              {item.output_truncated ? <Badge tone="warn">output truncated</Badge> : null}
             </div>
           </div>
+          {item.status === "untracked" ? (
+            <p className="truncate rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              <span className="font-semibold">Not tracked:</span> {trackingReasonLabel(item.tracking_reason)}
+            </p>
+          ) : null}
           {item.user_note ? (
             <p className="truncate rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
               <span className="font-semibold">User note:</span> {item.user_note}
@@ -496,6 +523,24 @@ function LabelPreview({ labels }) {
   );
 }
 
+function SourceCell({ item }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <SourceBadge source={item.source} />
+      {item.source === "manual" ? (
+        <span className="truncate text-xs text-stone-500">local console</span>
+      ) : (
+        <span className="truncate text-xs text-stone-600">{item.token_name || "deleted token"}</span>
+      )}
+    </div>
+  );
+}
+
+function SourceBadge({ source }) {
+  const value = source || "mcp";
+  return <Badge tone={value === "manual" ? "warn" : "neutral"}>{value === "manual" ? "manual" : "mcp"}</Badge>;
+}
+
 function SectionHeader({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -511,6 +556,7 @@ function StatusBadge({ status }) {
     running: "neutral",
     pending_approval: "warn",
     declined: "warn",
+    untracked: "warn",
     failed: "bad",
     error: "bad",
   }[status] || "neutral";
@@ -527,7 +573,26 @@ function labelStyle(label) {
 
 function statusLabel(status) {
   if (status === "pending_approval") return "pending";
+  if (status === "untracked") return "not tracked";
   return status || "unknown";
+}
+
+function trackingReasonLabel(reason) {
+  const labels = {
+    interactive_editor: "interactive editor command",
+    interactive_repl: "interactive REPL command",
+    interactive_tui: "interactive terminal program",
+    nested_shell: "nested shell boundary",
+    multiline_or_heredoc: "multiline command preview only",
+    compound_command: "compound command shape",
+    unsupported_shell: "unsupported shell",
+    untrusted_command_text: "command text was not trusted",
+    marker_desync: "capture marker desynchronized",
+    active_exec_paused: "capture paused while an MCP command was running",
+    output_buffer_limit: "output exceeded the capture limit",
+    privacy_history_suppressed: "history privacy settings suppressed capture",
+  };
+  return labels[reason] || reason || "AIPermission did not capture output or lifecycle for this command.";
 }
 
 function oneLine(value) {

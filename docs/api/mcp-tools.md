@@ -231,6 +231,9 @@ declined
 error
 ```
 
+MCP request tools return only MCP-origin command requests for the calling token.
+They do not expose future manual Console History rows.
+
 ## send_message
 
 Allows the AI to write a short note to the web Console Messages panel. It is a coordination channel, not a place for credentials or large shell output.

@@ -241,6 +241,15 @@ var ecdsaSSHKeyStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_ssh_keys_name ON ssh_keys(name);`,
 }
 
+var manualHistoryGroundworkStatements = []string{
+	`ALTER TABLE command_requests ADD COLUMN source TEXT NOT NULL DEFAULT 'mcp';`,
+	`ALTER TABLE command_requests ADD COLUMN tracking_reason TEXT NOT NULL DEFAULT '';`,
+	`ALTER TABLE command_requests ADD COLUMN output_truncated INTEGER NOT NULL DEFAULT 0;`,
+	`CREATE INDEX IF NOT EXISTS idx_command_requests_source_created ON command_requests(source, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_command_requests_server_source_created ON command_requests(server_id, source, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_command_requests_token_source_status_created ON command_requests(token_id, source, status, created_at);`,
+}
+
 var migrations = []migration{
 	{
 		version:     1,
@@ -256,6 +265,11 @@ var migrations = []migration{
 		version:     3,
 		description: "allow imported ecdsa ssh keys",
 		statements:  ecdsaSSHKeyStatements,
+	},
+	{
+		version:     4,
+		description: "manual history groundwork",
+		statements:  manualHistoryGroundworkStatements,
 	},
 }
 
