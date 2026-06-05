@@ -121,10 +121,15 @@ tag:
   and cursor-edited commands. Do this with a deliberate frontend submitted-line
   signal or shell-assisted marker model instead of backend escape-sequence
   guessing, and preserve normal terminal behavior as the first invariant.
+- [ ] Add bulk SSH file upload/download after the single-file UI transfer flow
+  has been dogfooded. Treat this as a queued transfer feature with per-file
+  status, cancel behavior, overwrite handling, and clear history records.
 - [ ] Add directory transfer, recursive copy, remote glob handling, and
-  resumable transfer design after the single-file MVP has been dogfooded.
+  resumable transfer design after bulk transfer semantics are clear.
 - [ ] Evaluate MCP file-transfer tools only after UI transfer safety and audit
-  semantics are proven.
+  semantics are proven. MCP transfer support must define local path scope,
+  max-size limits, overwrite behavior, and prompt/approval defaults before it
+  can expose local file read/write capability to an AI client.
 - [ ] Add optional safety backup before import.
 - [ ] Add more Playwright browser tests for Settings, import, token permission,
   and approval workflows.
