@@ -37,23 +37,6 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 		return Result{}, fmt.Errorf("command is required")
 	}
 
-	signer, err := ssh.ParsePrivateKey([]byte(target.PrivateKey))
-	if err != nil {
-		return Result{}, fmt.Errorf("parse private key: %w", err)
-	}
-	hostKeyCallback, err := HostKeyCallback(target.KnownHostsPath)
-	if err != nil {
-		return Result{}, err
-	}
-
-	config := &ssh.ClientConfig{
-		User:            target.Username,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: hostKeyCallback,
-		Timeout:         12 * time.Second,
-	}
-
-	address := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
 	started := time.Now()
 
 	type response struct {
@@ -76,13 +59,8 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 	}
 
 	go func() {
-		sshClient, err := ssh.Dial("tcp", address, config)
+		sshClient, err := DialSSH(ctx, target)
 		if err != nil {
-			done <- response{err: fmt.Errorf("ssh dial: %w", err)}
-			return
-		}
-		if err := ctx.Err(); err != nil {
-			_ = sshClient.Close()
 			done <- response{err: err}
 			return
 		}
@@ -147,6 +125,56 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 		return Result{}, ctx.Err()
 	case value := <-done:
 		return value.result, value.err
+	}
+}
+
+func DialSSH(ctx context.Context, target Target) (*ssh.Client, error) {
+	signer, err := ssh.ParsePrivateKey([]byte(target.PrivateKey))
+	if err != nil {
+		return nil, fmt.Errorf("parse private key: %w", err)
+	}
+	hostKeyCallback, err := HostKeyCallback(target.KnownHostsPath)
+	if err != nil {
+		return nil, err
+	}
+	config := &ssh.ClientConfig{
+		User:            target.Username,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: hostKeyCallback,
+		Timeout:         12 * time.Second,
+	}
+	address := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+
+	type response struct {
+		client *ssh.Client
+		err    error
+	}
+	done := make(chan response, 1)
+	go func() {
+		client, err := ssh.Dial("tcp", address, config)
+		if err != nil {
+			done <- response{err: fmt.Errorf("ssh dial: %w", err)}
+			return
+		}
+		if err := ctx.Err(); err != nil {
+			_ = client.Close()
+			done <- response{err: err}
+			return
+		}
+		done <- response{client: client}
+	}()
+
+	select {
+	case <-ctx.Done():
+		go func() {
+			value := <-done
+			if value.client != nil {
+				_ = value.client.Close()
+			}
+		}()
+		return nil, ctx.Err()
+	case value := <-done:
+		return value.client, value.err
 	}
 }
 

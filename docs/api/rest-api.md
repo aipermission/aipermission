@@ -134,6 +134,59 @@ The UI asks the user to verify and approve the fingerprint. `POST /api/ssh-host-
 
 `DELETE /api/servers/{id}?remove_key=true` first connects with the server's gateway key, removes remote `~/.ssh/authorized_keys` entries containing that public key blob, then deletes the local record. This handles changed comments or authorized_keys options. If remote cleanup fails or removes zero entries, the local record is kept.
 
+## File Transfers
+
+```txt
+GET  /api/file-transfers
+GET  /api/file-transfers/{id}
+GET  /api/file-transfers/{id}/download
+POST /api/file-transfers/upload
+POST /api/file-transfers/download
+```
+
+File transfers use the selected server's existing SSH credential and run over
+SFTP. They are local UI operations in the current release; MCP file-transfer
+tools are not exposed yet. AIPermission stores transfer metadata, status,
+progress, and checksum only. File contents are never stored in SQLCipher.
+
+`GET /api/file-transfers` returns paginated transfer history. Optional filters
+include `direction`, `status`, `server_id`, and `q`:
+
+```txt
+GET /api/file-transfers?paginated=true&direction=download&status=completed&q=backup
+```
+
+`POST /api/file-transfers/upload` accepts `multipart/form-data`:
+
+```txt
+server_id=3
+remote_path=/tmp/app.log
+file=<browser selected file>
+```
+
+Uploads are staged in a private local temporary directory and then copied to the
+remote path. The staging file is removed after the remote transfer finishes or
+fails.
+
+`POST /api/file-transfers/download` starts a remote file download:
+
+```json
+{
+  "server_id": 3,
+  "remote_path": "/var/log/syslog"
+}
+```
+
+The backend downloads to a private temporary file and returns `202 Accepted`
+with the transfer record. Poll `GET /api/file-transfers/{id}` until the status
+is `completed`, then use `GET /api/file-transfers/{id}/download` to download the
+temporary file through the browser. Temporary download files are short-lived and
+may return `410 Gone` after cleanup.
+
+Remote paths must be absolute file paths. Directory transfer, recursive copy,
+remote glob expansion, and SSH-agent/ProxyJump based transfers are not part of
+this MVP.
+
 ## SSH Keys
 
 ```txt

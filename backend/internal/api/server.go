@@ -8,6 +8,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -41,6 +42,7 @@ type databaseRuntime struct {
 	servers          *servers.Store
 	sshKeys          *sshkeys.Store
 	tokens           *tokens.Store
+	fileTransfers    *filetransfer.Store
 	consoleSessions  *console.Manager
 	securityMu       sync.RWMutex
 	securitySettings securitySettingsResponse
@@ -77,6 +79,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, se
 		servers:       serverStore,
 		sshKeys:       sshKeyStore,
 		tokens:        tokenStore,
+		fileTransfers: filetransfer.NewStore(database),
 	}
 	runtime.consoleSessions = console.NewManager(database, server.serverSSHMaterialForRuntime(runtime), server.knownHostsPath(), server.runtimeRedactor(runtime))
 	server.workspaces[activeID] = runtime

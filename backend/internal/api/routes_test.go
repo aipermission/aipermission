@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -585,6 +588,57 @@ func TestRetentionDisabledKeepsOldRecordsAndManualPurgeDeletes(t *testing.T) {
 	badTargetResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "unknown", Days: 7})
 	if badTargetResponse.Code != http.StatusBadRequest || !strings.Contains(badTargetResponse.Body.String(), "invalid retention target") {
 		t.Fatalf("invalid purge target should fail: %d %s", badTargetResponse.Code, badTargetResponse.Body.String())
+	}
+}
+
+func TestFileTransferRoutes(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	server := fixture.createKeyAndServer(t, "worker-1")
+	runtime := fixture.server.activeRuntime()
+	tempRoot := fileTransferHandlers{fixture.server}.fileTransferTempRoot()
+	if err := os.MkdirAll(tempRoot, 0o700); err != nil {
+		t.Fatalf("create temp root: %v", err)
+	}
+	tempPath := filepath.Join(tempRoot, "download-test.txt")
+	if err := os.WriteFile(tempPath, []byte("download payload"), 0o600); err != nil {
+		t.Fatalf("write download file: %v", err)
+	}
+	record, err := runtime.fileTransfers.Create(context.Background(), filetransfer.CreateRequest{
+		ServerID:   server.ID,
+		Direction:  filetransfer.DirectionDownload,
+		Source:     filetransfer.SourceUI,
+		RemotePath: "/var/log/app.log",
+		FileName:   "app.log",
+		TempPath:   tempPath,
+	})
+	if err != nil {
+		t.Fatalf("create file transfer: %v", err)
+	}
+	if err := runtime.fileTransfers.Complete(context.Background(), record.ID, int64(len("download payload")), "abc123"); err != nil {
+		t.Fatalf("complete file transfer: %v", err)
+	}
+
+	listResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfers?paginated=true&direction=download&q=app", "", nil)
+	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), `"remote_path":"/var/log/app.log"`) {
+		t.Fatalf("list file transfers failed: %d %s", listResponse.Code, listResponse.Body.String())
+	}
+	detailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfers/"+strconv.FormatInt(record.ID, 10), "", nil)
+	if detailResponse.Code != http.StatusOK || strings.Contains(detailResponse.Body.String(), "download-test.txt") || !strings.Contains(detailResponse.Body.String(), `"checksum_sha256":"abc123"`) {
+		t.Fatalf("get file transfer failed or leaked temp path: %d %s", detailResponse.Code, detailResponse.Body.String())
+	}
+	downloadResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfers/"+strconv.FormatInt(record.ID, 10)+"/download", "", nil)
+	if downloadResponse.Code != http.StatusOK || downloadResponse.Body.String() != "download payload" {
+		t.Fatalf("download completed transfer failed: %d %s", downloadResponse.Code, downloadResponse.Body.String())
+	}
+
+	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfers?direction=copy", "", nil); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid direction should fail, got %d %s", response.Code, response.Body.String())
+	}
+	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{ServerID: server.ID, RemotePath: "relative.txt"}); response.Code != http.StatusBadRequest {
+		t.Fatalf("relative download path should fail, got %d %s", response.Code, response.Body.String())
+	}
+	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/upload", "", nil); response.Code != http.StatusBadRequest {
+		t.Fatalf("missing multipart upload should fail, got %d %s", response.Code, response.Body.String())
 	}
 }
 

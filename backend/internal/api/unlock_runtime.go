@@ -10,6 +10,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -111,6 +112,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		servers:       servers.NewStore(database),
 		sshKeys:       sshkeys.NewStore(database, secretVault),
 		tokens:        tokens.NewStore(database, secretVault),
+		fileTransfers: filetransfer.NewStore(database),
 	}
 	settings, err := readSecuritySettingsFromDB(context.Background(), runtime)
 	if err != nil {
