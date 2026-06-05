@@ -52,13 +52,13 @@ export async function apiDelete(path) {
   return readResponse(response);
 }
 
-export async function apiDownload(path, filename) {
+export async function apiDownload(path, filename, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
   if (!response.ok) {
     return readResponse(response);
   }
   const blob = await response.blob();
-  downloadBlob(blob, filename);
+  return saveBlob(blob, filename, options);
 }
 
 async function readResponse(response) {
@@ -122,12 +122,33 @@ function readCookie(name) {
 }
 
 export function downloadBlob(blob, filename) {
+  const safeFilename = filename.replaceAll(":", "-");
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename.replaceAll(":", "-");
+  link.download = safeFilename;
   link.click();
   URL.revokeObjectURL(url);
+  return { saved: true, method: "anchor" };
+}
+
+export async function saveBlob(blob, filename, options = {}) {
+  const safeFilename = filename.replaceAll(":", "-");
+  if (options.picker && typeof window !== "undefined" && typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({ suggestedName: safeFilename });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { saved: true, method: "picker" };
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        return { saved: false, canceled: true, method: "picker" };
+      }
+      throw error;
+    }
+  }
+  return downloadBlob(blob, safeFilename);
 }
 
 export function downloadJSON(value, filename) {

@@ -135,6 +135,11 @@ test("Console and History expose SSH file transfer flows", () => {
   assert.match(historySource, /DirectionBadge/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/upload/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/download/);
+  assert.match(fileTransferDialogSource, /\/api\/file-transfers\/browse/);
+  assert.match(fileTransferDialogSource, /\/api\/file-transfers\/\$\{transfer\.item\.id\}\/cancel/);
+  assert.match(fileTransferDialogSource, /remote_file_exists/);
+  assert.match(fileTransferDialogSource, /Overwrite file/);
+  assert.match(fileTransferDialogSource, /closeOnOverlay=\{false\}/);
   assert.match(fileTransferDialogSource, /apiPostForm/);
   assert.match(fileTransferDialogSource, /metadata and progress only/);
 });

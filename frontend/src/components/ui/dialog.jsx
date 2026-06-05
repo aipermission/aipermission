@@ -11,7 +11,19 @@ const sizes = {
   wide: "max-w-[calc(100vw-80px)]",
 };
 
-export function Dialog({ open, title, description, children, onClose, size = "sm", className = "", bodyClassName = "", autoFocusClose = true }) {
+export function Dialog({
+  open,
+  title,
+  description,
+  children,
+  onClose,
+  size = "sm",
+  className = "",
+  bodyClassName = "",
+  autoFocusClose = true,
+  closeOnOverlay = true,
+  closeOnEscape = true,
+}) {
   const closeButtonRef = useRef(null);
   const onCloseRef = useRef(onClose);
 
@@ -26,7 +38,7 @@ export function Dialog({ open, title, description, children, onClose, size = "sm
       closeButtonRef.current?.focus();
     }
     const onKeyDown = (event) => {
-      if (event.key === "Escape") {
+      if (closeOnEscape && event.key === "Escape") {
         onCloseRef.current?.();
       }
     };
@@ -35,13 +47,18 @@ export function Dialog({ open, title, description, children, onClose, size = "sm
       document.removeEventListener("keydown", onKeyDown);
       previous?.focus?.();
     };
-  }, [open]);
+  }, [open, closeOnEscape]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4">
-      <button type="button" className="dialog-overlay absolute inset-0 bg-stone-950/45" aria-label="Close dialog" onClick={onClose} />
+      <button
+        type="button"
+        className="dialog-overlay absolute inset-0 bg-stone-950/45"
+        aria-label="Close dialog"
+        onClick={closeOnOverlay ? onClose : undefined}
+      />
       <section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className={`relative grid w-full ${sizes[size] || sizes.sm} overflow-hidden rounded-lg border border-stone-200 bg-white shadow-2xl ${className}`}>
         <header className="flex items-start justify-between gap-4 border-b border-stone-200 p-5">
           <div>

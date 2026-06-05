@@ -59,6 +59,7 @@ export function HistoryPage() {
   });
   const [selected, setSelected] = useState(null);
   const [labels, setLabels] = useState({ state: "idle", data: [], error: null });
+  const [fileRefreshToken, setFileRefreshToken] = useState(0);
 
   const stats = useMemo(() => {
     const data = state.data;
@@ -166,12 +167,15 @@ export function HistoryPage() {
           <h3 className="text-lg font-semibold">History</h3>
           <p className="text-sm text-stone-500">Review command and file transfer activity executed through the gateway.</p>
         </div>
-        {activeTab === "commands" ? (
-          <Button type="button" variant="outline" onClick={() => loadHistory(state.offset)} disabled={state.state === "loading"}>
-            <RefreshCcw className="h-4 w-4" />
-            Refresh
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => (activeTab === "commands" ? loadHistory(state.offset) : setFileRefreshToken((current) => current + 1))}
+          disabled={activeTab === "commands" && state.state === "loading"}
+        >
+          <RefreshCcw className="h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-1 md:w-fit md:min-w-96">
@@ -325,13 +329,13 @@ export function HistoryPage() {
       />
         </>
       ) : (
-        <FileTransfersPanel servers={servers} />
+        <FileTransfersPanel servers={servers} refreshToken={fileRefreshToken} />
       )}
     </section>
   );
 }
 
-function FileTransfersPanel({ servers }) {
+function FileTransfersPanel({ servers, refreshToken }) {
   const [filters, setFilters] = useState({ query: "", direction: "", status: "", serverID: "" });
   const [state, setState] = useState({ state: "idle", data: [], total: 0, limit: 50, offset: 0, next_offset: null, error: null });
   const [selected, setSelected] = useState(null);
@@ -343,8 +347,24 @@ function FileTransfersPanel({ servers }) {
     return () => window.clearTimeout(timer);
   }, [filters.query, filters.direction, filters.status, filters.serverID]);
 
-  async function loadTransfers(offset = state.offset) {
-    setState((current) => ({ ...current, state: "loading", error: null }));
+  useEffect(() => {
+    if (!refreshToken) return;
+    void loadTransfers(state.offset);
+  }, [refreshToken]);
+
+  useEffect(() => {
+    const hasActiveTransfer = state.data.some((item) => item.status === "pending" || item.status === "running");
+    if (!hasActiveTransfer) return undefined;
+    const timer = window.setInterval(() => {
+      void loadTransfers(state.offset, { silent: true });
+    }, 1200);
+    return () => window.clearInterval(timer);
+  }, [state.data, state.offset]);
+
+  async function loadTransfers(offset = state.offset, options = {}) {
+    if (!options.silent) {
+      setState((current) => ({ ...current, state: "loading", error: null }));
+    }
     const params = new URLSearchParams({
       paginated: "true",
       limit: String(state.limit),
@@ -391,13 +411,6 @@ function FileTransfersPanel({ servers }) {
 
   return (
     <>
-      <div className="flex justify-end">
-        <Button type="button" variant="outline" onClick={() => loadTransfers(state.offset)} disabled={state.state === "loading"}>
-          <RefreshCcw className="h-4 w-4" />
-          Refresh
-        </Button>
-      </div>
-
       <div className="grid gap-3 md:grid-cols-4">
         <HistoryStat label="Total" value={stats.total} />
         <HistoryStat label="Shown" value={stats.shown} />
@@ -481,7 +494,9 @@ function FileTransfersPanel({ servers }) {
                     </td>
                     <td className="truncate px-4 py-3 font-medium text-stone-800">{item.file_name || "-"}</td>
                     <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{item.remote_path}</td>
-                    <td className="px-4 py-3 text-xs text-stone-600">{transferProgressLabel(item)}</td>
+                    <td className="px-4 py-3">
+                      <TransferProgressCell item={item} />
+                    </td>
                     <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>
                   </tr>
                 ))
@@ -883,6 +898,22 @@ function DirectionBadge({ direction }) {
   return <Badge tone={direction === "upload" ? "warn" : "neutral"}>{direction || "transfer"}</Badge>;
 }
 
+function TransferProgressCell({ item }) {
+  const progress = transferProgress(item);
+  const active = item.status === "pending" || item.status === "running";
+  return (
+    <div className="grid min-w-0 gap-1.5">
+      <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
+        <div
+          className={`h-full rounded-full bg-emerald-700 transition-all ${active ? "animate-pulse" : ""}`}
+          style={{ width: `${progress.percent}%` }}
+        />
+      </div>
+      <span className="truncate text-xs text-stone-600">{item.status === "completed" && !item.size_bytes ? "done" : progress.label}</span>
+    </div>
+  );
+}
+
 function transferProgress(item) {
   if (!item) return { percent: 0, label: "" };
   const total = Number(item.size_bytes || 0);
@@ -892,11 +923,6 @@ function transferProgress(item) {
     percent,
     label: total > 0 ? `${formatBytes(transferred)} / ${formatBytes(total)}` : `${formatBytes(transferred)} transferred`,
   };
-}
-
-function transferProgressLabel(item) {
-  if (item.status === "completed" && !item.size_bytes) return "done";
-  return transferProgress(item).label;
 }
 
 function labelStyle(label) {
