@@ -45,6 +45,9 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !tableExists(t, database, "command_request_labels") {
 		t.Fatalf("command_request_labels table was not created")
 	}
+	if !tableExists(t, database, "file_transfers") {
+		t.Fatalf("file_transfers table was not created")
+	}
 	if !columnExists(t, database, "api_tokens", "expires_at") {
 		t.Fatalf("api_tokens.expires_at column was not created")
 	}
@@ -106,6 +109,29 @@ func TestOpenEncryptedRepairsMissingHistoryLabelSchema(t *testing.T) {
 	}
 	if !tableExists(t, reopened, "command_request_labels") {
 		t.Fatalf("command_request_labels table should be repaired")
+	}
+}
+
+func TestOpenEncryptedRepairsMissingFileTransferSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secure.db")
+	database, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	if _, err := database.Exec(`DROP TABLE file_transfers`); err != nil {
+		t.Fatalf("drop file_transfers: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("reopen encrypted db: %v", err)
+	}
+	defer reopened.Close()
+	if !tableExists(t, reopened, "file_transfers") {
+		t.Fatalf("file_transfers table should be repaired")
 	}
 }
 

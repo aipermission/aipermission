@@ -250,6 +250,33 @@ var manualHistoryGroundworkStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_token_source_status_created ON command_requests(token_id, source, status, created_at);`,
 }
 
+var fileTransferStatements = []string{
+	`CREATE TABLE IF NOT EXISTS file_transfers (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		server_id INTEGER NOT NULL,
+		direction TEXT NOT NULL CHECK (direction IN ('upload', 'download')),
+		source TEXT NOT NULL DEFAULT 'ui' CHECK (source IN ('ui', 'mcp')),
+		status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed', 'canceled')),
+		local_path TEXT NOT NULL DEFAULT '',
+		remote_path TEXT NOT NULL,
+		file_name TEXT NOT NULL DEFAULT '',
+		size_bytes INTEGER NOT NULL DEFAULT 0,
+		transferred_bytes INTEGER NOT NULL DEFAULT 0,
+		checksum_sha256 TEXT NOT NULL DEFAULT '',
+		temp_path TEXT NOT NULL DEFAULT '',
+		error TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		started_at TEXT,
+		completed_at TEXT,
+		updated_at TEXT NOT NULL,
+		FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+	);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_created ON file_transfers(created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_server_status_created ON file_transfers(server_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_direction_created ON file_transfers(direction, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_status_created ON file_transfers(status, created_at);`,
+}
+
 var migrations = []migration{
 	{
 		version:     1,
@@ -270,6 +297,11 @@ var migrations = []migration{
 		version:     4,
 		description: "manual history groundwork",
 		statements:  manualHistoryGroundworkStatements,
+	},
+	{
+		version:     5,
+		description: "file transfer history",
+		statements:  fileTransferStatements,
 	},
 }
 
@@ -305,7 +337,7 @@ func migrate(database *sql.DB) error {
 }
 
 func ensureCurrentSchema(database *sql.DB) error {
-	for _, statement := range sqlStatements(historyLabelStatements, historyLabelIndexStatements) {
+	for _, statement := range sqlStatements(historyLabelStatements, historyLabelIndexStatements, fileTransferStatements) {
 		if _, err := database.Exec(statement); err != nil {
 			return fmt.Errorf("ensure current schema: %w", err)
 		}
