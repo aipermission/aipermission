@@ -29,7 +29,10 @@ The backend is not a LAN service. Docker Compose publishes the UI on `127.0.0.1`
 - `internal/sshkeys`: gateway-owned SSH key generation, explicit private key import, and vault-backed private key storage.
 - `internal/sshconfig`: conservative SSH config host discovery/parsing for server form prefill.
 - `internal/servers`: SSH target records.
-- `internal/execution`: SSH command execution and host key verification.
+- `internal/execution`: SSH command execution, SFTP file transfer primitives,
+  and host key verification.
+- `internal/filetransfer`: file transfer history metadata, progress, status, and
+  checksum storage. File contents are not stored in SQLCipher.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.
 
 Large API files should be split by behavior before they become cross-domain modules. Runtime-heavy domains should move out of `internal/api` when possible; `internal/console` is the first example of that boundary. Prefer small handler/service files such as `mcp_auth.go`, `mcp_command_requests.go`, and `ssh_host_key_handlers.go`. Route handlers should usually hang off small handler groups (`mcpHandlers`, `tokenHandlers`, `consoleHandlers`) instead of adding every endpoint directly to `*Server`.

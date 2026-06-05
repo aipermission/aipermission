@@ -1,6 +1,27 @@
-export const appVersion = "0.1.4";
+export const appVersion = "0.1.5";
 
 export const changelogEntries = [
+  {
+    version: "0.1.5",
+    label: "SSH file transfers",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Upload one local file to a selected server over SFTP.",
+          "Download one remote file through the local gateway after transfer completion.",
+          "File Transfer History with status, progress, checksum, server, and path metadata.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "File contents are staged in a private temporary directory and are never stored in SQLCipher.",
+          "The current release exposes file transfer from the local web UI only; MCP file transfer tools are not exposed yet.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.4",
     label: "Manual console history",

@@ -33,6 +33,8 @@ Related notes:
   switch.
 - Persistent console sessions with live attach, AI command display, messages,
   transcript chunks, and history.
+- Single-file SSH/SFTP upload and download from the local web UI, with separate
+  File Transfer History.
 - Approval dialogs, user notes, AI-to-user messages, audit logs, and searchable
   History/Audit pages.
 - Redaction settings with built-in and custom regex rules.
@@ -95,6 +97,16 @@ AIPermission against real VPS maintenance tasks.
   command because the terminal does not send the recalled command text; simple
   recalled commands may still capture output when the prompt returns.
 
+`0.1.5` ships:
+
+- Single-file upload to a selected SSH server over SFTP.
+- Single-file remote download over SFTP, served through the browser after the
+  transfer reaches `completed`.
+- File Transfer History with pagination, search, server/status/direction
+  filters, status/progress metadata, checksums, and detail view.
+- File contents are not stored in SQLCipher; only metadata and progress are
+  persisted.
+
 ## Early RC Follow-Ups
 
 These are good candidates for small follow-up releases after the first public
@@ -109,6 +121,10 @@ tag:
   and cursor-edited commands. Do this with a deliberate frontend submitted-line
   signal or shell-assisted marker model instead of backend escape-sequence
   guessing, and preserve normal terminal behavior as the first invariant.
+- [ ] Add directory transfer, recursive copy, remote glob handling, and
+  resumable transfer design after the single-file MVP has been dogfooded.
+- [ ] Evaluate MCP file-transfer tools only after UI transfer safety and audit
+  semantics are proven.
 - [ ] Add optional safety backup before import.
 - [ ] Add more Playwright browser tests for Settings, import, token permission,
   and approval workflows.

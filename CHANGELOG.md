@@ -7,6 +7,34 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-05
+
+### Added
+
+- SSH file transfer history model for upload/download metadata, status,
+  progress, checksums, and errors.
+- UI-driven single-file upload over SFTP from Console.
+- UI-driven single-file remote download over SFTP, with browser download after
+  completion.
+- File Transfer History tab with pagination, search, server/status/direction
+  filters, progress display, and detail dialog.
+
+### Security
+
+- File contents are never stored in SQLCipher. Uploads are staged in a private
+  temporary directory and removed after the remote transfer finishes or fails.
+- Remote downloads are staged in a private temporary file and served through the
+  browser only after the transfer reaches `completed`; temporary downloads are
+  short-lived.
+- File transfer is currently exposed through the local web UI only. MCP
+  file-transfer tools are intentionally not exposed in this release.
+
+### Notes
+
+- This is a conservative single-file MVP. Directory transfer, recursive copy,
+  remote glob expansion, resumable transfers, and SSH-agent/ProxyJump based
+  transfer transports are still future work.
+
 ## [0.1.4] - 2026-06-05
 
 ### Added

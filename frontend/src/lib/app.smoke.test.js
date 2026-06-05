@@ -62,8 +62,9 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.1\.4"/);
-  assert.match(releaseSource, /Manual console history/);
+  assert.match(releaseSource, /appVersion = "0\.1\.5"/);
+  assert.match(releaseSource, /SSH file transfers/);
+  assert.match(releaseSource, /never stored in SQLCipher/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {

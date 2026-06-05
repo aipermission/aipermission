@@ -22,6 +22,10 @@ The gateway vault may store:
 
 The SQLite database is encrypted with SQLCipher. Secret payloads such as SSH private keys are also encrypted by the gateway vault layer. API token lookup uses hashes. Token values are shown once by default; if reusable token copy is enabled in Security, token values created after that setting is enabled are stored with vault encryption for local MCP setup.
 
+File transfer contents are not stored in SQLCipher. Uploads and downloads use
+private short-lived temporary files under the local data directory. The database
+stores transfer metadata, status, progress, checksum, and errors only.
+
 The database password is unrecoverable. If it is lost, the local DB cannot be opened. The user must create a new DB/key/token set and manually remove old public key lines from remote servers if needed. See [Storage Encryption](storage-encryption.md).
 
 ## SSH Key Install Model
