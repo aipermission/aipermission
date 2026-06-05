@@ -16,8 +16,12 @@ and this project uses semantic versioning once public releases begin.
 - UI-driven single-file upload over SFTP from Console.
 - UI-driven single-file remote download over SFTP, with browser download after
   completion.
+- Remote file/folder browser for selecting SFTP upload directories and download
+  files from the local UI.
+- Cancel support for pending or running UI file transfers.
+- Explicit overwrite confirmation before replacing an existing remote file.
 - File Transfer History tab with pagination, search, server/status/direction
-  filters, progress display, and detail dialog.
+  filters, live progress display, and detail dialog.
 
 ### Security
 

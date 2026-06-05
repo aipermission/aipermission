@@ -173,12 +173,15 @@ local UI can select upload/download paths:
 ```txt
 server_id=3
 remote_path=/tmp/app.log
+overwrite=false
 file=<browser selected file>
 ```
 
 Uploads are staged in a private local temporary directory and then copied to the
 remote path. The staging file is removed after the remote transfer finishes or
-fails.
+fails. Uploads do not overwrite an existing regular remote file unless
+`overwrite=true` is sent after an explicit local UI confirmation. Existing
+directories or special files are rejected.
 
 `POST /api/file-transfers/download` starts a remote file download:
 

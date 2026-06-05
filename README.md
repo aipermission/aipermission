@@ -129,7 +129,8 @@ Implemented:
 - unread message badges and AI-to-user/user-to-AI notes
 - SQLCipher FTS4-backed searchable command history and audit log pages
 - single-file SSH/SFTP upload and download from the local web UI
-- file transfer history with status, progress, checksum, server, and path metadata
+- remote SFTP browser for upload folders and download file selection
+- cancelable file transfer history with live progress, checksum, server, and path metadata
 - configurable local data retention for history, audit logs, console sessions, and messages
 - SQLCipher-backed full SQLite database encryption
 - first-run database password setup and unlock screen

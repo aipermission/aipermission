@@ -10,7 +10,10 @@ export const changelogEntries = [
         items: [
           "Upload one local file to a selected server over SFTP.",
           "Download one remote file through the local gateway after transfer completion.",
-          "File Transfer History with status, progress, checksum, server, and path metadata.",
+          "Remote file browser for selecting upload folders and download files.",
+          "Cancel pending or running UI file transfers.",
+          "Overwrite confirmation before replacing an existing remote file.",
+          "File Transfer History with status, live progress, checksum, server, and path metadata.",
         ],
       },
       {
