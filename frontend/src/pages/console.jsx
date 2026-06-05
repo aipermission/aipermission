@@ -1,4 +1,4 @@
-import { AlertTriangle, Circle, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
+import { AlertTriangle, Circle, Files, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
@@ -8,6 +8,7 @@ import { CountBadge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Notice } from "../components/ui/notice";
 import { ApprovalDialog } from "../components/console/approval-dialog";
+import { FileTransferDialog } from "../components/console/file-transfer-dialog";
 import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
 import { PtyConsole } from "../components/console/pty-console";
@@ -48,6 +49,7 @@ export function ConsolePage() {
   const [messageTokenID, setMessageTokenID] = useState("");
   const [serversCompact, setServersCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
+  const [fileTransferOpen, setFileTransferOpen] = useState(false);
 
   const selectedServerID = searchParams.get("server");
   const sessions = consoleSessions.data || [];
@@ -348,6 +350,17 @@ export function ConsolePage() {
               type="button"
               variant="ghost"
               className={`h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`}
+              onClick={() => setFileTransferOpen(true)}
+              disabled={!selectedServer}
+              title="Upload or download one file"
+            >
+              <Files className="h-3.5 w-3.5" />
+              Files
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className={`h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`}
               onClick={() => selectedServer && void newConsoleSession(selectedServer)}
               disabled={!selectedServer}
             >
@@ -430,6 +443,11 @@ export function ConsolePage() {
         onRun={approveActiveRequest}
         onDecline={declineActiveRequest}
         onClose={closeApprovalDialog}
+      />
+      <FileTransferDialog
+        open={fileTransferOpen}
+        server={selectedServer}
+        onClose={() => setFileTransferOpen(false)}
       />
       <MessagesDialog
         open={messagesOpen}

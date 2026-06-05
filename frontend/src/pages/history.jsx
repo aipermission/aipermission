@@ -1,6 +1,6 @@
-import { RefreshCcw, Search, X } from "lucide-react";
+import { Download, RefreshCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiDelete, apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiDownload, apiGet, apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -29,8 +29,24 @@ const sourceOptions = [
   { value: "manual", label: "Manual" },
 ];
 
+const transferStatusOptions = [
+  { value: "", label: "All statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "running", label: "Running" },
+  { value: "completed", label: "Completed" },
+  { value: "failed", label: "Failed" },
+  { value: "canceled", label: "Canceled" },
+];
+
+const transferDirectionOptions = [
+  { value: "", label: "All directions" },
+  { value: "upload", label: "Upload" },
+  { value: "download", label: "Download" },
+];
+
 export function HistoryPage() {
   const { servers, approvals, loadApprovals } = useGateway();
+  const [activeTab, setActiveTab] = useState("commands");
   const [filters, setFilters] = useState({ query: "", status: "", source: "", serverID: "", labelID: "" });
   const [state, setState] = useState({
     state: "idle",
@@ -148,14 +164,27 @@ export function HistoryPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">History</h3>
-          <p className="text-sm text-stone-500">Review MCP and approval command requests executed through the gateway.</p>
+          <p className="text-sm text-stone-500">Review command and file transfer activity executed through the gateway.</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => loadHistory(state.offset)} disabled={state.state === "loading"}>
-          <RefreshCcw className="h-4 w-4" />
-          Refresh
+        {activeTab === "commands" ? (
+          <Button type="button" variant="outline" onClick={() => loadHistory(state.offset)} disabled={state.state === "loading"}>
+            <RefreshCcw className="h-4 w-4" />
+            Refresh
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-1 md:w-fit md:min-w-96">
+        <Button type="button" variant={activeTab === "commands" ? "default" : "ghost"} className="h-9" onClick={() => setActiveTab("commands")}>
+          SSH History
+        </Button>
+        <Button type="button" variant={activeTab === "files" ? "default" : "ghost"} className="h-9" onClick={() => setActiveTab("files")}>
+          File Transfer History
         </Button>
       </div>
 
+      {activeTab === "commands" ? (
+        <>
       <div className="grid gap-3 md:grid-cols-4">
         <HistoryStat label="Total" value={stats.total} />
         <HistoryStat label="Shown" value={stats.shown} />
@@ -294,7 +323,186 @@ export function HistoryPage() {
         onAttachLabel={attachLabel}
         onDetachLabel={detachLabel}
       />
+        </>
+      ) : (
+        <FileTransfersPanel servers={servers} />
+      )}
     </section>
+  );
+}
+
+function FileTransfersPanel({ servers }) {
+  const [filters, setFilters] = useState({ query: "", direction: "", status: "", serverID: "" });
+  const [state, setState] = useState({ state: "idle", data: [], total: 0, limit: 50, offset: 0, next_offset: null, error: null });
+  const [selected, setSelected] = useState(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadTransfers(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [filters.query, filters.direction, filters.status, filters.serverID]);
+
+  async function loadTransfers(offset = state.offset) {
+    setState((current) => ({ ...current, state: "loading", error: null }));
+    const params = new URLSearchParams({
+      paginated: "true",
+      limit: String(state.limit),
+      offset: String(Math.max(0, offset)),
+    });
+    if (filters.query.trim()) params.set("q", filters.query.trim());
+    if (filters.direction) params.set("direction", filters.direction);
+    if (filters.status) params.set("status", filters.status);
+    if (filters.serverID) params.set("server_id", filters.serverID);
+    try {
+      const data = await apiGet(`/api/file-transfers?${params.toString()}`);
+      setState({
+        state: "ready",
+        data: data.items || [],
+        total: data.total || 0,
+        limit: data.limit || state.limit,
+        offset: data.offset || 0,
+        next_offset: data.next_offset ?? null,
+        error: null,
+      });
+    } catch (error) {
+      setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
+    }
+  }
+
+  async function openTransfer(item) {
+    setSelected(item);
+    try {
+      const detail = await apiGet(`/api/file-transfers/${item.id}`);
+      setSelected(detail);
+    } catch {
+      setSelected(item);
+    }
+  }
+
+  const pageStart = state.total === 0 ? 0 : state.offset + 1;
+  const pageEnd = Math.min(state.offset + state.data.length, state.total);
+  const stats = {
+    total: state.total,
+    shown: state.data.length,
+    running: state.data.filter((item) => item.status === "running" || item.status === "pending").length,
+    failed: state.data.filter((item) => item.status === "failed" || item.status === "canceled").length,
+  };
+
+  return (
+    <>
+      <div className="flex justify-end">
+        <Button type="button" variant="outline" onClick={() => loadTransfers(state.offset)} disabled={state.state === "loading"}>
+          <RefreshCcw className="h-4 w-4" />
+          Refresh
+        </Button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <HistoryStat label="Total" value={stats.total} />
+        <HistoryStat label="Shown" value={stats.shown} />
+        <HistoryStat label="Running" value={stats.running} tone="neutral" />
+        <HistoryStat label="Failed/canceled" value={stats.failed} tone="bad" />
+      </div>
+
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+          <Input
+            value={filters.query}
+            onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+            placeholder="Search files, paths, or servers"
+            className="pl-9"
+          />
+        </div>
+        <Select value={filters.direction} onChange={(event) => setFilters((current) => ({ ...current, direction: event.target.value }))}>
+          {transferDirectionOptions.map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select value={filters.serverID} onChange={(event) => setFilters((current) => ({ ...current, serverID: event.target.value }))}>
+          <option value="">All servers</option>
+          {servers.data.map((server) => (
+            <option key={server.id} value={server.id}>
+              {server.name}
+            </option>
+          ))}
+        </Select>
+        <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+          {transferStatusOptions.map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+
+      <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+        <table className="w-full table-fixed border-collapse text-left text-sm">
+          <thead className="bg-stone-50 text-xs uppercase text-stone-500">
+            <tr>
+              <th className="w-[13%] px-4 py-3 font-semibold">Status</th>
+              <th className="w-[16%] px-4 py-3 font-semibold">Server</th>
+              <th className="w-[13%] px-4 py-3 font-semibold">Direction</th>
+              <th className="w-[18%] px-4 py-3 font-semibold">File</th>
+              <th className="w-[24%] px-4 py-3 font-semibold">Remote path</th>
+              <th className="w-[9%] px-4 py-3 font-semibold">Progress</th>
+              <th className="w-[7%] px-4 py-3 text-right font-semibold">Time</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {state.state === "loading" ? (
+              <tr>
+                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={7}>
+                  Loading file transfers...
+                </td>
+              </tr>
+            ) : null}
+            {state.state !== "loading" && state.data.length === 0 ? (
+              <tr>
+                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={7}>
+                  No file transfers yet.
+                </td>
+              </tr>
+            ) : null}
+            {state.state !== "loading"
+              ? state.data.map((item) => (
+                  <tr key={item.id} className="cursor-pointer transition hover:bg-stone-50" onClick={() => openTransfer(item)}>
+                    <td className="px-4 py-3">
+                      <TransferStatusBadge status={item.status} />
+                    </td>
+                    <td className="truncate px-4 py-3 font-medium text-stone-900">{item.server_name}</td>
+                    <td className="px-4 py-3">
+                      <DirectionBadge direction={item.direction} />
+                    </td>
+                    <td className="truncate px-4 py-3 font-medium text-stone-800">{item.file_name || "-"}</td>
+                    <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{item.remote_path}</td>
+                    <td className="px-4 py-3 text-xs text-stone-600">{transferProgressLabel(item)}</td>
+                    <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>
+                  </tr>
+                ))
+              : null}
+          </tbody>
+        </table>
+      </div>
+
+      <PaginationBar
+        start={pageStart}
+        end={pageEnd}
+        total={state.total}
+        disabled={state.state === "loading"}
+        onPrevious={() => loadTransfers(Math.max(0, state.offset - state.limit))}
+        onNext={() => loadTransfers(state.next_offset)}
+        hasPrevious={state.offset > 0}
+        hasNext={state.next_offset !== null && state.next_offset !== undefined}
+      />
+
+      <FileTransferHistoryDialog item={selected} onClose={() => setSelected(null)} onRefresh={openTransfer} />
+    </>
   );
 }
 
@@ -305,6 +513,98 @@ function HistoryStat({ label, value, tone = "neutral" }) {
         <span className="text-sm font-medium text-stone-500">{label}</span>
         <Badge tone={tone}>{value}</Badge>
       </div>
+    </div>
+  );
+}
+
+function FileTransferHistoryDialog({ item, onClose, onRefresh }) {
+  const [state, setState] = useState({ state: "idle", error: null });
+  if (!item) return null;
+  const progress = transferProgress(item);
+
+  async function downloadResult() {
+    setState({ state: "downloading", error: null });
+    try {
+      await apiDownload(`/api/file-transfers/${item.id}/download`, item.file_name || "aipermission-download");
+      setState({ state: "idle", error: null });
+    } catch (error) {
+      setState({ state: "error", error: error.message });
+    }
+  }
+
+  async function refresh() {
+    setState({ state: "refreshing", error: null });
+    try {
+      await onRefresh(item);
+      setState({ state: "idle", error: null });
+    } catch (error) {
+      setState({ state: "error", error: error.message });
+    }
+  }
+
+  return (
+    <Dialog
+      open={Boolean(item)}
+      title={`Transfer #${item.id}`}
+      description={`${item.server_name} · ${formatDateTime(item.created_at)}`}
+      onClose={onClose}
+      size="xl"
+      className="max-h-[calc(100vh-80px)]"
+      bodyClassName="overflow-auto"
+    >
+      <div className="grid gap-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <TransferStatusBadge status={item.status} />
+          <DirectionBadge direction={item.direction} />
+          {item.checksum_sha256 ? <Badge>sha256</Badge> : null}
+          {item.size_bytes > 0 ? <Badge>{formatBytes(item.size_bytes)}</Badge> : null}
+        </div>
+
+        <div className="grid gap-3 rounded-md border border-stone-200 bg-stone-50 p-4 text-sm md:grid-cols-2">
+          <TransferField label="File" value={item.file_name || "-"} />
+          <TransferField label="Server" value={item.server_name || "-"} />
+          <TransferField label="Remote path" value={item.remote_path || "-"} mono wide />
+          <TransferField label="Local source" value={item.local_path || "-"} mono />
+          <TransferField label="Started" value={formatDateTime(item.started_at)} />
+          <TransferField label="Completed" value={formatDateTime(item.completed_at)} />
+          <TransferField label="Checksum SHA256" value={item.checksum_sha256 || "-"} mono wide />
+          {item.error ? <TransferField label="Error" value={item.error} wide /> : null}
+        </div>
+
+        <div className="grid gap-2">
+          <div className="h-2 overflow-hidden rounded-full bg-stone-100">
+            <div className="h-full rounded-full bg-emerald-700" style={{ width: `${progress.percent}%` }} />
+          </div>
+          <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
+            <span>{progress.label}</span>
+            <span>{progress.percent}%</span>
+          </div>
+        </div>
+
+        {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
+
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" onClick={refresh} disabled={state.state === "refreshing"}>
+            <RefreshCcw className="h-4 w-4" />
+            Refresh
+          </Button>
+          {item.direction === "download" && item.status === "completed" ? (
+            <Button type="button" onClick={downloadResult} disabled={state.state === "downloading"}>
+              <Download className="h-4 w-4" />
+              Save download
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+function TransferField({ label, value, mono = false, wide = false }) {
+  return (
+    <div className={`grid min-w-0 gap-1 ${wide ? "md:col-span-2" : ""}`}>
+      <span className="text-xs font-semibold uppercase text-stone-500">{label}</span>
+      <span className={`min-w-0 break-words ${mono ? "font-mono text-xs" : ""}`}>{value || "-"}</span>
     </div>
   );
 }
@@ -568,12 +868,56 @@ function StatusBadge({ status }) {
   return <Badge tone={tone}>{statusLabel(status)}</Badge>;
 }
 
+function TransferStatusBadge({ status }) {
+  const tone = {
+    completed: "good",
+    running: "neutral",
+    pending: "neutral",
+    canceled: "warn",
+    failed: "bad",
+  }[status] || "neutral";
+  return <Badge tone={tone}>{status || "unknown"}</Badge>;
+}
+
+function DirectionBadge({ direction }) {
+  return <Badge tone={direction === "upload" ? "warn" : "neutral"}>{direction || "transfer"}</Badge>;
+}
+
+function transferProgress(item) {
+  if (!item) return { percent: 0, label: "" };
+  const total = Number(item.size_bytes || 0);
+  const transferred = Number(item.transferred_bytes || 0);
+  const percent = total > 0 ? Math.min(100, Math.round((transferred / total) * 100)) : item.status === "completed" ? 100 : 0;
+  return {
+    percent,
+    label: total > 0 ? `${formatBytes(transferred)} / ${formatBytes(total)}` : `${formatBytes(transferred)} transferred`,
+  };
+}
+
+function transferProgressLabel(item) {
+  if (item.status === "completed" && !item.size_bytes) return "done";
+  return transferProgress(item).label;
+}
+
 function labelStyle(label) {
   const color = label?.color || "#0f766e";
   return {
     borderColor: color,
     color,
   };
+}
+
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let amount = bytes / 1024;
+  let index = 0;
+  while (amount >= 1024 && index < units.length - 1) {
+    amount /= 1024;
+    index += 1;
+  }
+  return `${amount.toFixed(amount >= 10 ? 1 : 2)} ${units[index]}`;
 }
 
 function statusLabel(status) {

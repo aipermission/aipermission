@@ -17,6 +17,7 @@ const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.js
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
 const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
 const sshKeysSource = readFileSync(join(currentDir, "..", "pages", "ssh-keys.jsx"), "utf8");
+const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-dialog.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -124,6 +125,17 @@ test("History page exposes label filtering and item label endpoints", () => {
   assert.match(historySource, /Not tracked/);
   assert.match(historySource, /\/api\/approvals\/\$\{id\}\/labels/);
   assert.doesNotMatch(historySource, /setLabelDialogOpen/);
+});
+
+test("Console and History expose SSH file transfer flows", () => {
+  assert.match(historySource, /File Transfer History/);
+  assert.match(historySource, /\/api\/file-transfers\?/);
+  assert.match(historySource, /\/api\/file-transfers\/\$\{item\.id\}\/download/);
+  assert.match(historySource, /DirectionBadge/);
+  assert.match(fileTransferDialogSource, /\/api\/file-transfers\/upload/);
+  assert.match(fileTransferDialogSource, /\/api\/file-transfers\/download/);
+  assert.match(fileTransferDialogSource, /apiPostForm/);
+  assert.match(fileTransferDialogSource, /metadata and progress only/);
 });
 
 test("Settings page exposes history label management", () => {
