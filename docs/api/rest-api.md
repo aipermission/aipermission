@@ -417,7 +417,7 @@ POST /api/history-labels
 DELETE /api/history-labels/{id}
 ```
 
-`GET /api/approvals` returns recent command requests. Optional filters include `status`, `source`, `server_id`, and `label_id`. `source` is `mcp` for MCP/approval command requests and `manual` for future manual Console History records.
+`GET /api/approvals` returns recent command requests. Optional filters include `status`, `source`, `server_id`, and `label_id`. `source` is `mcp` for MCP/approval command requests and `manual` for manually typed Console commands.
 
 The History page uses paginated search. `q` searches command text, reason, status, captured output, error, server name, and token name. Command text and output fields use SQLCipher-backed FTS4 indexes; server and token names remain regular filtered fields:
 
@@ -425,7 +425,7 @@ The History page uses paginated search. `q` searches command text, reason, statu
 GET /api/approvals?paginated=true&limit=50&offset=0&q=docker&source=mcp&status=completed&server_id=3&label_id=4
 ```
 
-History response items include `source`, `tracking_reason`, and `output_truncated`. Manual Console History is groundwork only in this release; the Console does not yet install shell hooks or parse manual terminal input.
+History response items include `source`, `tracking_reason`, and `output_truncated`. Manual Console command logging records typed or pasted terminal input as `source = manual`. For simple commands, AIPermission uses the normal PTY transcript to capture output when the shell prompt returns, then marks the row `completed` or `canceled`. Because the gateway does not install shell hooks or append hidden command suffixes, it cannot reliably infer every interactive shell state. Interactive commands, nested shells, heredocs, and unsafe control sequences are stored as `untracked` best-effort rows, with output still available in the Console transcript. Arrow/history recall uses a placeholder command because the terminal does not send the recalled command text; simple recalled commands may still capture output when the prompt returns, while ambiguous interactive recalled commands are left `untracked`.
 
 The paginated response is an envelope:
 

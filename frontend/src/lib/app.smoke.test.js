@@ -62,7 +62,7 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
   assert.match(releaseSource, /appVersion = "0\.1\.4"/);
-  assert.match(releaseSource, /Manual history groundwork/);
+  assert.match(releaseSource, /Manual console history/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {

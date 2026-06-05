@@ -232,7 +232,7 @@ error
 ```
 
 MCP request tools return only MCP-origin command requests for the calling token.
-They do not expose future manual Console History rows.
+They do not expose manual Console History rows.
 
 ## send_message
 

@@ -7,21 +7,33 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
-## [0.1.4] - 2026-06-04
+## [0.1.4] - 2026-06-05
 
 ### Added
 
-- Source-aware History groundwork for future manual Console History.
-- History source filters and badges for MCP and future manual command records.
-- `source`, `tracking_reason`, and `output_truncated` command request fields for future not-tracked manual command records.
+- Manual Console command logging for simple terminal input. Manually typed or
+  pasted commands are recorded as `source = manual` without changing normal
+  terminal behavior.
+- Best-effort output capture for simple manual commands. When the shell prompt
+  returns, History records captured output and marks the command `completed` or
+  `canceled`.
+- History source filters and badges for MCP and manual command records.
+- `source`, `tracking_reason`, and `output_truncated` command request fields for
+  manual command records.
 
 ### Security
 
-- MCP request list/detail APIs explicitly remain scoped to MCP-origin command requests so future manual History rows cannot leak through MCP tools.
+- MCP request list/detail APIs explicitly remain scoped to MCP-origin command requests so manual History rows cannot leak through MCP tools.
 
 ### Notes
 
-- This release does not install shell hooks, parse manual terminal input, or change normal Console terminal behavior.
+- Interactive commands, nested shells, heredocs, and unsafe control sequences are
+  stored as `untracked` best-effort records. Arrow/history recall is stored with
+  a placeholder command because the terminal does not send the recalled command
+  text; simple recalled commands may still capture output when the prompt
+  returns, while ambiguous interactive recalled commands are left `untracked`.
+- This release does not install shell hooks, append hidden command suffixes, or
+  infer shell history recall from arrow keys.
 
 ## [0.1.3] - 2026-06-04
 

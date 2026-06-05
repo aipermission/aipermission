@@ -3,20 +3,22 @@ export const appVersion = "0.1.4";
 export const changelogEntries = [
   {
     version: "0.1.4",
-    label: "Manual history groundwork",
+    label: "Manual console history",
     sections: [
       {
         title: "Added",
         items: [
-          "Source-aware History groundwork for future manual Console History.",
-          "History source filters and badges for MCP and future manual command records.",
+          "Manual Console command logging for typed or pasted terminal input.",
+          "Best-effort output capture for simple manual commands when the shell prompt returns.",
+          "History source filters and badges for MCP and manual command records.",
         ],
       },
       {
         title: "Security",
         items: [
           "MCP request APIs now explicitly stay scoped to MCP-origin command requests.",
-          "Manual History groundwork does not install shell hooks or change terminal behavior.",
+          "Manual Console History does not install shell hooks or hidden command suffixes.",
+          "Interactive commands, nested shells, and unsafe control sequences stay untracked; arrow/history recall uses a placeholder command when output can be captured.",
         ],
       },
     ],

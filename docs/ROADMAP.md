@@ -85,10 +85,15 @@ AIPermission against real VPS maintenance tasks.
 
 `0.1.4` ships:
 
-- Source-aware History groundwork for future manual Console History.
-- History source filters and badges for MCP and future manual command records.
+- Manual Console command logging for simple terminal input.
+- Best-effort manual command output capture for simple typed or pasted commands.
+- History source filters and badges for MCP and manual command records.
 - MCP request APIs explicitly scoped to MCP-origin command requests.
-- No shell hooks or manual terminal parsing yet; normal Console terminal behavior is unchanged.
+- No shell hooks or hidden command suffixes; normal Console terminal behavior is unchanged.
+- Interactive commands, nested shells, heredocs, and unsafe control sequences
+  remain untracked best-effort rows. Arrow/history recall uses a placeholder
+  command because the terminal does not send the recalled command text; simple
+  recalled commands may still capture output when the prompt returns.
 
 ## Early RC Follow-Ups
 
@@ -100,10 +105,10 @@ tag:
 - [ ] Add command policy/risk scoring primitives without turning the product
   into a DevOps platform.
 - [ ] Add optional deny/warn rules for common high-risk command patterns.
-- [ ] Add structured manual command event parsing for History on top of the
-  source-aware History groundwork. Do this with a deliberate terminal parsing
-  model instead of a quick frontend-only guess, and preserve normal terminal
-  behavior as the first invariant.
+- [ ] Add stronger manual command capture for shell history recall, arrow keys,
+  and cursor-edited commands. Do this with a deliberate frontend submitted-line
+  signal or shell-assisted marker model instead of backend escape-sequence
+  guessing, and preserve normal terminal behavior as the first invariant.
 - [ ] Add optional safety backup before import.
 - [ ] Add more Playwright browser tests for Settings, import, token permission,
   and approval workflows.
