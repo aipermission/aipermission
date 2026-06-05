@@ -191,7 +191,12 @@ func (m *Manager) Input(ctx context.Context, id int64, data string) error {
 	if session == nil {
 		return fmt.Errorf("console session is not active")
 	}
-	return session.writeInput(data)
+	manualCommands := session.prepareManualInput(data)
+	if err := session.writeInput(data); err != nil {
+		return err
+	}
+	session.persistManualInput(manualCommands)
+	return nil
 }
 
 func (m *Manager) Exec(ctx context.Context, serverID int64, command string) (ExecResult, error) {
@@ -331,7 +336,10 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, id int64, upgra
 			if !inputLimiter.allow() {
 				continue
 			}
-			_ = session.writeInput(message.Data)
+			manualCommands := session.prepareManualInput(message.Data)
+			if err := session.writeInput(message.Data); err == nil {
+				session.persistManualInput(manualCommands)
+			}
 		case "resize":
 			if !resizeLimiter.allow() {
 				continue

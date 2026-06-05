@@ -16,6 +16,7 @@ const statusOptions = [
   { value: "pending_approval", label: "Pending" },
   { value: "running", label: "Running" },
   { value: "completed", label: "Completed" },
+  { value: "canceled", label: "Canceled" },
   { value: "failed", label: "Failed" },
   { value: "declined", label: "Declined" },
   { value: "error", label: "Error" },
@@ -556,6 +557,7 @@ function SectionHeader({ label, value }) {
 function StatusBadge({ status }) {
   const tone = {
     completed: "good",
+    canceled: "warn",
     running: "neutral",
     pending_approval: "warn",
     declined: "warn",
@@ -577,6 +579,7 @@ function labelStyle(label) {
 function statusLabel(status) {
   if (status === "pending_approval") return "pending";
   if (status === "untracked") return "not tracked";
+  if (status === "canceled") return "canceled";
   return status || "unknown";
 }
 
@@ -586,12 +589,22 @@ function trackingReasonLabel(reason) {
     interactive_repl: "interactive REPL command",
     interactive_tui: "interactive terminal program",
     nested_shell: "nested shell boundary",
+    long_running_stream: "long-running stream command",
+    background_job: "background job command",
+    may_prompt: "command may prompt interactively",
     multiline_or_heredoc: "multiline command preview only",
     compound_command: "compound command shape",
+    command_preview_truncated: "command preview was truncated",
+    manual_output_not_tracked: "manual command output is available only in the console transcript",
+    exit_code_unavailable: "manual command completed; shell exit code was not captured",
     unsupported_shell: "unsupported shell",
     untrusted_command_text: "command text was not trusted",
+    history_recall_untracked: "command was recalled with an arrow key; command text was not captured",
     marker_desync: "capture marker desynchronized",
     active_exec_paused: "capture paused while an MCP command was running",
+    manual_capture_superseded: "manual capture was superseded by a newer command",
+    prompt_not_detected: "shell prompt was not detected before the next command",
+    session_closed: "console session closed before command output could be completed",
     output_buffer_limit: "output exceeded the capture limit",
     privacy_history_suppressed: "history privacy settings suppressed capture",
   };

@@ -213,6 +213,7 @@ func (s *managedConsoleSession) fail(message string) {
 func (s *managedConsoleSession) finish(status string, message string) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	persistedMessage := s.manager.redactText(message)
+	s.closeManualOutputCapture(manualSessionClosed)
 	s.mu.Lock()
 	s.status = status
 	if persistedMessage != "" {
@@ -269,7 +270,12 @@ func (s *managedConsoleSession) appendOutput(data string) {
 	if s.manager != nil && s.manager.db != nil && s.persistTimer == nil {
 		s.persistTimer = time.AfterFunc(500*time.Millisecond, s.flushTranscript)
 	}
+	manualCompletion := s.manualOutputCompletionLocked()
+	s.clearManualPauseIfPromptReturnedLocked()
 	s.mu.Unlock()
+	if manualCompletion != nil {
+		go s.finishManualOutputCapture(manualCompletion)
+	}
 	if flushSoon {
 		go s.flushTranscript()
 	}

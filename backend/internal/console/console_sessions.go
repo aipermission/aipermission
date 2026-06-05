@@ -90,6 +90,21 @@ type consoleSessionActiveExec struct {
 	Started     time.Time
 }
 
+type consoleSessionManualCapture struct {
+	RequestID                int64
+	Command                  string
+	StartOffset              int
+	ResumePrompt             string
+	Started                  time.Time
+	CompletionTrackingReason string
+}
+
+type consoleSessionManualPause struct {
+	Prompt      string
+	Reason      string
+	StartOffset int
+}
+
 type Manager struct {
 	db          *sql.DB
 	getMaterial func(context.Context, int64) (servers.Server, sshkeys.PrivateKey, error)
@@ -130,6 +145,9 @@ type managedConsoleSession struct {
 	sshSession    *ssh.Session
 	clients       map[*websocket.Conn]*sync.Mutex
 	activeExec    *consoleSessionActiveExec
+	manualInput   manualInputCapture
+	manualActive  *consoleSessionManualCapture
+	manualPause   *consoleSessionManualPause
 	filterUntil   time.Time
 	persistTimer  *time.Timer
 }

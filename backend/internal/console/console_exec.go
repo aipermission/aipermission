@@ -44,6 +44,8 @@ func (s *managedConsoleSession) execCommand(ctx context.Context, command string)
 		}, ErrCommandActive
 	}
 
+	s.closeManualOutputCapture(manualActiveExecPaused)
+
 	started := time.Now()
 	marker := fmt.Sprintf("__AIPERMISSION_EXIT_%d_%d__", s.id, started.UnixNano())
 	s.mu.Lock()
