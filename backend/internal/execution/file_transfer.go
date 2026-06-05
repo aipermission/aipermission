@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -22,7 +23,95 @@ type TransferResult struct {
 	DurationMS     int64
 }
 
-func UploadFile(ctx context.Context, target Target, localPath string, remotePath string, progress TransferProgress) (TransferResult, error) {
+type RemoteFileEntry struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Type       string `json:"type"`
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modified_at"`
+}
+
+type RemotePathStatus struct {
+	Exists bool   `json:"exists"`
+	Type   string `json:"type"`
+	Size   int64  `json:"size"`
+}
+
+func StatRemotePath(ctx context.Context, target Target, remotePath string) (RemotePathStatus, error) {
+	client, sshClient, err := sftpClient(ctx, target)
+	if err != nil {
+		return RemotePathStatus{}, err
+	}
+	defer sshClient.Close()
+	defer client.Close()
+	closeOnContext(ctx, sshClient)
+
+	info, err := client.Stat(remotePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return RemotePathStatus{Exists: false}, nil
+		}
+		return RemotePathStatus{}, fmt.Errorf("stat remote path: %w", err)
+	}
+	entryType := "file"
+	if info.IsDir() {
+		entryType = "directory"
+	} else if !info.Mode().IsRegular() {
+		entryType = "other"
+	}
+	return RemotePathStatus{Exists: true, Type: entryType, Size: info.Size()}, nil
+}
+
+func ListRemoteDirectory(ctx context.Context, target Target, remotePath string) ([]RemoteFileEntry, error) {
+	client, sshClient, err := sftpClient(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	defer sshClient.Close()
+	defer client.Close()
+	closeOnContext(ctx, sshClient)
+
+	entries, err := client.ReadDir(remotePath)
+	if err != nil {
+		return nil, fmt.Errorf("read remote directory: %w", err)
+	}
+	items := make([]RemoteFileEntry, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
+		entryPath := path.Join(remotePath, name)
+		if remotePath == "/" {
+			entryPath = "/" + name
+		}
+		entryType := "file"
+		if entry.IsDir() {
+			entryType = "directory"
+		} else if !entry.Mode().IsRegular() {
+			entryType = "other"
+		}
+		items = append(items, RemoteFileEntry{
+			Name:       name,
+			Path:       entryPath,
+			Type:       entryType,
+			Size:       entry.Size(),
+			ModifiedAt: entry.ModTime().UTC().Format(time.RFC3339),
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Type == "directory" && items[j].Type != "directory" {
+			return true
+		}
+		if items[i].Type != "directory" && items[j].Type == "directory" {
+			return false
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items, nil
+}
+
+func UploadFile(ctx context.Context, target Target, localPath string, remotePath string, overwrite bool, progress TransferProgress) (TransferResult, error) {
 	started := time.Now()
 	local, err := os.Open(localPath)
 	if err != nil {
@@ -50,7 +139,13 @@ func UploadFile(ctx context.Context, target Target, localPath string, remotePath
 			return TransferResult{}, fmt.Errorf("create remote directory: %w", err)
 		}
 	}
-	remote, err := client.Create(remotePath)
+	flags := os.O_WRONLY | os.O_CREATE
+	if overwrite {
+		flags |= os.O_TRUNC
+	} else {
+		flags |= os.O_EXCL
+	}
+	remote, err := client.OpenFile(remotePath, flags)
 	if err != nil {
 		return TransferResult{}, fmt.Errorf("create remote file: %w", err)
 	}

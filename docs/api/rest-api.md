@@ -140,6 +140,8 @@ The UI asks the user to verify and approve the fingerprint. `POST /api/ssh-host-
 GET  /api/file-transfers
 GET  /api/file-transfers/{id}
 GET  /api/file-transfers/{id}/download
+POST /api/file-transfers/{id}/cancel
+POST /api/file-transfers/browse
 POST /api/file-transfers/upload
 POST /api/file-transfers/download
 ```
@@ -154,6 +156,16 @@ include `direction`, `status`, `server_id`, and `q`:
 
 ```txt
 GET /api/file-transfers?paginated=true&direction=download&status=completed&q=backup
+```
+
+`POST /api/file-transfers/browse` lists one remote directory through SFTP so the
+local UI can select upload/download paths:
+
+```json
+{
+  "server_id": 3,
+  "path": "/home/deploy"
+}
 ```
 
 `POST /api/file-transfers/upload` accepts `multipart/form-data`:
@@ -182,6 +194,9 @@ with the transfer record. Poll `GET /api/file-transfers/{id}` until the status
 is `completed`, then use `GET /api/file-transfers/{id}/download` to download the
 temporary file through the browser. Temporary download files are short-lived and
 may return `410 Gone` after cleanup.
+
+`POST /api/file-transfers/{id}/cancel` cancels a pending or running transfer and
+closes the active SFTP operation when it is still in progress.
 
 Remote paths must be absolute file paths. Directory transfer, recursive copy,
 remote glob expansion, and SSH-agent/ProxyJump based transfers are not part of

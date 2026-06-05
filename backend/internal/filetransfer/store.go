@@ -212,9 +212,26 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 	return items, total, nil
 }
 
-func (s *Store) MarkRunning(ctx context.Context, id int64) error {
+func (s *Store) MarkRunning(ctx context.Context, id int64) (bool, error) {
 	now := nowString()
-	return s.updateStatus(ctx, id, StatusRunning, `started_at = COALESCE(started_at, ?)`, []any{now}, now)
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE file_transfers
+		SET status = ?, started_at = COALESCE(started_at, ?), updated_at = ?
+		WHERE id = ? AND status = ?`,
+		StatusRunning,
+		now,
+		now,
+		id,
+		StatusPending,
+	)
+	if err != nil {
+		return false, fmt.Errorf("mark file transfer running: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read file transfer running rows: %w", err)
+	}
+	return rows > 0, nil
 }
 
 func (s *Store) UpdateProgress(ctx context.Context, id int64, transferred int64, size int64) error {
@@ -228,12 +245,13 @@ func (s *Store) UpdateProgress(ctx context.Context, id int64, transferred int64,
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET transferred_bytes = ?, size_bytes = CASE WHEN ? > 0 THEN ? ELSE size_bytes END, updated_at = ?
-		WHERE id = ?`,
+		WHERE id = ? AND status = ?`,
 		transferred,
 		size,
 		size,
 		now,
 		id,
+		StatusRunning,
 	)
 	if err != nil {
 		return fmt.Errorf("update file transfer progress: %w", err)
@@ -241,13 +259,13 @@ func (s *Store) UpdateProgress(ctx context.Context, id int64, transferred int64,
 	return nil
 }
 
-func (s *Store) Complete(ctx context.Context, id int64, transferred int64, checksum string) error {
+func (s *Store) Complete(ctx context.Context, id int64, transferred int64, checksum string) (bool, error) {
 	now := nowString()
-	_, err := s.db.ExecContext(ctx, `
+	result, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, transferred_bytes = CASE WHEN ? >= 0 THEN ? ELSE transferred_bytes END,
 			checksum_sha256 = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE id = ?`,
+		WHERE id = ? AND status = ?`,
 		StatusCompleted,
 		transferred,
 		transferred,
@@ -255,40 +273,64 @@ func (s *Store) Complete(ctx context.Context, id int64, transferred int64, check
 		now,
 		now,
 		id,
+		StatusRunning,
 	)
 	if err != nil {
-		return fmt.Errorf("complete file transfer: %w", err)
+		return false, fmt.Errorf("complete file transfer: %w", err)
 	}
-	return nil
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read completed file transfer rows: %w", err)
+	}
+	return rows > 0, nil
 }
 
-func (s *Store) Fail(ctx context.Context, id int64, errorText string) error {
+func (s *Store) Fail(ctx context.Context, id int64, errorText string) (bool, error) {
 	now := nowString()
-	_, err := s.db.ExecContext(ctx, `
+	result, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE id = ?`,
+		WHERE id = ? AND status IN (?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(errorText),
 		now,
 		now,
 		id,
+		StatusPending,
+		StatusRunning,
 	)
 	if err != nil {
-		return fmt.Errorf("fail file transfer: %w", err)
+		return false, fmt.Errorf("fail file transfer: %w", err)
 	}
-	return nil
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read failed file transfer rows: %w", err)
+	}
+	return rows > 0, nil
 }
 
-func (s *Store) updateStatus(ctx context.Context, id int64, status string, assignment string, args []any, now string) error {
-	query := `UPDATE file_transfers SET status = ?, ` + assignment + `, updated_at = ? WHERE id = ?`
-	values := append([]any{status}, args...)
-	values = append(values, now, id)
-	_, err := s.db.ExecContext(ctx, query, values...)
+func (s *Store) Cancel(ctx context.Context, id int64, errorText string) (bool, error) {
+	now := nowString()
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE file_transfers
+		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		WHERE id = ? AND status IN (?, ?)`,
+		StatusCanceled,
+		strings.TrimSpace(errorText),
+		now,
+		now,
+		id,
+		StatusPending,
+		StatusRunning,
+	)
 	if err != nil {
-		return fmt.Errorf("update file transfer status: %w", err)
+		return false, fmt.Errorf("cancel file transfer: %w", err)
 	}
-	return nil
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read canceled file transfer rows: %w", err)
+	}
+	return rows > 0, nil
 }
 
 func listWhere(filter ListFilter) (string, []any) {

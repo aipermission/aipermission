@@ -33,6 +33,25 @@ type startDownloadRequest struct {
 	RemotePath string `json:"remote_path"`
 }
 
+type browseRemoteFilesRequest struct {
+	ServerID int64  `json:"server_id"`
+	Path     string `json:"path"`
+}
+
+type browseRemoteFilesResponse struct {
+	Path    string                      `json:"path"`
+	Parent  string                      `json:"parent"`
+	Entries []execution.RemoteFileEntry `json:"entries"`
+}
+
+type remoteFileExistsResponse struct {
+	Error      string `json:"error"`
+	Code       string `json:"code"`
+	RemotePath string `json:"remote_path"`
+	Type       string `json:"type"`
+	Size       int64  `json:"size"`
+}
+
 func (s fileTransferHandlers) listFileTransfers(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -95,6 +114,95 @@ func (s fileTransferHandlers) getFileTransfer(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, item)
 }
 
+func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	var request browseRemoteFilesRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	if request.ServerID < 1 {
+		writeError(w, http.StatusBadRequest, "server_id is required")
+		return
+	}
+	remotePath, err := normalizeRemoteDirectoryPath(request.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	server, privateKey, err := s.serverSSHMaterialFromRuntime(ctx, runtime, request.ServerID)
+	if err != nil {
+		handleServerSSHMaterialError(w, err)
+		return
+	}
+	entries, err := execution.ListRemoteDirectory(ctx, s.executionTarget(server, privateKey), remotePath)
+	if err != nil {
+		if writeUnknownHostKeyError(w, err) {
+			return
+		}
+		writeError(w, http.StatusBadGateway, sshConnectionFailureMessage(err))
+		return
+	}
+	parent := path.Dir(remotePath)
+	if parent == "." || parent == remotePath {
+		parent = "/"
+	}
+	writeJSON(w, http.StatusOK, browseRemoteFilesResponse{
+		Path:    remotePath,
+		Parent:  parent,
+		Entries: entries,
+	})
+}
+
+func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	item, err := runtime.fileTransfers.Get(r.Context(), id)
+	if errors.Is(err, filetransfer.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file transfer not found")
+		return
+	}
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if item.Status != filetransfer.StatusPending && item.Status != filetransfer.StatusRunning {
+		writeError(w, http.StatusConflict, "file transfer is not running")
+		return
+	}
+	runtime.cancelTransfer(id)
+	changed, err := runtime.fileTransfers.Cancel(context.Background(), id, "canceled by local user")
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if changed {
+		s.removeTransferTemp(runtime, id)
+		s.writeAudit(context.Background(), runtime, "user", nil, item.ServerID, "file_transfer.canceled", map[string]any{
+			"transfer_id": id,
+			"direction":   item.Direction,
+			"remote_path": item.RemotePath,
+		})
+	}
+	updated, err := runtime.fileTransfers.Get(r.Context(), id)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
 func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -123,10 +231,14 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer file.Close()
+	overwrite := parseFormBool(r, "overwrite")
 
 	tempPath, size, err := s.stageUploadFile(file)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if ok := s.checkUploadOverwrite(w, r, runtime, serverID, remotePath, overwrite, tempPath); !ok {
 		return
 	}
 	fileName := safeFileName(header.Filename)
@@ -150,8 +262,9 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 		"remote_path": remotePath,
 		"file_name":   fileName,
 		"size_bytes":  size,
+		"overwrite":   overwrite,
 	})
-	go s.runUpload(runtime, record.ID)
+	go s.runUpload(runtime, record.ID, overwrite)
 	writeJSON(w, http.StatusAccepted, record)
 }
 
@@ -244,12 +357,18 @@ func (s fileTransferHandlers) downloadTransferredFile(w http.ResponseWriter, r *
 	http.ServeFile(w, r, item.TempPath)
 }
 
-func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int64) {
+func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int64, overwrite bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), fileTransferTimeout)
+	runtime.registerTransferCancel(transferID, cancel)
+	defer runtime.unregisterTransferCancel(transferID)
 	defer cancel()
 	defer s.removeTransferTemp(runtime, transferID)
-	if err := runtime.fileTransfers.MarkRunning(ctx, transferID); err != nil {
+	ok, err := runtime.fileTransfers.MarkRunning(ctx, transferID)
+	if err != nil {
 		log.Printf("mark file upload running failed transfer=%d error=%v", transferID, err)
+		return
+	}
+	if !ok {
 		return
 	}
 	item, err := runtime.fileTransfers.Get(ctx, transferID)
@@ -262,13 +381,21 @@ func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int
 		s.failFileTransfer(runtime, transferID, err)
 		return
 	}
-	result, err := execution.UploadFile(ctx, s.executionTarget(server, privateKey), item.TempPath, item.RemotePath, s.transferProgress(runtime, transferID))
+	result, err := execution.UploadFile(ctx, s.executionTarget(server, privateKey), item.TempPath, item.RemotePath, overwrite, s.transferProgress(runtime, transferID))
 	if err != nil {
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+			s.cancelFileTransferRecord(runtime, transferID, "canceled by local user")
+			return
+		}
 		s.failFileTransfer(runtime, transferID, err)
 		return
 	}
-	if err := runtime.fileTransfers.Complete(context.Background(), transferID, result.Bytes, result.ChecksumSHA256); err != nil {
+	completed, err := runtime.fileTransfers.Complete(context.Background(), transferID, result.Bytes, result.ChecksumSHA256)
+	if err != nil {
 		log.Printf("complete file upload failed transfer=%d error=%v", transferID, err)
+	}
+	if !completed {
+		return
 	}
 	s.writeAudit(context.Background(), runtime, "user", nil, item.ServerID, "file_transfer.upload.completed", map[string]any{
 		"transfer_id":     transferID,
@@ -281,9 +408,15 @@ func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int
 
 func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), fileTransferTimeout)
+	runtime.registerTransferCancel(transferID, cancel)
+	defer runtime.unregisterTransferCancel(transferID)
 	defer cancel()
-	if err := runtime.fileTransfers.MarkRunning(ctx, transferID); err != nil {
+	ok, err := runtime.fileTransfers.MarkRunning(ctx, transferID)
+	if err != nil {
 		log.Printf("mark file download running failed transfer=%d error=%v", transferID, err)
+		return
+	}
+	if !ok {
 		return
 	}
 	item, err := runtime.fileTransfers.Get(ctx, transferID)
@@ -299,11 +432,19 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 	result, err := execution.DownloadFile(ctx, s.executionTarget(server, privateKey), item.RemotePath, item.TempPath, s.transferProgress(runtime, transferID))
 	if err != nil {
 		_ = os.Remove(item.TempPath)
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+			s.cancelFileTransferRecord(runtime, transferID, "canceled by local user")
+			return
+		}
 		s.failFileTransfer(runtime, transferID, err)
 		return
 	}
-	if err := runtime.fileTransfers.Complete(context.Background(), transferID, result.Bytes, result.ChecksumSHA256); err != nil {
+	completed, err := runtime.fileTransfers.Complete(context.Background(), transferID, result.Bytes, result.ChecksumSHA256)
+	if err != nil {
 		log.Printf("complete file download failed transfer=%d error=%v", transferID, err)
+	}
+	if !completed {
+		return
 	}
 	s.scheduleTransferTempCleanup(item.TempPath)
 	s.writeAudit(context.Background(), runtime, "user", nil, item.ServerID, "file_transfer.download.completed", map[string]any{
@@ -329,10 +470,60 @@ func (s fileTransferHandlers) transferProgress(runtime *databaseRuntime, transfe
 	}
 }
 
+func (s fileTransferHandlers) checkUploadOverwrite(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, serverID int64, remotePath string, overwrite bool, tempPath string) bool {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	server, privateKey, err := s.serverSSHMaterialFromRuntime(ctx, runtime, serverID)
+	if err != nil {
+		_ = os.Remove(tempPath)
+		handleServerSSHMaterialError(w, err)
+		return false
+	}
+	status, err := execution.StatRemotePath(ctx, s.executionTarget(server, privateKey), remotePath)
+	if err != nil {
+		_ = os.Remove(tempPath)
+		if writeUnknownHostKeyError(w, err) {
+			return false
+		}
+		writeError(w, http.StatusBadGateway, sshConnectionFailureMessage(err))
+		return false
+	}
+	if !status.Exists {
+		return true
+	}
+	if status.Type != "file" {
+		_ = os.Remove(tempPath)
+		writeJSON(w, http.StatusConflict, remoteFileExistsResponse{
+			Error:      "remote path already exists and is not a regular file",
+			Code:       "remote_path_exists",
+			RemotePath: remotePath,
+			Type:       status.Type,
+			Size:       status.Size,
+		})
+		return false
+	}
+	if !overwrite {
+		_ = os.Remove(tempPath)
+		writeJSON(w, http.StatusConflict, remoteFileExistsResponse{
+			Error:      "remote file already exists",
+			Code:       "remote_file_exists",
+			RemotePath: remotePath,
+			Type:       status.Type,
+			Size:       status.Size,
+		})
+		return false
+	}
+	return true
+}
+
 func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transferID int64, err error) {
 	message := fileTransferFailureMessage(err)
-	if writeErr := runtime.fileTransfers.Fail(context.Background(), transferID, message); writeErr != nil {
+	changed, writeErr := runtime.fileTransfers.Fail(context.Background(), transferID, message)
+	if writeErr != nil {
 		log.Printf("fail file transfer failed transfer=%d error=%v", transferID, writeErr)
+	}
+	if !changed {
+		return
 	}
 	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
 	if readErr == nil {
@@ -341,6 +532,25 @@ func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transfe
 			"direction":   item.Direction,
 			"remote_path": item.RemotePath,
 			"error":       message,
+		})
+	}
+}
+
+func (s fileTransferHandlers) cancelFileTransferRecord(runtime *databaseRuntime, transferID int64, message string) {
+	changed, err := runtime.fileTransfers.Cancel(context.Background(), transferID, message)
+	if err != nil {
+		log.Printf("cancel file transfer failed transfer=%d error=%v", transferID, err)
+		return
+	}
+	if !changed {
+		return
+	}
+	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
+	if readErr == nil {
+		s.writeAudit(context.Background(), runtime, "user", nil, item.ServerID, "file_transfer.canceled", map[string]any{
+			"transfer_id": transferID,
+			"direction":   item.Direction,
+			"remote_path": item.RemotePath,
 		})
 	}
 }
@@ -452,6 +662,15 @@ func parseFormInt64(w http.ResponseWriter, r *http.Request, field string) (int64
 	return id, true
 }
 
+func parseFormBool(r *http.Request, field string) bool {
+	switch strings.ToLower(strings.TrimSpace(r.FormValue(field))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 func normalizeRemoteFilePath(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -473,6 +692,25 @@ func normalizeRemoteFilePath(value string) (string, error) {
 		return "", fmt.Errorf("remote_path must point to a file")
 	}
 	return cleaned, nil
+}
+
+func normalizeRemoteDirectoryPath(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = "/"
+	}
+	if len([]rune(value)) > 4096 {
+		return "", fmt.Errorf("path must be 4096 characters or fewer")
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return "", fmt.Errorf("path cannot contain control characters")
+		}
+	}
+	if !path.IsAbs(value) {
+		return "", fmt.Errorf("path must be an absolute path")
+	}
+	return path.Clean(value), nil
 }
 
 func safeFileName(value string) string {

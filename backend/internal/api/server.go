@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"sync"
@@ -44,6 +45,8 @@ type databaseRuntime struct {
 	tokens           *tokens.Store
 	fileTransfers    *filetransfer.Store
 	consoleSessions  *console.Manager
+	transferMu       sync.Mutex
+	transferCancels  map[int64]context.CancelFunc
 	securityMu       sync.RWMutex
 	securitySettings securitySettingsResponse
 	securityLoaded   bool
@@ -71,15 +74,16 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, se
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 	runtime := &databaseRuntime{
-		id:            activeID,
-		path:          cfg.DataPath,
-		gatewaySecret: cfg.GatewaySecret,
-		database:      database,
-		vault:         secretVault,
-		servers:       serverStore,
-		sshKeys:       sshKeyStore,
-		tokens:        tokenStore,
-		fileTransfers: filetransfer.NewStore(database),
+		id:              activeID,
+		path:            cfg.DataPath,
+		gatewaySecret:   cfg.GatewaySecret,
+		database:        database,
+		vault:           secretVault,
+		servers:         serverStore,
+		sshKeys:         sshKeyStore,
+		tokens:          tokenStore,
+		fileTransfers:   filetransfer.NewStore(database),
+		transferCancels: map[int64]context.CancelFunc{},
 	}
 	runtime.consoleSessions = console.NewManager(database, server.serverSSHMaterialForRuntime(runtime), server.knownHostsPath(), server.runtimeRedactor(runtime))
 	server.workspaces[activeID] = runtime

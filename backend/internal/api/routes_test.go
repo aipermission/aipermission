@@ -614,7 +614,10 @@ func TestFileTransferRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create file transfer: %v", err)
 	}
-	if err := runtime.fileTransfers.Complete(context.Background(), record.ID, int64(len("download payload")), "abc123"); err != nil {
+	if ok, err := runtime.fileTransfers.MarkRunning(context.Background(), record.ID); err != nil || !ok {
+		t.Fatalf("mark file transfer running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := runtime.fileTransfers.Complete(context.Background(), record.ID, int64(len("download payload")), "abc123"); err != nil || !ok {
 		t.Fatalf("complete file transfer: %v", err)
 	}
 
@@ -637,8 +640,31 @@ func TestFileTransferRoutes(t *testing.T) {
 	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{ServerID: server.ID, RemotePath: "relative.txt"}); response.Code != http.StatusBadRequest {
 		t.Fatalf("relative download path should fail, got %d %s", response.Code, response.Body.String())
 	}
+	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{ServerID: server.ID, Path: "relative"}); response.Code != http.StatusBadRequest {
+		t.Fatalf("relative browse path should fail, got %d %s", response.Code, response.Body.String())
+	}
 	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/upload", "", nil); response.Code != http.StatusBadRequest {
 		t.Fatalf("missing multipart upload should fail, got %d %s", response.Code, response.Body.String())
+	}
+
+	cancelRecord, err := runtime.fileTransfers.Create(context.Background(), filetransfer.CreateRequest{
+		ServerID:   server.ID,
+		Direction:  filetransfer.DirectionUpload,
+		Source:     filetransfer.SourceUI,
+		LocalPath:  "movie.mp4",
+		RemotePath: "/root/movie.mp4",
+		FileName:   "movie.mp4",
+		TempPath:   tempPath,
+	})
+	if err != nil {
+		t.Fatalf("create cancel transfer: %v", err)
+	}
+	if ok, err := runtime.fileTransfers.MarkRunning(context.Background(), cancelRecord.ID); err != nil || !ok {
+		t.Fatalf("mark cancel transfer running: ok=%v err=%v", ok, err)
+	}
+	cancelResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/"+strconv.FormatInt(cancelRecord.ID, 10)+"/cancel", "", map[string]any{})
+	if cancelResponse.Code != http.StatusOK || !strings.Contains(cancelResponse.Body.String(), `"status":"canceled"`) {
+		t.Fatalf("cancel file transfer failed: %d %s", cancelResponse.Code, cancelResponse.Body.String())
 	}
 }
 

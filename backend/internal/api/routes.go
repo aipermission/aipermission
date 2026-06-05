@@ -108,6 +108,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/file-transfers", fileTransfers.listFileTransfers)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}", fileTransfers.getFileTransfer)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}/download", fileTransfers.downloadTransferredFile)
+	s.mux.HandleFunc("POST /api/file-transfers/{id}/cancel", fileTransfers.cancelFileTransfer)
+	s.mux.HandleFunc("POST /api/file-transfers/browse", fileTransfers.browseRemoteFiles)
 	s.mux.HandleFunc("POST /api/file-transfers/upload", fileTransfers.startUpload)
 	s.mux.HandleFunc("POST /api/file-transfers/download", fileTransfers.startDownload)
 	s.mux.HandleFunc("GET /api/messages", messages.listMessages)

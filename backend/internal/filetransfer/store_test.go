@@ -39,13 +39,13 @@ func TestStoreCreatesListsAndUpdatesFileTransfers(t *testing.T) {
 		t.Fatalf("store should keep internal temp path for backend cleanup")
 	}
 
-	if err := store.MarkRunning(ctx, created.ID); err != nil {
+	if ok, err := store.MarkRunning(ctx, created.ID); err != nil || !ok {
 		t.Fatalf("mark running: %v", err)
 	}
 	if err := store.UpdateProgress(ctx, created.ID, 1024, 2048); err != nil {
 		t.Fatalf("update progress: %v", err)
 	}
-	if err := store.Complete(ctx, created.ID, 2048, "abc123"); err != nil {
+	if ok, err := store.Complete(ctx, created.ID, 2048, "abc123"); err != nil || !ok {
 		t.Fatalf("complete transfer: %v", err)
 	}
 	completed, err := store.Get(ctx, created.ID)
@@ -62,6 +62,10 @@ func TestStoreCreatesListsAndUpdatesFileTransfers(t *testing.T) {
 	}
 	if total != 1 || len(items) != 1 || items[0].ID != created.ID {
 		t.Fatalf("unexpected transfer list: total=%d items=%#v", total, items)
+	}
+
+	if ok, err := store.Cancel(ctx, created.ID, "too late"); err != nil || ok {
+		t.Fatalf("completed transfer should not be cancelable: ok=%v err=%v", ok, err)
 	}
 }
 
