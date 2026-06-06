@@ -104,16 +104,19 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		return nil, err
 	}
 	runtime := &databaseRuntime{
-		id:              id,
-		path:            path,
-		gatewaySecret:   gatewaySecret,
-		database:        database,
-		vault:           secretVault,
-		servers:         servers.NewStore(database),
-		sshKeys:         sshkeys.NewStore(database, secretVault),
-		tokens:          tokens.NewStore(database, secretVault),
-		fileTransfers:   filetransfer.NewStore(database),
-		transferCancels: map[int64]context.CancelFunc{},
+		id:               id,
+		path:             path,
+		gatewaySecret:    gatewaySecret,
+		database:         database,
+		vault:            secretVault,
+		servers:          servers.NewStore(database),
+		sshKeys:          sshkeys.NewStore(database, secretVault),
+		tokens:           tokens.NewStore(database, secretVault),
+		fileTransfers:    filetransfer.NewStore(database),
+		transferCancels:  map[int64]context.CancelFunc{},
+		batchCancels:     map[int64]context.CancelFunc{},
+		transferControls: map[int64]*transferControl{},
+		batchControls:    map[int64]*transferControl{},
 	}
 	settings, err := readSecuritySettingsFromDB(context.Background(), runtime)
 	if err != nil {

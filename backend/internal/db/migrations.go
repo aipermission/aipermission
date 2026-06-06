@@ -277,6 +277,76 @@ var fileTransferStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_status_created ON file_transfers(status, created_at);`,
 }
 
+var bulkFileTransferStatements = []string{
+	`CREATE TABLE IF NOT EXISTS file_transfer_batches (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		server_id INTEGER NOT NULL,
+		direction TEXT NOT NULL CHECK (direction IN ('upload', 'download')),
+		source TEXT NOT NULL DEFAULT 'ui' CHECK (source IN ('ui', 'mcp')),
+		status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'paused', 'completed', 'failed', 'canceled')),
+		archive_name TEXT NOT NULL DEFAULT '',
+		archive_path TEXT NOT NULL DEFAULT '',
+		total_items INTEGER NOT NULL DEFAULT 0,
+		completed_items INTEGER NOT NULL DEFAULT 0,
+		failed_items INTEGER NOT NULL DEFAULT 0,
+		canceled_items INTEGER NOT NULL DEFAULT 0,
+		size_bytes INTEGER NOT NULL DEFAULT 0,
+		transferred_bytes INTEGER NOT NULL DEFAULT 0,
+		bytes_per_second INTEGER NOT NULL DEFAULT 0,
+		eta_seconds INTEGER NOT NULL DEFAULT -1,
+		error TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		started_at TEXT,
+		completed_at TEXT,
+		updated_at TEXT NOT NULL,
+		FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+	);`,
+	`CREATE TABLE IF NOT EXISTS file_transfers_next (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		batch_id INTEGER,
+		queue_index INTEGER NOT NULL DEFAULT 0,
+		server_id INTEGER NOT NULL,
+		direction TEXT NOT NULL CHECK (direction IN ('upload', 'download')),
+		source TEXT NOT NULL DEFAULT 'ui' CHECK (source IN ('ui', 'mcp')),
+		status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'paused', 'completed', 'failed', 'canceled')),
+		local_path TEXT NOT NULL DEFAULT '',
+		remote_path TEXT NOT NULL,
+		file_name TEXT NOT NULL DEFAULT '',
+		size_bytes INTEGER NOT NULL DEFAULT 0,
+		transferred_bytes INTEGER NOT NULL DEFAULT 0,
+		bytes_per_second INTEGER NOT NULL DEFAULT 0,
+		eta_seconds INTEGER NOT NULL DEFAULT -1,
+		checksum_sha256 TEXT NOT NULL DEFAULT '',
+		temp_path TEXT NOT NULL DEFAULT '',
+		error TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		started_at TEXT,
+		completed_at TEXT,
+		updated_at TEXT NOT NULL,
+		FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE,
+		FOREIGN KEY(batch_id) REFERENCES file_transfer_batches(id) ON DELETE SET NULL
+	);`,
+	`INSERT INTO file_transfers_next (
+		id, server_id, direction, source, status, local_path, remote_path, file_name,
+		size_bytes, transferred_bytes, checksum_sha256, temp_path, error, created_at,
+		started_at, completed_at, updated_at
+	)
+		SELECT id, server_id, direction, source, status, local_path, remote_path, file_name,
+			size_bytes, transferred_bytes, checksum_sha256, temp_path, error, created_at,
+			started_at, completed_at, updated_at
+		FROM file_transfers;`,
+	`DROP TABLE file_transfers;`,
+	`ALTER TABLE file_transfers_next RENAME TO file_transfers;`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfer_batches_created ON file_transfer_batches(created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfer_batches_server_status_created ON file_transfer_batches(server_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_created ON file_transfers(created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_server_status_created ON file_transfers(server_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_direction_created ON file_transfers(direction, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_status_created ON file_transfers(status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_batch_queue ON file_transfers(batch_id, queue_index, id);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_batch_status ON file_transfers(batch_id, status);`,
+}
+
 var migrations = []migration{
 	{
 		version:     1,
@@ -302,6 +372,11 @@ var migrations = []migration{
 		version:     5,
 		description: "file transfer history",
 		statements:  fileTransferStatements,
+	},
+	{
+		version:     6,
+		description: "bulk file transfer queue",
+		statements:  bulkFileTransferStatements,
 	},
 }
 

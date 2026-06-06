@@ -69,6 +69,92 @@ func TestStoreCreatesListsAndUpdatesFileTransfers(t *testing.T) {
 	}
 }
 
+func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	serverID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+
+	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
+		ServerID:  serverID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
+		Items: []CreateRequest{
+			{LocalPath: "a.txt", RemotePath: "/tmp/a.txt", FileName: "a.txt", SizeBytes: 100, TempPath: "/tmp/a"},
+			{LocalPath: "b.txt", RemotePath: "/tmp/b.txt", FileName: "b.txt", SizeBytes: 200, TempPath: "/tmp/b"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if batch.Status != StatusPending || batch.TotalItems != 2 || batch.SizeBytes != 300 || len(batch.Items) != 2 {
+		t.Fatalf("unexpected batch: %#v", batch)
+	}
+	if batch.Items[0].BatchID != batch.ID || batch.Items[0].QueueIndex != 0 || batch.Items[1].QueueIndex != 1 {
+		t.Fatalf("unexpected batch item ordering: %#v", batch.Items)
+	}
+
+	if ok, err := store.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.MarkRunning(ctx, batch.Items[0].ID); err != nil || !ok {
+		t.Fatalf("mark item running: ok=%v err=%v", ok, err)
+	}
+	if err := store.UpdateProgressStats(ctx, batch.Items[0].ID, 50, 100, 25, 2); err != nil {
+		t.Fatalf("update item progress: %v", err)
+	}
+	if err := store.RecalculateBatch(ctx, batch.ID); err != nil {
+		t.Fatalf("recalculate batch: %v", err)
+	}
+	progress, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get batch progress: %v", err)
+	}
+	if progress.TransferredBytes != 50 || progress.BytesPerSecond != 25 || progress.ETASeconds < 0 {
+		t.Fatalf("unexpected batch progress: %#v", progress)
+	}
+
+	if ok, err := store.PauseBatch(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("pause batch: ok=%v err=%v", ok, err)
+	}
+	paused, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get paused batch: %v", err)
+	}
+	if paused.Status != StatusPaused || paused.Items[0].Status != StatusPaused {
+		t.Fatalf("unexpected paused batch: %#v", paused)
+	}
+	if ok, err := store.ResumeBatch(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("resume batch: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.Complete(ctx, batch.Items[0].ID, 100, "aaa"); err != nil || !ok {
+		t.Fatalf("complete first item: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.MarkRunning(ctx, batch.Items[1].ID); err != nil || !ok {
+		t.Fatalf("mark second item running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.Complete(ctx, batch.Items[1].ID, 200, "bbb"); err != nil || !ok {
+		t.Fatalf("complete second item: ok=%v err=%v", ok, err)
+	}
+	if err := store.RecalculateBatch(ctx, batch.ID); err != nil {
+		t.Fatalf("recalculate completed batch: %v", err)
+	}
+	if ok, err := store.CompleteBatch(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("complete batch: ok=%v err=%v", ok, err)
+	}
+	completed, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get completed batch: %v", err)
+	}
+	if completed.Status != StatusCompleted || completed.CompletedItems != 2 || completed.TransferredBytes != 300 || completed.ETASeconds != 0 {
+		t.Fatalf("unexpected completed batch: %#v", completed)
+	}
+}
+
 func TestStoreValidatesFileTransfers(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {

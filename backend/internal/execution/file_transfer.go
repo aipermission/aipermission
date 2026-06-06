@@ -16,6 +16,11 @@ import (
 
 type TransferProgress func(transferred int64, total int64)
 
+type TransferOptions struct {
+	Progress TransferProgress
+	Wait     func(context.Context) error
+}
+
 type TransferResult struct {
 	Bytes          int64
 	Size           int64
@@ -112,6 +117,10 @@ func ListRemoteDirectory(ctx context.Context, target Target, remotePath string) 
 }
 
 func UploadFile(ctx context.Context, target Target, localPath string, remotePath string, overwrite bool, progress TransferProgress) (TransferResult, error) {
+	return UploadFileWithOptions(ctx, target, localPath, remotePath, overwrite, TransferOptions{Progress: progress})
+}
+
+func UploadFileWithOptions(ctx context.Context, target Target, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error) {
 	started := time.Now()
 	local, err := os.Open(localPath)
 	if err != nil {
@@ -151,19 +160,12 @@ func UploadFile(ctx context.Context, target Target, localPath string, remotePath
 	}
 	defer remote.Close()
 
-	hasher := sha256.New()
-	reader := &progressReader{
-		reader: io.TeeReader(local, hasher),
-		total:  info.Size(),
-		fn:     progress,
-	}
-	copied, err := io.Copy(remote, reader)
+	copied, checksum, err := copyWithProgress(ctx, remote, local, info.Size(), options)
 	if err != nil {
 		return TransferResult{}, fmt.Errorf("upload file: %w", err)
 	}
-	checksum := hex.EncodeToString(hasher.Sum(nil))
-	if progress != nil {
-		progress(copied, info.Size())
+	if options.Progress != nil {
+		options.Progress(copied, info.Size())
 	}
 	return TransferResult{
 		Bytes:          copied,
@@ -174,6 +176,10 @@ func UploadFile(ctx context.Context, target Target, localPath string, remotePath
 }
 
 func DownloadFile(ctx context.Context, target Target, remotePath string, localPath string, progress TransferProgress) (TransferResult, error) {
+	return DownloadFileWithOptions(ctx, target, remotePath, localPath, TransferOptions{Progress: progress})
+}
+
+func DownloadFileWithOptions(ctx context.Context, target Target, remotePath string, localPath string, options TransferOptions) (TransferResult, error) {
 	started := time.Now()
 	client, sshClient, err := sftpClient(ctx, target)
 	if err != nil {
@@ -202,19 +208,12 @@ func DownloadFile(ctx context.Context, target Target, remotePath string, localPa
 	}
 	defer local.Close()
 
-	hasher := sha256.New()
-	writer := &progressWriter{
-		writer: io.MultiWriter(local, hasher),
-		total:  info.Size(),
-		fn:     progress,
-	}
-	copied, err := io.Copy(writer, remote)
+	copied, checksum, err := copyWithProgress(ctx, local, remote, info.Size(), options)
 	if err != nil {
 		return TransferResult{}, fmt.Errorf("download file: %w", err)
 	}
-	checksum := hex.EncodeToString(hasher.Sum(nil))
-	if progress != nil {
-		progress(copied, info.Size())
+	if options.Progress != nil {
+		options.Progress(copied, info.Size())
 	}
 	return TransferResult{
 		Bytes:          copied,
@@ -222,6 +221,47 @@ func DownloadFile(ctx context.Context, target Target, remotePath string, localPa
 		ChecksumSHA256: checksum,
 		DurationMS:     time.Since(started).Milliseconds(),
 	}, nil
+}
+
+func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total int64, options TransferOptions) (int64, string, error) {
+	hasher := sha256.New()
+	buffer := make([]byte, 128*1024)
+	var copied int64
+	for {
+		if err := ctx.Err(); err != nil {
+			return copied, "", err
+		}
+		if options.Wait != nil {
+			if err := options.Wait(ctx); err != nil {
+				return copied, "", err
+			}
+		}
+		nr, er := src.Read(buffer)
+		if nr > 0 {
+			chunk := buffer[:nr]
+			nw, ew := dst.Write(chunk)
+			if nw > 0 {
+				_, _ = hasher.Write(chunk[:nw])
+				copied += int64(nw)
+				if options.Progress != nil {
+					options.Progress(copied, total)
+				}
+			}
+			if ew != nil {
+				return copied, "", ew
+			}
+			if nr != nw {
+				return copied, "", io.ErrShortWrite
+			}
+		}
+		if er != nil {
+			if er == io.EOF {
+				break
+			}
+			return copied, "", er
+		}
+	}
+	return copied, hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func sftpClient(ctx context.Context, target Target) (*sftp.Client, interface{ Close() error }, error) {

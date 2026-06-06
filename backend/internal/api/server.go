@@ -47,6 +47,9 @@ type databaseRuntime struct {
 	consoleSessions  *console.Manager
 	transferMu       sync.Mutex
 	transferCancels  map[int64]context.CancelFunc
+	batchCancels     map[int64]context.CancelFunc
+	transferControls map[int64]*transferControl
+	batchControls    map[int64]*transferControl
 	securityMu       sync.RWMutex
 	securitySettings securitySettingsResponse
 	securityLoaded   bool
@@ -74,16 +77,19 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, se
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 	runtime := &databaseRuntime{
-		id:              activeID,
-		path:            cfg.DataPath,
-		gatewaySecret:   cfg.GatewaySecret,
-		database:        database,
-		vault:           secretVault,
-		servers:         serverStore,
-		sshKeys:         sshKeyStore,
-		tokens:          tokenStore,
-		fileTransfers:   filetransfer.NewStore(database),
-		transferCancels: map[int64]context.CancelFunc{},
+		id:               activeID,
+		path:             cfg.DataPath,
+		gatewaySecret:    cfg.GatewaySecret,
+		database:         database,
+		vault:            secretVault,
+		servers:          serverStore,
+		sshKeys:          sshKeyStore,
+		tokens:           tokenStore,
+		fileTransfers:    filetransfer.NewStore(database),
+		transferCancels:  map[int64]context.CancelFunc{},
+		batchCancels:     map[int64]context.CancelFunc{},
+		transferControls: map[int64]*transferControl{},
+		batchControls:    map[int64]*transferControl{},
 	}
 	runtime.consoleSessions = console.NewManager(database, server.serverSSHMaterialForRuntime(runtime), server.knownHostsPath(), server.runtimeRedactor(runtime))
 	server.workspaces[activeID] = runtime

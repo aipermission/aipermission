@@ -141,9 +141,16 @@ GET  /api/file-transfers
 GET  /api/file-transfers/{id}
 GET  /api/file-transfers/{id}/download
 POST /api/file-transfers/{id}/cancel
+GET  /api/file-transfer-batches/{id}
+GET  /api/file-transfer-batches/{id}/download
+POST /api/file-transfer-batches/{id}/pause
+POST /api/file-transfer-batches/{id}/resume
+POST /api/file-transfer-batches/{id}/cancel
 POST /api/file-transfers/browse
 POST /api/file-transfers/upload
+POST /api/file-transfers/upload-batch
 POST /api/file-transfers/download
+POST /api/file-transfers/download-batch
 ```
 
 File transfers use the selected server's existing SSH credential and run over
