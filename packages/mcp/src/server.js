@@ -18,7 +18,7 @@ const apiTimeoutMs = Number.parseInt(process.env.AIPERMISSION_HTTP_TIMEOUT_MS ||
 
 const server = new McpServer({
   name: "aipermission",
-  version: "0.1.1",
+  version: "0.1.2",
 });
 
 server.tool(

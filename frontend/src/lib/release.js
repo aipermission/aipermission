@@ -1,6 +1,27 @@
-export const appVersion = "0.1.6";
+export const appVersion = "0.1.7";
 
 export const changelogEntries = [
+  {
+    version: "0.1.7",
+    label: "MCP transfer tools",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "MCP tools can list token-scoped file transfer status and batch progress.",
+          "MCP can browse remote directories and start remote download queues for always-run server permissions.",
+          "MCP can pause, resume, and cancel active transfer queues.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "MCP transfer responses never include local temp paths, archive staging paths, local upload paths, or downloaded file contents.",
+          "MCP local upload remains intentionally unavailable while local path scope and approval semantics are designed separately.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.6",
     label: "Bulk file transfer queues",

@@ -7,6 +7,22 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-06-06
+
+### Added
+
+- MCP file transfer status tools for token-scoped transfer and batch metadata.
+- MCP remote directory browsing and remote download queue start tools for
+  `always_run` server permissions.
+- MCP pause, resume, and cancel tools for active transfer queues.
+
+### Security
+
+- MCP transfer responses never include local temporary paths, local upload
+  paths, archive staging paths, or downloaded file contents.
+- MCP local file upload remains intentionally unavailable while local path scope
+  and approval semantics are designed separately.
+
 ## [0.1.6] - 2026-06-06
 
 ### Added
