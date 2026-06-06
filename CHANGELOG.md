@@ -20,11 +20,17 @@ and this project uses semantic versioning once public releases begin.
   remains running.
 - Batch transfer REST endpoints for queue status, pause, resume, cancel, and
   final download delivery.
+- Duplicate remote paths are rejected before transfer start; download zip
+  entries get stable numeric suffixes when remote basenames collide.
 
 ### Security
 
 - File contents remain outside SQLCipher. Transfer history stores metadata,
   status, progress, checksum, path, and errors only.
+- Uploads are written to a temporary remote file first and moved into place only
+  after the upload completes, so canceling an upload does not leave a partial
+  target file behind.
+- Download batches are capped at 1 GiB total remote file size.
 - Pause/resume is intentionally process-local. If the gateway process, Docker
   container, or computer restarts, unfinished transfer queues should be started
   again instead of resumed from old local state.

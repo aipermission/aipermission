@@ -12,12 +12,15 @@ export const changelogEntries = [
           "Pause and resume for active transfers while the gateway process stays running.",
           "Per-file status, speed, ETA, and progress for transfer queues.",
           "Multi-file downloads are packaged as a local zip after the remote downloads complete.",
+          "Duplicate queue paths are rejected before transfer start.",
         ],
       },
       {
         title: "Security",
         items: [
           "File contents still stay out of SQLCipher; AIPermission persists transfer metadata and short-lived local staging files only.",
+          "Uploads are staged on the remote server and moved into place only after completion, so canceled uploads do not leave partial target files.",
+          "Download batches are capped at 1 GiB total remote file size.",
           "MCP file transfer tools remain intentionally unavailable while UI transfer safety and audit semantics are dogfooded.",
         ],
       },

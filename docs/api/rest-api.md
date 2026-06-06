@@ -146,6 +146,7 @@ GET  /api/file-transfer-batches/{id}/download
 POST /api/file-transfer-batches/{id}/pause
 POST /api/file-transfer-batches/{id}/resume
 POST /api/file-transfer-batches/{id}/cancel
+POST /api/file-transfer-batches/{id}/queue
 POST /api/file-transfers/browse
 POST /api/file-transfers/upload
 POST /api/file-transfers/upload-batch
@@ -157,6 +158,8 @@ File transfers use the selected server's existing SSH credential and run over
 SFTP. They are local UI operations in the current release; MCP file-transfer
 tools are not exposed yet. AIPermission stores transfer metadata, status,
 progress, and checksum only. File contents are never stored in SQLCipher.
+Uploads and downloads use private short-lived temporary staging files under the
+local data directory.
 
 `GET /api/file-transfers` returns paginated transfer history. Optional filters
 include `direction`, `status`, `server_id`, and `q`:
@@ -184,11 +187,14 @@ overwrite=false
 file=<browser selected file>
 ```
 
-Uploads are staged in a private local temporary directory and then copied to the
-remote path. The staging file is removed after the remote transfer finishes or
-fails. Uploads do not overwrite an existing regular remote file unless
-`overwrite=true` is sent after an explicit local UI confirmation. Existing
-directories or special files are rejected.
+Uploads are staged in a private local temporary directory and then copied to a
+temporary file beside the remote target. AIPermission moves the temporary remote
+file into place only after the upload completes. Canceling or failing an upload
+therefore avoids leaving a partial target file behind; the gateway also attempts
+to remove the temporary remote file. The local staging file is removed after the
+remote transfer finishes or fails. Uploads do not overwrite an existing regular
+remote file unless `overwrite=true` is sent after an explicit local UI
+confirmation. Existing directories or special files are rejected.
 
 `POST /api/file-transfers/download` starts a remote file download:
 
@@ -224,7 +230,8 @@ a batch record and per-file transfer records, then copies files sequentially
 over SFTP. If any target file already exists and `overwrite=false`, the endpoint
 returns `409 Conflict` with `code: "remote_files_exist"` and a `conflicts`
 array. The UI asks for explicit confirmation before retrying with
-`overwrite=true`.
+`overwrite=true`. Duplicate target paths in the same queue are rejected before
+the transfer starts.
 
 `POST /api/file-transfers/download-batch` starts a queued remote download:
 
@@ -239,7 +246,10 @@ array. The UI asks for explicit confirmation before retrying with
 Remote files are downloaded sequentially to private temporary files. A single
 download is served as the downloaded file. Multiple completed downloads are
 packaged into a temporary zip, then served through `GET
-/api/file-transfer-batches/{id}/download`.
+/api/file-transfer-batches/{id}/download`. Duplicate remote paths in the same
+queue are rejected. If multiple files have the same basename, the generated zip
+uses numeric suffixes to keep entries unique. A download batch is limited to
+1 GiB total remote file size.
 
 `GET /api/file-transfer-batches/{id}` returns the batch record, aggregate
 progress, speed/ETA, and ordered per-file items. `POST
@@ -248,6 +258,20 @@ gateway process keeps running. `resume` continues the same in-process transfer
 where practical; if the gateway process, Docker container, or computer restarts,
 unfinished queues should be started again. `cancel` cancels the active queue and
 cleans staged temporary files.
+
+`POST /api/file-transfer-batches/{id}/queue` edits pending items in a paused
+queue:
+
+```json
+{
+  "item_ids": [12, 14, 13]
+}
+```
+
+Only pending items can be reordered or removed. Omitted pending items are
+removed from the queue; already running, completed, failed, or canceled items
+are not modified. Removed pending items are removed from transfer history because
+they were never copied.
 
 Remote paths must be absolute file paths. Directory transfer, recursive copy,
 remote glob expansion, restart-surviving resumable transfers, and
