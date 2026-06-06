@@ -152,14 +152,29 @@ POST /api/file-transfers/upload
 POST /api/file-transfers/upload-batch
 POST /api/file-transfers/download
 POST /api/file-transfers/download-batch
+GET  /api/mcp/file-transfers
+GET  /api/mcp/file-transfers/{id}
+GET  /api/mcp/file-transfer-batches
+GET  /api/mcp/file-transfer-batches/{id}
+POST /api/mcp/file-transfers/browse
+POST /api/mcp/file-transfers/download-batch
+POST /api/mcp/file-transfer-batches/{id}/pause
+POST /api/mcp/file-transfer-batches/{id}/resume
+POST /api/mcp/file-transfer-batches/{id}/cancel
 ```
 
 File transfers use the selected server's existing SSH credential and run over
-SFTP. They are local UI operations in the current release; MCP file-transfer
-tools are not exposed yet. AIPermission stores transfer metadata, status,
-progress, and checksum only. File contents are never stored in SQLCipher.
-Uploads and downloads use private short-lived temporary staging files under the
-local data directory.
+SFTP. AIPermission stores transfer metadata, status, progress, and checksum
+only. File contents are never stored in SQLCipher. Uploads and downloads use
+private short-lived temporary staging files under the local data directory.
+
+The local UI can upload local files and download remote files. MCP can list
+transfer status, browse remote directories, start remote download queues, and
+pause/resume/cancel queues. MCP cannot upload local files or read completed file
+contents; completed MCP downloads are staged for the human operator to save
+from the local UI. MCP transfer management requires `always_run` permission for
+that server. `approval_required` transfer approval is intentionally not
+implemented yet.
 
 `GET /api/file-transfers` returns paginated transfer history. Optional filters
 include `direction`, `status`, `server_id`, and `q`:
@@ -276,6 +291,30 @@ they were never copied.
 Remote paths must be absolute file paths. Directory transfer, recursive copy,
 remote glob expansion, restart-surviving resumable transfers, and
 SSH-agent/ProxyJump based transfers are not part of this MVP.
+
+MCP transfer status endpoints return token-scoped, sanitized transfer metadata.
+They never include local temporary paths or archive staging paths:
+
+```txt
+GET /api/mcp/file-transfers?server_id=3&direction=download&status=running
+GET /api/mcp/file-transfer-batches?server_id=3&limit=20
+GET /api/mcp/file-transfer-batches/{id}
+```
+
+MCP transfer control endpoints use the MCP API token rather than the UI session
+cookie:
+
+```json
+{
+  "server_id": 3,
+  "remote_paths": ["/var/log/syslog", "/var/log/auth.log"],
+  "archive_name": "logs.zip"
+}
+```
+
+The response includes `retry_after_seconds` and `assistant_hint`; the AI should
+poll `GET /api/mcp/file-transfer-batches/{id}` for progress and tell the user
+when the staged download is ready in the UI.
 
 ## SSH Keys
 

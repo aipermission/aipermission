@@ -19,6 +19,15 @@ read_console(server_id, tail?)
 get_request(request_id)
 list_requests(status?)
 send_message(message, server_id?, session_id?)
+list_file_transfers(server_id?, direction?, status?, limit?, offset?)
+get_file_transfer(transfer_id)
+list_file_transfer_batches(server_id?, direction?, status?, limit?, offset?)
+get_file_transfer_batch(batch_id)
+browse_remote_files(server_id, path?)
+start_file_download(server_id, remote_paths, archive_name?)
+pause_file_transfer_batch(batch_id)
+resume_file_transfer_batch(batch_id)
+cancel_file_transfer_batch(batch_id)
 ```
 
 Future SQL tools such as `list_databases()` and `query(database_id, sql, reason?)` are not implemented in the current MVP.
@@ -251,6 +260,89 @@ Input:
 User-to-AI messages are created from the Console Messages drawer. The gateway stores them by token and optionally server/session scope. Session-scoped notes are delivered only to MCP responses attached to that exact persistent console session. The next matching MCP `exec`, `read_console`, or `get_request` response can include the message as `user_note`.
 
 AI-to-user unread messages are included in Console badge counts and are displayed in the Messages drawer.
+
+## File Transfer Tools
+
+MCP file transfer tools are token-scoped and server-scoped. They use the same
+server permission table as command execution, but transfer management is stricter
+than read-only status:
+
+- `list_file_transfers`, `get_file_transfer`, `list_file_transfer_batches`, and
+  `get_file_transfer_batch` return sanitized metadata for servers visible to the
+  token.
+- `browse_remote_files`, `start_file_download`, `pause_file_transfer_batch`,
+  `resume_file_transfer_batch`, and `cancel_file_transfer_batch` require
+  `always_run` permission for that server.
+- `approval_required` transfer approval is not implemented yet. Use the local UI
+  when a human should make the transfer decision.
+- MCP can start remote downloads only. It cannot upload local files, read local
+  paths, receive file contents, or receive gateway temporary/archive paths.
+
+`list_file_transfers` and `list_file_transfer_batches` support optional
+`server_id`, `direction`, `status`, `limit`, and `offset` filters:
+
+```json
+{
+  "server_id": 3,
+  "direction": "download",
+  "status": "running",
+  "limit": 20
+}
+```
+
+`get_file_transfer_batch` returns per-file progress for a queue:
+
+```json
+{
+  "id": 12,
+  "status": "running",
+  "total_items": 3,
+  "completed_items": 1,
+  "transferred_bytes": 10485760,
+  "bytes_per_second": 5242880,
+  "eta_seconds": 8,
+  "items": [
+    {
+      "id": 41,
+      "status": "completed",
+      "remote_path": "/var/log/syslog",
+      "file_name": "syslog"
+    }
+  ]
+}
+```
+
+`browse_remote_files` lists one remote directory through SFTP:
+
+```json
+{
+  "server_id": 3,
+  "path": "/var/log"
+}
+```
+
+`start_file_download` starts a queued remote download:
+
+```json
+{
+  "server_id": 3,
+  "remote_paths": ["/var/log/syslog", "/var/log/auth.log"],
+  "archive_name": "logs.zip"
+}
+```
+
+The response includes a batch record plus `retry_after_seconds` and
+`assistant_hint`. The AI should poll `get_file_transfer_batch` for progress and
+tell the operator when the completed file or archive is ready to save from the
+AIPermission UI.
+
+Pause, resume, and cancel operate on active transfer queues:
+
+```json
+{
+  "batch_id": 12
+}
+```
 
 ## Output Normalization
 

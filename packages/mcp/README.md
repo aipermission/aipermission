@@ -55,8 +55,24 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `list_requests`
 - `read_console`
 - `send_message`
+- `list_file_transfers`
+- `get_file_transfer`
+- `list_file_transfer_batches`
+- `get_file_transfer_batch`
+- `browse_remote_files`
+- `start_file_download`
+- `pause_file_transfer_batch`
+- `resume_file_transfer_batch`
+- `cancel_file_transfer_batch`
 
 `exec` is intended for non-interactive commands. The gateway closes stdin for MCP command bodies so stdin-reading commands cannot consume the internal shell wrapper. Use the web console for interactive work.
+
+File transfer tools are intentionally conservative. MCP can list transfer
+metadata, browse remote directories, start remote download queues, and
+pause/resume/cancel queues when the token has `always_run` permission for that
+server. MCP cannot upload local files, receive downloaded file contents, or see
+gateway temporary/archive paths; completed downloads are staged for the human
+operator to save from the AIPermission UI.
 
 ## Operator Skill
 
