@@ -20,6 +20,7 @@ const sshKeysSource = readFileSync(join(currentDir, "..", "pages", "ssh-keys.jsx
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-dialog.jsx"), "utf8");
 const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-browser-dialog.jsx"), "utf8");
 const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-confirm-dialogs.jsx"), "utf8");
+const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -147,6 +148,10 @@ test("Console and History expose SSH file transfer flows", () => {
   assert.match(`${fileTransferDialogSource}\n${fileTransferBrowserSource}\n${fileTransferConfirmSource}`, /closeOnOverlay=\{false\}/);
   assert.match(fileTransferDialogSource, /apiPostForm/);
   assert.match(fileTransferDialogSource, /short-lived local staging files/);
+  assert.match(shellSource, /\/api\/file-transfer-batches\?limit=30/);
+  assert.match(sidebarSource, /Transfers/);
+  assert.match(transferCenterSource, /Transfer Center/);
+  assert.match(transferCenterSource, /Closing this panel does not stop transfers/);
 });
 
 test("Settings page exposes history label management", () => {

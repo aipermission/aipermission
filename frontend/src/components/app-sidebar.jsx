@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Command, ExternalLink, GitFork, History, Home, KeyRound, ListTree, LockKeyhole, Moon, Package, PlugZap, Power, PowerOff, Settings, Server, Shield, ShieldCheck, Sun, TicketCheck } from "lucide-react";
+import { Command, ExternalLink, GitFork, History, Home, KeyRound, ListTree, LockKeyhole, Moon, Package, PlugZap, Power, PowerOff, Settings, Server, Shield, ShieldCheck, Sun, TicketCheck, UploadCloud } from "lucide-react";
 import { appVersion, changelogEntries } from "../lib/release";
 import { Badge, CountBadge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -23,7 +23,7 @@ const navItems = [
 const githubUrl = "https://github.com/aipermission/aipermission";
 const npmUrl = "https://www.npmjs.com/package/@aipermission/mcp";
 
-export function AppSidebar({ pathname, consoleAttentionCount, gatewayState, mcpRuntime, theme, onSetTheme, onSetMCPRuntimeEnabled, onSwitchDatabase, onLockDatabase }) {
+export function AppSidebar({ pathname, consoleAttentionCount, activeTransferCount, gatewayState, mcpRuntime, theme, onSetTheme, onSetMCPRuntimeEnabled, onOpenTransferCenter, onSwitchDatabase, onLockDatabase }) {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [mcpAction, setMCPAction] = useState({ state: "idle", error: null });
   const [updateState, setUpdateState] = useState({ state: "idle", data: null, error: null });
@@ -98,6 +98,17 @@ export function AppSidebar({ pathname, consoleAttentionCount, gatewayState, mcpR
               <span className="truncate">Changelog</span>
             </span>
             <span className="shrink-0 text-xs text-stone-500">{appVersion}</span>
+          </button>
+          <button
+            type="button"
+            className="mb-3 flex h-10 w-full items-center justify-between gap-3 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition hover:bg-stone-100"
+            onClick={onOpenTransferCenter}
+          >
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <UploadCloud className="h-4 w-4 shrink-0" />
+              <span className="truncate">Transfers</span>
+            </span>
+            {activeTransferCount > 0 ? <CountBadge>{activeTransferCount}</CountBadge> : <span className="shrink-0 text-xs text-stone-500">idle</span>}
           </button>
           <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark-panel-subtle">
             <div className="flex items-center justify-between gap-2">

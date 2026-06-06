@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { apiGet, apiPost, apiPut, apiUrl } from "../lib/api";
 import { AppSidebar } from "./app-sidebar";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
+import { TransferCenter } from "./transfer-center";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Notice } from "./ui/notice";
@@ -18,10 +19,12 @@ export function Shell({ theme, setTheme }) {
   const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
   const [approvals, setApprovals] = useState({ state: "loading", data: [], error: null });
   const [messages, setMessages] = useState({ state: "loading", data: [], error: null });
+  const [fileTransferBatches, setFileTransferBatches] = useState({ state: "loading", data: [], error: null });
   const [databaseStatus, setDatabaseStatus] = useState({ state: "loading", data: null, error: null });
   const [mcpRuntime, setMCPRuntime] = useState({ state: "loading", data: { enabled: false, start_enabled: false }, error: null });
   const [switchDialog, setSwitchDialog] = useState({ open: false, database_id: "", password: "", state: "idle", error: null });
   const [lockDialog, setLockDialog] = useState({ open: false, state: "idle", error: null });
+  const [transferCenterOpen, setTransferCenterOpen] = useState(false);
   const consoleConnectionsRef = useRef({});
 
   async function loadStatus() {
@@ -112,8 +115,19 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
+  async function loadFileTransferBatches(options = {}) {
+    try {
+      const data = await apiGet("/api/file-transfer-batches?limit=30");
+      setFileTransferBatches({ state: "ready", data: data.items || [], error: null });
+      return data.items || [];
+    } catch (error) {
+      setFileTransferBatches((current) => ({ state: "error", data: options.keepData ? current.data : [], error: error.message }));
+      return [];
+    }
+  }
+
   async function refreshAll() {
-    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadServers(), loadSSHKeys(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadMessages()]);
+    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadServers(), loadSSHKeys(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
   }
 
   useEffect(() => {
@@ -127,7 +141,7 @@ export function Shell({ theme, setTheme }) {
         return;
       }
       if (location.pathname === "/console") {
-        await Promise.all([loadStatus(), loadDatabaseStatus(), loadConsoleSessions(), loadApprovals(), loadMessages()]);
+        await Promise.all([loadStatus(), loadDatabaseStatus(), loadConsoleSessions(), loadApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
       } else {
         await refreshAll();
       }
@@ -328,6 +342,21 @@ export function Shell({ theme, setTheme }) {
     return data;
   }
 
+  async function pauseFileTransferBatch(batchID) {
+    await apiPost(`/api/file-transfer-batches/${batchID}/pause`, {});
+    await loadFileTransferBatches({ keepData: true });
+  }
+
+  async function resumeFileTransferBatch(batchID) {
+    await apiPost(`/api/file-transfer-batches/${batchID}/resume`, {});
+    await loadFileTransferBatches({ keepData: true });
+  }
+
+  async function cancelFileTransferBatch(batchID) {
+    await apiPost(`/api/file-transfer-batches/${batchID}/cancel`, {});
+    await loadFileTransferBatches({ keepData: true });
+  }
+
   function requestLockDatabase() {
     const unlockedCount = (databaseStatus.data?.databases || []).filter((item) => item.unlocked).length;
     if (unlockedCount > 1) {
@@ -383,19 +412,34 @@ export function Shell({ theme, setTheme }) {
   const pendingApprovalCount = approvals.data.filter((approval) => approval.status === "pending_approval").length;
   const unreadMessageCount = messages.data.filter(isUnreadMessage).length;
   const consoleAttentionCount = pendingApprovalCount + unreadMessageCount;
+  const activeTransferCount = fileTransferBatches.data.filter(isActiveTransferBatch).length;
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-950">
       <AppSidebar
         pathname={location.pathname}
         consoleAttentionCount={consoleAttentionCount}
+        activeTransferCount={activeTransferCount}
         gatewayState={gatewayState}
         mcpRuntime={mcpRuntime}
         theme={theme}
         onSetTheme={setTheme}
         onSetMCPRuntimeEnabled={setMCPRuntimeEnabled}
+        onOpenTransferCenter={() => setTransferCenterOpen(true)}
         onSwitchDatabase={openSwitchDialog}
         onLockDatabase={requestLockDatabase}
+      />
+
+      <TransferCenter
+        open={transferCenterOpen}
+        batches={fileTransferBatches.data}
+        state={fileTransferBatches.state}
+        error={fileTransferBatches.error}
+        onClose={() => setTransferCenterOpen(false)}
+        onRefresh={() => loadFileTransferBatches({ keepData: true })}
+        onPause={pauseFileTransferBatch}
+        onResume={resumeFileTransferBatch}
+        onCancel={cancelFileTransferBatch}
       />
 
       <DatabaseSwitchDialog
@@ -473,6 +517,10 @@ export function Shell({ theme, setTheme }) {
 
 function isUnreadMessage(message) {
   return message.direction === "ai_to_user" && !message.consumed_at;
+}
+
+function isActiveTransferBatch(batch) {
+  return batch?.status === "pending" || batch?.status === "running" || batch?.status === "paused";
 }
 
 function consoleSessionAttachUrl(sessionID) {

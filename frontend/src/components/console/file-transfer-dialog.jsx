@@ -399,7 +399,6 @@ export function FileTransferDialog({ open, server, onClose }) {
         autoFocusClose={false}
         closeOnOverlay={false}
         closeOnEscape={false}
-        closeDisabled={Boolean(activeBatch)}
       >
         <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.4fr)]">
           <section className="grid min-h-0 content-start gap-4">

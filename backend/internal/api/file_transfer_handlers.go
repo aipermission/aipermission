@@ -241,6 +241,54 @@ func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, updated)
 }
 
+func (s fileTransferHandlers) listFileTransferBatches(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	page, err := parsePageRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	filter := filetransfer.BatchListFilter{
+		Direction: strings.TrimSpace(r.URL.Query().Get("direction")),
+		Status:    strings.TrimSpace(r.URL.Query().Get("status")),
+		Query:     page.Query,
+		Limit:     page.Limit,
+		Offset:    page.Offset,
+	}
+	if filter.Direction != "" && filter.Direction != filetransfer.DirectionUpload && filter.Direction != filetransfer.DirectionDownload {
+		writeError(w, http.StatusBadRequest, "invalid direction")
+		return
+	}
+	if filter.Status != "" && !validFileTransferStatus(filter.Status) {
+		writeError(w, http.StatusBadRequest, "invalid status")
+		return
+	}
+	if rawServerID := strings.TrimSpace(r.URL.Query().Get("server_id")); rawServerID != "" {
+		id, ok := parseInt64Query(w, rawServerID, "server_id")
+		if !ok {
+			return
+		}
+		filter.ServerID = id
+	}
+	items, total, err := runtime.fileTransfers.ListBatches(r.Context(), filter)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	for index := range items {
+		batchItems, err := runtime.fileTransfers.ListBatchItems(r.Context(), items[index].ID)
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		items[index].Items = batchItems
+	}
+	writeJSON(w, http.StatusOK, makePageResponse(items, total, page))
+}
+
 func (s fileTransferHandlers) getFileTransferBatch(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {

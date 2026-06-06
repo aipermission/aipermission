@@ -685,6 +685,24 @@ func TestFileTransferRoutes(t *testing.T) {
 	if ok, err := runtime.fileTransfers.PauseBatch(context.Background(), batch.ID); err != nil || !ok {
 		t.Fatalf("pause batch: ok=%v err=%v", ok, err)
 	}
+	batchListResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfer-batches?server_id="+strconv.FormatInt(server.ID, 10), "", nil)
+	if batchListResponse.Code != http.StatusOK {
+		t.Fatalf("list file transfer batches failed: %d %s", batchListResponse.Code, batchListResponse.Body.String())
+	}
+	batchList := decodeRouteResponse[pageResponse[filetransfer.BatchRecord]](t, batchListResponse.Body.Bytes())
+	if batchList.Total == 0 || len(batchList.Items) == 0 {
+		t.Fatalf("expected batch list response to include created batch: %#v", batchList)
+	}
+	var listedBatch filetransfer.BatchRecord
+	for _, item := range batchList.Items {
+		if item.ID == batch.ID {
+			listedBatch = item
+			break
+		}
+	}
+	if listedBatch.ID == 0 || len(listedBatch.Items) != 2 {
+		t.Fatalf("batch list should include per-file items, got %#v", listedBatch)
+	}
 	duplicateQueueResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfer-batches/"+strconv.FormatInt(batch.ID, 10)+"/queue", "", map[string]any{
 		"item_ids": []int64{batch.Items[0].ID, batch.Items[0].ID},
 	})
