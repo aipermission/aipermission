@@ -39,6 +39,10 @@ make docker-up
 make docker-ps
 ```
 
+Use the full stack command for rebuilds. The backend intentionally shares the
+frontend container network namespace so the gateway can stay on loopback; do not
+recreate only the frontend service during local testing.
+
 Then verify:
 
 1. The UI opens on `http://localhost:3210` or the configured localhost port.
