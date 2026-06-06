@@ -1,29 +1,38 @@
 import {
-  ArrowDown,
-  ArrowUp,
   Download,
-  File,
-  Folder,
   FolderOpen,
   Pause,
   Play,
   RefreshCcw,
-  Trash2,
   Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiDownload, apiGet, apiPost, apiPostForm } from "../../lib/api";
-import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
+import { RemoteBrowserDialog } from "./file-transfer-browser-dialog";
+import { ClearDownloadDialog, OverwriteConfirmDialog, UnsavedDownloadCloseDialog } from "./file-transfer-confirm-dialogs";
+import { QueueList, QueueSummary } from "./file-transfer-queue";
+import {
+  defaultRemoteDirectory,
+  forgetDownloadPath,
+  joinRemotePath,
+  localFileID,
+  normalizeRemoteDirectoryInput,
+  pendingBatchItemIDs,
+  rememberDownloadPath,
+  rememberedDownloadPath,
+  suggestedArchiveName,
+  transferProgress,
+} from "./file-transfer-utils";
 
 const emptyBatchState = { state: "idle", item: null, error: null };
 const emptyBrowserState = { open: false, purpose: "upload", path: "/", state: "idle", data: null, error: null };
 
 export function FileTransferDialog({ open, server, onClose }) {
-  const defaultRemoteDir = useMemo(() => defaultRemoteDirectory(server), [server]);
+  const defaultRemoteDir = defaultRemoteDirectory();
   const [mode, setMode] = useState("upload");
   const [remoteDir, setRemoteDir] = useState(defaultRemoteDir);
   const [uploadQueue, setUploadQueue] = useState([]);
@@ -31,14 +40,18 @@ export function FileTransferDialog({ open, server, onClose }) {
   const [batch, setBatch] = useState(emptyBatchState);
   const [browser, setBrowser] = useState(emptyBrowserState);
   const [downloadPrompted, setDownloadPrompted] = useState(false);
+  const [downloadSaved, setDownloadSaved] = useState(false);
   const [overwritePrompt, setOverwritePrompt] = useState(null);
+  const [clearDownloadPrompt, setClearDownloadPrompt] = useState(false);
+  const [closeDownloadPrompt, setCloseDownloadPrompt] = useState(false);
   const [notice, setNotice] = useState("");
   const fileInputRef = useRef(null);
 
   const queue = mode === "upload" ? uploadQueue : downloadQueue;
   const activeBatch = batch.item && ["pending", "running", "paused"].includes(batch.item.status);
+  const unsavedCompletedDownload = batch.item?.direction === "download" && batch.item.status === "completed" && !downloadSaved;
   const progress = useMemo(() => transferProgress(batch.item), [batch.item]);
-  const canStart = server && queue.length > 0 && !activeBatch && batch.state !== "starting";
+  const canStart = server && queue.length > 0 && !batch.item && batch.state !== "starting";
 
   useEffect(() => {
     if (!open) {
@@ -59,15 +72,13 @@ export function FileTransferDialog({ open, server, onClose }) {
   useEffect(() => {
     if (!batch.item || batch.item.status !== "completed") return;
     if (batch.item.direction === "upload") {
-      setNotice("Upload queue completed.");
-      setUploadQueue([]);
-      clearBatchPanel();
+      setNotice("Upload queue completed. Review the summary, then clear when ready.");
       return;
     }
-    if (batch.item.direction === "download" && !downloadPrompted && batch.state !== "downloading") {
-      void saveDownloadBatch();
+    if (batch.item.direction === "download" && !downloadPrompted && !downloadSaved) {
+      setNotice("Download queue completed. Click Save download to choose where to save it.");
     }
-  }, [batch.item?.id, batch.item?.status, batch.item?.direction, downloadPrompted, batch.state]);
+  }, [batch.item?.id, batch.item?.status, batch.item?.direction, downloadPrompted, downloadSaved]);
 
   function resetDialog(nextRemoteDir = defaultRemoteDir) {
     setMode("upload");
@@ -77,7 +88,10 @@ export function FileTransferDialog({ open, server, onClose }) {
     setBatch(emptyBatchState);
     setBrowser(emptyBrowserState);
     setDownloadPrompted(false);
+    setDownloadSaved(false);
     setOverwritePrompt(null);
+    setClearDownloadPrompt(false);
+    setCloseDownloadPrompt(false);
     setNotice("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -85,7 +99,36 @@ export function FileTransferDialog({ open, server, onClose }) {
   function clearBatchPanel() {
     setBatch(emptyBatchState);
     setDownloadPrompted(false);
+    setDownloadSaved(false);
     setOverwritePrompt(null);
+    setClearDownloadPrompt(false);
+    setCloseDownloadPrompt(false);
+  }
+
+  function requestClose() {
+    if (unsavedCompletedDownload) {
+      setCloseDownloadPrompt(true);
+      return;
+    }
+    onClose();
+  }
+
+  function clearFinishedQueue(options = {}) {
+    if (batch.item?.direction === "download" && batch.item.status === "completed" && !downloadSaved && !options.force) {
+      setClearDownloadPrompt(true);
+      return;
+    }
+    const direction = batch.item?.direction || mode;
+    if (direction === "upload") {
+      setUploadQueue([]);
+      setRemoteDir(defaultRemoteDir);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+    if (direction === "download") {
+      setDownloadQueue([]);
+    }
+    setNotice("");
+    clearBatchPanel();
   }
 
   async function refreshBatch(id = batch.item?.id, options = {}) {
@@ -117,23 +160,31 @@ export function FileTransferDialog({ open, server, onClose }) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function addRemoteFile(entry) {
-    if (!entry || entry.type !== "file") return;
+  function addRemoteFiles(entries) {
+    const files = Array.isArray(entries) ? entries.filter((entry) => entry?.type === "file") : [];
+    if (files.length === 0) return;
     setDownloadQueue((current) => {
-      if (current.some((item) => item.path === entry.path)) return current;
+      const existing = new Set(current.map((item) => item.path));
+      const nextFiles = files.filter((entry) => !existing.has(entry.path));
+      if (nextFiles.length === 0) return current;
       return [
         ...current,
-        {
+        ...nextFiles.map((entry) => ({
           id: `remote-${entry.path}`,
           path: entry.path,
           name: entry.name,
           size: entry.size,
-        },
+        })),
       ];
     });
   }
 
   function removeQueueItem(id) {
+    if (batch.item?.status === "paused") {
+      const nextIDs = pendingBatchItemIDs(batch.item).filter((itemID) => itemID !== Number(id));
+      void updatePausedBatchQueue(nextIDs);
+      return;
+    }
     if (mode === "upload") {
       setUploadQueue((current) => current.filter((item) => item.id !== id));
     } else {
@@ -142,6 +193,16 @@ export function FileTransferDialog({ open, server, onClose }) {
   }
 
   function moveQueueItem(id, direction) {
+    if (batch.item?.status === "paused") {
+      const ids = pendingBatchItemIDs(batch.item);
+      const index = ids.indexOf(Number(id));
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) return;
+      const next = [...ids];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      void updatePausedBatchQueue(next);
+      return;
+    }
     const setter = mode === "upload" ? setUploadQueue : setDownloadQueue;
     setter((current) => {
       const index = current.findIndex((item) => item.id === id);
@@ -151,6 +212,17 @@ export function FileTransferDialog({ open, server, onClose }) {
       [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
       return next;
     });
+  }
+
+  async function updatePausedBatchQueue(itemIDs) {
+    if (!batch.item) return;
+    setBatch((current) => ({ ...current, state: "updating", error: null }));
+    try {
+      const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/queue`, { item_ids: itemIDs });
+      setBatch({ state: "ready", item, error: null });
+    } catch (error) {
+      setBatch((current) => ({ ...current, state: "error", error: error.message }));
+    }
   }
 
   async function startQueue(options = {}) {
@@ -171,6 +243,7 @@ export function FileTransferDialog({ open, server, onClose }) {
     setNotice("");
     setOverwritePrompt(null);
     setDownloadPrompted(false);
+    setDownloadSaved(false);
     setBatch({ state: "starting", item: null, error: null });
     try {
       const item = await apiPostForm("/api/file-transfers/upload-batch", formData);
@@ -188,6 +261,7 @@ export function FileTransferDialog({ open, server, onClose }) {
   async function startDownloadBatch() {
     setNotice("");
     setDownloadPrompted(false);
+    setDownloadSaved(false);
     setBatch({ state: "starting", item: null, error: null });
     try {
       const item = await apiPost("/api/file-transfers/download-batch", {
@@ -235,8 +309,8 @@ export function FileTransferDialog({ open, server, onClose }) {
     }
   }
 
-  async function saveDownloadBatch() {
-    if (!batch.item) return;
+  async function saveDownloadBatch(options = {}) {
+    if (!batch.item) return false;
     setBatch((current) => ({ ...current, state: "downloading", error: null }));
     try {
       const filename = batch.item.archive_name || batch.item.items?.[0]?.file_name || "aipermission-download";
@@ -245,24 +319,39 @@ export function FileTransferDialog({ open, server, onClose }) {
       if (result?.canceled) {
         setNotice("Download was not saved. You can try Save download again.");
         setBatch((current) => ({ ...current, state: "ready", error: null }));
-        return;
+        return false;
       }
-      setNotice("Download saved.");
-      setDownloadQueue([]);
-      clearBatchPanel();
+      setDownloadSaved(true);
+      if (options.clearAfterSave) {
+        setDownloadQueue([]);
+        setNotice("");
+        clearBatchPanel();
+        return true;
+      }
+      if (options.closeAfterSave) {
+        setCloseDownloadPrompt(false);
+        onClose();
+        return true;
+      }
+      setNotice("Download saved. Review the summary, then clear when ready.");
+      setBatch((current) => ({ ...current, state: "ready", error: null }));
+      return true;
     } catch (error) {
       setDownloadPrompted(true);
       setBatch((current) => ({ ...current, state: "error", error: error.message }));
+      return false;
     }
   }
 
   function openBrowser(purpose) {
-    const nextPath = normalizeRemoteDirectoryInput(remoteDir || defaultRemoteDir);
+    const nextPath = purpose === "download"
+      ? rememberedDownloadPath(server, defaultRemoteDir)
+      : normalizeRemoteDirectoryInput(remoteDir || defaultRemoteDir);
     setBrowser({ open: true, purpose, path: nextPath, state: "loading", data: null, error: null });
-    void loadBrowser(nextPath, purpose);
+    void loadBrowser(nextPath, purpose, { fallbackToDefault: purpose === "download" });
   }
 
-  async function loadBrowser(pathValue = browser.path, purpose = browser.purpose) {
+  async function loadBrowser(pathValue = browser.path, purpose = browser.purpose, options = {}) {
     if (!server) return;
     const nextPath = normalizeRemoteDirectoryInput(pathValue || "/");
     setBrowser((current) => ({ ...current, purpose, path: nextPath, state: "loading", error: null }));
@@ -271,8 +360,16 @@ export function FileTransferDialog({ open, server, onClose }) {
         server_id: Number(server.id),
         path: nextPath,
       });
+      if (purpose === "download") {
+        rememberDownloadPath(server, data.path || nextPath);
+      }
       setBrowser({ open: true, purpose, path: data.path || nextPath, state: "ready", data, error: null });
     } catch (error) {
+      if (purpose === "download" && options.fallbackToDefault && nextPath !== defaultRemoteDir) {
+        forgetDownloadPath(server);
+        void loadBrowser(defaultRemoteDir, purpose, { fallbackToDefault: false });
+        return;
+      }
       setBrowser((current) => ({ ...current, purpose, path: nextPath, state: "error", error: error.message }));
     }
   }
@@ -295,26 +392,27 @@ export function FileTransferDialog({ open, server, onClose }) {
         open={open}
         title={server ? `${server.name} file transfers` : "File transfers"}
         description="Queue uploads and downloads over the selected server's SSH connection."
-        onClose={onClose}
+        onClose={requestClose}
         size="wide"
-        className="max-w-6xl"
+        className="xl:max-w-[70vw]"
         bodyClassName="grid max-h-[calc(100vh-130px)] min-h-0 overflow-hidden"
         autoFocusClose={false}
         closeOnOverlay={false}
         closeOnEscape={false}
+        closeDisabled={Boolean(activeBatch)}
       >
         <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.4fr)]">
           <section className="grid min-h-0 content-start gap-4">
             <Notice tone="warn">
-              File transfers use SFTP over the server's existing gateway key. AIPermission stores metadata and progress only, never file contents.
+              File transfers use SFTP over the server's existing gateway key. AIPermission stores transfer history metadata only; file contents use short-lived local staging files under the data directory.
             </Notice>
             {notice ? <Notice tone={notice.includes("canceled") ? "warn" : "good"}>{notice}</Notice> : null}
             <div className="grid grid-cols-2 gap-2 rounded-md border border-stone-200 bg-stone-50 p-1">
-              <Button type="button" variant={mode === "upload" ? "default" : "ghost"} className="h-9" onClick={() => switchMode("upload")} disabled={Boolean(activeBatch)}>
+              <Button type="button" variant={mode === "upload" ? "default" : "ghost"} className="h-9" onClick={() => switchMode("upload")} disabled={Boolean(batch.item)}>
                 <Upload className="h-4 w-4" />
                 Upload
               </Button>
-              <Button type="button" variant={mode === "download" ? "default" : "ghost"} className="h-9" onClick={() => switchMode("download")} disabled={Boolean(activeBatch)}>
+              <Button type="button" variant={mode === "download" ? "default" : "ghost"} className="h-9" onClick={() => switchMode("download")} disabled={Boolean(batch.item)}>
                 <Download className="h-4 w-4" />
                 Download
               </Button>
@@ -332,45 +430,36 @@ export function FileTransferDialog({ open, server, onClose }) {
               <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
                 <Field>
                   Remote folder
-                  <Input
-                    value={remoteDir}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setRemoteDir(value);
-                      setUploadQueue((current) => current.map((item) => ({ ...item, remote_path: joinRemotePath(value, item.name) })));
-                    }}
-                    placeholder={defaultRemoteDir}
-                    disabled={Boolean(activeBatch)}
-                  />
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                    <Input
+                      value={remoteDir}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setRemoteDir(value);
+                        setUploadQueue((current) => current.map((item) => ({ ...item, remote_path: joinRemotePath(value, item.name) })));
+                      }}
+                      placeholder={defaultRemoteDir}
+                      disabled={Boolean(activeBatch)}
+                    />
+                    <Button type="button" variant="outline" className="h-10" onClick={() => openBrowser("upload")} disabled={!server || Boolean(activeBatch)}>
+                      <FolderOpen className="h-4 w-4" />
+                      Browse
+                    </Button>
+                  </div>
                 </Field>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={Boolean(activeBatch)}>
-                    <Upload className="h-4 w-4" />
-                    Add files
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => openBrowser("upload")} disabled={!server || Boolean(activeBatch)}>
-                    <FolderOpen className="h-4 w-4" />
-                    Browse
-                  </Button>
-                </div>
+                <Button type="button" variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()} disabled={Boolean(activeBatch)}>
+                  <Upload className="h-4 w-4" />
+                  Add files
+                </Button>
                 <input ref={fileInputRef} className="hidden" type="file" multiple onChange={handleLocalFileChange} />
               </div>
             ) : (
               <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-                <Field>
-                  Remote folder
-                  <Input
-                    value={remoteDir}
-                    onChange={(event) => setRemoteDir(event.target.value)}
-                    placeholder={defaultRemoteDir}
-                    disabled={Boolean(activeBatch)}
-                  />
-                </Field>
-                <Button type="button" variant="outline" onClick={() => openBrowser("download")} disabled={!server || Boolean(activeBatch)}>
+                <Button type="button" variant="outline" className="w-full" onClick={() => openBrowser("download")} disabled={!server || Boolean(activeBatch)}>
                   <FolderOpen className="h-4 w-4" />
                   Add remote files
                 </Button>
-                <p className="text-xs text-stone-500">Multiple downloads are saved as one temporary zip archive.</p>
+                <p className="text-xs text-stone-500">The browser opens at the last folder used for this server, or `/home` when no folder is remembered. Multiple downloads are saved as one temporary zip archive.</p>
               </div>
             )}
 
@@ -394,70 +483,47 @@ export function FileTransferDialog({ open, server, onClose }) {
               queue={queue}
               batch={batch.item}
               active={Boolean(activeBatch)}
+              canEditPausedBatch={batch.item?.status === "paused" && batch.state !== "updating"}
               onRemove={removeQueueItem}
               onMove={moveQueueItem}
             />
 
             <div className="grid gap-3 border-t border-stone-200 pt-3">
-              {overwritePrompt?.length ? (
-                <Notice tone="warn" className="grid gap-3">
-                  <div>
-                    <p className="font-semibold">Some remote files already exist.</p>
-                    <p className="mt-1 text-xs">Review before overwriting. Existing files will be replaced.</p>
-                    <div className="mt-2 max-h-24 overflow-auto rounded border border-amber-200 bg-amber-50/70 p-2 font-mono text-xs">
-                      {overwritePrompt.map((item) => (
-                        <p key={item.remote_path} className="truncate">{item.remote_path}</p>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button type="button" variant="outline" className="h-9" onClick={() => setOverwritePrompt(null)}>
-                      Cancel
-                    </Button>
-                    <Button type="button" variant="danger" className="h-9" onClick={() => startQueue({ overwrite: true })}>
-                      Overwrite all
-                    </Button>
-                  </div>
-                </Notice>
-              ) : null}
-
               {batch.error ? <Notice tone="bad">{batch.error}</Notice> : null}
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {batch.item?.status === "running" ? (
+                  <Button type="button" variant="outline" className="h-10" onClick={pauseBatch} disabled={batch.state === "pausing"}>
+                    <Pause className="h-4 w-4" />
+                    Pause
+                  </Button>
+                ) : null}
+                {batch.item?.status === "paused" ? (
+                  <Button type="button" variant="outline" className="h-10" onClick={resumeBatch} disabled={batch.state === "resuming"}>
+                    <Play className="h-4 w-4" />
+                    Resume
+                  </Button>
+                ) : null}
+                {activeBatch ? (
+                  <Button type="button" variant="danger" className="h-10" onClick={cancelBatch} disabled={batch.state === "canceling"}>
+                    Cancel
+                  </Button>
+                ) : null}
+                {batch.item?.direction === "download" && batch.item.status === "completed" ? (
+                  <Button type="button" className="h-10" onClick={saveDownloadBatch} disabled={batch.state === "downloading"}>
+                    <Download className="h-4 w-4" />
+                    {batch.state === "downloading" ? "Saving..." : "Save download"}
+                  </Button>
+                ) : null}
+                {batch.item && !activeBatch ? (
+                  <Button type="button" variant="outline" className="h-10" onClick={() => clearFinishedQueue()}>
+                    Clear
+                  </Button>
+                ) : null}
                 <Button type="button" disabled={!canStart} onClick={() => startQueue()}>
                   {mode === "upload" ? <Upload className="h-4 w-4" /> : <Download className="h-4 w-4" />}
                   Start {mode}
                 </Button>
-                <div className="flex flex-wrap justify-end gap-2">
-                  {batch.item?.status === "running" ? (
-                    <Button type="button" variant="outline" className="h-10" onClick={pauseBatch} disabled={batch.state === "pausing"}>
-                      <Pause className="h-4 w-4" />
-                      Pause
-                    </Button>
-                  ) : null}
-                  {batch.item?.status === "paused" ? (
-                    <Button type="button" variant="outline" className="h-10" onClick={resumeBatch} disabled={batch.state === "resuming"}>
-                      <Play className="h-4 w-4" />
-                      Resume
-                    </Button>
-                  ) : null}
-                  {activeBatch ? (
-                    <Button type="button" variant="danger" className="h-10" onClick={cancelBatch} disabled={batch.state === "canceling"}>
-                      Cancel
-                    </Button>
-                  ) : null}
-                  {batch.item?.direction === "download" && batch.item.status === "completed" ? (
-                    <Button type="button" className="h-10" onClick={saveDownloadBatch} disabled={batch.state === "downloading"}>
-                      <Download className="h-4 w-4" />
-                      {downloadPrompted ? "Save download" : "Saving..."}
-                    </Button>
-                  ) : null}
-                  {batch.item && !activeBatch ? (
-                    <Button type="button" variant="outline" className="h-10" onClick={clearBatchPanel}>
-                      Done
-                    </Button>
-                  ) : null}
-                </div>
               </div>
             </div>
           </section>
@@ -470,270 +536,39 @@ export function FileTransferDialog({ open, server, onClose }) {
         onLoad={loadBrowser}
         onPathChange={(path) => setBrowser((current) => ({ ...current, path }))}
         onUseDirectory={useBrowserDirectory}
-        onAddFile={addRemoteFile}
+        onAddFiles={addRemoteFiles}
+        queuedPaths={new Set(downloadQueue.map((item) => item.path))}
+      />
+
+      <ClearDownloadDialog
+        open={clearDownloadPrompt}
+        onCancel={() => setClearDownloadPrompt(false)}
+        onContinue={() => clearFinishedQueue({ force: true })}
+        onSave={() => {
+          setClearDownloadPrompt(false);
+          void saveDownloadBatch({ clearAfterSave: true });
+        }}
+      />
+
+      <UnsavedDownloadCloseDialog
+        open={closeDownloadPrompt}
+        onCancel={() => setCloseDownloadPrompt(false)}
+        onCloseAnyway={() => {
+          setCloseDownloadPrompt(false);
+          onClose();
+        }}
+        onSave={() => {
+          setCloseDownloadPrompt(false);
+          void saveDownloadBatch({ closeAfterSave: true });
+        }}
+      />
+
+      <OverwriteConfirmDialog
+        open={Boolean(overwritePrompt?.length)}
+        conflicts={overwritePrompt || []}
+        onCancel={() => setOverwritePrompt(null)}
+        onOverwrite={() => startQueue({ overwrite: true })}
       />
     </>
   );
-}
-
-function QueueSummary({ batch, queue, mode, progress }) {
-  const totalSize = batch ? batch.size_bytes : queue.reduce((sum, item) => sum + Number(item.size || 0), 0);
-  const totalItems = batch ? batch.total_items : queue.length;
-  return (
-    <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Summary</p>
-          <p className="mt-1 text-sm font-semibold text-stone-900">{totalItems} item{totalItems === 1 ? "" : "s"}</p>
-        </div>
-        <span className="rounded-full border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-600">{batch?.status || mode}</span>
-      </div>
-      <div className="grid gap-2 text-sm">
-        <div className="flex justify-between gap-3">
-          <span className="text-stone-500">Total size</span>
-          <span className="font-mono text-stone-800">{formatBytes(totalSize)}</span>
-        </div>
-        <div className="flex justify-between gap-3">
-          <span className="text-stone-500">Progress</span>
-          <span className="font-mono text-stone-800">{progress.percent}%</span>
-        </div>
-        <div className="flex justify-between gap-3">
-          <span className="text-stone-500">Speed</span>
-          <span className="font-mono text-stone-800">{batch?.bytes_per_second ? `${formatBytes(batch.bytes_per_second)}/s` : "-"}</span>
-        </div>
-        <div className="flex justify-between gap-3">
-          <span className="text-stone-500">ETA</span>
-          <span className="font-mono text-stone-800">{formatETA(batch?.eta_seconds)}</span>
-        </div>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-        <div className={cn("h-full rounded-full bg-emerald-700 transition-all", batch?.status === "running" ? "animate-pulse" : "")} style={{ width: `${progress.percent}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function QueueList({ mode, queue, batch, active, onRemove, onMove }) {
-  const items = batch?.items || queue;
-  if (items.length === 0) {
-    return (
-      <div className="grid min-h-72 place-items-center rounded-md border border-dashed border-stone-300 bg-stone-50 p-8 text-center text-sm text-stone-500">
-        {mode === "upload" ? "Add local files to build an upload queue." : "Add remote files to build a download queue."}
-      </div>
-    );
-  }
-  return (
-    <div className="min-h-0 overflow-hidden rounded-md border border-stone-200 bg-white">
-      <div className="max-h-[48vh] overflow-auto">
-        {items.map((item, index) => (
-          <QueueRow
-            key={item.id || item.path || item.remote_path}
-            item={item}
-            index={index}
-            total={items.length}
-            active={active}
-            batchMode={Boolean(batch)}
-            mode={mode}
-            onRemove={onRemove}
-            onMove={onMove}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function QueueRow({ item, index, total, active, batchMode, mode, onRemove, onMove }) {
-  const name = item.file_name || item.name || item.path || item.remote_path;
-  const source = mode === "upload" ? item.remote_path : item.path || item.remote_path;
-  const progress = transferProgress(item.status ? item : null);
-  return (
-    <div className="grid gap-2 border-b border-stone-100 p-3 last:border-b-0">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-stone-900">{name}</p>
-          <p className="truncate font-mono text-xs text-stone-500">{source}</p>
-        </div>
-        <div className="flex items-center gap-1">
-          {!batchMode ? (
-            <>
-              <Button type="button" variant="ghost" className="h-8 w-8 px-0" onClick={() => onMove(item.id, -1)} disabled={active || index === 0}>
-                <ArrowUp className="h-4 w-4" />
-              </Button>
-              <Button type="button" variant="ghost" className="h-8 w-8 px-0" onClick={() => onMove(item.id, 1)} disabled={active || index === total - 1}>
-                <ArrowDown className="h-4 w-4" />
-              </Button>
-              <Button type="button" variant="ghost" className="h-8 w-8 px-0 text-red-700" onClick={() => onRemove(item.id)} disabled={active}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </>
-          ) : (
-            <span className="rounded-full border border-stone-200 px-2 py-1 text-xs font-semibold text-stone-600">{item.status}</span>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
-        <span>{formatBytes(item.size || item.size_bytes || 0)}</span>
-        {batchMode ? <span>{formatETA(item.eta_seconds)}</span> : <span>#{index + 1}</span>}
-      </div>
-      {batchMode ? (
-        <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
-          <div className={cn("h-full rounded-full bg-emerald-700 transition-all", item.status === "running" ? "animate-pulse" : "")} style={{ width: `${progress.percent}%` }} />
-        </div>
-      ) : null}
-      {item.error ? <p className="text-xs text-red-700">{item.error}</p> : null}
-    </div>
-  );
-}
-
-function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, onUseDirectory, onAddFile }) {
-  if (!browser.open) return null;
-  const entries = browser.data?.entries || [];
-  const canUseCurrentDirectory = browser.purpose === "upload";
-
-  return (
-    <Dialog
-      open={browser.open}
-      title={browser.purpose === "upload" ? "Choose remote folder" : "Add remote files"}
-      description="Browse the selected server over SFTP."
-      onClose={onClose}
-      size="xl"
-      className="max-h-[calc(100vh-80px)]"
-      bodyClassName="grid min-h-0 gap-4 overflow-hidden"
-      autoFocusClose={false}
-      closeOnOverlay={false}
-      closeOnEscape={false}
-    >
-      <div className="grid gap-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <Field className="min-w-0 flex-1">
-            Remote path
-            <Input
-              value={browser.path}
-              onChange={(event) => onPathChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void onLoad(browser.path, browser.purpose);
-                }
-              }}
-            />
-          </Field>
-          <Button type="button" variant="outline" className="h-10" onClick={() => onLoad(browser.path, browser.purpose)} disabled={browser.state === "loading"}>
-            <RefreshCcw className="h-4 w-4" />
-            Refresh
-          </Button>
-          {canUseCurrentDirectory ? (
-            <Button type="button" className="h-10" onClick={() => onUseDirectory(browser.path)}>
-              Use this folder
-            </Button>
-          ) : null}
-        </div>
-
-        {browser.error ? <Notice tone="bad">{browser.error}</Notice> : null}
-
-        <div className="min-h-80 overflow-hidden rounded-md border border-stone-200 bg-white">
-          <div className="max-h-[50vh] overflow-auto">
-            <button
-              type="button"
-              className="grid w-full grid-cols-[24px_minmax(0,1fr)_120px_170px] items-center gap-3 border-b border-stone-100 px-3 py-2 text-left text-sm transition hover:bg-stone-50"
-              onClick={() => onLoad(browser.data?.parent || "/", browser.purpose)}
-            >
-              <Folder className="h-4 w-4 text-emerald-700" />
-              <span className="truncate font-medium">..</span>
-              <span className="text-xs text-stone-500">parent</span>
-              <span />
-            </button>
-            {browser.state === "loading" ? (
-              <p className="px-3 py-8 text-center text-sm text-stone-500">Loading remote files...</p>
-            ) : null}
-            {browser.state !== "loading" && entries.length === 0 ? (
-              <p className="px-3 py-8 text-center text-sm text-stone-500">No files in this directory.</p>
-            ) : null}
-            {browser.state !== "loading"
-              ? entries.map((entry) => (
-                  <div
-                    key={entry.path}
-                    className="grid w-full grid-cols-[24px_minmax(0,1fr)_120px_170px] items-center gap-3 border-b border-stone-100 px-3 py-2 text-left text-sm transition hover:bg-stone-50"
-                  >
-                    {entry.type === "directory" ? <Folder className="h-4 w-4 text-emerald-700" /> : <File className="h-4 w-4 text-stone-500" />}
-                    <button type="button" className="min-w-0 text-left" onClick={() => (entry.type === "directory" ? onLoad(entry.path, browser.purpose) : onAddFile(entry))}>
-                      <span className="block truncate font-medium">{entry.name}</span>
-                    </button>
-                    <span className="text-xs text-stone-500">{entry.type === "directory" ? "folder" : formatBytes(entry.size)}</span>
-                    <span className="truncate text-right text-xs text-stone-500">{formatShortDate(entry.modified_at)}</span>
-                  </div>
-                ))
-              : null}
-          </div>
-        </div>
-      </div>
-    </Dialog>
-  );
-}
-
-function transferProgress(item) {
-  if (!item) return { percent: 0, label: "" };
-  const total = Number(item.size_bytes || 0);
-  const transferred = Number(item.transferred_bytes || 0);
-  const percent = total > 0 ? Math.min(100, Math.round((transferred / total) * 100)) : item.status === "completed" ? 100 : 0;
-  return {
-    percent,
-    label: total > 0 ? `${formatBytes(transferred)} / ${formatBytes(total)}` : `${formatBytes(transferred)} transferred`,
-  };
-}
-
-function defaultRemoteDirectory(server) {
-  return "/home";
-}
-
-function joinRemotePath(remoteDir, remoteName) {
-  const dir = normalizeRemoteDirectoryInput(remoteDir);
-  const name = String(remoteName || "").trim().replace(/^\/+/, "");
-  if (dir === "/") return `/${name}`;
-  return `${dir.replace(/\/+$/, "")}/${name}`;
-}
-
-function normalizeRemoteDirectoryInput(value) {
-  const text = String(value || "").trim() || "/";
-  if (!text.startsWith("/")) return `/${text}`;
-  return text.replace(/\/+$/, "") || "/";
-}
-
-function localFileID(file) {
-  return `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(16).slice(2)}`;
-}
-
-function suggestedArchiveName() {
-  const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
-  return `aipermission-download-${stamp}.zip`;
-}
-
-function formatBytes(value) {
-  const bytes = Number(value || 0);
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KiB", "MiB", "GiB", "TiB"];
-  let amount = bytes / 1024;
-  let index = 0;
-  while (amount >= 1024 && index < units.length - 1) {
-    amount /= 1024;
-    index += 1;
-  }
-  return `${amount.toFixed(amount >= 10 ? 1 : 2)} ${units[index]}`;
-}
-
-function formatETA(value) {
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds < 0) return "-";
-  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`;
-  const minutes = Math.floor(seconds / 60);
-  const rest = Math.round(seconds % 60);
-  return `${minutes}m ${rest}s`;
-}
-
-function formatShortDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }

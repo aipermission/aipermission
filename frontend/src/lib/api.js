@@ -53,12 +53,30 @@ export async function apiDelete(path) {
 }
 
 export async function apiDownload(path, filename, options = {}) {
+  const safeFilename = filename.replaceAll(":", "-");
+  let saveHandle = null;
+  if (options.picker && typeof window !== "undefined" && typeof window.showSaveFilePicker === "function") {
+    try {
+      saveHandle = await window.showSaveFilePicker({ suggestedName: safeFilename });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        return { saved: false, canceled: true, method: "picker" };
+      }
+      throw error;
+    }
+  }
   const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
   if (!response.ok) {
     return readResponse(response);
   }
   const blob = await response.blob();
-  return saveBlob(blob, filename, options);
+  if (saveHandle) {
+    const writable = await saveHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return { saved: true, method: "picker" };
+  }
+  return saveBlob(blob, safeFilename, { ...options, picker: false });
 }
 
 async function readResponse(response) {

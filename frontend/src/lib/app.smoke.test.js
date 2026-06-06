@@ -18,6 +18,8 @@ const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell
 const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
 const sshKeysSource = readFileSync(join(currentDir, "..", "pages", "ssh-keys.jsx"), "utf8");
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-dialog.jsx"), "utf8");
+const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-browser-dialog.jsx"), "utf8");
+const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-confirm-dialogs.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -139,11 +141,12 @@ test("Console and History expose SSH file transfer flows", () => {
   assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/pause/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/resume/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/cancel/);
+  assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/queue/);
   assert.match(fileTransferDialogSource, /remote_files_exist/);
-  assert.match(fileTransferDialogSource, /Overwrite all/);
-  assert.match(fileTransferDialogSource, /closeOnOverlay=\{false\}/);
+  assert.match(fileTransferConfirmSource, /Overwrite all/);
+  assert.match(`${fileTransferDialogSource}\n${fileTransferBrowserSource}\n${fileTransferConfirmSource}`, /closeOnOverlay=\{false\}/);
   assert.match(fileTransferDialogSource, /apiPostForm/);
-  assert.match(fileTransferDialogSource, /metadata and progress only/);
+  assert.match(fileTransferDialogSource, /short-lived local staging files/);
 });
 
 test("Settings page exposes history label management", () => {
