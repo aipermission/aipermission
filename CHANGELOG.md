@@ -29,8 +29,9 @@ and this project uses semantic versioning once public releases begin.
 
 - MCP transfer responses never include local temporary paths, local upload
   paths, archive staging paths, or file contents.
-- MCP direct upload/download tools require `always_run` permission and explicit
-  local paths. `approval_required` transfer approval remains future work.
+- MCP direct transfer tools require explicit local paths. `always_run` starts
+  queues immediately, while `approval_required` creates a local Transfer Center
+  approval queue before touching the remote server.
 
 ## [0.1.6] - 2026-06-06
 
