@@ -153,6 +153,21 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 	if completed.Status != StatusCompleted || completed.CompletedItems != 2 || completed.TransferredBytes != 300 || completed.ETASeconds != 0 {
 		t.Fatalf("unexpected completed batch: %#v", completed)
 	}
+
+	batches, total, err := store.ListBatches(ctx, BatchListFilter{Direction: DirectionUpload, ServerIDs: []int64{serverID}, Query: "worker"})
+	if err != nil {
+		t.Fatalf("list batches: %v", err)
+	}
+	if total != 1 || len(batches) != 1 || batches[0].ID != batch.ID {
+		t.Fatalf("unexpected batch list: total=%d items=%#v", total, batches)
+	}
+	batches, total, err = store.ListBatches(ctx, BatchListFilter{ServerIDs: []int64{serverID + 1000}})
+	if err != nil {
+		t.Fatalf("list filtered batches: %v", err)
+	}
+	if total != 0 || len(batches) != 0 {
+		t.Fatalf("unexpected filtered batch list: total=%d items=%#v", total, batches)
+	}
 }
 
 func TestStoreUpdatesPausedBatchQueue(t *testing.T) {

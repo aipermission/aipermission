@@ -77,6 +77,19 @@ type remoteFileConflictsResponse struct {
 	Conflicts []remoteFileConflict `json:"conflicts"`
 }
 
+type fileTransferStartError struct {
+	Status  int
+	Message string
+}
+
+func (err *fileTransferStartError) Error() string {
+	return err.Message
+}
+
+func newFileTransferStartError(status int, message string) error {
+	return &fileTransferStartError{Status: status, Message: message}
+}
+
 func (s fileTransferHandlers) listFileTransfers(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -675,94 +688,13 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if request.ServerID < 1 {
-		writeError(w, http.StatusBadRequest, "server_id is required")
-		return
-	}
-	if len(request.RemotePaths) == 0 {
-		writeError(w, http.StatusBadRequest, "remote_paths is required")
-		return
-	}
-	if len(request.RemotePaths) > 100 {
-		writeError(w, http.StatusBadRequest, "cannot download more than 100 files at once")
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	server, privateKey, err := s.serverSSHMaterialFromRuntime(ctx, runtime, request.ServerID)
+	batch, err := s.createDownloadBatch(ctx, runtime, request.ServerID, request.RemotePaths, request.ArchiveName, filetransfer.SourceUI)
 	if err != nil {
-		handleServerSSHMaterialError(w, err)
-		return
-	}
-	target := s.executionTarget(server, privateKey)
-	items := make([]filetransfer.CreateRequest, 0, len(request.RemotePaths))
-	tempPaths := []string{}
-	seenRemotePaths := map[string]bool{}
-	var totalSize int64
-	for _, raw := range request.RemotePaths {
-		remotePath, err := normalizeRemoteFilePath(raw)
-		if err != nil {
-			cleanupTempPaths(tempPaths)
-			writeError(w, http.StatusBadRequest, err.Error())
+		if s.writeFileTransferStartError(w, err) {
 			return
 		}
-		if seenRemotePaths[remotePath] {
-			cleanupTempPaths(tempPaths)
-			writeError(w, http.StatusBadRequest, "download queue contains duplicate remote paths")
-			return
-		}
-		seenRemotePaths[remotePath] = true
-		status, err := execution.StatRemotePath(ctx, target, remotePath)
-		if err != nil {
-			cleanupTempPaths(tempPaths)
-			if writeUnknownHostKeyError(w, err) {
-				return
-			}
-			writeError(w, http.StatusBadGateway, sshConnectionFailureMessage(err))
-			return
-		}
-		if !status.Exists || status.Type != "file" {
-			cleanupTempPaths(tempPaths)
-			writeError(w, http.StatusBadRequest, "remote path must be an existing regular file")
-			return
-		}
-		totalSize += status.Size
-		if totalSize > maxFileTransferBatchBytes {
-			cleanupTempPaths(tempPaths)
-			writeError(w, http.StatusRequestEntityTooLarge, "download batch cannot exceed 1 GiB total size")
-			return
-		}
-		tempPath, err := s.reserveDownloadTempFile()
-		if err != nil {
-			cleanupTempPaths(tempPaths)
-			writeInternalError(w)
-			return
-		}
-		tempPaths = append(tempPaths, tempPath)
-		fileName := safeFileName(path.Base(remotePath))
-		items = append(items, filetransfer.CreateRequest{
-			RemotePath: remotePath,
-			FileName:   fileName,
-			SizeBytes:  status.Size,
-			TempPath:   tempPath,
-		})
-	}
-	archiveName := ""
-	if strings.TrimSpace(request.ArchiveName) != "" {
-		archiveName = safeFileName(request.ArchiveName)
-	}
-	if archiveName == "" && len(items) > 1 {
-		archiveName = fmt.Sprintf("aipermission-download-%s.zip", time.Now().UTC().Format("20060102-150405"))
-	}
-	batch, err := runtime.fileTransfers.CreateBatch(r.Context(), filetransfer.CreateBatchRequest{
-		ServerID:    request.ServerID,
-		Direction:   filetransfer.DirectionDownload,
-		Source:      filetransfer.SourceUI,
-		ArchiveName: archiveName,
-		Items:       items,
-	})
-	if err != nil {
-		cleanupTempPaths(tempPaths)
 		writeInternalError(w)
 		return
 	}
@@ -773,6 +705,101 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 	})
 	go s.runTransferBatch(runtime, batch.ID, false)
 	writeJSON(w, http.StatusAccepted, batch)
+}
+
+func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *databaseRuntime, serverID int64, remotePaths []string, archiveName string, source string) (filetransfer.BatchRecord, error) {
+	if serverID < 1 {
+		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "server_id is required")
+	}
+	if len(remotePaths) == 0 {
+		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "remote_paths is required")
+	}
+	if len(remotePaths) > 100 {
+		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "cannot download more than 100 files at once")
+	}
+	server, privateKey, err := s.serverSSHMaterialFromRuntime(ctx, runtime, serverID)
+	if err != nil {
+		return filetransfer.BatchRecord{}, err
+	}
+	target := s.executionTarget(server, privateKey)
+	items := make([]filetransfer.CreateRequest, 0, len(remotePaths))
+	tempPaths := []string{}
+	seenRemotePaths := map[string]bool{}
+	var totalSize int64
+	for _, raw := range remotePaths {
+		remotePath, err := normalizeRemoteFilePath(raw)
+		if err != nil {
+			cleanupTempPaths(tempPaths)
+			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, err.Error())
+		}
+		if seenRemotePaths[remotePath] {
+			cleanupTempPaths(tempPaths)
+			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "download queue contains duplicate remote paths")
+		}
+		seenRemotePaths[remotePath] = true
+		status, err := execution.StatRemotePath(ctx, target, remotePath)
+		if err != nil {
+			cleanupTempPaths(tempPaths)
+			return filetransfer.BatchRecord{}, err
+		}
+		if !status.Exists || status.Type != "file" {
+			cleanupTempPaths(tempPaths)
+			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "remote path must be an existing regular file")
+		}
+		totalSize += status.Size
+		if totalSize > maxFileTransferBatchBytes {
+			cleanupTempPaths(tempPaths)
+			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusRequestEntityTooLarge, "download batch cannot exceed 1 GiB total size")
+		}
+		tempPath, err := s.reserveDownloadTempFile()
+		if err != nil {
+			cleanupTempPaths(tempPaths)
+			return filetransfer.BatchRecord{}, err
+		}
+		tempPaths = append(tempPaths, tempPath)
+		fileName := safeFileName(path.Base(remotePath))
+		items = append(items, filetransfer.CreateRequest{
+			RemotePath: remotePath,
+			FileName:   fileName,
+			SizeBytes:  status.Size,
+			TempPath:   tempPath,
+		})
+	}
+	cleanArchiveName := ""
+	if strings.TrimSpace(archiveName) != "" {
+		cleanArchiveName = safeFileName(archiveName)
+	}
+	if cleanArchiveName == "" && len(items) > 1 {
+		cleanArchiveName = fmt.Sprintf("aipermission-download-%s.zip", time.Now().UTC().Format("20060102-150405"))
+	}
+	batch, err := runtime.fileTransfers.CreateBatch(ctx, filetransfer.CreateBatchRequest{
+		ServerID:    serverID,
+		Direction:   filetransfer.DirectionDownload,
+		Source:      source,
+		ArchiveName: cleanArchiveName,
+		Items:       items,
+	})
+	if err != nil {
+		cleanupTempPaths(tempPaths)
+		return filetransfer.BatchRecord{}, err
+	}
+	return batch, nil
+}
+
+func (s fileTransferHandlers) writeFileTransferStartError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, servers.ErrNotFound) || errors.Is(err, sshkeys.ErrNotFound) {
+		handleServerSSHMaterialError(w, err)
+		return true
+	}
+	var startErr *fileTransferStartError
+	if errors.As(err, &startErr) {
+		writeError(w, startErr.Status, startErr.Message)
+		return true
+	}
+	if writeUnknownHostKeyError(w, err) {
+		return true
+	}
+	return false
 }
 
 func (s fileTransferHandlers) downloadTransferredFile(w http.ResponseWriter, r *http.Request) {

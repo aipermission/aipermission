@@ -16,6 +16,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -486,5 +487,115 @@ func TestMCPExecValidatesInputAndBlocksMissingPermission(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `"status":"blocked"`) {
 		t.Fatalf("expected blocked response, got %s", response.Body.String())
+	}
+}
+
+func TestMCPFileTransferStatusIsTokenScopedAndSanitized(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	allowed := fixture.createKeyAndServer(t, "allowed-transfer")
+	blocked := fixture.createKeyAndServer(t, "blocked-transfer")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: allowed.ID, ExecutionRule: tokens.RuleAlwaysRun},
+		{ServerID: blocked.ID, ExecutionRule: tokens.RuleBlocked},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+	runtime := fixture.server.activeRuntime()
+	allowedTransfer, err := runtime.fileTransfers.Create(ctx, filetransfer.CreateRequest{
+		ServerID:   allowed.ID,
+		Direction:  filetransfer.DirectionDownload,
+		Source:     filetransfer.SourceMCP,
+		LocalPath:  "/local/should-not-leak",
+		RemotePath: "/var/log/app.log",
+		FileName:   "app.log",
+		SizeBytes:  20,
+		TempPath:   "/tmp/aipermission-secret-download",
+	})
+	if err != nil {
+		t.Fatalf("create allowed transfer: %v", err)
+	}
+	blockedTransfer, err := runtime.fileTransfers.Create(ctx, filetransfer.CreateRequest{
+		ServerID:   blocked.ID,
+		Direction:  filetransfer.DirectionDownload,
+		Source:     filetransfer.SourceMCP,
+		RemotePath: "/var/log/blocked.log",
+		FileName:   "blocked.log",
+		TempPath:   "/tmp/blocked-secret",
+	})
+	if err != nil {
+		t.Fatalf("create blocked transfer: %v", err)
+	}
+	batch, err := runtime.fileTransfers.CreateBatch(ctx, filetransfer.CreateBatchRequest{
+		ServerID:    allowed.ID,
+		Direction:   filetransfer.DirectionDownload,
+		Source:      filetransfer.SourceMCP,
+		ArchiveName: "logs.zip",
+		Items: []filetransfer.CreateRequest{
+			{RemotePath: "/var/log/app.log", FileName: "app.log", SizeBytes: 20, TempPath: "/tmp/aipermission-secret-item"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if err := runtime.fileTransfers.SetBatchArchive(ctx, batch.ID, "/tmp/aipermission-secret-archive.zip"); err != nil {
+		t.Fatalf("set archive path: %v", err)
+	}
+
+	listResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/file-transfers?limit=10", token.TokenValue, nil)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("list transfers failed: %d %s", listResponse.Code, listResponse.Body.String())
+	}
+	body := listResponse.Body.String()
+	if !strings.Contains(body, `"id":`+strconv.FormatInt(allowedTransfer.ID, 10)) || strings.Contains(body, "/var/log/blocked.log") || strings.Contains(body, "blocked-transfer") {
+		t.Fatalf("transfer list should include only allowed transfer: %s", body)
+	}
+	if strings.Contains(body, "should-not-leak") || strings.Contains(body, "aipermission-secret") || strings.Contains(body, "local_path") || strings.Contains(body, "temp_path") {
+		t.Fatalf("transfer list leaked local metadata: %s", body)
+	}
+
+	getBlocked := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/file-transfers/"+strconv.FormatInt(blockedTransfer.ID, 10), token.TokenValue, nil)
+	if getBlocked.Code != http.StatusNotFound {
+		t.Fatalf("blocked transfer detail should look not found, got %d %s", getBlocked.Code, getBlocked.Body.String())
+	}
+
+	batchResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/file-transfer-batches/"+strconv.FormatInt(batch.ID, 10), token.TokenValue, nil)
+	if batchResponse.Code != http.StatusOK {
+		t.Fatalf("get batch failed: %d %s", batchResponse.Code, batchResponse.Body.String())
+	}
+	batchBody := batchResponse.Body.String()
+	if !strings.Contains(batchBody, `"archive_name":"logs.zip"`) || !strings.Contains(batchBody, `"remote_path":"/var/log/app.log"`) {
+		t.Fatalf("batch detail should include safe transfer metadata: %s", batchBody)
+	}
+	if strings.Contains(batchBody, "aipermission-secret") || strings.Contains(batchBody, "archive_path") || strings.Contains(batchBody, "temp_path") || strings.Contains(batchBody, "local_path") {
+		t.Fatalf("batch detail leaked local metadata: %s", batchBody)
+	}
+}
+
+func TestMCPFileTransferManagementRequiresAlwaysRun(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "worker-transfer")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/file-transfers/download-batch", token.TokenValue, map[string]any{
+		"server_id":    server.ID,
+		"remote_paths": []string{"/var/log/syslog"},
+		"archive_name": "logs.zip",
+	})
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"blocked"`) || !strings.Contains(response.Body.String(), "always_run") {
+		t.Fatalf("approval-required token should not start MCP transfers, got %d %s", response.Code, response.Body.String())
 	}
 }

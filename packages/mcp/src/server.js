@@ -111,6 +111,141 @@ server.tool(
   }
 );
 
+server.tool(
+  "list_file_transfers",
+  "List file transfer records visible to this token. Results never include local temp paths or archive paths.",
+  {
+    server_id: z.number().int().positive().optional().describe("Optional server id from list_servers."),
+    direction: z.enum(["upload", "download"]).optional().describe("Optional transfer direction."),
+    status: z.enum(["pending", "running", "paused", "completed", "failed", "canceled"]).optional().describe("Optional transfer status."),
+    limit: z.number().int().positive().max(100).optional().describe("Maximum records to return."),
+    offset: z.number().int().min(0).optional().describe("Pagination offset."),
+  },
+  async ({ server_id, direction, status, limit, offset }) => {
+    return jsonToolResult(() => {
+      const params = new URLSearchParams();
+      if (server_id) params.set("server_id", String(server_id));
+      if (direction) params.set("direction", direction);
+      if (status) params.set("status", status);
+      if (limit) params.set("limit", String(limit));
+      if (offset) params.set("offset", String(offset));
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      return apiGet(`/api/mcp/file-transfers${suffix}`);
+    });
+  }
+);
+
+server.tool(
+  "get_file_transfer",
+  "Read one file transfer record visible to this token. Local temp paths and archive paths are never returned.",
+  {
+    transfer_id: z.number().int().positive().describe("Transfer id from list_file_transfers or get_file_transfer_batch."),
+  },
+  async ({ transfer_id }) => {
+    return jsonToolResult(() => apiGet(`/api/mcp/file-transfers/${transfer_id}`));
+  }
+);
+
+server.tool(
+  "list_file_transfer_batches",
+  "List file transfer queues visible to this token. Use get_file_transfer_batch for per-file progress.",
+  {
+    server_id: z.number().int().positive().optional().describe("Optional server id from list_servers."),
+    direction: z.enum(["upload", "download"]).optional().describe("Optional transfer direction."),
+    status: z.enum(["pending", "running", "paused", "completed", "failed", "canceled"]).optional().describe("Optional transfer status."),
+    limit: z.number().int().positive().max(100).optional().describe("Maximum records to return."),
+    offset: z.number().int().min(0).optional().describe("Pagination offset."),
+  },
+  async ({ server_id, direction, status, limit, offset }) => {
+    return jsonToolResult(() => {
+      const params = new URLSearchParams();
+      if (server_id) params.set("server_id", String(server_id));
+      if (direction) params.set("direction", direction);
+      if (status) params.set("status", status);
+      if (limit) params.set("limit", String(limit));
+      if (offset) params.set("offset", String(offset));
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      return apiGet(`/api/mcp/file-transfer-batches${suffix}`);
+    });
+  }
+);
+
+server.tool(
+  "get_file_transfer_batch",
+  "Read one file transfer queue with per-file progress. Completed downloads are staged for the human operator to save from the UI.",
+  {
+    batch_id: z.number().int().positive().describe("Batch id from list_file_transfer_batches or start_file_download."),
+  },
+  async ({ batch_id }) => {
+    return jsonToolResult(() => apiGet(`/api/mcp/file-transfer-batches/${batch_id}`));
+  }
+);
+
+server.tool(
+  "browse_remote_files",
+  "Browse a remote server directory through AIPermission. Requires always_run permission. This lists remote metadata only and does not read local files.",
+  {
+    server_id: z.number().int().positive().describe("Server id from list_servers."),
+    path: z.string().optional().describe("Absolute remote directory path. Defaults to /."),
+  },
+  async ({ server_id, path }) => {
+    return jsonToolResult(() => apiPost("/api/mcp/file-transfers/browse", {
+      server_id,
+      path: path || "/",
+    }));
+  }
+);
+
+server.tool(
+  "start_file_download",
+  "Start a remote file download queue through AIPermission. Requires always_run permission. The AI cannot receive file contents; completed files are staged for the human operator to save from the UI.",
+  {
+    server_id: z.number().int().positive().describe("Server id from list_servers."),
+    remote_paths: z.array(z.string().min(1)).min(1).max(100).describe("Absolute remote file paths to download sequentially."),
+    archive_name: z.string().optional().describe("Optional archive filename for multi-file downloads."),
+  },
+  async ({ server_id, remote_paths, archive_name }) => {
+    return jsonToolResult(() => apiPost("/api/mcp/file-transfers/download-batch", {
+      server_id,
+      remote_paths,
+      archive_name: archive_name || "",
+    }));
+  }
+);
+
+server.tool(
+  "pause_file_transfer_batch",
+  "Pause an active file transfer queue started or visible through AIPermission. Requires always_run permission for that server.",
+  {
+    batch_id: z.number().int().positive().describe("Batch id from list_file_transfer_batches or start_file_download."),
+  },
+  async ({ batch_id }) => {
+    return jsonToolResult(() => apiPost(`/api/mcp/file-transfer-batches/${batch_id}/pause`, {}));
+  }
+);
+
+server.tool(
+  "resume_file_transfer_batch",
+  "Resume a paused file transfer queue. Requires always_run permission for that server.",
+  {
+    batch_id: z.number().int().positive().describe("Batch id from list_file_transfer_batches or start_file_download."),
+  },
+  async ({ batch_id }) => {
+    return jsonToolResult(() => apiPost(`/api/mcp/file-transfer-batches/${batch_id}/resume`, {}));
+  }
+);
+
+server.tool(
+  "cancel_file_transfer_batch",
+  "Cancel a pending, running, or paused file transfer queue. Requires always_run permission for that server.",
+  {
+    batch_id: z.number().int().positive().describe("Batch id from list_file_transfer_batches or start_file_download."),
+  },
+  async ({ batch_id }) => {
+    return jsonToolResult(() => apiPost(`/api/mcp/file-transfer-batches/${batch_id}/cancel`, {}));
+  }
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 

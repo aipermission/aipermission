@@ -133,6 +133,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/mcp/requests", mcp.mcpListRequests)
 	s.mux.HandleFunc("GET /api/mcp/requests/{id}", mcp.mcpGetRequest)
 	s.mux.HandleFunc("POST /api/mcp/messages", mcp.mcpCreateMessage)
+	s.mux.HandleFunc("GET /api/mcp/file-transfers", mcp.mcpListFileTransfers)
+	s.mux.HandleFunc("GET /api/mcp/file-transfers/{id}", mcp.mcpGetFileTransfer)
+	s.mux.HandleFunc("GET /api/mcp/file-transfer-batches", mcp.mcpListFileTransferBatches)
+	s.mux.HandleFunc("GET /api/mcp/file-transfer-batches/{id}", mcp.mcpGetFileTransferBatch)
+	s.mux.HandleFunc("POST /api/mcp/file-transfers/browse", mcp.mcpBrowseRemoteFiles)
+	s.mux.HandleFunc("POST /api/mcp/file-transfers/download-batch", mcp.mcpStartFileDownload)
+	s.mux.HandleFunc("POST /api/mcp/file-transfer-batches/{id}/pause", mcp.mcpPauseFileTransferBatch)
+	s.mux.HandleFunc("POST /api/mcp/file-transfer-batches/{id}/resume", mcp.mcpResumeFileTransferBatch)
+	s.mux.HandleFunc("POST /api/mcp/file-transfer-batches/{id}/cancel", mcp.mcpCancelFileTransferBatch)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

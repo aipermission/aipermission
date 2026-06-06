@@ -109,6 +109,17 @@ type ListFilter struct {
 	Direction string
 	Status    string
 	ServerID  int64
+	ServerIDs []int64
+	Query     string
+	Limit     int
+	Offset    int
+}
+
+type BatchListFilter struct {
+	Direction string
+	Status    string
+	ServerID  int64
+	ServerIDs []int64
 	Query     string
 	Limit     int
 	Offset    int
@@ -265,6 +276,68 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("iterate file transfers: %w", err)
+	}
+	return items, total, nil
+}
+
+func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]BatchRecord, int, error) {
+	filter = normalizeBatchListFilter(filter)
+	where, args := batchListWhere(filter)
+	countQuery := `SELECT COUNT(*) FROM file_transfer_batches b LEFT JOIN servers srv ON srv.id = b.server_id` + where
+	var total int
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count file transfer batches: %w", err)
+	}
+
+	query := `
+		SELECT b.id, b.server_id, COALESCE(srv.name, ''), b.direction, b.source, b.status,
+			b.archive_name, b.archive_path, b.total_items, b.completed_items, b.failed_items,
+			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
+			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
+			COALESCE(b.completed_at, ''), b.updated_at
+		FROM file_transfer_batches b
+		LEFT JOIN servers srv ON srv.id = b.server_id` + where + `
+		ORDER BY b.created_at DESC, b.id DESC
+		LIMIT ? OFFSET ?`
+	args = append(args, filter.Limit, filter.Offset)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list file transfer batches: %w", err)
+	}
+	defer rows.Close()
+
+	items := []BatchRecord{}
+	for rows.Next() {
+		var item BatchRecord
+		if err := rows.Scan(
+			&item.ID,
+			&item.ServerID,
+			&item.ServerName,
+			&item.Direction,
+			&item.Source,
+			&item.Status,
+			&item.ArchiveName,
+			&item.ArchivePath,
+			&item.TotalItems,
+			&item.CompletedItems,
+			&item.FailedItems,
+			&item.CanceledItems,
+			&item.SizeBytes,
+			&item.TransferredBytes,
+			&item.BytesPerSecond,
+			&item.ETASeconds,
+			&item.Error,
+			&item.CreatedAt,
+			&item.StartedAt,
+			&item.CompletedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan file transfer batch: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate file transfer batches: %w", err)
 	}
 	return items, total, nil
 }
@@ -1037,6 +1110,12 @@ func listWhere(filter ListFilter) (string, []any) {
 		clauses = append(clauses, "ft.server_id = ?")
 		args = append(args, filter.ServerID)
 	}
+	if len(filter.ServerIDs) > 0 {
+		clauses = append(clauses, "ft.server_id IN ("+placeholders(len(filter.ServerIDs))+")")
+		for _, id := range filter.ServerIDs {
+			args = append(args, id)
+		}
+	}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
 		clauses = append(clauses, "(ft.remote_path LIKE ? OR ft.local_path LIKE ? OR ft.file_name LIKE ? OR COALESCE(srv.name, '') LIKE ?)")
@@ -1046,6 +1125,49 @@ func listWhere(filter ListFilter) (string, []any) {
 		return "", args
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func batchListWhere(filter BatchListFilter) (string, []any) {
+	clauses := []string{}
+	args := []any{}
+	if filter.Direction != "" {
+		clauses = append(clauses, "b.direction = ?")
+		args = append(args, filter.Direction)
+	}
+	if filter.Status != "" {
+		clauses = append(clauses, "b.status = ?")
+		args = append(args, filter.Status)
+	}
+	if filter.ServerID > 0 {
+		clauses = append(clauses, "b.server_id = ?")
+		args = append(args, filter.ServerID)
+	}
+	if len(filter.ServerIDs) > 0 {
+		clauses = append(clauses, "b.server_id IN ("+placeholders(len(filter.ServerIDs))+")")
+		for _, id := range filter.ServerIDs {
+			args = append(args, id)
+		}
+	}
+	if filter.Query != "" {
+		like := "%" + filter.Query + "%"
+		clauses = append(clauses, "(b.archive_name LIKE ? OR COALESCE(srv.name, '') LIKE ?)")
+		args = append(args, like, like)
+	}
+	if len(clauses) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func placeholders(count int) string {
+	if count < 1 {
+		return ""
+	}
+	items := make([]string, count)
+	for i := range items {
+		items[i] = "?"
+	}
+	return strings.Join(items, ",")
 }
 
 func normalizeCreateRequest(request CreateRequest) (CreateRequest, error) {
@@ -1135,6 +1257,7 @@ func normalizeListFilter(filter ListFilter) ListFilter {
 	filter.Direction = strings.TrimSpace(filter.Direction)
 	filter.Status = strings.TrimSpace(filter.Status)
 	filter.Query = strings.TrimSpace(filter.Query)
+	filter.ServerIDs = normalizeServerIDs(filter.ServerIDs)
 	if filter.Limit < 1 || filter.Limit > 100 {
 		filter.Limit = 50
 	}
@@ -1152,6 +1275,46 @@ func normalizeListFilter(filter ListFilter) ListFilter {
 		filter.Status = ""
 	}
 	return filter
+}
+
+func normalizeBatchListFilter(filter BatchListFilter) BatchListFilter {
+	filter.Direction = strings.TrimSpace(filter.Direction)
+	filter.Status = strings.TrimSpace(filter.Status)
+	filter.Query = strings.TrimSpace(filter.Query)
+	filter.ServerIDs = normalizeServerIDs(filter.ServerIDs)
+	if filter.Limit < 1 || filter.Limit > 100 {
+		filter.Limit = 50
+	}
+	if filter.Offset < 0 {
+		filter.Offset = 0
+	}
+	switch filter.Direction {
+	case DirectionUpload, DirectionDownload:
+	default:
+		filter.Direction = ""
+	}
+	switch filter.Status {
+	case StatusPending, StatusRunning, StatusPaused, StatusCompleted, StatusFailed, StatusCanceled:
+	default:
+		filter.Status = ""
+	}
+	return filter
+}
+
+func normalizeServerIDs(values []int64) []int64 {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[int64]bool{}
+	result := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value < 1 || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
 }
 
 func validatePathLike(field string, value string, required bool) error {
