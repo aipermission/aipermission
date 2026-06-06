@@ -4,6 +4,7 @@ import { apiDelete, apiDownload, apiGet, apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { formatBytes, transferProgress } from "../components/console/file-transfer-utils";
 import { CopyButton } from "../components/ui/copy-button";
 import { Dialog } from "../components/ui/dialog";
 import { Input, Select } from "../components/ui/form";
@@ -914,36 +915,12 @@ function TransferProgressCell({ item }) {
   );
 }
 
-function transferProgress(item) {
-  if (!item) return { percent: 0, label: "" };
-  const total = Number(item.size_bytes || 0);
-  const transferred = Number(item.transferred_bytes || 0);
-  const percent = total > 0 ? Math.min(100, Math.round((transferred / total) * 100)) : item.status === "completed" ? 100 : 0;
-  return {
-    percent,
-    label: total > 0 ? `${formatBytes(transferred)} / ${formatBytes(total)}` : `${formatBytes(transferred)} transferred`,
-  };
-}
-
 function labelStyle(label) {
   const color = label?.color || "#0f766e";
   return {
     borderColor: color,
     color,
   };
-}
-
-function formatBytes(value) {
-  const bytes = Number(value || 0);
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KiB", "MiB", "GiB", "TiB"];
-  let amount = bytes / 1024;
-  let index = 0;
-  while (amount >= 1024 && index < units.length - 1) {
-    amount /= 1024;
-    index += 1;
-  }
-  return `${amount.toFixed(amount >= 10 ? 1 : 2)} ${units[index]}`;
 }
 
 function statusLabel(status) {

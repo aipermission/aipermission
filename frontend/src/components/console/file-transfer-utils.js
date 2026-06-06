@@ -2,7 +2,8 @@ export function transferProgress(item) {
   if (!item) return { percent: 0, label: "" };
   const total = Number(item.size_bytes || 0);
   const transferred = Number(item.transferred_bytes || 0);
-  const percent = total > 0 ? Math.min(100, Math.round((transferred / total) * 100)) : item.status === "completed" ? 100 : 0;
+  const terminal = item.status === "completed" || item.status === "canceled";
+  const percent = terminal ? 100 : total > 0 ? Math.min(100, Math.round((transferred / total) * 100)) : 0;
   return {
     percent,
     label: total > 0 ? `${formatBytes(transferred)} / ${formatBytes(total)}` : `${formatBytes(transferred)} transferred`,

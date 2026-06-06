@@ -152,6 +152,10 @@ test("Console and History expose SSH file transfer flows", () => {
   assert.match(sidebarSource, /Transfers/);
   assert.match(transferCenterSource, /Transfer Center/);
   assert.match(transferCenterSource, /Closing this panel does not stop transfers/);
+  assert.match(transferCenterSource, /pending_approval/);
+  assert.match(transferCenterSource, /Approve selected/);
+  assert.match(shellSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/approve/);
+  assert.match(shellSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/decline/);
 });
 
 test("Settings page exposes history label management", () => {

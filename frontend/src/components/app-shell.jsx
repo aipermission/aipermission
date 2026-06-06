@@ -26,6 +26,7 @@ export function Shell({ theme, setTheme }) {
   const [lockDialog, setLockDialog] = useState({ open: false, state: "idle", error: null });
   const [transferCenterOpen, setTransferCenterOpen] = useState(false);
   const consoleConnectionsRef = useRef({});
+  const seenPendingTransferApprovalsRef = useRef(new Set());
 
   async function loadStatus() {
     try {
@@ -118,8 +119,15 @@ export function Shell({ theme, setTheme }) {
   async function loadFileTransferBatches(options = {}) {
     try {
       const data = await apiGet("/api/file-transfer-batches?limit=30");
-      setFileTransferBatches({ state: "ready", data: data.items || [], error: null });
-      return data.items || [];
+      const items = data.items || [];
+      const pendingApprovals = items.filter((item) => item.status === "pending_approval");
+      const hasNewPendingApproval = pendingApprovals.some((item) => !seenPendingTransferApprovalsRef.current.has(item.id));
+      pendingApprovals.forEach((item) => seenPendingTransferApprovalsRef.current.add(item.id));
+      if (hasNewPendingApproval) {
+        setTransferCenterOpen(true);
+      }
+      setFileTransferBatches({ state: "ready", data: items, error: null });
+      return items;
     } catch (error) {
       setFileTransferBatches((current) => ({ state: "error", data: options.keepData ? current.data : [], error: error.message }));
       return [];
@@ -357,6 +365,16 @@ export function Shell({ theme, setTheme }) {
     await loadFileTransferBatches({ keepData: true });
   }
 
+  async function approveFileTransferBatch(batchID, itemIDs, note = "") {
+    await apiPost(`/api/file-transfer-batches/${batchID}/approve`, { item_ids: itemIDs, note });
+    await loadFileTransferBatches({ keepData: true });
+  }
+
+  async function declineFileTransferBatch(batchID, note = "") {
+    await apiPost(`/api/file-transfer-batches/${batchID}/decline`, { note });
+    await loadFileTransferBatches({ keepData: true });
+  }
+
   function requestLockDatabase() {
     const unlockedCount = (databaseStatus.data?.databases || []).filter((item) => item.unlocked).length;
     if (unlockedCount > 1) {
@@ -440,6 +458,8 @@ export function Shell({ theme, setTheme }) {
         onPause={pauseFileTransferBatch}
         onResume={resumeFileTransferBatch}
         onCancel={cancelFileTransferBatch}
+        onApprove={approveFileTransferBatch}
+        onDecline={declineFileTransferBatch}
       />
 
       <DatabaseSwitchDialog
@@ -520,7 +540,7 @@ function isUnreadMessage(message) {
 }
 
 function isActiveTransferBatch(batch) {
-  return batch?.status === "pending" || batch?.status === "running" || batch?.status === "paused";
+  return batch?.status === "pending_approval" || batch?.status === "pending" || batch?.status === "running" || batch?.status === "paused";
 }
 
 function consoleSessionAttachUrl(sessionID) {
