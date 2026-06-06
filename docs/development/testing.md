@@ -51,9 +51,11 @@ Then verify:
 8. An `approval_required` MCP command appears in Console and can be Run or Declined.
 9. An `always_run` MCP command streams to the persistent console.
 10. History and Audit Logs show the command lifecycle.
-11. Console can upload one local file to a remote absolute path.
-12. Console can download one remote file, then History > File Transfer History
-    can show the completed transfer and serve the browser download.
+11. Console can upload a queued set of local files to a remote folder, including
+    overwrite confirmation when a remote file already exists.
+12. Console can download one or more remote files, pause/resume or cancel an
+    active queue, and History > File Transfer History can show completed
+    transfer metadata. Multi-file downloads should save as a zip.
 13. Settings can download an `.aipdb` backup and import it as a named database.
 
 ## npm Publish Checks

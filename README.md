@@ -128,9 +128,9 @@ Implemented:
 - approval dialog with Run / Decline / note
 - unread message badges and AI-to-user/user-to-AI notes
 - SQLCipher FTS4-backed searchable command history and audit log pages
-- single-file SSH/SFTP upload and download from the local web UI
+- queued SSH/SFTP upload and download from the local web UI
 - remote SFTP browser for upload folders and download file selection
-- cancelable file transfer history with live progress, checksum, server, and path metadata
+- pause/resume/cancel transfer queues with live progress, speed, ETA, checksum, server, and path metadata
 - configurable local data retention for history, audit logs, console sessions, and messages
 - SQLCipher-backed full SQLite database encryption
 - first-run database password setup and unlock screen
@@ -143,7 +143,7 @@ Out of scope for the current MVP:
 - SQL query tools
 - advanced command risk analysis
 - MCP file transfer tools
-- directory transfer, recursive copy, remote glob expansion, and resumable file transfers
+- directory transfer, recursive copy, remote glob expansion, and restart-surviving resumable file transfers
 
 ## Quick Start
 
@@ -309,7 +309,7 @@ Important boundaries:
 - The database password can be changed from Settings while the current password is known.
 - The database password is escaped before SQLCipher key/rekey handling, so quotes or semicolons in the password cannot change PRAGMA SQL parsing.
 - Command text, command output, notes, console transcripts, and audit payloads may be stored in the encrypted local database. Basic redaction is enabled by default for common secret patterns, and Security can add custom regex rules that are stored inside the encrypted database. Redaction is best-effort. Approval execution keeps the raw command in an encrypted internal payload so redaction never changes the command that runs, while UI, MCP response fields, messages, and audit display fields stay redacted. Do not put secrets directly in commands, and use judgment when asking AI to inspect files or environment values.
-- File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, checksum, and errors only.
+- File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, speed, ETA, checksum, and errors only. Pause/resume works for the active local gateway process; if the gateway, Docker container, or computer restarts, unfinished transfer queues should be started again.
 - Secret fields are also encrypted with the gateway vault secret inside the SQLCipher database.
 - The gateway vault secret is sensitive. Losing it prevents vault payload decryption; exposing it together with unlocked database contents compromises vault-protected payloads.
 - `AIPERMISSION_GATEWAY_SECRET` is optional and should be left unset for normal local installs. The gateway auto-generates a high-entropy local vault secret at startup. If it is set explicitly for advanced local testing, use at least 32 random characters.

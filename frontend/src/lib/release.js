@@ -1,6 +1,28 @@
-export const appVersion = "0.1.5";
+export const appVersion = "0.1.6";
 
 export const changelogEntries = [
+  {
+    version: "0.1.6",
+    label: "Bulk file transfer queues",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Queued SSH/SFTP uploads and downloads from the local Console UI.",
+          "Pause and resume for active transfers while the gateway process stays running.",
+          "Per-file status, speed, ETA, and progress for transfer queues.",
+          "Multi-file downloads are packaged as a local zip after the remote downloads complete.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "File contents still stay out of SQLCipher; AIPermission persists transfer metadata and short-lived local staging files only.",
+          "MCP file transfer tools remain intentionally unavailable while UI transfer safety and audit semantics are dogfooded.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.5",
     label: "SSH file transfers",

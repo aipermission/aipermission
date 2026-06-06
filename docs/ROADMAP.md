@@ -33,8 +33,8 @@ Related notes:
   switch.
 - Persistent console sessions with live attach, AI command display, messages,
   transcript chunks, and history.
-- Single-file SSH/SFTP upload and download from the local web UI, with separate
-  File Transfer History.
+- Queued SSH/SFTP upload and download from the local web UI, with separate File
+  Transfer History.
 - Approval dialogs, user notes, AI-to-user messages, audit logs, and searchable
   History/Audit pages.
 - Redaction settings with built-in and custom regex rules.
@@ -107,6 +107,17 @@ AIPermission against real VPS maintenance tasks.
 - File contents are not stored in SQLCipher; only metadata and progress are
   persisted.
 
+`0.1.6` ships:
+
+- Queued upload and download flows from Console.
+- Multi-file upload with ordering, removal, overwrite confirmation, progress,
+  speed, and ETA.
+- Multi-file remote download with final zip packaging when more than one file is
+  selected.
+- Process-local pause/resume for active transfer queues, plus cancel behavior.
+- Batch transfer REST endpoints for queue status, pause, resume, cancel, and
+  final download delivery.
+
 ## Early RC Follow-Ups
 
 These are good candidates for small follow-up releases after the first public
@@ -121,11 +132,9 @@ tag:
   and cursor-edited commands. Do this with a deliberate frontend submitted-line
   signal or shell-assisted marker model instead of backend escape-sequence
   guessing, and preserve normal terminal behavior as the first invariant.
-- [ ] Add bulk SSH file upload/download after the single-file UI transfer flow
-  has been dogfooded. Treat this as a queued transfer feature with per-file
-  status, cancel behavior, overwrite handling, and clear history records.
 - [ ] Add directory transfer, recursive copy, remote glob handling, and
-  resumable transfer design after bulk transfer semantics are clear.
+  restart-surviving resumable transfer design after bulk transfer semantics are
+  dogfooded.
 - [ ] Evaluate MCP file-transfer tools only after UI transfer safety and audit
   semantics are proven. MCP transfer support must define local path scope,
   max-size limits, overwrite behavior, and prompt/approval defaults before it

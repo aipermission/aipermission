@@ -7,6 +7,30 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-06-06
+
+### Added
+
+- Queued SSH/SFTP uploads and downloads from the local Console UI.
+- Multi-file upload queue with per-file ordering, removal, overwrite
+  confirmation, live progress, speed, and ETA.
+- Multi-file remote download queue with zip packaging after remote downloads
+  complete.
+- Pause and resume controls for active transfer queues while the gateway process
+  remains running.
+- Batch transfer REST endpoints for queue status, pause, resume, cancel, and
+  final download delivery.
+
+### Security
+
+- File contents remain outside SQLCipher. Transfer history stores metadata,
+  status, progress, checksum, path, and errors only.
+- Pause/resume is intentionally process-local. If the gateway process, Docker
+  container, or computer restarts, unfinished transfer queues should be started
+  again instead of resumed from old local state.
+- MCP file-transfer tools remain intentionally unavailable while UI transfer
+  safety and audit semantics are dogfooded.
+
 ## [0.1.5] - 2026-06-05
 
 ### Added

@@ -208,9 +208,50 @@ may return `410 Gone` after cleanup.
 `POST /api/file-transfers/{id}/cancel` cancels a pending or running transfer and
 closes the active SFTP operation when it is still in progress.
 
+The local UI primarily uses the batch queue endpoints. `POST
+/api/file-transfers/upload-batch` accepts `multipart/form-data`:
+
+```txt
+server_id=3
+remote_dir=/home/deploy
+overwrite=false
+files=<browser selected file>
+files=<another browser selected file>
+```
+
+The backend stages each selected file in a private temporary directory, creates
+a batch record and per-file transfer records, then copies files sequentially
+over SFTP. If any target file already exists and `overwrite=false`, the endpoint
+returns `409 Conflict` with `code: "remote_files_exist"` and a `conflicts`
+array. The UI asks for explicit confirmation before retrying with
+`overwrite=true`.
+
+`POST /api/file-transfers/download-batch` starts a queued remote download:
+
+```json
+{
+  "server_id": 3,
+  "remote_paths": ["/var/log/syslog", "/var/log/auth.log"],
+  "archive_name": "logs.zip"
+}
+```
+
+Remote files are downloaded sequentially to private temporary files. A single
+download is served as the downloaded file. Multiple completed downloads are
+packaged into a temporary zip, then served through `GET
+/api/file-transfer-batches/{id}/download`.
+
+`GET /api/file-transfer-batches/{id}` returns the batch record, aggregate
+progress, speed/ETA, and ordered per-file items. `POST
+/api/file-transfer-batches/{id}/pause` pauses the active queue while the current
+gateway process keeps running. `resume` continues the same in-process transfer
+where practical; if the gateway process, Docker container, or computer restarts,
+unfinished queues should be started again. `cancel` cancels the active queue and
+cleans staged temporary files.
+
 Remote paths must be absolute file paths. Directory transfer, recursive copy,
-remote glob expansion, and SSH-agent/ProxyJump based transfers are not part of
-this MVP.
+remote glob expansion, restart-surviving resumable transfers, and
+SSH-agent/ProxyJump based transfers are not part of this MVP.
 
 ## SSH Keys
 
