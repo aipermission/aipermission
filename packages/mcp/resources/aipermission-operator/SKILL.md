@@ -91,6 +91,32 @@ The command is still running; reading console output before next step.
 
 When a response includes `user_note`, treat it as live operator guidance. Apply it before continuing.
 
+## File Transfer Flow
+
+File transfer tools require `always_run` permission for the target server.
+
+Use them only when the user explicitly asks to move files or inspect transfer
+state. Prefer the smallest explicit path set. Do not use globs, recursive copy,
+or directory transfer unless a future tool explicitly supports those behaviors.
+
+For remote-to-local downloads:
+
+1. Call `start_file_download(server_id, remote_paths, archive_name?)`.
+2. Poll `get_file_transfer_batch(batch_id)` until the batch is terminal.
+3. If completed and the user asked for a local copy, call
+   `save_file_download(batch_id, local_path, overwrite?)` with an explicit local
+   destination.
+4. Report the saved path and status metadata. Do not print file contents unless
+   the user explicitly asks you to inspect the saved file.
+
+For local-to-remote uploads, call `upload_files(server_id, local_paths,
+remote_dir, overwrite?)` only with explicit local paths supplied by the user or
+clearly located in the current local workspace. Poll `get_file_transfer_batch`
+for progress.
+
+The local AIPermission UI shows active and recent transfer queues in Transfer
+Center. The operator can pause, resume, or cancel queues there.
+
 ## Safe Shell Practice
 
 Prefer commands that are:

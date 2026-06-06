@@ -1,6 +1,7 @@
 # MCP Tools
 
-The MVP MCP surface stays small and focused on scoped command execution.
+The MVP MCP surface stays small and focused on scoped command execution,
+operator messages, console reads, and explicit file transfer workflows.
 
 Recommended package use:
 
@@ -25,6 +26,8 @@ list_file_transfer_batches(server_id?, direction?, status?, limit?, offset?)
 get_file_transfer_batch(batch_id)
 browse_remote_files(server_id, path?)
 start_file_download(server_id, remote_paths, archive_name?)
+save_file_download(batch_id, local_path, overwrite?)
+upload_files(server_id, local_paths, remote_dir, overwrite?)
 pause_file_transfer_batch(batch_id)
 resume_file_transfer_batch(batch_id)
 cancel_file_transfer_batch(batch_id)
@@ -270,13 +273,15 @@ than read-only status:
 - `list_file_transfers`, `get_file_transfer`, `list_file_transfer_batches`, and
   `get_file_transfer_batch` return sanitized metadata for servers visible to the
   token.
-- `browse_remote_files`, `start_file_download`, `pause_file_transfer_batch`,
-  `resume_file_transfer_batch`, and `cancel_file_transfer_batch` require
-  `always_run` permission for that server.
+- `browse_remote_files`, `start_file_download`, `save_file_download`,
+  `upload_files`, `pause_file_transfer_batch`, `resume_file_transfer_batch`,
+  and `cancel_file_transfer_batch` require `always_run` permission for that
+  server.
 - `approval_required` transfer approval is not implemented yet. Use the local UI
   when a human should make the transfer decision.
-- MCP can start remote downloads only. It cannot upload local files, read local
-  paths, receive file contents, or receive gateway temporary/archive paths.
+- MCP can upload and download only explicit local paths requested through the
+  local MCP process. Tool responses never include file contents, local temporary
+  paths, local upload contents, or gateway temporary/archive paths.
 
 `list_file_transfers` and `list_file_transfer_batches` support optional
 `server_id`, `direction`, `status`, `limit`, and `offset` filters:
@@ -333,8 +338,35 @@ than read-only status:
 
 The response includes a batch record plus `retry_after_seconds` and
 `assistant_hint`. The AI should poll `get_file_transfer_batch` for progress and
-tell the operator when the completed file or archive is ready to save from the
-AIPermission UI.
+then call `save_file_download` if the operator asked to write the completed file
+or archive to a local path.
+
+`save_file_download` writes a completed MCP-started download batch to a local
+file or directory path. It refuses to overwrite an existing local file unless
+`overwrite` is true:
+
+```json
+{
+  "batch_id": 12,
+  "local_path": "/home/user/Desktop/logs.zip",
+  "overwrite": false
+}
+```
+
+`upload_files` uploads explicit local files through the local MCP package to one
+remote directory:
+
+```json
+{
+  "server_id": 3,
+  "local_paths": ["/home/user/Desktop/app.env"],
+  "remote_dir": "/home/deploy",
+  "overwrite": false
+}
+```
+
+The response includes a batch record plus `retry_after_seconds` and
+`assistant_hint`. The AI should poll `get_file_transfer_batch` for progress.
 
 Pause, resume, and cancel operate on active transfer queues:
 

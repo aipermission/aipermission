@@ -141,6 +141,7 @@ GET  /api/file-transfers
 GET  /api/file-transfers/{id}
 GET  /api/file-transfers/{id}/download
 POST /api/file-transfers/{id}/cancel
+GET  /api/file-transfer-batches
 GET  /api/file-transfer-batches/{id}
 GET  /api/file-transfer-batches/{id}/download
 POST /api/file-transfer-batches/{id}/pause
@@ -171,11 +172,12 @@ only. File contents are never stored in SQLCipher. Uploads and downloads use
 private short-lived temporary staging files under the local data directory.
 
 The local UI can upload local files and download remote files. MCP can list
-transfer status, browse remote directories, start remote download queues, and
-pause/resume/cancel queues. MCP cannot upload local files or read completed file
-contents; completed MCP downloads are staged for the human operator to save
-from the local UI. MCP transfer management requires `always_run` permission for
-that server. `approval_required` transfer approval is intentionally not
+transfer status, browse remote directories, start remote download queues, save
+completed downloads to explicit local paths, upload explicitly named local
+files, and pause/resume/cancel queues. MCP transfer management requires
+`always_run` permission for that server. MCP tool responses never include file
+contents, local temporary paths, archive staging paths, or local upload
+contents. `approval_required` transfer approval is intentionally not
 implemented yet.
 
 `GET /api/file-transfers` returns paginated transfer history. Optional filters
@@ -315,8 +317,12 @@ cookie:
 ```
 
 The response includes `retry_after_seconds` and `assistant_hint`; the AI should
-poll `GET /api/mcp/file-transfer-batches/{id}` for progress and tell the user
-when the staged download is ready in the UI.
+poll `GET /api/mcp/file-transfer-batches/{id}` for progress. A local MCP client
+can then call `GET /api/mcp/file-transfer-batches/{id}/download` through the
+package `save_file_download` tool to write the completed download to an
+explicit local path. MCP uploads use `POST
+/api/mcp/file-transfers/upload-batch` with explicit local files supplied by the
+local MCP package.
 
 ## SSH Keys
 

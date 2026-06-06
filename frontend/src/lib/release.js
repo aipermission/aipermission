@@ -10,14 +10,16 @@ export const changelogEntries = [
         items: [
           "MCP tools can list token-scoped file transfer status and batch progress.",
           "MCP can browse remote directories and start remote download queues for always-run server permissions.",
+          "MCP can save completed downloads to explicit local paths and upload explicit local files.",
           "MCP can pause, resume, and cancel active transfer queues.",
+          "Transfer Center shows active and recent UI/MCP transfer queues from the sidebar.",
         ],
       },
       {
         title: "Security",
         items: [
-          "MCP transfer responses never include local temp paths, archive staging paths, local upload paths, or downloaded file contents.",
-          "MCP local upload remains intentionally unavailable while local path scope and approval semantics are designed separately.",
+          "MCP transfer responses never include local temp paths, archive staging paths, local upload paths, or file contents.",
+          "MCP direct upload/download tools require always-run permission and explicit local paths.",
         ],
       },
     ],

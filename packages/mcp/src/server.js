@@ -120,7 +120,7 @@ server.tool(
 
 server.tool(
   "list_file_transfers",
-  "List file transfer records visible to this token. Results never include local temp paths or archive paths.",
+  "List file transfer records visible to this token. Results never include local temp paths, archive paths, local upload contents, or file contents.",
   {
     server_id: z.number().int().positive().optional().describe("Optional server id from list_servers."),
     direction: z.enum(["upload", "download"]).optional().describe("Optional transfer direction."),
@@ -144,7 +144,7 @@ server.tool(
 
 server.tool(
   "get_file_transfer",
-  "Read one file transfer record visible to this token. Local temp paths and archive paths are never returned.",
+  "Read one file transfer record visible to this token. Local temp paths, archive paths, local upload contents, and file contents are never returned.",
   {
     transfer_id: z.number().int().positive().describe("Transfer id from list_file_transfers or get_file_transfer_batch."),
   },
@@ -179,7 +179,7 @@ server.tool(
 
 server.tool(
   "get_file_transfer_batch",
-  "Read one file transfer queue with per-file progress. Completed downloads are staged for the human operator to save from the UI.",
+  "Read one file transfer queue with per-file progress. Use save_file_download to write a completed MCP-started download to an explicit local path.",
   {
     batch_id: z.number().int().positive().describe("Batch id from list_file_transfer_batches or start_file_download."),
   },

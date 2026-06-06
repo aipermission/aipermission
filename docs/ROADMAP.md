@@ -118,6 +118,15 @@ AIPermission against real VPS maintenance tasks.
 - Batch transfer REST endpoints for queue status, pause, resume, cancel, and
   final download delivery.
 
+`0.1.7` ships:
+
+- MCP transfer metadata, remote browse, remote download queue start, direct
+  local save, direct local upload, and pause/resume/cancel tools.
+- Transfer Center in the sidebar for monitoring active and recent UI/MCP
+  transfer queues.
+- MCP transfer responses stay metadata-only and never include file contents or
+  gateway temporary paths.
+
 ## Early RC Follow-Ups
 
 These are good candidates for small follow-up releases after the first public
@@ -135,10 +144,8 @@ tag:
 - [ ] Add directory transfer, recursive copy, remote glob handling, and
   restart-surviving resumable transfer design after bulk transfer semantics are
   dogfooded.
-- [ ] Evaluate MCP file-transfer tools only after UI transfer safety and audit
-  semantics are proven. MCP transfer support must define local path scope,
-  max-size limits, overwrite behavior, and prompt/approval defaults before it
-  can expose local file read/write capability to an AI client.
+- [ ] Add `approval_required` flow for file transfers after command approvals
+  and Transfer Center semantics have been dogfooded together.
 - [ ] Add optional safety backup before import.
 - [ ] Add more Playwright browser tests for Settings, import, token permission,
   and approval workflows.

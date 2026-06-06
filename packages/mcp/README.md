@@ -61,6 +61,8 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `get_file_transfer_batch`
 - `browse_remote_files`
 - `start_file_download`
+- `save_file_download`
+- `upload_files`
 - `pause_file_transfer_batch`
 - `resume_file_transfer_batch`
 - `cancel_file_transfer_batch`
@@ -68,11 +70,11 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 `exec` is intended for non-interactive commands. The gateway closes stdin for MCP command bodies so stdin-reading commands cannot consume the internal shell wrapper. Use the web console for interactive work.
 
 File transfer tools are intentionally conservative. MCP can list transfer
-metadata, browse remote directories, start remote download queues, and
+metadata, browse remote directories, start remote download queues, save
+completed downloads to explicit local paths, upload explicit local files, and
 pause/resume/cancel queues when the token has `always_run` permission for that
-server. MCP cannot upload local files, receive downloaded file contents, or see
-gateway temporary/archive paths; completed downloads are staged for the human
-operator to save from the AIPermission UI.
+server. MCP tool responses never include file contents, gateway temporary
+paths, archive staging paths, or local upload contents.
 
 ## Operator Skill
 
@@ -93,7 +95,7 @@ Supported clients:
 - `gemini`: `GEMINI.md`
 - `custom`: prints portable Markdown to stdout
 
-These instructions teach the agent how to poll `approval_pending` and `running` requests, read live console output, write short reasons, and avoid printing secrets. The default installer uses the operator instruction bundled in the npm package; `--source` accepts local file paths only and rejects HTTP(S) sources.
+These instructions teach the agent how to poll `approval_pending` and `running` requests, read live console output, write short reasons, use explicit file transfer paths, and avoid printing secrets. The default installer uses the operator instruction bundled in the npm package; `--source` accepts local file paths only and rejects HTTP(S) sources.
 
 ## Security Boundary
 

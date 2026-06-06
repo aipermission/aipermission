@@ -14,14 +14,20 @@ and this project uses semantic versioning once public releases begin.
 - MCP file transfer status tools for token-scoped transfer and batch metadata.
 - MCP remote directory browsing and remote download queue start tools for
   `always_run` server permissions.
+- MCP `save_file_download` for writing completed gateway downloads to an
+  explicit local path from the local MCP process.
+- MCP `upload_files` for uploading explicitly named local files to a remote
+  directory through the gateway.
 - MCP pause, resume, and cancel tools for active transfer queues.
+- Transfer Center in the local UI for monitoring active and recent UI/MCP
+  transfer queues without keeping the original dialog open.
 
 ### Security
 
 - MCP transfer responses never include local temporary paths, local upload
-  paths, archive staging paths, or downloaded file contents.
-- MCP local file upload remains intentionally unavailable while local path scope
-  and approval semantics are designed separately.
+  paths, archive staging paths, or file contents.
+- MCP direct upload/download tools require `always_run` permission and explicit
+  local paths. `approval_required` transfer approval remains future work.
 
 ## [0.1.6] - 2026-06-06
 

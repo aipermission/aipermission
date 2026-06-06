@@ -124,7 +124,7 @@ Implemented:
 - execution rules: `always_run`, `approval_required`, `blocked`
 - global MCP Started/Stopped switch that preserves permissions while blocking live execution
 - persistent web console with live PTY streaming
-- MCP bridge with command, console, message, and conservative remote download transfer tools
+- MCP bridge with command, console, message, and conservative upload/download transfer tools
 - approval dialog with Run / Decline / note
 - unread message badges and AI-to-user/user-to-AI notes
 - SQLCipher FTS4-backed searchable command history and audit log pages
@@ -142,7 +142,7 @@ Out of scope for the current MVP:
 
 - SQL query tools
 - advanced command risk analysis
-- MCP local upload tools and MCP access to downloaded file contents
+- MCP `approval_required` file-transfer approval flow
 - directory transfer, recursive copy, remote glob expansion, and restart-surviving resumable file transfers
 
 ## Quick Start
@@ -309,7 +309,7 @@ Important boundaries:
 - The database password can be changed from Settings while the current password is known.
 - The database password is escaped before SQLCipher key/rekey handling, so quotes or semicolons in the password cannot change PRAGMA SQL parsing.
 - Command text, command output, notes, console transcripts, and audit payloads may be stored in the encrypted local database. Basic redaction is enabled by default for common secret patterns, and Security can add custom regex rules that are stored inside the encrypted database. Redaction is best-effort. Approval execution keeps the raw command in an encrypted internal payload so redaction never changes the command that runs, while UI, MCP response fields, messages, and audit display fields stay redacted. Do not put secrets directly in commands, and use judgment when asking AI to inspect files or environment values.
-- File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, speed, ETA, checksum, and errors only. Uploads are staged to a temporary remote file and moved into place only after completion, so canceled uploads do not leave partial target files behind. Download queues are capped at 1 GiB total remote file size. Pause/resume works for the active local gateway process; if the gateway, Docker container, or computer restarts, unfinished transfer queues should be started again. MCP can browse remote directories, start remote download queues, and manage transfer queues only for `always_run` server permissions; MCP cannot upload local files or receive downloaded file contents.
+- File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, speed, ETA, checksum, and errors only. Uploads are staged to a temporary remote file and moved into place only after completion, so canceled uploads do not leave partial target files behind. Download queues are capped at 1 GiB total remote file size. Pause/resume works for the active local gateway process; if the gateway, Docker container, or computer restarts, unfinished transfer queues should be started again. MCP can browse remote directories, start remote download queues, upload explicitly named local files, save completed downloads to explicitly named local paths, and manage transfer queues only for `always_run` server permissions. MCP transfer tool responses never include file contents, gateway temporary paths, or archive staging paths.
 - Secret fields are also encrypted with the gateway vault secret inside the SQLCipher database.
 - The gateway vault secret is sensitive. Losing it prevents vault payload decryption; exposing it together with unlocked database contents compromises vault-protected payloads.
 - `AIPERMISSION_GATEWAY_SECRET` is optional and should be left unset for normal local installs. The gateway auto-generates a high-entropy local vault secret at startup. If it is set explicitly for advanced local testing, use at least 32 random characters.
