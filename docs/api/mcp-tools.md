@@ -273,12 +273,13 @@ than read-only status:
 - `list_file_transfers`, `get_file_transfer`, `list_file_transfer_batches`, and
   `get_file_transfer_batch` return sanitized metadata for servers visible to the
   token.
-- `browse_remote_files`, `start_file_download`, `save_file_download`,
-  `upload_files`, `pause_file_transfer_batch`, `resume_file_transfer_batch`,
-  and `cancel_file_transfer_batch` require `always_run` permission for that
-  server.
-- `approval_required` transfer approval is not implemented yet. Use the local UI
-  when a human should make the transfer decision.
+- `start_file_download` and `upload_files` start immediately with `always_run`
+  permission. With `approval_required`, they create a `pending_approval` queue
+  in the local Transfer Center; the operator can approve selected files and
+  reject the rest with a note.
+- `browse_remote_files`, `save_file_download`, `pause_file_transfer_batch`,
+  `resume_file_transfer_batch`, and `cancel_file_transfer_batch` require
+  `always_run` permission for that server.
 - MCP can upload and download only explicit local paths requested through the
   local MCP process. Tool responses never include file contents, local temporary
   paths, local upload contents, or gateway temporary/archive paths.

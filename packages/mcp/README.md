@@ -72,9 +72,11 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 File transfer tools are intentionally conservative. MCP can list transfer
 metadata, browse remote directories, start remote download queues, save
 completed downloads to explicit local paths, upload explicit local files, and
-pause/resume/cancel queues when the token has `always_run` permission for that
-server. MCP tool responses never include file contents, gateway temporary
-paths, archive staging paths, or local upload contents.
+pause/resume/cancel queues. `always_run` starts queues immediately.
+`approval_required` creates a local approval queue in AIPermission Transfer
+Center; the operator can approve selected files and reject the rest with a note.
+MCP tool responses never include file contents, gateway temporary paths, archive
+staging paths, or local upload contents.
 
 ## Operator Skill
 

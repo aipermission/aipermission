@@ -18,6 +18,9 @@ and this project uses semantic versioning once public releases begin.
   explicit local path from the local MCP process.
 - MCP `upload_files` for uploading explicitly named local files to a remote
   directory through the gateway.
+- MCP transfer start tools now support `approval_required` server permissions by
+  creating a local Transfer Center approval queue where selected files can be
+  approved and the rest rejected with a note.
 - MCP pause, resume, and cancel tools for active transfer queues.
 - Transfer Center in the local UI for monitoring active and recent UI/MCP
   transfer queues without keeping the original dialog open.

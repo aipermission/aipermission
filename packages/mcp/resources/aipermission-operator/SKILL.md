@@ -93,7 +93,10 @@ When a response includes `user_note`, treat it as live operator guidance. Apply 
 
 ## File Transfer Flow
 
-File transfer tools require `always_run` permission for the target server.
+File transfer tools use the target server permission. `always_run` starts the
+queue immediately. `approval_required` creates a local approval queue in
+AIPermission Transfer Center; wait for the operator to approve selected files or
+reject the queue with a note.
 
 Use them only when the user explicitly asks to move files or inspect transfer
 state. Prefer the smallest explicit path set. Do not use globs, recursive copy,
@@ -103,6 +106,8 @@ For remote-to-local downloads:
 
 1. Call `start_file_download(server_id, remote_paths, archive_name?)`.
 2. Poll `get_file_transfer_batch(batch_id)` until the batch is terminal.
+   If the status is `pending_approval`, wait and poll again after the operator
+   decides in the local UI.
 3. If completed and the user asked for a local copy, call
    `save_file_download(batch_id, local_path, overwrite?)` with an explicit local
    destination.

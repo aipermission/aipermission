@@ -148,6 +148,8 @@ POST /api/file-transfer-batches/{id}/pause
 POST /api/file-transfer-batches/{id}/resume
 POST /api/file-transfer-batches/{id}/cancel
 POST /api/file-transfer-batches/{id}/queue
+POST /api/file-transfer-batches/{id}/approve
+POST /api/file-transfer-batches/{id}/decline
 POST /api/file-transfers/browse
 POST /api/file-transfers/upload
 POST /api/file-transfers/upload-batch
@@ -175,10 +177,11 @@ The local UI can upload local files and download remote files. MCP can list
 transfer status, browse remote directories, start remote download queues, save
 completed downloads to explicit local paths, upload explicitly named local
 files, and pause/resume/cancel queues. MCP transfer management requires
-`always_run` permission for that server. MCP tool responses never include file
-contents, local temporary paths, archive staging paths, or local upload
-contents. `approval_required` transfer approval is intentionally not
-implemented yet.
+`always_run` or `approval_required` permission for that server. `always_run`
+starts the queue immediately. `approval_required` creates a
+`pending_approval` queue in the local Transfer Center; only locally approved
+items are copied. MCP tool responses never include file contents, local
+temporary paths, archive staging paths, or local upload contents.
 
 `GET /api/file-transfers` returns paginated transfer history. Optional filters
 include `direction`, `status`, `server_id`, and `q`:
@@ -292,6 +295,26 @@ removed from the queue; already running, completed, failed, or canceled items
 are not modified. Removed pending items are removed from transfer history because
 they were never copied.
 
+`POST /api/file-transfer-batches/{id}/approve` approves a pending MCP transfer
+queue. The body selects the item ids that may run; unchecked pending items are
+rejected and kept in history as canceled items with the note:
+
+```json
+{
+  "item_ids": [12, 14],
+  "note": "Skip auth.log because it is not the latest file."
+}
+```
+
+`POST /api/file-transfer-batches/{id}/decline` rejects the whole pending
+approval queue:
+
+```json
+{
+  "note": "Please send the latest archive instead."
+}
+```
+
 Remote paths must be absolute file paths. Directory transfer, recursive copy,
 remote glob expansion, restart-surviving resumable transfers, and
 SSH-agent/ProxyJump based transfers are not part of this MVP.
@@ -317,10 +340,11 @@ cookie:
 ```
 
 The response includes `retry_after_seconds` and `assistant_hint`; the AI should
-poll `GET /api/mcp/file-transfer-batches/{id}` for progress. A local MCP client
-can then call `GET /api/mcp/file-transfer-batches/{id}/download` through the
-package `save_file_download` tool to write the completed download to an
-explicit local path. MCP uploads use `POST
+poll `GET /api/mcp/file-transfer-batches/{id}` for progress. If the status is
+`pending_approval`, the AI should wait for the local operator decision. A local
+MCP client can then call `GET /api/mcp/file-transfer-batches/{id}/download`
+through the package `save_file_download` tool to write the completed download
+to an explicit local path. MCP uploads use `POST
 /api/mcp/file-transfers/upload-batch` with explicit local files supplied by the
 local MCP package.
 
