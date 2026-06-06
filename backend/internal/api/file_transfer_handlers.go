@@ -430,6 +430,10 @@ func (s fileTransferHandlers) downloadFileTransferBatch(w http.ResponseWriter, r
 		writeInternalError(w)
 		return
 	}
+	s.serveDownloadBatch(w, r, batch)
+}
+
+func (s fileTransferHandlers) serveDownloadBatch(w http.ResponseWriter, r *http.Request, batch filetransfer.BatchRecord) {
 	if batch.Direction != filetransfer.DirectionDownload {
 		writeError(w, http.StatusBadRequest, "file transfer batch is not a download")
 		return
@@ -534,22 +538,40 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
+	batch, serverID, overwrite, ok := s.createUploadBatchFromMultipart(w, r, runtime, filetransfer.SourceUI, nil)
+	if !ok {
+		return
+	}
+	s.writeAudit(r.Context(), runtime, "user", nil, serverID, "file_transfer.batch.upload.started", map[string]any{
+		"batch_id":   batch.ID,
+		"items":      len(batch.Items),
+		"size_bytes": batch.SizeBytes,
+		"overwrite":  overwrite,
+	})
+	go s.runTransferBatch(runtime, batch.ID, overwrite)
+	writeJSON(w, http.StatusAccepted, batch)
+}
+
+func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, source string, authorize func(serverID int64) bool) (filetransfer.BatchRecord, int64, bool, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferUploadBytes)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart upload")
-		return
+		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	if r.MultipartForm != nil {
 		defer r.MultipartForm.RemoveAll()
 	}
 	serverID, ok := parseFormInt64(w, r, "server_id")
 	if !ok {
-		return
+		return filetransfer.BatchRecord{}, 0, false, false
+	}
+	if authorize != nil && !authorize(serverID) {
+		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	remoteDir, err := normalizeRemoteDirectoryPath(r.FormValue("remote_dir"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
+		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	overwrite := parseFormBool(r, "overwrite")
 	headers := r.MultipartForm.File["files"]
@@ -558,11 +580,11 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	}
 	if len(headers) == 0 {
 		writeError(w, http.StatusBadRequest, "files are required")
-		return
+		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	if len(headers) > 100 {
 		writeError(w, http.StatusBadRequest, "cannot upload more than 100 files at once")
-		return
+		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	requests := make([]filetransfer.CreateRequest, 0, len(headers))
 	tempPaths := []string{}
@@ -572,14 +594,14 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 		if err != nil {
 			cleanupTempPaths(tempPaths)
 			writeError(w, http.StatusBadRequest, "file is required")
-			return
+			return filetransfer.BatchRecord{}, 0, false, false
 		}
 		tempPath, size, err := s.stageUploadFile(file)
 		_ = file.Close()
 		if err != nil {
 			cleanupTempPaths(tempPaths)
 			writeError(w, http.StatusBadRequest, err.Error())
-			return
+			return filetransfer.BatchRecord{}, 0, false, false
 		}
 		tempPaths = append(tempPaths, tempPath)
 		fileName := safeFileName(header.Filename)
@@ -587,7 +609,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 		if seenRemotePaths[remotePath] {
 			cleanupTempPaths(tempPaths)
 			writeError(w, http.StatusBadRequest, "upload queue contains duplicate remote paths")
-			return
+			return filetransfer.BatchRecord{}, 0, false, false
 		}
 		seenRemotePaths[remotePath] = true
 		requests = append(requests, filetransfer.CreateRequest{
@@ -607,28 +629,20 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 				Conflicts: conflicts,
 			})
 		}
-		return
+		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	batch, err := runtime.fileTransfers.CreateBatch(r.Context(), filetransfer.CreateBatchRequest{
 		ServerID:  serverID,
 		Direction: filetransfer.DirectionUpload,
-		Source:    filetransfer.SourceUI,
+		Source:    source,
 		Items:     requests,
 	})
 	if err != nil {
 		cleanupTempPaths(tempPaths)
 		writeInternalError(w)
-		return
+		return filetransfer.BatchRecord{}, 0, false, false
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, serverID, "file_transfer.batch.upload.started", map[string]any{
-		"batch_id":   batch.ID,
-		"items":      len(batch.Items),
-		"remote_dir": remoteDir,
-		"size_bytes": batch.SizeBytes,
-		"overwrite":  overwrite,
-	})
-	go s.runTransferBatch(runtime, batch.ID, overwrite)
-	writeJSON(w, http.StatusAccepted, batch)
+	return batch, serverID, overwrite, true
 }
 
 func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Request) {

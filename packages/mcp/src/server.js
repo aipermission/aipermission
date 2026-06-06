@@ -6,6 +6,12 @@ if (process.argv[2] === "init") {
   process.exit(0);
 }
 
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -15,6 +21,7 @@ import { jsonToolResult } from "./results.js";
 const apiUrl = normalizeLocalAPIURL(process.env.AIPERMISSION_API_URL);
 const apiToken = process.env.AIPERMISSION_API_TOKEN || "";
 const apiTimeoutMs = Number.parseInt(process.env.AIPERMISSION_HTTP_TIMEOUT_MS || "60000", 10);
+const apiTransferTimeoutMs = Number.parseInt(process.env.AIPERMISSION_TRANSFER_TIMEOUT_MS || "7200000", 10);
 
 const server = new McpServer({
   name: "aipermission",
@@ -198,7 +205,7 @@ server.tool(
 
 server.tool(
   "start_file_download",
-  "Start a remote file download queue through AIPermission. Requires always_run permission. The AI cannot receive file contents; completed files are staged for the human operator to save from the UI.",
+  "Start a remote file download queue through AIPermission. Requires always_run permission. Use get_file_transfer_batch for progress, then save_file_download to write the completed download to the local machine.",
   {
     server_id: z.number().int().positive().describe("Server id from list_servers."),
     remote_paths: z.array(z.string().min(1)).min(1).max(100).describe("Absolute remote file paths to download sequentially."),
@@ -210,6 +217,60 @@ server.tool(
       remote_paths,
       archive_name: archive_name || "",
     }));
+  }
+);
+
+server.tool(
+  "save_file_download",
+  "Save a completed MCP-started download batch to the local filesystem. File contents are written by the local MCP process and are not returned to the AI response.",
+  {
+    batch_id: z.number().int().positive().describe("Completed download batch id from start_file_download or list_file_transfer_batches."),
+    local_path: z.string().min(1).describe("Local file path or existing directory where the completed download should be saved."),
+    overwrite: z.boolean().optional().describe("Whether to overwrite an existing local file. Defaults to false."),
+  },
+  async ({ batch_id, local_path, overwrite }) => {
+    return jsonToolResult(async () => {
+      const batch = await apiGet(`/api/mcp/file-transfer-batches/${batch_id}`);
+      if (batch?.direction !== "download") {
+        throw new Error("batch is not a download");
+      }
+      if (batch?.status !== "completed") {
+        throw new Error(`download batch is not completed; current status is ${batch?.status || "unknown"}`);
+      }
+      const filename = suggestedDownloadFilename(batch);
+      const destination = await resolveLocalDestination(local_path, filename, Boolean(overwrite));
+      const saved = await apiDownloadToFile(`/api/mcp/file-transfer-batches/${batch_id}/download`, destination, Boolean(overwrite));
+      return {
+        status: "saved",
+        batch_id,
+        local_path: saved.path,
+        file_name: path.basename(saved.path),
+        bytes_written: saved.bytes,
+        assistant_hint: "The file was saved by the local MCP process. Do not print file contents unless the user explicitly asks you to inspect the saved file.",
+      };
+    });
+  }
+);
+
+server.tool(
+  "upload_files",
+  "Upload local files to a remote server through AIPermission. Requires always_run permission. File contents are read by the local MCP process and are not returned to the AI response.",
+  {
+    server_id: z.number().int().positive().describe("Server id from list_servers."),
+    local_paths: z.array(z.string().min(1)).min(1).max(100).describe("Local file paths to upload sequentially."),
+    remote_dir: z.string().min(1).describe("Absolute remote directory where files should be uploaded."),
+    overwrite: z.boolean().optional().describe("Whether to overwrite existing remote files. Defaults to false."),
+  },
+  async ({ server_id, local_paths, remote_dir, overwrite }) => {
+    return jsonToolResult(async () => {
+      const files = await resolveUploadFiles(local_paths);
+      const batch = await apiPostMultipart("/api/mcp/file-transfers/upload-batch", {
+        server_id: String(server_id),
+        remote_dir,
+        overwrite: overwrite ? "true" : "false",
+      }, files);
+      return batch;
+    });
   }
 );
 
@@ -258,26 +319,76 @@ async function apiGet(path) {
 async function apiPost(path, body) {
   return apiRequest(path, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
 }
 
+async function apiPostMultipart(path, fields, files) {
+  const boundary = `aipermission-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return apiRequest(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    },
+    body: Readable.from(multipartBody(boundary, fields, files)),
+    duplex: "half",
+    timeoutMs: apiTransferTimeoutMs,
+  });
+}
+
+async function apiDownloadToFile(pathValue, destination, overwrite) {
+  const response = await apiFetch(pathValue, {
+    method: "GET",
+    timeoutMs: apiTransferTimeoutMs,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    const data = parseResponseBody(text);
+    throw new Error(data?.error || `aipermission API request failed with ${response.status}`);
+  }
+  let bytes = 0;
+  const output = fs.createWriteStream(destination, {
+    flags: overwrite ? "w" : "wx",
+    mode: 0o600,
+  });
+  output.on("bytesWritten", (value) => {
+    bytes = value;
+  });
+  await pipeline(Readable.fromWeb(response.body), output);
+  const stat = await fsp.stat(destination);
+  return { path: destination, bytes: stat.size || bytes };
+}
+
 async function apiRequest(path, options) {
+  const response = await apiFetch(path, options);
+  const text = await response.text();
+  const data = parseResponseBody(text);
+  if (!response.ok) {
+    throw new Error(data?.error || `aipermission API request failed with ${response.status}`);
+  }
+  return data;
+}
+
+async function apiFetch(path, options) {
   if (!apiToken) {
     throw new Error("AIPERMISSION_API_TOKEN is required.");
   }
-  const timeout = Number.isFinite(apiTimeoutMs) && apiTimeoutMs > 0 ? apiTimeoutMs : 60000;
+  const timeoutValue = options.timeoutMs || apiTimeoutMs;
+  const timeout = Number.isFinite(timeoutValue) && timeoutValue > 0 ? timeoutValue : 60000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
+  const { timeoutMs: _timeoutMs, ...requestOptions } = options;
   let response;
   try {
     response = await fetch(`${apiUrl}${path}`, {
-      ...options,
+      ...requestOptions,
       signal: controller.signal,
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${apiToken}`,
-        ...(options.headers || {}),
+        ...(requestOptions.headers || {}),
       },
     });
   } catch (error) {
@@ -288,12 +399,7 @@ async function apiRequest(path, options) {
   } finally {
     clearTimeout(timer);
   }
-  const text = await response.text();
-  const data = parseResponseBody(text);
-  if (!response.ok) {
-    throw new Error(data?.error || `aipermission API request failed with ${response.status}`);
-  }
-  return data;
+  return response;
 }
 
 function parseResponseBody(text) {
@@ -305,4 +411,89 @@ function parseResponseBody(text) {
   } catch {
     return { error: text.trim() || "Invalid non-JSON response from aipermission gateway." };
   }
+}
+
+async function resolveUploadFiles(localPaths) {
+  const files = [];
+  const seen = new Set();
+  for (const rawPath of localPaths) {
+    const resolved = expandHome(rawPath);
+    if (seen.has(resolved)) {
+      throw new Error(`duplicate local path: ${resolved}`);
+    }
+    seen.add(resolved);
+    const stat = await fsp.stat(resolved).catch((error) => {
+      throw new Error(`cannot read local file ${resolved}: ${error.message}`);
+    });
+    if (!stat.isFile()) {
+      throw new Error(`local path is not a regular file: ${resolved}`);
+    }
+    files.push({
+      field: "files",
+      path: resolved,
+      name: path.basename(resolved),
+      size: stat.size,
+    });
+  }
+  return files;
+}
+
+async function resolveLocalDestination(localPath, suggestedName, overwrite) {
+  const resolved = expandHome(localPath);
+  const existing = await fsp.stat(resolved).catch((error) => {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  });
+  if (existing?.isDirectory()) {
+    return resolveLocalDestination(path.join(resolved, suggestedName), suggestedName, overwrite);
+  }
+  if (existing && !overwrite) {
+    throw new Error(`local file already exists: ${resolved}`);
+  }
+  const parent = path.dirname(resolved);
+  const parentStat = await fsp.stat(parent).catch((error) => {
+    throw new Error(`local directory does not exist: ${parent}: ${error.message}`);
+  });
+  if (!parentStat.isDirectory()) {
+    throw new Error(`local parent path is not a directory: ${parent}`);
+  }
+  return resolved;
+}
+
+function suggestedDownloadFilename(batch) {
+  if (Array.isArray(batch?.items) && batch.items.length === 1 && batch.items[0]?.file_name) {
+    return safeLocalFilename(batch.items[0].file_name);
+  }
+  if (batch?.archive_name) {
+    return safeLocalFilename(batch.archive_name);
+  }
+  return `aipermission-download-${batch?.id || Date.now()}.zip`;
+}
+
+function safeLocalFilename(value) {
+  const base = path.basename(String(value || "").replaceAll("\0", ""));
+  return base || "aipermission-download";
+}
+
+function expandHome(value) {
+  const text = String(value || "").trim();
+  if (text === "~") return os.homedir();
+  if (text.startsWith("~/")) return path.join(os.homedir(), text.slice(2));
+  return path.resolve(text);
+}
+
+async function* multipartBody(boundary, fields, files) {
+  for (const [name, value] of Object.entries(fields)) {
+    yield Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${escapeMultipartName(name)}"\r\n\r\n${String(value)}\r\n`);
+  }
+  for (const file of files) {
+    yield Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${escapeMultipartName(file.field)}"; filename="${escapeMultipartName(file.name)}"\r\nContent-Type: application/octet-stream\r\n\r\n`);
+    yield* fs.createReadStream(file.path);
+    yield Buffer.from("\r\n");
+  }
+  yield Buffer.from(`--${boundary}--\r\n`);
+}
+
+function escapeMultipartName(value) {
+  return String(value).replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
 }

@@ -157,7 +157,9 @@ GET  /api/mcp/file-transfers/{id}
 GET  /api/mcp/file-transfer-batches
 GET  /api/mcp/file-transfer-batches/{id}
 POST /api/mcp/file-transfers/browse
+POST /api/mcp/file-transfers/upload-batch
 POST /api/mcp/file-transfers/download-batch
+GET  /api/mcp/file-transfer-batches/{id}/download
 POST /api/mcp/file-transfer-batches/{id}/pause
 POST /api/mcp/file-transfer-batches/{id}/resume
 POST /api/mcp/file-transfer-batches/{id}/cancel

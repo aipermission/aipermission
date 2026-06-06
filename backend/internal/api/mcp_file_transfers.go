@@ -366,6 +366,78 @@ func (s mcpHandlers) mcpStartFileDownload(w http.ResponseWriter, r *http.Request
 	})
 }
 
+func (s mcpHandlers) mcpStartFileUpload(w http.ResponseWriter, r *http.Request) {
+	auth, ok := s.authenticateMCP(w, r)
+	if !ok {
+		return
+	}
+	if s.rejectStoppedMCP(w, auth.runtime) {
+		return
+	}
+	var serverID int64
+	var serverName string
+	transfers := fileTransferHandlers{s.Server}
+	batch, _, overwrite, ok := transfers.createUploadBatchFromMultipart(w, r, auth.runtime, filetransfer.SourceMCP, func(nextServerID int64) bool {
+		name, allowed := s.requireMCPTransferControl(w, r.Context(), auth.runtime, auth.TokenID, nextServerID)
+		if !allowed {
+			return false
+		}
+		serverID = nextServerID
+		serverName = name
+		return true
+	})
+	if !ok {
+		return
+	}
+	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), serverID, "mcp.file_transfer.batch.upload.started", map[string]any{
+		"batch_id":   batch.ID,
+		"items":      len(batch.Items),
+		"size_bytes": batch.SizeBytes,
+		"overwrite":  overwrite,
+	})
+	go transfers.runTransferBatch(auth.runtime, batch.ID, overwrite)
+	sanitized := sanitizeMCPFileTransferBatch(batch, true)
+	writeJSON(w, http.StatusAccepted, mcpFileTransferActionResponse{
+		Status:            sanitized.Status,
+		ServerID:          serverID,
+		ServerName:        serverName,
+		Batch:             &sanitized,
+		RetryAfterSeconds: 3,
+		AssistantHint:     "Poll get_file_transfer_batch for upload progress. File contents are transferred by the local MCP process and are not returned in tool results.",
+	})
+}
+
+func (s mcpHandlers) mcpDownloadFileTransferBatch(w http.ResponseWriter, r *http.Request) {
+	auth, ok := s.authenticateMCP(w, r)
+	if !ok {
+		return
+	}
+	if s.rejectStoppedMCP(w, auth.runtime) {
+		return
+	}
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	batch, err := auth.runtime.fileTransfers.GetBatch(r.Context(), id)
+	if errors.Is(err, filetransfer.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file transfer batch not found")
+		return
+	}
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if _, ok := s.requireMCPTransferControl(w, r.Context(), auth.runtime, auth.TokenID, batch.ServerID); !ok {
+		return
+	}
+	if batch.Source != filetransfer.SourceMCP {
+		writeError(w, http.StatusForbidden, "MCP can only save downloads started by MCP")
+		return
+	}
+	fileTransferHandlers{s.Server}.serveDownloadBatch(w, r, batch)
+}
+
 func (s mcpHandlers) mcpPauseFileTransferBatch(w http.ResponseWriter, r *http.Request) {
 	s.mcpControlFileTransferBatch(w, r, "pause")
 }

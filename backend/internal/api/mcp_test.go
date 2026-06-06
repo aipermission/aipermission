@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -598,4 +599,90 @@ func TestMCPFileTransferManagementRequiresAlwaysRun(t *testing.T) {
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"blocked"`) || !strings.Contains(response.Body.String(), "always_run") {
 		t.Fatalf("approval-required token should not start MCP transfers, got %d %s", response.Code, response.Body.String())
 	}
+}
+
+func TestMCPDownloadBatchContentRequiresMCPSource(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "worker-content")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleAlwaysRun},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+
+	handlers := fileTransferHandlers{fixture.server}
+	root, err := handlers.ensureFileTransferTempRoot()
+	if err != nil {
+		t.Fatalf("create transfer temp root: %v", err)
+	}
+	payloadPath := filepath.Join(root, "download-payload")
+	if err := os.WriteFile(payloadPath, []byte("download payload"), 0o600); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	batch := createCompletedDownloadBatch(t, fixture.server.activeRuntime(), server.ID, filetransfer.SourceMCP, payloadPath)
+
+	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/file-transfer-batches/"+strconv.FormatInt(batch.ID, 10)+"/download", token.TokenValue, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected mcp batch content download to work, got %d %s", response.Code, response.Body.String())
+	}
+	if response.Body.String() != "download payload" {
+		t.Fatalf("unexpected download payload: %q", response.Body.String())
+	}
+
+	uiPayloadPath := filepath.Join(root, "ui-download-payload")
+	if err := os.WriteFile(uiPayloadPath, []byte("ui payload"), 0o600); err != nil {
+		t.Fatalf("write ui payload: %v", err)
+	}
+	uiBatch := createCompletedDownloadBatch(t, fixture.server.activeRuntime(), server.ID, filetransfer.SourceUI, uiPayloadPath)
+	response = performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/file-transfer-batches/"+strconv.FormatInt(uiBatch.ID, 10)+"/download", token.TokenValue, nil)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("mcp should not download ui-created batch content, got %d %s", response.Code, response.Body.String())
+	}
+}
+
+func createCompletedDownloadBatch(t *testing.T, runtime *databaseRuntime, serverID int64, source string, tempPath string) filetransfer.BatchRecord {
+	t.Helper()
+	ctx := context.Background()
+	batch, err := runtime.fileTransfers.CreateBatch(ctx, filetransfer.CreateBatchRequest{
+		ServerID:  serverID,
+		Direction: filetransfer.DirectionDownload,
+		Source:    source,
+		Items: []filetransfer.CreateRequest{{
+			RemotePath: "/var/log/app.log",
+			FileName:   "app.log",
+			SizeBytes:  16,
+			TempPath:   tempPath,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if ok, err := runtime.fileTransfers.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("mark batch running ok=%v err=%v", ok, err)
+	}
+	if len(batch.Items) != 1 {
+		t.Fatalf("expected one item in batch: %#v", batch)
+	}
+	if ok, err := runtime.fileTransfers.MarkRunning(ctx, batch.Items[0].ID); err != nil || !ok {
+		t.Fatalf("mark transfer running ok=%v err=%v", ok, err)
+	}
+	if ok, err := runtime.fileTransfers.Complete(ctx, batch.Items[0].ID, 16, "checksum"); err != nil || !ok {
+		t.Fatalf("complete transfer ok=%v err=%v", ok, err)
+	}
+	if err := runtime.fileTransfers.RecalculateBatch(ctx, batch.ID); err != nil {
+		t.Fatalf("recalculate batch: %v", err)
+	}
+	if ok, err := runtime.fileTransfers.CompleteBatch(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("complete batch ok=%v err=%v", ok, err)
+	}
+	batch, err = runtime.fileTransfers.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get batch: %v", err)
+	}
+	return batch
 }
