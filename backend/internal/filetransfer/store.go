@@ -17,12 +17,13 @@ const (
 	SourceUI  = "ui"
 	SourceMCP = "mcp"
 
-	StatusPending   = "pending"
-	StatusRunning   = "running"
-	StatusPaused    = "paused"
-	StatusCompleted = "completed"
-	StatusFailed    = "failed"
-	StatusCanceled  = "canceled"
+	StatusPending         = "pending"
+	StatusPendingApproval = "pending_approval"
+	StatusRunning         = "running"
+	StatusPaused          = "paused"
+	StatusCompleted       = "completed"
+	StatusFailed          = "failed"
+	StatusCanceled        = "canceled"
 )
 
 const maxPathRunes = 4096
@@ -79,6 +80,8 @@ type BatchRecord struct {
 	Source           string   `json:"source"`
 	Status           string   `json:"status"`
 	ArchiveName      string   `json:"archive_name"`
+	ApprovalNote     string   `json:"approval_note"`
+	Overwrite        bool     `json:"overwrite"`
 	TotalItems       int      `json:"total_items"`
 	CompletedItems   int      `json:"completed_items"`
 	FailedItems      int      `json:"failed_items"`
@@ -98,11 +101,19 @@ type BatchRecord struct {
 }
 
 type CreateBatchRequest struct {
-	ServerID    int64
-	Direction   string
-	Source      string
-	ArchiveName string
-	Items       []CreateRequest
+	ServerID     int64
+	Direction    string
+	Source       string
+	Status       string
+	ApprovalNote string
+	Overwrite    bool
+	ArchiveName  string
+	Items        []CreateRequest
+}
+
+type BatchApprovalRequest struct {
+	ApprovedItemIDs []int64
+	Note            string
 }
 
 type ListFilter struct {
@@ -291,7 +302,7 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 
 	query := `
 		SELECT b.id, b.server_id, COALESCE(srv.name, ''), b.direction, b.source, b.status,
-			b.archive_name, b.archive_path, b.total_items, b.completed_items, b.failed_items,
+			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, b.total_items, b.completed_items, b.failed_items,
 			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
 			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
@@ -309,6 +320,7 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 	items := []BatchRecord{}
 	for rows.Next() {
 		var item BatchRecord
+		var overwrite int
 		if err := rows.Scan(
 			&item.ID,
 			&item.ServerID,
@@ -317,6 +329,8 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 			&item.Source,
 			&item.Status,
 			&item.ArchiveName,
+			&item.ApprovalNote,
+			&overwrite,
 			&item.ArchivePath,
 			&item.TotalItems,
 			&item.CompletedItems,
@@ -334,6 +348,7 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan file transfer batch: %w", err)
 		}
+		item.Overwrite = overwrite != 0
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -360,15 +375,17 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO file_transfer_batches (
-			server_id, direction, source, status, archive_name, total_items,
+			server_id, direction, source, status, archive_name, approval_note, overwrite, total_items,
 			size_bytes, eta_seconds, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		normalized.ServerID,
 		normalized.Direction,
 		normalized.Source,
-		StatusPending,
+		normalized.Status,
 		normalized.ArchiveName,
+		normalized.ApprovalNote,
+		boolInt(normalized.Overwrite),
 		len(normalized.Items),
 		totalSize,
 		-1,
@@ -395,7 +412,7 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 			item.ServerID,
 			item.Direction,
 			item.Source,
-			StatusPending,
+			normalized.Status,
 			item.LocalPath,
 			item.RemotePath,
 			item.FileName,
@@ -418,9 +435,10 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 
 func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 	var item BatchRecord
+	var overwrite int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT b.id, b.server_id, COALESCE(srv.name, ''), b.direction, b.source, b.status,
-			b.archive_name, b.archive_path, b.total_items, b.completed_items, b.failed_items,
+			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, b.total_items, b.completed_items, b.failed_items,
 			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
 			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
@@ -436,6 +454,8 @@ func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 		&item.Source,
 		&item.Status,
 		&item.ArchiveName,
+		&item.ApprovalNote,
+		&overwrite,
 		&item.ArchivePath,
 		&item.TotalItems,
 		&item.CompletedItems,
@@ -457,6 +477,7 @@ func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 	if err != nil {
 		return BatchRecord{}, fmt.Errorf("get file transfer batch: %w", err)
 	}
+	item.Overwrite = overwrite != 0
 	items, err := s.ListBatchItems(ctx, id)
 	if err != nil {
 		return BatchRecord{}, err
@@ -571,12 +592,13 @@ func (s *Store) MarkRunning(ctx context.Context, id int64) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, started_at = COALESCE(started_at, ?), updated_at = ?
-		WHERE id = ? AND status IN (?, ?)`,
+		WHERE id = ? AND status IN (?, ?, ?)`,
 		StatusRunning,
 		now,
 		now,
 		id,
 		StatusPending,
+		StatusPendingApproval,
 		StatusPaused,
 	)
 	if err != nil {
@@ -610,6 +632,158 @@ func (s *Store) MarkBatchRunning(ctx context.Context, id int64) (bool, error) {
 		return false, fmt.Errorf("read file transfer batch running rows: %w", err)
 	}
 	return rows > 0, nil
+}
+
+func (s *Store) ApproveBatch(ctx context.Context, id int64, request BatchApprovalRequest) (BatchRecord, []Record, error) {
+	approvedIDs, err := normalizeApprovedItemIDs(request.ApprovedItemIDs)
+	if err != nil {
+		return BatchRecord{}, nil, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return BatchRecord{}, nil, fmt.Errorf("begin file transfer batch approval: %w", err)
+	}
+	defer tx.Rollback()
+
+	var status string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM file_transfer_batches WHERE id = ?`, id).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+		return BatchRecord{}, nil, ErrNotFound
+	} else if err != nil {
+		return BatchRecord{}, nil, fmt.Errorf("read file transfer batch approval status: %w", err)
+	}
+	if status != StatusPendingApproval {
+		return BatchRecord{}, nil, ErrInvalidState
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, temp_path
+		FROM file_transfers
+		WHERE batch_id = ? AND status = ?
+		ORDER BY queue_index ASC, id ASC`,
+		id,
+		StatusPendingApproval,
+	)
+	if err != nil {
+		return BatchRecord{}, nil, fmt.Errorf("read pending approval file transfer items: %w", err)
+	}
+	type pendingItem struct {
+		id       int64
+		tempPath string
+	}
+	var pending []pendingItem
+	for rows.Next() {
+		var item pendingItem
+		if err := rows.Scan(&item.id, &item.tempPath); err != nil {
+			rows.Close()
+			return BatchRecord{}, nil, fmt.Errorf("scan pending approval file transfer item: %w", err)
+		}
+		pending = append(pending, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return BatchRecord{}, nil, fmt.Errorf("iterate pending approval file transfer items: %w", err)
+	}
+	rows.Close()
+	if len(pending) == 0 {
+		return BatchRecord{}, nil, ErrInvalidState
+	}
+	approvedSet := map[int64]bool{}
+	for _, id := range approvedIDs {
+		approvedSet[id] = true
+	}
+	foundApproved := map[int64]bool{}
+	for _, item := range pending {
+		if approvedSet[item.id] {
+			foundApproved[item.id] = true
+		}
+	}
+	for id := range approvedSet {
+		if !foundApproved[id] {
+			return BatchRecord{}, nil, ErrInvalidArgument
+		}
+	}
+
+	note := strings.TrimSpace(request.Note)
+	now := nowString()
+	var rejected []Record
+	for _, item := range pending {
+		if approvedSet[item.id] {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE file_transfers
+				SET status = ?, updated_at = ?
+				WHERE id = ? AND status = ?`,
+				StatusPending,
+				now,
+				item.id,
+				StatusPendingApproval,
+			); err != nil {
+				return BatchRecord{}, nil, fmt.Errorf("approve file transfer item: %w", err)
+			}
+			continue
+		}
+		reason := note
+		if reason == "" {
+			reason = "rejected by local user"
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE file_transfers
+			SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+			WHERE id = ? AND status = ?`,
+			StatusCanceled,
+			reason,
+			now,
+			now,
+			item.id,
+			StatusPendingApproval,
+		); err != nil {
+			return BatchRecord{}, nil, fmt.Errorf("reject file transfer item: %w", err)
+		}
+		rejected = append(rejected, Record{ID: item.id, TempPath: item.tempPath})
+	}
+
+	nextStatus := StatusPending
+	if len(approvedIDs) == 0 {
+		nextStatus = StatusCanceled
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE file_transfer_batches
+		SET status = ?, approval_note = ?, error = CASE WHEN ? = ? THEN ? ELSE error END,
+			completed_at = CASE WHEN ? = ? THEN COALESCE(completed_at, ?) ELSE completed_at END,
+			updated_at = ?
+		WHERE id = ? AND status = ?`,
+		nextStatus,
+		note,
+		nextStatus,
+		StatusCanceled,
+		rejectionNote(note),
+		nextStatus,
+		StatusCanceled,
+		now,
+		now,
+		id,
+		StatusPendingApproval,
+	); err != nil {
+		return BatchRecord{}, nil, fmt.Errorf("approve file transfer batch: %w", err)
+	}
+	if err := recalculateBatch(ctx, tx, id); err != nil {
+		return BatchRecord{}, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return BatchRecord{}, nil, fmt.Errorf("commit file transfer batch approval: %w", err)
+	}
+	batch, err := s.GetBatch(ctx, id)
+	if err != nil {
+		return BatchRecord{}, nil, err
+	}
+	return batch, rejected, nil
+}
+
+func (s *Store) DeclineBatch(ctx context.Context, id int64, note string) (BatchRecord, []Record, error) {
+	batch, rejected, err := s.ApproveBatch(ctx, id, BatchApprovalRequest{ApprovedItemIDs: nil, Note: note})
+	if err != nil {
+		return BatchRecord{}, nil, err
+	}
+	return batch, rejected, nil
 }
 
 func (s *Store) UpdateProgress(ctx context.Context, id int64, transferred int64, size int64) error {
@@ -686,6 +860,7 @@ func (s *Store) Fail(ctx context.Context, id int64, errorText string) (bool, err
 		now,
 		now,
 		id,
+		StatusPendingApproval,
 		StatusPending,
 		StatusRunning,
 		StatusPaused,
@@ -711,6 +886,7 @@ func (s *Store) Cancel(ctx context.Context, id int64, errorText string) (bool, e
 		now,
 		now,
 		id,
+		StatusPendingApproval,
 		StatusPending,
 		StatusRunning,
 		StatusPaused,
@@ -944,12 +1120,13 @@ func (s *Store) CancelBatch(ctx context.Context, id int64, errorText string) (bo
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE batch_id = ? AND status IN (?, ?, ?)`,
+		WHERE batch_id = ? AND status IN (?, ?, ?, ?)`,
 		StatusCanceled,
 		strings.TrimSpace(errorText),
 		now,
 		now,
 		id,
+		StatusPendingApproval,
 		StatusPending,
 		StatusRunning,
 		StatusPaused,
@@ -968,11 +1145,12 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE status IN (?, ?, ?)`,
+		WHERE status IN (?, ?, ?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(transferError),
 		now,
 		now,
+		StatusPendingApproval,
 		StatusPending,
 		StatusRunning,
 		StatusPaused,
@@ -982,11 +1160,12 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfer_batches
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE status IN (?, ?, ?)`,
+		WHERE status IN (?, ?, ?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(batchError),
 		now,
 		now,
+		StatusPendingApproval,
 		StatusPending,
 		StatusRunning,
 		StatusPaused,
@@ -1052,6 +1231,7 @@ func (s *Store) CompleteBatch(ctx context.Context, id int64) (bool, error) {
 		UPDATE file_transfer_batches
 		SET status = CASE
 				WHEN failed_items > 0 THEN ?
+				WHEN completed_items > 0 THEN ?
 				WHEN canceled_items > 0 THEN ?
 				ELSE ?
 			END,
@@ -1061,6 +1241,7 @@ func (s *Store) CompleteBatch(ctx context.Context, id int64) (bool, error) {
 			updated_at = ?
 		WHERE id = ? AND status IN (?, ?)`,
 		StatusFailed,
+		StatusCompleted,
 		StatusCanceled,
 		StatusCompleted,
 		now,
@@ -1216,9 +1397,14 @@ func normalizeCreateRequest(request CreateRequest) (CreateRequest, error) {
 func normalizeBatchCreateRequest(request CreateBatchRequest) (CreateBatchRequest, error) {
 	request.Direction = strings.TrimSpace(request.Direction)
 	request.Source = strings.TrimSpace(request.Source)
+	request.Status = strings.TrimSpace(request.Status)
+	request.ApprovalNote = strings.TrimSpace(request.ApprovalNote)
 	request.ArchiveName = strings.TrimSpace(request.ArchiveName)
 	if request.Source == "" {
 		request.Source = SourceUI
+	}
+	if request.Status == "" {
+		request.Status = StatusPending
 	}
 	if request.ServerID < 1 {
 		return request, fmt.Errorf("server_id is required")
@@ -1228,6 +1414,12 @@ func normalizeBatchCreateRequest(request CreateBatchRequest) (CreateBatchRequest
 	}
 	if request.Source != SourceUI && request.Source != SourceMCP {
 		return request, fmt.Errorf("source must be ui or mcp")
+	}
+	if request.Status != StatusPending && request.Status != StatusPendingApproval {
+		return request, fmt.Errorf("status must be pending or pending_approval")
+	}
+	if err := validatePathLike("approval_note", request.ApprovalNote, false); err != nil {
+		return request, err
 	}
 	if len(request.Items) == 0 {
 		return request, fmt.Errorf("at least one file transfer item is required")
@@ -1270,7 +1462,7 @@ func normalizeListFilter(filter ListFilter) ListFilter {
 		filter.Direction = ""
 	}
 	switch filter.Status {
-	case StatusPending, StatusRunning, StatusPaused, StatusCompleted, StatusFailed, StatusCanceled:
+	case StatusPending, StatusPendingApproval, StatusRunning, StatusPaused, StatusCompleted, StatusFailed, StatusCanceled:
 	default:
 		filter.Status = ""
 	}
@@ -1294,7 +1486,7 @@ func normalizeBatchListFilter(filter BatchListFilter) BatchListFilter {
 		filter.Direction = ""
 	}
 	switch filter.Status {
-	case StatusPending, StatusRunning, StatusPaused, StatusCompleted, StatusFailed, StatusCanceled:
+	case StatusPending, StatusPendingApproval, StatusRunning, StatusPaused, StatusCompleted, StatusFailed, StatusCanceled:
 	default:
 		filter.Status = ""
 	}
@@ -1340,6 +1532,34 @@ func nullableBatchID(id int64) any {
 		return nil
 	}
 	return id
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func normalizeApprovedItemIDs(values []int64) ([]int64, error) {
+	seen := map[int64]bool{}
+	result := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value < 1 || seen[value] {
+			return nil, ErrInvalidArgument
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result, nil
+}
+
+func rejectionNote(note string) string {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return "rejected by local user"
+	}
+	return note
 }
 
 func nowString() string {

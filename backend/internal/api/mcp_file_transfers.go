@@ -50,6 +50,8 @@ type mcpFileTransferBatchItem struct {
 	Source           string                `json:"source"`
 	Status           string                `json:"status"`
 	ArchiveName      string                `json:"archive_name,omitempty"`
+	ApprovalNote     string                `json:"approval_note,omitempty"`
+	Overwrite        bool                  `json:"overwrite,omitempty"`
 	TotalItems       int                   `json:"total_items"`
 	CompletedItems   int                   `json:"completed_items"`
 	FailedItems      int                   `json:"failed_items"`
@@ -94,6 +96,11 @@ type mcpStartFileDownloadRequest struct {
 	ServerID    int64    `json:"server_id"`
 	RemotePaths []string `json:"remote_paths"`
 	ArchiveName string   `json:"archive_name,omitempty"`
+}
+
+type mcpTransferPermissionResult struct {
+	ServerName string
+	Rule       string
 }
 
 func (s mcpHandlers) mcpListFileTransfers(w http.ResponseWriter, r *http.Request) {
@@ -334,14 +341,18 @@ func (s mcpHandlers) mcpStartFileDownload(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	serverName, ok := s.requireMCPTransferControl(w, r.Context(), auth.runtime, auth.TokenID, request.ServerID)
+	permission, ok := s.mcpTransferStartPermission(w, r.Context(), auth.runtime, auth.TokenID, request.ServerID)
 	if !ok {
 		return
+	}
+	initialStatus := filetransfer.StatusPending
+	if permission.Rule == tokens.RuleApprovalRequired {
+		initialStatus = filetransfer.StatusPendingApproval
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	transfers := fileTransferHandlers{s.Server}
-	batch, err := transfers.createDownloadBatch(ctx, auth.runtime, request.ServerID, request.RemotePaths, request.ArchiveName, filetransfer.SourceMCP)
+	batch, err := transfers.createDownloadBatch(ctx, auth.runtime, request.ServerID, request.RemotePaths, request.ArchiveName, filetransfer.SourceMCP, initialStatus)
 	if err != nil {
 		if transfers.writeFileTransferStartError(w, err) {
 			return
@@ -349,20 +360,32 @@ func (s mcpHandlers) mcpStartFileDownload(w http.ResponseWriter, r *http.Request
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), request.ServerID, "mcp.file_transfer.batch.download.started", map[string]any{
+	action := "mcp.file_transfer.batch.download.started"
+	if initialStatus == filetransfer.StatusPendingApproval {
+		action = "mcp.file_transfer.batch.download.approval_requested"
+	}
+	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), request.ServerID, action, map[string]any{
 		"batch_id":   batch.ID,
 		"items":      len(batch.Items),
 		"size_bytes": batch.SizeBytes,
 	})
-	go transfers.runTransferBatch(auth.runtime, batch.ID, false)
+	if initialStatus != filetransfer.StatusPendingApproval {
+		go transfers.runTransferBatch(auth.runtime, batch.ID, false)
+	}
 	sanitized := sanitizeMCPFileTransferBatch(batch, true)
+	hint := "Poll get_file_transfer_batch for progress. The completed archive or file is staged locally for the human operator to save from the AIPermission UI."
+	retryAfter := 3
+	if sanitized.Status == filetransfer.StatusPendingApproval {
+		hint = "This download queue is waiting for local approval in AIPermission Transfer Center. Poll get_file_transfer_batch; approved files will transfer after the user decides."
+		retryAfter = 5
+	}
 	writeJSON(w, http.StatusAccepted, mcpFileTransferActionResponse{
 		Status:            sanitized.Status,
 		ServerID:          request.ServerID,
-		ServerName:        serverName,
+		ServerName:        permission.ServerName,
 		Batch:             &sanitized,
-		RetryAfterSeconds: 3,
-		AssistantHint:     "Poll get_file_transfer_batch for progress. The completed archive or file is staged locally for the human operator to save from the AIPermission UI.",
+		RetryAfterSeconds: retryAfter,
+		AssistantHint:     hint,
 	})
 }
 
@@ -376,34 +399,50 @@ func (s mcpHandlers) mcpStartFileUpload(w http.ResponseWriter, r *http.Request) 
 	}
 	var serverID int64
 	var serverName string
+	initialStatus := filetransfer.StatusPending
 	transfers := fileTransferHandlers{s.Server}
-	batch, _, overwrite, ok := transfers.createUploadBatchFromMultipart(w, r, auth.runtime, filetransfer.SourceMCP, func(nextServerID int64) bool {
-		name, allowed := s.requireMCPTransferControl(w, r.Context(), auth.runtime, auth.TokenID, nextServerID)
+	batch, _, overwrite, ok := transfers.createUploadBatchFromMultipart(w, r, auth.runtime, filetransfer.SourceMCP, &initialStatus, func(nextServerID int64) bool {
+		permission, allowed := s.mcpTransferStartPermission(w, r.Context(), auth.runtime, auth.TokenID, nextServerID)
 		if !allowed {
 			return false
 		}
 		serverID = nextServerID
-		serverName = name
+		serverName = permission.ServerName
+		if permission.Rule == tokens.RuleApprovalRequired {
+			initialStatus = filetransfer.StatusPendingApproval
+		}
 		return true
 	})
 	if !ok {
 		return
 	}
-	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), serverID, "mcp.file_transfer.batch.upload.started", map[string]any{
+	action := "mcp.file_transfer.batch.upload.started"
+	if batch.Status == filetransfer.StatusPendingApproval {
+		action = "mcp.file_transfer.batch.upload.approval_requested"
+	}
+	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), serverID, action, map[string]any{
 		"batch_id":   batch.ID,
 		"items":      len(batch.Items),
 		"size_bytes": batch.SizeBytes,
 		"overwrite":  overwrite,
 	})
-	go transfers.runTransferBatch(auth.runtime, batch.ID, overwrite)
+	if batch.Status != filetransfer.StatusPendingApproval {
+		go transfers.runTransferBatch(auth.runtime, batch.ID, overwrite)
+	}
 	sanitized := sanitizeMCPFileTransferBatch(batch, true)
+	hint := "Poll get_file_transfer_batch for upload progress. File contents are transferred by the local MCP process and are not returned in tool results."
+	retryAfter := 3
+	if sanitized.Status == filetransfer.StatusPendingApproval {
+		hint = "This upload queue is waiting for local approval in AIPermission Transfer Center. Poll get_file_transfer_batch; only approved files will be written to the remote server."
+		retryAfter = 5
+	}
 	writeJSON(w, http.StatusAccepted, mcpFileTransferActionResponse{
 		Status:            sanitized.Status,
 		ServerID:          serverID,
 		ServerName:        serverName,
 		Batch:             &sanitized,
-		RetryAfterSeconds: 3,
-		AssistantHint:     "Poll get_file_transfer_batch for upload progress. File contents are transferred by the local MCP process and are not returned in tool results.",
+		RetryAfterSeconds: retryAfter,
+		AssistantHint:     hint,
 	})
 }
 
@@ -579,14 +618,30 @@ func (s mcpHandlers) mcpCanSeeServer(ctx context.Context, runtime *databaseRunti
 }
 
 func (s mcpHandlers) requireMCPTransferControl(w http.ResponseWriter, ctx context.Context, runtime *databaseRuntime, tokenID int64, serverID int64) (string, bool) {
+	permission, ok := s.mcpTransferStartPermission(w, ctx, runtime, tokenID, serverID)
+	if !ok {
+		return "", false
+	}
+	if permission.Rule != tokens.RuleAlwaysRun {
+		writeJSON(w, http.StatusOK, mcpFileTransferActionResponse{
+			Status:   "blocked",
+			ServerID: serverID,
+			Error:    "MCP file transfer control requires always_run permission for this server. Prompt-required transfer decisions must be made from the local AIPermission UI.",
+		})
+		return "", false
+	}
+	return permission.ServerName, true
+}
+
+func (s mcpHandlers) mcpTransferStartPermission(w http.ResponseWriter, ctx context.Context, runtime *databaseRuntime, tokenID int64, serverID int64) (mcpTransferPermissionResult, bool) {
 	if serverID < 1 {
 		writeError(w, http.StatusBadRequest, "server_id is required")
-		return "", false
+		return mcpTransferPermissionResult{}, false
 	}
 	serverName, rule, allowed, err := s.mcpPermission(ctx, runtime, tokenID, serverID)
 	if err != nil {
 		writeInternalError(w)
-		return "", false
+		return mcpTransferPermissionResult{}, false
 	}
 	if !allowed || rule == tokens.RuleBlocked {
 		writeJSON(w, http.StatusOK, mcpFileTransferActionResponse{
@@ -594,17 +649,17 @@ func (s mcpHandlers) requireMCPTransferControl(w http.ResponseWriter, ctx contex
 			ServerID: serverID,
 			Error:    "This token is blocked from managing file transfers on this server",
 		})
-		return "", false
+		return mcpTransferPermissionResult{}, false
 	}
-	if rule != tokens.RuleAlwaysRun {
+	if rule != tokens.RuleAlwaysRun && rule != tokens.RuleApprovalRequired {
 		writeJSON(w, http.StatusOK, mcpFileTransferActionResponse{
 			Status:   "blocked",
 			ServerID: serverID,
-			Error:    "MCP file transfer management requires always_run permission for this server. Use the local UI for prompt-required transfer decisions.",
+			Error:    "This token cannot manage file transfers on this server",
 		})
-		return "", false
+		return mcpTransferPermissionResult{}, false
 	}
-	return serverName, true
+	return mcpTransferPermissionResult{ServerName: serverName, Rule: rule}, true
 }
 
 func parseMCPTransferListPagination(w http.ResponseWriter, r *http.Request) (int, int, bool) {
@@ -694,6 +749,8 @@ func sanitizeMCPFileTransferBatch(item filetransfer.BatchRecord, includeItems bo
 		Source:           item.Source,
 		Status:           item.Status,
 		ArchiveName:      item.ArchiveName,
+		ApprovalNote:     item.ApprovalNote,
+		Overwrite:        item.Overwrite,
 		TotalItems:       item.TotalItems,
 		CompletedItems:   item.CompletedItems,
 		FailedItems:      item.FailedItems,

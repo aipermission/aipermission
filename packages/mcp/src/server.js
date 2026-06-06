@@ -124,7 +124,7 @@ server.tool(
   {
     server_id: z.number().int().positive().optional().describe("Optional server id from list_servers."),
     direction: z.enum(["upload", "download"]).optional().describe("Optional transfer direction."),
-    status: z.enum(["pending", "running", "paused", "completed", "failed", "canceled"]).optional().describe("Optional transfer status."),
+    status: z.enum(["pending_approval", "pending", "running", "paused", "completed", "failed", "canceled"]).optional().describe("Optional transfer status."),
     limit: z.number().int().positive().max(100).optional().describe("Maximum records to return."),
     offset: z.number().int().min(0).optional().describe("Pagination offset."),
   },
@@ -159,7 +159,7 @@ server.tool(
   {
     server_id: z.number().int().positive().optional().describe("Optional server id from list_servers."),
     direction: z.enum(["upload", "download"]).optional().describe("Optional transfer direction."),
-    status: z.enum(["pending", "running", "paused", "completed", "failed", "canceled"]).optional().describe("Optional transfer status."),
+    status: z.enum(["pending_approval", "pending", "running", "paused", "completed", "failed", "canceled"]).optional().describe("Optional transfer status."),
     limit: z.number().int().positive().max(100).optional().describe("Maximum records to return."),
     offset: z.number().int().min(0).optional().describe("Pagination offset."),
   },
@@ -205,7 +205,7 @@ server.tool(
 
 server.tool(
   "start_file_download",
-  "Start a remote file download queue through AIPermission. Requires always_run permission. Use get_file_transfer_batch for progress, then save_file_download to write the completed download to the local machine.",
+  "Start a remote file download queue through AIPermission. always_run starts immediately; approval_required creates a local approval queue. Use get_file_transfer_batch for progress, then save_file_download to write a completed download to the local machine.",
   {
     server_id: z.number().int().positive().describe("Server id from list_servers."),
     remote_paths: z.array(z.string().min(1)).min(1).max(100).describe("Absolute remote file paths to download sequentially."),
@@ -254,7 +254,7 @@ server.tool(
 
 server.tool(
   "upload_files",
-  "Upload local files to a remote server through AIPermission. Requires always_run permission. File contents are read by the local MCP process and are not returned to the AI response.",
+  "Upload local files to a remote server through AIPermission. always_run starts immediately; approval_required stages the files locally and waits for local approval before writing to the remote server. File contents are read by the local MCP process and are not returned to the AI response.",
   {
     server_id: z.number().int().positive().describe("Server id from list_servers."),
     local_paths: z.array(z.string().min(1)).min(1).max(100).describe("Local file paths to upload sequentially."),

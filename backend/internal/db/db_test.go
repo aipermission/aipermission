@@ -48,6 +48,9 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !tableExists(t, database, "file_transfers") {
 		t.Fatalf("file_transfers table was not created")
 	}
+	if !tableExists(t, database, "file_transfer_batches") {
+		t.Fatalf("file_transfer_batches table was not created")
+	}
 	if !columnExists(t, database, "api_tokens", "expires_at") {
 		t.Fatalf("api_tokens.expires_at column was not created")
 	}
@@ -59,6 +62,12 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	}
 	if !columnExists(t, database, "command_requests", "output_truncated") {
 		t.Fatalf("command_requests.output_truncated column was not created")
+	}
+	if !columnExists(t, database, "file_transfer_batches", "approval_note") {
+		t.Fatalf("file_transfer_batches.approval_note column was not created")
+	}
+	if !columnExists(t, database, "file_transfer_batches", "overwrite") {
+		t.Fatalf("file_transfer_batches.overwrite column was not created")
 	}
 	var foreignKeys int
 	if err := database.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {

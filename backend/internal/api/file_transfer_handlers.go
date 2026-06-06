@@ -46,6 +46,15 @@ type updateFileTransferBatchQueueRequest struct {
 	ItemIDs []int64 `json:"item_ids"`
 }
 
+type approveFileTransferBatchRequest struct {
+	ItemIDs []int64 `json:"item_ids"`
+	Note    string  `json:"note"`
+}
+
+type declineFileTransferBatchRequest struct {
+	Note string `json:"note"`
+}
+
 type browseRemoteFilesRequest struct {
 	ServerID int64  `json:"server_id"`
 	Path     string `json:"path"`
@@ -460,6 +469,97 @@ func (s fileTransferHandlers) updateFileTransferBatchQueue(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, item)
 }
 
+func (s fileTransferHandlers) approveFileTransferBatch(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	var request approveFileTransferBatchRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	batch, rejected, err := runtime.fileTransfers.ApproveBatch(r.Context(), id, filetransfer.BatchApprovalRequest{
+		ApprovedItemIDs: request.ItemIDs,
+		Note:            request.Note,
+	})
+	if errors.Is(err, filetransfer.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file transfer batch not found")
+		return
+	}
+	if errors.Is(err, filetransfer.ErrInvalidArgument) {
+		writeError(w, http.StatusBadRequest, "item_ids must contain pending approval item ids")
+		return
+	}
+	if errors.Is(err, filetransfer.ErrInvalidState) {
+		writeError(w, http.StatusConflict, "file transfer batch is not waiting for approval")
+		return
+	}
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	for _, item := range rejected {
+		if item.TempPath != "" && s.tempPathAllowed(item.TempPath) {
+			_ = os.Remove(item.TempPath)
+		}
+	}
+	s.writeAudit(r.Context(), runtime, "user", nil, batch.ServerID, "file_transfer.batch.approved", map[string]any{
+		"batch_id":       id,
+		"approved_items": len(request.ItemIDs),
+		"rejected_items": len(rejected),
+		"note":           strings.TrimSpace(request.Note),
+	})
+	if len(request.ItemIDs) > 0 {
+		go s.runTransferBatch(runtime, batch.ID, batch.Overwrite)
+	}
+	writeJSON(w, http.StatusOK, batch)
+}
+
+func (s fileTransferHandlers) declineFileTransferBatch(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	var request declineFileTransferBatchRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	batch, rejected, err := runtime.fileTransfers.DeclineBatch(r.Context(), id, request.Note)
+	if errors.Is(err, filetransfer.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file transfer batch not found")
+		return
+	}
+	if errors.Is(err, filetransfer.ErrInvalidState) {
+		writeError(w, http.StatusConflict, "file transfer batch is not waiting for approval")
+		return
+	}
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	for _, item := range rejected {
+		if item.TempPath != "" && s.tempPathAllowed(item.TempPath) {
+			_ = os.Remove(item.TempPath)
+		}
+	}
+	s.writeAudit(r.Context(), runtime, "user", nil, batch.ServerID, "file_transfer.batch.declined", map[string]any{
+		"batch_id": id,
+		"items":    len(rejected),
+		"note":     strings.TrimSpace(request.Note),
+	})
+	writeJSON(w, http.StatusOK, batch)
+}
+
 func (s fileTransferHandlers) downloadFileTransferBatch(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
@@ -586,7 +686,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	batch, serverID, overwrite, ok := s.createUploadBatchFromMultipart(w, r, runtime, filetransfer.SourceUI, nil)
+	batch, serverID, overwrite, ok := s.createUploadBatchFromMultipart(w, r, runtime, filetransfer.SourceUI, nil, nil)
 	if !ok {
 		return
 	}
@@ -600,7 +700,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusAccepted, batch)
 }
 
-func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, source string, authorize func(serverID int64) bool) (filetransfer.BatchRecord, int64, bool, bool) {
+func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, source string, status *string, authorize func(serverID int64) bool) (filetransfer.BatchRecord, int64, bool, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferUploadBytes)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart upload")
@@ -615,6 +715,10 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 	}
 	if authorize != nil && !authorize(serverID) {
 		return filetransfer.BatchRecord{}, 0, false, false
+	}
+	initialStatus := filetransfer.StatusPending
+	if status != nil && strings.TrimSpace(*status) != "" {
+		initialStatus = strings.TrimSpace(*status)
 	}
 	remoteDir, err := normalizeRemoteDirectoryPath(r.FormValue("remote_dir"))
 	if err != nil {
@@ -668,21 +772,25 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 			TempPath:   tempPath,
 		})
 	}
-	conflicts, ok := s.checkUploadBatchOverwrite(w, r, runtime, serverID, requests, overwrite, tempPaths)
-	if !ok {
-		if len(conflicts) > 0 {
-			writeJSON(w, http.StatusConflict, remoteFileConflictsResponse{
-				Error:     "one or more remote files already exist",
-				Code:      "remote_files_exist",
-				Conflicts: conflicts,
-			})
+	if initialStatus != filetransfer.StatusPendingApproval {
+		conflicts, ok := s.checkUploadBatchOverwrite(w, r, runtime, serverID, requests, overwrite, tempPaths)
+		if !ok {
+			if len(conflicts) > 0 {
+				writeJSON(w, http.StatusConflict, remoteFileConflictsResponse{
+					Error:     "one or more remote files already exist",
+					Code:      "remote_files_exist",
+					Conflicts: conflicts,
+				})
+			}
+			return filetransfer.BatchRecord{}, 0, false, false
 		}
-		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	batch, err := runtime.fileTransfers.CreateBatch(r.Context(), filetransfer.CreateBatchRequest{
 		ServerID:  serverID,
 		Direction: filetransfer.DirectionUpload,
 		Source:    source,
+		Status:    initialStatus,
+		Overwrite: overwrite,
 		Items:     requests,
 	})
 	if err != nil {
@@ -752,7 +860,7 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	batch, err := s.createDownloadBatch(ctx, runtime, request.ServerID, request.RemotePaths, request.ArchiveName, filetransfer.SourceUI)
+	batch, err := s.createDownloadBatch(ctx, runtime, request.ServerID, request.RemotePaths, request.ArchiveName, filetransfer.SourceUI, filetransfer.StatusPending)
 	if err != nil {
 		if s.writeFileTransferStartError(w, err) {
 			return
@@ -769,7 +877,7 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusAccepted, batch)
 }
 
-func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *databaseRuntime, serverID int64, remotePaths []string, archiveName string, source string) (filetransfer.BatchRecord, error) {
+func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *databaseRuntime, serverID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error) {
 	if serverID < 1 {
 		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "server_id is required")
 	}
@@ -779,11 +887,15 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 	if len(remotePaths) > 100 {
 		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "cannot download more than 100 files at once")
 	}
-	server, privateKey, err := s.serverSSHMaterialFromRuntime(ctx, runtime, serverID)
-	if err != nil {
-		return filetransfer.BatchRecord{}, err
+	var target execution.Target
+	validateRemoteBeforeApproval := status != filetransfer.StatusPendingApproval
+	if validateRemoteBeforeApproval {
+		server, privateKey, err := s.serverSSHMaterialFromRuntime(ctx, runtime, serverID)
+		if err != nil {
+			return filetransfer.BatchRecord{}, err
+		}
+		target = s.executionTarget(server, privateKey)
 	}
-	target := s.executionTarget(server, privateKey)
 	items := make([]filetransfer.CreateRequest, 0, len(remotePaths))
 	tempPaths := []string{}
 	seenRemotePaths := map[string]bool{}
@@ -799,16 +911,20 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "download queue contains duplicate remote paths")
 		}
 		seenRemotePaths[remotePath] = true
-		status, err := execution.StatRemotePath(ctx, target, remotePath)
-		if err != nil {
-			cleanupTempPaths(tempPaths)
-			return filetransfer.BatchRecord{}, err
+		var size int64
+		if validateRemoteBeforeApproval {
+			status, err := execution.StatRemotePath(ctx, target, remotePath)
+			if err != nil {
+				cleanupTempPaths(tempPaths)
+				return filetransfer.BatchRecord{}, err
+			}
+			if !status.Exists || status.Type != "file" {
+				cleanupTempPaths(tempPaths)
+				return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "remote path must be an existing regular file")
+			}
+			size = status.Size
 		}
-		if !status.Exists || status.Type != "file" {
-			cleanupTempPaths(tempPaths)
-			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "remote path must be an existing regular file")
-		}
-		totalSize += status.Size
+		totalSize += size
 		if totalSize > maxFileTransferBatchBytes {
 			cleanupTempPaths(tempPaths)
 			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusRequestEntityTooLarge, "download batch cannot exceed 1 GiB total size")
@@ -823,7 +939,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 		items = append(items, filetransfer.CreateRequest{
 			RemotePath: remotePath,
 			FileName:   fileName,
-			SizeBytes:  status.Size,
+			SizeBytes:  size,
 			TempPath:   tempPath,
 		})
 	}
@@ -838,6 +954,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 		ServerID:    serverID,
 		Direction:   filetransfer.DirectionDownload,
 		Source:      source,
+		Status:      status,
 		ArchiveName: cleanArchiveName,
 		Items:       items,
 	})
@@ -1056,7 +1173,7 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 		log.Printf("read completed file transfer batch failed batch=%d error=%v", batchID, err)
 		return
 	}
-	if batch.Direction == filetransfer.DirectionDownload && batch.FailedItems == 0 && batch.CanceledItems == 0 {
+	if batch.Direction == filetransfer.DirectionDownload && batch.FailedItems == 0 && batch.CompletedItems > 0 {
 		if len(batch.Items) > 1 {
 			archivePath, err := s.createDownloadArchive(batch)
 			if err != nil {
@@ -1666,7 +1783,7 @@ func safeFileName(value string) string {
 
 func validFileTransferStatus(status string) bool {
 	switch status {
-	case filetransfer.StatusPending, filetransfer.StatusRunning, filetransfer.StatusPaused, filetransfer.StatusCompleted, filetransfer.StatusFailed, filetransfer.StatusCanceled:
+	case filetransfer.StatusPending, filetransfer.StatusPendingApproval, filetransfer.StatusRunning, filetransfer.StatusPaused, filetransfer.StatusCompleted, filetransfer.StatusFailed, filetransfer.StatusCanceled:
 		return true
 	default:
 		return false

@@ -170,6 +170,72 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 	}
 }
 
+func TestStoreApprovesPendingTransferBatchItems(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	serverID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+
+	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
+		ServerID:     serverID,
+		Direction:    DirectionDownload,
+		Source:       SourceMCP,
+		Status:       StatusPendingApproval,
+		ApprovalNote: "initial",
+		Items: []CreateRequest{
+			{RemotePath: "/tmp/a.log", FileName: "a.log", SizeBytes: 100, TempPath: "/tmp/a"},
+			{RemotePath: "/tmp/b.log", FileName: "b.log", SizeBytes: 200, TempPath: "/tmp/b"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create pending approval batch: %v", err)
+	}
+	if batch.Status != StatusPendingApproval || batch.Items[0].Status != StatusPendingApproval {
+		t.Fatalf("unexpected pending approval batch: %#v", batch)
+	}
+
+	approved, rejected, err := store.ApproveBatch(ctx, batch.ID, BatchApprovalRequest{
+		ApprovedItemIDs: []int64{batch.Items[0].ID},
+		Note:            "skip b.log",
+	})
+	if err != nil {
+		t.Fatalf("approve batch: %v", err)
+	}
+	if approved.Status != StatusPending || approved.ApprovalNote != "skip b.log" || len(rejected) != 1 || rejected[0].ID != batch.Items[1].ID {
+		t.Fatalf("unexpected approved batch: batch=%#v rejected=%#v", approved, rejected)
+	}
+	if approved.Items[0].Status != StatusPending || approved.Items[1].Status != StatusCanceled || approved.Items[1].Error != "skip b.log" {
+		t.Fatalf("unexpected approved items: %#v", approved.Items)
+	}
+
+	if ok, err := store.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("mark approved batch running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.MarkRunning(ctx, batch.Items[0].ID); err != nil || !ok {
+		t.Fatalf("mark approved item running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.Complete(ctx, batch.Items[0].ID, 100, "checksum"); err != nil || !ok {
+		t.Fatalf("complete approved item: ok=%v err=%v", ok, err)
+	}
+	if err := store.RecalculateBatch(ctx, batch.ID); err != nil {
+		t.Fatalf("recalculate partial batch: %v", err)
+	}
+	if ok, err := store.CompleteBatch(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("complete partial batch: ok=%v err=%v", ok, err)
+	}
+	completed, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get completed partial batch: %v", err)
+	}
+	if completed.Status != StatusCompleted || completed.CompletedItems != 1 || completed.CanceledItems != 1 {
+		t.Fatalf("unexpected completed partial batch: %#v", completed)
+	}
+}
+
 func TestStoreUpdatesPausedBatchQueue(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {

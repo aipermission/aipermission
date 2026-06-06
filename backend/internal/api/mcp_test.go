@@ -577,7 +577,7 @@ func TestMCPFileTransferStatusIsTokenScopedAndSanitized(t *testing.T) {
 	}
 }
 
-func TestMCPFileTransferManagementRequiresAlwaysRun(t *testing.T) {
+func TestMCPFileTransferManagementSupportsApprovalRequired(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
 	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
@@ -596,8 +596,8 @@ func TestMCPFileTransferManagementRequiresAlwaysRun(t *testing.T) {
 		"remote_paths": []string{"/var/log/syslog"},
 		"archive_name": "logs.zip",
 	})
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"blocked"`) || !strings.Contains(response.Body.String(), "always_run") {
-		t.Fatalf("approval-required token should not start MCP transfers, got %d %s", response.Code, response.Body.String())
+	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"status":"pending_approval"`) || !strings.Contains(response.Body.String(), "waiting for local approval") {
+		t.Fatalf("approval-required token should create a pending approval transfer, got %d %s", response.Code, response.Body.String())
 	}
 }
 
