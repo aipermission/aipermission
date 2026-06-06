@@ -489,6 +489,8 @@ func runMigrationMaintenance(database *sql.DB) error {
 	for _, statement := range []string{
 		`UPDATE console_sessions SET status = 'closed', error = 'gateway restarted', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('connecting', 'connected')`,
 		`UPDATE command_requests SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
+		`UPDATE file_transfers SET status = 'failed', error = 'gateway restarted while file transfer was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'running', 'paused')`,
+		`UPDATE file_transfer_batches SET status = 'failed', error = 'gateway restarted while file transfer queue was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'running', 'paused')`,
 	} {
 		if _, err := database.Exec(statement); err != nil {
 			return fmt.Errorf("run migration maintenance: %w", err)

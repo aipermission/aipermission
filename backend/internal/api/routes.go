@@ -114,6 +114,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/pause", fileTransfers.pauseFileTransferBatch)
 	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/resume", fileTransfers.resumeFileTransferBatch)
 	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/cancel", fileTransfers.cancelFileTransferBatch)
+	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/queue", fileTransfers.updateFileTransferBatchQueue)
 	s.mux.HandleFunc("POST /api/file-transfers/browse", fileTransfers.browseRemoteFiles)
 	s.mux.HandleFunc("POST /api/file-transfers/upload", fileTransfers.startUpload)
 	s.mux.HandleFunc("POST /api/file-transfers/upload-batch", fileTransfers.startUploadBatch)

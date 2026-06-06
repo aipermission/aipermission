@@ -25,6 +25,7 @@ import (
 
 const (
 	maxFileTransferUploadBytes = 512 << 20
+	maxFileTransferBatchBytes  = 1 << 30
 	fileTransferTimeout        = 2 * time.Hour
 	fileTransferBatchTimeout   = 6 * time.Hour
 	fileTransferTempTTL        = 30 * time.Minute
@@ -39,6 +40,10 @@ type startDownloadBatchRequest struct {
 	ServerID    int64    `json:"server_id"`
 	RemotePaths []string `json:"remote_paths"`
 	ArchiveName string   `json:"archive_name"`
+}
+
+type updateFileTransferBatchQueueRequest struct {
+	ItemIDs []int64 `json:"item_ids"`
 }
 
 type browseRemoteFilesRequest struct {
@@ -262,9 +267,15 @@ func (s fileTransferHandlers) pauseFileTransferBatch(w http.ResponseWriter, r *h
 		writeError(w, http.StatusConflict, "file transfer batch is already paused")
 		return
 	}
-	if _, err := runtime.fileTransfers.PauseBatch(context.Background(), id); err != nil {
+	changed, err := runtime.fileTransfers.PauseBatch(context.Background(), id)
+	if err != nil {
 		control.Resume()
 		writeInternalError(w)
+		return
+	}
+	if !changed {
+		control.Resume()
+		writeError(w, http.StatusConflict, "file transfer batch is not running")
 		return
 	}
 	s.writeAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.paused", map[string]any{"batch_id": id})
@@ -290,8 +301,13 @@ func (s fileTransferHandlers) resumeFileTransferBatch(w http.ResponseWriter, r *
 		writeError(w, http.StatusConflict, "file transfer batch is not active")
 		return
 	}
-	if _, err := runtime.fileTransfers.ResumeBatch(context.Background(), id); err != nil {
+	changed, err := runtime.fileTransfers.ResumeBatch(context.Background(), id)
+	if err != nil {
 		writeInternalError(w)
+		return
+	}
+	if !changed {
+		writeError(w, http.StatusConflict, "file transfer batch is not paused")
 		return
 	}
 	control.Resume()
@@ -326,6 +342,55 @@ func (s fileTransferHandlers) cancelFileTransferBatch(w http.ResponseWriter, r *
 		s.cleanupBatchTemps(runtime, id)
 		s.writeAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.canceled", map[string]any{"batch_id": id})
 	}
+	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s fileTransferHandlers) updateFileTransferBatchQueue(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	var request updateFileTransferBatchQueueRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	removed, err := runtime.fileTransfers.UpdatePausedBatchQueue(r.Context(), id, request.ItemIDs)
+	if errors.Is(err, filetransfer.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file transfer batch not found")
+		return
+	}
+	if errors.Is(err, filetransfer.ErrInvalidState) {
+		writeError(w, http.StatusConflict, "file transfer batch queue can only edit pending items while paused")
+		return
+	}
+	if errors.Is(err, filetransfer.ErrInvalidArgument) {
+		writeError(w, http.StatusBadRequest, "item_ids must contain unique positive pending item ids")
+		return
+	}
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	for _, item := range removed {
+		if item.TempPath != "" && s.tempPathAllowed(item.TempPath) {
+			_ = os.Remove(item.TempPath)
+		}
+	}
+	s.writeAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.queue_updated", map[string]any{
+		"batch_id": id,
+		"items":    len(request.ItemIDs),
+		"removed":  len(removed),
+	})
 	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
@@ -382,7 +447,7 @@ func (s fileTransferHandlers) downloadFileTransferBatch(w http.ResponseWriter, r
 		writeError(w, http.StatusGone, "download file is no longer available")
 		return
 	}
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
+	setDownloadHeaders(w, fileName)
 	http.ServeFile(w, r, servePath)
 }
 
@@ -488,6 +553,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	}
 	requests := make([]filetransfer.CreateRequest, 0, len(headers))
 	tempPaths := []string{}
+	seenRemotePaths := map[string]bool{}
 	for _, header := range headers {
 		file, err := header.Open()
 		if err != nil {
@@ -505,6 +571,12 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 		tempPaths = append(tempPaths, tempPath)
 		fileName := safeFileName(header.Filename)
 		remotePath := joinRemoteFilePath(remoteDir, fileName)
+		if seenRemotePaths[remotePath] {
+			cleanupTempPaths(tempPaths)
+			writeError(w, http.StatusBadRequest, "upload queue contains duplicate remote paths")
+			return
+		}
+		seenRemotePaths[remotePath] = true
 		requests = append(requests, filetransfer.CreateRequest{
 			LocalPath:  fileName,
 			RemotePath: remotePath,
@@ -625,6 +697,8 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 	target := s.executionTarget(server, privateKey)
 	items := make([]filetransfer.CreateRequest, 0, len(request.RemotePaths))
 	tempPaths := []string{}
+	seenRemotePaths := map[string]bool{}
+	var totalSize int64
 	for _, raw := range request.RemotePaths {
 		remotePath, err := normalizeRemoteFilePath(raw)
 		if err != nil {
@@ -632,6 +706,12 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if seenRemotePaths[remotePath] {
+			cleanupTempPaths(tempPaths)
+			writeError(w, http.StatusBadRequest, "download queue contains duplicate remote paths")
+			return
+		}
+		seenRemotePaths[remotePath] = true
 		status, err := execution.StatRemotePath(ctx, target, remotePath)
 		if err != nil {
 			cleanupTempPaths(tempPaths)
@@ -644,6 +724,12 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 		if !status.Exists || status.Type != "file" {
 			cleanupTempPaths(tempPaths)
 			writeError(w, http.StatusBadRequest, "remote path must be an existing regular file")
+			return
+		}
+		totalSize += status.Size
+		if totalSize > maxFileTransferBatchBytes {
+			cleanupTempPaths(tempPaths)
+			writeError(w, http.StatusRequestEntityTooLarge, "download batch cannot exceed 1 GiB total size")
 			return
 		}
 		tempPath, err := s.reserveDownloadTempFile()
@@ -661,7 +747,10 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 			TempPath:   tempPath,
 		})
 	}
-	archiveName := safeFileName(request.ArchiveName)
+	archiveName := ""
+	if strings.TrimSpace(request.ArchiveName) != "" {
+		archiveName = safeFileName(request.ArchiveName)
+	}
 	if archiveName == "" && len(items) > 1 {
 		archiveName = fmt.Sprintf("aipermission-download-%s.zip", time.Now().UTC().Format("20060102-150405"))
 	}
@@ -724,7 +813,7 @@ func (s fileTransferHandlers) downloadTransferredFile(w http.ResponseWriter, r *
 	if fileName == "" {
 		fileName = "aipermission-download"
 	}
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
+	setDownloadHeaders(w, fileName)
 	http.ServeFile(w, r, item.TempPath)
 }
 
@@ -847,21 +936,23 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 		log.Printf("read file transfer batch failed batch=%d error=%v", batchID, err)
 		return
 	}
-	for _, item := range batch.Items {
+	for {
 		if err := control.Wait(ctx); err != nil {
-			s.cancelFileTransferRecord(runtime, item.ID, "canceled by local user")
 			break
 		}
-		latest, err := runtime.fileTransfers.Get(ctx, item.ID)
-		if err != nil {
-			log.Printf("read file transfer batch item failed transfer=%d error=%v", item.ID, err)
-			continue
+		latest, err := runtime.fileTransfers.NextBatchPendingItem(ctx, batchID)
+		if errors.Is(err, filetransfer.ErrNotFound) {
+			break
 		}
-		if latest.Status != filetransfer.StatusPending && latest.Status != filetransfer.StatusPaused {
-			continue
+		if err != nil {
+			log.Printf("read next file transfer batch item failed batch=%d error=%v", batchID, err)
+			break
 		}
 		s.runTransferBatchItem(ctx, runtime, latest.ID, overwrite, control)
 		_ = runtime.fileTransfers.RecalculateBatch(context.Background(), batchID)
+		if ctx.Err() != nil {
+			break
+		}
 	}
 	if ctx.Err() != nil {
 		_, _ = runtime.fileTransfers.CancelBatch(context.Background(), batchID, "canceled by local user")
@@ -876,18 +967,21 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 		log.Printf("read completed file transfer batch failed batch=%d error=%v", batchID, err)
 		return
 	}
-	if batch.Direction == filetransfer.DirectionDownload && len(batch.Items) > 1 && batch.FailedItems == 0 && batch.CanceledItems == 0 {
-		archivePath, err := s.createDownloadArchive(batch)
-		if err != nil {
-			log.Printf("create file transfer archive failed batch=%d error=%v", batchID, err)
-			_, _ = runtime.fileTransfers.CancelBatch(context.Background(), batchID, fileTransferFailureMessage(err))
-			s.cleanupBatchTemps(runtime, batchID)
-			return
+	if batch.Direction == filetransfer.DirectionDownload && batch.FailedItems == 0 && batch.CanceledItems == 0 {
+		if len(batch.Items) > 1 {
+			archivePath, err := s.createDownloadArchive(batch)
+			if err != nil {
+				log.Printf("create file transfer archive failed batch=%d error=%v", batchID, err)
+				_, _ = runtime.fileTransfers.CancelBatch(context.Background(), batchID, fileTransferFailureMessage(err))
+				s.cleanupBatchTemps(runtime, batchID)
+				return
+			}
+			if err := runtime.fileTransfers.SetBatchArchive(context.Background(), batchID, archivePath); err != nil {
+				log.Printf("set file transfer archive failed batch=%d error=%v", batchID, err)
+			}
+			s.scheduleTransferTempCleanup(archivePath)
 		}
-		if err := runtime.fileTransfers.SetBatchArchive(context.Background(), batchID, archivePath); err != nil {
-			log.Printf("set file transfer archive failed batch=%d error=%v", batchID, err)
-		}
-		s.scheduleTransferTempCleanup(archivePath)
+		s.scheduleBatchItemTempCleanup(batch)
 	}
 	if ok, err := runtime.fileTransfers.CompleteBatch(context.Background(), batchID); err != nil {
 		log.Printf("complete file transfer batch failed batch=%d error=%v", batchID, err)
@@ -958,7 +1052,7 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 	if !completed {
 		return
 	}
-	if item.Direction == filetransfer.DirectionDownload {
+	if item.Direction == filetransfer.DirectionDownload && item.BatchID == 0 {
 		s.scheduleTransferTempCleanup(item.TempPath)
 	}
 	s.writeAudit(context.Background(), runtime, "user", nil, item.ServerID, "file_transfer.completed", map[string]any{
@@ -1193,6 +1287,14 @@ func (s fileTransferHandlers) cleanupBatchTemps(runtime *databaseRuntime, batchI
 	}
 }
 
+func (s fileTransferHandlers) scheduleBatchItemTempCleanup(batch filetransfer.BatchRecord) {
+	for _, item := range batch.Items {
+		if item.TempPath != "" {
+			s.scheduleTransferTempCleanup(item.TempPath)
+		}
+	}
+}
+
 func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchRecord) (string, error) {
 	root, err := s.ensureFileTransferTempRoot()
 	if err != nil {
@@ -1204,6 +1306,7 @@ func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchReco
 	}
 	archivePath := temp.Name()
 	zipWriter := zip.NewWriter(temp)
+	usedNames := map[string]int{}
 	for _, item := range batch.Items {
 		if item.Status != filetransfer.StatusCompleted {
 			continue
@@ -1214,7 +1317,8 @@ func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchReco
 			_ = os.Remove(archivePath)
 			return "", fmt.Errorf("download file is no longer available")
 		}
-		if err := addFileToZip(zipWriter, item.TempPath, item.FileName); err != nil {
+		entryName := uniqueArchiveEntryName(item.FileName, item.RemotePath, usedNames)
+		if err := addFileToZip(zipWriter, item.TempPath, entryName); err != nil {
 			_ = zipWriter.Close()
 			_ = temp.Close()
 			_ = os.Remove(archivePath)
@@ -1231,6 +1335,27 @@ func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchReco
 		return "", fmt.Errorf("close temporary download archive: %w", err)
 	}
 	return archivePath, nil
+}
+
+func uniqueArchiveEntryName(name string, remotePath string, used map[string]int) string {
+	base := safeFileName(name)
+	if base == "aipermission-file" && strings.TrimSpace(remotePath) != "" {
+		base = safeFileName(path.Base(remotePath))
+	}
+	if base == "" {
+		base = "aipermission-file"
+	}
+	count := used[base]
+	used[base] = count + 1
+	if count == 0 {
+		return base
+	}
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	if stem == "" {
+		stem = "file"
+	}
+	return fmt.Sprintf("%s-%d%s", stem, count+1, ext)
 }
 
 func addFileToZip(zipWriter *zip.Writer, filePath string, name string) error {
@@ -1252,6 +1377,9 @@ func addFileToZip(zipWriter *zip.Writer, filePath string, name string) error {
 		header.Name = safeFileName(filepath.Base(filePath))
 	}
 	header.Method = zip.Deflate
+	if shouldStoreArchiveEntry(header.Name) {
+		header.Method = zip.Store
+	}
 	writer, err := zipWriter.CreateHeader(header)
 	if err != nil {
 		return fmt.Errorf("create archive entry: %w", err)
@@ -1260,6 +1388,25 @@ func addFileToZip(zipWriter *zip.Writer, filePath string, name string) error {
 		return fmt.Errorf("write archive entry: %w", err)
 	}
 	return nil
+}
+
+func shouldStoreArchiveEntry(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".zip", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar":
+		return true
+	default:
+		return false
+	}
+}
+
+func setDownloadHeaders(w http.ResponseWriter, fileName string) {
+	contentType := mime.TypeByExtension(filepath.Ext(fileName))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
 }
 
 func (s fileTransferHandlers) ensureFileTransferTempRoot() (string, error) {

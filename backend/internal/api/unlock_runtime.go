@@ -306,6 +306,12 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) {
 	if err := s.cancelRunningCommandRequests(context.Background(), runtime, "workspace locked while command was running"); err != nil {
 		log.Printf("mark running command requests failed workspace=%s error=%v", runtime.id, err)
 	}
+	if runtime.fileTransfers != nil {
+		runtime.cancelAllFileTransfers()
+		if err := runtime.fileTransfers.FailActive(context.Background(), "workspace locked while file transfer was running", "workspace locked while file transfer queue was running"); err != nil {
+			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.id, err)
+		}
+	}
 	if runtime.database != nil {
 		_ = runtime.database.Close()
 	}

@@ -148,22 +148,45 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 			return TransferResult{}, fmt.Errorf("create remote directory: %w", err)
 		}
 	}
-	flags := os.O_WRONLY | os.O_CREATE
-	if overwrite {
-		flags |= os.O_TRUNC
-	} else {
-		flags |= os.O_EXCL
+	if !overwrite {
+		if _, err := client.Stat(remotePath); err == nil {
+			return TransferResult{}, fmt.Errorf("remote file already exists")
+		} else if !os.IsNotExist(err) {
+			return TransferResult{}, fmt.Errorf("stat remote file: %w", err)
+		}
 	}
-	remote, err := client.OpenFile(remotePath, flags)
+
+	tempPath, remote, err := createRemoteUploadTemp(client, remotePath)
 	if err != nil {
-		return TransferResult{}, fmt.Errorf("create remote file: %w", err)
+		return TransferResult{}, err
 	}
-	defer remote.Close()
+	committed := false
+	defer func() {
+		if !committed {
+			cleanupRemoteUploadTemp(target, tempPath)
+		}
+	}()
 
 	copied, checksum, err := copyWithProgress(ctx, remote, local, info.Size(), options)
+	closeErr := remote.Close()
 	if err != nil {
 		return TransferResult{}, fmt.Errorf("upload file: %w", err)
 	}
+	if closeErr != nil {
+		return TransferResult{}, fmt.Errorf("close remote temporary file: %w", closeErr)
+	}
+	if err := ctx.Err(); err != nil {
+		return TransferResult{}, err
+	}
+	if options.Wait != nil {
+		if err := options.Wait(ctx); err != nil {
+			return TransferResult{}, err
+		}
+	}
+	if err := commitRemoteUpload(client, tempPath, remotePath, overwrite); err != nil {
+		return TransferResult{}, err
+	}
+	committed = true
 	if options.Progress != nil {
 		options.Progress(copied, info.Size())
 	}
@@ -173,6 +196,99 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 		ChecksumSHA256: checksum,
 		DurationMS:     time.Since(started).Milliseconds(),
 	}, nil
+}
+
+type remoteUploadClient interface {
+	Stat(string) (os.FileInfo, error)
+	OpenFile(string, int) (*sftp.File, error)
+	Rename(string, string) error
+	PosixRename(string, string) error
+	Remove(string) error
+}
+
+type remoteUploadCommitter interface {
+	Stat(string) (os.FileInfo, error)
+	Rename(string, string) error
+	PosixRename(string, string) error
+	Remove(string) error
+}
+
+func createRemoteUploadTemp(client remoteUploadClient, remotePath string) (string, *sftp.File, error) {
+	for attempt := 0; attempt < 10; attempt++ {
+		tempPath := remoteUploadTempPath(remotePath, attempt)
+		remote, err := client.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+		if err == nil {
+			return tempPath, remote, nil
+		}
+		if os.IsExist(err) {
+			continue
+		}
+		return "", nil, fmt.Errorf("create remote temporary file: %w", err)
+	}
+	return "", nil, fmt.Errorf("create remote temporary file: exhausted unique names")
+}
+
+func remoteUploadTempPath(remotePath string, attempt int) string {
+	dir := path.Dir(remotePath)
+	base := path.Base(remotePath)
+	if base == "" || base == "." || base == "/" {
+		base = "file"
+	}
+	runes := []rune(base)
+	if len(runes) > 96 {
+		base = string(runes[:96])
+	}
+	name := fmt.Sprintf(".aipermission-upload-%s-%d-%d-%d.tmp", base, os.Getpid(), time.Now().UnixNano(), attempt)
+	if dir == "." || dir == "" {
+		return name
+	}
+	if dir == "/" {
+		return "/" + name
+	}
+	return path.Join(dir, name)
+}
+
+func commitRemoteUpload(client remoteUploadCommitter, tempPath string, remotePath string, overwrite bool) error {
+	if !overwrite {
+		if _, err := client.Stat(remotePath); err == nil {
+			return fmt.Errorf("remote file already exists")
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("stat remote file before commit: %w", err)
+		}
+		if err := client.Rename(tempPath, remotePath); err != nil {
+			return fmt.Errorf("move uploaded file into place: %w", err)
+		}
+		return nil
+	}
+	if err := client.PosixRename(tempPath, remotePath); err == nil {
+		return nil
+	}
+	if err := client.Rename(tempPath, remotePath); err == nil {
+		return nil
+	}
+	if err := client.Remove(remotePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove existing remote file before overwrite: %w", err)
+	}
+	if err := client.Rename(tempPath, remotePath); err != nil {
+		return fmt.Errorf("move uploaded file into place: %w", err)
+	}
+	return nil
+}
+
+func cleanupRemoteUploadTemp(target Target, tempPath string) {
+	if tempPath == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	client, sshClient, err := sftpClient(ctx, target)
+	if err != nil {
+		return
+	}
+	defer sshClient.Close()
+	defer client.Close()
+	closeOnContext(ctx, sshClient)
+	_ = client.Remove(tempPath)
 }
 
 func DownloadFile(ctx context.Context, target Target, remotePath string, localPath string, progress TransferProgress) (TransferResult, error) {

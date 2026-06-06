@@ -150,3 +150,27 @@ func (rt *databaseRuntime) cancelBatch(id int64) bool {
 	cancel()
 	return true
 }
+
+func (rt *databaseRuntime) cancelAllFileTransfers() {
+	rt.transferMu.Lock()
+	transferCancels := make([]context.CancelFunc, 0, len(rt.transferCancels))
+	for _, cancel := range rt.transferCancels {
+		if cancel != nil {
+			transferCancels = append(transferCancels, cancel)
+		}
+	}
+	batchCancels := make([]context.CancelFunc, 0, len(rt.batchCancels))
+	for _, cancel := range rt.batchCancels {
+		if cancel != nil {
+			batchCancels = append(batchCancels, cancel)
+		}
+	}
+	rt.transferMu.Unlock()
+
+	for _, cancel := range transferCancels {
+		cancel()
+	}
+	for _, cancel := range batchCancels {
+		cancel()
+	}
+}

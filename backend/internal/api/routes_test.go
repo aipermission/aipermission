@@ -666,6 +666,31 @@ func TestFileTransferRoutes(t *testing.T) {
 	if cancelResponse.Code != http.StatusOK || !strings.Contains(cancelResponse.Body.String(), `"status":"canceled"`) {
 		t.Fatalf("cancel file transfer failed: %d %s", cancelResponse.Code, cancelResponse.Body.String())
 	}
+
+	batch, err := runtime.fileTransfers.CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
+		ServerID:  server.ID,
+		Direction: filetransfer.DirectionUpload,
+		Source:    filetransfer.SourceUI,
+		Items: []filetransfer.CreateRequest{
+			{LocalPath: "a.txt", RemotePath: "/tmp/a.txt", FileName: "a.txt", TempPath: tempPath},
+			{LocalPath: "b.txt", RemotePath: "/tmp/b.txt", FileName: "b.txt", TempPath: tempPath},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if ok, err := runtime.fileTransfers.MarkBatchRunning(context.Background(), batch.ID); err != nil || !ok {
+		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := runtime.fileTransfers.PauseBatch(context.Background(), batch.ID); err != nil || !ok {
+		t.Fatalf("pause batch: ok=%v err=%v", ok, err)
+	}
+	duplicateQueueResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfer-batches/"+strconv.FormatInt(batch.ID, 10)+"/queue", "", map[string]any{
+		"item_ids": []int64{batch.Items[0].ID, batch.Items[0].ID},
+	})
+	if duplicateQueueResponse.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate queue item ids should fail with 400, got %d %s", duplicateQueueResponse.Code, duplicateQueueResponse.Body.String())
+	}
 }
 
 func assertTableCount(t *testing.T, database *sql.DB, table string, expected int) {

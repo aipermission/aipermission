@@ -28,6 +28,8 @@ const (
 const maxPathRunes = 4096
 
 var ErrNotFound = errors.New("file transfer not found")
+var ErrInvalidState = errors.New("file transfer invalid state")
+var ErrInvalidArgument = errors.New("file transfer invalid argument")
 
 type Record struct {
 	ID               int64  `json:"id"`
@@ -444,6 +446,53 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 	return items, nil
 }
 
+func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(srv.name, ''),
+			ft.direction, ft.source, ft.status, ft.local_path, ft.remote_path, ft.file_name,
+			ft.size_bytes, ft.transferred_bytes, ft.bytes_per_second, ft.eta_seconds,
+			ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
+			COALESCE(ft.completed_at, ''), ft.updated_at
+		FROM file_transfers ft
+		LEFT JOIN servers srv ON srv.id = ft.server_id
+		WHERE ft.batch_id = ? AND ft.status = ?
+		ORDER BY ft.queue_index ASC, ft.id ASC
+		LIMIT 1`,
+		batchID,
+		StatusPending,
+	)
+	var item Record
+	if err := row.Scan(
+		&item.ID,
+		&item.BatchID,
+		&item.QueueIndex,
+		&item.ServerID,
+		&item.ServerName,
+		&item.Direction,
+		&item.Source,
+		&item.Status,
+		&item.LocalPath,
+		&item.RemotePath,
+		&item.FileName,
+		&item.SizeBytes,
+		&item.TransferredBytes,
+		&item.BytesPerSecond,
+		&item.ETASeconds,
+		&item.ChecksumSHA256,
+		&item.TempPath,
+		&item.Error,
+		&item.CreatedAt,
+		&item.StartedAt,
+		&item.CompletedAt,
+		&item.UpdatedAt,
+	); errors.Is(err, sql.ErrNoRows) {
+		return Record{}, ErrNotFound
+	} else if err != nil {
+		return Record{}, fmt.Errorf("get next pending file transfer batch item: %w", err)
+	}
+	return item, nil
+}
+
 func (s *Store) MarkRunning(ctx context.Context, id int64) (bool, error) {
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
@@ -688,6 +737,119 @@ func (s *Store) ResumeBatch(ctx context.Context, id int64) (bool, error) {
 	return rows > 0, nil
 }
 
+func (s *Store) UpdatePausedBatchQueue(ctx context.Context, id int64, orderedPendingIDs []int64) ([]Record, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin file transfer batch queue update: %w", err)
+	}
+	defer tx.Rollback()
+
+	var status string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM file_transfer_batches WHERE id = ?`, id).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, fmt.Errorf("read file transfer batch status: %w", err)
+	}
+	if status != StatusPaused {
+		return nil, ErrInvalidState
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, queue_index, status, temp_path
+		FROM file_transfers
+		WHERE batch_id = ?
+		ORDER BY queue_index ASC, id ASC`,
+		id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("read paused file transfer batch items: %w", err)
+	}
+	type queueItem struct {
+		id         int64
+		queueIndex int
+		status     string
+		tempPath   string
+	}
+	var items []queueItem
+	for rows.Next() {
+		var item queueItem
+		if err := rows.Scan(&item.id, &item.queueIndex, &item.status, &item.tempPath); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan paused file transfer batch item: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("iterate paused file transfer batch items: %w", err)
+	}
+	rows.Close()
+
+	pending := map[int64]queueItem{}
+	maxStableIndex := -1
+	for _, item := range items {
+		if item.status == StatusPending {
+			pending[item.id] = item
+			continue
+		}
+		if item.queueIndex > maxStableIndex {
+			maxStableIndex = item.queueIndex
+		}
+	}
+	seen := map[int64]bool{}
+	for _, itemID := range orderedPendingIDs {
+		if itemID < 1 {
+			return nil, ErrInvalidArgument
+		}
+		if seen[itemID] {
+			return nil, ErrInvalidArgument
+		}
+		if _, ok := pending[itemID]; !ok {
+			return nil, ErrInvalidState
+		}
+		seen[itemID] = true
+	}
+
+	now := nowString()
+	var removed []Record
+	for itemID, item := range pending {
+		if seen[itemID] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM file_transfers
+			WHERE id = ? AND status = ?`,
+			itemID,
+			StatusPending,
+		); err != nil {
+			return nil, fmt.Errorf("remove paused file transfer batch item: %w", err)
+		}
+		removed = append(removed, Record{ID: itemID, TempPath: item.tempPath})
+	}
+
+	for index, itemID := range orderedPendingIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE file_transfers
+			SET queue_index = ?, updated_at = ?
+			WHERE id = ? AND status = ?`,
+			maxStableIndex+1+index,
+			now,
+			itemID,
+			StatusPending,
+		); err != nil {
+			return nil, fmt.Errorf("reorder paused file transfer batch item: %w", err)
+		}
+	}
+
+	if err := recalculateBatch(ctx, tx, id); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit file transfer batch queue update: %w", err)
+	}
+	return removed, nil
+}
+
 func (s *Store) CancelBatch(ctx context.Context, id int64, errorText string) (bool, error) {
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
@@ -728,9 +890,50 @@ func (s *Store) CancelBatch(ctx context.Context, id int64, errorText string) (bo
 	return rows > 0, nil
 }
 
-func (s *Store) RecalculateBatch(ctx context.Context, id int64) error {
+func (s *Store) FailActive(ctx context.Context, transferError string, batchError string) error {
 	now := nowString()
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE file_transfers
+		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		WHERE status IN (?, ?, ?)`,
+		StatusFailed,
+		strings.TrimSpace(transferError),
+		now,
+		now,
+		StatusPending,
+		StatusRunning,
+		StatusPaused,
+	); err != nil {
+		return fmt.Errorf("fail active file transfers: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE file_transfer_batches
+		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		WHERE status IN (?, ?, ?)`,
+		StatusFailed,
+		strings.TrimSpace(batchError),
+		now,
+		now,
+		StatusPending,
+		StatusRunning,
+		StatusPaused,
+	); err != nil {
+		return fmt.Errorf("fail active file transfer batches: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) RecalculateBatch(ctx context.Context, id int64) error {
+	return recalculateBatch(ctx, s.db, id)
+}
+
+type batchRecalculator interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func recalculateBatch(ctx context.Context, execer batchRecalculator, id int64) error {
+	now := nowString()
+	_, err := execer.ExecContext(ctx, `
 		UPDATE file_transfer_batches
 		SET
 			total_items = (SELECT COUNT(*) FROM file_transfers WHERE batch_id = ?),

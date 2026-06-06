@@ -155,6 +155,134 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 	}
 }
 
+func TestStoreUpdatesPausedBatchQueue(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	serverID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+
+	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
+		ServerID:  serverID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
+		Items: []CreateRequest{
+			{LocalPath: "a.txt", RemotePath: "/tmp/a.txt", FileName: "a.txt", SizeBytes: 100, TempPath: "/tmp/a"},
+			{LocalPath: "b.txt", RemotePath: "/tmp/b.txt", FileName: "b.txt", SizeBytes: 200, TempPath: "/tmp/b"},
+			{LocalPath: "c.txt", RemotePath: "/tmp/c.txt", FileName: "c.txt", SizeBytes: 300, TempPath: "/tmp/c"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if ok, err := store.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.MarkRunning(ctx, batch.Items[0].ID); err != nil || !ok {
+		t.Fatalf("mark first item running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.PauseBatch(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("pause batch: ok=%v err=%v", ok, err)
+	}
+
+	removed, err := store.UpdatePausedBatchQueue(ctx, batch.ID, []int64{batch.Items[2].ID})
+	if err != nil {
+		t.Fatalf("update paused queue: %v", err)
+	}
+	if len(removed) != 1 || removed[0].ID != batch.Items[1].ID || removed[0].TempPath != "/tmp/b" {
+		t.Fatalf("unexpected removed items: %#v", removed)
+	}
+	if _, err := store.Get(ctx, batch.Items[1].ID); err != ErrNotFound {
+		t.Fatalf("removed pending item should be deleted, got err=%v", err)
+	}
+	updated, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get updated batch: %v", err)
+	}
+	if updated.TotalItems != 2 || updated.SizeBytes != 400 {
+		t.Fatalf("unexpected recalculated batch: %#v", updated)
+	}
+	if updated.Items[0].ID != batch.Items[0].ID || updated.Items[0].Status != StatusPaused {
+		t.Fatalf("paused running item should stay in place: %#v", updated.Items)
+	}
+	if updated.Items[1].ID != batch.Items[2].ID || updated.Items[1].Status != StatusPending {
+		t.Fatalf("remaining pending item should stay queued: %#v", updated.Items)
+	}
+	if _, err := store.UpdatePausedBatchQueue(ctx, batch.ID, []int64{batch.Items[0].ID}); err != ErrInvalidState {
+		t.Fatalf("non-pending items must not be editable, got err=%v", err)
+	}
+	if _, err := store.UpdatePausedBatchQueue(ctx, batch.ID, []int64{0}); err != ErrInvalidArgument {
+		t.Fatalf("non-positive item ids should fail as invalid arguments, got err=%v", err)
+	}
+	if _, err := store.UpdatePausedBatchQueue(ctx, batch.ID, []int64{batch.Items[2].ID, batch.Items[2].ID}); err != ErrInvalidArgument {
+		t.Fatalf("duplicate item ids should fail as invalid arguments, got err=%v", err)
+	}
+}
+
+func TestStoreFailsActiveTransfers(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	serverID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+
+	standalone, err := store.Create(ctx, CreateRequest{
+		ServerID:   serverID,
+		Direction:  DirectionDownload,
+		Source:     SourceUI,
+		RemotePath: "/tmp/a.txt",
+		FileName:   "a.txt",
+		TempPath:   "/tmp/a",
+	})
+	if err != nil {
+		t.Fatalf("create standalone transfer: %v", err)
+	}
+	if ok, err := store.MarkRunning(ctx, standalone.ID); err != nil || !ok {
+		t.Fatalf("mark standalone running: ok=%v err=%v", ok, err)
+	}
+	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
+		ServerID:  serverID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
+		Items: []CreateRequest{
+			{LocalPath: "b.txt", RemotePath: "/tmp/b.txt", FileName: "b.txt", SizeBytes: 200, TempPath: "/tmp/b"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if ok, err := store.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.MarkRunning(ctx, batch.Items[0].ID); err != nil || !ok {
+		t.Fatalf("mark batch item running: ok=%v err=%v", ok, err)
+	}
+
+	if err := store.FailActive(ctx, "transfer stopped", "batch stopped"); err != nil {
+		t.Fatalf("fail active transfers: %v", err)
+	}
+	updated, err := store.Get(ctx, standalone.ID)
+	if err != nil {
+		t.Fatalf("get standalone: %v", err)
+	}
+	if updated.Status != StatusFailed || updated.Error != "transfer stopped" || updated.CompletedAt == "" {
+		t.Fatalf("unexpected failed standalone transfer: %#v", updated)
+	}
+	updatedBatch, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get batch: %v", err)
+	}
+	if updatedBatch.Status != StatusFailed || updatedBatch.Error != "batch stopped" || updatedBatch.Items[0].Status != StatusFailed {
+		t.Fatalf("unexpected failed batch: %#v", updatedBatch)
+	}
+}
+
 func TestStoreValidatesFileTransfers(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {
