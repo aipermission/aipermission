@@ -1,6 +1,28 @@
-export const appVersion = "0.1.7";
+export const appVersion = "0.1.8";
 
 export const changelogEntries = [
+  {
+    version: "0.1.8",
+    label: "Temporary permissions",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Token/server permissions can expire after a temporary maintenance window.",
+          "Console token controls can set active Prompt or Always permissions to 1 hour, 4 hours, or 1 day.",
+          "The always-run warning shows a countdown when an active Always grant is temporary.",
+          "MCP list_servers reports temporary grant expiration and omits expired grants.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Expired token/server permissions no longer authorize MCP command, console, file-transfer, or server-list access.",
+          "Permission expiration is a local safety rail; it does not make LAN or public exposure safe.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.7",
     label: "MCP transfer tools",

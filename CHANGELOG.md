@@ -7,6 +7,27 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-06-07
+
+### Added
+
+- Token/server permissions can now have an optional `expires_at` timestamp for
+  temporary maintenance grants.
+- Console token controls can turn active Prompt or Always permissions into
+  1-hour, 4-hour, or 1-day temporary grants.
+- The Console always-run warning shows a countdown when an active `always_run`
+  grant is temporary.
+- MCP `list_servers` includes `expires_at` for temporary grants and omits
+  expired grants.
+
+### Security
+
+- Expired token/server permissions are not treated as effective by MCP command,
+  console, file-transfer, or server-list permission checks.
+- Permission expiration is a local safety rail for temporary maintenance
+  windows. It does not change the local-only threat model or make exposed
+  gateway ports safe.
+
 ## [0.1.7] - 2026-06-06
 
 ### Added

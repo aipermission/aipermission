@@ -21,6 +21,8 @@ const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components
 const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-browser-dialog.jsx"), "utf8");
 const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-confirm-dialogs.jsx"), "utf8");
 const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
+const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "token-permission-panel.jsx"), "utf8");
+const permissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "permission-dialog.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -65,15 +67,26 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.1\.7"/);
-  assert.match(releaseSource, /MCP transfer tools/);
-  assert.match(releaseSource, /MCP transfer responses never include local temp paths/);
+  assert.match(releaseSource, /appVersion = "0\.1\.8"/);
+  assert.match(releaseSource, /Temporary permissions/);
+  assert.match(releaseSource, /Expired token\/server permissions no longer authorize MCP command/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
   assert.match(sidebarSource, /Start MCP/);
   assert.match(sidebarSource, /Stop MCP/);
   assert.match(sidebarSource, /onSetMCPRuntimeEnabled/);
+});
+
+test("Token permission controls expose temporary grant lifetimes", () => {
+  assert.match(tokenPermissionPanelSource, /PermissionLifetimeControls/);
+  assert.match(tokenPermissionPanelSource, /onSetTemporary\("1h"\)/);
+  assert.match(tokenPermissionPanelSource, /onSetTemporary\("4h"\)/);
+  assert.match(tokenPermissionPanelSource, /onSetTemporary\("1d"\)/);
+  assert.match(permissionDialogSource, /Lifetime/);
+  assert.match(permissionDialogSource, /1 hour/);
+  assert.match(permissionDialogSource, /4 hours/);
+  assert.match(permissionDialogSource, /1 day/);
 });
 
 test("Approval dialog warns before persisting command context", () => {
