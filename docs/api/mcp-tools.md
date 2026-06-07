@@ -17,6 +17,7 @@ The bridge connects to the backend through `AIPERMISSION_API_URL` and `AIPERMISS
 list_servers()
 exec(server_id, command, reason?)
 read_console(server_id, tail?)
+restart_console_session(server_id)
 get_request(request_id)
 list_requests(status?)
 send_message(message, server_id?, session_id?)
@@ -203,6 +204,43 @@ Example response:
 `status` is the persistent console session status, such as `connected`, `closed`, `error`, or `none`; command request state should be read from `get_request`.
 
 The transcript tail is truncated on UTF-8 boundaries.
+
+## restart_console_session
+
+Restarts the backend-owned persistent console session for a visible server.
+This is a recovery tool for cases where the console shell appears stuck,
+the AI sees a request running for too long, or `read_console` shows no useful
+progress.
+
+`restart_console_session` does not run a remote shell command. It closes the
+current gateway-owned console session for the server, marks any running command
+requests for that server as `error`, writes an audit event, and lets the next
+`exec` call open a fresh SSH session.
+
+Input:
+
+```json
+{
+  "server_id": 3
+}
+```
+
+Example response:
+
+```json
+{
+  "status": "restarted",
+  "server_id": 3,
+  "server_name": "core-1",
+  "closed_session_ids": [12],
+  "canceled_running_requests": 1,
+  "assistant_hint": "The persistent console session was closed. The next exec call for this server will open a fresh SSH session."
+}
+```
+
+The tool requires a non-blocked token/server permission and the global MCP
+runtime must be Started. Because persistent console sessions are server-scoped,
+restart is also server-scoped, not token-private.
 
 ## get_request
 

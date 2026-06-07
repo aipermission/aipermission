@@ -73,6 +73,19 @@ server.tool(
 );
 
 server.tool(
+  "restart_console_session",
+  "Restart the persistent console session for a server when it appears stuck. This closes the current gateway-owned console session and the next exec will open a fresh SSH session.",
+  {
+    server_id: z.number().int().positive().describe("Server id from list_servers."),
+  },
+  async ({ server_id }) => {
+    return jsonToolResult(() => apiPost("/api/mcp/console/restart", {
+      server_id,
+    }));
+  }
+);
+
+server.tool(
   "get_request",
   "Read an aipermission command request by id. Use this after exec returns approval_pending or running.",
   {

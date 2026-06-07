@@ -133,6 +133,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/mcp/servers", mcp.mcpListServers)
 	s.mux.HandleFunc("POST /api/mcp/exec", mcp.mcpExec)
 	s.mux.HandleFunc("GET /api/mcp/console", mcp.mcpReadConsole)
+	s.mux.HandleFunc("POST /api/mcp/console/restart", mcp.mcpRestartConsoleSession)
 	s.mux.HandleFunc("GET /api/mcp/requests", mcp.mcpListRequests)
 	s.mux.HandleFunc("GET /api/mcp/requests/{id}", mcp.mcpGetRequest)
 	s.mux.HandleFunc("POST /api/mcp/messages", mcp.mcpCreateMessage)

@@ -82,6 +82,13 @@ When `exec` or `get_request` returns `running`:
 3. Use `read_console(server_id)` between polls only when the token has `always_run` permission.
 4. Do not start another long-running command on the same server until the active request reaches a terminal status, unless the user explicitly asks.
 
+If the request appears stuck for an unusually long time and `read_console`
+shows no useful progress, ask the operator before recovery. When the operator
+agrees, call `restart_console_session(server_id)`. This closes the
+gateway-owned persistent console session and the next `exec` opens a fresh SSH
+session. Treat any canceled request as inconclusive and re-run only the minimal
+safe inspection needed.
+
 ## Message Flow
 
 Use `send_message(message, server_id?, session_id?)` for short operator-visible notes.

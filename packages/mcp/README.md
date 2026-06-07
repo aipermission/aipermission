@@ -54,6 +54,7 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `get_request`
 - `list_requests`
 - `read_console`
+- `restart_console_session`
 - `send_message`
 - `list_file_transfers`
 - `get_file_transfer`

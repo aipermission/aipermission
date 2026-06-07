@@ -570,6 +570,101 @@ func TestMCPExecDoesNotAttachNewRequestToExistingActiveCommand(t *testing.T) {
 	}
 }
 
+func TestMCPRestartConsoleSessionClosesSessionAndRunningRequests(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "worker-1")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	sessionResult, err := fixture.db.Exec(`
+		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at)
+		VALUES (?, 'ai session', 'connected', 'stuck output', 120, 32, ?, ?)`,
+		server.ID,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert console session: %v", err)
+	}
+	sessionID, err := sessionResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("read session id: %v", err)
+	}
+	requestResult, err := fixture.db.Exec(`
+		INSERT INTO command_requests (token_id, server_id, source, command, reason, status, session_id, created_at)
+		VALUES (?, ?, 'mcp', 'sleep 60', 'stuck command', 'running', ?, ?)`,
+		token.ID,
+		server.ID,
+		sessionID,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert running command request: %v", err)
+	}
+	requestID, err := requestResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("read request id: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/console/restart", token.TokenValue, map[string]any{
+		"server_id": server.ID,
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("restart console failed: %d %s", response.Code, response.Body.String())
+	}
+	var body mcpRestartConsoleResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode restart response: %v", err)
+	}
+	if body.Status != "restarted" || body.ServerID != server.ID || body.CanceledRunningRequests != 1 {
+		t.Fatalf("unexpected restart response: %#v", body)
+	}
+	if len(body.ClosedSessionIDs) != 1 || body.ClosedSessionIDs[0] != sessionID {
+		t.Fatalf("expected closed session id %d, got %#v", sessionID, body.ClosedSessionIDs)
+	}
+
+	var sessionStatus string
+	if err := fixture.db.QueryRow(`SELECT status FROM console_sessions WHERE id = ?`, sessionID).Scan(&sessionStatus); err != nil {
+		t.Fatalf("read console session status: %v", err)
+	}
+	if sessionStatus != "closed" {
+		t.Fatalf("expected console session closed, got %s", sessionStatus)
+	}
+	var requestStatus string
+	var requestError string
+	if err := fixture.db.QueryRow(`SELECT status, error FROM command_requests WHERE id = ?`, requestID).Scan(&requestStatus, &requestError); err != nil {
+		t.Fatalf("read command request status: %v", err)
+	}
+	if requestStatus != "error" || !strings.Contains(requestError, "restarted") {
+		t.Fatalf("expected running request error after restart, status=%s error=%q", requestStatus, requestError)
+	}
+
+	blockedToken, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "blocked-agent"})
+	if err != nil {
+		t.Fatalf("create blocked token: %v", err)
+	}
+	if _, err := fixture.tokens.UpdatePermissions(ctx, blockedToken.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleBlocked},
+	}}); err != nil {
+		t.Fatalf("update blocked permissions: %v", err)
+	}
+	blockedResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/console/restart", blockedToken.TokenValue, map[string]any{
+		"server_id": server.ID,
+	})
+	if blockedResponse.Code != http.StatusOK || !strings.Contains(blockedResponse.Body.String(), `"status":"blocked"`) {
+		t.Fatalf("blocked token should not restart console, got %d %s", blockedResponse.Code, blockedResponse.Body.String())
+	}
+}
+
 func TestMCPExecValidatesInputAndBlocksMissingPermission(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()

@@ -13,12 +13,19 @@ and this project uses semantic versioning once public releases begin.
   the token, token/server permission, server profile, SSH key fingerprint, MCP
   tool metadata, and command payload hash.
 - Approval dialogs show how long ago the request was created.
+- MCP clients can restart a stuck persistent console session for a visible
+  server, causing the next `exec` call to open a fresh SSH session.
 
 ### Security
 
 - If a pending command's approval context changes before the operator clicks
   Run, AIPermission marks the request `stale` and requires the AI to submit a
   fresh request instead of executing an old approval.
+
+### Fixed
+
+- MCP command execution is more resilient when a persistent console session is
+  closed or restarted while a command request is still running.
 
 ## [0.1.8] - 2026-06-07
 

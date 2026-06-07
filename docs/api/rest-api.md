@@ -600,6 +600,7 @@ POST /api/mcp/exec
 GET  /api/mcp/requests/{id}
 GET  /api/mcp/requests
 GET  /api/mcp/console
+POST /api/mcp/console/restart
 POST /api/mcp/messages
 ```
 
@@ -622,6 +623,12 @@ Saved token/server permissions are preserved while stopped.
 For approval-required commands, the bridge should poll `get_request` according to `assistant_hint`. If the user clicks Run, the backend executes in the persistent console session. If the user clicks Decline, the request becomes `declined`.
 
 For long `always_run` commands, `/api/mcp/exec` may return `running` with `retry_after_seconds` and `assistant_hint`. The AI should poll `get_request(request_id)` and use `read_console(server_id)` for live output before sending another long-running command to the same server.
+
+If a persistent console session appears stuck, `POST /api/mcp/console/restart`
+closes the current console session for that server, marks any running command
+requests for that server as `error`, and lets the next `/api/mcp/exec` open a
+fresh SSH session. The route requires a non-blocked token/server permission and
+the global MCP runtime must be Started.
 
 ## Approvals
 

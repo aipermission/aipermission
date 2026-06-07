@@ -62,6 +62,16 @@ type mcpConsoleResponse struct {
 	UserNote   *string `json:"user_note,omitempty"`
 }
 
+type mcpRestartConsoleResponse struct {
+	Status                  string  `json:"status"`
+	ServerID                int64   `json:"server_id"`
+	ServerName              string  `json:"server_name,omitempty"`
+	ClosedSessionIDs        []int64 `json:"closed_session_ids"`
+	CanceledRunningRequests int64   `json:"canceled_running_requests"`
+	AssistantHint           string  `json:"assistant_hint,omitempty"`
+	Error                   string  `json:"error,omitempty"`
+}
+
 type commandRequestRecord struct {
 	ID                int64                `json:"id"`
 	TokenID           *int64               `json:"token_id,omitempty"`
