@@ -7,11 +7,14 @@ import { Notice } from "../ui/notice";
 import { TerminalBlock } from "../ui/terminal-block";
 
 export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }) {
+  const requestAge = approval ? formatRequestAge(approval.created_at) : "";
+  const requestTimestamp = approval?.created_at ? formatRequestTimestamp(approval.created_at) : "";
+  const stale = action.state === "stale";
   return (
     <Dialog
       open={Boolean(approval)}
       title={approval ? `${approval.server_name} approval` : "Approval"}
-      description={approval ? `Request #${approval.id} is waiting for your decision.` : ""}
+      description={approval ? `Request #${approval.id} is waiting for your decision${requestAge ? ` · sent ${requestAge}` : ""}.` : ""}
       onClose={onClose}
       size="xl"
       className="max-h-[calc(100vh-96px)]"
@@ -23,6 +26,7 @@ export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, on
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="warn">pending</Badge>
               {approval.token_name ? <Badge>{approval.token_name}</Badge> : null}
+              {requestAge ? <Badge title={requestTimestamp}>sent {requestAge}</Badge> : null}
             </div>
             {approval.reason ? (
               <div className="rounded-md border border-stone-200 bg-stone-50 p-3">
@@ -52,18 +56,44 @@ export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, on
                 className="!min-h-16 resize-none"
               />
             </label>
-            {action.state === "error" ? <Notice tone="bad">{action.error}</Notice> : null}
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" onClick={onDecline} disabled={action.state !== "idle" && action.state !== "error"}>
-                {action.state === "declining" ? "Declining..." : "Decline"}
+            {action.state === "error" || stale ? <Notice tone="bad">{action.error}</Notice> : null}
+            {stale ? (
+              <Button type="button" onClick={onClose}>
+                OK
               </Button>
-              <Button type="button" onClick={onRun} disabled={action.state !== "idle" && action.state !== "error"}>
-                {action.state === "running" ? "Starting..." : "Run"}
-              </Button>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" variant="outline" onClick={onDecline} disabled={action.state !== "idle" && action.state !== "error"}>
+                  {action.state === "declining" ? "Declining..." : "Decline"}
+                </Button>
+                <Button type="button" onClick={onRun} disabled={action.state !== "idle" && action.state !== "error"}>
+                  {action.state === "running" ? "Starting..." : "Run"}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       ) : null}
     </Dialog>
   );
+}
+
+function formatRequestAge(value) {
+  if (!value) return "";
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatRequestTimestamp(value) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "";
+  return new Date(timestamp).toLocaleString();
 }

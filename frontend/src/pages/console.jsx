@@ -41,6 +41,7 @@ export function ConsolePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { permissionState, loadAllTokenPermissions, setTokenServerRule } = useTokenPermissions(tokens.data);
   const [activeApprovalID, setActiveApprovalID] = useState(null);
+  const [activeApprovalSnapshot, setActiveApprovalSnapshot] = useState(null);
   const [dismissedApprovalIDs, setDismissedApprovalIDs] = useState({});
   const [approvalNote, setApprovalNote] = useState("");
   const [approvalAction, setApprovalAction] = useState({ state: "idle", error: null });
@@ -75,7 +76,8 @@ export function ConsolePage() {
     permissionState,
     now,
   });
-  const activeApproval = activeApprovalID ? pendingApprovals.find((approval) => Number(approval.id) === Number(activeApprovalID)) : null;
+  const activePendingApproval = activeApprovalID ? pendingApprovals.find((approval) => Number(approval.id) === Number(activeApprovalID)) : null;
+  const activeApproval = activePendingApproval || (activeApprovalSnapshot && Number(activeApprovalSnapshot.id) === Number(activeApprovalID) ? activeApprovalSnapshot : null);
   const alwaysRunTokens = selectedServer
     ? selectedTokenOptions.filter((token) => effectiveRule(permissionState.data?.[token.id]?.[selectedServer.id], now) === "always_run")
     : [];
@@ -113,8 +115,9 @@ export function ConsolePage() {
   }, [selectedServer?.id, selectedSession.id, selectedSession.status]);
 
   useEffect(() => {
-    if (activeApprovalID && !pendingApprovals.some((approval) => Number(approval.id) === Number(activeApprovalID))) {
+    if (activeApprovalID && !pendingApprovals.some((approval) => Number(approval.id) === Number(activeApprovalID)) && approvalAction.state !== "error" && approvalAction.state !== "stale") {
       setActiveApprovalID(null);
+      setActiveApprovalSnapshot(null);
       setApprovalNote("");
       setApprovalAction({ state: "idle", error: null });
       return;
@@ -123,10 +126,11 @@ export function ConsolePage() {
     const next = selectedPendingApprovals.find((approval) => !dismissedApprovalIDs[approval.id]);
     if (next) {
       setActiveApprovalID(next.id);
+      setActiveApprovalSnapshot(next);
       setApprovalNote("");
       setApprovalAction({ state: "idle", error: null });
     }
-  }, [activeApprovalID, selectedPendingApprovals.map((approval) => approval.id).join(","), dismissedApprovalIDs, pendingApprovals.length]);
+  }, [activeApprovalID, selectedPendingApprovals.map((approval) => approval.id).join(","), dismissedApprovalIDs, pendingApprovals.length, approvalAction.state]);
 
   function selectServer(serverID) {
     setSearchParams({ server: String(serverID) });
@@ -134,6 +138,7 @@ export function ConsolePage() {
 
   function openApproval(approval) {
     setActiveApprovalID(approval.id);
+    setActiveApprovalSnapshot(approval);
     setApprovalNote(approval.user_note || "");
     setApprovalAction({ state: "idle", error: null });
   }
@@ -189,25 +194,29 @@ export function ConsolePage() {
       setDismissedApprovalIDs((current) => ({ ...current, [activeApprovalID]: true }));
     }
     setActiveApprovalID(null);
+    setActiveApprovalSnapshot(null);
     setApprovalNote("");
     setApprovalAction({ state: "idle", error: null });
   }
 
   async function approveActiveRequest() {
     if (!activeApproval) return;
+    const approval = activeApproval;
     setApprovalAction({ state: "running", error: null });
     try {
-      await runApproval(activeApproval.id, approvalNote);
+      await runApproval(approval.id, approvalNote);
       setDismissedApprovalIDs((current) => {
         const next = { ...current };
-        delete next[activeApproval.id];
+        delete next[approval.id];
         return next;
       });
       setActiveApprovalID(null);
+      setActiveApprovalSnapshot(null);
       setApprovalNote("");
       setApprovalAction({ state: "idle", error: null });
     } catch (error) {
-      setApprovalAction({ state: "error", error: error.message });
+      setActiveApprovalSnapshot(approval);
+      setApprovalAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: error.message });
     }
   }
 
@@ -222,11 +231,17 @@ export function ConsolePage() {
         return next;
       });
       setActiveApprovalID(null);
+      setActiveApprovalSnapshot(null);
       setApprovalNote("");
       setApprovalAction({ state: "idle", error: null });
     } catch (error) {
       setApprovalAction({ state: "error", error: error.message });
     }
+  }
+
+  function isStaleApprovalError(error) {
+    const message = String(error?.message || "").toLowerCase();
+    return message.includes("stale") || message.includes("approval context") || message.includes("fresh request");
   }
 
   return (

@@ -12,6 +12,7 @@ and this project uses semantic versioning once public releases begin.
 - Pending MCP command approvals now store an approval-context snapshot covering
   the token, token/server permission, server profile, SSH key fingerprint, MCP
   tool metadata, and command payload hash.
+- Approval dialogs show how long ago the request was created.
 
 ### Security
 

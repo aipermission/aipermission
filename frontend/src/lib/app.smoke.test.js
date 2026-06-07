@@ -16,6 +16,7 @@ const serversSource = readFileSync(join(currentDir, "..", "pages", "servers.jsx"
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
 const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
+const consolePageSource = readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8");
 const sshKeysSource = readFileSync(join(currentDir, "..", "pages", "ssh-keys.jsx"), "utf8");
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-dialog.jsx"), "utf8");
 const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-browser-dialog.jsx"), "utf8");
@@ -93,6 +94,11 @@ test("Approval dialog warns before persisting command context", () => {
   assert.match(approvalDialogSource, /shell command body/);
   assert.match(approvalDialogSource, /may be persisted/);
   assert.match(approvalDialogSource, /redaction is best-effort/i);
+  assert.match(approvalDialogSource, /sent \{requestAge\}/);
+  assert.match(approvalDialogSource, /action\.state === "stale"/);
+  assert.match(approvalDialogSource, /OK/);
+  assert.match(consolePageSource, /activeApprovalSnapshot/);
+  assert.match(consolePageSource, /isStaleApprovalError/);
 });
 
 test("Server host key dialog handles first approval and changed fingerprints", () => {

@@ -327,9 +327,14 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function runApproval(requestID, userNote = "") {
-    const item = await apiPost(`/api/approvals/${requestID}/run`, { user_note: userNote });
-    await Promise.all([loadApprovals(), loadConsoleSessions()]);
-    return item;
+    try {
+      const item = await apiPost(`/api/approvals/${requestID}/run`, { user_note: userNote });
+      await Promise.all([loadApprovals(), loadConsoleSessions()]);
+      return item;
+    } catch (error) {
+      await loadApprovals();
+      throw error;
+    }
   }
 
   async function declineApproval(requestID, userNote = "") {
