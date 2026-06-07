@@ -7,6 +7,8 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-06-07
+
 ### Added
 
 - Pending MCP command approvals now store an approval-context snapshot covering

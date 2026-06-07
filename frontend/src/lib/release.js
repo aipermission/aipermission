@@ -1,6 +1,26 @@
-export const appVersion = "0.1.8";
+export const appVersion = "0.1.9";
 
 export const changelogEntries = [
+  {
+    version: "0.1.9",
+    label: "Approval drift and console recovery",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Pending MCP approvals now store an approval-context snapshot and become stale if the context changes before Run.",
+          "Approval dialogs show how long ago the request was created.",
+          "MCP clients can restart a stuck persistent console session so the next exec opens a fresh SSH session.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Persistent console MCP exec is more resilient across repeated commands and closed sessions.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.8",
     label: "Temporary permissions",

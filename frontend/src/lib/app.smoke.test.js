@@ -68,9 +68,9 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.1\.8"/);
-  assert.match(releaseSource, /Temporary permissions/);
-  assert.match(releaseSource, /Expired token\/server permissions no longer authorize MCP command/);
+  assert.match(releaseSource, /appVersion = "0\.1\.9"/);
+  assert.match(releaseSource, /Approval drift and console recovery/);
+  assert.match(releaseSource, /Persistent console MCP exec is more resilient/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
