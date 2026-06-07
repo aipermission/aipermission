@@ -7,6 +7,11 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+### Fixed
+
+- Hide internal persistent-console prelude lines from the live console and MCP
+  command output when a PTY echoes setup commands.
+
 ## [0.1.9] - 2026-06-07
 
 ### Added

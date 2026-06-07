@@ -1022,6 +1022,40 @@ func TestAppendOutputCleansOnlyDuringAutomation(t *testing.T) {
 	}
 }
 
+func TestAppendOutputHidesConsolePreludeNoise(t *testing.T) {
+	session := &managedConsoleSession{
+		activeExec: &consoleSessionActiveExec{Marker: "__AIPERMISSION_EXIT_1"},
+	}
+	session.appendOutput("__aipermission_saved_stty=$(stty -g 2>/dev/null || true)\r\nuseful output\r\n__AIPERMISSION_EXIT_1:0\r\n")
+
+	if strings.Contains(session.transcript, "__aipermission_saved_stty") {
+		t.Fatalf("display transcript should hide console prelude noise: %q", session.transcript)
+	}
+	if !strings.Contains(session.transcript, "useful output") {
+		t.Fatalf("display transcript should keep command output: %q", session.transcript)
+	}
+}
+
+func TestCheckCommandResultFiltersConsolePreludeNoise(t *testing.T) {
+	session := &managedConsoleSession{
+		rawTranscript: "__aipermission_saved_stty=$(stty -g 2>/dev/null || true)\nuseful output\n__AIPERMISSION_EXIT_1:0\nroot@worker:~# ",
+	}
+
+	output, exitCode, completed, err := session.checkCommandResult(0, "__AIPERMISSION_EXIT_1")
+	if err != nil {
+		t.Fatalf("check command result: %v", err)
+	}
+	if !completed || exitCode != 0 {
+		t.Fatalf("expected completed success, got completed=%v exit=%d", completed, exitCode)
+	}
+	if strings.Contains(output, "__aipermission_saved_stty") {
+		t.Fatalf("command result should hide console prelude noise: %q", output)
+	}
+	if strings.TrimSpace(output) != "useful output" {
+		t.Fatalf("unexpected command output: %q", output)
+	}
+}
+
 func TestAppendOutputKeepsFinalPromptAfterAutomationCompletes(t *testing.T) {
 	session := &managedConsoleSession{
 		activeExec: &consoleSessionActiveExec{Marker: "__AIPERMISSION_EXIT_1"},

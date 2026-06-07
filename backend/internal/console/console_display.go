@@ -101,18 +101,38 @@ func cleanConsoleDisplayOutput(data string, keepShellPrompt bool) string {
 	return output
 }
 
+func cleanConsoleCommandResultOutput(data string) string {
+	if data == "" {
+		return ""
+	}
+	data = ansiSequencePattern.ReplaceAllString(data, "")
+	data = strings.ReplaceAll(data, "\r\n", "\n")
+	data = strings.ReplaceAll(data, "\r", "\n")
+	lines := strings.Split(data, "\n")
+	endedWithNewline := strings.HasSuffix(data, "\n")
+	cleaned := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimRight(line, " \t")
+		if isConsoleInternalNoise(strings.TrimSpace(line)) {
+			continue
+		}
+		cleaned = append(cleaned, line)
+	}
+	if len(cleaned) == 0 {
+		return ""
+	}
+	output := strings.Join(cleaned, "\n")
+	if endedWithNewline && !strings.HasSuffix(output, "\n") {
+		output += "\n"
+	}
+	return output
+}
+
 func isConsoleDisplayNoise(line string, keepShellPrompt bool) bool {
 	if line == "" {
 		return false
 	}
-	if strings.Contains(line, "__AIPERMISSION_EXIT_") ||
-		strings.Contains(line, "__aipermission_saved_ps2") ||
-		strings.Contains(line, "stty -echo") ||
-		strings.Contains(line, "stty sane") ||
-		strings.Contains(line, "stty echo icanon opost") ||
-		strings.Contains(line, "stty echo") ||
-		line == "PS2=" ||
-		line == ">" {
+	if isConsoleInternalNoise(line) {
 		return true
 	}
 	if shellPromptPattern.MatchString(line) {
@@ -122,4 +142,19 @@ func isConsoleDisplayNoise(line string, keepShellPrompt bool) bool {
 		return true
 	}
 	return false
+}
+
+func isConsoleInternalNoise(line string) bool {
+	if line == "" {
+		return false
+	}
+	return strings.Contains(line, "__AIPERMISSION_EXIT_") ||
+		strings.Contains(line, "__aipermission_saved_stty") ||
+		strings.Contains(line, "__aipermission_saved_ps2") ||
+		strings.Contains(line, "stty -echo") ||
+		strings.Contains(line, "stty sane") ||
+		strings.Contains(line, "stty echo icanon opost") ||
+		strings.Contains(line, "stty echo") ||
+		line == "PS2=" ||
+		line == ">"
 }

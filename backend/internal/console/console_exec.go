@@ -226,7 +226,7 @@ func (s *managedConsoleSession) checkCommandResult(startOffset int, marker strin
 	markerNeedle := "\n" + marker + ":"
 	markerIndex := strings.Index(segment, markerNeedle)
 	if markerIndex >= 0 {
-		output := segment[:markerIndex]
+		output := cleanConsoleCommandResultOutput(segment[:markerIndex])
 		afterMarker := segment[markerIndex+len(markerNeedle):]
 		lineEnd := strings.IndexAny(afterMarker, "\r\n")
 		exitText := afterMarker
