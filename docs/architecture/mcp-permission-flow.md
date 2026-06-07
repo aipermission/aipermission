@@ -22,7 +22,8 @@ For the detailed tool contract, see [MCP Tools](../api/mcp-tools.md).
 
 ## list_servers
 
-`list_servers()` returns only the servers that the token can access.
+`list_servers()` returns only the servers that the token can access. Temporary
+permission grants include `expires_at`; expired grants are omitted.
 
 Example:
 
@@ -31,7 +32,8 @@ Example:
   {
     "id": 3,
     "name": "core-1",
-    "execution_rule": "approval_required"
+    "execution_rule": "approval_required",
+    "expires_at": "2026-06-07T14:00:00Z"
   }
 ]
 ```
@@ -49,13 +51,14 @@ Gateway flow:
 1. Validate the API token.
 2. Reject revoked tokens.
 3. Check whether the token has permission for server `3`.
-4. Read the execution rule.
-5. Check whether the global MCP runtime is started.
-6. If the runtime is stopped, return `stopped`.
-7. If the rule is `always_run`, run the command directly.
-8. If the rule is `approval_required`, create a pending approval.
-9. If the rule is `blocked`, reject the command without execution.
-10. Return the result or a follow-up `request_id` to the MCP client.
+4. Reject expired token/server permission grants.
+5. Read the execution rule.
+6. Check whether the global MCP runtime is started.
+7. If the runtime is stopped, return `stopped`.
+8. If the rule is `always_run`, run the command directly.
+9. If the rule is `approval_required`, create a pending approval.
+10. If the rule is `blocked`, reject the command without execution.
+11. Return the result or a follow-up `request_id` to the MCP client.
 
 ## Approval Required
 

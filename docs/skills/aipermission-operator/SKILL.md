@@ -18,11 +18,14 @@ AIPermission is not a general DevOps control plane. Treat it as a temporary, sco
 Before executing commands:
 
 1. Call `list_servers()`.
-2. Read each server's `name`, `id`, `execution_rule`, and `hints`.
+2. Read each server's `name`, `id`, `execution_rule`, optional `expires_at`,
+   and `hints`.
 3. Use the numeric `id` returned by the tool.
 4. Pick the narrowest server set that can answer the task.
 
 If no server is visible, say that the current token has no accessible servers.
+If `expires_at` is present, treat access as temporary. Finish within that
+maintenance window or ask the operator to extend access.
 
 ## Command Reasons
 

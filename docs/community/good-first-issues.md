@@ -26,7 +26,7 @@ issues small, scoped, and friendly to contributors who are learning the codebase
 
 ## Security And Safety
 
-- Add permission expiration design notes for temporary maintenance access.
+- Add short examples that explain when to use temporary permission grants.
 - Add a command policy prototype that warns, but does not block, common high-risk commands.
 - Add more built-in redaction patterns with focused tests.
 

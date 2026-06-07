@@ -120,7 +120,7 @@ Implemented:
 - server management and SSH connection test
 - API token create, copy, revoke
 - token expiration for temporary MCP access
-- token-to-server permissions
+- token-to-server permissions with optional temporary expiration
 - execution rules: `always_run`, `approval_required`, `blocked`
 - global MCP Started/Stopped switch that preserves permissions while blocking live execution
 - persistent web console with live PTY streaming
@@ -221,6 +221,11 @@ In API/MCP data, denied access is represented as `blocked`. In the UI, an unset 
 
 Use `approval_required` for real systems until you trust the workflow. Use `always_run` for low-risk maintenance sessions or temporary local/dev servers.
 
+Token/server permissions can be permanent or temporary. A temporary grant has an
+`expires_at` timestamp; after it expires, MCP no longer treats that permission
+as effective. This is useful for short maintenance windows, especially temporary
+`always_run` access.
+
 Saved permissions are not the same as live execution. Each unlocked database has
 a global MCP Started/Stopped switch in the sidebar. By default, MCP execution
 starts stopped after gateway startup or database unlock, so saved `always_run`
@@ -299,9 +304,11 @@ Important boundaries:
   the user, then stored inside the encrypted local gateway.
 - AI clients authenticate with API tokens, not SSH credentials.
 - API tokens are shown once by default. Security can enable reusable token copy for newly created tokens; reusable values are stored with gateway vault encryption.
-- API tokens can be created as temporary tokens with an expiration timestamp.
+- API tokens and token/server permissions can use expiration timestamps for
+  temporary maintenance access.
 - Tokens only see servers explicitly permitted for that token.
-- Revoked or expired tokens are rejected by MCP endpoints.
+- Revoked tokens, expired tokens, and expired token/server permission grants are
+  rejected by MCP permission checks.
 - Server credentials are not returned by REST or MCP responses.
 - SSH host keys require first-connect fingerprint approval and are verified on later connections.
 - The SQLite database is encrypted with SQLCipher and requires the local database password after startup.

@@ -120,8 +120,9 @@ SSH host key pins are not part of the SQLCipher database. They live in the local
 ## Product Decision
 
 Token values are shown once by default. Tokens may also have an `expires_at`
-timestamp for temporary MCP access. When reusable token copy is disabled, newly
-created token values are not stored for later copying; authentication still uses
-SHA256 hashes of high-entropy random token values.
+timestamp for temporary MCP access. Token/server permission grants can also have
+an `expires_at` timestamp for temporary maintenance windows. When reusable token
+copy is disabled, newly created token values are not stored for later copying;
+authentication still uses SHA256 hashes of high-entropy random token values.
 
 If the user enables reusable token copy for local convenience, token values created after that point are stored in encrypted `token_value` form through the gateway vault and can be copied again from the UI. Disabling the setting clears stored reusable token values. Token hashes remain for authentication, but token values cannot be recovered after clearing.

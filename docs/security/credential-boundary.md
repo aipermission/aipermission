@@ -64,6 +64,7 @@ Rules:
 - token values are shown once by default
 - reusable token copy can be enabled in Security for tokens created afterward
 - tokens can be created with an expiration timestamp for temporary MCP access
+- token/server permissions can also expire for temporary maintenance grants
 - token lookup uses hashes
 - stored reusable token values are encrypted by the gateway vault
 - revoked or expired tokens are rejected by MCP endpoints

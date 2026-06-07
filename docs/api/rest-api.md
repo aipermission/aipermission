@@ -504,11 +504,17 @@ Permission update shape:
   "permissions": [
     {
       "server_id": 3,
-      "execution_rule": "approval_required"
+      "execution_rule": "approval_required",
+      "expires_at": "2026-06-07T14:00:00Z"
     }
   ]
 }
 ```
+
+`expires_at` is optional and must be an RFC3339 timestamp in the future when
+present. It creates a temporary token/server permission grant. Expired grants
+remain visible in the local UI for clarity, but MCP permission checks no longer
+treat them as effective.
 
 Supported execution rules:
 

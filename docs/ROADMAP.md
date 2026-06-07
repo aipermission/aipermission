@@ -127,13 +127,21 @@ AIPermission against real VPS maintenance tasks.
 - MCP transfer responses stay metadata-only and never include file contents or
   gateway temporary paths.
 
+`0.1.8` ships:
+
+- Optional expiration timestamps for token/server permission grants.
+- Temporary Prompt or Always permissions from the Console token panel and Tokens
+  page permission dialogs.
+- Countdown text in the Console always-run warning for temporary `always_run`
+  grants.
+- MCP permission checks omit expired grants from server lists, command
+  execution, console reads, and file-transfer tools.
+
 ## Early RC Follow-Ups
 
 These are good candidates for small follow-up releases after the first public
 tag:
 
-- [ ] Add permission expiration for temporary server access grants.
-- [ ] Add temporary `always_run` grants with visible countdowns in Console.
 - [ ] Add command policy/risk scoring primitives without turning the product
   into a DevOps platform.
 - [ ] Add optional deny/warn rules for common high-risk command patterns.

@@ -48,6 +48,7 @@ Example response:
     "name": "core-1",
     "description": "Kubernetes control-plane maintenance access.",
     "execution_rule": "approval_required",
+    "expires_at": "2026-06-07T14:00:00Z",
     "hints": [
       "Use non-interactive apt commands.",
       "Prefer journalctl --no-pager for service logs."
@@ -56,7 +57,11 @@ Example response:
 ]
 ```
 
-By default, `list_servers` hides endpoint metadata and returns only `id`, `name`, `description`, `execution_rule`, and `hints`. Security can enable **Expose endpoint metadata to MCP** if an operator wants MCP clients to also receive `host`, `port`, and `username`.
+By default, `list_servers` hides endpoint metadata and returns only `id`, `name`, `description`, `execution_rule`, optional `expires_at`, and `hints`. Security can enable **Expose endpoint metadata to MCP** if an operator wants MCP clients to also receive `host`, `port`, and `username`.
+
+`expires_at` appears when the token/server permission is temporary. Expired
+permissions are omitted from `list_servers` and do not authorize `exec`,
+`read_console`, or file-transfer tools.
 
 `hints` contains gateway-generated, safe operational notes that help an AI agent produce better shell commands for that server. The current MVP does not accept custom per-server hints through the server CRUD API. Hints must not contain credentials.
 
@@ -83,8 +88,9 @@ The gateway checks:
 1. token validity
 2. token revocation
 3. token permission for the server
-4. execution rule
-5. global MCP Started/Stopped runtime state
+4. token/server permission expiration
+5. execution rule
+6. global MCP Started/Stopped runtime state
 
 If MCP execution is stopped in the web UI, `exec` returns:
 

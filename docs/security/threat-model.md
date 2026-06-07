@@ -65,6 +65,8 @@ Mitigations:
 - project-local MCP config files are added to `.git/info/exclude` by the MCP init command when possible
 - tokens can be revoked from the UI
 - tokens can expire automatically when created for temporary access
+- token/server permissions can expire automatically for temporary maintenance
+  windows
 - MCP auth uses SHA256 hashes of high-entropy random tokens, not stored reusable token payloads
 
 ### SSH Host Impersonation
