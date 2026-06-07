@@ -146,3 +146,23 @@ func (s *Server) cancelRunningCommandRequests(ctx context.Context, runtime *data
 	}
 	return err
 }
+
+func (s *Server) cancelRunningCommandRequestsForSession(ctx context.Context, runtime *databaseRuntime, sessionID int64, errorText string) error {
+	if runtime == nil || runtime.database == nil || sessionID < 1 {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	errorText = s.redactForPersistence(ctx, runtime, errorText)
+	_, err := runtime.database.ExecContext(ctx, `
+		UPDATE command_requests
+		SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
+		WHERE status = 'running' AND session_id = ?`,
+		errorText,
+		now,
+		sessionID,
+	)
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "database is closed") {
+		return nil
+	}
+	return err
+}

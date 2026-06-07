@@ -115,6 +115,10 @@ func (s consoleHandlers) closeConsoleSession(w http.ResponseWriter, r *http.Requ
 		writeInternalError(w)
 		return
 	}
+	if err := s.cancelRunningCommandRequestsForSession(r.Context(), runtime, id, "console session closed before command completed"); err != nil {
+		writeInternalError(w)
+		return
+	}
 	if serverID, err := consoleSessionServerID(r.Context(), runtime, id); err == nil {
 		s.writeAudit(r.Context(), runtime, "user", nil, serverID, "console.session.closed", map[string]any{
 			"session_id": id,

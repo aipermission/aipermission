@@ -59,17 +59,18 @@ func (s *managedConsoleSession) execCommand(ctx context.Context, command string)
 		Started:     started,
 	})
 
-	payload := consoleExecPayload(command, marker)
-	s.appendDisplayOutput(formatAutomationCommand(command))
-	if err := s.writeInput("__aipermission_saved_ps2=${PS2-}\nPS2=\nstty -echo 2>/dev/null || true\n"); err != nil {
+	if err := s.writeInput(consoleExecPrelude()); err != nil {
 		s.clearActiveCommand(marker)
 		return ExecResult{}, err
 	}
-	time.Sleep(80 * time.Millisecond)
+	time.Sleep(120 * time.Millisecond)
+
+	payload := consoleExecPayload(command, marker)
 	if err := s.writeInput(payload); err != nil {
 		s.clearActiveCommand(marker)
 		return ExecResult{}, err
 	}
+	s.appendDisplayOutput(formatAutomationCommand(command))
 
 	output, exitCode, err := s.waitForCommandResult(ctx, startOffset, marker)
 	if err != nil {
@@ -252,5 +253,9 @@ func consoleExecPayload(command string, marker string) string {
 	for strings.Contains(command, "\n"+delimiter+"\n") {
 		delimiter += "_X"
 	}
-	return fmt.Sprintf("/bin/sh <<'%s'\n(\n%s\n) </dev/null\n__aipermission_exit=$?; PS2=${__aipermission_saved_ps2-}; unset __aipermission_saved_ps2; stty sane 2>/dev/null || stty echo icanon opost 2>/dev/null || true; printf '\\n%s:%%s\\n' \"$__aipermission_exit\"; unset __aipermission_exit\n%s\n", delimiter, command, marker, delimiter)
+	return fmt.Sprintf("/bin/sh <<'%s'\n(\n%s\n) </dev/null\n__aipermission_exit=$?\nprintf '\\n%s:%%s\\n' \"$__aipermission_exit\"\nunset __aipermission_exit\n%s\nif [ -n \"$__aipermission_saved_stty\" ]; then stty \"$__aipermission_saved_stty\" 2>/dev/null || true; else stty sane 2>/dev/null || stty echo icanon opost 2>/dev/null || true; fi; unset __aipermission_saved_stty\n", delimiter, command, marker, delimiter)
+}
+
+func consoleExecPrelude() string {
+	return "__aipermission_saved_stty=$(stty -g 2>/dev/null || true)\nstty -echo 2>/dev/null || true\n"
 }

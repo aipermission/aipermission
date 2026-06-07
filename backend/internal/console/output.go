@@ -48,7 +48,7 @@ func isPlainOutputNoise(line string) bool {
 	if line == ">" {
 		return true
 	}
-	if strings.Contains(line, "__aipermission_saved_ps2") || strings.Contains(line, "stty echo icanon opost") || line == "PS2=" {
+	if strings.Contains(line, "__aipermission_saved_") || strings.Contains(line, "stty -echo") || strings.Contains(line, "stty echo icanon opost") || line == "PS2=" {
 		return true
 	}
 	if shellPromptPattern.MatchString(line) {

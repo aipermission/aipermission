@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -899,8 +900,72 @@ func TestConsoleExecPayloadAvoidsBase64BashAndMktemp(t *testing.T) {
 	if !strings.Contains(payload, ") </dev/null") {
 		t.Fatalf("payload should keep command stdin from consuming the heredoc: %s", payload)
 	}
+	if !strings.Contains(payload, "stty \"$__aipermission_saved_stty\" 2>/dev/null || true") {
+		t.Fatalf("payload should restore the original terminal input mode when possible: %s", payload)
+	}
 	if !strings.Contains(payload, "stty sane 2>/dev/null || stty echo icanon opost 2>/dev/null || true") {
 		t.Fatalf("payload should restore terminal input mode before completion marker: %s", payload)
+	}
+}
+
+func TestConsoleExecPreludeDisablesEchoBeforePayload(t *testing.T) {
+	prelude := consoleExecPrelude()
+	if !strings.Contains(prelude, "__aipermission_saved_stty=$(stty -g 2>/dev/null || true)") {
+		t.Fatalf("prelude should save terminal input mode before disabling echo: %s", prelude)
+	}
+	if !strings.Contains(prelude, "stty -echo 2>/dev/null || true") {
+		t.Fatalf("prelude should disable terminal echo before command payload is written: %s", prelude)
+	}
+}
+
+func TestConsoleExecPayloadRunsAndEmitsMarker(t *testing.T) {
+	payload := consoleExecPayload("set -e\nprintf 'hello\\n'\nprintf 'world\\n'\n", "__AIPERMISSION_EXIT_TEST__")
+	cmd := exec.Command("/bin/sh")
+	cmd.Stdin = strings.NewReader(payload)
+	outputBytes, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("payload shell returned error: %v output=%s", err, outputBytes)
+	}
+	output := string(outputBytes)
+	if !strings.Contains(output, "hello\nworld") {
+		t.Fatalf("payload should run command body, got %q", output)
+	}
+	if !strings.Contains(output, "__AIPERMISSION_EXIT_TEST__:0") {
+		t.Fatalf("payload should print success marker, got %q", output)
+	}
+}
+
+func TestConsoleExecPayloadPreservesFailureMarkerWithSetE(t *testing.T) {
+	payload := consoleExecPayload("set -e\nprintf 'before-fail\\n'\nfalse\nprintf 'after-fail\\n'\n", "__AIPERMISSION_EXIT_TEST__")
+	cmd := exec.Command("/bin/sh")
+	cmd.Stdin = strings.NewReader(payload)
+	outputBytes, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("outer payload shell should restore and exit cleanly: %v output=%s", err, outputBytes)
+	}
+	output := string(outputBytes)
+	if !strings.Contains(output, "before-fail") || strings.Contains(output, "after-fail") {
+		t.Fatalf("payload should run failing set -e command without continuing inside user body, got %q", output)
+	}
+	if !strings.Contains(output, "__AIPERMISSION_EXIT_TEST__:1") {
+		t.Fatalf("payload should still print failure marker after set -e command body, got %q", output)
+	}
+}
+
+func TestConsoleExecPayloadDoesNotLetCommandConsumeMarkerScript(t *testing.T) {
+	payload := consoleExecPayload("cat\nprintf 'after-cat\\n'\n", "__AIPERMISSION_EXIT_TEST__")
+	cmd := exec.Command("/bin/sh")
+	cmd.Stdin = strings.NewReader(payload)
+	outputBytes, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("payload shell returned error: %v output=%s", err, outputBytes)
+	}
+	output := string(outputBytes)
+	if !strings.Contains(output, "after-cat") {
+		t.Fatalf("payload should continue after stdin-reading command, got %q", output)
+	}
+	if !strings.Contains(output, "__AIPERMISSION_EXIT_TEST__:0") {
+		t.Fatalf("payload should still print marker after stdin-reading command, got %q", output)
 	}
 }
 

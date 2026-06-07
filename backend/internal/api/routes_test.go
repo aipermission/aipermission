@@ -815,8 +815,30 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions/"+strconv.FormatInt(sessionID, 10)+"/input", "", console.InputRequest{Data: "ls\n"}); response.Code != http.StatusConflict {
 		t.Fatalf("input to inactive session should conflict, got %d", response.Code)
 	}
+	runningResult, err := fixture.db.Exec(`
+		INSERT INTO command_requests (server_id, source, command, reason, status, session_id, created_at)
+		VALUES (?, 'mcp', 'sleep 60', 'test close cleanup', 'running', ?, ?)`,
+		server.ID,
+		sessionID,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert running command request: %v", err)
+	}
+	runningRequestID, err := runningResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("running request id: %v", err)
+	}
 	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions/"+strconv.FormatInt(sessionID, 10)+"/close", "", nil); response.Code != http.StatusOK {
 		t.Fatalf("close console session failed: %d %s", response.Code, response.Body.String())
+	}
+	var closedRequestStatus string
+	var closedRequestError string
+	if err := fixture.db.QueryRow(`SELECT status, error FROM command_requests WHERE id = ?`, runningRequestID).Scan(&closedRequestStatus, &closedRequestError); err != nil {
+		t.Fatalf("read closed running request: %v", err)
+	}
+	if closedRequestStatus != "error" || !strings.Contains(closedRequestError, "console session closed") {
+		t.Fatalf("close should mark session running request error, status=%s error=%q", closedRequestStatus, closedRequestError)
 	}
 
 	blockedServer := fixture.createKeyAndServer(t, "worker-blocked")
