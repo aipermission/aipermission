@@ -682,6 +682,12 @@ Deleting a label removes its command-request relationships. The command history 
 
 Run changes a `pending_approval` request to `running` and starts execution in the backend-owned console session. It accepts an optional JSON body with `user_note`; when provided, the note is delivered to the matching MCP token through the message queue. The request later becomes `completed`, `failed`, or `error`.
 
+Approval-required MCP commands store an approval-context snapshot when the
+pending request is created. If the token, token/server permission, server
+profile, SSH key fingerprint, MCP tool metadata, or command payload hash changes
+before Run, the backend marks the request `stale` and returns `409 Conflict`.
+The AI should submit a fresh `exec` request.
+
 Decline changes the request to `declined`. The optional `user_note` is stored on the command request and returned to MCP as operator guidance.
 
 ## Messages

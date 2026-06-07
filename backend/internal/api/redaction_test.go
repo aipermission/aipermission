@@ -86,6 +86,11 @@ func TestCommandRequestKeepsEncryptedRawCommandForExecution(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	server := fixture.createKeyAndServer(t, "worker-1")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
 	runtime := fixture.server.activeRuntime()
 
 	rawCommand := "curl -H 'Authorization: Bearer secret-token-1234567890' https://example.invalid"

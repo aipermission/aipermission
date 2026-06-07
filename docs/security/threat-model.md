@@ -89,6 +89,9 @@ Mitigations:
 - basic redaction is enabled by default for common token, password, API-key, bearer-token, and private-key patterns before command history, console transcripts, messages, and audit payloads are persisted or returned through MCP
 - Security can add custom regex redaction rules on top of the built-in basic rules
 - approval execution uses a separate encrypted raw command payload so redaction cannot change the command that is run after approval
+- approval-required commands store an approval-context snapshot and become
+  `stale` if token permission, token validity, server profile, SSH key
+  fingerprint, MCP tool metadata, or command payload hash changes before Run
 - docs and approval dialogs warn that command text, output, notes, transcripts, and audit payloads may be persisted
 - operator instructions tell agents to avoid printing secrets
 - users can prefer existence checks and redacted output commands

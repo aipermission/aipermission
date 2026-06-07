@@ -246,6 +246,94 @@ func TestMCPListServersUsesTokenPermissionsAndHidesBlocked(t *testing.T) {
 	}
 }
 
+func TestApprovalRunRejectsServerContextDriftBeforeExecution(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "core")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+
+	id, err := fixture.server.insertCommandRequest(ctx, fixture.server.activeRuntime(), token.ID, server.ID, "date", "check time", "pending_approval")
+	if err != nil {
+		t.Fatalf("insert command request: %v", err)
+	}
+	if _, err := fixture.db.ExecContext(ctx, `UPDATE servers SET host = '127.0.0.2', updated_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), server.ID); err != nil {
+		t.Fatalf("mutate server: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(id, 10)+"/run", "", map[string]any{})
+	if response.Code != http.StatusConflict {
+		t.Fatalf("expected drift conflict, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "server profile or SSH key changed") {
+		t.Fatalf("expected server drift reason, got %s", response.Body.String())
+	}
+	var status string
+	var errorText string
+	var driftText string
+	if err := fixture.db.QueryRowContext(ctx, `SELECT status, error, approval_context_drift FROM command_requests WHERE id = ?`, id).Scan(&status, &errorText, &driftText); err != nil {
+		t.Fatalf("read request status: %v", err)
+	}
+	if status != "stale" || !strings.Contains(errorText, "server profile") || driftText == "" {
+		t.Fatalf("unexpected stale request state: status=%q error=%q drift=%q", status, errorText, driftText)
+	}
+}
+
+func TestApprovalContextDetectsPermissionDrift(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "permission-target")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+	runtime := fixture.server.activeRuntime()
+	id, err := fixture.server.insertCommandRequest(ctx, runtime, token.ID, server.ID, "uptime", "inspect server", "pending_approval")
+	if err != nil {
+		t.Fatalf("insert command request: %v", err)
+	}
+	item, err := fixture.server.getCommandRequest(ctx, runtime, id, 0, "")
+	if err != nil {
+		t.Fatalf("get command request: %v", err)
+	}
+	command, err := fixture.server.commandRequestExecutionCommand(ctx, runtime, id)
+	if err != nil {
+		t.Fatalf("read execution command: %v", err)
+	}
+	drifted, reason, err := fixture.server.approvalContextDrift(ctx, runtime, item, command)
+	if err != nil {
+		t.Fatalf("check drift: %v", err)
+	}
+	if drifted || reason != "" {
+		t.Fatalf("unchanged context should not drift: drifted=%v reason=%q", drifted, reason)
+	}
+
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleAlwaysRun},
+	}}); err != nil {
+		t.Fatalf("change permissions: %v", err)
+	}
+	drifted, reason, err = fixture.server.approvalContextDrift(ctx, runtime, item, command)
+	if err != nil {
+		t.Fatalf("check changed drift: %v", err)
+	}
+	if !drifted || !strings.Contains(reason, "token permission changed") {
+		t.Fatalf("expected permission drift, got drifted=%v reason=%q", drifted, reason)
+	}
+}
+
 func TestMCPAuthenticationRejectsDuplicateTokenAcrossUnlockedDatabases(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
@@ -374,6 +462,20 @@ func TestMCPExecApprovalPendingCreatesAuditableRequestAndConsumesUserNote(t *tes
 	}
 	if record.Command != "df -h" || record.Reason != "investigate storage" || record.Status != "pending_approval" {
 		t.Fatalf("unexpected command request: %#v", record)
+	}
+	var contextHash string
+	if err := fixture.db.QueryRowContext(ctx, `SELECT approval_context_hash FROM command_requests WHERE id = ?`, body.RequestID).Scan(&contextHash); err != nil {
+		t.Fatalf("read approval context hash: %v", err)
+	}
+	if contextHash == "" {
+		t.Fatalf("approval pending request should store an approval context hash")
+	}
+	var auditPayload string
+	if err := fixture.db.QueryRowContext(ctx, `SELECT payload_json FROM audit_logs WHERE action = 'mcp.exec.approval_pending' ORDER BY id DESC LIMIT 1`).Scan(&auditPayload); err != nil {
+		t.Fatalf("read approval audit payload: %v", err)
+	}
+	if !strings.Contains(auditPayload, contextHash) {
+		t.Fatalf("approval audit payload should include context hash %q: %s", contextHash, auditPayload)
 	}
 	nextNote, err := fixture.server.consumeNextUserMessage(ctx, runtime, token.ID, server.ID, 0)
 	if err != nil {

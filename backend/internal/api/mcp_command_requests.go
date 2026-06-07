@@ -17,11 +17,19 @@ func (s *Server) insertCommandRequest(ctx context.Context, runtime *databaseRunt
 	if err != nil {
 		return 0, fmt.Errorf("encrypt command payload: %w", err)
 	}
+	approvalContext := ""
+	approvalContextHash := ""
+	if status == "pending_approval" && tokenID > 0 {
+		approvalContext, approvalContextHash, err = s.buildApprovalContextSnapshot(ctx, runtime, tokenID, serverID, command, now)
+		if err != nil {
+			return 0, fmt.Errorf("build approval context snapshot: %w", err)
+		}
+	}
 	storedCommand := s.redactForPersistence(ctx, runtime, command)
 	storedReason := s.redactForPersistence(ctx, runtime, reason)
 	result, err := runtime.database.ExecContext(ctx, `
-		INSERT INTO command_requests (token_id, server_id, source, command, encrypted_command, reason, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO command_requests (token_id, server_id, source, command, encrypted_command, reason, status, approval_context, approval_context_hash, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tokenID,
 		serverID,
 		commandRequestSourceMCP,
@@ -29,12 +37,22 @@ func (s *Server) insertCommandRequest(ctx context.Context, runtime *databaseRunt
 		encryptedCommand,
 		storedReason,
 		status,
+		approvalContext,
+		approvalContextHash,
 		now,
 	)
 	if err != nil {
 		return 0, err
 	}
 	return result.LastInsertId()
+}
+
+func (s *Server) commandRequestApprovalContextHash(ctx context.Context, runtime *databaseRuntime, id int64) string {
+	var value string
+	if err := runtime.database.QueryRowContext(ctx, `SELECT approval_context_hash FROM command_requests WHERE id = ?`, id).Scan(&value); err != nil {
+		return ""
+	}
+	return value
 }
 
 func (s *Server) commandRequestExecutionCommand(ctx context.Context, runtime *databaseRuntime, id int64) (string, error) {

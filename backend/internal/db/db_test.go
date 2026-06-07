@@ -66,6 +66,15 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !columnExists(t, database, "command_requests", "output_truncated") {
 		t.Fatalf("command_requests.output_truncated column was not created")
 	}
+	if !columnExists(t, database, "command_requests", "approval_context") {
+		t.Fatalf("command_requests.approval_context column was not created")
+	}
+	if !columnExists(t, database, "command_requests", "approval_context_hash") {
+		t.Fatalf("command_requests.approval_context_hash column was not created")
+	}
+	if !columnExists(t, database, "command_requests", "approval_context_drift") {
+		t.Fatalf("command_requests.approval_context_drift column was not created")
+	}
 	if !columnExists(t, database, "file_transfer_batches", "approval_note") {
 		t.Fatalf("file_transfer_batches.approval_note column was not created")
 	}

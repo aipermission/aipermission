@@ -126,6 +126,8 @@ Implemented:
 - persistent web console with live PTY streaming
 - MCP bridge with command, console, message, and conservative upload/download transfer tools
 - approval dialog with Run / Decline / note
+- approval-context snapshots that stale old pending commands after permission,
+  server, SSH-key, or command-context drift
 - unread message badges and AI-to-user/user-to-AI notes
 - SQLCipher FTS4-backed searchable command history and audit log pages
 - queued SSH/SFTP upload and download from the local web UI
@@ -142,7 +144,6 @@ Out of scope for the current MVP:
 
 - SQL query tools
 - advanced command risk analysis
-- MCP `approval_required` file-transfer approval flow
 - directory transfer, recursive copy, remote glob expansion, and restart-surviving resumable file transfers
 
 ## Quick Start
@@ -279,6 +280,11 @@ send_message(message, server_id?, session_id?)
 ```
 
 If a command returns `approval_pending`, the response includes an `assistant_hint` telling the AI to poll `get_request` until the request reaches a terminal state.
+
+Pending command approvals store an approval-context snapshot. If the token
+permission, token validity, server profile, SSH key fingerprint, MCP tool
+metadata, or command payload hash changes before the operator clicks Run, the
+request becomes `stale` and must be sent again.
 
 `exec` is intended for non-interactive commands. The gateway closes stdin for MCP command bodies so stdin-reading commands cannot consume the internal shell wrapper. Use explicit flags such as `-y`/`--no-pager`, create files inside the command when needed, or use the web console for interactive work.
 

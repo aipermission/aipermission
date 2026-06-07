@@ -140,6 +140,7 @@ test("History page exposes label filtering and item label endpoints", () => {
   assert.match(historySource, /source/);
   assert.match(historySource, /SourceBadge/);
   assert.match(historySource, /Not tracked/);
+  assert.match(historySource, /Stale/);
   assert.match(historySource, /\/api\/approvals\/\$\{id\}\/labels/);
   assert.doesNotMatch(historySource, /setLabelDialogOpen/);
 });

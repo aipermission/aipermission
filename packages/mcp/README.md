@@ -97,7 +97,7 @@ Supported clients:
 - `gemini`: `GEMINI.md`
 - `custom`: prints portable Markdown to stdout
 
-These instructions teach the agent how to poll `approval_pending` and `running` requests, read live console output, write short reasons, use explicit file transfer paths, and avoid printing secrets. The default installer uses the operator instruction bundled in the npm package; `--source` accepts local file paths only and rejects HTTP(S) sources.
+These instructions teach the agent how to poll `approval_pending` and `running` requests, handle `stale` approvals by sending a fresh request, read live console output, write short reasons, use explicit file transfer paths, and avoid printing secrets. The default installer uses the operator instruction bundled in the npm package; `--source` accepts local file paths only and rejects HTTP(S) sources.
 
 ## Security Boundary
 

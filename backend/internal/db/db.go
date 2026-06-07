@@ -11,7 +11,7 @@ import (
 	_ "github.com/mutecomm/go-sqlcipher/v4"
 )
 
-const currentSchemaVersion = 8
+const currentSchemaVersion = 9
 
 func OpenEncrypted(path string, password string) (*sql.DB, error) {
 	return openEncrypted(path, password, true)

@@ -18,6 +18,7 @@ const statusOptions = [
   { value: "running", label: "Running" },
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
+  { value: "stale", label: "Stale" },
   { value: "failed", label: "Failed" },
   { value: "declined", label: "Declined" },
   { value: "error", label: "Error" },
@@ -877,6 +878,7 @@ function StatusBadge({ status }) {
     running: "neutral",
     pending_approval: "warn",
     declined: "warn",
+    stale: "warn",
     untracked: "warn",
     failed: "bad",
     error: "bad",
@@ -927,6 +929,7 @@ function statusLabel(status) {
   if (status === "pending_approval") return "pending";
   if (status === "untracked") return "not tracked";
   if (status === "canceled") return "canceled";
+  if (status === "stale") return "stale";
   return status || "unknown";
 }
 

@@ -127,9 +127,10 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), request.ServerID, "mcp.exec.approval_pending", map[string]any{
-			"request_id": id,
-			"command":    request.Command,
-			"reason":     request.Reason,
+			"request_id":            id,
+			"command":               request.Command,
+			"reason":                request.Reason,
+			"approval_context_hash": s.commandRequestApprovalContextHash(r.Context(), auth.runtime, id),
 		})
 		userNote, _ := s.consumeNextUserMessage(r.Context(), auth.runtime, auth.TokenID, request.ServerID, 0)
 		writeJSON(w, http.StatusOK, mcpExecResponse{

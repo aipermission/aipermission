@@ -439,6 +439,13 @@ var permissionExpirationStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_token_server_permissions_expires_at ON token_server_permissions(expires_at);`,
 }
 
+var approvalContextStatements = []string{
+	`ALTER TABLE command_requests ADD COLUMN approval_context TEXT NOT NULL DEFAULT '';`,
+	`ALTER TABLE command_requests ADD COLUMN approval_context_hash TEXT NOT NULL DEFAULT '';`,
+	`ALTER TABLE command_requests ADD COLUMN approval_context_drift TEXT NOT NULL DEFAULT '';`,
+	`CREATE INDEX IF NOT EXISTS idx_command_requests_approval_context_hash ON command_requests(approval_context_hash);`,
+}
+
 var migrations = []migration{
 	{
 		version:     1,
@@ -479,6 +486,11 @@ var migrations = []migration{
 		version:     8,
 		description: "token server permission expiration",
 		statements:  permissionExpirationStatements,
+	},
+	{
+		version:     9,
+		description: "approval context snapshots",
+		statements:  approvalContextStatements,
 	},
 }
 

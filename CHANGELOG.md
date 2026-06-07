@@ -7,6 +7,18 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+### Added
+
+- Pending MCP command approvals now store an approval-context snapshot covering
+  the token, token/server permission, server profile, SSH key fingerprint, MCP
+  tool metadata, and command payload hash.
+
+### Security
+
+- If a pending command's approval context changes before the operator clicks
+  Run, AIPermission marks the request `stale` and requires the AI to submit a
+  fresh request instead of executing an old approval.
+
 ## [0.1.8] - 2026-06-07
 
 ### Added

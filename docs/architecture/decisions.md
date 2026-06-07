@@ -88,5 +88,25 @@ Reason:
 Consequence:
 
 - New unlocks start with MCP execution stopped unless Security enables automatic start.
+
+## ADR-006: Pending Approvals Are Bound To Their Approval Context
+
+Decision: A pending MCP command approval is valid only for the context captured
+when it was created.
+
+Reason:
+
+- A user approves a concrete command for a concrete token/server permission and
+  server profile, not a reusable command pattern.
+- Token permission, token validity, server profile, SSH key, MCP tool metadata,
+  or command payload changes can make an old approval misleading.
+
+Consequence:
+
+- `approval_required` requests store an approval-context snapshot and hash.
+- If that context drifts before Run, the request becomes `stale` and must be
+  requested again.
+- `always_run` still evaluates current permission state at execution time; it
+  does not create reusable approval-pattern records.
 - The sidebar controls the runtime Started/Stopped state.
 - Stopped MCP execution blocks new command execution while preserving saved permissions.

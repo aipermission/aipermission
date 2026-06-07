@@ -148,6 +148,12 @@ Example running response:
 
 `approval_pending` is not terminal. The AI should follow `assistant_hint` and poll `get_request` until the request reaches a terminal status.
 
+When a pending approval is created, the gateway records an approval-context
+snapshot covering the token, token/server permission, server profile, SSH key
+fingerprint, MCP tool metadata, and command payload hash. If that context
+changes before the operator clicks Run, the request becomes `stale`; the AI
+should submit a fresh `exec` request with the current context.
+
 UI behavior:
 
 - The Console sidebar item shows the total pending approval count.
@@ -223,6 +229,7 @@ completed
 failed
 declined
 error
+stale
 ```
 
 Non-terminal statuses:
@@ -247,6 +254,7 @@ completed
 failed
 declined
 error
+stale
 ```
 
 MCP request tools return only MCP-origin command requests for the calling token.

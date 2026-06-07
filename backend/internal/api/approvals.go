@@ -156,6 +156,27 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
+	drifted, driftReason, err := s.approvalContextDrift(r.Context(), runtime, item, command)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if drifted {
+		if err := s.markCommandRequestStale(r.Context(), runtime, id, driftReason); err != nil {
+			if errors.Is(err, errCommandRequestNotPending) {
+				writeError(w, http.StatusConflict, "approval request is no longer pending")
+				return
+			}
+			writeInternalError(w)
+			return
+		}
+		s.writeAudit(r.Context(), runtime, "user", item.TokenID, item.ServerID, "approval.context_drift", map[string]any{
+			"request_id": id,
+			"reason":     driftReason,
+		})
+		writeError(w, http.StatusConflict, driftReason+"; ask the AI to send a fresh request")
+		return
+	}
 	if request.UserNote != "" && item.TokenID != nil {
 		_, err := s.insertMessage(r.Context(), runtime, createMessageRequest{
 			TokenID:   *item.TokenID,
