@@ -178,11 +178,16 @@ func TestMCPListServersUsesTokenPermissionsAndHidesBlocked(t *testing.T) {
 	}
 	allowed := fixture.createKeyAndServer(t, "allowed")
 	blocked := fixture.createKeyAndServer(t, "blocked")
+	expired := fixture.createKeyAndServer(t, "expired")
 	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
 		{ServerID: allowed.ID, ExecutionRule: tokens.RuleAlwaysRun},
 		{ServerID: blocked.ID, ExecutionRule: tokens.RuleBlocked},
+		{ServerID: expired.ID, ExecutionRule: tokens.RuleAlwaysRun, ExpiresAt: time.Now().UTC().Add(time.Hour).Format(time.RFC3339)},
 	}}); err != nil {
 		t.Fatalf("update permissions: %v", err)
+	}
+	if _, err := fixture.db.ExecContext(ctx, `UPDATE token_server_permissions SET expires_at = ? WHERE token_id = ? AND server_id = ?`, time.Now().UTC().Add(-time.Hour).Format(time.RFC3339), token.ID, expired.ID); err != nil {
+		t.Fatalf("expire permission: %v", err)
 	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/servers", token.TokenValue, nil)
@@ -204,6 +209,14 @@ func TestMCPListServersUsesTokenPermissionsAndHidesBlocked(t *testing.T) {
 	}
 	if len(items[0].Hints) == 0 || !strings.Contains(strings.Join(items[0].Hints, " "), "hash -r") {
 		t.Fatalf("expected command hygiene hints in mcp server list: %#v", items[0].Hints)
+	}
+	expiredResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/exec", token.TokenValue, map[string]any{
+		"server_id": expired.ID,
+		"command":   "date",
+		"reason":    "verify expired grant",
+	})
+	if expiredResponse.Code != http.StatusOK || !strings.Contains(expiredResponse.Body.String(), `"status":"blocked"`) {
+		t.Fatalf("expired permission should not allow execution, got %d %s", expiredResponse.Code, expiredResponse.Body.String())
 	}
 
 	if err := writeSecuritySettings(ctx, fixture.server.activeRuntime(), securitySettingsResponse{

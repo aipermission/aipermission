@@ -590,9 +590,11 @@ func (s mcpHandlers) mcpAllowedServerIDs(ctx context.Context, runtime *databaseR
 		SELECT server_id
 		FROM token_server_permissions
 		WHERE token_id = ? AND execution_rule != ?
+			AND (COALESCE(expires_at, '') = '' OR expires_at > ?)
 		ORDER BY server_id`,
 		tokenID,
 		tokens.RuleBlocked,
+		time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
 		return nil, err

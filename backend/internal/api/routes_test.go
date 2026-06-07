@@ -139,10 +139,11 @@ Host *
 		t.Fatalf("list tokens should expose token value when reusable copy is enabled: %d %s", response.Code, response.Body.String())
 	}
 
+	permissionExpiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 	permissionResponse := performJSON(handler, http.MethodPut, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/permissions", "", tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
-		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired, ExpiresAt: permissionExpiresAt},
 	}})
-	if permissionResponse.Code != http.StatusOK || !strings.Contains(permissionResponse.Body.String(), tokens.RuleApprovalRequired) {
+	if permissionResponse.Code != http.StatusOK || !strings.Contains(permissionResponse.Body.String(), tokens.RuleApprovalRequired) || !strings.Contains(permissionResponse.Body.String(), permissionExpiresAt) {
 		t.Fatalf("update permissions failed: %d %s", permissionResponse.Code, permissionResponse.Body.String())
 	}
 	if response := performJSON(handler, http.MethodGet, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/permissions", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"worker-1b"`) {

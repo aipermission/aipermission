@@ -51,6 +51,7 @@ type Permission struct {
 	ServerID      int64  `json:"server_id"`
 	ServerName    string `json:"server_name"`
 	ExecutionRule string `json:"execution_rule"`
+	ExpiresAt     string `json:"expires_at,omitempty"`
 	CreatedAt     string `json:"created_at"`
 	UpdatedAt     string `json:"updated_at"`
 }
@@ -58,6 +59,7 @@ type Permission struct {
 type PermissionInput struct {
 	ServerID      int64  `json:"server_id"`
 	ExecutionRule string `json:"execution_rule"`
+	ExpiresAt     string `json:"expires_at,omitempty"`
 }
 
 type UpdatePermissionsRequest struct {
@@ -188,7 +190,7 @@ func (s *Store) ListPermissions(ctx context.Context, tokenID int64) ([]Permissio
 		return nil, err
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT p.server_id, srv.name, p.execution_rule, p.created_at, p.updated_at FROM token_server_permissions p JOIN servers srv ON srv.id = p.server_id WHERE p.token_id = ? ORDER BY srv.name`, tokenID)
+	rows, err := s.db.QueryContext(ctx, `SELECT p.server_id, srv.name, p.execution_rule, COALESCE(p.expires_at, ''), p.created_at, p.updated_at FROM token_server_permissions p JOIN servers srv ON srv.id = p.server_id WHERE p.token_id = ? ORDER BY srv.name`, tokenID)
 	if err != nil {
 		return nil, fmt.Errorf("list token permissions: %w", err)
 	}
@@ -197,7 +199,7 @@ func (s *Store) ListPermissions(ctx context.Context, tokenID int64) ([]Permissio
 	items := []Permission{}
 	for rows.Next() {
 		var item Permission
-		if err := rows.Scan(&item.ServerID, &item.ServerName, &item.ExecutionRule, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ServerID, &item.ServerName, &item.ExecutionRule, &item.ExpiresAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan token permission: %w", err)
 		}
 		items = append(items, item)
@@ -228,7 +230,11 @@ func (s *Store) UpdatePermissions(ctx context.Context, tokenID int64, request Up
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, permission := range request.Permissions {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO token_server_permissions (token_id, server_id, execution_rule, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, tokenID, permission.ServerID, permission.ExecutionRule, now, now); err != nil {
+		expiresAt, err := normalizePermissionExpiresAt(permission)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO token_server_permissions (token_id, server_id, execution_rule, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, tokenID, permission.ServerID, permission.ExecutionRule, expiresAt, now, now); err != nil {
 			return nil, fmt.Errorf("insert token permission: %w", err)
 		}
 	}
@@ -250,6 +256,9 @@ func validatePermissions(ctx context.Context, db *sql.DB, permissions []Permissi
 		seen[permission.ServerID] = true
 		if !validRule(permission.ExecutionRule) {
 			return ValidationError("execution_rule must be always_run, approval_required, or blocked")
+		}
+		if _, err := normalizePermissionExpiresAt(permission); err != nil {
+			return err
 		}
 		var exists int
 		err := db.QueryRowContext(ctx, `SELECT 1 FROM servers WHERE id = ?`, permission.ServerID).Scan(&exists)
@@ -273,17 +282,32 @@ func validRule(rule string) bool {
 }
 
 func normalizeTokenExpiresAt(value string) (string, error) {
+	return normalizeFutureTimestamp("expires_at", value)
+}
+
+func normalizePermissionExpiresAt(permission PermissionInput) (string, error) {
+	value := strings.TrimSpace(permission.ExpiresAt)
+	if value == "" {
+		return "", nil
+	}
+	if permission.ExecutionRule == RuleBlocked {
+		return "", ValidationError("expires_at is not supported for blocked permissions")
+	}
+	return normalizeFutureTimestamp("expires_at", value)
+}
+
+func normalizeFutureTimestamp(field string, value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", nil
 	}
 	expiresAt, err := time.Parse(time.RFC3339, value)
 	if err != nil {
-		return "", ValidationError("expires_at must be an RFC3339 timestamp")
+		return "", ValidationError(field + " must be an RFC3339 timestamp")
 	}
 	expiresAt = expiresAt.UTC()
 	if !expiresAt.After(time.Now().UTC()) {
-		return "", ValidationError("expires_at must be in the future")
+		return "", ValidationError(field + " must be in the future")
 	}
 	return expiresAt.Format(time.RFC3339), nil
 }

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
+import { effectiveRule, permissionLifetimeLabel } from "../lib/permissions";
 import { useTokenPermissions } from "../lib/use-token-permissions";
 import { CountBadge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -50,6 +51,7 @@ export function ConsolePage() {
   const [serversCompact, setServersCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
   const [fileTransferOpen, setFileTransferOpen] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
   const selectedServerID = searchParams.get("server");
   const sessions = consoleSessions.data || [];
@@ -71,10 +73,17 @@ export function ConsolePage() {
     sessions,
     selectedServerID,
     permissionState,
+    now,
   });
   const activeApproval = activeApprovalID ? pendingApprovals.find((approval) => Number(approval.id) === Number(activeApprovalID)) : null;
   const alwaysRunTokens = selectedServer
-    ? selectedTokenOptions.filter((token) => permissionState.data?.[token.id]?.[selectedServer.id] === "always_run")
+    ? selectedTokenOptions.filter((token) => effectiveRule(permissionState.data?.[token.id]?.[selectedServer.id], now) === "always_run")
+    : [];
+  const temporaryAlwaysRunLabels = selectedServer
+    ? alwaysRunTokens
+        .map((token) => permissionState.data?.[token.id]?.[selectedServer.id])
+        .filter((permission) => permission?.expires_at)
+        .map((permission) => permissionLifetimeLabel(permission, now))
     : [];
   const showAlwaysRunWarning = Boolean(mcpRuntime?.data?.enabled && selectedServer && alwaysRunTokens.length > 0);
 
@@ -90,6 +99,11 @@ export function ConsolePage() {
     if (tokens.state !== "ready") return;
     loadAllTokenPermissions(tokens.data);
   }, [tokens.state, tokens.data.map((token) => token.id).join(",")]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!selectedServer) return;
@@ -396,6 +410,7 @@ export function ConsolePage() {
           {showAlwaysRunWarning ? (
             <div className="sticky top-0 z-10 border-b border-red-800/50 bg-red-950 px-4 py-2 text-xs font-semibold text-red-50">
               MCP is started and {alwaysRunTokens.length} token{alwaysRunTokens.length === 1 ? "" : "s"} can run commands on this server without approval. Prefer prompt mode unless direct execution is intentional.
+              {temporaryAlwaysRunLabels.length > 0 ? ` Temporary grant: ${temporaryAlwaysRunLabels[0]}.` : ""}
             </div>
           ) : null}
           {selectedServer && selectedSessionLive ? (

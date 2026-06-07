@@ -2,7 +2,7 @@ import { Ban, CalendarClock, KeyRound, PlugZap, Plus, RefreshCcw, TicketCheck } 
 import { useEffect, useMemo, useState } from "react";
 import { apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
-import { maskedToken, ruleDotClass, ruleLabel } from "../lib/permissions";
+import { effectiveRule, expiresAtFromLifetime, maskedToken, permissionLifetimeLabel, ruleDotClass, ruleLabel } from "../lib/permissions";
 import { useAsyncAction } from "../lib/use-async-action";
 import { useTokenPermissions } from "../lib/use-token-permissions";
 import { Badge } from "../components/ui/badge";
@@ -32,7 +32,7 @@ export function TokensPage() {
   const [permissionDialog, setPermissionDialog] = useState(null);
   const { permissionState, loadAllTokenPermissions, setTokenServerRule, setTokenAllServerRules } = useTokenPermissions(tokens.data);
   const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
-  const [bulkDialog, setBulkDialog] = useState({ open: false, token: null, rule: "approval_required" });
+  const [bulkDialog, setBulkDialog] = useState({ open: false, token: null, rule: "approval_required", lifetime: "permanent" });
   const { actionState: state, runAction } = useAsyncAction();
   const [tokenFilter, setTokenFilter] = useState("active");
 
@@ -93,8 +93,8 @@ export function TokensPage() {
   async function applyBulkPermissions(event) {
     event.preventDefault();
     if (!bulkDialog.token) return;
-    await setTokenAllServerRules(bulkDialog.token, servers.data, bulkDialog.rule);
-    setBulkDialog({ open: false, token: null, rule: "approval_required" });
+    await setTokenAllServerRules(bulkDialog.token, servers.data, bulkDialog.rule, { expiresAt: expiresAtFromLifetime(bulkDialog.lifetime) });
+    setBulkDialog({ open: false, token: null, rule: "approval_required", lifetime: "permanent" });
   }
 
   return (
@@ -184,7 +184,7 @@ export function TokensPage() {
               const revoked = Boolean(token.revoked_at);
               const inactive = status !== "active";
               const permissions = permissionState.data[token.id] || {};
-              const allowedCount = servers.data.filter((server) => Boolean(permissions[server.id])).length;
+              const allowedCount = servers.data.filter((server) => Boolean(effectiveRule(permissions[server.id]))).length;
               return (
                 <tr className="hover:bg-stone-50" key={token.id}>
                   <td className="px-4 py-4">
@@ -212,12 +212,13 @@ export function TokensPage() {
                     <div className="grid gap-1.5">
                       <div className="flex flex-wrap gap-1.5">
                         {servers.data.map((server) => {
-                          const rule = permissions[server.id] || "";
+                          const permission = permissions[server.id];
+                          const rule = effectiveRule(permission);
                           return (
                             <button
                               type="button"
                               key={server.id}
-                              title={`${server.name}: ${ruleLabel(rule)}`}
+                              title={`${server.name}: ${ruleLabel(rule)}${rule ? ` - ${permissionLifetimeLabel(permission)}` : ""}`}
                               className={`h-4 w-4 rounded-full border border-white shadow-sm ring-1 ring-stone-200 ${ruleDotClass(rule)}`}
                               onClick={() => setPermissionDialog({ token, server })}
                               disabled={inactive}
@@ -248,7 +249,7 @@ export function TokensPage() {
                         type="button"
                         variant="outline"
                         className="h-9 px-3"
-                        onClick={() => setBulkDialog({ open: true, token, rule: "approval_required" })}
+                        onClick={() => setBulkDialog({ open: true, token, rule: "approval_required", lifetime: "permanent" })}
                         disabled={inactive || servers.data.length === 0 || permissionState.savingKey === `${token.id}:all`}
                         title="Set this token's permission for all servers"
                       >
@@ -328,7 +329,7 @@ export function TokensPage() {
         open={bulkDialog.open}
         title="Set all server permissions"
         description={bulkDialog.token ? `Apply one permission rule to every server for ${bulkDialog.token.name}.` : ""}
-        onClose={() => setBulkDialog({ open: false, token: null, rule: "approval_required" })}
+        onClose={() => setBulkDialog({ open: false, token: null, rule: "approval_required", lifetime: "permanent" })}
         size="md"
       >
         <form className="grid gap-4" onSubmit={applyBulkPermissions}>
@@ -341,8 +342,21 @@ export function TokensPage() {
               <option value="always_run">Always run for all servers</option>
             </Select>
           </Field>
+          <Field>
+            Lifetime
+            <Select
+              value={bulkDialog.lifetime}
+              onChange={(event) => setBulkDialog((current) => ({ ...current, lifetime: event.target.value }))}
+              disabled={!bulkDialog.rule}
+            >
+              <option value="permanent">Permanent</option>
+              <option value="1h">1 hour</option>
+              <option value="4h">4 hours</option>
+              <option value="1d">1 day</option>
+            </Select>
+          </Field>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={() => setBulkDialog({ open: false, token: null, rule: "approval_required" })}>
+            <Button type="button" variant="outline" onClick={() => setBulkDialog({ open: false, token: null, rule: "approval_required", lifetime: "permanent" })}>
               Cancel
             </Button>
             <Button type="submit" disabled={!bulkDialog.token || permissionState.savingKey === `${bulkDialog.token?.id}:all`}>

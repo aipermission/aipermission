@@ -54,6 +54,9 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !columnExists(t, database, "api_tokens", "expires_at") {
 		t.Fatalf("api_tokens.expires_at column was not created")
 	}
+	if !columnExists(t, database, "token_server_permissions", "expires_at") {
+		t.Fatalf("token_server_permissions.expires_at column was not created")
+	}
 	if !columnExists(t, database, "command_requests", "source") {
 		t.Fatalf("command_requests.source column was not created")
 	}

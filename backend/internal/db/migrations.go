@@ -434,6 +434,11 @@ var fileTransferApprovalStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_batch_status ON file_transfers(batch_id, status);`,
 }
 
+var permissionExpirationStatements = []string{
+	`ALTER TABLE token_server_permissions ADD COLUMN expires_at TEXT;`,
+	`CREATE INDEX IF NOT EXISTS idx_token_server_permissions_expires_at ON token_server_permissions(expires_at);`,
+}
+
 var migrations = []migration{
 	{
 		version:     1,
@@ -469,6 +474,11 @@ var migrations = []migration{
 		version:     7,
 		description: "file transfer approvals",
 		statements:  fileTransferApprovalStatements,
+	},
+	{
+		version:     8,
+		description: "token server permission expiration",
+		statements:  permissionExpirationStatements,
 	},
 }
 

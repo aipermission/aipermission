@@ -25,6 +25,7 @@ type mcpServerItem struct {
 	Port          int      `json:"port,omitempty"`
 	Username      string   `json:"username,omitempty"`
 	ExecutionRule string   `json:"execution_rule"`
+	ExpiresAt     string   `json:"expires_at,omitempty"`
 	Hints         []string `json:"hints"`
 }
 

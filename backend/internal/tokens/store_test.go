@@ -203,9 +203,10 @@ func TestTokenPermissionsReplaceAndValidateMatrix(t *testing.T) {
 	}
 	betaID := insertTokenTestServer(t, database, "worker-beta")
 	alphaID := insertTokenTestServer(t, database, "worker-alpha")
+	permissionExpiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 
 	permissions, err := store.UpdatePermissions(ctx, token.ID, UpdatePermissionsRequest{Permissions: []PermissionInput{
-		{ServerID: betaID, ExecutionRule: RuleAlwaysRun},
+		{ServerID: betaID, ExecutionRule: RuleAlwaysRun, ExpiresAt: permissionExpiresAt},
 		{ServerID: alphaID, ExecutionRule: RuleApprovalRequired},
 	}})
 	if err != nil {
@@ -216,6 +217,9 @@ func TestTokenPermissionsReplaceAndValidateMatrix(t *testing.T) {
 	}
 	if permissions[0].ServerName != "worker-alpha" || permissions[1].ServerName != "worker-beta" {
 		t.Fatalf("permissions should be sorted by server name: %#v", permissions)
+	}
+	if permissions[1].ExpiresAt != permissionExpiresAt {
+		t.Fatalf("permission expires_at should round-trip, got %#v", permissions[1])
 	}
 
 	permissions, err = store.UpdatePermissions(ctx, token.ID, UpdatePermissionsRequest{Permissions: []PermissionInput{
@@ -231,6 +235,9 @@ func TestTokenPermissionsReplaceAndValidateMatrix(t *testing.T) {
 	badInputs := []UpdatePermissionsRequest{
 		{Permissions: []PermissionInput{{ServerID: 0, ExecutionRule: RuleAlwaysRun}}},
 		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: "root"}}},
+		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: RuleAlwaysRun, ExpiresAt: "tomorrow"}}},
+		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: RuleAlwaysRun, ExpiresAt: time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)}}},
+		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: RuleBlocked, ExpiresAt: permissionExpiresAt}}},
 		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: RuleAlwaysRun}, {ServerID: alphaID, ExecutionRule: RuleBlocked}}},
 		{Permissions: []PermissionInput{{ServerID: 99999, ExecutionRule: RuleAlwaysRun}}},
 	}

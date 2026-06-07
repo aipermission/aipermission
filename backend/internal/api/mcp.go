@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -29,13 +30,15 @@ func (s mcpHandlers) mcpListServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := auth.runtime.database.QueryContext(r.Context(), `
-		SELECT srv.id, srv.name, srv.description, srv.host, srv.port, srv.username, p.execution_rule
+		SELECT srv.id, srv.name, srv.description, srv.host, srv.port, srv.username, p.execution_rule, COALESCE(p.expires_at, '')
 		FROM token_server_permissions p
 		JOIN servers srv ON srv.id = p.server_id
 		WHERE p.token_id = ? AND p.execution_rule != ?
+			AND (COALESCE(p.expires_at, '') = '' OR p.expires_at > ?)
 		ORDER BY srv.name`,
 		auth.TokenID,
 		tokens.RuleBlocked,
+		time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
 		writeInternalError(w)
@@ -46,7 +49,7 @@ func (s mcpHandlers) mcpListServers(w http.ResponseWriter, r *http.Request) {
 	items := []mcpServerItem{}
 	for rows.Next() {
 		var item mcpServerItem
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Host, &item.Port, &item.Username, &item.ExecutionRule); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Host, &item.Port, &item.Username, &item.ExecutionRule, &item.ExpiresAt); err != nil {
 			writeInternalError(w)
 			return
 		}

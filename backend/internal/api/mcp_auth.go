@@ -81,9 +81,11 @@ func (s *Server) mcpPermission(ctx context.Context, runtime *databaseRuntime, to
 		SELECT srv.name, p.execution_rule
 		FROM token_server_permissions p
 		JOIN servers srv ON srv.id = p.server_id
-		WHERE p.token_id = ? AND p.server_id = ?`,
+		WHERE p.token_id = ? AND p.server_id = ?
+			AND (COALESCE(p.expires_at, '') = '' OR p.expires_at > ?)`,
 		tokenID,
 		serverID,
+		time.Now().UTC().Format(time.RFC3339),
 	).Scan(&serverName, &rule)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", false, nil

@@ -1,9 +1,9 @@
 import { KeyRound, PanelRightClose, PanelRightOpen, RefreshCcw, TicketCheck } from "lucide-react";
-import { maskedToken, permissionCardClass, ruleLabel } from "../../lib/permissions";
+import { useEffect, useRef, useState } from "react";
+import { effectiveRule, expiresAtFromLifetime, maskedToken, permissionCardClass, permissionLifetimeLabel, ruleLabel } from "../../lib/permissions";
 import { Badge, CountBadge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Notice } from "../ui/notice";
-import { useEffect, useRef, useState } from "react";
 
 export function TokenPermissionPanel({ tokens, selectedServer, permissionState, unreadMessages, compact = false, onToggleCompact, onRefresh, onSetRule, onOpenMessages }) {
   const activeTokens = tokens.data.filter((token) => !token.revoked_at);
@@ -47,7 +47,8 @@ export function TokenPermissionPanel({ tokens, selectedServer, permissionState, 
         <div className="grid content-start gap-2 overflow-visible p-2">
           {activeTokens.map((token) => {
             const permissions = permissionState.data[token.id] || {};
-            const selectedRule = selectedServer ? permissions[selectedServer.id] || "" : "";
+            const selectedPermission = selectedServer ? permissions[selectedServer.id] : null;
+            const selectedRule = effectiveRule(selectedPermission);
             const unreadCount = selectedServer
               ? unreadMessages.filter((message) => Number(message.server_id) === Number(selectedServer.id) && Number(message.token_id) === Number(token.id)).length
               : unreadMessages.filter((message) => Number(message.token_id) === Number(token.id)).length;
@@ -64,26 +65,32 @@ export function TokenPermissionPanel({ tokens, selectedServer, permissionState, 
                   {unreadCount > 0 ? <CountBadge className="absolute -right-1 -top-1">{unreadCount}</CountBadge> : null}
                 </button>
                 {open && selectedServer ? (
-                  <div className="absolute right-full top-0 z-30 mr-2 grid w-72 gap-3 rounded-lg border border-stone-200 bg-white p-3 shadow-xl">
+                  <div className="absolute right-full top-0 z-30 mr-2 grid w-80 gap-3 rounded-lg border border-stone-200 bg-white p-3 shadow-xl">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-stone-900">{token.name}</p>
-                      <p className="mt-1 text-xs text-stone-500">{ruleLabel(selectedRule)} on {selectedServer.name}</p>
+                      <p className="mt-1 text-xs text-stone-500">
+                        {ruleLabel(selectedRule)} on {selectedServer.name}
+                        {selectedRule ? ` - ${permissionLifetimeLabel(selectedPermission)}` : ""}
+                      </p>
                     </div>
-                    <div className="grid grid-cols-3 gap-1">
-                      <PermissionButton active={!selectedRule} disabled={permissionState.savingKey === `${token.id}:${selectedServer.id}`} onClick={() => onSetRule(token, selectedServer, "")}>
-                        Disabled
-                      </PermissionButton>
-                      <PermissionButton active={selectedRule === "approval_required"} disabled={permissionState.savingKey === `${token.id}:${selectedServer.id}`} onClick={() => onSetRule(token, selectedServer, "approval_required")}>
-                        Prompt
-                      </PermissionButton>
-                      <PermissionButton active={selectedRule === "always_run"} disabled={permissionState.savingKey === `${token.id}:${selectedServer.id}`} onClick={() => onSetRule(token, selectedServer, "always_run")}>
-                        Always
-                      </PermissionButton>
-                    </div>
+                    <PermissionRuleButtons
+                      saving={permissionState.savingKey === `${token.id}:${selectedServer.id}`}
+                      selectedRule={selectedRule}
+                      onDisable={() => onSetRule(token, selectedServer, "")}
+                      onPrompt={() => onSetRule(token, selectedServer, "approval_required")}
+                      onAlways={() => onSetRule(token, selectedServer, "always_run")}
+                    />
                     {unreadCount > 0 ? (
                       <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => onOpenMessages(token.id)}>
                         Messages
                       </Button>
+                    ) : null}
+                    {selectedRule ? (
+                      <PermissionLifetimeControls
+                        value={selectedPermission}
+                        onSetPermanent={() => onSetRule(token, selectedServer, selectedRule, { expiresAt: "" })}
+                        onSetTemporary={(lifetime) => onSetRule(token, selectedServer, selectedRule, { expiresAt: expiresAtFromLifetime(lifetime) })}
+                      />
                     ) : null}
                   </div>
                 ) : null}
@@ -126,7 +133,8 @@ export function TokenPermissionPanel({ tokens, selectedServer, permissionState, 
         <div className="grid gap-3">
           {activeTokens.map((token) => {
             const permissions = permissionState.data[token.id] || {};
-            const selectedRule = selectedServer ? permissions[selectedServer.id] || "" : "";
+            const selectedPermission = selectedServer ? permissions[selectedServer.id] : null;
+            const selectedRule = effectiveRule(selectedPermission);
             const unreadCount = selectedServer
               ? unreadMessages.filter((message) => Number(message.server_id) === Number(selectedServer.id) && Number(message.token_id) === Number(token.id)).length
               : unreadMessages.filter((message) => Number(message.token_id) === Number(token.id)).length;
@@ -151,37 +159,70 @@ export function TokenPermissionPanel({ tokens, selectedServer, permissionState, 
                 </div>
 
                 {selectedServer ? (
-                  <div className="grid grid-cols-3 gap-1">
-                    <PermissionButton
-                      active={!selectedRule}
-                      disabled={permissionState.savingKey === `${token.id}:${selectedServer.id}`}
-                      onClick={() => onSetRule(token, selectedServer, "")}
-                    >
-                      Disabled
-                    </PermissionButton>
-                    <PermissionButton
-                      active={selectedRule === "approval_required"}
-                      disabled={permissionState.savingKey === `${token.id}:${selectedServer.id}`}
-                      onClick={() => onSetRule(token, selectedServer, "approval_required")}
-                    >
-                      Prompt
-                    </PermissionButton>
-                    <PermissionButton
-                      active={selectedRule === "always_run"}
-                      disabled={permissionState.savingKey === `${token.id}:${selectedServer.id}`}
-                      onClick={() => onSetRule(token, selectedServer, "always_run")}
-                    >
-                      Always
-                    </PermissionButton>
-                  </div>
+                  <>
+                    <PermissionRuleButtons
+                      saving={permissionState.savingKey === `${token.id}:${selectedServer.id}`}
+                      selectedRule={selectedRule}
+                      onDisable={() => onSetRule(token, selectedServer, "")}
+                      onPrompt={() => onSetRule(token, selectedServer, "approval_required")}
+                      onAlways={() => onSetRule(token, selectedServer, "always_run")}
+                    />
+                    {selectedRule ? (
+                      <PermissionLifetimeControls
+                        value={selectedPermission}
+                        onSetPermanent={() => onSetRule(token, selectedServer, selectedRule, { expiresAt: "" })}
+                        onSetTemporary={(lifetime) => onSetRule(token, selectedServer, selectedRule, { expiresAt: expiresAtFromLifetime(lifetime) })}
+                      />
+                    ) : null}
+                  </>
                 ) : null}
-
               </section>
             );
           })}
         </div>
       </div>
     </aside>
+  );
+}
+
+function PermissionRuleButtons({ saving, selectedRule, onDisable, onPrompt, onAlways }) {
+  return (
+    <div className="grid grid-cols-3 gap-1">
+      <PermissionButton active={!selectedRule} disabled={saving} onClick={onDisable}>
+        Disabled
+      </PermissionButton>
+      <PermissionButton active={selectedRule === "approval_required"} disabled={saving} onClick={onPrompt}>
+        Prompt
+      </PermissionButton>
+      <PermissionButton active={selectedRule === "always_run"} disabled={saving} onClick={onAlways}>
+        Always
+      </PermissionButton>
+    </div>
+  );
+}
+
+function PermissionLifetimeControls({ value, onSetPermanent, onSetTemporary }) {
+  return (
+    <div className="dark-panel-subtle grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-stone-700">Lifetime</span>
+        <span className="text-stone-500">{permissionLifetimeLabel(value)}</span>
+      </div>
+      <div className="grid grid-cols-4 gap-1">
+        <PermissionButton active={!value?.expires_at} onClick={onSetPermanent}>
+          Keep
+        </PermissionButton>
+        <PermissionButton active={false} onClick={() => onSetTemporary("1h")}>
+          1h
+        </PermissionButton>
+        <PermissionButton active={false} onClick={() => onSetTemporary("4h")}>
+          4h
+        </PermissionButton>
+        <PermissionButton active={false} onClick={() => onSetTemporary("1d")}>
+          1d
+        </PermissionButton>
+      </div>
+    </div>
   );
 }
 

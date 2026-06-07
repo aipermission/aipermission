@@ -1,9 +1,12 @@
 import { Dialog } from "../ui/dialog";
+import { Button } from "../ui/button";
+import { effectiveRule, expiresAtFromLifetime, permissionLifetimeLabel } from "../../lib/permissions";
 
 export function PermissionDialog({ value, permissionState, onClose, onSetRule }) {
   const token = value?.token;
   const server = value?.server;
-  const rule = token && server ? permissionState.data[token.id]?.[server.id] || "" : "";
+  const permission = token && server ? permissionState.data[token.id]?.[server.id] : null;
+  const rule = effectiveRule(permission);
   const saving = token && server ? permissionState.savingKey === `${token.id}:${server.id}` : false;
 
   return (
@@ -36,6 +39,28 @@ export function PermissionDialog({ value, permissionState, onClose, onSetRule })
             disabled={saving}
             onClick={() => onSetRule(token, server, "")}
           />
+          {rule ? (
+            <div className="dark-panel-subtle grid gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="font-semibold text-stone-900">Lifetime</span>
+                <span className="text-stone-500">{permissionLifetimeLabel(permission)}</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-4">
+                <Button type="button" variant="outline" className="h-9 px-2 text-xs" disabled={saving} onClick={() => onSetRule(token, server, rule, { expiresAt: "" })}>
+                  Keep
+                </Button>
+                <Button type="button" variant="outline" className="h-9 px-2 text-xs" disabled={saving} onClick={() => onSetRule(token, server, rule, { expiresAt: expiresAtFromLifetime("1h") })}>
+                  1 hour
+                </Button>
+                <Button type="button" variant="outline" className="h-9 px-2 text-xs" disabled={saving} onClick={() => onSetRule(token, server, rule, { expiresAt: expiresAtFromLifetime("4h") })}>
+                  4 hours
+                </Button>
+                <Button type="button" variant="outline" className="h-9 px-2 text-xs" disabled={saving} onClick={() => onSetRule(token, server, rule, { expiresAt: expiresAtFromLifetime("1d") })}>
+                  1 day
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </Dialog>

@@ -1,7 +1,8 @@
 import { useMemo } from "react";
+import { effectiveRule } from "../../lib/permissions";
 import { emptySession, isLiveConsoleSession, isUnreadMessage, latestSessionForServer } from "./helpers";
 
-export function useConsolePageState({ servers, tokens, approvals, messages, sessions, selectedServerID, permissionState }) {
+export function useConsolePageState({ servers, tokens, approvals, messages, sessions, selectedServerID, permissionState, now = Date.now() }) {
   const selectedServer = useMemo(() => {
     if (!servers.data.length) return null;
     return servers.data.find((server) => String(server.id) === selectedServerID) || servers.data[0];
@@ -16,8 +17,8 @@ export function useConsolePageState({ servers, tokens, approvals, messages, sess
 
   const selectedTokenOptions = useMemo(() => {
     if (!selectedServer) return [];
-    return tokens.data.filter((token) => !token.revoked_at && (permissionState.data[token.id]?.[selectedServer.id] || null));
-  }, [tokens.data, selectedServer?.id, permissionState.data]);
+    return tokens.data.filter((token) => !token.revoked_at && effectiveRule(permissionState.data[token.id]?.[selectedServer.id], now));
+  }, [tokens.data, selectedServer?.id, permissionState.data, now]);
 
   const defaultServerID = useMemo(() => {
     if (!servers.data.length) return "";

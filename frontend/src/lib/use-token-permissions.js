@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { apiGet, apiPut } from "./api";
-import { permissionsToMap } from "./permissions";
+import { effectiveRule, normalizePermission, permissionExpired, permissionsToMap } from "./permissions";
 
 export function useTokenPermissions(initialTokens = []) {
   const [permissionState, setPermissionState] = useState({ state: "idle", data: {}, error: null, savingKey: "" });
@@ -24,14 +24,20 @@ export function useTokenPermissions(initialTokens = []) {
     }
   }
 
-  async function setTokenServerRule(token, server, rule) {
+  async function setTokenServerRule(token, server, rule, options = {}) {
     const tokenID = Number(token.id);
     const serverID = Number(server.id);
     const savingKey = `${tokenID}:${serverID}`;
     const currentMap = permissionState.data[tokenID] || {};
+    const currentPermission = normalizePermission(currentMap[serverID]);
     const nextMap = { ...currentMap };
     if (rule) {
-      nextMap[serverID] = rule;
+      const expiresAt = Object.prototype.hasOwnProperty.call(options, "expiresAt")
+        ? options.expiresAt || ""
+        : currentPermission && !permissionExpired(currentPermission) && effectiveRule(currentPermission) === rule
+          ? currentPermission.expires_at || ""
+          : "";
+      nextMap[serverID] = { execution_rule: rule, expires_at: expiresAt };
     } else {
       delete nextMap[serverID];
     }
@@ -48,10 +54,7 @@ export function useTokenPermissions(initialTokens = []) {
 
     try {
       const permissions = await apiPut(`/api/tokens/${tokenID}/permissions`, {
-        permissions: Object.entries(nextMap).map(([id, executionRule]) => ({
-          server_id: Number(id),
-          execution_rule: executionRule,
-        })),
+        permissions: permissionPayload(nextMap),
       });
       setPermissionState((current) => ({
         ...current,
@@ -77,14 +80,15 @@ export function useTokenPermissions(initialTokens = []) {
     }
   }
 
-  async function setTokenAllServerRules(token, servers, rule) {
+  async function setTokenAllServerRules(token, servers, rule, options = {}) {
     const tokenID = Number(token.id);
     const savingKey = `${tokenID}:all`;
     const currentMap = permissionState.data[tokenID] || {};
     const nextMap = {};
     if (rule) {
+      const expiresAt = options.expiresAt || "";
       servers.forEach((server) => {
-        nextMap[Number(server.id)] = rule;
+        nextMap[Number(server.id)] = { execution_rule: rule, expires_at: expiresAt };
       });
     }
 
@@ -100,10 +104,7 @@ export function useTokenPermissions(initialTokens = []) {
 
     try {
       const permissions = await apiPut(`/api/tokens/${tokenID}/permissions`, {
-        permissions: Object.entries(nextMap).map(([id, executionRule]) => ({
-          server_id: Number(id),
-          execution_rule: executionRule,
-        })),
+        permissions: permissionPayload(nextMap),
       });
       setPermissionState((current) => ({
         ...current,
@@ -130,4 +131,19 @@ export function useTokenPermissions(initialTokens = []) {
   }
 
   return { permissionState, loadAllTokenPermissions, setTokenServerRule, setTokenAllServerRules };
+}
+
+function permissionPayload(permissionMap) {
+  return Object.entries(permissionMap)
+    .map(([id, permission]) => {
+      const normalized = normalizePermission(permission);
+      if (!normalized?.execution_rule) return null;
+      if (permissionExpired(normalized)) return null;
+      return {
+        server_id: Number(id),
+        execution_rule: normalized.execution_rule,
+        expires_at: normalized.expires_at || "",
+      };
+    })
+    .filter(Boolean);
 }
