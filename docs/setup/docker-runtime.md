@@ -8,6 +8,11 @@ The default runtime model for the MVP is local Docker.
 docker compose up
 ```
 
+On Windows, keep shell scripts checked out with LF line endings. Git should do
+this automatically through the repository `.gitattributes` file; if
+`docker compose up -d --build` fails with `exec /entrypoint.sh: no such file or
+directory`, reset the checkout line endings and rebuild the images.
+
 Expected local endpoints:
 
 ```txt

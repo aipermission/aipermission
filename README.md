@@ -159,6 +159,11 @@ Start the gateway:
 docker compose up -d --build
 ```
 
+On Windows, clone the repository with Git's default text handling or make sure
+shell scripts keep LF line endings. The repository includes `.gitattributes` and
+a CI check for this because Docker Linux containers cannot run CRLF shell
+entrypoints.
+
 Open the UI:
 
 ```txt

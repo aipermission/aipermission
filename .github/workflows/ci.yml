@@ -20,6 +20,8 @@ jobs:
           node-version: 24
       - name: Secret scan
         run: node scripts/secret-scan.js
+      - name: Line ending check
+        run: node scripts/line-ending-check.js
 
   backend:
     name: Backend
