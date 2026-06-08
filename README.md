@@ -286,6 +286,11 @@ list_requests(status?)
 send_message(message, server_id?, session_id?)
 ```
 
+`list_servers` is permission-scoped, not a live SSH health check. It tells the
+agent which servers the token may try to use. Current reachability is learned
+when the gateway actually attempts SSH and returns a dial, timeout,
+authentication, or host-key error.
+
 If a command returns `approval_pending`, the response includes an `assistant_hint` telling the AI to poll `get_request` until the request reaches a terminal state.
 
 Pending command approvals store an approval-context snapshot. If the token
