@@ -7,6 +7,19 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-06-08
+
+### Added
+
+- Console now shows active long-running MCP commands for the selected server,
+  including running age, token label, command, reason, and stuck-session
+  guidance.
+- Local operators can restart a server-scoped persistent console session from
+  the Console UI when it appears wedged.
+- MCP running-request hints and operator instructions now document the recovery
+  sequence: poll `get_request`, inspect `read_console`, then use
+  `restart_console_session(server_id)` when no useful progress is visible.
+
 ### Fixed
 
 - Hide internal persistent-console prelude lines from the live console and MCP

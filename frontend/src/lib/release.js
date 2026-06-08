@@ -1,6 +1,26 @@
-export const appVersion = "0.1.9";
+export const appVersion = "0.1.10";
 
 export const changelogEntries = [
+  {
+    version: "0.1.10",
+    label: "Console recovery controls",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Console shows the active long-running MCP command, running age, token label, command, and reason for the selected server.",
+          "Local operators can restart a stuck persistent console session from the Console UI.",
+          "MCP hints and operator instructions now describe the get_request, read_console, and restart_console_session recovery sequence.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Internal persistent-console prelude lines are hidden from the live console and MCP command output.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.9",
     label: "Approval drift and console recovery",

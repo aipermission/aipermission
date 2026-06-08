@@ -68,7 +68,7 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.1\.9"/);
+  assert.match(releaseSource, /appVersion = "0\.1\.10"/);
   assert.match(releaseSource, /Approval drift and console recovery/);
   assert.match(releaseSource, /Persistent console MCP exec is more resilient/);
 });
