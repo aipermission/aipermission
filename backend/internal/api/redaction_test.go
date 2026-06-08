@@ -27,6 +27,18 @@ func TestRedactBasicMasksCommonSecretShapes(t *testing.T) {
 	}
 }
 
+func TestRedactBasicKeepsShellPWDOutput(t *testing.T) {
+	output := redactBasic("PWD=/home/hakan/workspace\npwd=super-secret\nPASSWORD=another-secret")
+	if !strings.Contains(output, "PWD=/home/hakan/workspace") {
+		t.Fatalf("shell PWD output should not be redacted: %s", output)
+	}
+	for _, secret := range []string{"super-secret", "another-secret"} {
+		if strings.Contains(output, secret) {
+			t.Fatalf("secret %q was not redacted: %s", secret, output)
+		}
+	}
+}
+
 func TestCustomRedactionRulesApplyOnlyInBasicMode(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()

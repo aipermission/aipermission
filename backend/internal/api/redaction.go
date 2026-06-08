@@ -9,7 +9,7 @@ import (
 var (
 	privateKeyBlockPattern = regexp.MustCompile(`(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`)
 	bearerTokenPattern     = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
-	namedSecretPattern     = regexp.MustCompile(`(?i)\b(password|passwd|pwd|token|api[_-]?key|secret|access[_-]?key|private[_-]?key)\b(\s*[:=]\s*)(['"]?)[^\s'"]+`)
+	namedSecretPattern     = regexp.MustCompile(`(?i)\b(password|passwd|pwd|token|api[_-]?key|secret|access[_-]?key|private[_-]?key)\b(\s*[:=]\s*)(['"]?)([^\s'"]+)`)
 	commonTokenPattern     = regexp.MustCompile(`\b(ghp|gho|ghu|ghs|github_pat|sk|xoxb|xoxp|xapp|ya29)[A-Za-z0-9_./=-]{16,}\b`)
 )
 
@@ -54,6 +54,9 @@ func redactBasic(value string) string {
 		parts := namedSecretPattern.FindStringSubmatch(match)
 		if len(parts) < 4 {
 			return "[REDACTED]"
+		}
+		if parts[1] == "PWD" && len(parts) >= 5 && strings.HasPrefix(parts[4], "/") {
+			return match
 		}
 		return parts[1] + parts[2] + parts[3] + "[REDACTED]"
 	})
