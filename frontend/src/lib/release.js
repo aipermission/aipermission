@@ -18,6 +18,7 @@ export const changelogEntries = [
           "Windows checkouts preserve LF line endings for Docker shell entrypoints.",
           "Console recovery banners distinguish manual commands from MCP/AI commands.",
           "SSH command, Docker check, and connection-test failures now show clearer timeout, refused, auth, and host-key messages.",
+          "Approval Run checks SSH session readiness before closing the prompt.",
           "Basic redaction no longer masks normal shell PWD=/path output.",
         ],
       },

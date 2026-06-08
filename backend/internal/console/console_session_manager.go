@@ -219,6 +219,29 @@ func (m *Manager) Exec(ctx context.Context, serverID int64, command string) (Exe
 	return session.execCommand(ctx, command)
 }
 
+func (m *Manager) EnsureReady(ctx context.Context, serverID int64) (int64, error) {
+	session := m.activeForServer(serverID)
+	if session == nil {
+		record, err := m.Create(ctx, CreateRequest{
+			ServerID: serverID,
+			Name:     fmt.Sprintf("server-%d ai session", serverID),
+			Cols:     120,
+			Rows:     32,
+		})
+		if err != nil {
+			return 0, err
+		}
+		session = m.active(record.ID)
+	}
+	if session == nil {
+		return 0, fmt.Errorf("console session did not start")
+	}
+	if err := session.waitReady(ctx); err != nil {
+		return session.id, err
+	}
+	return session.id, nil
+}
+
 func (m *Manager) WaitActive(ctx context.Context, serverID int64) (ExecResult, error) {
 	session := m.activeForServer(serverID)
 	if session == nil {

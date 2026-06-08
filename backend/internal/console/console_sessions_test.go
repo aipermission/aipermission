@@ -12,6 +12,8 @@ import (
 	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/servers"
+	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/gorilla/websocket"
 )
 
@@ -1137,6 +1139,45 @@ func TestConsoleSessionManagerCreateValidationAndCloseInactive(t *testing.T) {
 	}
 	if err := manager.Close(context.Background(), 999); err != nil {
 		t.Fatalf("closing inactive/missing session should be idempotent: %v", err)
+	}
+}
+
+func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := database.Exec(`
+		INSERT INTO servers (name, host, port, username, ssh_key_id, created_at, updated_at)
+		VALUES ('worker-1', '127.0.0.1', 23, 'root', 1, ?, ?)`,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert server: %v", err)
+	}
+	serverID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read server id: %v", err)
+	}
+	manager := NewManager(database, func(context.Context, int64) (servers.Server, sshkeys.PrivateKey, error) {
+		return servers.Server{}, sshkeys.PrivateKey{}, errors.New("ssh dial: dial tcp 127.0.0.1:23: connect: connection refused")
+	}, "", nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	sessionID, err := manager.EnsureReady(ctx, serverID)
+	if err == nil || !strings.Contains(err.Error(), "connection refused") {
+		t.Fatalf("expected connection error, session=%d err=%v", sessionID, err)
+	}
+	record, recordErr := manager.Get(context.Background(), sessionID)
+	if recordErr != nil {
+		t.Fatalf("read failed session: %v", recordErr)
+	}
+	if record.Status != "error" || !strings.Contains(record.Error, "connection refused") {
+		t.Fatalf("expected failed session record, got %#v", record)
 	}
 }
 

@@ -77,6 +77,9 @@ stale
 
 If the request is `declined`, read `user_note` and follow the user's correction.
 If the request is `stale`, the approval context changed before execution; send a fresh `exec` request with the current command and reason instead of trying to reuse the old approval.
+If the request is `error`, read the error text. SSH reachability, refused ports,
+authentication failures, and host-key failures are current connection signals;
+do not assume a listed server is live just because `list_servers` returned it.
 
 ## Running Flow
 

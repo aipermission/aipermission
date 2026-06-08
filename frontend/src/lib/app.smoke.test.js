@@ -96,9 +96,11 @@ test("Approval dialog warns before persisting command context", () => {
   assert.match(approvalDialogSource, /redaction is best-effort/i);
   assert.match(approvalDialogSource, /sent \{requestAge\}/);
   assert.match(approvalDialogSource, /action\.state === "stale"/);
+  assert.match(approvalDialogSource, /action\.state === "failed"/);
   assert.match(approvalDialogSource, /OK/);
   assert.match(consolePageSource, /activeApprovalSnapshot/);
   assert.match(consolePageSource, /isStaleApprovalError/);
+  assert.match(consolePageSource, /item\?\.status === "error"/);
 });
 
 test("Server host key dialog handles first approval and changed fingerprints", () => {

@@ -10,6 +10,7 @@ export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, on
   const requestAge = approval ? formatRequestAge(approval.created_at) : "";
   const requestTimestamp = approval?.created_at ? formatRequestTimestamp(approval.created_at) : "";
   const stale = action.state === "stale";
+  const terminalError = action.state === "failed";
   return (
     <Dialog
       open={Boolean(approval)}
@@ -56,8 +57,8 @@ export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, on
                 className="!min-h-16 resize-none"
               />
             </label>
-            {action.state === "error" || stale ? <Notice tone="bad">{action.error}</Notice> : null}
-            {stale ? (
+            {action.state === "error" || stale || terminalError ? <Notice tone="bad">{action.error}</Notice> : null}
+            {stale || terminalError ? (
               <Button type="button" onClick={onClose}>
                 OK
               </Button>

@@ -289,6 +289,55 @@ func TestApprovalRunRejectsServerContextDriftBeforeExecution(t *testing.T) {
 	}
 }
 
+func TestApprovalRunReturnsConnectionFailure(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "offline")
+	server, err = fixture.servers.Update(ctx, server.ID, servers.UpdateRequest{
+		Name:        server.Name,
+		Host:        "127.0.0.1",
+		Port:        1,
+		Username:    server.Username,
+		SSHKeyID:    server.SSHKeyID,
+		Description: server.Description,
+	})
+	if err != nil {
+		t.Fatalf("update server port: %v", err)
+	}
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+
+	runtime := fixture.server.activeRuntime()
+	id, err := fixture.server.insertCommandRequest(ctx, runtime, token.ID, server.ID, "hostname", "check host", "pending_approval")
+	if err != nil {
+		t.Fatalf("insert command request: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(id, 10)+"/run", "", map[string]any{})
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected approval run response, got %d: %s", response.Code, response.Body.String())
+	}
+	item := decodeRouteResponse[commandRequestRecord](t, response.Body.Bytes())
+	if item.Status != "error" || !strings.Contains(item.Error, "command execution failed") {
+		t.Fatalf("expected connection failure item, got %#v", item)
+	}
+	var status string
+	var errorText string
+	if err := fixture.db.QueryRowContext(ctx, `SELECT status, error FROM command_requests WHERE id = ?`, id).Scan(&status, &errorText); err != nil {
+		t.Fatalf("read request state: %v", err)
+	}
+	if status != "error" || !strings.Contains(errorText, "command execution failed") {
+		t.Fatalf("expected persisted error, status=%q error=%q", status, errorText)
+	}
+}
+
 func TestApprovalContextDetectsPermissionDrift(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()

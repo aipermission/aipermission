@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 )
@@ -14,6 +15,7 @@ import (
 const (
 	pendingApprovalAssistantHint = "Wait 3 seconds, then call get_request. Continue polling get_request until terminal status."
 	runningAssistantHint         = "Wait 3 seconds, then call get_request again. Use read_console to inspect live output before sending another command to this server. If the request remains running and the console shows no useful progress, use restart_console_session(server_id) to recover the gateway-owned persistent console session."
+	approvalRunPreflightTimeout  = 15 * time.Second
 
 	commandRequestSourceMCP    = "mcp"
 	commandRequestSourceManual = "manual"
@@ -198,9 +200,36 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
+
+	preflightCtx, cancel := context.WithTimeout(context.Background(), approvalRunPreflightTimeout)
+	sessionID, preflightErr := runtime.consoleSessions.EnsureReady(preflightCtx, item.ServerID)
+	cancel()
+	if preflightErr != nil {
+		message := sshCommandFailureMessage(preflightErr)
+		_ = s.finishCommandRequest(context.Background(), runtime, id, "error", sessionID, "", "", 0, message)
+		item.Status = "error"
+		if sessionID > 0 {
+			item.SessionID = int64Ptr(sessionID)
+		}
+		item.Error = message
+		annotateCommandRequestForAssistant(&item)
+		s.writeAudit(r.Context(), runtime, "user", item.TokenID, item.ServerID, "approval.run.error", map[string]any{
+			"request_id": id,
+			"command":    item.Command,
+			"error":      message,
+		})
+		writeJSON(w, http.StatusOK, item)
+		return
+	}
+	if sessionID > 0 {
+		_ = s.setCommandRequestSession(context.Background(), runtime, id, sessionID)
+	}
 	go s.runApprovedCommand(runtime, id, item.ServerID, command)
 
 	item.Status = "running"
+	if sessionID > 0 {
+		item.SessionID = int64Ptr(sessionID)
+	}
 	annotateCommandRequestForAssistant(&item)
 	s.writeAudit(r.Context(), runtime, "user", item.TokenID, item.ServerID, "approval.run", map[string]any{
 		"request_id": id,

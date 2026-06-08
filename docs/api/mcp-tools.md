@@ -162,7 +162,12 @@ Example running response:
 }
 ```
 
-`approval_pending` is not terminal. The AI should follow `assistant_hint` and poll `get_request` until the request reaches a terminal status.
+`approval_pending` is not terminal. The AI should follow `assistant_hint` and
+poll `get_request` until the request reaches a terminal status. When the
+operator clicks Run, the gateway first checks that the SSH-backed console
+session can become ready; offline hosts, refused ports, authentication failures,
+and host-key failures become terminal request errors instead of silent approval
+successes.
 
 When a pending approval is created, the gateway records an approval-context
 snapshot covering the token, token/server permission, server profile, SSH key

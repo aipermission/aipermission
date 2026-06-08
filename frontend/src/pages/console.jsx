@@ -126,7 +126,7 @@ export function ConsolePage() {
   }, [selectedServer?.id, selectedRunningRequest?.id]);
 
   useEffect(() => {
-    if (activeApprovalID && !pendingApprovals.some((approval) => Number(approval.id) === Number(activeApprovalID)) && approvalAction.state !== "error" && approvalAction.state !== "stale") {
+    if (activeApprovalID && !pendingApprovals.some((approval) => Number(approval.id) === Number(activeApprovalID)) && !["error", "failed", "running", "stale"].includes(approvalAction.state)) {
       setActiveApprovalID(null);
       setActiveApprovalSnapshot(null);
       setApprovalNote("");
@@ -215,7 +215,12 @@ export function ConsolePage() {
     const approval = activeApproval;
     setApprovalAction({ state: "running", error: null });
     try {
-      await runApproval(approval.id, approvalNote);
+      const item = await runApproval(approval.id, approvalNote);
+      if (item?.status === "error" || item?.status === "failed") {
+        setActiveApprovalSnapshot({ ...approval, ...item });
+        setApprovalAction({ state: "failed", error: item.error || "Approval run failed before the command could complete." });
+        return;
+      }
       setDismissedApprovalIDs((current) => {
         const next = { ...current };
         delete next[approval.id];

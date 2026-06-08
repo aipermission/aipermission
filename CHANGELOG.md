@@ -29,6 +29,8 @@ and this project uses semantic versioning once public releases begin.
   commands.
 - SSH command execution, Docker checks, and connection tests now share clearer
   timeout, connection refused, authentication, and host-key error messages.
+- Approval Run now checks SSH session readiness before closing the prompt, so
+  unreachable/offline targets surface a readable terminal error immediately.
 - Basic redaction no longer masks normal shell `PWD=/path` output while still
   masking lowercase `pwd=...`, password, token, API key, bearer token, and
   private-key patterns.
