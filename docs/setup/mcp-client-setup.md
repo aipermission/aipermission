@@ -99,7 +99,7 @@ MCP server config shape:
 }
 ```
 
-If the related server permission is not `always_run`, a smoke test returns `approval_pending`. After the user clicks Run or Decline in Console, the MCP client checks the result with `get_request(request_id)`. Long-running `always_run` commands can be observed with `read_console(server_id)`.
+If the related server permission is not `always_run`, a smoke test returns `approval_pending`. After the user clicks Run or Decline in Console, the MCP client checks the result with `get_request(request_id)`. Long-running `always_run` commands can be observed with `read_console(server_id)`. If a request remains running and the console shows no useful progress, `restart_console_session(server_id)` closes the gateway-owned persistent console session so the next command opens a fresh SSH session.
 
 Provider config file targets:
 

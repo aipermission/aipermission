@@ -83,11 +83,12 @@ When `exec` or `get_request` returns `running`:
 4. Do not start another long-running command on the same server until the active request reaches a terminal status, unless the user explicitly asks.
 
 If the request appears stuck for an unusually long time and `read_console`
-shows no useful progress, ask the operator before recovery. When the operator
-agrees, call `restart_console_session(server_id)`. This closes the
-gateway-owned persistent console session and the next `exec` opens a fresh SSH
-session. Treat any canceled request as inconclusive and re-run only the minimal
-safe inspection needed.
+shows no useful progress, ask the operator before recovery unless they already
+asked you to recover the session. When recovery is approved, call
+`restart_console_session(server_id)`. This does not intentionally run a remote
+shell command; it closes the gateway-owned persistent console session and the
+next `exec` opens a fresh SSH session. Treat any canceled request as
+inconclusive and re-run only the minimal safe inspection needed.
 
 ## Message Flow
 

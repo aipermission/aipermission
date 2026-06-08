@@ -106,7 +106,15 @@ If MCP execution is stopped in the web UI, `exec` returns:
 
 `always_run` commands run through the backend-owned persistent console session. If the web console is attached to that session, AI/MCP commands are visible in the same transcript.
 
-For MCP client timeout safety, the backend waits for a bounded period in a single `exec` call. If the command is still running, the response is `running`; the shell session continues and output keeps streaming to the web console. The AI should call `read_console(server_id)` and poll `get_request(request_id)` before sending another long-running command to that server.
+For MCP client timeout safety, the backend waits for a bounded period in a
+single `exec` call. If the command is still running, the response is
+`running`; the shell session continues and output keeps streaming to the web
+console. The AI should poll `get_request(request_id)`, use
+`read_console(server_id)` to inspect live output when the token has
+`always_run`, and avoid sending another long-running command to that server
+until the active request reaches a terminal status. If the request remains
+running and `read_console` shows no useful progress, the recovery path is
+`restart_console_session(server_id)`.
 
 Example completed response:
 
@@ -130,7 +138,7 @@ Example running response:
   "server_id": 3,
   "session_id": 12,
   "retry_after_seconds": 3,
-  "assistant_hint": "Wait 3 seconds, then call get_request again. Use read_console to inspect live output before sending another command to this server."
+  "assistant_hint": "Wait 3 seconds, then call get_request again. Use read_console to inspect live output before sending another command to this server. If the request remains running and the console shows no useful progress, use restart_console_session(server_id) to recover the persistent console session."
 }
 ```
 
