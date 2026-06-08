@@ -15,7 +15,7 @@ func TestSSHConnectionFailureMessageClassifiesCommonFailures(t *testing.T) {
 		{
 			name: "auth failure",
 			err:  errors.New("ssh dial: ssh: handshake failed: ssh: unable to authenticate, attempted methods [none publickey], no supported methods remain"),
-			want: "authentication failed",
+			want: "SSH authentication failed",
 		},
 		{
 			name: "connection refused",
@@ -44,6 +44,16 @@ func TestSSHConnectionFailureMessageClassifiesCommonFailures(t *testing.T) {
 			got := sshConnectionFailureMessage(test.err)
 			if !strings.Contains(got, test.want) {
 				t.Fatalf("message %q does not contain %q", got, test.want)
+			}
+			if !strings.HasPrefix(got, "server connection test failed:") {
+				t.Fatalf("connection test message should keep endpoint prefix, got %q", got)
+			}
+			commandMessage := sshCommandFailureMessage(test.err)
+			if !strings.Contains(commandMessage, test.want) {
+				t.Fatalf("command message %q does not contain %q", commandMessage, test.want)
+			}
+			if !strings.HasPrefix(commandMessage, "command execution failed:") {
+				t.Fatalf("command message should keep exec prefix, got %q", commandMessage)
 			}
 		})
 	}

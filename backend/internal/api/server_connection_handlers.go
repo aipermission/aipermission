@@ -228,33 +228,33 @@ func (s *Server) serverSSHMaterial(ctx context.Context, serverID int64) (servers
 }
 
 func sshConnectionFailureMessage(err error) string {
-	detail := safeSSHErrorDetail(err)
-	switch {
-	case detail == "":
-		return "server connection test failed"
-	case strings.Contains(detail, "unable to authenticate") || strings.Contains(detail, "no supported methods remain") || strings.Contains(detail, "permission denied"):
-		return "server connection test failed: authentication failed. Install the selected SSH public key on the server, then try again."
-	case strings.Contains(detail, "connection refused"):
-		return "server connection test failed: SSH port refused the connection. Check the host, port, and SSH service."
-	case strings.Contains(detail, "i/o timeout") || strings.Contains(detail, "timed out") || strings.Contains(detail, "deadline exceeded"):
-		return "server connection test failed: SSH connection timed out. Check network access, firewall rules, host, and port."
-	case strings.Contains(detail, "no route to host") || strings.Contains(detail, "network is unreachable"):
-		return "server connection test failed: the host is not reachable from the local gateway."
-	case strings.Contains(detail, "host key"):
-		return "server connection test failed: SSH host key verification failed."
-	case strings.Contains(detail, "parse private key"):
-		return "server connection test failed: selected SSH key could not be parsed."
-	default:
-		return "server connection test failed: " + detail
-	}
+	return sshFailureMessage("server connection test failed", err)
 }
 
 func sshCommandFailureMessage(err error) string {
+	return sshFailureMessage("command execution failed", err)
+}
+
+func sshFailureMessage(prefix string, err error) string {
 	detail := safeSSHErrorDetail(err)
-	if detail == "" {
-		return "command execution failed"
+	switch {
+	case detail == "":
+		return prefix
+	case strings.Contains(detail, "unable to authenticate") || strings.Contains(detail, "no supported methods remain") || strings.Contains(detail, "permission denied"):
+		return prefix + ": SSH authentication failed. Install the selected SSH public key on the server, then try again."
+	case strings.Contains(detail, "connection refused"):
+		return prefix + ": SSH port refused the connection. Check the host, port, and SSH service."
+	case strings.Contains(detail, "i/o timeout") || strings.Contains(detail, "timed out") || strings.Contains(detail, "deadline exceeded"):
+		return prefix + ": SSH connection timed out. Check network access, firewall rules, host, and port."
+	case strings.Contains(detail, "no route to host") || strings.Contains(detail, "network is unreachable"):
+		return prefix + ": the host is not reachable from the local gateway."
+	case strings.Contains(detail, "host key"):
+		return prefix + ": SSH host key verification failed."
+	case strings.Contains(detail, "parse private key"):
+		return prefix + ": selected SSH key could not be parsed."
+	default:
+		return prefix + ": " + detail
 	}
-	return "command execution failed: " + detail
 }
 
 func safeSSHErrorDetail(err error) string {
