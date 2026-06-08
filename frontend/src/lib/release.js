@@ -1,6 +1,28 @@
-export const appVersion = "0.1.10";
+export const appVersion = "0.1.11";
 
 export const changelogEntries = [
+  {
+    version: "0.1.11",
+    label: "SSH compatibility polish",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Servers can store optional advanced SSH startup settings for NAS and appliance targets that show a menu before shell access.",
+          "Advanced startup settings can send post-connect input such as q plus newline, or start a specific shell command when needed.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Windows checkouts preserve LF line endings for Docker shell entrypoints.",
+          "Console recovery banners distinguish manual commands from MCP/AI commands.",
+          "SSH command, Docker check, and connection-test failures now show clearer timeout, refused, auth, and host-key messages.",
+          "Basic redaction no longer masks normal shell PWD=/path output.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.10",
     label: "Console recovery controls",

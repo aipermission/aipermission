@@ -27,6 +27,11 @@ If no server is visible, say that the current token has no accessible servers.
 If `expires_at` is present, treat access as temporary. Finish within that
 maintenance window or ask the operator to extend access.
 
+`list_servers()` is permission-scoped, not a live health check. A visible server
+may still be powered off, unreachable, reject SSH authentication, or require host
+key review. Treat `exec` dial, timeout, authentication, and host-key errors as
+the current reachability signal.
+
 ## Command Reasons
 
 Every `exec` call should include a short `reason`.

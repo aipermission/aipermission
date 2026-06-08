@@ -7,6 +7,34 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-06-08
+
+### Added
+
+- Servers can now store optional advanced SSH startup settings for NAS and
+  appliance targets that show an interactive menu before a normal shell.
+- Advanced startup settings support post-connect input, such as `q\n` for some
+  QNAP menus, and an optional forced shell command for compatibility targets.
+
+### Changed
+
+- Updated the Go toolchain/Docker builder image, frontend dependencies, and the
+  SFTP dependency after local test verification.
+
+### Fixed
+
+- Windows checkouts now preserve LF line endings for Docker shell scripts, with
+  a hygiene check to catch CRLF entrypoint regressions.
+- Console recovery banners now distinguish manual console commands from MCP/AI
+  commands.
+- SSH command execution, Docker checks, and connection tests now share clearer
+  timeout, connection refused, authentication, and host-key error messages.
+- Basic redaction no longer masks normal shell `PWD=/path` output while still
+  masking lowercase `pwd=...`, password, token, API key, bearer token, and
+  private-key patterns.
+- README and operator instructions now clarify that `list_servers` is
+  permission-scoped and not a live SSH health check.
+
 ## [0.1.10] - 2026-06-08
 
 ### Added
