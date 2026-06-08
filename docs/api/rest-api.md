@@ -68,9 +68,18 @@ Create/update shape:
   "port": 22,
   "username": "root",
   "ssh_key_id": 7,
-  "description": "maintenance target"
+  "description": "maintenance target",
+  "startup_input_after_connect": "",
+  "force_shell_command": ""
 }
 ```
+
+`startup_input_after_connect` and `force_shell_command` are optional advanced
+SSH compatibility settings. They are intended for appliances that show an
+interactive menu before a normal shell, such as some NAS devices. The startup
+input is written exactly to the PTY after connect. The forced shell command
+starts that command instead of the default SSH shell. Leave both empty for
+normal Linux servers.
 
 Server-specific custom hints are not accepted by the server CRUD API in the current MVP. MCP `list_servers` may still return gateway-generated operational hints, such as safe package verification or bounded log commands.
 

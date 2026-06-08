@@ -49,11 +49,13 @@ func TestServerStoreCreateListUpdateDelete(t *testing.T) {
 	store := NewStore(database)
 
 	created, err := store.Create(ctx, CreateRequest{
-		Name:        " worker-1 ",
-		Host:        " 10.0.0.10 ",
-		Username:    " root ",
-		SSHKeyID:    keyID,
-		Description: " first server ",
+		Name:                     " worker-1 ",
+		Host:                     " 10.0.0.10 ",
+		Username:                 " root ",
+		SSHKeyID:                 keyID,
+		Description:              " first server ",
+		StartupInputAfterConnect: "q\r\n",
+		ForceShellCommand:        " /bin/sh -l ",
 	})
 	if err != nil {
 		t.Fatalf("create server: %v", err)
@@ -64,20 +66,28 @@ func TestServerStoreCreateListUpdateDelete(t *testing.T) {
 	if created.SSHKeyName != "main" {
 		t.Fatalf("expected ssh key join name, got %q", created.SSHKeyName)
 	}
+	if created.StartupInputAfterConnect != "q\n" || created.ForceShellCommand != "/bin/sh -l" {
+		t.Fatalf("server advanced startup settings were not normalized: %#v", created)
+	}
 
 	updated, err := store.Update(ctx, created.ID, UpdateRequest{
-		Name:        "worker-1b",
-		Host:        "example.test",
-		Port:        2200,
-		Username:    "ubuntu",
-		SSHKeyID:    keyID,
-		Description: "updated",
+		Name:                     "worker-1b",
+		Host:                     "example.test",
+		Port:                     2200,
+		Username:                 "ubuntu",
+		SSHKeyID:                 keyID,
+		Description:              "updated",
+		StartupInputAfterConnect: "menu\nexit\n",
+		ForceShellCommand:        "/usr/bin/env sh",
 	})
 	if err != nil {
 		t.Fatalf("update server: %v", err)
 	}
 	if updated.Name != "worker-1b" || updated.Port != 2200 || updated.Description != "updated" {
 		t.Fatalf("server was not updated: %#v", updated)
+	}
+	if updated.StartupInputAfterConnect != "menu\nexit\n" || updated.ForceShellCommand != "/usr/bin/env sh" {
+		t.Fatalf("server advanced startup settings were not updated: %#v", updated)
 	}
 
 	list, err := store.List(ctx)
@@ -122,6 +132,10 @@ func TestServerStoreValidatesRequests(t *testing.T) {
 		{Name: "server", Host: "host", Port: 22, Username: strings.Repeat("a", 65), SSHKeyID: keyID},
 		{Name: "server", Host: "host", Port: 22, Username: "root", SSHKeyID: keyID, Description: "bad\ndescription"},
 		{Name: "server", Host: "host", Port: 22, Username: "root", SSHKeyID: keyID, Description: strings.Repeat("a", 1001)},
+		{Name: "server", Host: "host", Port: 22, Username: "root", SSHKeyID: keyID, StartupInputAfterConnect: strings.Repeat("a", 2001)},
+		{Name: "server", Host: "host", Port: 22, Username: "root", SSHKeyID: keyID, StartupInputAfterConnect: "bad\x00input"},
+		{Name: "server", Host: "host", Port: 22, Username: "root", SSHKeyID: keyID, ForceShellCommand: "bad\ncommand"},
+		{Name: "server", Host: "host", Port: 22, Username: "root", SSHKeyID: keyID, ForceShellCommand: strings.Repeat("a", 201)},
 		{Name: "server", Host: "host", Port: 22, Username: "root", SSHKeyID: 0},
 		{Name: "server", Host: "host", Port: 22, Username: "root", SSHKeyID: 999},
 	}

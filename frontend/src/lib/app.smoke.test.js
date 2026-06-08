@@ -118,6 +118,15 @@ test("Servers page exposes on-demand Docker checks", () => {
   assert.match(serversSource, /No running Docker containers/);
 });
 
+test("Servers page exposes advanced SSH startup settings", () => {
+  assert.match(serversSource, /Advanced SSH startup/);
+  assert.match(serversSource, /startup_input_after_connect/);
+  assert.match(serversSource, /force_shell_command/);
+  assert.match(serversSource, /Startup input after connect/);
+  assert.match(serversSource, /Force shell command/);
+  assert.match(serversSource, /QNAP/);
+});
+
 test("Servers page can prefill servers from host config", () => {
   assert.match(serversSource, /\/api\/ssh-config\/discover/);
   assert.match(serversSource, /\/api\/ssh-config\/parse/);

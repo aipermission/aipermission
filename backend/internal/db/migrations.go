@@ -446,6 +446,11 @@ var approvalContextStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_approval_context_hash ON command_requests(approval_context_hash);`,
 }
 
+var serverSSHAdvancedSettingsStatements = []string{
+	`ALTER TABLE servers ADD COLUMN startup_input_after_connect TEXT NOT NULL DEFAULT '';`,
+	`ALTER TABLE servers ADD COLUMN force_shell_command TEXT NOT NULL DEFAULT '';`,
+}
+
 var migrations = []migration{
 	{
 		version:     1,
@@ -491,6 +496,11 @@ var migrations = []migration{
 		version:     9,
 		description: "approval context snapshots",
 		statements:  approvalContextStatements,
+	},
+	{
+		version:     10,
+		description: "server ssh advanced startup settings",
+		statements:  serverSSHAdvancedSettingsStatements,
 	},
 }
 

@@ -78,6 +78,13 @@ Responses must not show:
 
 A server record does not contain credentials. It references the gateway key by `ssh_key_id`.
 
+Some SSH targets, especially NAS appliances, show an interactive menu before a
+normal shell. Server records can store optional advanced startup behavior for
+that compatibility case: startup input sent after connect, or a forced shell
+command. These values are not credentials. Keep them empty for normal Linux
+servers and avoid putting secrets in them because console transcripts and audit
+metadata can include shell output.
+
 ## Host Key Verification
 
 Gateway SSH clients use explicit first-connect fingerprint approval:

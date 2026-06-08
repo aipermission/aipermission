@@ -118,6 +118,7 @@ Implemented:
 - SSH host import from OpenSSH config files for prefilling server records
 - copy/paste public key install command for servers
 - server management and SSH connection test
+- optional advanced SSH startup settings for menu-based NAS/appliance shells
 - API token create, copy, revoke
 - token expiration for temporary MCP access
 - token-to-server permissions with optional temporary expiration

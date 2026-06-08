@@ -95,13 +95,25 @@ func (s *managedConsoleSession) run() {
 		s.fail(fmt.Sprintf("request pty: %v", err))
 		return
 	}
-	if err := sshSession.Shell(); err != nil {
+	if server.ForceShellCommand != "" {
+		if err := sshSession.Start(server.ForceShellCommand); err != nil {
+			s.fail(fmt.Sprintf("start forced shell command: %v", err))
+			return
+		}
+	} else if err := sshSession.Shell(); err != nil {
 		s.fail(fmt.Sprintf("start shell: %v", err))
 		return
 	}
 
 	s.setStatus("connected", "")
 	s.broadcast(ptyServerMessage{Type: "ready", Status: "connected", SessionID: s.id})
+
+	if server.StartupInputAfterConnect != "" {
+		if _, err := io.WriteString(stdin, server.StartupInputAfterConnect); err != nil {
+			s.fail(fmt.Sprintf("write startup input: %v", err))
+			return
+		}
+	}
 
 	go s.pipe(stdout)
 	go s.pipe(stderr)

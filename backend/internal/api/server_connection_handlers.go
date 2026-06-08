@@ -24,12 +24,14 @@ type serverTestResponse struct {
 }
 
 type serverConnectionTestRequest struct {
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	SSHKeyID    int64  `json:"ssh_key_id"`
-	Description string `json:"description"`
+	Name                     string `json:"name"`
+	Host                     string `json:"host"`
+	Port                     int    `json:"port"`
+	Username                 string `json:"username"`
+	SSHKeyID                 int64  `json:"ssh_key_id"`
+	Description              string `json:"description"`
+	StartupInputAfterConnect string `json:"startup_input_after_connect"`
+	ForceShellCommand        string `json:"force_shell_command"`
 }
 
 func (s serverConnectionHandlers) testServer(w http.ResponseWriter, r *http.Request) {

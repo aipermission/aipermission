@@ -11,25 +11,29 @@ import (
 )
 
 type Server struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	SSHKeyID    int64  `json:"ssh_key_id"`
-	SSHKeyName  string `json:"ssh_key_name,omitempty"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID                       int64  `json:"id"`
+	Name                     string `json:"name"`
+	Host                     string `json:"host"`
+	Port                     int    `json:"port"`
+	Username                 string `json:"username"`
+	SSHKeyID                 int64  `json:"ssh_key_id"`
+	SSHKeyName               string `json:"ssh_key_name,omitempty"`
+	Description              string `json:"description"`
+	StartupInputAfterConnect string `json:"startup_input_after_connect,omitempty"`
+	ForceShellCommand        string `json:"force_shell_command,omitempty"`
+	CreatedAt                string `json:"created_at"`
+	UpdatedAt                string `json:"updated_at"`
 }
 
 type CreateRequest struct {
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	SSHKeyID    int64  `json:"ssh_key_id"`
-	Description string `json:"description"`
+	Name                     string `json:"name"`
+	Host                     string `json:"host"`
+	Port                     int    `json:"port"`
+	Username                 string `json:"username"`
+	SSHKeyID                 int64  `json:"ssh_key_id"`
+	Description              string `json:"description"`
+	StartupInputAfterConnect string `json:"startup_input_after_connect"`
+	ForceShellCommand        string `json:"force_shell_command"`
 }
 
 type UpdateRequest = CreateRequest
@@ -43,7 +47,7 @@ func NewStore(db *sql.DB) *Store {
 }
 
 func (s *Store) List(ctx context.Context) ([]Server, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT s.id, s.name, s.host, s.port, s.username, s.ssh_key_id, COALESCE(k.name, ''), s.description, s.created_at, s.updated_at FROM servers s LEFT JOIN ssh_keys k ON k.id = s.ssh_key_id ORDER BY s.name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT s.id, s.name, s.host, s.port, s.username, s.ssh_key_id, COALESCE(k.name, ''), s.description, s.startup_input_after_connect, s.force_shell_command, s.created_at, s.updated_at FROM servers s LEFT JOIN ssh_keys k ON k.id = s.ssh_key_id ORDER BY s.name`)
 	if err != nil {
 		return nil, fmt.Errorf("list servers: %w", err)
 	}
@@ -52,7 +56,7 @@ func (s *Store) List(ctx context.Context) ([]Server, error) {
 	items := []Server{}
 	for rows.Next() {
 		var item Server
-		if err := rows.Scan(&item.ID, &item.Name, &item.Host, &item.Port, &item.Username, &item.SSHKeyID, &item.SSHKeyName, &item.Description, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Host, &item.Port, &item.Username, &item.SSHKeyID, &item.SSHKeyName, &item.Description, &item.StartupInputAfterConnect, &item.ForceShellCommand, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan server: %w", err)
 		}
 		items = append(items, item)
@@ -65,8 +69,8 @@ func (s *Store) List(ctx context.Context) ([]Server, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (Server, error) {
 	var item Server
-	err := s.db.QueryRowContext(ctx, `SELECT s.id, s.name, s.host, s.port, s.username, s.ssh_key_id, COALESCE(k.name, ''), s.description, s.created_at, s.updated_at FROM servers s LEFT JOIN ssh_keys k ON k.id = s.ssh_key_id WHERE s.id = ?`, id).
-		Scan(&item.ID, &item.Name, &item.Host, &item.Port, &item.Username, &item.SSHKeyID, &item.SSHKeyName, &item.Description, &item.CreatedAt, &item.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT s.id, s.name, s.host, s.port, s.username, s.ssh_key_id, COALESCE(k.name, ''), s.description, s.startup_input_after_connect, s.force_shell_command, s.created_at, s.updated_at FROM servers s LEFT JOIN ssh_keys k ON k.id = s.ssh_key_id WHERE s.id = ?`, id).
+		Scan(&item.ID, &item.Name, &item.Host, &item.Port, &item.Username, &item.SSHKeyID, &item.SSHKeyName, &item.Description, &item.StartupInputAfterConnect, &item.ForceShellCommand, &item.CreatedAt, &item.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Server{}, ErrNotFound
 	}
@@ -85,7 +89,7 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (Server, erro
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO servers (name, host, port, username, ssh_key_id, auth_type, key_label, encrypted_secret, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO servers (name, host, port, username, ssh_key_id, auth_type, key_label, encrypted_secret, description, startup_input_after_connect, force_shell_command, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		normalized.Name,
 		normalized.Host,
 		normalized.Port,
@@ -95,6 +99,8 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (Server, erro
 		"",
 		"gateway-managed-ssh-key",
 		normalized.Description,
+		normalized.StartupInputAfterConnect,
+		normalized.ForceShellCommand,
 		now,
 		now,
 	)
@@ -121,7 +127,7 @@ func (s *Store) Update(ctx context.Context, id int64, request UpdateRequest) (Se
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.ExecContext(
 		ctx,
-		`UPDATE servers SET name = ?, host = ?, port = ?, username = ?, ssh_key_id = ?, auth_type = ?, key_label = ?, encrypted_secret = ?, description = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE servers SET name = ?, host = ?, port = ?, username = ?, ssh_key_id = ?, auth_type = ?, key_label = ?, encrypted_secret = ?, description = ?, startup_input_after_connect = ?, force_shell_command = ?, updated_at = ? WHERE id = ?`,
 		normalized.Name,
 		normalized.Host,
 		normalized.Port,
@@ -131,6 +137,8 @@ func (s *Store) Update(ctx context.Context, id int64, request UpdateRequest) (Se
 		"",
 		"gateway-managed-ssh-key",
 		normalized.Description,
+		normalized.StartupInputAfterConnect,
+		normalized.ForceShellCommand,
 		now,
 		id,
 	)
@@ -171,6 +179,8 @@ func normalizeRequest(ctx context.Context, db *sql.DB, request CreateRequest) (C
 	request.Host = strings.TrimSpace(request.Host)
 	request.Username = strings.TrimSpace(request.Username)
 	request.Description = strings.TrimSpace(request.Description)
+	request.StartupInputAfterConnect = normalizeStartupInput(request.StartupInputAfterConnect)
+	request.ForceShellCommand = strings.TrimSpace(request.ForceShellCommand)
 
 	if request.Port == 0 {
 		request.Port = 22
@@ -200,6 +210,12 @@ func normalizeRequest(ctx context.Context, db *sql.DB, request CreateRequest) (C
 	if err := validateSingleLineField("description", request.Description, 1000); err != nil {
 		return request, err
 	}
+	if err := validateStartupInput(request.StartupInputAfterConnect); err != nil {
+		return request, err
+	}
+	if err := validateSingleLineField("force_shell_command", request.ForceShellCommand, 200); err != nil {
+		return request, err
+	}
 	if request.SSHKeyID < 1 {
 		return request, ValidationError("ssh_key_id is required")
 	}
@@ -214,6 +230,26 @@ func normalizeRequest(ctx context.Context, db *sql.DB, request CreateRequest) (C
 	}
 
 	return request, nil
+}
+
+func normalizeStartupInput(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	return strings.ReplaceAll(value, "\r", "\n")
+}
+
+func validateStartupInput(value string) error {
+	if len([]byte(value)) > 2000 {
+		return ValidationError("startup_input_after_connect must be 2000 bytes or fewer")
+	}
+	for _, r := range value {
+		if r == '\n' || r == '\t' {
+			continue
+		}
+		if unicode.IsControl(r) {
+			return ValidationError("startup_input_after_connect may only contain printable text, tabs, and newlines")
+		}
+	}
+	return nil
 }
 
 func ValidateHost(host string) error {

@@ -45,16 +45,18 @@ type approvalContextPermission struct {
 }
 
 type approvalContextServer struct {
-	ID                int64  `json:"id"`
-	Name              string `json:"name"`
-	Host              string `json:"host"`
-	Port              int    `json:"port"`
-	Username          string `json:"username"`
-	Description       string `json:"description,omitempty"`
-	AuthType          string `json:"auth_type"`
-	KeyLabel          string `json:"key_label,omitempty"`
-	SSHKeyID          int64  `json:"ssh_key_id"`
-	SSHKeyFingerprint string `json:"ssh_key_fingerprint,omitempty"`
+	ID                       int64  `json:"id"`
+	Name                     string `json:"name"`
+	Host                     string `json:"host"`
+	Port                     int    `json:"port"`
+	Username                 string `json:"username"`
+	Description              string `json:"description,omitempty"`
+	StartupInputAfterConnect string `json:"startup_input_after_connect,omitempty"`
+	ForceShellCommand        string `json:"force_shell_command,omitempty"`
+	AuthType                 string `json:"auth_type"`
+	KeyLabel                 string `json:"key_label,omitempty"`
+	SSHKeyID                 int64  `json:"ssh_key_id"`
+	SSHKeyFingerprint        string `json:"ssh_key_fingerprint,omitempty"`
 }
 
 type approvalContextCommand struct {
@@ -87,7 +89,9 @@ func (s *Server) readCurrentApprovalContext(ctx context.Context, runtime *databa
 	err := runtime.database.QueryRowContext(ctx, `
 		SELECT tok.id, tok.name, COALESCE(tok.expires_at, ''), COALESCE(tok.revoked_at, ''),
 		       p.execution_rule, COALESCE(p.expires_at, ''),
-		       srv.id, srv.name, srv.host, srv.port, srv.username, srv.description, srv.auth_type, srv.key_label, srv.ssh_key_id,
+		       srv.id, srv.name, srv.host, srv.port, srv.username, srv.description,
+		       srv.startup_input_after_connect, srv.force_shell_command,
+		       srv.auth_type, srv.key_label, srv.ssh_key_id,
 		       COALESCE(k.fingerprint, '')
 		FROM api_tokens tok
 		JOIN token_server_permissions p ON p.token_id = tok.id AND p.server_id = ?
@@ -109,6 +113,8 @@ func (s *Server) readCurrentApprovalContext(ctx context.Context, runtime *databa
 		&snapshot.Server.Port,
 		&snapshot.Server.Username,
 		&snapshot.Server.Description,
+		&snapshot.Server.StartupInputAfterConnect,
+		&snapshot.Server.ForceShellCommand,
 		&snapshot.Server.AuthType,
 		&snapshot.Server.KeyLabel,
 		&snapshot.Server.SSHKeyID,

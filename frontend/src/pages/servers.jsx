@@ -11,7 +11,17 @@ import { Checkbox, Field, Input, Select, Textarea } from "../components/ui/form"
 import { Notice } from "../components/ui/notice";
 import { TerminalBlock } from "../components/ui/terminal-block";
 
-const emptyForm = { name: "", host: "", port: 22, username: "root", ssh_key_id: "", description: "", setup_later: false };
+const emptyForm = {
+  name: "",
+  host: "",
+  port: 22,
+  username: "root",
+  ssh_key_id: "",
+  description: "",
+  startup_input_after_connect: "",
+  force_shell_command: "",
+  setup_later: false,
+};
 
 export function ServersPage() {
   const { servers, sshKeys, loadServers } = useGateway();
@@ -89,6 +99,8 @@ export function ServersPage() {
       username: entry.username || "root",
       ssh_key_id: firstKeyID,
       description: "Imported from host config.",
+      startup_input_after_connect: "",
+      force_shell_command: "",
     });
     setSSHConfigDialog({ open: false, state: "idle", items: [], error: null });
     setDrawer({ open: true, mode: "create", server: null });
@@ -103,6 +115,8 @@ export function ServersPage() {
       username: server.username,
       ssh_key_id: String(server.ssh_key_id),
       description: server.description || "",
+      startup_input_after_connect: server.startup_input_after_connect || "",
+      force_shell_command: server.force_shell_command || "",
       setup_later: false,
     });
     setDrawer({ open: true, mode: "edit", server });
@@ -412,6 +426,38 @@ export function ServersPage() {
             Description
             <Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
           </Field>
+          <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark-soft-panel">
+            <div>
+              <p className="text-sm font-semibold text-stone-900">Advanced SSH startup</p>
+              <p className="mt-1 text-xs text-stone-500">
+                Optional compatibility settings for appliances that show an interactive menu before a normal shell.
+              </p>
+            </div>
+            <Field>
+              Startup input after connect
+              <Textarea
+                value={form.startup_input_after_connect}
+                onChange={(event) => setForm({ ...form, startup_input_after_connect: event.target.value })}
+                rows={3}
+                className="font-mono text-xs"
+                placeholder={"q\n"}
+              />
+              <span className="text-xs text-stone-500">
+                Sent exactly to the PTY after the shell starts. For some QNAP menus, enter <span className="font-mono">q</span> then a newline.
+              </span>
+            </Field>
+            <Field>
+              Force shell command
+              <Input
+                value={form.force_shell_command}
+                onChange={(event) => setForm({ ...form, force_shell_command: event.target.value })}
+                placeholder="/bin/sh -l"
+              />
+              <span className="text-xs text-stone-500">
+                Leave empty for normal SSH shell startup. Use only when the server needs a specific shell command.
+              </span>
+            </Field>
+          </div>
           {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
           <Button type="submit" disabled={state.state === "saving" || sshKeys.data.length === 0}>
             {state.state === "saving" ? (form.setup_later ? "Saving..." : "Testing...") : drawer.mode === "edit" ? "Save changes" : "Save server"}
@@ -944,5 +990,7 @@ function serverPayloadFromForm(form) {
     username: form.username,
     ssh_key_id: Number(form.ssh_key_id),
     description: form.description,
+    startup_input_after_connect: form.startup_input_after_connect,
+    force_shell_command: form.force_shell_command,
   };
 }
