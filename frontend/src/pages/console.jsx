@@ -611,5 +611,6 @@ function ConsoleStatusDot({ status, className = "" }) {
     idle: "Live session idle",
     busy: "Pending or running work",
   };
-  return <Circle className={`h-3 w-3 shrink-0 ${colors[status] || colors.offline} ${className}`} aria-label={label[status] || label.offline} />;
+  const title = label[status] || label.offline;
+  return <Circle className={`h-3 w-3 shrink-0 ${colors[status] || colors.offline} ${className}`} aria-label={title} title={title} />;
 }

@@ -102,7 +102,7 @@ These instructions teach the agent how to poll `approval_pending` and `running` 
 
 ## Security Boundary
 
-This package talks to a local AIPermission gateway. `AIPERMISSION_API_URL` must point to `localhost`, `127.0.0.1`, or `[::1]`; remote URLs are rejected before the bearer token is sent. Do not expose the gateway on LAN or the public internet, and do not use it as a shared DevOps service. Tokens grant access only to the servers and execution rules configured in the gateway UI. Token/server permissions may be temporary; expired grants are omitted from `list_servers` and no longer authorize command, console, or file-transfer tools.
+This package talks to a local AIPermission gateway. `AIPERMISSION_API_URL` must point to `localhost`, `127.0.0.1`, or `[::1]`; remote URLs are rejected before the bearer token is sent. Do not expose the gateway on LAN or the public internet, and do not use it as a shared DevOps service. Tokens grant access only to the servers and execution rules configured in the gateway UI. Token/server permissions may be temporary; expired grants are omitted from `list_servers` and no longer authorize command, console, or file-transfer tools. `list_servers` is permission-scoped, not a live SSH health check; use its last-known console status as context and treat `exec` connection errors as the current reachability signal.
 
 ## License
 

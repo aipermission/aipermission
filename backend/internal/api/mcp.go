@@ -28,6 +28,11 @@ func (s mcpHandlers) mcpListServers(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
+	consoleStates, err := mcpLatestConsoleStates(r.Context(), auth.runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 
 	rows, err := auth.runtime.database.QueryContext(r.Context(), `
 		SELECT srv.id, srv.name, srv.description, srv.host, srv.port, srv.username, p.execution_rule, COALESCE(p.expires_at, '')
@@ -58,6 +63,11 @@ func (s mcpHandlers) mcpListServers(w http.ResponseWriter, r *http.Request) {
 			item.Port = 0
 			item.Username = ""
 		}
+		item.LiveConsoleStatus = "none"
+		if state, ok := consoleStates[item.ID]; ok {
+			item.LiveConsoleStatus = state.Status
+			item.LastConsoleError = state.Error
+		}
 		item.Hints = mcpServerHints(item.ExecutionRule)
 		items = append(items, item)
 	}
@@ -67,6 +77,39 @@ func (s mcpHandlers) mcpListServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, items)
+}
+
+type mcpConsoleState struct {
+	Status string
+	Error  string
+}
+
+func mcpLatestConsoleStates(ctx context.Context, runtime *databaseRuntime) (map[int64]mcpConsoleState, error) {
+	rows, err := runtime.database.QueryContext(ctx, `
+		SELECT server_id, status, error
+		FROM console_sessions
+		ORDER BY CASE WHEN status IN ('connecting', 'connected') THEN 0 ELSE 1 END, updated_at DESC, created_at DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	states := map[int64]mcpConsoleState{}
+	for rows.Next() {
+		var serverID int64
+		var state mcpConsoleState
+		if err := rows.Scan(&serverID, &state.Status, &state.Error); err != nil {
+			return nil, err
+		}
+		if _, exists := states[serverID]; exists {
+			continue
+		}
+		states[serverID] = state
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return states, nil
 }
 
 func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {

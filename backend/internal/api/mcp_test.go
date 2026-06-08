@@ -207,8 +207,35 @@ func TestMCPListServersUsesTokenPermissionsAndHidesBlocked(t *testing.T) {
 	if items[0].Host != "" || items[0].Port != 0 || items[0].Username != "" {
 		t.Fatalf("endpoint metadata should be hidden by default: %#v", items[0])
 	}
+	if items[0].LiveConsoleStatus != "none" || items[0].LastConsoleError != "" {
+		t.Fatalf("expected no live console context by default: %#v", items[0])
+	}
 	if len(items[0].Hints) == 0 || !strings.Contains(strings.Join(items[0].Hints, " "), "hash -r") {
 		t.Fatalf("expected command hygiene hints in mcp server list: %#v", items[0].Hints)
+	}
+	if !strings.Contains(strings.Join(items[0].Hints, " "), "permission-scoped") {
+		t.Fatalf("expected permission-scoped health hint in mcp server list: %#v", items[0].Hints)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := fixture.db.ExecContext(ctx, `
+		INSERT INTO console_sessions (server_id, name, status, transcript, error, cols, rows, created_at, updated_at)
+		VALUES (?, 'failed-ssh', 'error', '', 'dial tcp 203.0.113.10:22: i/o timeout', 120, 32, ?, ?)`,
+		allowed.ID,
+		now,
+		now,
+	); err != nil {
+		t.Fatalf("insert console context: %v", err)
+	}
+	response = performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/servers", token.TokenValue, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 after console context, got %d: %s", response.Code, response.Body.String())
+	}
+	items = nil
+	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode console context response: %v", err)
+	}
+	if len(items) != 1 || items[0].LiveConsoleStatus != "error" || !strings.Contains(items[0].LastConsoleError, "i/o timeout") {
+		t.Fatalf("expected last known console error context: %#v", items)
 	}
 	expiredResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/exec", token.TokenValue, map[string]any{
 		"server_id": expired.ID,
