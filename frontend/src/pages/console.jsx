@@ -536,12 +536,13 @@ function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
   const panelClass = theme === "light" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-amber-900/70 bg-amber-950/40 text-amber-50";
   const mutedClass = theme === "light" ? "text-amber-900/80" : "text-amber-100/80";
   const commandPreview = firstLine(request.command || "command");
+  const sourceLabel = runningRequestLabel(request);
 
   return (
     <div className={`flex min-h-9 items-center gap-3 border-b px-4 py-2 text-xs ${panelClass}`}>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <Clock className="h-3.5 w-3.5 shrink-0" />
-        <span className="shrink-0 font-semibold">AI command running</span>
+        <span className="shrink-0 font-semibold">{sourceLabel}</span>
         <span className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}>
           {formatDuration(ageMs)}
         </span>
@@ -571,6 +572,12 @@ function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
       </Button>
     </div>
   );
+}
+
+function runningRequestLabel(request) {
+  if (request?.source === "manual") return "Manual command running";
+  if (request?.source === "mcp") return "AI command running";
+  return "Command running";
 }
 
 function firstLine(value) {
