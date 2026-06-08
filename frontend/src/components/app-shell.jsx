@@ -326,6 +326,20 @@ export function Shell({ theme, setTheme }) {
     patchConsoleSession(sessionID, () => ({ status: "closed" }));
   }
 
+  async function restartConsoleSession(serverID) {
+    const affectedSessions = consoleSessions.data.filter((session) => Number(session.server_id) === Number(serverID));
+    affectedSessions.forEach((session) => {
+      const connection = consoleConnectionsRef.current[session.id];
+      if (connection) {
+        connection.close();
+        delete consoleConnectionsRef.current[session.id];
+      }
+    });
+    const result = await apiPost(`/api/console/servers/${serverID}/restart`, {});
+    await Promise.all([loadConsoleSessions(), loadApprovals()]);
+    return result;
+  }
+
   async function runApproval(requestID, userNote = "") {
     try {
       const item = await apiPost(`/api/approvals/${requestID}/run`, { user_note: userNote });
@@ -526,6 +540,7 @@ export function Shell({ theme, setTheme }) {
               attachConsoleSession,
               closeConsoleSession,
               cancelConsoleCommand,
+              restartConsoleSession,
               sendConsoleInput,
               resizeConsoleSession,
               runApproval,

@@ -1,10 +1,16 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
+
+type consoleRestartResult struct {
+	ClosedSessionIDs        []int64
+	CanceledRunningRequests int64
+}
 
 func (s mcpHandlers) mcpRestartConsoleSession(w http.ResponseWriter, r *http.Request) {
 	auth, ok := s.authenticateMCP(w, r)
@@ -41,10 +47,30 @@ func (s mcpHandlers) mcpRestartConsoleSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	sessions, err := auth.runtime.consoleSessions.List(r.Context(), request.ServerID)
+	result, err := s.restartServerConsoleSession(r.Context(), auth.runtime, request.ServerID, "console session restarted before command completed")
 	if err != nil {
 		writeInternalError(w)
 		return
+	}
+
+	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), request.ServerID, "mcp.console.restarted", map[string]any{
+		"closed_session_ids":        result.ClosedSessionIDs,
+		"canceled_running_requests": result.CanceledRunningRequests,
+	})
+	writeJSON(w, http.StatusOK, mcpRestartConsoleResponse{
+		Status:                  "restarted",
+		ServerID:                request.ServerID,
+		ServerName:              serverName,
+		ClosedSessionIDs:        result.ClosedSessionIDs,
+		CanceledRunningRequests: result.CanceledRunningRequests,
+		AssistantHint:           "The persistent console session was closed. The next exec call for this server will open a fresh SSH session.",
+	})
+}
+
+func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *databaseRuntime, serverID int64, runningRequestError string) (consoleRestartResult, error) {
+	sessions, err := runtime.consoleSessions.List(ctx, serverID)
+	if err != nil {
+		return consoleRestartResult{}, err
 	}
 	closedSessionIDs := []int64{}
 	for _, session := range sessions {
@@ -53,26 +79,15 @@ func (s mcpHandlers) mcpRestartConsoleSession(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	canceledRequests, err := s.cancelRunningCommandRequestsForServer(r.Context(), auth.runtime, request.ServerID, "console session restarted before command completed")
+	canceledRequests, err := s.cancelRunningCommandRequestsForServer(ctx, runtime, serverID, runningRequestError)
 	if err != nil {
-		writeInternalError(w)
-		return
+		return consoleRestartResult{}, err
 	}
-	if err := auth.runtime.consoleSessions.CloseServer(r.Context(), request.ServerID); err != nil {
-		writeInternalError(w)
-		return
+	if err := runtime.consoleSessions.CloseServer(ctx, serverID); err != nil {
+		return consoleRestartResult{}, err
 	}
-
-	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), request.ServerID, "mcp.console.restarted", map[string]any{
-		"closed_session_ids":        closedSessionIDs,
-		"canceled_running_requests": canceledRequests,
-	})
-	writeJSON(w, http.StatusOK, mcpRestartConsoleResponse{
-		Status:                  "restarted",
-		ServerID:                request.ServerID,
-		ServerName:              serverName,
+	return consoleRestartResult{
 		ClosedSessionIDs:        closedSessionIDs,
 		CanceledRunningRequests: canceledRequests,
-		AssistantHint:           "The persistent console session was closed. The next exec call for this server will open a fresh SSH session.",
-	})
+	}, nil
 }

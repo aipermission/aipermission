@@ -13,7 +13,7 @@ import (
 
 const (
 	pendingApprovalAssistantHint = "Wait 3 seconds, then call get_request. Continue polling get_request until terminal status."
-	runningAssistantHint         = "Wait 3 seconds, then call get_request again. Use read_console to inspect live output before sending another command to this server."
+	runningAssistantHint         = "Wait 3 seconds, then call get_request again. Use read_console to inspect live output before sending another command to this server. If the request remains running and the console shows no useful progress, use restart_console_session(server_id) to recover the gateway-owned persistent console session."
 
 	commandRequestSourceMCP    = "mcp"
 	commandRequestSourceManual = "manual"

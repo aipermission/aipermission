@@ -841,6 +841,55 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 		t.Fatalf("close should mark session running request error, status=%s error=%q", closedRequestStatus, closedRequestError)
 	}
 
+	restartServer := fixture.createKeyAndServer(t, "worker-restart")
+	restartSessionResult, err := fixture.db.Exec(`
+		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at)
+		VALUES (?, 'stuck', 'connected', 'stuck transcript', 120, 32, ?, ?)`,
+		restartServer.ID,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert restart console session: %v", err)
+	}
+	restartSessionID, err := restartSessionResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("restart session id: %v", err)
+	}
+	restartRequestResult, err := fixture.db.Exec(`
+		INSERT INTO command_requests (server_id, source, command, reason, status, session_id, created_at)
+		VALUES (?, 'mcp', 'kubectl get nodes', 'stuck request', 'running', ?, ?)`,
+		restartServer.ID,
+		restartSessionID,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert restart running command request: %v", err)
+	}
+	restartRequestID, err := restartRequestResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("restart request id: %v", err)
+	}
+	restartResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/servers/"+strconv.FormatInt(restartServer.ID, 10)+"/restart", "", map[string]any{})
+	if restartResponse.Code != http.StatusOK || !strings.Contains(restartResponse.Body.String(), `"status":"restarted"`) {
+		t.Fatalf("restart console session failed: %d %s", restartResponse.Code, restartResponse.Body.String())
+	}
+	var restartedSessionStatus string
+	if err := fixture.db.QueryRow(`SELECT status FROM console_sessions WHERE id = ?`, restartSessionID).Scan(&restartedSessionStatus); err != nil {
+		t.Fatalf("read restarted session: %v", err)
+	}
+	if restartedSessionStatus != "closed" {
+		t.Fatalf("expected restarted session closed, got %s", restartedSessionStatus)
+	}
+	var restartedRequestStatus string
+	var restartedRequestError string
+	if err := fixture.db.QueryRow(`SELECT status, error FROM command_requests WHERE id = ?`, restartRequestID).Scan(&restartedRequestStatus, &restartedRequestError); err != nil {
+		t.Fatalf("read restarted request: %v", err)
+	}
+	if restartedRequestStatus != "error" || !strings.Contains(restartedRequestError, "restarted by local user") {
+		t.Fatalf("restart should mark running request error, status=%s error=%q", restartedRequestStatus, restartedRequestError)
+	}
+
 	blockedServer := fixture.createKeyAndServer(t, "worker-blocked")
 	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/messages", token.TokenValue, createMessageRequest{Message: "blocked", ServerID: &blockedServer.ID}); response.Code != http.StatusForbidden {
 		t.Fatalf("mcp create message for unauthorized server should fail, got %d %s", response.Code, response.Body.String())

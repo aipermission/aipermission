@@ -561,6 +561,7 @@ GET    /api/console/sessions/{id}
 POST   /api/console/sessions/{id}/input
 POST   /api/console/sessions/{id}/close
 GET    /api/console/sessions/{id}/attach
+POST   /api/console/servers/{id}/restart
 ```
 
 `POST /api/console/exec` is a direct local web/API command endpoint kept for compatibility. The current Console UI uses persistent sessions instead.
@@ -570,6 +571,12 @@ The backend owns the SSH shell. Browser and MCP clients attach to the same `sess
 Console websockets are locally hardened with bounded message size, client count, read deadlines, ping/pong keepalive, and lightweight input/resize frequency limits. These are abuse guardrails for the local gateway; they are not a remote multi-user quota system.
 
 `close_existing=true` closes any open shell for the same server and starts a new one. The UI New Session action uses this.
+
+`POST /api/console/servers/{id}/restart` is the local UI recovery action for a
+stuck persistent console session. It closes live console sessions for that
+server, marks running command requests for that server as `error`, writes an
+audit event, and lets the next command open a fresh SSH session. This route is
+protected by the UI session and CSRF checks.
 
 Attach WebSocket messages from the server include:
 

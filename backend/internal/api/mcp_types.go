@@ -116,6 +116,7 @@ func mcpServerHints(executionRule string) []string {
 		"Use absolute paths or 'cd /path && command' when directory context matters.",
 		"Avoid printing secrets; inspect whether a file/key exists before catting environment files or credential paths.",
 		"Read console output before sending another long-running command to the same server.",
+		"If a request stays running and read_console shows no useful progress, use restart_console_session(server_id) before sending more commands.",
 	}
 	if executionRule == tokens.RuleApprovalRequired {
 		hints = append(hints, "This server requires approval; after exec returns approval_pending, poll get_request until it is completed, failed, or declined.")

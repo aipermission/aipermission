@@ -1,4 +1,4 @@
-import { AlertTriangle, Circle, Files, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
+import { AlertTriangle, Circle, Clock, Files, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
@@ -31,6 +31,7 @@ export function ConsolePage() {
     attachConsoleSession,
     closeConsoleSession,
     cancelConsoleCommand,
+    restartConsoleSession,
     sendConsoleInput,
     resizeConsoleSession,
     runApproval,
@@ -52,6 +53,7 @@ export function ConsolePage() {
   const [serversCompact, setServersCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
   const [fileTransferOpen, setFileTransferOpen] = useState(false);
+  const [restartAction, setRestartAction] = useState({ state: "idle", error: null });
   const [now, setNow] = useState(Date.now());
 
   const selectedServerID = searchParams.get("server");
@@ -88,6 +90,11 @@ export function ConsolePage() {
         .map((permission) => permissionLifetimeLabel(permission, now))
     : [];
   const showAlwaysRunWarning = Boolean(mcpRuntime?.data?.enabled && selectedServer && alwaysRunTokens.length > 0);
+  const selectedRunningRequests = selectedServer
+    ? approvals.data.filter((approval) => approval.status === "running" && Number(approval.server_id) === Number(selectedServer.id))
+    : [];
+  const selectedRunningRequest = selectedRunningRequests[0] || null;
+  const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0);
 
   useEffect(() => {
     if (servers.data.length === 0) return;
@@ -103,7 +110,7 @@ export function ConsolePage() {
   }, [tokens.state, tokens.data.map((token) => token.id).join(",")]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    const timer = window.setInterval(() => setNow(Date.now()), 5000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -113,6 +120,10 @@ export function ConsolePage() {
       attachConsoleSession(selectedSession.id);
     }
   }, [selectedServer?.id, selectedSession.id, selectedSession.status]);
+
+  useEffect(() => {
+    setRestartAction({ state: "idle", error: null });
+  }, [selectedServer?.id, selectedRunningRequest?.id]);
 
   useEffect(() => {
     if (activeApprovalID && !pendingApprovals.some((approval) => Number(approval.id) === Number(activeApprovalID)) && approvalAction.state !== "error" && approvalAction.state !== "stale") {
@@ -242,6 +253,17 @@ export function ConsolePage() {
   function isStaleApprovalError(error) {
     const message = String(error?.message || "").toLowerCase();
     return message.includes("stale") || message.includes("approval context") || message.includes("fresh request");
+  }
+
+  async function restartSelectedConsoleSession() {
+    if (!selectedServer) return;
+    setRestartAction({ state: "running", error: null });
+    try {
+      await restartConsoleSession(selectedServer.id);
+      setRestartAction({ state: "idle", error: null });
+    } catch (error) {
+      setRestartAction({ state: "error", error: error.message });
+    }
   }
 
   return (
@@ -421,12 +443,24 @@ export function ConsolePage() {
           </div>
         </header>
 
-        <div className={showAlwaysRunWarning ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)]" : "min-h-0"}>
+        <div
+          className={consoleBannerCount > 0 ? "grid min-h-0" : "min-h-0"}
+          style={consoleBannerCount > 0 ? { gridTemplateRows: `${Array(consoleBannerCount).fill("auto").join(" ")} minmax(0, 1fr)` } : undefined}
+        >
           {showAlwaysRunWarning ? (
             <div className="sticky top-0 z-10 border-b border-red-800/50 bg-red-950 px-4 py-2 text-xs font-semibold text-red-50">
               MCP is started and {alwaysRunTokens.length} token{alwaysRunTokens.length === 1 ? "" : "s"} can run commands on this server without approval. Prefer prompt mode unless direct execution is intentional.
               {temporaryAlwaysRunLabels.length > 0 ? ` Temporary grant: ${temporaryAlwaysRunLabels[0]}.` : ""}
             </div>
+          ) : null}
+          {selectedRunningRequest ? (
+            <ConsoleRecoveryPanel
+              request={selectedRunningRequest}
+              now={now}
+              theme={theme}
+              action={restartAction}
+              onRestart={restartSelectedConsoleSession}
+            />
           ) : null}
           {selectedServer && selectedSessionLive ? (
             <PtyConsole
@@ -494,6 +528,76 @@ export function ConsolePage() {
       />
     </section>
   );
+}
+
+function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
+  const ageMs = Math.max(0, now - parseTimestamp(request.created_at));
+  const longRunning = ageMs >= 60000;
+  const panelClass =
+    theme === "light"
+      ? longRunning
+        ? "border-amber-300 bg-amber-50 text-amber-950"
+        : "border-stone-200 bg-stone-50 text-stone-900"
+      : longRunning
+        ? "border-amber-900/70 bg-amber-950/40 text-amber-50"
+        : "border-stone-700 bg-[#252526] text-stone-100";
+  const mutedClass = theme === "light" ? "text-stone-600" : "text-stone-300";
+  const codeClass = theme === "light" ? "bg-white text-stone-950" : "bg-[#1e1e1e] text-stone-100";
+
+  return (
+    <div className={`grid gap-3 border-b px-4 py-3 text-sm ${panelClass}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid min-w-0 gap-1">
+          <div className="flex flex-wrap items-center gap-2 font-semibold">
+            <Clock className="h-4 w-4" />
+            <span>AI command running</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}>
+              {formatDuration(ageMs)}
+            </span>
+            {request.token_name ? (
+              <span className={`rounded-full px-2 py-0.5 text-xs ${theme === "light" ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-100"}`}>
+                {request.token_name}
+              </span>
+            ) : null}
+          </div>
+          <p className={`text-xs ${mutedClass}`}>
+            {longRunning
+              ? "No terminal status has arrived yet. If the console output is not progressing, interrupt the command or restart the persistent session."
+              : "AIPermission is waiting for the command exit marker before marking this request completed."}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={longRunning ? "danger" : "outline"}
+          className={`h-9 shrink-0 ${theme === "dark" && !longRunning ? "border-stone-600 bg-[#1e1e1e] text-stone-100 hover:bg-stone-800" : ""}`}
+          onClick={onRestart}
+          disabled={action.state === "running"}
+          title="Close the gateway-owned persistent console session and let the next command open a fresh SSH session"
+        >
+          <RefreshCcw className="h-3.5 w-3.5" />
+          {action.state === "running" ? "Restarting..." : "Restart Session"}
+        </Button>
+      </div>
+      <pre className={`max-h-20 overflow-auto rounded-md px-3 py-2 font-mono text-xs ${codeClass}`}>{request.command}</pre>
+      {request.reason ? <p className={`text-xs ${mutedClass}`}>Reason: {request.reason}</p> : null}
+      {action.error ? <Notice tone="bad">{action.error}</Notice> : null}
+    </div>
+  );
+}
+
+function parseTimestamp(value) {
+  const parsed = Date.parse(value || "");
+  return Number.isNaN(parsed) ? Date.now() : parsed;
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function selectedServerStatus({ session, pendingCount = 0, runningCount = 0 }) {

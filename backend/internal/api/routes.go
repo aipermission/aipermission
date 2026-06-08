@@ -96,6 +96,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/console/sessions/{id}/input", console.inputConsoleSession)
 	s.mux.HandleFunc("POST /api/console/sessions/{id}/close", console.closeConsoleSession)
 	s.mux.HandleFunc("GET /api/console/sessions/{id}/attach", console.attachConsoleSession)
+	s.mux.HandleFunc("POST /api/console/servers/{id}/restart", console.restartServerConsoleSession)
 	s.mux.HandleFunc("GET /api/approvals", approvals.listApprovals)
 	s.mux.HandleFunc("GET /api/approvals/{id}", approvals.getApproval)
 	s.mux.HandleFunc("POST /api/approvals/{id}/run", approvals.runApproval)

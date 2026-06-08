@@ -178,6 +178,15 @@ test("Console and History expose SSH file transfer flows", () => {
   assert.match(shellSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/decline/);
 });
 
+test("Console exposes stuck command recovery controls", () => {
+  assert.match(shellSource, /restartConsoleSession/);
+  assert.match(shellSource, /\/api\/console\/servers\/\$\{serverID\}\/restart/);
+  assert.match(consolePageSource, /ConsoleRecoveryPanel/);
+  assert.match(consolePageSource, /AI command running/);
+  assert.match(consolePageSource, /No terminal status has arrived yet/);
+  assert.match(consolePageSource, /Restart Session/);
+});
+
 test("Settings page exposes history label management", () => {
   assert.match(settingsSource, /\/api\/history-labels/);
   assert.match(settingsSource, /History labels/);
