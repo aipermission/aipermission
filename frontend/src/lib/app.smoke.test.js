@@ -183,8 +183,9 @@ test("Console exposes stuck command recovery controls", () => {
   assert.match(shellSource, /\/api\/console\/servers\/\$\{serverID\}\/restart/);
   assert.match(consolePageSource, /ConsoleRecoveryPanel/);
   assert.match(consolePageSource, /AI command running/);
-  assert.match(consolePageSource, /No terminal status has arrived yet/);
-  assert.match(consolePageSource, /Restart Session/);
+  assert.match(consolePageSource, /Looks stuck\? Restart opens a fresh SSH session/);
+  assert.match(consolePageSource, /commandPreview/);
+  assert.match(consolePageSource, /Restart/);
 });
 
 test("Settings page exposes history label management", () => {

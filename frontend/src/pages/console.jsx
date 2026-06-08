@@ -532,57 +532,51 @@ export function ConsolePage() {
 
 function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
   const ageMs = Math.max(0, now - parseTimestamp(request.created_at));
-  const longRunning = ageMs >= 60000;
-  const panelClass =
-    theme === "light"
-      ? longRunning
-        ? "border-amber-300 bg-amber-50 text-amber-950"
-        : "border-stone-200 bg-stone-50 text-stone-900"
-      : longRunning
-        ? "border-amber-900/70 bg-amber-950/40 text-amber-50"
-        : "border-stone-700 bg-[#252526] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-600" : "text-stone-300";
-  const codeClass = theme === "light" ? "bg-white text-stone-950" : "bg-[#1e1e1e] text-stone-100";
+  const showRecoveryHint = ageMs >= 20000;
+  const panelClass = theme === "light" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-amber-900/70 bg-amber-950/40 text-amber-50";
+  const mutedClass = theme === "light" ? "text-amber-900/80" : "text-amber-100/80";
+  const commandPreview = firstLine(request.command || "command");
 
   return (
-    <div className={`grid gap-3 border-b px-4 py-3 text-sm ${panelClass}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="grid min-w-0 gap-1">
-          <div className="flex flex-wrap items-center gap-2 font-semibold">
-            <Clock className="h-4 w-4" />
-            <span>AI command running</span>
-            <span className={`rounded-full px-2 py-0.5 text-xs ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}>
-              {formatDuration(ageMs)}
-            </span>
-            {request.token_name ? (
-              <span className={`rounded-full px-2 py-0.5 text-xs ${theme === "light" ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-100"}`}>
-                {request.token_name}
-              </span>
-            ) : null}
-          </div>
-          <p className={`text-xs ${mutedClass}`}>
-            {longRunning
-              ? "No terminal status has arrived yet. If the console output is not progressing, interrupt the command or restart the persistent session."
-              : "AIPermission is waiting for the command exit marker before marking this request completed."}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant={longRunning ? "danger" : "outline"}
-          className={`h-9 shrink-0 ${theme === "dark" && !longRunning ? "border-stone-600 bg-[#1e1e1e] text-stone-100 hover:bg-stone-800" : ""}`}
-          onClick={onRestart}
-          disabled={action.state === "running"}
-          title="Close the gateway-owned persistent console session and let the next command open a fresh SSH session"
-        >
-          <RefreshCcw className="h-3.5 w-3.5" />
-          {action.state === "running" ? "Restarting..." : "Restart Session"}
-        </Button>
+    <div className={`flex min-h-9 items-center gap-3 border-b px-4 py-2 text-xs ${panelClass}`}>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <Clock className="h-3.5 w-3.5 shrink-0" />
+        <span className="shrink-0 font-semibold">AI command running</span>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}>
+          {formatDuration(ageMs)}
+        </span>
+        {request.token_name ? (
+          <span className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-100"}`}>
+            {request.token_name}
+          </span>
+        ) : null}
+        <span className={`min-w-0 truncate font-mono ${mutedClass}`}>{commandPreview}</span>
+        {showRecoveryHint ? <span className="shrink-0 font-medium">Looks stuck? Restart opens a fresh SSH session.</span> : null}
       </div>
-      <pre className={`max-h-20 overflow-auto rounded-md px-3 py-2 font-mono text-xs ${codeClass}`}>{request.command}</pre>
-      {request.reason ? <p className={`text-xs ${mutedClass}`}>Reason: {request.reason}</p> : null}
-      {action.error ? <Notice tone="bad">{action.error}</Notice> : null}
+      {action.error ? <span className="max-w-80 truncate text-red-300">{action.error}</span> : null}
+      <Button
+        type="button"
+        variant="outline"
+        className={`h-7 shrink-0 px-2 text-xs ${
+          theme === "light"
+            ? "border-amber-400 bg-amber-100 text-amber-950 hover:bg-amber-200"
+            : "border-amber-700 bg-amber-950/70 text-amber-50 hover:bg-amber-900/70"
+        }`}
+        onClick={onRestart}
+        disabled={action.state === "running"}
+        title="Close the gateway-owned persistent console session and let the next command open a fresh SSH session"
+      >
+        <RefreshCcw className="h-3.5 w-3.5" />
+        {action.state === "running" ? "Restarting..." : "Restart"}
+      </Button>
     </div>
   );
+}
+
+function firstLine(value) {
+  const line = String(value || "").split(/\r?\n/, 1)[0].trim();
+  if (line.length <= 90) return line;
+  return `${line.slice(0, 87)}...`;
 }
 
 function parseTimestamp(value) {
