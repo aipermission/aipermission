@@ -18,17 +18,15 @@ type mcpAuthContext struct {
 }
 
 type mcpServerItem struct {
-	ID                int64    `json:"id"`
-	Name              string   `json:"name"`
-	Description       string   `json:"description,omitempty"`
-	Host              string   `json:"host,omitempty"`
-	Port              int      `json:"port,omitempty"`
-	Username          string   `json:"username,omitempty"`
-	ExecutionRule     string   `json:"execution_rule"`
-	ExpiresAt         string   `json:"expires_at,omitempty"`
-	LiveConsoleStatus string   `json:"live_console_status"`
-	LastConsoleError  string   `json:"last_console_error,omitempty"`
-	Hints             []string `json:"hints"`
+	ID            int64    `json:"id"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description,omitempty"`
+	Host          string   `json:"host,omitempty"`
+	Port          int      `json:"port,omitempty"`
+	Username      string   `json:"username,omitempty"`
+	ExecutionRule string   `json:"execution_rule"`
+	ExpiresAt     string   `json:"expires_at,omitempty"`
+	Hints         []string `json:"hints"`
 }
 
 type mcpExecRequest struct {
@@ -109,7 +107,7 @@ type historyLabelRecord struct {
 
 func mcpServerHints(executionRule string) []string {
 	hints := []string{
-		"list_servers is permission-scoped, not a live SSH health check; use live_console_status as last-known context and treat exec dial/timeout errors as reachability failures.",
+		"list_servers is permission-scoped, not a live SSH health check; treat exec dial, timeout, SSH authentication, and host key errors as the current reachability signal.",
 		"Use a short reason when calling exec so the operator can approve or audit the command.",
 		"For install/uninstall verification in the same shell, run 'hash -r 2>/dev/null || true' before checking command -v.",
 		"On Debian/Ubuntu, dpkg -l can show removed packages as rc; use dpkg-query installed state 'ii' to verify packages are installed.",

@@ -17,7 +17,7 @@ export const changelogEntries = [
         title: "Fixed",
         items: [
           "Internal persistent-console prelude lines are hidden from the live console and MCP command output.",
-          "MCP list_servers includes last-known console status so agents do not treat permission visibility as a live SSH health check.",
+          "MCP server-list hints clarify that agents should use exec connection errors as the current reachability signal.",
         ],
       },
     ],

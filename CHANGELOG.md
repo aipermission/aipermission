@@ -24,8 +24,9 @@ and this project uses semantic versioning once public releases begin.
 
 - Hide internal persistent-console prelude lines from the live console and MCP
   command output when a PTY echoes setup commands.
-- MCP `list_servers` now includes last-known console status and error context
-  so agents do not confuse permission visibility with a live SSH health check.
+- MCP server-list hints now clarify that `list_servers` is permission-scoped;
+  agents should rely on `exec` dial, timeout, SSH authentication, and host-key
+  errors for current reachability.
 
 ## [0.1.9] - 2026-06-07
 

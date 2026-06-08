@@ -50,7 +50,6 @@ Example response:
     "description": "Kubernetes control-plane maintenance access.",
     "execution_rule": "approval_required",
     "expires_at": "2026-06-07T14:00:00Z",
-    "live_console_status": "connected",
     "hints": [
       "Use non-interactive apt commands.",
       "Prefer journalctl --no-pager for service logs."
@@ -60,16 +59,13 @@ Example response:
 ```
 
 By default, `list_servers` hides endpoint metadata and returns only `id`,
-`name`, `description`, `execution_rule`, optional `expires_at`,
-`live_console_status`, optional `last_console_error`, and `hints`. Security can
-enable **Expose endpoint metadata to MCP** if an operator wants MCP clients to
-also receive `host`, `port`, and `username`.
+`name`, `description`, `execution_rule`, optional `expires_at`, and `hints`.
+Security can enable **Expose endpoint metadata to MCP** if an operator wants MCP
+clients to also receive `host`, `port`, and `username`.
 
-`live_console_status` is last-known console context, not a fresh SSH health
-check. It can be `none`, `connecting`, `connected`, `closed`, or `error`.
-`last_console_error` appears when the latest console session for that server
-ended with an error. Agents should still treat `exec` dial, timeout, and SSH
-errors as the current reachability signal.
+`list_servers` is permission-scoped, not a live SSH health check. Agents should
+try `exec` when they need to use a server and treat dial, timeout, SSH
+authentication, and host-key errors as the current reachability signal.
 
 `expires_at` appears when the token/server permission is temporary. Expired
 permissions are omitted from `list_servers` and do not authorize `exec`,
