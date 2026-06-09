@@ -68,6 +68,9 @@ func TestResolverMapsLegacySSHServerToConnectorViews(t *testing.T) {
 	if resolved.Profile.Public["fingerprint"] != "SHA256:test" {
 		t.Fatalf("fingerprint public metadata missing: %#v", resolved.Profile.Public)
 	}
+	if _, exists := resolved.Profile.Public["public_key"]; exists {
+		t.Fatalf("public key should not be exposed in credential profile metadata: %#v", resolved.Profile.Public)
+	}
 }
 
 func TestResolverReturnsNotFoundForMissingOrInvalidTarget(t *testing.T) {

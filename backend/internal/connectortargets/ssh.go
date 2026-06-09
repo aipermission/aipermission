@@ -49,7 +49,7 @@ func (r *Resolver) ResolveActionTarget(ctx context.Context, targetRef string) (a
 	err := r.db.QueryRowContext(ctx, `
 		SELECT
 			s.id, s.name, s.host, s.port, s.username, s.ssh_key_id,
-			COALESCE(k.name, ''), COALESCE(k.key_type, ''), COALESCE(k.fingerprint, ''), COALESCE(k.public_key, ''),
+			COALESCE(k.name, ''), COALESCE(k.key_type, ''), COALESCE(k.fingerprint, ''),
 			s.description, s.startup_input_after_connect, s.force_shell_command
 		FROM servers s
 		LEFT JOIN ssh_keys k ON k.id = s.ssh_key_id
@@ -65,7 +65,6 @@ func (r *Resolver) ResolveActionTarget(ctx context.Context, targetRef string) (a
 		&row.SSHKeyName,
 		&row.SSHKeyType,
 		&row.SSHKeyFingerprint,
-		&row.SSHPublicKey,
 		&row.Description,
 		&row.StartupInputAfterConnect,
 		&row.ForceShellCommand,
@@ -105,7 +104,6 @@ func (r *Resolver) ResolveActionTarget(ctx context.Context, targetRef string) (a
 			"key_name":    row.SSHKeyName,
 			"key_type":    row.SSHKeyType,
 			"fingerprint": row.SSHKeyFingerprint,
-			"public_key":  row.SSHPublicKey,
 		},
 	}
 	return actions.ResolvedTarget{Target: target, Profile: profile}, nil
@@ -121,7 +119,6 @@ type legacySSHServerRow struct {
 	SSHKeyName               string
 	SSHKeyType               string
 	SSHKeyFingerprint        string
-	SSHPublicKey             string
 	Description              string
 	StartupInputAfterConnect string
 	ForceShellCommand        string
