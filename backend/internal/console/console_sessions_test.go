@@ -285,6 +285,24 @@ func TestManualInputCapturesOutputWhenPromptReturns(t *testing.T) {
 	}
 }
 
+func TestManualInputCapturesOutputWhenBracketPromptReturns(t *testing.T) {
+	database, manager, session := newManualHistoryTestSession(t)
+	stdin := &recordingWriteCloser{}
+	session.stdin = stdin
+	session.rawTranscript = "[~] # "
+	manager.sessions[session.id] = session
+
+	if err := manager.Input(context.Background(), session.id, "ls\n"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	session.appendOutput("ls\r\nindex_default.html\r\n[~] # ")
+	waitForManualHistoryStatus(t, database, "completed")
+	row := readManualHistoryRow(t, database)
+	if row.command != "ls" || row.stdout != "index_default.html" || row.trackingReason != "exit_code_unavailable" {
+		t.Fatalf("expected captured NAS prompt output, got %#v", row)
+	}
+}
+
 func TestManualInputCapturesAptUpdateOutput(t *testing.T) {
 	database, manager, session := newManualHistoryTestSession(t)
 	stdin := &recordingWriteCloser{}
@@ -621,6 +639,19 @@ func TestManualPromptPrefixUsesCommandEchoLineForResumePrompt(t *testing.T) {
 	}
 	if manualTranscriptEndsWithPrompt(transcript, "root@worker:~#") {
 		t.Fatalf("command echo line must not count as returned prompt")
+	}
+}
+
+func TestManualPromptPrefixSupportsBracketPathPrompts(t *testing.T) {
+	transcript := "[/] # ls"
+	if prompt := lastManualShellPrompt(transcript); prompt != "[/] #" {
+		t.Fatalf("expected bracket prompt prefix from echo line, got %q", prompt)
+	}
+	if manualTranscriptEndsWithPrompt(transcript, "[/] #") {
+		t.Fatalf("command echo line must not count as returned bracket prompt")
+	}
+	if !manualTranscriptEndsWithPrompt("[~] # ", "[~] #") {
+		t.Fatalf("bare bracket prompt should count as returned prompt")
 	}
 }
 

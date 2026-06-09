@@ -9,8 +9,8 @@ import (
 
 var ansiSequencePattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\a]*(\a|\x1b\\)`)
 var aptNoisePattern = regexp.MustCompile(`^\d+% \[|^Reading package lists\.\.\. \d+%$|^Building dependency tree\.\.\. \d+%$|^Reading state information\.\.\. \d+%$|^Scanning (processes|candidates|linux images)\.\.\. \[|^Scanning (processes|candidates|linux images)\.\.\.$`)
-var shellPromptPattern = regexp.MustCompile(`^[^@\s]+@[^:\s]+:.*[#$]\s*.*$`)
-var bareShellPromptPattern = regexp.MustCompile(`^[^@\s]+@[^:\s]+:.*[#$]\s*$`)
+var shellPromptPattern = regexp.MustCompile(`^(?:[^@\s]+@[^:\s]+:.*|\[[^\]\r\n]{1,128}\]\s*)[#$]\s*.*$`)
+var bareShellPromptPattern = regexp.MustCompile(`^(?:[^@\s]+@[^:\s]+:.*|\[[^\]\r\n]{1,128}\]\s*)[#$]\s*$`)
 
 func PlainOutput(value string) string {
 	if value == "" {
