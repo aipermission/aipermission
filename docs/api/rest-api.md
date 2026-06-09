@@ -143,6 +143,56 @@ The UI asks the user to verify and approve the fingerprint. `POST /api/ssh-host-
 
 `DELETE /api/servers/{id}?remove_key=true` first connects with the server's gateway key, removes remote `~/.ssh/authorized_keys` entries containing that public key blob, then deletes the local record. This handles changed comments or authorized_keys options. If remote cleanup fails or removes zero entries, the local record is kept.
 
+## Console Commands
+
+```txt
+POST /api/console/bulk-exec
+GET  /api/console/sessions
+POST /api/console/sessions
+GET  /api/console/sessions/{id}
+POST /api/console/sessions/{id}/input
+POST /api/console/sessions/{id}/close
+GET  /api/console/sessions/{id}/attach
+POST /api/console/servers/{id}/restart
+```
+
+`POST /api/console/bulk-exec` runs one local-UI command across selected servers.
+It is not an MCP tool. The command runs through each target server's persistent
+SSH console session and creates one `source: "manual"` command history row per
+server.
+
+The request body requires an exact confirmation string based on the selected
+server count:
+
+```json
+{
+  "server_ids": [3, 4, 7],
+  "command": "apt update",
+  "reason": "weekly package metadata refresh",
+  "confirmation": "RUN ON 3 SERVERS"
+}
+```
+
+The backend validates duplicate IDs, command size, and confirmation text before
+creating history rows. Execution is limited to a small parallelism window so a
+large server selection does not fan out all SSH sessions at once. The response
+returns the command request IDs; poll `GET /api/approvals/{id}` or use the
+History page for per-server output, exit code, error, and status:
+
+```json
+{
+  "parallelism": 3,
+  "items": [
+    {
+      "request_id": 101,
+      "server_id": 3,
+      "server_name": "worker-1",
+      "status": "running"
+    }
+  ]
+}
+```
+
 ## File Transfers
 
 ```txt

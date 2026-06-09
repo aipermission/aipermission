@@ -125,6 +125,7 @@ Implemented:
 - execution rules: `always_run`, `approval_required`, `blocked`
 - global MCP Started/Stopped switch that preserves permissions while blocking live execution
 - persistent web console with live PTY streaming
+- UI bulk command execution across selected servers with per-server history rows
 - MCP bridge with command, console, message, and conservative upload/download transfer tools
 - approval dialog with Run / Decline / note
 - approval-context snapshots that stale old pending commands after permission,
