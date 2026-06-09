@@ -1,4 +1,4 @@
-import { AlertTriangle, Circle, Clock, Files, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
+import { AlertTriangle, Circle, Clock, Files, ListChecks, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
@@ -9,6 +9,7 @@ import { CountBadge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Notice } from "../components/ui/notice";
 import { ApprovalDialog } from "../components/console/approval-dialog";
+import { BulkCommandDialog } from "../components/console/bulk-command-dialog";
 import { FileTransferDialog } from "../components/console/file-transfer-dialog";
 import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
@@ -24,6 +25,7 @@ export function ConsolePage() {
     approvals,
     messages,
     loadTokens,
+    loadApprovals,
     loadMessages,
     markMessagesRead,
     consoleSessions,
@@ -53,6 +55,7 @@ export function ConsolePage() {
   const [serversCompact, setServersCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
   const [fileTransferOpen, setFileTransferOpen] = useState(false);
+  const [bulkCommandOpen, setBulkCommandOpen] = useState(false);
   const [restartAction, setRestartAction] = useState({ state: "idle", error: null });
   const [now, setNow] = useState(Date.now());
 
@@ -406,6 +409,17 @@ export function ConsolePage() {
               type="button"
               variant="ghost"
               className={`h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`}
+              onClick={() => setBulkCommandOpen(true)}
+              disabled={servers.data.length === 0}
+              title="Run one command across selected servers"
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              Bulk
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className={`h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`}
               onClick={() => setFileTransferOpen(true)}
               disabled={!selectedServer}
               title="Upload or download one file"
@@ -517,6 +531,13 @@ export function ConsolePage() {
         open={fileTransferOpen}
         server={selectedServer}
         onClose={() => setFileTransferOpen(false)}
+      />
+      <BulkCommandDialog
+        open={bulkCommandOpen}
+        servers={servers.data}
+        selectedServer={selectedServer}
+        onClose={() => setBulkCommandOpen(false)}
+        onRefresh={loadApprovals}
       />
       <MessagesDialog
         open={messagesOpen}

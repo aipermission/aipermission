@@ -21,6 +21,7 @@ const sshKeysSource = readFileSync(join(currentDir, "..", "pages", "ssh-keys.jsx
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-dialog.jsx"), "utf8");
 const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-browser-dialog.jsx"), "utf8");
 const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-confirm-dialogs.jsx"), "utf8");
+const bulkCommandDialogSource = readFileSync(join(currentDir, "..", "components", "console", "bulk-command-dialog.jsx"), "utf8");
 const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
 const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "token-permission-panel.jsx"), "utf8");
 const permissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "permission-dialog.jsx"), "utf8");
@@ -198,6 +199,14 @@ test("Console exposes stuck command recovery controls", () => {
   assert.match(consolePageSource, /Looks stuck\? Restart opens a fresh SSH session/);
   assert.match(consolePageSource, /commandPreview/);
   assert.match(consolePageSource, /Restart/);
+});
+
+test("Console exposes bulk command execution controls", () => {
+  assert.match(consolePageSource, /BulkCommandDialog/);
+  assert.match(consolePageSource, /Bulk/);
+  assert.match(bulkCommandDialogSource, /\/api\/console\/bulk-exec/);
+  assert.match(bulkCommandDialogSource, /RUN ON \$\{selectedIDs\.length\} SERVERS/);
+  assert.match(bulkCommandDialogSource, /Run selected/);
 });
 
 test("Settings page exposes history label management", () => {
