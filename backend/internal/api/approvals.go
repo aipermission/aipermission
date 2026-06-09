@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
+	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
@@ -178,6 +181,20 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 		})
 		writeError(w, http.StatusConflict, driftReason+"; ask the AI to send a fresh request")
 		return
+	}
+	prepared, err := runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+		Source:     item.Source,
+		TargetRef:  connectortargets.SSHTargetRef(item.ServerID),
+		ActionName: sshconnector.ActionExec,
+		Input:      map[string]any{"command": command},
+		Reason:     item.Reason,
+	})
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if preparedCommand, ok := prepared.Action.Payload["command"].(string); ok {
+		command = preparedCommand
 	}
 	if request.UserNote != "" && item.TokenID != nil {
 		_, err := s.insertMessage(r.Context(), runtime, createMessageRequest{
