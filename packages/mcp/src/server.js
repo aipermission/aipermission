@@ -39,18 +39,37 @@ server.tool(
 
 server.tool(
   "exec",
-  "Execute a shell command on an allowed server through the local aipermission gateway. If status is approval_pending, follow assistant_hint and poll get_request. Long always_run commands return running; use read_console to continue watching.",
+  "Execute a shell command on one allowed server, or the same shell command across multiple allowed servers, through the local aipermission gateway. If status is approval_pending, follow assistant_hint and poll get_request. Long always_run commands return running; use read_console to continue watching.",
   {
-    server_id: z.number().int().positive().describe("Server id from list_servers."),
+    server_id: z.number().int().positive().optional().describe("Single server id from list_servers. Use either server_id or server_ids, not both."),
+    server_ids: z.array(z.number().int().positive()).min(1).max(25).optional().describe("Multiple server ids from list_servers for bulk execution. Up to 25 targets. Use either server_id or server_ids, not both."),
     command: z.string().min(1).describe("Shell command to execute."),
-    reason: z.string().optional().describe("Why this command is needed."),
+    reason: z.string().optional().describe("Why this command is needed. Required when using server_ids."),
   },
-  async ({ server_id, command, reason }) => {
-    return jsonToolResult(() => apiPost("/api/mcp/exec", {
-      server_id,
-      command,
-      reason: reason || "",
-    }));
+  async ({ server_id, server_ids, command, reason }) => {
+    return jsonToolResult(() => {
+      if (server_id && server_ids?.length) {
+        throw new Error("Use either server_id or server_ids, not both.");
+      }
+      if (!server_id && !server_ids?.length) {
+        throw new Error("server_id or server_ids is required.");
+      }
+      if (server_ids?.length) {
+        if (!String(reason || "").trim()) {
+          throw new Error("reason is required when using server_ids.");
+        }
+        return apiPost("/api/mcp/bulk-exec", {
+          server_ids,
+          command,
+          reason,
+        });
+      }
+      return apiPost("/api/mcp/exec", {
+        server_id,
+        command,
+        reason: reason || "",
+      });
+    });
   }
 );
 
