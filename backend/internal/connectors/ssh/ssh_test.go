@@ -44,8 +44,8 @@ func TestGetHelpAndActionList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("action list: %v", err)
 	}
-	if len(actions) != 3 {
-		t.Fatalf("expected 3 actions, got %d", len(actions))
+	if len(actions) != 6 {
+		t.Fatalf("expected 6 actions, got %d", len(actions))
 	}
 	if actions[0].Name != ActionExec || actions[0].Risk != connectors.RiskWrite {
 		t.Fatalf("unexpected exec action: %#v", actions[0])
@@ -55,6 +55,15 @@ func TestGetHelpAndActionList(t *testing.T) {
 	}
 	if actions[2].Name != ActionRestartConsoleSession {
 		t.Fatalf("unexpected restart action: %#v", actions[2])
+	}
+	if actions[3].Name != ActionBrowseRemoteFiles || actions[3].Risk != connectors.RiskRead {
+		t.Fatalf("unexpected browse action: %#v", actions[3])
+	}
+	if actions[4].Name != ActionStartFileDownload || actions[4].Risk != connectors.RiskRead {
+		t.Fatalf("unexpected download action: %#v", actions[4])
+	}
+	if actions[5].Name != ActionUploadFiles || actions[5].Risk != connectors.RiskWrite {
+		t.Fatalf("unexpected upload action: %#v", actions[5])
 	}
 }
 
@@ -122,6 +131,95 @@ func TestPrepareRestartConsoleSession(t *testing.T) {
 	}
 	if prepared.Risk != connectors.RiskWrite {
 		t.Fatalf("risk = %q", prepared.Risk)
+	}
+}
+
+func TestPrepareBrowseRemoteFilesDefaultsPath(t *testing.T) {
+	prepared, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
+		ActionName: ActionBrowseRemoteFiles,
+	})
+	if err != nil {
+		t.Fatalf("prepare browse: %v", err)
+	}
+	if got := prepared.Payload["path"]; got != "~" {
+		t.Fatalf("path = %#v", got)
+	}
+}
+
+func TestPrepareStartFileDownload(t *testing.T) {
+	prepared, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
+		ActionName: ActionStartFileDownload,
+		Input: map[string]any{
+			"remote_paths": []any{"/var/log/syslog", "  /etc/hosts "},
+			"archive_name": "logs.zip",
+		},
+	})
+	if err != nil {
+		t.Fatalf("prepare download: %v", err)
+	}
+	paths, ok := prepared.Payload["remote_paths"].([]string)
+	if !ok || len(paths) != 2 || paths[1] != "/etc/hosts" {
+		t.Fatalf("remote_paths = %#v", prepared.Payload["remote_paths"])
+	}
+	if prepared.Preview["items"] != 2 {
+		t.Fatalf("items preview = %#v", prepared.Preview["items"])
+	}
+}
+
+func TestPrepareStartFileDownloadRequiresRemotePaths(t *testing.T) {
+	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
+		ActionName: ActionStartFileDownload,
+		Input:      map[string]any{"remote_paths": []any{"  "}},
+	})
+	if err == nil {
+		t.Fatal("expected missing remote_paths error")
+	}
+}
+
+func TestPrepareUploadFiles(t *testing.T) {
+	prepared, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
+		ActionName: ActionUploadFiles,
+		Input: map[string]any{
+			"local_paths": []string{"/tmp/report.txt", "/tmp/log.txt"},
+			"remote_dir":  " /home/root ",
+			"overwrite":   "true",
+		},
+	})
+	if err != nil {
+		t.Fatalf("prepare upload: %v", err)
+	}
+	if got := prepared.Payload["remote_dir"]; got != "/home/root" {
+		t.Fatalf("remote_dir = %#v", got)
+	}
+	if got := prepared.Payload["overwrite"]; got != true {
+		t.Fatalf("overwrite = %#v", got)
+	}
+	if prepared.Preview["items"] != 2 {
+		t.Fatalf("items preview = %#v", prepared.Preview["items"])
+	}
+}
+
+func TestPrepareUploadFilesRequiresPathsAndRemoteDir(t *testing.T) {
+	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
+		ActionName: ActionUploadFiles,
+		Input:      map[string]any{"local_paths": []string{"/tmp/report.txt"}},
+	})
+	if err == nil {
+		t.Fatal("expected missing remote_dir error")
+	}
+
+	_, err = New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
+		ActionName: ActionUploadFiles,
+		Input:      map[string]any{"remote_dir": "/home/root"},
+	})
+	if err == nil {
+		t.Fatal("expected missing local_paths error")
 	}
 }
 

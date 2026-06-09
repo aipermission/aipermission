@@ -19,6 +19,9 @@ const (
 	ActionExec                  = "exec"
 	ActionReadConsole           = "read_console"
 	ActionRestartConsoleSession = "restart_console_session"
+	ActionBrowseRemoteFiles     = "browse_remote_files"
+	ActionStartFileDownload     = "start_file_download"
+	ActionUploadFiles           = "upload_files"
 
 	defaultConsoleTailBytes = 20000
 	maxConsoleTailBytes     = 100000
@@ -129,6 +132,8 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use exec for shell commands. Include a short reason so the operator can approve or audit the action.",
 			"Use read_console only for always-run targets when you need live persistent console output.",
 			"Use restart_console_session when a persistent console appears stuck before sending more commands.",
+			"Use browse_remote_files before file transfers when the remote path is uncertain.",
+			"Use start_file_download for remote-to-local transfer queues and upload_files for local-to-remote transfer queues.",
 			"Prefer bounded output: tail -n, journalctl --no-pager -n, docker logs --tail, or redirect full output to a temp file.",
 		},
 		Warnings: []string{
@@ -183,6 +188,76 @@ func (Connector) GetActionList(context.Context, connectors.TargetView) ([]connec
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{},
 			OutputHint:  connectors.OutputHint{Format: "json"},
+		},
+		{
+			Name:        ActionBrowseRemoteFiles,
+			Label:       "Browse remote files",
+			Description: "List files in a remote directory before choosing transfer paths.",
+			Category:    "files",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{
+					Name:        "path",
+					Label:       "Remote path",
+					Type:        connectors.FieldString,
+					Default:     "~",
+					Description: "Remote directory to list.",
+				},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxRows: 500},
+		},
+		{
+			Name:        ActionStartFileDownload,
+			Label:       "Start file download",
+			Description: "Create a remote-to-local file transfer queue.",
+			Category:    "files",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{
+					Name:        "remote_paths",
+					Label:       "Remote paths",
+					Type:        connectors.FieldJSON,
+					Required:    true,
+					Description: "Array of absolute remote file paths to download.",
+				},
+				{
+					Name:        "archive_name",
+					Label:       "Archive name",
+					Type:        connectors.FieldString,
+					Description: "Optional archive filename for multi-file downloads.",
+				},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json"},
+		},
+		{
+			Name:        ActionUploadFiles,
+			Label:       "Upload files",
+			Description: "Create a local-to-remote file transfer queue.",
+			Category:    "files",
+			Risk:        connectors.RiskWrite,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{
+					Name:        "local_paths",
+					Label:       "Local paths",
+					Type:        connectors.FieldJSON,
+					Required:    true,
+					Description: "Array of local file paths selected by the local client.",
+				},
+				{
+					Name:        "remote_dir",
+					Label:       "Remote directory",
+					Type:        connectors.FieldString,
+					Required:    true,
+					Description: "Remote directory where files should be uploaded.",
+				},
+				{
+					Name:        "overwrite",
+					Label:       "Overwrite",
+					Type:        connectors.FieldBoolean,
+					Description: "Whether existing remote files may be overwritten.",
+				},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json"},
 		},
 	}, nil
 }
@@ -243,6 +318,67 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.Preview = map[string]any{}
 		base.Payload = map[string]any{}
 		return base, nil
+	case ActionBrowseRemoteFiles:
+		remotePath := strings.TrimSpace(stringInput(req.Input, "path"))
+		if remotePath == "" {
+			remotePath = "~"
+		}
+		base.Risk = connectors.RiskRead
+		base.Title = "Browse remote files"
+		base.Summary = targetSummary(req.Target, "Browse a remote directory")
+		base.Preview = map[string]any{"path": remotePath}
+		base.Payload = map[string]any{"path": remotePath}
+		base.ContextMaterial["path"] = remotePath
+		return base, nil
+	case ActionStartFileDownload:
+		remotePaths := stringSliceInput(req.Input, "remote_paths")
+		if len(remotePaths) == 0 {
+			return connectors.PreparedAction{}, fmt.Errorf("%s remote_paths is required", ActionStartFileDownload)
+		}
+		archiveName := strings.TrimSpace(stringInput(req.Input, "archive_name"))
+		base.Risk = connectors.RiskRead
+		base.Title = "Start SSH file download"
+		base.Summary = targetSummary(req.Target, "Start a remote-to-local transfer queue")
+		base.Preview = map[string]any{
+			"remote_paths": remotePaths,
+			"archive_name": archiveName,
+			"items":        len(remotePaths),
+		}
+		base.Payload = map[string]any{
+			"remote_paths": remotePaths,
+			"archive_name": archiveName,
+		}
+		base.ContextMaterial["remote_paths"] = remotePaths
+		base.ContextMaterial["archive_name"] = archiveName
+		return base, nil
+	case ActionUploadFiles:
+		localPaths := stringSliceInput(req.Input, "local_paths")
+		if len(localPaths) == 0 {
+			return connectors.PreparedAction{}, fmt.Errorf("%s local_paths is required", ActionUploadFiles)
+		}
+		remoteDir := strings.TrimSpace(stringInput(req.Input, "remote_dir"))
+		if remoteDir == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("%s remote_dir is required", ActionUploadFiles)
+		}
+		overwrite := boolInput(req.Input, "overwrite")
+		base.Risk = connectors.RiskWrite
+		base.Title = "Upload SSH files"
+		base.Summary = targetSummary(req.Target, "Start a local-to-remote transfer queue")
+		base.Preview = map[string]any{
+			"local_paths": localPaths,
+			"remote_dir":  remoteDir,
+			"overwrite":   overwrite,
+			"items":       len(localPaths),
+		}
+		base.Payload = map[string]any{
+			"local_paths": localPaths,
+			"remote_dir":  remoteDir,
+			"overwrite":   overwrite,
+		}
+		base.ContextMaterial["local_paths"] = localPaths
+		base.ContextMaterial["remote_dir"] = remoteDir
+		base.ContextMaterial["overwrite"] = overwrite
+		return base, nil
 	default:
 		return connectors.PreparedAction{}, fmt.Errorf("%w: %s", ErrUnsupportedAction, req.ActionName)
 	}
@@ -295,4 +431,53 @@ func intInput(input map[string]any, name string, fallback int) int {
 	default:
 		return fallback
 	}
+}
+
+func boolInput(input map[string]any, name string) bool {
+	if input == nil {
+		return false
+	}
+	value, ok := input[name]
+	if !ok || value == nil {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), "true")
+	default:
+		return false
+	}
+}
+
+func stringSliceInput(input map[string]any, name string) []string {
+	if input == nil {
+		return nil
+	}
+	value, ok := input[name]
+	if !ok || value == nil {
+		return nil
+	}
+	var raw []string
+	switch typed := value.(type) {
+	case []string:
+		raw = typed
+	case []any:
+		for _, item := range typed {
+			raw = append(raw, strings.TrimSpace(fmt.Sprint(item)))
+		}
+	case string:
+		raw = []string{typed}
+	default:
+		raw = []string{fmt.Sprint(typed)}
+	}
+	clean := make([]string, 0, len(raw))
+	for _, item := range raw {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			clean = append(clean, item)
+		}
+	}
+	return clean
 }
