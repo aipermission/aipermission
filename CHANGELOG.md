@@ -7,6 +7,40 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-06-09
+
+### Added
+
+- MCP `exec` can now run the same command across multiple visible servers with
+  `server_ids`, while preserving one request, approval decision, audit record,
+  output, and error per target.
+- MCP `read_console` can now inspect several always-run server consoles in one
+  read-only call with `server_ids`.
+- MCP command responses can include basic policy warnings for common high-risk
+  command patterns such as destructive file operations, package/service changes,
+  firewall changes, credential reads, and container/cluster destructive actions.
+
+### Changed
+
+- The MCP bridge keeps multi-server command execution on the existing `exec`
+  tool instead of exposing a separate bulk command tool, reducing tool-list
+  clutter for AI clients.
+- Operator instructions now tell AI clients to use multi-server `read_console`
+  after multi-server `exec` when several always-run targets are still running.
+
+### Fixed
+
+- NAS/appliance console prompt detection now recognizes bracket-style shell
+  prompts such as `[~] #`, improving QNAP-style interactive shell compatibility.
+
+### Security
+
+- Multi-server MCP execution does not bypass per-server token permissions,
+  approval-required prompts, blocked rules, approval-context drift checks, or
+  token-scoped history.
+- Policy warnings are best-effort UX safety rails and do not replace local
+  operator approval, token permissions, or command review.
+
 ## [0.1.12] - 2026-06-09
 
 ### Added

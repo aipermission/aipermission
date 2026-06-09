@@ -1,6 +1,33 @@
-export const appVersion = "0.1.12";
+export const appVersion = "0.1.13";
 
 export const changelogEntries = [
+  {
+    version: "0.1.13",
+    label: "MCP multi-server commands",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "MCP exec can run the same command across multiple visible servers with server_ids while keeping per-server request, approval, output, and error records.",
+          "MCP read_console can inspect several always-run server consoles in one read-only call.",
+          "MCP command responses can include basic policy warnings for common high-risk command patterns.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "NAS and appliance prompt detection now recognizes bracket-style shell prompts such as [~] #.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Multi-server MCP execution still respects per-server permissions, approval-required prompts, blocked rules, approval-context drift checks, and token-scoped history.",
+          "Policy warnings are best-effort safety rails and do not replace local operator review.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.12",
     label: "Bulk console commands",

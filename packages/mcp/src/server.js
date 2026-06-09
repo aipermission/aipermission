@@ -25,7 +25,7 @@ const apiTransferTimeoutMs = Number.parseInt(process.env.AIPERMISSION_TRANSFER_T
 
 const server = new McpServer({
   name: "aipermission",
-  version: "0.1.2",
+  version: "0.1.13",
 });
 
 server.tool(
