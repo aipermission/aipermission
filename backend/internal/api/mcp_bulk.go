@@ -6,6 +6,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
+	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -83,12 +86,27 @@ func (s mcpHandlers) mcpBulkExec(w http.ResponseWriter, r *http.Request) {
 			items = append(items, item)
 			continue
 		}
+		command := request.Command
+		prepared, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+			Source:     commandRequestSourceMCP,
+			TargetRef:  connectortargets.SSHTargetRef(serverID),
+			ActionName: sshconnector.ActionExec,
+			Input:      map[string]any{"command": command},
+			Reason:     request.Reason,
+		})
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		if preparedCommand, ok := prepared.Action.Payload["command"].(string); ok {
+			command = preparedCommand
+		}
 
 		status := "running"
 		if rule == tokens.RuleApprovalRequired {
 			status = "pending_approval"
 		}
-		requestID, err := s.insertCommandRequest(r.Context(), auth.runtime, auth.TokenID, serverID, request.Command, request.Reason, status)
+		requestID, err := s.insertCommandRequest(r.Context(), auth.runtime, auth.TokenID, serverID, command, request.Reason, status)
 		if err != nil {
 			writeInternalError(w)
 			return
@@ -102,7 +120,7 @@ func (s mcpHandlers) mcpBulkExec(w http.ResponseWriter, r *http.Request) {
 		if rule == tokens.RuleApprovalRequired {
 			s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), serverID, "mcp.bulk_exec.approval_pending", map[string]any{
 				"request_id":            requestID,
-				"command":               request.Command,
+				"command":               command,
 				"reason":                request.Reason,
 				"approval_context_hash": item.ApprovalContextHash,
 			})
@@ -111,14 +129,14 @@ func (s mcpHandlers) mcpBulkExec(w http.ResponseWriter, r *http.Request) {
 
 		s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), serverID, "mcp.bulk_exec.running", map[string]any{
 			"request_id": requestID,
-			"command":    request.Command,
+			"command":    command,
 			"reason":     request.Reason,
 		})
 		runItems = append(runItems, mcpBulkExecRunItem{
 			RequestID:  requestID,
 			ServerID:   serverID,
 			ServerName: serverName,
-			Command:    request.Command,
+			Command:    command,
 			Reason:     request.Reason,
 			TokenID:    auth.TokenID,
 		})
