@@ -686,7 +686,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	batch, serverID, overwrite, ok := s.createUploadBatchFromMultipart(w, r, runtime, filetransfer.SourceUI, nil, nil)
+	batch, serverID, overwrite, ok := s.createUploadBatchFromMultipart(w, r, runtime, filetransfer.SourceUI, nil, nil, nil)
 	if !ok {
 		return
 	}
@@ -700,7 +700,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusAccepted, batch)
 }
 
-func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, source string, status *string, authorize func(serverID int64) bool) (filetransfer.BatchRecord, int64, bool, bool) {
+func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, source string, status *string, authorize func(serverID int64) bool, prepare func(serverID int64, remoteDir string, fileNames []string, overwrite bool) bool) (filetransfer.BatchRecord, int64, bool, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferUploadBytes)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart upload")
@@ -738,10 +738,26 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 		writeError(w, http.StatusBadRequest, "cannot upload more than 100 files at once")
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
-	requests := make([]filetransfer.CreateRequest, 0, len(headers))
-	tempPaths := []string{}
+	fileNames := make([]string, 0, len(headers))
+	remotePaths := make([]string, 0, len(headers))
 	seenRemotePaths := map[string]bool{}
 	for _, header := range headers {
+		fileName := safeFileName(header.Filename)
+		remotePath := joinRemoteFilePath(remoteDir, fileName)
+		if seenRemotePaths[remotePath] {
+			writeError(w, http.StatusBadRequest, "upload queue contains duplicate remote paths")
+			return filetransfer.BatchRecord{}, 0, false, false
+		}
+		seenRemotePaths[remotePath] = true
+		fileNames = append(fileNames, fileName)
+		remotePaths = append(remotePaths, remotePath)
+	}
+	if prepare != nil && !prepare(serverID, remoteDir, fileNames, overwrite) {
+		return filetransfer.BatchRecord{}, 0, false, false
+	}
+	requests := make([]filetransfer.CreateRequest, 0, len(headers))
+	tempPaths := []string{}
+	for i, header := range headers {
 		file, err := header.Open()
 		if err != nil {
 			cleanupTempPaths(tempPaths)
@@ -756,18 +772,10 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 			return filetransfer.BatchRecord{}, 0, false, false
 		}
 		tempPaths = append(tempPaths, tempPath)
-		fileName := safeFileName(header.Filename)
-		remotePath := joinRemoteFilePath(remoteDir, fileName)
-		if seenRemotePaths[remotePath] {
-			cleanupTempPaths(tempPaths)
-			writeError(w, http.StatusBadRequest, "upload queue contains duplicate remote paths")
-			return filetransfer.BatchRecord{}, 0, false, false
-		}
-		seenRemotePaths[remotePath] = true
 		requests = append(requests, filetransfer.CreateRequest{
-			LocalPath:  fileName,
-			RemotePath: remotePath,
-			FileName:   fileName,
+			LocalPath:  fileNames[i],
+			RemotePath: remotePaths[i],
+			FileName:   fileNames[i],
 			SizeBytes:  size,
 			TempPath:   tempPath,
 		})

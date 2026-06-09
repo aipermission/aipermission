@@ -436,6 +436,21 @@ func (s mcpHandlers) mcpStartFileUpload(w http.ResponseWriter, r *http.Request) 
 			initialStatus = filetransfer.StatusPendingApproval
 		}
 		return true
+	}, func(nextServerID int64, remoteDir string, fileNames []string, nextOverwrite bool) bool {
+		if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+			Source:     commandRequestSourceMCP,
+			TargetRef:  connectortargets.SSHTargetRef(nextServerID),
+			ActionName: sshconnector.ActionUploadFiles,
+			Input: map[string]any{
+				"local_paths": fileNames,
+				"remote_dir":  remoteDir,
+				"overwrite":   nextOverwrite,
+			},
+		}); err != nil {
+			writeInternalError(w)
+			return false
+		}
+		return true
 	})
 	if !ok {
 		return
