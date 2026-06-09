@@ -537,6 +537,7 @@ func scanCommandRequest(scanner interface {
 	if completedAt.Valid {
 		item.CompletedAt = stringPtr(completedAt.String)
 	}
+	item.PolicyWarnings = analyzeCommandPolicy(item.Command)
 	annotateCommandRequestForAssistant(&item)
 	return item, nil
 }

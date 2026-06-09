@@ -752,6 +752,11 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
               <span className="font-semibold">User note:</span> {item.user_note}
             </p>
           ) : null}
+          {item.policy_warnings?.length ? (
+            <Notice tone="warn" className="py-2 text-xs">
+              <span className="font-semibold">Policy warning:</span> {item.policy_warnings.map((warning) => warning.message).join(" ")}
+            </Notice>
+          ) : null}
           <div className="grid gap-2">
             <form className="relative min-w-0" onSubmit={submitLabel}>
               <div className="flex min-h-10 min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-md border border-stone-200 bg-white px-2 py-1.5 focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/15">

@@ -23,7 +23,7 @@ export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, on
     >
       {approval ? (
         <div className="grid h-[calc(100vh-196px)] min-h-0 grid-rows-[minmax(0,1fr)_auto]">
-          <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 p-5">
+          <div className="grid min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-3 p-5">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="warn">pending</Badge>
               {approval.token_name ? <Badge>{approval.token_name}</Badge> : null}
@@ -34,6 +34,11 @@ export function ApprovalDialog({ approval, note, action, onNoteChange, onRun, on
                 <p className="text-xs font-semibold uppercase text-stone-500">Reason</p>
                 <p className="mt-1 text-sm text-stone-800">{approval.reason}</p>
               </div>
+            ) : null}
+            {approval.policy_warnings?.length ? (
+              <Notice tone="warn" className="py-2 text-xs">
+                <span className="font-semibold">Policy warning:</span> {approval.policy_warnings.map((warning) => warning.message).join(" ")}
+              </Notice>
             ) : null}
             <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
               <div className="flex items-center justify-between gap-2">

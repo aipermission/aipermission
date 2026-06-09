@@ -70,6 +70,10 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 
 `exec` is intended for non-interactive commands. The gateway closes stdin for MCP command bodies so stdin-reading commands cannot consume the internal shell wrapper. Use the web console for interactive work.
 
+Command responses can include `policy_warnings` for common high-risk command
+patterns. They are best-effort safety rails and do not replace token
+permissions, approval review, or operator judgment.
+
 File transfer tools are intentionally conservative. MCP can list transfer
 metadata, browse remote directories, start remote download queues, save
 completed downloads to explicit local paths, upload explicit local files, and

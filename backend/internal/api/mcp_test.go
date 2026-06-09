@@ -651,6 +651,47 @@ func TestMCPBulkExecValidatesInput(t *testing.T) {
 	}
 }
 
+func TestMCPExecIncludesPolicyWarningsWithoutBlockingApprovalFlow(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "worker-1")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/exec", token.TokenValue, map[string]any{
+		"server_id": server.ID,
+		"command":   "rm -rf /tmp/aipermission-policy-smoke",
+		"reason":    "verify policy warning path",
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var body mcpExecResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode exec response: %v", err)
+	}
+	if body.Status != "approval_pending" || body.RequestID == 0 {
+		t.Fatalf("policy warning should not block approval flow: %#v", body)
+	}
+	if len(body.PolicyWarnings) != 1 || body.PolicyWarnings[0].Code != "destructive_file_operation" {
+		t.Fatalf("expected destructive file warning, got %#v", body.PolicyWarnings)
+	}
+	record, err := fixture.server.getCommandRequest(ctx, fixture.server.activeRuntime(), body.RequestID, token.ID, commandRequestSourceMCP)
+	if err != nil {
+		t.Fatalf("get command request: %v", err)
+	}
+	if len(record.PolicyWarnings) != 1 || record.PolicyWarnings[0].Code != "destructive_file_operation" {
+		t.Fatalf("expected policy warning on command request record, got %#v", record.PolicyWarnings)
+	}
+}
+
 func TestMCPRuntimeSwitchBlocksExecutionWithoutDeletingPermissions(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()

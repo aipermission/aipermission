@@ -101,6 +101,12 @@ The gateway checks:
 5. execution rule
 6. global MCP Started/Stopped runtime state
 
+Responses and command history can include `policy_warnings` for common
+high-risk command patterns such as destructive file operations, service/package
+changes, cluster/container changes, firewall/network changes, disk operations,
+or likely credential reads. These warnings are best-effort UX safety rails; they
+do not replace token permissions, approval review, or operator judgment.
+
 If MCP execution is stopped in the web UI, `exec` returns:
 
 ```json

@@ -52,6 +52,7 @@ func (s mcpHandlers) mcpBulkExec(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	policyWarnings := analyzeCommandPolicy(request.Command)
 	serverIDs, err := normalizeBulkConsoleServerIDs(request.ServerIDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -128,10 +129,11 @@ func (s mcpHandlers) mcpBulkExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := mcpBulkExecResponse{
-		Status:      "accepted",
-		Command:     request.Command,
-		Parallelism: bulkConsoleCommandParallelism,
-		Items:       items,
+		Status:         "accepted",
+		Command:        request.Command,
+		Parallelism:    bulkConsoleCommandParallelism,
+		Items:          items,
+		PolicyWarnings: policyWarnings,
 	}
 	if openItems > 0 {
 		response.RetryAfterSeconds = 3

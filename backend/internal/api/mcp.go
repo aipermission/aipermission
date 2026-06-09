@@ -101,6 +101,7 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	policyWarnings := analyzeCommandPolicy(request.Command)
 
 	serverName, rule, allowed, err := s.mcpPermission(r.Context(), auth.runtime, auth.TokenID, request.ServerID)
 	if err != nil {
@@ -113,10 +114,11 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 			"reason":  request.Reason,
 		})
 		writeJSON(w, http.StatusOK, mcpExecResponse{
-			Status:   "blocked",
-			ServerID: request.ServerID,
-			Command:  request.Command,
-			Error:    "This token is blocked from executing commands on this server",
+			Status:         "blocked",
+			ServerID:       request.ServerID,
+			Command:        request.Command,
+			Error:          "This token is blocked from executing commands on this server",
+			PolicyWarnings: policyWarnings,
 		})
 		return
 	}
@@ -143,6 +145,7 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 			UserNote:          userNote,
 			RetryAfterSeconds: 3,
 			AssistantHint:     pendingApprovalAssistantHint,
+			PolicyWarnings:    policyWarnings,
 		})
 		return
 	}
@@ -164,12 +167,13 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 			"command":    request.Command,
 		})
 		writeJSON(w, http.StatusOK, mcpExecResponse{
-			Status:     "error",
-			RequestID:  commandRequestID,
-			ServerID:   request.ServerID,
-			ServerName: serverName,
-			Command:    request.Command,
-			Error:      err.Error(),
+			Status:         "error",
+			RequestID:      commandRequestID,
+			ServerID:       request.ServerID,
+			ServerName:     serverName,
+			Command:        request.Command,
+			Error:          err.Error(),
+			PolicyWarnings: policyWarnings,
 		})
 		return
 	}
@@ -197,6 +201,7 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 			UserNote:          userNote,
 			RetryAfterSeconds: 3,
 			AssistantHint:     runningAssistantHint,
+			PolicyWarnings:    policyWarnings,
 		})
 		return
 	}
@@ -217,17 +222,18 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 	userNote, _ := s.consumeNextUserMessage(context.Background(), auth.runtime, auth.TokenID, request.ServerID, result.SessionID)
 
 	writeJSON(w, http.StatusOK, mcpExecResponse{
-		Status:     status,
-		RequestID:  commandRequestID,
-		SessionID:  result.SessionID,
-		ServerID:   request.ServerID,
-		ServerName: serverName,
-		Command:    request.Command,
-		Stdout:     output,
-		Stderr:     "",
-		ExitCode:   result.ExitCode,
-		DurationMS: result.DurationMS,
-		UserNote:   userNote,
+		Status:         status,
+		RequestID:      commandRequestID,
+		SessionID:      result.SessionID,
+		ServerID:       request.ServerID,
+		ServerName:     serverName,
+		Command:        request.Command,
+		Stdout:         output,
+		Stderr:         "",
+		ExitCode:       result.ExitCode,
+		DurationMS:     result.DurationMS,
+		UserNote:       userNote,
+		PolicyWarnings: policyWarnings,
 	})
 }
 

@@ -691,6 +691,10 @@ For approval-required commands, the bridge should poll `get_request` according t
 
 For long `always_run` commands, `/api/mcp/exec` may return `running` with `retry_after_seconds` and `assistant_hint`. The AI should poll `get_request(request_id)` and use `read_console(server_id)` for live output before sending another long-running command to the same server.
 
+Command request responses may include `policy_warnings` for common high-risk
+command patterns. These warnings are best-effort UX safety rails and do not
+block execution by themselves.
+
 `POST /api/mcp/bulk-exec` accepts one command, one reason, and up to 25
 `server_ids`. Each target is evaluated independently against the current
 token/server permission. `always_run` targets start as separate command requests,

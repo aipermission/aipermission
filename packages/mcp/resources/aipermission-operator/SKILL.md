@@ -105,6 +105,10 @@ If the request is `error`, read the error text. SSH reachability, refused ports,
 authentication failures, and host-key failures are current connection signals;
 do not assume a listed server is live just because `list_servers` returned it.
 
+If a response or request contains `policy_warnings`, mention the warning briefly
+when it affects the next action. These warnings are best-effort safety rails, not
+permission to skip human judgment.
+
 ## Running Flow
 
 When `exec` or `get_request` returns `running`:
