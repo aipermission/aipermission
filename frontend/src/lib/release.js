@@ -1,6 +1,27 @@
-export const appVersion = "0.1.11";
+export const appVersion = "0.1.12";
 
 export const changelogEntries = [
+  {
+    version: "0.1.12",
+    label: "Bulk console commands",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Console Bulk command can run one shell command across multiple selected servers from the local UI.",
+          "Bulk command requires an explicit confirmation phrase and records one manual command request per target server.",
+          "Bulk results show per-server status with selectable captured output and compact target search.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Bulk command remains local UI only and requires the unlocked UI session plus CSRF checks.",
+          "Bulk command history stays separate from MCP token-scoped approval history.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.11",
     label: "SSH compatibility polish",

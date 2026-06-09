@@ -7,6 +7,26 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-06-09
+
+### Added
+
+- Console Bulk command can run one shell command across multiple selected
+  servers from the local UI.
+- Bulk command requires an explicit confirmation phrase, records one manual
+  command request per target server, and runs through the same persistent SSH
+  console path as normal Console commands.
+- Bulk command results show per-server status and selectable captured output,
+  with a compact target search for larger server lists.
+
+### Security
+
+- Bulk command remains local UI only and requires the existing unlocked UI
+  session plus CSRF checks.
+- Bulk command history rows are stored as manual command requests without MCP
+  token identity, so MCP approval and token-scoped history semantics stay
+  separate.
+
 ## [0.1.11] - 2026-06-08
 
 ### Added
