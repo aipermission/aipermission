@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
+	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/execution"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -303,6 +306,15 @@ func (s mcpHandlers) mcpBrowseRemoteFiles(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+		Source:     commandRequestSourceMCP,
+		TargetRef:  connectortargets.SSHTargetRef(request.ServerID),
+		ActionName: sshconnector.ActionBrowseRemoteFiles,
+		Input:      map[string]any{"path": remotePath},
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	server, privateKey, err := fileTransferHandlers{s.Server}.serverSSHMaterialFromRuntime(ctx, auth.runtime, request.ServerID)
@@ -348,6 +360,18 @@ func (s mcpHandlers) mcpStartFileDownload(w http.ResponseWriter, r *http.Request
 	initialStatus := filetransfer.StatusPending
 	if permission.Rule == tokens.RuleApprovalRequired {
 		initialStatus = filetransfer.StatusPendingApproval
+	}
+	if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+		Source:     commandRequestSourceMCP,
+		TargetRef:  connectortargets.SSHTargetRef(request.ServerID),
+		ActionName: sshconnector.ActionStartFileDownload,
+		Input: map[string]any{
+			"remote_paths": request.RemotePaths,
+			"archive_name": request.ArchiveName,
+		},
+	}); err != nil {
+		writeInternalError(w)
+		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
