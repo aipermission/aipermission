@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
+	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -44,6 +47,14 @@ func (s mcpHandlers) mcpRestartConsoleSession(w http.ResponseWriter, r *http.Req
 			ServerID: request.ServerID,
 			Error:    "This token is blocked from restarting this server console session",
 		})
+		return
+	}
+	if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+		Source:     commandRequestSourceMCP,
+		TargetRef:  connectortargets.SSHTargetRef(request.ServerID),
+		ActionName: sshconnector.ActionRestartConsoleSession,
+	}); err != nil {
+		writeInternalError(w)
 		return
 	}
 

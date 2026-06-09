@@ -345,6 +345,15 @@ func (s mcpHandlers) mcpReadConsole(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+		Source:     commandRequestSourceMCP,
+		TargetRef:  connectortargets.SSHTargetRef(serverID),
+		ActionName: sshconnector.ActionReadConsole,
+		Input:      map[string]any{"tail_bytes": tail},
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 
 	sessions, err := auth.runtime.consoleSessions.List(r.Context(), serverID)
 	if err != nil {
