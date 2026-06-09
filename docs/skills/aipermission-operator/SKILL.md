@@ -70,8 +70,9 @@ After multi-server `exec` returns:
 
 1. Inspect every item.
 2. For each item with `request_id`, poll `get_request(request_id)` until terminal.
-3. Treat `blocked` or unauthorized items as skipped, not failed executions.
-4. Do not assume all targets started just because the top-level status is `accepted`.
+3. If several `always_run` items are still running, use `read_console(server_ids, tail)` to inspect live output in one read-only call.
+4. Treat `blocked` or unauthorized items as skipped, not failed executions.
+5. Do not assume all targets started just because the top-level status is `accepted`.
 
 Prefer individual `exec` calls when each server needs a different command,
 different reason, or separate investigation path.
@@ -115,7 +116,7 @@ When `exec` or `get_request` returns `running`:
 
 1. If the server permission is `always_run`, call `read_console(server_id)` before sending another long-running command to the same server.
 2. Poll `get_request(request_id)` every 3-5 seconds.
-3. Use `read_console(server_id)` between polls only when the token has `always_run` permission.
+3. Use `read_console(server_id)` between polls only when the token has `always_run` permission. For a multi-server command, use `read_console(server_ids, tail)` to inspect several running consoles at once.
 4. Do not start another long-running command on the same server until the active request reaches a terminal status, unless the user explicitly asks.
 
 If the request appears stuck for an unusually long time and `read_console`

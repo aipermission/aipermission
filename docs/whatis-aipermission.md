@@ -227,6 +227,7 @@ list_servers()
 exec(server_id, command, reason?)
 exec(server_ids, command, reason)
 read_console(server_id, tail?)
+read_console(server_ids, tail?)
 restart_console_session(server_id)
 get_request(request_id)
 list_requests(status?)
@@ -301,7 +302,7 @@ permission, token validity, server profile, SSH key fingerprint, MCP tool
 metadata, or command payload drift makes the request `stale` and requires a new
 AI request.
 
-If the request is still current, the gateway executes the command in the persistent console session. If the user typed a note while approving, the gateway delivers it through the message queue to the matching MCP token. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` is reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
+If the request is still current, the gateway executes the command in the persistent console session. If the user typed a note while approving, the gateway delivers it through the message queue to the matching MCP token. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` and `read_console(server_ids, tail)` are reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
 
 If the user clicks Decline, the request becomes `declined`; any operator note is returned as `user_note`.
 

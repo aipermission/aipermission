@@ -14,6 +14,7 @@ list_servers()
 exec(server_id, command, reason?)
 exec(server_ids, command, reason)
 read_console(server_id, tail?)
+read_console(server_ids, tail?)
 restart_console_session(server_id)
 get_request(request_id)
 list_requests(status?)
@@ -76,7 +77,7 @@ MCP tool metadata, and command payload hash. When the user clicks Run, the
 gateway recomputes that context before execution. If it changed, the request
 becomes `stale` and the AI must submit a fresh command.
 
-When the user runs a non-stale request, the backend executes the command in the target server's persistent console session. If the operator entered a note while clicking Run, the gateway delivers that note to the matching MCP token through the message queue. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` is reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
+When the user runs a non-stale request, the backend executes the command in the target server's persistent console session. If the operator entered a note while clicking Run, the gateway delivers that note to the matching MCP token through the message queue. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` and `read_console(server_ids, tail)` are reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
 
 When the user declines the request, the decline note is stored as `user_note` on that command request and returned by `get_request`.
 

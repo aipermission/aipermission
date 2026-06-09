@@ -75,18 +75,50 @@ server.tool(
 
 server.tool(
   "read_console",
-  "Read the latest persistent console transcript for an allowed server. Use this after a long-running exec returns running.",
+  "Read the latest persistent console transcript for one allowed server, or for multiple allowed servers after a multi-server exec. Use this after a long-running exec returns running.",
   {
-    server_id: z.number().int().positive().describe("Server id from list_servers."),
+    server_id: z.number().int().positive().optional().describe("Single server id from list_servers. Use either server_id or server_ids, not both."),
+    server_ids: z.array(z.number().int().positive()).min(1).max(25).optional().describe("Multiple server ids from list_servers. Up to 25 targets. Use either server_id or server_ids, not both."),
     tail: z.number().int().positive().max(100000).optional().describe("Maximum transcript characters to return."),
   },
-  async ({ server_id, tail }) => {
-    return jsonToolResult(() => {
-      const params = new URLSearchParams({ server_id: String(server_id) });
-      if (tail) {
-        params.set("tail", String(tail));
+  async ({ server_id, server_ids, tail }) => {
+    return jsonToolResult(async () => {
+      if (server_id && server_ids?.length) {
+        throw new Error("Use either server_id or server_ids, not both.");
       }
-      return apiGet(`/api/mcp/console?${params.toString()}`);
+      if (!server_id && !server_ids?.length) {
+        throw new Error("server_id or server_ids is required.");
+      }
+      const readOne = (id) => {
+        const params = new URLSearchParams({ server_id: String(id) });
+        if (tail) {
+          params.set("tail", String(tail));
+        }
+        return apiGet(`/api/mcp/console?${params.toString()}`);
+      };
+      if (server_ids?.length) {
+        const unique = new Set(server_ids);
+        if (unique.size !== server_ids.length) {
+          throw new Error("server_ids must not contain duplicates.");
+        }
+        const items = await Promise.all(server_ids.map(async (id) => {
+          try {
+            return await readOne(id);
+          } catch (error) {
+            return {
+              status: "error",
+              server_id: id,
+              error: error?.message || "failed to read console",
+            };
+          }
+        }));
+        return {
+          status: "ok",
+          items,
+          assistant_hint: "Inspect each item independently. A listed server may have no active console, blocked read permission, or an SSH/session error.",
+        };
+      }
+      return readOne(server_id);
     });
   }
 );

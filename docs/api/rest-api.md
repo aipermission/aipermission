@@ -689,7 +689,7 @@ Saved token/server permissions are preserved while stopped.
 
 For approval-required commands, the bridge should poll `get_request` according to `assistant_hint`. If the user clicks Run, the backend executes in the persistent console session. If the user clicks Decline, the request becomes `declined`.
 
-For long `always_run` commands, `/api/mcp/exec` may return `running` with `retry_after_seconds` and `assistant_hint`. The AI should poll `get_request(request_id)` and use `read_console(server_id)` for live output before sending another long-running command to the same server.
+For long `always_run` commands, `/api/mcp/exec` may return `running` with `retry_after_seconds` and `assistant_hint`. The AI should poll `get_request(request_id)` and use `read_console(server_id)` for live output before sending another long-running command to the same server. After multi-server `exec`, `read_console(server_ids, tail)` can inspect several visible consoles in one read-only call.
 
 Command request responses may include `policy_warnings` for common high-risk
 command patterns. These warnings are best-effort UX safety rails and do not

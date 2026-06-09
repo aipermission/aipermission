@@ -18,6 +18,7 @@ list_servers()
 exec(server_id, command, reason?)
 exec(server_ids, command, reason)
 read_console(server_id, tail?)
+read_console(server_ids, tail?)
 restart_console_session(server_id)
 get_request(request_id)
 list_requests(status?)
@@ -125,8 +126,9 @@ single `exec` call. If the command is still running, the response is
 `running`; the shell session continues and output keeps streaming to the web
 console. The AI should poll `get_request(request_id)`, use
 `read_console(server_id)` to inspect live output when the token has
-`always_run`, and avoid sending another long-running command to that server
-until the active request reaches a terminal status. If the request remains
+`always_run`, use `read_console(server_ids, tail)` after multi-server commands,
+and avoid sending another long-running command to that server until the active
+request reaches a terminal status. If the request remains
 running and `read_console` shows no useful progress, the recovery path is
 `restart_console_session(server_id)`.
 
@@ -268,13 +270,13 @@ each item.
 
 ## read_console
 
-Returns the latest persistent console transcript for a visible server when that token has `always_run` permission for the server. Active sessions are preferred over closed sessions.
+Returns the latest persistent console transcript for one visible server, or for multiple visible servers after a multi-server `exec`, when that token has `always_run` permission for each server. Active sessions are preferred over closed sessions.
 
 Console visibility is server-scoped, not token-private. In the local single-user model, if two tokens both have `always_run` permission for the same server, either token can read the shared persistent console transcript for that server. Use separate servers/databases or keep permissions temporary if token-level transcript isolation is required.
 
 For `approval_required` tokens, use `get_request(request_id)` to inspect approved command state and final output. This prevents approval-only tokens from reading unrelated manual console transcripts that may contain sensitive output.
 
-Input:
+Single-server input:
 
 ```json
 {
@@ -283,7 +285,7 @@ Input:
 }
 ```
 
-Example response:
+Single-server response:
 
 ```json
 {
@@ -291,6 +293,42 @@ Example response:
   "server_id": 3,
   "session_id": 12,
   "transcript": "apt-get update...\n"
+}
+```
+
+Multi-server input:
+
+```json
+{
+  "server_ids": [3, 4, 5],
+  "tail": 12000
+}
+```
+
+Multi-server response:
+
+```json
+{
+  "status": "ok",
+  "items": [
+    {
+      "status": "connected",
+      "server_id": 3,
+      "server_name": "core-1",
+      "session_id": 12,
+      "transcript": "apt-get update...\n"
+    },
+    {
+      "status": "none",
+      "server_id": 4,
+      "server_name": "worker-2"
+    },
+    {
+      "status": "blocked",
+      "server_id": 5,
+      "error": "read_console requires always_run permission for this server; use get_request to inspect approval_required command results"
+    }
+  ]
 }
 ```
 
