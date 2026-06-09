@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
+	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -121,6 +124,20 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 			PolicyWarnings: policyWarnings,
 		})
 		return
+	}
+	prepared, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+		Source:     commandRequestSourceMCP,
+		TargetRef:  connectortargets.SSHTargetRef(request.ServerID),
+		ActionName: sshconnector.ActionExec,
+		Input:      map[string]any{"command": request.Command},
+		Reason:     request.Reason,
+	})
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if command, ok := prepared.Action.Payload["command"].(string); ok {
+		request.Command = command
 	}
 	if rule == tokens.RuleApprovalRequired {
 		id, err := s.insertCommandRequest(r.Context(), auth.runtime, auth.TokenID, request.ServerID, request.Command, request.Reason, "pending_approval")
