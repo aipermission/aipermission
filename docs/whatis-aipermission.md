@@ -225,6 +225,7 @@ Current tools:
 ```txt
 list_servers()
 exec(server_id, command, reason?)
+exec(server_ids, command, reason)
 read_console(server_id, tail?)
 restart_console_session(server_id)
 get_request(request_id)

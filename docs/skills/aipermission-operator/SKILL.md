@@ -34,7 +34,8 @@ the current reachability signal.
 
 ## Command Reasons
 
-Every `exec` call should include a short `reason`.
+Every single-server `exec` call should include a short `reason`. Multi-server
+`exec` calls with `server_ids` must include a short `reason`.
 
 Good reasons:
 
@@ -51,6 +52,29 @@ run command
 debug
 test
 ```
+
+## Bulk Command Flow
+
+Use `exec(server_ids, command, reason)` when the operator asks for the same
+non-interactive command on multiple servers, such as checking package update
+state, uptime, disk usage, or a service status across a small fleet.
+
+Before using multi-server `exec`:
+
+1. Call `list_servers()`.
+2. Choose only the requested target servers.
+3. Keep the command non-interactive and bounded.
+4. Use one clear reason that applies to every target.
+
+After multi-server `exec` returns:
+
+1. Inspect every item.
+2. For each item with `request_id`, poll `get_request(request_id)` until terminal.
+3. Treat `blocked` or unauthorized items as skipped, not failed executions.
+4. Do not assume all targets started just because the top-level status is `accepted`.
+
+Prefer individual `exec` calls when each server needs a different command,
+different reason, or separate investigation path.
 
 ## Approval Flow
 

@@ -16,6 +16,7 @@ The bridge connects to the backend through `AIPERMISSION_API_URL` and `AIPERMISS
 ```txt
 list_servers()
 exec(server_id, command, reason?)
+exec(server_ids, command, reason)
 read_console(server_id, tail?)
 restart_console_session(server_id)
 get_request(request_id)
@@ -81,7 +82,7 @@ Creates a remote command execution request.
 
 `exec` is for non-interactive commands. The gateway runs MCP commands with stdin closed to the command body so tools such as `cat`, `read`, or interactive installers cannot consume the internal shell wrapper and hide the exit marker. Use the web console for truly interactive work, or pass all required input through flags/files inside a single command.
 
-Input:
+Single-server input:
 
 ```json
 {
@@ -192,6 +193,72 @@ UI behavior:
   "error": "token is blocked for this server"
 }
 ```
+
+### Multi-Server Mode
+
+The same `exec` tool can run one command across multiple visible servers by
+using `server_ids` instead of `server_id`.
+
+Input:
+
+```json
+{
+  "server_ids": [3, 4, 5],
+  "command": "apt update",
+  "reason": "Refresh package indexes before maintenance"
+}
+```
+
+Multi-server `exec` applies the same permission model as single-server `exec`,
+but independently per target:
+
+- `always_run`: creates a command request and starts it in that server's
+  persistent console session
+- `approval_required`: creates a separate pending approval for that server
+- `blocked` or unauthorized: skips that target without creating a command
+  request
+
+The command `reason` is required for bulk execution so every created request has
+auditable context.
+
+Example response:
+
+```json
+{
+  "status": "accepted",
+  "command": "apt update",
+  "parallelism": 3,
+  "retry_after_seconds": 3,
+  "assistant_hint": "Each target has its own request_id when execution or approval started. Poll get_request(request_id) for running or approval_pending items. Approval-required targets wait for the local operator; blocked targets were skipped.",
+  "items": [
+    {
+      "status": "running",
+      "request_id": 101,
+      "server_id": 3,
+      "server_name": "worker-1",
+      "execution_rule": "always_run"
+    },
+    {
+      "status": "pending_approval",
+      "request_id": 102,
+      "server_id": 4,
+      "server_name": "worker-2",
+      "execution_rule": "approval_required",
+      "approval_context_hash": "sha256:..."
+    },
+    {
+      "status": "blocked",
+      "server_id": 5,
+      "execution_rule": "blocked",
+      "error": "This token is blocked from executing commands on this server"
+    }
+  ]
+}
+```
+
+The AI should poll each returned `request_id` with `get_request`. Do not assume
+all targets started just because the top-level response is `accepted`; inspect
+each item.
 
 ## read_console
 
