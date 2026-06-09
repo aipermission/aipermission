@@ -538,6 +538,119 @@ func TestMCPExecApprovalPendingCreatesAuditableRequestAndConsumesUserNote(t *tes
 	}
 }
 
+func TestMCPBulkExecCreatesPerServerRequestsAndSkipsBlockedTargets(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	approvalServer := fixture.createKeyAndServer(t, "approval-target")
+	blockedServer := fixture.createKeyAndServer(t, "blocked-target")
+	unassignedServer := fixture.createKeyAndServer(t, "unassigned-target")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: approvalServer.ID, ExecutionRule: tokens.RuleApprovalRequired},
+		{ServerID: blockedServer.ID, ExecutionRule: tokens.RuleBlocked},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/bulk-exec", token.TokenValue, map[string]any{
+		"server_ids": []int64{approvalServer.ID, blockedServer.ID, unassignedServer.ID},
+		"command":    "uptime",
+		"reason":     "inspect fleet health",
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", response.Code, response.Body.String())
+	}
+	var body mcpBulkExecResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode bulk response: %v", err)
+	}
+	if body.Status != "accepted" || body.Parallelism != bulkConsoleCommandParallelism || body.RetryAfterSeconds != 3 || body.AssistantHint == "" {
+		t.Fatalf("unexpected bulk response metadata: %#v", body)
+	}
+	if len(body.Items) != 3 {
+		t.Fatalf("expected three items, got %#v", body.Items)
+	}
+	byServer := map[int64]mcpBulkExecResponseItem{}
+	for _, item := range body.Items {
+		byServer[item.ServerID] = item
+	}
+	approvalItem := byServer[approvalServer.ID]
+	if approvalItem.Status != "pending_approval" || approvalItem.RequestID == 0 || approvalItem.ApprovalContextHash == "" || approvalItem.ExecutionRule != tokens.RuleApprovalRequired {
+		t.Fatalf("unexpected approval item: %#v", approvalItem)
+	}
+	blockedItem := byServer[blockedServer.ID]
+	if blockedItem.Status != "blocked" || blockedItem.RequestID != 0 || blockedItem.ExecutionRule != tokens.RuleBlocked {
+		t.Fatalf("unexpected blocked item: %#v", blockedItem)
+	}
+	unassignedItem := byServer[unassignedServer.ID]
+	if unassignedItem.Status != "blocked" || unassignedItem.RequestID != 0 || unassignedItem.ExecutionRule != "" {
+		t.Fatalf("unexpected unassigned item: %#v", unassignedItem)
+	}
+
+	record, err := fixture.server.getCommandRequest(ctx, fixture.server.activeRuntime(), approvalItem.RequestID, token.ID, commandRequestSourceMCP)
+	if err != nil {
+		t.Fatalf("get command request: %v", err)
+	}
+	if record.Command != "uptime" || record.Reason != "inspect fleet health" || record.Status != "pending_approval" {
+		t.Fatalf("unexpected command request: %#v", record)
+	}
+	var requestRows int
+	if err := fixture.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM command_requests WHERE command = 'uptime' AND source = 'mcp'`).Scan(&requestRows); err != nil {
+		t.Fatalf("count command requests: %v", err)
+	}
+	if requestRows != 1 {
+		t.Fatalf("expected one command request for the approval target, got %d", requestRows)
+	}
+	var approvalAudits int
+	if err := fixture.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_logs WHERE action = 'mcp.bulk_exec.approval_pending'`).Scan(&approvalAudits); err != nil {
+		t.Fatalf("count approval audits: %v", err)
+	}
+	if approvalAudits != 1 {
+		t.Fatalf("expected one approval audit, got %d", approvalAudits)
+	}
+	var blockedAudits int
+	if err := fixture.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_logs WHERE action = 'mcp.bulk_exec.blocked'`).Scan(&blockedAudits); err != nil {
+		t.Fatalf("count blocked audits: %v", err)
+	}
+	if blockedAudits != 2 {
+		t.Fatalf("expected two blocked audits, got %d", blockedAudits)
+	}
+}
+
+func TestMCPBulkExecValidatesInput(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "worker-1")
+	if _, err := fixture.tokens.UpdatePermissions(ctx, token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
+		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
+	}}); err != nil {
+		t.Fatalf("update permissions: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		body map[string]any
+	}{
+		{name: "missing servers", body: map[string]any{"command": "ls", "reason": "inspect"}},
+		{name: "duplicate servers", body: map[string]any{"server_ids": []int64{server.ID, server.ID}, "command": "ls", "reason": "inspect"}},
+		{name: "missing command", body: map[string]any{"server_ids": []int64{server.ID}, "command": " ", "reason": "inspect"}},
+		{name: "missing reason", body: map[string]any{"server_ids": []int64{server.ID}, "command": "ls", "reason": " "}},
+	}
+	for _, tc := range cases {
+		response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/bulk-exec", token.TokenValue, tc.body)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s: expected 400, got %d: %s", tc.name, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestMCPRuntimeSwitchBlocksExecutionWithoutDeletingPermissions(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()

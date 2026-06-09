@@ -35,6 +35,12 @@ type mcpExecRequest struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
+type mcpBulkExecRequest struct {
+	ServerIDs []int64 `json:"server_ids"`
+	Command   string  `json:"command"`
+	Reason    string  `json:"reason"`
+}
+
 type mcpExecResponse struct {
 	Status            string  `json:"status"`
 	RequestID         int64   `json:"request_id,omitempty"`
@@ -50,6 +56,25 @@ type mcpExecResponse struct {
 	DurationMS        int64   `json:"duration_ms,omitempty"`
 	RetryAfterSeconds int     `json:"retry_after_seconds,omitempty"`
 	AssistantHint     string  `json:"assistant_hint,omitempty"`
+}
+
+type mcpBulkExecResponse struct {
+	Status            string                    `json:"status"`
+	Command           string                    `json:"command"`
+	Parallelism       int                       `json:"parallelism"`
+	Items             []mcpBulkExecResponseItem `json:"items"`
+	RetryAfterSeconds int                       `json:"retry_after_seconds,omitempty"`
+	AssistantHint     string                    `json:"assistant_hint,omitempty"`
+}
+
+type mcpBulkExecResponseItem struct {
+	Status              string `json:"status"`
+	RequestID           int64  `json:"request_id,omitempty"`
+	ServerID            int64  `json:"server_id"`
+	ServerName          string `json:"server_name,omitempty"`
+	ExecutionRule       string `json:"execution_rule,omitempty"`
+	ApprovalContextHash string `json:"approval_context_hash,omitempty"`
+	Error               string `json:"error,omitempty"`
 }
 
 type mcpConsoleResponse struct {

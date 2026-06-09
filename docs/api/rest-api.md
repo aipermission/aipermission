@@ -663,6 +663,7 @@ The npm MCP bridge uses local credential-safe HTTP endpoints:
 ```txt
 GET  /api/mcp/servers
 POST /api/mcp/exec
+POST /api/mcp/bulk-exec
 GET  /api/mcp/requests/{id}
 GET  /api/mcp/requests
 GET  /api/mcp/console
@@ -689,6 +690,14 @@ Saved token/server permissions are preserved while stopped.
 For approval-required commands, the bridge should poll `get_request` according to `assistant_hint`. If the user clicks Run, the backend executes in the persistent console session. If the user clicks Decline, the request becomes `declined`.
 
 For long `always_run` commands, `/api/mcp/exec` may return `running` with `retry_after_seconds` and `assistant_hint`. The AI should poll `get_request(request_id)` and use `read_console(server_id)` for live output before sending another long-running command to the same server.
+
+`POST /api/mcp/bulk-exec` accepts one command, one reason, and up to 25
+`server_ids`. Each target is evaluated independently against the current
+token/server permission. `always_run` targets start as separate command requests,
+`approval_required` targets create separate pending approvals, and blocked or
+unauthorized targets are skipped without creating command requests. The response
+returns per-target `request_id` values when a request was created; the bridge
+should poll each one with `get_request`.
 
 If a persistent console session appears stuck, `POST /api/mcp/console/restart`
 closes the current console session for that server, marks any running command
