@@ -11,32 +11,55 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
+type commandRequestInsert struct {
+	TokenID  *int64
+	ServerID int64
+	Source   string
+	Command  string
+	Reason   string
+	Status   string
+}
+
 func (s *Server) insertCommandRequest(ctx context.Context, runtime *databaseRuntime, tokenID int64, serverID int64, command string, reason string, status string) (int64, error) {
+	return s.insertCommandRequestWithOptions(ctx, runtime, commandRequestInsert{
+		TokenID:  &tokenID,
+		ServerID: serverID,
+		Source:   commandRequestSourceMCP,
+		Command:  command,
+		Reason:   reason,
+		Status:   status,
+	})
+}
+
+func (s *Server) insertCommandRequestWithOptions(ctx context.Context, runtime *databaseRuntime, request commandRequestInsert) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	encryptedCommand, err := runtime.vault.EncryptJSON(command)
+	encryptedCommand, err := runtime.vault.EncryptJSON(request.Command)
 	if err != nil {
 		return 0, fmt.Errorf("encrypt command payload: %w", err)
 	}
+	if request.Source == "" {
+		request.Source = commandRequestSourceMCP
+	}
 	approvalContext := ""
 	approvalContextHash := ""
-	if status == "pending_approval" && tokenID > 0 {
-		approvalContext, approvalContextHash, err = s.buildApprovalContextSnapshot(ctx, runtime, tokenID, serverID, command, now)
+	if request.Source == commandRequestSourceMCP && request.Status == "pending_approval" && request.TokenID != nil && *request.TokenID > 0 {
+		approvalContext, approvalContextHash, err = s.buildApprovalContextSnapshot(ctx, runtime, *request.TokenID, request.ServerID, request.Command, now)
 		if err != nil {
 			return 0, fmt.Errorf("build approval context snapshot: %w", err)
 		}
 	}
-	storedCommand := s.redactForPersistence(ctx, runtime, command)
-	storedReason := s.redactForPersistence(ctx, runtime, reason)
+	storedCommand := s.redactForPersistence(ctx, runtime, request.Command)
+	storedReason := s.redactForPersistence(ctx, runtime, request.Reason)
 	result, err := runtime.database.ExecContext(ctx, `
 		INSERT INTO command_requests (token_id, server_id, source, command, encrypted_command, reason, status, approval_context, approval_context_hash, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		tokenID,
-		serverID,
-		commandRequestSourceMCP,
+		nullableInt64(request.TokenID),
+		request.ServerID,
+		request.Source,
 		storedCommand,
 		encryptedCommand,
 		storedReason,
-		status,
+		request.Status,
 		approvalContext,
 		approvalContextHash,
 		now,

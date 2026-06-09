@@ -313,6 +313,73 @@ func TestApprovalAndMCPRequestRoutes(t *testing.T) {
 	}
 }
 
+func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	serverOne := fixture.createKeyAndServer(t, "bulk-one")
+	serverTwo := fixture.createKeyAndServer(t, "bulk-two")
+	if _, err := fixture.db.Exec(`UPDATE servers SET port = 1 WHERE id IN (?, ?)`, serverOne.ID, serverTwo.ID); err != nil {
+		t.Fatalf("move test servers to closed port: %v", err)
+	}
+
+	missingConfirmation := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
+		ServerIDs: []int64{serverOne.ID, serverTwo.ID},
+		Command:   "hostname",
+		Reason:    "bulk smoke",
+	})
+	if missingConfirmation.Code != http.StatusBadRequest || !strings.Contains(missingConfirmation.Body.String(), "RUN ON 2 SERVERS") {
+		t.Fatalf("bulk command should require exact confirmation, got %d %s", missingConfirmation.Code, missingConfirmation.Body.String())
+	}
+
+	duplicateServer := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
+		ServerIDs:    []int64{serverOne.ID, serverOne.ID},
+		Command:      "hostname",
+		Reason:       "bulk smoke",
+		Confirmation: "RUN ON 2 SERVERS",
+	})
+	if duplicateServer.Code != http.StatusBadRequest || !strings.Contains(duplicateServer.Body.String(), "duplicates") {
+		t.Fatalf("bulk command should reject duplicate servers, got %d %s", duplicateServer.Code, duplicateServer.Body.String())
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
+		ServerIDs:    []int64{serverOne.ID, serverTwo.ID},
+		Command:      "hostname",
+		Reason:       "bulk smoke",
+		Confirmation: "RUN ON 2 SERVERS",
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("bulk command failed: %d %s", response.Code, response.Body.String())
+	}
+	result := decodeRouteResponse[bulkConsoleCommandResponse](t, response.Body.Bytes())
+	if result.Parallelism != bulkConsoleCommandParallelism || len(result.Items) != 2 {
+		t.Fatalf("unexpected bulk command response: %#v", result)
+	}
+
+	var rows int
+	if err := fixture.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM command_requests
+		WHERE source = 'manual'
+			AND token_id IS NULL
+			AND encrypted_command <> ''
+			AND command = 'hostname'
+			AND reason = 'bulk smoke'
+			AND status IN ('running', 'error')`,
+	).Scan(&rows); err != nil {
+		t.Fatalf("count bulk command requests: %v", err)
+	}
+	if rows != 2 {
+		t.Fatalf("expected two manual bulk command rows, got %d", rows)
+	}
+
+	var auditRows int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_logs WHERE action = 'console.bulk_exec.started'`).Scan(&auditRows); err != nil {
+		t.Fatalf("count bulk command audit: %v", err)
+	}
+	if auditRows != 1 {
+		t.Fatalf("expected one bulk audit event, got %d", auditRows)
+	}
+}
+
 func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()

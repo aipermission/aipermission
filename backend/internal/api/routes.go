@@ -90,6 +90,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/databases/switch", databases.switchDatabase)
 	s.mux.HandleFunc("POST /api/databases/change-password", databases.changeDatabasePassword)
 	s.mux.HandleFunc("POST /api/console/exec", serverConnections.consoleExec)
+	s.mux.HandleFunc("POST /api/console/bulk-exec", console.runBulkConsoleCommand)
 	s.mux.HandleFunc("GET /api/console/sessions", console.listConsoleSessions)
 	s.mux.HandleFunc("POST /api/console/sessions", console.createConsoleSession)
 	s.mux.HandleFunc("GET /api/console/sessions/{id}", console.getConsoleSession)
