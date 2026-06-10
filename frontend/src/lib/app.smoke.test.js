@@ -189,6 +189,10 @@ test("Settings database delete requires a confirmation dialog and current passwo
 
 test("History page exposes label filtering and item label endpoints", () => {
   assert.match(historySource, /\/api\/history-labels/);
+  assert.match(historySource, /Connector History/);
+  assert.match(historySource, /\/api\/connector-action-approvals/);
+  assert.match(historySource, /ConnectorHistoryPanel/);
+  assert.match(historySource, /ConnectorHistoryDialog/);
   assert.match(historySource, /label_id/);
   assert.match(historySource, /source/);
   assert.match(historySource, /SourceBadge/);

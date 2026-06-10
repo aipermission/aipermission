@@ -62,6 +62,7 @@ export function HistoryPage() {
   const [selected, setSelected] = useState(null);
   const [labels, setLabels] = useState({ state: "idle", data: [], error: null });
   const [fileRefreshToken, setFileRefreshToken] = useState(0);
+  const [connectorRefreshToken, setConnectorRefreshToken] = useState(0);
 
   const stats = useMemo(() => {
     const data = state.data;
@@ -167,12 +168,20 @@ export function HistoryPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">History</h3>
-          <p className="text-sm text-stone-500">Review command and file transfer activity executed through the gateway.</p>
+          <p className="text-sm text-stone-500">Review SSH commands, connector actions, and file transfers executed through the gateway.</p>
         </div>
         <Button
           type="button"
           variant="outline"
-          onClick={() => (activeTab === "commands" ? loadHistory(state.offset) : setFileRefreshToken((current) => current + 1))}
+          onClick={() => {
+            if (activeTab === "commands") {
+              loadHistory(state.offset);
+            } else if (activeTab === "files") {
+              setFileRefreshToken((current) => current + 1);
+            } else {
+              setConnectorRefreshToken((current) => current + 1);
+            }
+          }}
           disabled={activeTab === "commands" && state.state === "loading"}
         >
           <RefreshCcw className="h-4 w-4" />
@@ -180,9 +189,12 @@ export function HistoryPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-1 md:w-fit md:min-w-96">
+      <div className="grid grid-cols-3 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-1 md:w-fit md:min-w-[36rem]">
         <Button type="button" variant={activeTab === "commands" ? "default" : "ghost"} className="h-9" onClick={() => setActiveTab("commands")}>
           SSH History
+        </Button>
+        <Button type="button" variant={activeTab === "connectors" ? "default" : "ghost"} className="h-9" onClick={() => setActiveTab("connectors")}>
+          Connector History
         </Button>
         <Button type="button" variant={activeTab === "files" ? "default" : "ghost"} className="h-9" onClick={() => setActiveTab("files")}>
           File Transfer History
@@ -330,10 +342,153 @@ export function HistoryPage() {
         onDetachLabel={detachLabel}
       />
         </>
-      ) : (
+      ) : activeTab === "files" ? (
         <FileTransfersPanel servers={servers} refreshToken={fileRefreshToken} />
+      ) : (
+        <ConnectorHistoryPanel refreshToken={connectorRefreshToken} />
       )}
     </section>
+  );
+}
+
+function ConnectorHistoryPanel({ refreshToken }) {
+  const [filters, setFilters] = useState({ query: "", status: "" });
+  const [state, setState] = useState({ state: "idle", data: [], error: null });
+  const [selected, setSelected] = useState(null);
+
+  useEffect(() => {
+    void loadConnectorActions();
+  }, []);
+
+  useEffect(() => {
+    if (!refreshToken) return;
+    void loadConnectorActions();
+  }, [refreshToken]);
+
+  async function loadConnectorActions() {
+    setState((current) => ({ ...current, state: "loading", error: null }));
+    try {
+      const data = await apiGet("/api/connector-action-approvals");
+      setState({ state: "ready", data: data || [], error: null });
+    } catch (error) {
+      setState({ state: "error", data: [], error: error.message });
+    }
+  }
+
+  async function openConnectorAction(item) {
+    setSelected(item);
+    try {
+      const detail = await apiGet(`/api/connector-action-approvals/${item.id}`);
+      setSelected(detail);
+    } catch {
+      setSelected(item);
+    }
+  }
+
+  const filtered = state.data.filter((item) => {
+    if (filters.status && item.status !== filters.status) return false;
+    const query = filters.query.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      item.target_name,
+      item.target_ref,
+      item.profile_label,
+      item.connector_kind,
+      item.action_name,
+      item.reason,
+      item.display_text,
+      item.error,
+      JSON.stringify(item.input || {}),
+      JSON.stringify(item.output || {}),
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+
+  const stats = {
+    total: state.data.length,
+    shown: filtered.length,
+    pending: filtered.filter((item) => item.status === "approval_pending" || item.status === "running").length,
+    failed: filtered.filter((item) => item.status === "failed" || item.status === "error" || item.status === "stale").length,
+  };
+
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-4">
+        <HistoryStat label="Total" value={stats.total} />
+        <HistoryStat label="Shown" value={stats.shown} />
+        <HistoryStat label="Pending/running" value={stats.pending} tone="warn" />
+        <HistoryStat label="Failed/error" value={stats.failed} tone="bad" />
+      </div>
+
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+          <Input
+            value={filters.query}
+            onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+            placeholder="Search connector action, target, reason, input, or output"
+            className="pl-9"
+          />
+        </div>
+        <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+          {statusOptions.filter((option) => option.value !== "untracked").map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+
+      <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+        <table className="w-full table-fixed border-collapse text-left text-sm">
+          <thead className="bg-stone-50 text-xs uppercase text-stone-500">
+            <tr>
+              <th className="w-[13%] px-4 py-3 font-semibold">Status</th>
+              <th className="w-[18%] px-4 py-3 font-semibold">Target</th>
+              <th className="w-[13%] px-4 py-3 font-semibold">Profile</th>
+              <th className="w-[18%] px-4 py-3 font-semibold">Action</th>
+              <th className="w-[24%] px-4 py-3 font-semibold">Summary</th>
+              <th className="w-[14%] px-4 py-3 text-right font-semibold">Time</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {state.state === "loading" ? (
+              <tr>
+                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={6}>
+                  Loading connector history...
+                </td>
+              </tr>
+            ) : null}
+            {state.state !== "loading" && filtered.length === 0 ? (
+              <tr>
+                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={6}>
+                  No connector history yet.
+                </td>
+              </tr>
+            ) : null}
+            {state.state !== "loading"
+              ? filtered.map((item) => (
+                  <tr key={item.id} className="cursor-pointer transition hover:bg-stone-50" onClick={() => openConnectorAction(item)}>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={item.status} />
+                    </td>
+                    <td className="truncate px-4 py-3 font-medium text-stone-900">{item.target_name || item.target_ref}</td>
+                    <td className="truncate px-4 py-3 text-stone-700">{item.profile_label || "-"}</td>
+                    <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{item.action_name}</td>
+                    <td className="truncate px-4 py-3 text-stone-600">{item.display_text || item.reason || item.error || "-"}</td>
+                    <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>
+                  </tr>
+                ))
+              : null}
+          </tbody>
+        </table>
+      </div>
+
+      <ConnectorHistoryDialog item={selected} onClose={() => setSelected(null)} />
+    </>
   );
 }
 
@@ -617,6 +772,53 @@ function FileTransferHistoryDialog({ item, onClose, onRefresh }) {
   );
 }
 
+function ConnectorHistoryDialog({ item, onClose }) {
+  if (!item) return null;
+  return (
+    <Dialog
+      open={Boolean(item)}
+      title={`Connector request #${item.id}`}
+      description={`${item.target_name || item.target_ref} · ${formatDateTime(item.created_at)}`}
+      onClose={onClose}
+      size="wide"
+      className="h-[calc(100vh-100px)] grid-rows-[auto_minmax(0,1fr)]"
+      bodyClassName="min-h-0 overflow-hidden p-0"
+    >
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+        <div className="grid gap-2 border-b border-stone-200 px-5 py-3">
+          <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+            <span className="min-w-0 truncate text-sm text-stone-600">
+              {item.reason ? item.reason : "No reason provided."}
+            </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
+              <StatusBadge status={item.status} />
+              <Badge>{item.connector_kind}</Badge>
+              {item.profile_label ? <Badge>{item.profile_label}</Badge> : null}
+              {item.token_name ? <Badge>{item.token_name}</Badge> : null}
+            </div>
+          </div>
+          {item.error ? (
+            <Notice tone="bad" className="py-2 text-xs">
+              {item.error}
+            </Notice>
+          ) : null}
+        </div>
+
+        <div className="grid min-h-0 gap-4 p-5 lg:grid-cols-2">
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
+            <SectionHeader label={`Input: ${item.action_name}`} value={formatConnectorJSON(item.input || {})} />
+            <TerminalBlock>{formatConnectorJSON(item.input || {})}</TerminalBlock>
+          </div>
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
+            <SectionHeader label="Output" value={formatConnectorJSON(item.output ?? item.display_text ?? {})} />
+            <TerminalBlock>{formatConnectorJSON(item.output ?? item.display_text ?? {})}</TerminalBlock>
+          </div>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 function TransferField({ label, value, mono = false, wide = false }) {
   return (
     <div className={`grid min-w-0 gap-1 ${wide ? "md:col-span-2" : ""}`}>
@@ -624,6 +826,15 @@ function TransferField({ label, value, mono = false, wide = false }) {
       <span className={`min-w-0 break-words ${mono ? "font-mono text-xs" : ""}`}>{value || "-"}</span>
     </div>
   );
+}
+
+function formatConnectorJSON(value) {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabel }) {
