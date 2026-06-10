@@ -204,6 +204,46 @@ func TestRouteValidationAndLockedMiddleware(t *testing.T) {
 	}
 }
 
+func TestConnectorCatalogRoutes(t *testing.T) {
+	locked := NewLockedServer(fixtureConfigForLockedTest(t))
+	if response := performJSON(locked.Handler(), http.MethodGet, "/api/connectors", "", nil); response.Code != http.StatusLocked {
+		t.Fatalf("locked server should reject connector catalog, got %d", response.Code)
+	}
+
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+
+	listResponse := performJSON(handler, http.MethodGet, "/api/connectors", "", nil)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("list connectors failed: %d %s", listResponse.Code, listResponse.Body.String())
+	}
+	listBody := listResponse.Body.String()
+	if !strings.Contains(listBody, `"kind":"postgres"`) || !strings.Contains(listBody, `"kind":"ssh"`) {
+		t.Fatalf("connector list missing built-ins: %s", listBody)
+	}
+	if strings.Index(listBody, `"kind":"postgres"`) > strings.Index(listBody, `"kind":"ssh"`) {
+		t.Fatalf("connector list should be stable by kind: %s", listBody)
+	}
+
+	detailResponse := performJSON(handler, http.MethodGet, "/api/connectors/postgres", "", nil)
+	if detailResponse.Code != http.StatusOK {
+		t.Fatalf("get postgres connector failed: %d %s", detailResponse.Code, detailResponse.Body.String())
+	}
+	body := detailResponse.Body.String()
+	for _, want := range []string{`"kind":"postgres"`, `"target_schema"`, `"credential_schemas"`, `"actions"`, `"query_readonly"`, `"help"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("postgres connector detail missing %s: %s", want, body)
+		}
+	}
+
+	if response := performJSON(handler, http.MethodGet, "/api/connectors/bad-kind", "", nil); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid connector kind should be bad request, got %d", response.Code)
+	}
+	if response := performJSON(handler, http.MethodGet, "/api/connectors/redis", "", nil); response.Code != http.StatusNotFound {
+		t.Fatalf("unknown connector should be not found, got %d", response.Code)
+	}
+}
+
 func TestLockedLifecycleMutationsRejectCrossSiteAndNonJSONRequests(t *testing.T) {
 	locked := NewLockedServer(fixtureConfigForLockedTest(t))
 	handler := locked.Handler()

@@ -23,6 +23,7 @@ type messageHandlers struct{ *Server }
 type approvalHandlers struct{ *Server }
 type historyLabelHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
+type connectorHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 
 func (s *Server) routes() {
@@ -44,6 +45,7 @@ func (s *Server) routes() {
 	audit := auditHandlers{s}
 	historyLabels := historyLabelHandlers{s}
 	fileTransfers := fileTransferHandlers{s}
+	connectors := connectorHandlers{s}
 	mcp := mcpHandlers{s}
 
 	s.mux.HandleFunc("GET /health", s.health)
@@ -125,6 +127,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/file-transfers/upload-batch", fileTransfers.startUploadBatch)
 	s.mux.HandleFunc("POST /api/file-transfers/download", fileTransfers.startDownload)
 	s.mux.HandleFunc("POST /api/file-transfers/download-batch", fileTransfers.startDownloadBatch)
+	s.mux.HandleFunc("GET /api/connectors", connectors.listConnectors)
+	s.mux.HandleFunc("GET /api/connectors/{kind}", connectors.getConnector)
 	s.mux.HandleFunc("GET /api/messages", messages.listMessages)
 	s.mux.HandleFunc("POST /api/messages", messages.createMessage)
 	s.mux.HandleFunc("POST /api/messages/read", messages.markMessagesRead)

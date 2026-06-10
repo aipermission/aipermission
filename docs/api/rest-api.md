@@ -193,6 +193,40 @@ History page for per-server output, exit code, error, and status:
 }
 ```
 
+## Connector Catalog
+
+```txt
+GET /api/connectors
+GET /api/connectors/{kind}
+```
+
+Connector catalog endpoints expose built-in connector metadata for the local
+UI. They do not return credential secrets and do not execute actions.
+
+`GET /api/connectors` returns stable connector summaries:
+
+```json
+{
+  "items": [
+    {
+      "kind": "postgres",
+      "label": "Postgres",
+      "version": "0.1"
+    },
+    {
+      "kind": "ssh",
+      "label": "SSH",
+      "version": "0.1"
+    }
+  ]
+}
+```
+
+`GET /api/connectors/{kind}` returns the connector target schema, credential
+schemas, action definitions, and AI-readable help text. For example, the
+Postgres connector describes metadata actions such as `get_schemas`,
+`get_tables`, `describe_table`, and the bounded `query_readonly` action.
+
 ## File Transfers
 
 ```txt
