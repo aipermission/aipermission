@@ -1,4 +1,4 @@
-import { AlertTriangle, Circle, Clock, Files, ListChecks, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
+import { AlertTriangle, Circle, Clock, Database, Files, ListChecks, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
@@ -11,6 +11,7 @@ import { Notice } from "../components/ui/notice";
 import { ApprovalDialog } from "../components/console/approval-dialog";
 import { BulkCommandDialog } from "../components/console/bulk-command-dialog";
 import { ConnectorActionApprovalDialog } from "../components/console/connector-action-approval-dialog";
+import { ConnectorActivityDialog } from "../components/console/connector-activity-dialog";
 import { FileTransferDialog } from "../components/console/file-transfer-dialog";
 import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
@@ -28,6 +29,7 @@ export function ConsolePage() {
     messages,
     loadTokens,
     loadApprovals,
+    loadConnectorActionApprovals,
     loadMessages,
     markMessagesRead,
     consoleSessions,
@@ -65,6 +67,7 @@ export function ConsolePage() {
   const [tokensCompact, setTokensCompact] = useState(false);
   const [fileTransferOpen, setFileTransferOpen] = useState(false);
   const [bulkCommandOpen, setBulkCommandOpen] = useState(false);
+  const [connectorActivityOpen, setConnectorActivityOpen] = useState(false);
   const [restartAction, setRestartAction] = useState({ state: "idle", error: null });
   const [now, setNow] = useState(Date.now());
 
@@ -93,6 +96,7 @@ export function ConsolePage() {
   const activePendingApproval = activeApprovalID ? pendingApprovals.find((approval) => Number(approval.id) === Number(activeApprovalID)) : null;
   const activeApproval = activePendingApproval || (activeApprovalSnapshot && Number(activeApprovalSnapshot.id) === Number(activeApprovalID) ? activeApprovalSnapshot : null);
   const pendingConnectorApprovals = (connectorActionApprovals?.data || []).filter((approval) => approval.status === "approval_pending");
+  const connectorActionCount = connectorActionApprovals?.data?.length || 0;
   const activePendingConnectorApproval = activeConnectorApprovalID ? pendingConnectorApprovals.find((approval) => Number(approval.id) === Number(activeConnectorApprovalID)) : null;
   const activeConnectorApproval = activePendingConnectorApproval || (activeConnectorApprovalSnapshot && Number(activeConnectorApprovalSnapshot.id) === Number(activeConnectorApprovalID) ? activeConnectorApprovalSnapshot : null);
   const alwaysRunTokens = selectedServer
@@ -495,6 +499,17 @@ export function ConsolePage() {
             <Button
               type="button"
               variant="ghost"
+              className={`relative h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`}
+              onClick={() => setConnectorActivityOpen(true)}
+              title="Recent connector activity"
+            >
+              <Database className="h-3.5 w-3.5" />
+              Connectors
+              {connectorActionCount > 0 ? <CountBadge className="absolute -right-1 -top-1" tone="stone">{Math.min(connectorActionCount, 99)}</CountBadge> : null}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
               className={`relative h-9 border px-3 ${
                 selectedUnreadMessages.length > 0
                   ? "border-red-500/70 bg-red-950/30 text-red-100 hover:bg-red-900/40"
@@ -639,6 +654,12 @@ export function ConsolePage() {
         onRun={approveActiveConnectorRequest}
         onDecline={declineActiveConnectorRequest}
         onClose={closeConnectorApprovalDialog}
+      />
+      <ConnectorActivityDialog
+        open={connectorActivityOpen}
+        approvals={connectorActionApprovals}
+        onRefresh={loadConnectorActionApprovals}
+        onClose={() => setConnectorActivityOpen(false)}
       />
       <FileTransferDialog
         open={fileTransferOpen}
