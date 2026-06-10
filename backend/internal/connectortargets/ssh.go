@@ -42,7 +42,14 @@ func ParseSSHTargetRef(ref string) (int64, bool) {
 func (r *Resolver) ResolveActionTarget(ctx context.Context, targetRef string) (actions.ResolvedTarget, error) {
 	serverID, ok := ParseSSHTargetRef(targetRef)
 	if !ok {
-		return actions.ResolvedTarget{}, actions.ErrTargetNotFound
+		target, profile, err := NewStore(r.db).ResolveConnectorActionTarget(ctx, targetRef)
+		if err == nil {
+			return actions.ResolvedTarget{Target: target, Profile: profile}, nil
+		}
+		if errors.Is(err, ErrInvalidTargetRef) || errors.Is(err, ErrTargetProfileNotFound) {
+			return actions.ResolvedTarget{}, actions.ErrTargetNotFound
+		}
+		return actions.ResolvedTarget{}, err
 	}
 
 	var row legacySSHServerRow
