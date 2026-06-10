@@ -113,7 +113,7 @@ export function ConnectorsPage() {
       </div>
 
       <Notice tone="warn">
-        Postgres connector MVP supports direct connections only. Use a dedicated read-only database role for AI access, then grant actions per token from the Tokens page.
+        Postgres connector MVP supports direct connections only. Use a dedicated read-only database role for AI access, then grant actions per token from Console or Tokens.
       </Notice>
       {connector.state === "error" ? <Notice tone="bad">{connector.error}</Notice> : null}
       {targets.state === "error" ? <Notice tone="bad">{targets.error}</Notice> : null}

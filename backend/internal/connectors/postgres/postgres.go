@@ -41,9 +41,8 @@ var (
 	disallowedReadonlyTerms = regexp.MustCompile(`\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|call|do|vacuum|analyze|reindex|cluster|refresh|merge)\b`)
 )
 
-// Connector describes Postgres as a connector-shaped target. The first 0.2.0
-// stage exposes metadata, action contracts, and preparation only; runtime
-// execution is wired in a later commit.
+// Connector describes Postgres as a connector-shaped target with bounded
+// metadata and read-only query actions.
 type Connector struct{}
 
 func New() Connector {
