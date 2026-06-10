@@ -127,9 +127,13 @@ test("Approval dialog warns before persisting command context", () => {
 });
 
 test("Console exposes connector action approvals", () => {
+  assert.match(shellSource, /\/api\/targets/);
   assert.match(shellSource, /\/api\/connector-action-approvals/);
   assert.match(consolePageSource, /ConnectorActionApprovalDialog/);
   assert.match(consolePageSource, /ConnectorActivityDialog/);
+  assert.match(consolePageSource, /StructuredConnectorPanel/);
+  assert.match(consolePageSource, /target=/);
+  assert.match(consolePageSource, /Structured connector target/);
   assert.match(consolePageSource, /pendingConnectorApprovals/);
   assert.match(consolePageSource, /runConnectorActionApproval/);
   assert.match(consolePageSource, /declineConnectorActionApproval/);

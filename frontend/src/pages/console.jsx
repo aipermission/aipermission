@@ -1,11 +1,11 @@
 import { AlertTriangle, Circle, Clock, Database, Files, ListChecks, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCcw, Server, Square, TerminalSquare, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { effectiveRule, permissionLifetimeLabel } from "../lib/permissions";
 import { useTokenPermissions } from "../lib/use-token-permissions";
-import { CountBadge } from "../components/ui/badge";
+import { Badge, CountBadge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Notice } from "../components/ui/notice";
 import { ApprovalDialog } from "../components/console/approval-dialog";
@@ -17,12 +17,13 @@ import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
 import { PtyConsole } from "../components/console/pty-console";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
-import { emptySession, latestSessionForServer } from "../components/console/helpers";
+import { emptySession, isUnreadMessage, latestSessionForServer } from "../components/console/helpers";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 
 export function ConsolePage() {
   const {
     servers,
+    targets,
     tokens,
     approvals,
     connectorActionApprovals,
@@ -71,8 +72,36 @@ export function ConsolePage() {
   const [restartAction, setRestartAction] = useState({ state: "idle", error: null });
   const [now, setNow] = useState(Date.now());
 
-  const selectedServerID = searchParams.get("server");
+  const selectedTargetRef = searchParams.get("target");
+  const legacySelectedServerID = searchParams.get("server");
   const sessions = consoleSessions.data || [];
+  const targetItems = targets?.data || [];
+  const rawPendingApprovals = approvals.data.filter((approval) => approval.status === "pending_approval");
+  const rawUnreadMessages = messages.data.filter(isUnreadMessage);
+  const pendingConnectorApprovals = (connectorActionApprovals?.data || []).filter((approval) => approval.status === "approval_pending");
+  const connectorActionCount = connectorActionApprovals?.data?.length || 0;
+  const defaultTargetRef = useMemo(
+    () => defaultConsoleTargetRef(targetItems, rawPendingApprovals, rawUnreadMessages, pendingConnectorApprovals),
+    [
+      targetItems.map((target) => `${target.ref}:${target.server_id || ""}`).join(","),
+      rawPendingApprovals.map((approval) => `${approval.id}:${approval.server_id}`).join(","),
+      rawUnreadMessages.map((message) => `${message.id}:${message.server_id}`).join(","),
+      pendingConnectorApprovals.map((approval) => `${approval.id}:${approval.target_ref}`).join(","),
+    ]
+  );
+  const selectedTarget = useMemo(() => {
+    if (!targetItems.length) return null;
+    if (selectedTargetRef) {
+      const exact = targetItems.find((target) => target.ref === selectedTargetRef);
+      if (exact) return exact;
+    }
+    if (legacySelectedServerID) {
+      const legacySSH = targetItems.find((target) => target.connector_kind === "ssh" && String(target.server_id) === legacySelectedServerID);
+      if (legacySSH) return legacySSH;
+    }
+    return targetItems.find((target) => target.ref === defaultTargetRef) || targetItems[0];
+  }, [targetItems, selectedTargetRef, legacySelectedServerID, defaultTargetRef]);
+  const selectedServerID = selectedTarget?.connector_kind === "ssh" ? String(selectedTarget.server_id || "") : "";
   const {
     selectedServer,
     selectedSession,
@@ -82,7 +111,6 @@ export function ConsolePage() {
     selectedPendingApprovals,
     selectedUnreadMessages,
     selectedTokenOptions,
-    defaultServerID,
   } = useConsolePageState({
     servers,
     tokens,
@@ -92,11 +120,10 @@ export function ConsolePage() {
     selectedServerID,
     permissionState,
     now,
+    allowServerFallback: false,
   });
   const activePendingApproval = activeApprovalID ? pendingApprovals.find((approval) => Number(approval.id) === Number(activeApprovalID)) : null;
   const activeApproval = activePendingApproval || (activeApprovalSnapshot && Number(activeApprovalSnapshot.id) === Number(activeApprovalID) ? activeApprovalSnapshot : null);
-  const pendingConnectorApprovals = (connectorActionApprovals?.data || []).filter((approval) => approval.status === "approval_pending");
-  const connectorActionCount = connectorActionApprovals?.data?.length || 0;
   const activePendingConnectorApproval = activeConnectorApprovalID ? pendingConnectorApprovals.find((approval) => Number(approval.id) === Number(activeConnectorApprovalID)) : null;
   const activeConnectorApproval = activePendingConnectorApproval || (activeConnectorApprovalSnapshot && Number(activeConnectorApprovalSnapshot.id) === Number(activeConnectorApprovalID) ? activeConnectorApprovalSnapshot : null);
   const alwaysRunTokens = selectedServer
@@ -116,12 +143,11 @@ export function ConsolePage() {
   const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0);
 
   useEffect(() => {
-    if (servers.data.length === 0) return;
-    if (!selectedServerID && (approvals.state !== "ready" || messages.state !== "ready")) return;
-    if (!selectedServerID || !servers.data.some((server) => String(server.id) === selectedServerID)) {
-      setSearchParams({ server: defaultServerID }, { replace: true });
+    if (targetItems.length === 0 || !defaultTargetRef) return;
+    if (!selectedTargetRef || !targetItems.some((target) => target.ref === selectedTargetRef)) {
+      setSearchParams({ target: selectedTarget?.ref || defaultTargetRef }, { replace: true });
     }
-  }, [servers.data, selectedServerID, defaultServerID, approvals.state, messages.state, setSearchParams]);
+  }, [targetItems, selectedTargetRef, selectedTarget?.ref, defaultTargetRef, setSearchParams]);
 
   useEffect(() => {
     if (tokens.state !== "ready") return;
@@ -180,8 +206,8 @@ export function ConsolePage() {
     }
   }, [activeConnectorApprovalID, pendingConnectorApprovals.map((approval) => approval.id).join(","), dismissedConnectorApprovalIDs, pendingConnectorApprovals.length, connectorApprovalAction.state]);
 
-  function selectServer(serverID) {
-    setSearchParams({ server: String(serverID) });
+  function selectTarget(targetRef) {
+    setSearchParams({ target: targetRef });
   }
 
   function openApproval(approval) {
@@ -387,7 +413,7 @@ export function ConsolePage() {
             <>
               <h3 className="flex items-center gap-2 text-sm font-semibold">
                 <Server className="h-4 w-4" />
-                Servers
+                Targets
               </h3>
               <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse servers" onClick={() => setServersCompact(true)}>
                 <PanelLeftClose className="h-4 w-4" />
@@ -396,48 +422,56 @@ export function ConsolePage() {
           )}
         </div>
         <div className={`grid content-start gap-1 overflow-auto ${serversCompact ? "p-2" : "p-2"}`}>
-          {servers.data.map((server) => {
-            const session = latestSessionForServer(sessions, server.id) || emptySession;
-            const active = selectedServer && Number(selectedServer.id) === Number(server.id);
-            const pendingCount = pendingApprovals.filter((approval) => Number(approval.server_id) === Number(server.id)).length;
-            const runningCount = approvals.data.filter((approval) => approval.status === "running" && Number(approval.server_id) === Number(server.id)).length;
-            const unreadCount = unreadMessages.filter((message) => Number(message.server_id) === Number(server.id)).length;
+          {targetItems.map((target) => {
+            const serverID = target.connector_kind === "ssh" ? target.server_id : null;
+            const server = serverID ? servers.data.find((item) => Number(item.id) === Number(serverID)) : null;
+            const session = serverID ? latestSessionForServer(sessions, serverID) || emptySession : emptySession;
+            const active = selectedTarget && selectedTarget.ref === target.ref;
+            const pendingCount = serverID
+              ? pendingApprovals.filter((approval) => Number(approval.server_id) === Number(serverID)).length
+              : pendingConnectorApprovals.filter((approval) => approval.target_ref === target.ref).length;
+            const runningCount = serverID
+              ? approvals.data.filter((approval) => approval.status === "running" && Number(approval.server_id) === Number(serverID)).length
+              : connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === target.ref).length;
+            const unreadCount = serverID ? unreadMessages.filter((message) => Number(message.server_id) === Number(serverID)).length : 0;
             const attentionCount = pendingCount + unreadCount;
-            const status = selectedServerStatus({ session, pendingCount, runningCount });
+            const status = selectedTargetStatus({ target, session, pendingCount, runningCount });
+            const TargetIcon = target.connector_kind === "ssh" ? Server : Database;
             return (
               <button
                 type="button"
-                title={`${server.name} ${server.username}@${server.host}`}
+                title={`${targetDisplayName(target)} ${targetSubtitle(target, server)}`}
                 className={`${serversCompact ? "grid h-10 w-10 place-items-center px-0 py-0" : "grid gap-1 px-3 py-2 text-left"} rounded-md transition ${
                   active ? "bg-emerald-950 text-white" : "text-stone-700 hover:bg-stone-100"
                 }`}
-                key={server.id}
-                onClick={() => selectServer(server.id)}
+                key={target.ref}
+                onClick={() => selectTarget(target.ref)}
               >
                 {serversCompact ? (
                   <span className="relative grid h-full w-full place-items-center">
-                    <Server className="h-4 w-4" />
+                    <TargetIcon className="h-4 w-4" />
                     {attentionCount > 0 ? <CountBadge className="absolute -right-1 -top-1">{attentionCount}</CountBadge> : null}
                     <ConsoleStatusDot status={status} className="absolute right-1 top-1 h-2.5 w-2.5" />
                   </span>
                 ) : (
                   <>
                     <span className="flex min-w-0 items-center justify-between gap-2">
-                      <span className="truncate text-sm font-semibold">{server.name}</span>
+                      <span className="truncate text-sm font-semibold">{targetDisplayName(target)}</span>
                       <span className="flex shrink-0 items-center gap-1.5">
                         {attentionCount > 0 ? <CountBadge>{attentionCount}</CountBadge> : null}
                         <ConsoleStatusDot status={status} className={active && status === "offline" ? "text-red-200" : ""} />
                       </span>
                     </span>
                     <span className={`truncate text-xs ${active ? "text-emerald-100" : "text-stone-500"}`}>
-                      {server.username}@{server.host}
+                      {targetSubtitle(target, server)}
                     </span>
                   </>
                 )}
               </button>
             );
           })}
-          {servers.state === "ready" && servers.data.length === 0 && !serversCompact ? <Notice>No servers yet.</Notice> : null}
+          {targets.state === "ready" && targetItems.length === 0 && !serversCompact ? <Notice>No targets yet.</Notice> : null}
+          {targets.state === "error" && !serversCompact ? <Notice tone="bad">{targets.error}</Notice> : null}
         </div>
       </aside>
 
@@ -453,20 +487,23 @@ export function ConsolePage() {
         >
           <div className="flex min-w-0 items-center gap-3">
             <ConsoleStatusDot
-              status={selectedServerStatus({
+              status={selectedTargetStatus({
+                target: selectedTarget,
                 session: selectedSession,
                 pendingCount: selectedPendingApprovals.length,
-                runningCount: approvals.data.filter((approval) => approval.status === "running" && selectedServer && Number(approval.server_id) === Number(selectedServer.id)).length,
+                runningCount: selectedTarget?.connector_kind === "ssh"
+                  ? approvals.data.filter((approval) => approval.status === "running" && selectedServer && Number(approval.server_id) === Number(selectedServer.id)).length
+                  : connectorActionApprovals.data.filter((approval) => approval.status === "running" && selectedTarget && approval.target_ref === selectedTarget.ref).length,
               })}
             />
             <div className="min-w-0">
               <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
                 <TerminalSquare className="h-4 w-4 shrink-0" />
-                <span className="truncate">{selectedServer ? selectedServer.name : "Console"}</span>
+                <span className="truncate">{selectedTarget ? targetDisplayName(selectedTarget) : "Console"}</span>
               </h3>
-              {selectedServer ? (
+              {selectedTarget ? (
                 <p className={`truncate text-xs ${theme === "light" ? "text-stone-500" : "text-stone-400"}`}>
-                  {selectedServer.username}@{selectedServer.host}:{selectedServer.port}
+                  {targetSubtitle(selectedTarget, selectedServer)}
                 </p>
               ) : null}
             </div>
@@ -600,7 +637,14 @@ export function ConsolePage() {
               onRestart={restartSelectedConsoleSession}
             />
           ) : null}
-          {selectedServer && selectedSessionLive ? (
+          {selectedTarget && selectedTarget.connector_kind !== "ssh" ? (
+            <StructuredConnectorPanel
+              target={selectedTarget}
+              approvals={connectorActionApprovals}
+              theme={theme}
+              onOpenActivity={() => setConnectorActivityOpen(true)}
+            />
+          ) : selectedServer && selectedSessionLive ? (
             <PtyConsole
               key={selectedSession.id || selectedServer.id}
               server={selectedServer}
@@ -617,7 +661,7 @@ export function ConsolePage() {
               theme={theme}
             />
           ) : (
-            <div className={`p-4 text-sm ${theme === "light" ? "text-stone-500" : "text-stone-300"}`}>Select a server.</div>
+            <div className={`p-4 text-sm ${theme === "light" ? "text-stone-500" : "text-stone-300"}`}>Select a target.</div>
           )}
         </div>
       </section>
@@ -625,6 +669,7 @@ export function ConsolePage() {
       <TokenPermissionPanel
         tokens={tokens}
         selectedServer={selectedServer}
+        selectedTarget={selectedTarget}
         permissionState={permissionState}
         unreadMessages={unreadMessages}
         compact={tokensCompact}
@@ -688,6 +733,93 @@ export function ConsolePage() {
       />
     </section>
   );
+}
+
+function StructuredConnectorPanel({ target, approvals, theme, onOpenActivity }) {
+  const items = (approvals?.data || []).filter((item) => item.target_ref === target.ref);
+  const latest = items[0] || null;
+  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
+  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
+  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
+
+  return (
+    <div className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)] ${panelClass}`}>
+      <div className={`border-b ${borderClass} p-4`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="neutral">{target.connector_kind}</Badge>
+              <Badge tone="neutral">{target.profile_label}</Badge>
+              <span className={`font-mono text-xs ${mutedClass}`}>{target.ref}</span>
+            </div>
+            <h3 className="mt-3 text-base font-semibold">Structured connector target</h3>
+            <p className={`mt-1 max-w-3xl text-sm ${mutedClass}`}>
+              SSH targets open a live terminal. {target.connector_kind} actions run as structured calls through the same token permission,
+              approval, history, and audit pipeline.
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={onOpenActivity}>
+            <Database className="h-4 w-4" />
+            Open activity
+          </Button>
+        </div>
+      </div>
+      <div className="min-h-0 overflow-auto p-4">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <section className={`overflow-hidden rounded-lg border ${borderClass}`}>
+            <div className={`border-b px-4 py-3 ${theme === "light" ? "border-stone-200 bg-stone-50" : "border-stone-700 bg-[#252526]"}`}>
+              <h4 className="text-sm font-semibold">Recent activity</h4>
+              <p className={`mt-1 text-xs ${mutedClass}`}>{items.length} action{items.length === 1 ? "" : "s"} recorded for this target profile.</p>
+            </div>
+            <div className="divide-y divide-stone-200 dark:divide-stone-700">
+              {items.slice(0, 8).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`grid w-full gap-1 px-4 py-3 text-left transition ${theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60"}`}
+                  onClick={onOpenActivity}
+                >
+                  <span className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="truncate font-mono text-xs font-semibold">{item.action_name}</span>
+                    <ActivityStatusBadge status={item.status} />
+                  </span>
+                  <span className={`truncate text-xs ${mutedClass}`}>{item.reason || formatConnectorTime(item.created_at)}</span>
+                </button>
+              ))}
+              {items.length === 0 ? <p className={`px-4 py-5 text-sm ${mutedClass}`}>No connector actions yet. AI activity for this target will appear here.</p> : null}
+            </div>
+          </section>
+          <aside className={`grid content-start gap-3 rounded-lg border p-4 ${borderClass}`}>
+            <h4 className="text-sm font-semibold">Target profile</h4>
+            <dl className="grid gap-3 text-sm">
+              <div>
+                <dt className={`text-xs uppercase ${mutedClass}`}>Target</dt>
+                <dd className="mt-1 font-semibold">{target.target_name}</dd>
+              </div>
+              <div>
+                <dt className={`text-xs uppercase ${mutedClass}`}>Profile</dt>
+                <dd className="mt-1 font-semibold">{target.profile_label}</dd>
+              </div>
+              <div>
+                <dt className={`text-xs uppercase ${mutedClass}`}>Endpoint</dt>
+                <dd className="mt-1 truncate font-mono text-xs">{targetEndpoint(target)}</dd>
+              </div>
+            </dl>
+            {latest ? (
+              <Notice tone={latest.status === "completed" ? "good" : latest.status === "failed" || latest.status === "error" ? "bad" : "warn"}>
+                Latest action: {latest.action_name} ({latest.status})
+              </Notice>
+            ) : null}
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityStatusBadge({ status }) {
+  const tone = status === "completed" ? "good" : status === "failed" || status === "error" || status === "stale" ? "bad" : status === "approval_pending" || status === "running" ? "warn" : "neutral";
+  return <Badge tone={tone}>{status}</Badge>;
 }
 
 function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
@@ -761,6 +893,64 @@ function formatDuration(ms) {
   return `${seconds}s`;
 }
 
+function formatConnectorTime(value) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value));
+}
+
+function defaultConsoleTargetRef(targets, pendingApprovals, unreadMessages, pendingConnectorApprovals) {
+  if (!targets.length) return "";
+  const pendingSSH = pendingApprovals.find((approval) => targets.some((target) => target.connector_kind === "ssh" && Number(target.server_id) === Number(approval.server_id)));
+  if (pendingSSH) {
+    const target = targets.find((item) => item.connector_kind === "ssh" && Number(item.server_id) === Number(pendingSSH.server_id));
+    if (target) return target.ref;
+  }
+  const pendingConnector = pendingConnectorApprovals.find((approval) => targets.some((target) => target.ref === approval.target_ref));
+  if (pendingConnector) return pendingConnector.target_ref;
+  const unread = unreadMessages.find((message) => targets.some((target) => target.connector_kind === "ssh" && Number(target.server_id) === Number(message.server_id)));
+  if (unread) {
+    const target = targets.find((item) => item.connector_kind === "ssh" && Number(item.server_id) === Number(unread.server_id));
+    if (target) return target.ref;
+  }
+  return targets[0].ref;
+}
+
+function targetDisplayName(target) {
+  if (!target) return "Target";
+  if (target.connector_kind === "ssh") return target.target_name;
+  return `${target.target_name} / ${target.profile_label}`;
+}
+
+function targetSubtitle(target, server) {
+  if (!target) return "";
+  if (target.connector_kind === "ssh") {
+    const username = target.public?.username || server?.username || "ssh";
+    const host = target.config?.host || server?.host || "host";
+    const port = target.config?.port || server?.port || 22;
+    return `${username}@${host}:${port}`;
+  }
+  if (target.connector_kind === "postgres") {
+    const host = target.config?.host || "host";
+    const port = target.config?.port || 5432;
+    const database = target.config?.database || "database";
+    return `${host}:${port}/${database}`;
+  }
+  return `${target.connector_kind} profile ${target.profile_label}`;
+}
+
+function targetEndpoint(target) {
+  if (!target) return "-";
+  if (target.connector_kind === "ssh") return targetSubtitle(target, null);
+  if (target.connector_kind === "postgres") return targetSubtitle(target, null);
+  return target.ref;
+}
+
+function selectedTargetStatus({ target, session, pendingCount = 0, runningCount = 0 }) {
+  if (pendingCount > 0 || runningCount > 0) return "busy";
+  if (target?.connector_kind && target.connector_kind !== "ssh") return "idle";
+  return selectedServerStatus({ session, pendingCount, runningCount });
+}
+
 function selectedServerStatus({ session, pendingCount = 0, runningCount = 0 }) {
   if (pendingCount > 0 || runningCount > 0) return "busy";
   if (session?.status === "connected" || session?.status === "connecting") return "idle";
@@ -775,7 +965,7 @@ function ConsoleStatusDot({ status, className = "" }) {
   };
   const label = {
     offline: "No live session",
-    idle: "Live session idle",
+    idle: "Target ready",
     busy: "Pending or running work",
   };
   const title = label[status] || label.offline;

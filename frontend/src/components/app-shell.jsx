@@ -14,6 +14,7 @@ export function Shell({ theme, setTheme }) {
   }
   const [status, setStatus] = useState({ state: "loading", data: null, error: null });
   const [servers, setServers] = useState({ state: "loading", data: [], error: null });
+  const [targets, setTargets] = useState({ state: "loading", data: [], error: null });
   const [sshKeys, setSSHKeys] = useState({ state: "loading", data: [], error: null });
   const [tokens, setTokens] = useState({ state: "loading", data: [], error: null });
   const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
@@ -53,6 +54,15 @@ export function Shell({ theme, setTheme }) {
       setServers({ state: "ready", data, error: null });
     } catch (error) {
       setServers({ state: "error", data: [], error: error.message });
+    }
+  }
+
+  async function loadTargets() {
+    try {
+      const data = await apiGet("/api/targets");
+      setTargets({ state: "ready", data: data.items || [], error: null });
+    } catch (error) {
+      setTargets({ state: "error", data: [], error: error.message });
     }
   }
 
@@ -145,7 +155,7 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function refreshAll() {
-    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadServers(), loadSSHKeys(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadServers(), loadTargets(), loadSSHKeys(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
   }
 
   useEffect(() => {
@@ -159,7 +169,7 @@ export function Shell({ theme, setTheme }) {
         return;
       }
       if (location.pathname === "/console") {
-        await Promise.all([loadStatus(), loadDatabaseStatus(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+        await Promise.all([loadStatus(), loadDatabaseStatus(), loadTargets(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
       } else {
         await refreshAll();
       }
@@ -546,6 +556,7 @@ export function Shell({ theme, setTheme }) {
             context={{
               status,
               servers,
+              targets,
               sshKeys,
               tokens,
               approvals,
@@ -554,6 +565,7 @@ export function Shell({ theme, setTheme }) {
               mcpRuntime,
               loadStatus,
               loadServers,
+              loadTargets,
               loadSSHKeys,
               loadTokens,
               loadApprovals,

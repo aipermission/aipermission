@@ -5,7 +5,7 @@ import { Badge, CountBadge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Notice } from "../ui/notice";
 
-export function TokenPermissionPanel({ tokens, selectedServer, permissionState, unreadMessages, compact = false, onToggleCompact, onRefresh, onSetRule, onOpenMessages }) {
+export function TokenPermissionPanel({ tokens, selectedServer, selectedTarget, permissionState, unreadMessages, compact = false, onToggleCompact, onRefresh, onSetRule, onOpenMessages }) {
   const activeTokens = tokens.data.filter((token) => !token.revoked_at);
   const [openTokenID, setOpenTokenID] = useState(null);
   const compactPanelRef = useRef(null);
@@ -111,7 +111,7 @@ export function TokenPermissionPanel({ tokens, selectedServer, permissionState, 
             Tokens
           </h3>
           <p className="mt-1 truncate text-xs text-stone-500">
-            {selectedServer ? `Current target: ${selectedServer.name}` : "Select a server"}
+            {selectedTarget ? `Current target: ${selectedTarget.target_name}` : "Select a target"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -129,6 +129,11 @@ export function TokenPermissionPanel({ tokens, selectedServer, permissionState, 
         {tokens.state === "error" ? <Notice tone="bad">{tokens.error}</Notice> : null}
         {tokens.state === "ready" && tokens.data.length === 0 ? <Notice>Create a token first.</Notice> : null}
         {tokens.state === "ready" && tokens.data.length > 0 && activeTokens.length === 0 ? <Notice>No active tokens.</Notice> : null}
+        {!selectedServer && selectedTarget ? (
+          <Notice>
+            Connector action permissions are configured from the Tokens page. SSH server permissions remain available here.
+          </Notice>
+        ) : null}
 
         <div className="grid gap-3">
           {activeTokens.map((token) => {

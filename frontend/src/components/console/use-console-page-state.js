@@ -2,11 +2,12 @@ import { useMemo } from "react";
 import { effectiveRule } from "../../lib/permissions";
 import { emptySession, isLiveConsoleSession, isUnreadMessage, latestSessionForServer } from "./helpers";
 
-export function useConsolePageState({ servers, tokens, approvals, messages, sessions, selectedServerID, permissionState, now = Date.now() }) {
+export function useConsolePageState({ servers, tokens, approvals, messages, sessions, selectedServerID, permissionState, now = Date.now(), allowServerFallback = true }) {
   const selectedServer = useMemo(() => {
     if (!servers.data.length) return null;
-    return servers.data.find((server) => String(server.id) === selectedServerID) || servers.data[0];
-  }, [servers.data, selectedServerID]);
+    if (!selectedServerID) return allowServerFallback ? servers.data[0] : null;
+    return servers.data.find((server) => String(server.id) === selectedServerID) || (allowServerFallback ? servers.data[0] : null);
+  }, [servers.data, selectedServerID, allowServerFallback]);
 
   const selectedSession = selectedServer ? latestSessionForServer(sessions, selectedServer.id) || emptySession : emptySession;
   const selectedSessionLive = isLiveConsoleSession(selectedSession);
