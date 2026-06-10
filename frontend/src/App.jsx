@@ -13,6 +13,7 @@ import { HistoryPage } from "./pages/history";
 import { AuditLogsPage } from "./pages/audit-logs";
 import { MCPSetupPage } from "./pages/mcp-setup";
 import { TokensPage } from "./pages/tokens";
+import { ConnectorsPage } from "./pages/connectors";
 import { UnlockPage, UnlockShell } from "./pages/unlock";
 
 const ConsolePage = lazy(() => import("./pages/console").then((module) => ({ default: module.ConsolePage })));
@@ -65,6 +66,7 @@ export default function App() {
           <Route index element={<DashboardPage />} />
           <Route path="/ssh-keys" element={<SSHKeysPage />} />
           <Route path="/servers" element={<ServersPage />} />
+          <Route path="/connectors" element={<ConnectorsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />
           <Route path="/tokens" element={<TokensPage />} />

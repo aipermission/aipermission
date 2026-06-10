@@ -18,6 +18,7 @@ const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.js
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
 const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
 const consolePageSource = readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8");
+const connectorsSource = readFileSync(join(currentDir, "..", "pages", "connectors.jsx"), "utf8");
 const sshKeysSource = readFileSync(join(currentDir, "..", "pages", "ssh-keys.jsx"), "utf8");
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-dialog.jsx"), "utf8");
 const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-browser-dialog.jsx"), "utf8");
@@ -28,10 +29,18 @@ const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "componen
 const permissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "permission-dialog.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
-  for (const route of ["/console", "/servers", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
+  for (const route of ["/console", "/servers", "/connectors", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
     assert.match(appSource, new RegExp(`path="${route}"`));
     assert.match(sidebarSource, new RegExp(`to: "${route}"`));
   }
+});
+
+test("Connectors page wires the Postgres target APIs", () => {
+  assert.match(connectorsSource, /\/api\/connectors\/postgres/);
+  assert.match(connectorsSource, /\/api\/connector-targets\?kind=postgres/);
+  assert.match(connectorsSource, /\/api\/connector-targets/);
+  assert.match(connectorsSource, /connection_mode:\s*"direct"/);
+  assert.match(connectorsSource, /query_readonly|Postgres actions/);
 });
 
 test("App uses the current unlock API endpoints", () => {

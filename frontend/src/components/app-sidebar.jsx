@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Command, ExternalLink, GitFork, History, Home, KeyRound, ListTree, LockKeyhole, Moon, Package, PlugZap, Power, PowerOff, Settings, Server, Shield, ShieldCheck, Sun, TicketCheck, UploadCloud } from "lucide-react";
+import { Command, Database, ExternalLink, GitFork, History, Home, KeyRound, ListTree, LockKeyhole, Moon, Package, PlugZap, Power, PowerOff, Settings, Server, Shield, ShieldCheck, Sun, TicketCheck, UploadCloud } from "lucide-react";
 import { appVersion, changelogEntries } from "../lib/release";
 import { Badge, CountBadge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -11,6 +11,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: Home },
   { to: "/console", label: "Console", icon: Command },
   { to: "/servers", label: "Servers", icon: Server },
+  { to: "/connectors", label: "Connectors", icon: Database },
   { to: "/history", label: "History", icon: History },
   { to: "/audit-logs", label: "Audit Logs", icon: ShieldCheck },
   { to: "/tokens", label: "Tokens", icon: TicketCheck },
