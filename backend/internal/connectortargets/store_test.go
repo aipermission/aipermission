@@ -57,6 +57,13 @@ func TestStoreCreatesAndResolvesConnectorTargetProfile(t *testing.T) {
 	if len(profiles) != 1 || profiles[0].ID != profile.ID || profiles[0].EncryptedSecretJSON != "encrypted-secret" {
 		t.Fatalf("unexpected profile list: %#v", profiles)
 	}
+	gotProfile, err := store.GetCredentialProfile(ctx, target.ID, profile.ID)
+	if err != nil {
+		t.Fatalf("get connector profile: %v", err)
+	}
+	if gotProfile.EncryptedSecretJSON != "encrypted-secret" || gotProfile.Public["username"] != "app_readonly" {
+		t.Fatalf("unexpected profile: %#v", gotProfile)
+	}
 
 	resolvedTarget, resolvedProfile, err := store.ResolveConnectorActionTarget(ctx, ConnectorTargetRef("postgres", target.ID, profile.ID))
 	if err != nil {

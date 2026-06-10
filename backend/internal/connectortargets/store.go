@@ -303,6 +303,33 @@ func (s *Store) ListCredentialProfiles(ctx context.Context, targetID int64) ([]C
 	return profiles, nil
 }
 
+func (s *Store) GetCredentialProfile(ctx context.Context, targetID int64, profileID int64) (CredentialProfile, error) {
+	if s == nil || s.db == nil {
+		return CredentialProfile{}, fmt.Errorf("connector target store is not configured")
+	}
+	if targetID < 1 || profileID < 1 {
+		return CredentialProfile{}, ErrTargetProfileNotFound
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT
+			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json,
+			p.encrypted_secret_json, p.risk_label, p.created_at, p.updated_at
+		FROM connector_credential_profiles p
+		JOIN connector_targets t ON t.id = p.target_id
+		WHERE p.target_id = ? AND p.id = ? AND t.status = 'active'`,
+		targetID,
+		profileID,
+	)
+	profile, err := scanCredentialProfile(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CredentialProfile{}, ErrTargetProfileNotFound
+	}
+	if err != nil {
+		return CredentialProfile{}, err
+	}
+	return profile, nil
+}
+
 type SetActionPermissionInput struct {
 	TokenID       int64
 	TargetID      int64
