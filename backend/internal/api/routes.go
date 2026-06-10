@@ -24,6 +24,7 @@ type approvalHandlers struct{ *Server }
 type historyLabelHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
 type connectorHandlers struct{ *Server }
+type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 
 func (s *Server) routes() {
@@ -46,6 +47,7 @@ func (s *Server) routes() {
 	historyLabels := historyLabelHandlers{s}
 	fileTransfers := fileTransferHandlers{s}
 	connectors := connectorHandlers{s}
+	connectorTargets := connectorTargetHandlers{s}
 	mcp := mcpHandlers{s}
 
 	s.mux.HandleFunc("GET /health", s.health)
@@ -129,6 +131,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/file-transfers/download-batch", fileTransfers.startDownloadBatch)
 	s.mux.HandleFunc("GET /api/connectors", connectors.listConnectors)
 	s.mux.HandleFunc("GET /api/connectors/{kind}", connectors.getConnector)
+	s.mux.HandleFunc("GET /api/connector-targets", connectorTargets.listConnectorTargets)
+	s.mux.HandleFunc("POST /api/connector-targets", connectorTargets.createConnectorTarget)
+	s.mux.HandleFunc("GET /api/connector-targets/{id}", connectorTargets.getConnectorTarget)
+	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles", connectorTargets.listConnectorCredentialProfiles)
+	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles", connectorTargets.createConnectorCredentialProfile)
 	s.mux.HandleFunc("GET /api/messages", messages.listMessages)
 	s.mux.HandleFunc("POST /api/messages", messages.createMessage)
 	s.mux.HandleFunc("POST /api/messages/read", messages.markMessagesRead)

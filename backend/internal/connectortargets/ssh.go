@@ -46,7 +46,7 @@ func (r *Resolver) ResolveActionTarget(ctx context.Context, targetRef string) (a
 		if err == nil {
 			return actions.ResolvedTarget{Target: target, Profile: profile}, nil
 		}
-		if errors.Is(err, ErrInvalidTargetRef) || errors.Is(err, ErrTargetProfileNotFound) {
+		if errors.Is(err, ErrInvalidTargetRef) || errors.Is(err, ErrTargetNotFound) || errors.Is(err, ErrTargetProfileNotFound) {
 			return actions.ResolvedTarget{}, actions.ErrTargetNotFound
 		}
 		return actions.ResolvedTarget{}, err

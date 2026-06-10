@@ -244,6 +244,100 @@ func TestConnectorCatalogRoutes(t *testing.T) {
 	}
 }
 
+func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+
+	createTarget := performJSON(handler, http.MethodPost, "/api/connector-targets", "", createConnectorTargetRequest{
+		ConnectorKind: "postgres",
+		Name:          "main-db",
+		Config: map[string]any{
+			"connection_mode": "direct",
+			"host":            "127.0.0.1",
+			"port":            5432,
+			"database":        "app",
+			"ssl_mode":        "prefer",
+		},
+	})
+	if createTarget.Code != http.StatusCreated {
+		t.Fatalf("create connector target failed: %d %s", createTarget.Code, createTarget.Body.String())
+	}
+	target := decodeRouteResponse[connectorTargetResponse](t, createTarget.Body.Bytes())
+	if target.ID < 1 || target.ConnectorKind != "postgres" || target.Name != "main-db" {
+		t.Fatalf("unexpected target response: %#v", target)
+	}
+
+	listTargets := performJSON(handler, http.MethodGet, "/api/connector-targets?kind=postgres", "", nil)
+	if listTargets.Code != http.StatusOK || !strings.Contains(listTargets.Body.String(), `"main-db"`) {
+		t.Fatalf("list connector targets failed: %d %s", listTargets.Code, listTargets.Body.String())
+	}
+
+	const password = "secret-password"
+	createProfile := performJSON(handler, http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles", "", createConnectorCredentialProfileRequest{
+		Kind:  "username_password",
+		Label: "readonly",
+		Public: map[string]any{
+			"username": "app_readonly",
+		},
+		Secret: map[string]any{
+			"password": password,
+		},
+		RiskLabel: "read-only",
+	})
+	if createProfile.Code != http.StatusCreated {
+		t.Fatalf("create connector profile failed: %d %s", createProfile.Code, createProfile.Body.String())
+	}
+	if strings.Contains(createProfile.Body.String(), password) {
+		t.Fatalf("profile response leaked password: %s", createProfile.Body.String())
+	}
+	profile := decodeRouteResponse[profileSummary](t, createProfile.Body.Bytes())
+	if profile.ID < 1 || profile.Ref != "postgres:"+strconv.FormatInt(target.ID, 10)+":"+strconv.FormatInt(profile.ID, 10) {
+		t.Fatalf("unexpected profile response: %#v", profile)
+	}
+	if profile.Public["username"] != "app_readonly" {
+		t.Fatalf("profile public metadata missing: %#v", profile.Public)
+	}
+
+	getTarget := performJSON(handler, http.MethodGet, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", nil)
+	if getTarget.Code != http.StatusOK || strings.Contains(getTarget.Body.String(), password) || !strings.Contains(getTarget.Body.String(), `"profiles"`) {
+		t.Fatalf("get connector target failed or leaked secret: %d %s", getTarget.Code, getTarget.Body.String())
+	}
+	listProfiles := performJSON(handler, http.MethodGet, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles", "", nil)
+	if listProfiles.Code != http.StatusOK || strings.Contains(listProfiles.Body.String(), password) || !strings.Contains(listProfiles.Body.String(), `"readonly"`) {
+		t.Fatalf("list connector profiles failed or leaked secret: %d %s", listProfiles.Code, listProfiles.Body.String())
+	}
+
+	var encryptedSecret string
+	if err := fixture.db.QueryRow(`SELECT encrypted_secret_json FROM connector_credential_profiles WHERE id = ?`, profile.ID).Scan(&encryptedSecret); err != nil {
+		t.Fatalf("read encrypted profile secret: %v", err)
+	}
+	if encryptedSecret == "" || strings.Contains(encryptedSecret, password) {
+		t.Fatalf("secret was not encrypted: %q", encryptedSecret)
+	}
+	var auditPayloads string
+	if err := fixture.db.QueryRow(`SELECT COALESCE(group_concat(payload_json, char(10)), '') FROM audit_logs WHERE action LIKE 'connector.%'`).Scan(&auditPayloads); err != nil {
+		t.Fatalf("read connector audit payloads: %v", err)
+	}
+	if strings.Contains(auditPayloads, password) {
+		t.Fatalf("audit payload leaked password: %s", auditPayloads)
+	}
+
+	unsupportedTarget := performJSON(handler, http.MethodPost, "/api/connector-targets", "", createConnectorTargetRequest{
+		ConnectorKind: "redis",
+		Name:          "cache",
+	})
+	if unsupportedTarget.Code != http.StatusBadRequest {
+		t.Fatalf("unsupported connector kind should fail, got %d %s", unsupportedTarget.Code, unsupportedTarget.Body.String())
+	}
+	unsupportedProfile := performJSON(handler, http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles", "", createConnectorCredentialProfileRequest{
+		Kind:  "api_key",
+		Label: "bad",
+	})
+	if unsupportedProfile.Code != http.StatusBadRequest {
+		t.Fatalf("unsupported profile kind should fail, got %d %s", unsupportedProfile.Code, unsupportedProfile.Body.String())
+	}
+}
+
 func TestLockedLifecycleMutationsRejectCrossSiteAndNonJSONRequests(t *testing.T) {
 	locked := NewLockedServer(fixtureConfigForLockedTest(t))
 	handler := locked.Handler()

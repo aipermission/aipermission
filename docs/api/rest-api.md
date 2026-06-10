@@ -198,6 +198,11 @@ History page for per-server output, exit code, error, and status:
 ```txt
 GET /api/connectors
 GET /api/connectors/{kind}
+GET /api/connector-targets
+POST /api/connector-targets
+GET /api/connector-targets/{id}
+GET /api/connector-targets/{id}/profiles
+POST /api/connector-targets/{id}/profiles
 ```
 
 Connector catalog endpoints expose built-in connector metadata for the local
@@ -226,6 +231,46 @@ UI. They do not return credential secrets and do not execute actions.
 schemas, action definitions, and AI-readable help text. For example, the
 Postgres connector describes metadata actions such as `get_schemas`,
 `get_tables`, `describe_table`, and the bounded `query_readonly` action.
+
+Connector target endpoints manage configured non-SSH connector targets and
+credential profiles. Profile secrets are encrypted through the vault layer and
+are never returned by REST responses or audit payloads.
+
+`POST /api/connector-targets` creates a target:
+
+```json
+{
+  "connector_kind": "postgres",
+  "name": "main-db",
+  "config": {
+    "connection_mode": "direct",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "database": "app",
+    "ssl_mode": "prefer"
+  }
+}
+```
+
+`POST /api/connector-targets/{id}/profiles` creates one credential profile:
+
+```json
+{
+  "kind": "username_password",
+  "label": "readonly",
+  "public": {
+    "username": "app_readonly"
+  },
+  "secret": {
+    "password": "local-password"
+  },
+  "risk_label": "read-only"
+}
+```
+
+Responses include profile refs such as `postgres:7:11`, which bind a connector
+kind, target id, and credential profile id without exposing the encrypted
+secret payload.
 
 ## File Transfers
 

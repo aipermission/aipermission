@@ -34,6 +34,12 @@ type Store struct {
 	db *sql.DB
 }
 
+type ValidationError string
+
+func (e ValidationError) Error() string {
+	return string(e)
+}
+
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
@@ -48,6 +54,10 @@ type Target struct {
 	UpdatedAt     string
 }
 
+type ListTargetsFilter struct {
+	ConnectorKind string
+}
+
 type CreateTargetInput struct {
 	ConnectorKind string
 	Name          string
@@ -59,15 +69,15 @@ func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Targ
 		return Target{}, fmt.Errorf("connector target store is not configured")
 	}
 	if !connectors.ValidIdentifier(input.ConnectorKind) {
-		return Target{}, fmt.Errorf("invalid connector kind %q", input.ConnectorKind)
+		return Target{}, ValidationError("invalid connector kind")
 	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
-		return Target{}, fmt.Errorf("target name is required")
+		return Target{}, ValidationError("target name is required")
 	}
 	configJSON, err := jsonObjectString(input.Config)
 	if err != nil {
-		return Target{}, fmt.Errorf("encode target config: %w", err)
+		return Target{}, ValidationError("target config must be a JSON object")
 	}
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
@@ -80,6 +90,9 @@ func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Targ
 		now,
 	)
 	if err != nil {
+		if isUniqueConstraintError(err) {
+			return Target{}, ValidationError("connector target name already exists")
+		}
 		return Target{}, err
 	}
 	id, err := result.LastInsertId()
@@ -95,6 +108,68 @@ func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Targ
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}, nil
+}
+
+func (s *Store) ListTargets(ctx context.Context, filter ListTargetsFilter) ([]Target, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("connector target store is not configured")
+	}
+	args := []any{}
+	where := "status = 'active'"
+	if strings.TrimSpace(filter.ConnectorKind) != "" {
+		if !connectors.ValidIdentifier(filter.ConnectorKind) {
+			return nil, ValidationError("invalid connector kind")
+		}
+		where += " AND connector_kind = ?"
+		args = append(args, filter.ConnectorKind)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, connector_kind, name, config_json, status, created_at, updated_at
+		FROM connector_targets
+		WHERE `+where+`
+		ORDER BY connector_kind, name, id`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list connector targets: %w", err)
+	}
+	defer rows.Close()
+
+	targets := []Target{}
+	for rows.Next() {
+		target, err := scanTarget(rows)
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, target)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate connector targets: %w", err)
+	}
+	return targets, nil
+}
+
+func (s *Store) GetTarget(ctx context.Context, id int64) (Target, error) {
+	if s == nil || s.db == nil {
+		return Target{}, fmt.Errorf("connector target store is not configured")
+	}
+	if id < 1 {
+		return Target{}, ErrTargetNotFound
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, connector_kind, name, config_json, status, created_at, updated_at
+		FROM connector_targets
+		WHERE id = ? AND status = 'active'`,
+		id,
+	)
+	target, err := scanTarget(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Target{}, ErrTargetNotFound
+	}
+	if err != nil {
+		return Target{}, err
+	}
+	return target, nil
 }
 
 type CredentialProfile struct {
@@ -125,21 +200,21 @@ func (s *Store) CreateCredentialProfile(ctx context.Context, input CreateCredent
 		return CredentialProfile{}, fmt.Errorf("connector target store is not configured")
 	}
 	if input.TargetID < 1 {
-		return CredentialProfile{}, fmt.Errorf("target_id is required")
+		return CredentialProfile{}, ValidationError("target_id is required")
 	}
 	if !connectors.ValidIdentifier(input.ConnectorKind) {
-		return CredentialProfile{}, fmt.Errorf("invalid connector kind %q", input.ConnectorKind)
+		return CredentialProfile{}, ValidationError("invalid connector kind")
 	}
 	if !connectors.ValidIdentifier(input.Kind) {
-		return CredentialProfile{}, fmt.Errorf("invalid credential kind %q", input.Kind)
+		return CredentialProfile{}, ValidationError("invalid credential kind")
 	}
 	label := strings.TrimSpace(input.Label)
 	if label == "" {
-		return CredentialProfile{}, fmt.Errorf("profile label is required")
+		return CredentialProfile{}, ValidationError("profile label is required")
 	}
 	publicJSON, err := jsonObjectString(input.Public)
 	if err != nil {
-		return CredentialProfile{}, fmt.Errorf("encode profile public metadata: %w", err)
+		return CredentialProfile{}, ValidationError("profile public metadata must be a JSON object")
 	}
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
@@ -162,6 +237,9 @@ func (s *Store) CreateCredentialProfile(ctx context.Context, input CreateCredent
 		input.ConnectorKind,
 	)
 	if err != nil {
+		if isUniqueConstraintError(err) {
+			return CredentialProfile{}, ValidationError("connector profile label already exists")
+		}
 		return CredentialProfile{}, err
 	}
 	affected, err := result.RowsAffected()
@@ -189,6 +267,42 @@ func (s *Store) CreateCredentialProfile(ctx context.Context, input CreateCredent
 	}, nil
 }
 
+func (s *Store) ListCredentialProfiles(ctx context.Context, targetID int64) ([]CredentialProfile, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("connector target store is not configured")
+	}
+	if targetID < 1 {
+		return nil, ErrTargetProfileNotFound
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json,
+			p.encrypted_secret_json, p.risk_label, p.created_at, p.updated_at
+		FROM connector_credential_profiles p
+		JOIN connector_targets t ON t.id = p.target_id
+		WHERE p.target_id = ? AND t.status = 'active'
+		ORDER BY p.label, p.id`,
+		targetID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list connector credential profiles: %w", err)
+	}
+	defer rows.Close()
+
+	profiles := []CredentialProfile{}
+	for rows.Next() {
+		profile, err := scanCredentialProfile(rows)
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate connector credential profiles: %w", err)
+	}
+	return profiles, nil
+}
+
 type SetActionPermissionInput struct {
 	TokenID       int64
 	TargetID      int64
@@ -203,15 +317,15 @@ func (s *Store) SetActionPermission(ctx context.Context, input SetActionPermissi
 		return fmt.Errorf("connector target store is not configured")
 	}
 	if input.TokenID < 1 || input.TargetID < 1 || input.ProfileID < 1 {
-		return fmt.Errorf("token_id, target_id, and profile_id are required")
+		return ValidationError("token_id, target_id, and profile_id are required")
 	}
 	if !connectors.ValidIdentifier(input.ActionName) {
-		return fmt.Errorf("invalid action name %q", input.ActionName)
+		return ValidationError("invalid action name")
 	}
 	switch input.ExecutionRule {
 	case ActionPermissionAlwaysRun, ActionPermissionApprovalRequired, ActionPermissionBlocked:
 	default:
-		return fmt.Errorf("invalid execution rule %q", input.ExecutionRule)
+		return ValidationError("invalid execution rule")
 	}
 	var expiresAt any
 	if input.ExpiresAt != nil {
@@ -319,6 +433,7 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 
 var (
 	ErrInvalidTargetRef      = errors.New("invalid connector target ref")
+	ErrTargetNotFound        = errors.New("connector target not found")
 	ErrTargetProfileNotFound = errors.New("connector target profile not found")
 )
 
@@ -350,6 +465,57 @@ func parseJSONObject(value string) (map[string]any, error) {
 	return decoded, nil
 }
 
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanTarget(row rowScanner) (Target, error) {
+	var configJSON string
+	var target Target
+	if err := row.Scan(
+		&target.ID,
+		&target.ConnectorKind,
+		&target.Name,
+		&configJSON,
+		&target.Status,
+		&target.CreatedAt,
+		&target.UpdatedAt,
+	); err != nil {
+		return Target{}, err
+	}
+	config, err := parseJSONObject(configJSON)
+	if err != nil {
+		return Target{}, fmt.Errorf("decode connector target config: %w", err)
+	}
+	target.Config = config
+	return target, nil
+}
+
+func scanCredentialProfile(row rowScanner) (CredentialProfile, error) {
+	var publicJSON string
+	var profile CredentialProfile
+	if err := row.Scan(
+		&profile.ID,
+		&profile.TargetID,
+		&profile.ConnectorKind,
+		&profile.Kind,
+		&profile.Label,
+		&publicJSON,
+		&profile.EncryptedSecretJSON,
+		&profile.RiskLabel,
+		&profile.CreatedAt,
+		&profile.UpdatedAt,
+	); err != nil {
+		return CredentialProfile{}, err
+	}
+	public, err := parseJSONObject(publicJSON)
+	if err != nil {
+		return CredentialProfile{}, fmt.Errorf("decode connector profile public metadata: %w", err)
+	}
+	profile.Public = public
+	return profile, nil
+}
+
 func cloneMap(value map[string]any) map[string]any {
 	if value == nil {
 		return map[string]any{}
@@ -363,4 +529,12 @@ func cloneMap(value map[string]any) map[string]any {
 
 func nowString() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
+}
+
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique") || strings.Contains(message, "constraint failed")
 }

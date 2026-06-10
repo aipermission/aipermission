@@ -35,6 +35,28 @@ func TestStoreCreatesAndResolvesConnectorTargetProfile(t *testing.T) {
 	ctx := context.Background()
 
 	target, profile := createPostgresTargetProfile(t, ctx, store)
+	targets, err := store.ListTargets(ctx, ListTargetsFilter{ConnectorKind: "postgres"})
+	if err != nil {
+		t.Fatalf("list connector targets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].ID != target.ID || targets[0].Config["database"] != "app" {
+		t.Fatalf("unexpected target list: %#v", targets)
+	}
+	gotTarget, err := store.GetTarget(ctx, target.ID)
+	if err != nil {
+		t.Fatalf("get connector target: %v", err)
+	}
+	if gotTarget.Name != "main-db" || gotTarget.ConnectorKind != "postgres" {
+		t.Fatalf("unexpected target: %#v", gotTarget)
+	}
+	profiles, err := store.ListCredentialProfiles(ctx, target.ID)
+	if err != nil {
+		t.Fatalf("list connector profiles: %v", err)
+	}
+	if len(profiles) != 1 || profiles[0].ID != profile.ID || profiles[0].EncryptedSecretJSON != "encrypted-secret" {
+		t.Fatalf("unexpected profile list: %#v", profiles)
+	}
+
 	resolvedTarget, resolvedProfile, err := store.ResolveConnectorActionTarget(ctx, ConnectorTargetRef("postgres", target.ID, profile.ID))
 	if err != nil {
 		t.Fatalf("resolve connector target: %v", err)
@@ -57,6 +79,13 @@ func TestStoreCreatesAndResolvesConnectorTargetProfile(t *testing.T) {
 	}
 	if _, exists := resolvedProfile.Public["password"]; exists {
 		t.Fatalf("secret should not be exposed in public metadata: %#v", resolvedProfile.Public)
+	}
+}
+
+func TestStoreGetTargetReturnsNotFound(t *testing.T) {
+	_, err := NewStore(openTargetTestDB(t)).GetTarget(context.Background(), 999)
+	if !errors.Is(err, ErrTargetNotFound) {
+		t.Fatalf("expected ErrTargetNotFound, got %v", err)
 	}
 }
 
