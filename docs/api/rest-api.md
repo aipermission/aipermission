@@ -833,6 +833,10 @@ POST /api/approvals/{id}/run
 POST /api/approvals/{id}/decline
 POST /api/approvals/{id}/labels
 DELETE /api/approvals/{id}/labels/{label_id}
+GET  /api/connector-action-approvals
+GET  /api/connector-action-approvals/{id}
+POST /api/connector-action-approvals/{id}/run
+POST /api/connector-action-approvals/{id}/decline
 GET  /api/history-labels
 POST /api/history-labels
 DELETE /api/history-labels/{id}
@@ -890,6 +894,14 @@ before Run, the backend marks the request `stale` and returns `409 Conflict`.
 The AI should submit a fresh `exec` request.
 
 Decline changes the request to `declined`. The optional `user_note` is stored on the command request and returned to MCP as operator guidance.
+
+Connector action approvals use separate endpoints because they execute
+structured connector actions rather than SSH shell commands. `GET
+/api/connector-action-approvals?status=approval_pending` lists pending
+connector action requests for the local UI. Run validates the current
+token/profile/action permission and approval-context hash before decrypting the
+stored action payload and executing the connector. If that context changed, the
+request becomes `stale` and the AI must send a fresh connector action call.
 
 ## Messages
 

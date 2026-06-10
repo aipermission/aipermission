@@ -24,6 +24,8 @@ const (
 	ResultApprovalPending ResultStatus = "approval_pending"
 	ResultBlocked         ResultStatus = "blocked"
 	ResultStale           ResultStatus = "stale"
+	ResultDeclined        ResultStatus = "declined"
+	ResultError           ResultStatus = "error"
 )
 
 // ConnectorHelp is AI-readable guidance for one target. It may mention actions,

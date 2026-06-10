@@ -42,6 +42,7 @@ func (s *Server) routes() {
 	databases := databaseHandlers{s}
 	console := consoleHandlers{s}
 	approvals := approvalHandlers{s}
+	connectorApprovals := connectorActionApprovalHandlers{s}
 	messages := messageHandlers{s}
 	audit := auditHandlers{s}
 	historyLabels := historyLabelHandlers{s}
@@ -110,6 +111,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/approvals/{id}/decline", approvals.declineApproval)
 	s.mux.HandleFunc("POST /api/approvals/{id}/labels", historyLabels.attachHistoryLabel)
 	s.mux.HandleFunc("DELETE /api/approvals/{id}/labels/{label_id}", historyLabels.detachHistoryLabel)
+	s.mux.HandleFunc("GET /api/connector-action-approvals", connectorApprovals.listConnectorActionApprovals)
+	s.mux.HandleFunc("GET /api/connector-action-approvals/{id}", connectorApprovals.getConnectorActionApproval)
+	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.runConnectorActionApproval)
+	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/decline", connectorApprovals.declineConnectorActionApproval)
 	s.mux.HandleFunc("GET /api/history-labels", historyLabels.listHistoryLabels)
 	s.mux.HandleFunc("POST /api/history-labels", historyLabels.createHistoryLabel)
 	s.mux.HandleFunc("DELETE /api/history-labels/{id}", historyLabels.deleteHistoryLabel)

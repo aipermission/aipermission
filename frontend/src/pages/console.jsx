@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button";
 import { Notice } from "../components/ui/notice";
 import { ApprovalDialog } from "../components/console/approval-dialog";
 import { BulkCommandDialog } from "../components/console/bulk-command-dialog";
+import { ConnectorActionApprovalDialog } from "../components/console/connector-action-approval-dialog";
 import { FileTransferDialog } from "../components/console/file-transfer-dialog";
 import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
@@ -23,6 +24,7 @@ export function ConsolePage() {
     servers,
     tokens,
     approvals,
+    connectorActionApprovals,
     messages,
     loadTokens,
     loadApprovals,
@@ -38,6 +40,8 @@ export function ConsolePage() {
     resizeConsoleSession,
     runApproval,
     declineApproval,
+    runConnectorActionApproval,
+    declineConnectorActionApproval,
     mcpRuntime,
     theme,
   } = useGateway();
@@ -48,6 +52,11 @@ export function ConsolePage() {
   const [dismissedApprovalIDs, setDismissedApprovalIDs] = useState({});
   const [approvalNote, setApprovalNote] = useState("");
   const [approvalAction, setApprovalAction] = useState({ state: "idle", error: null });
+  const [activeConnectorApprovalID, setActiveConnectorApprovalID] = useState(null);
+  const [activeConnectorApprovalSnapshot, setActiveConnectorApprovalSnapshot] = useState(null);
+  const [dismissedConnectorApprovalIDs, setDismissedConnectorApprovalIDs] = useState({});
+  const [connectorApprovalNote, setConnectorApprovalNote] = useState("");
+  const [connectorApprovalAction, setConnectorApprovalAction] = useState({ state: "idle", error: null });
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [messagesState, setMessagesState] = useState({ state: "idle", data: [], error: null });
   const [messageText, setMessageText] = useState("");
@@ -83,6 +92,9 @@ export function ConsolePage() {
   });
   const activePendingApproval = activeApprovalID ? pendingApprovals.find((approval) => Number(approval.id) === Number(activeApprovalID)) : null;
   const activeApproval = activePendingApproval || (activeApprovalSnapshot && Number(activeApprovalSnapshot.id) === Number(activeApprovalID) ? activeApprovalSnapshot : null);
+  const pendingConnectorApprovals = (connectorActionApprovals?.data || []).filter((approval) => approval.status === "approval_pending");
+  const activePendingConnectorApproval = activeConnectorApprovalID ? pendingConnectorApprovals.find((approval) => Number(approval.id) === Number(activeConnectorApprovalID)) : null;
+  const activeConnectorApproval = activePendingConnectorApproval || (activeConnectorApprovalSnapshot && Number(activeConnectorApprovalSnapshot.id) === Number(activeConnectorApprovalID) ? activeConnectorApprovalSnapshot : null);
   const alwaysRunTokens = selectedServer
     ? selectedTokenOptions.filter((token) => effectiveRule(permissionState.data?.[token.id]?.[selectedServer.id], now) === "always_run")
     : [];
@@ -146,6 +158,24 @@ export function ConsolePage() {
     }
   }, [activeApprovalID, selectedPendingApprovals.map((approval) => approval.id).join(","), dismissedApprovalIDs, pendingApprovals.length, approvalAction.state]);
 
+  useEffect(() => {
+    if (activeConnectorApprovalID && !pendingConnectorApprovals.some((approval) => Number(approval.id) === Number(activeConnectorApprovalID)) && !["error", "failed", "running", "stale"].includes(connectorApprovalAction.state)) {
+      setActiveConnectorApprovalID(null);
+      setActiveConnectorApprovalSnapshot(null);
+      setConnectorApprovalNote("");
+      setConnectorApprovalAction({ state: "idle", error: null });
+      return;
+    }
+    if (activeConnectorApprovalID || pendingConnectorApprovals.length === 0) return;
+    const next = pendingConnectorApprovals.find((approval) => !dismissedConnectorApprovalIDs[approval.id]);
+    if (next) {
+      setActiveConnectorApprovalID(next.id);
+      setActiveConnectorApprovalSnapshot(next);
+      setConnectorApprovalNote("");
+      setConnectorApprovalAction({ state: "idle", error: null });
+    }
+  }, [activeConnectorApprovalID, pendingConnectorApprovals.map((approval) => approval.id).join(","), dismissedConnectorApprovalIDs, pendingConnectorApprovals.length, connectorApprovalAction.state]);
+
   function selectServer(serverID) {
     setSearchParams({ server: String(serverID) });
   }
@@ -155,6 +185,13 @@ export function ConsolePage() {
     setActiveApprovalSnapshot(approval);
     setApprovalNote(approval.user_note || "");
     setApprovalAction({ state: "idle", error: null });
+  }
+
+  function openConnectorApproval(approval) {
+    setActiveConnectorApprovalID(approval.id);
+    setActiveConnectorApprovalSnapshot(approval);
+    setConnectorApprovalNote("");
+    setConnectorApprovalAction({ state: "idle", error: null });
   }
 
   async function loadServerMessages() {
@@ -213,6 +250,16 @@ export function ConsolePage() {
     setApprovalAction({ state: "idle", error: null });
   }
 
+  function closeConnectorApprovalDialog() {
+    if (activeConnectorApprovalID) {
+      setDismissedConnectorApprovalIDs((current) => ({ ...current, [activeConnectorApprovalID]: true }));
+    }
+    setActiveConnectorApprovalID(null);
+    setActiveConnectorApprovalSnapshot(null);
+    setConnectorApprovalNote("");
+    setConnectorApprovalAction({ state: "idle", error: null });
+  }
+
   async function approveActiveRequest() {
     if (!activeApproval) return;
     const approval = activeApproval;
@@ -255,6 +302,51 @@ export function ConsolePage() {
       setApprovalAction({ state: "idle", error: null });
     } catch (error) {
       setApprovalAction({ state: "error", error: error.message });
+    }
+  }
+
+  async function approveActiveConnectorRequest() {
+    if (!activeConnectorApproval) return;
+    const approval = activeConnectorApproval;
+    setConnectorApprovalAction({ state: "running", error: null });
+    try {
+      const item = await runConnectorActionApproval(approval.id);
+      if (item?.status === "error" || item?.status === "failed" || item?.status === "stale") {
+        setActiveConnectorApprovalSnapshot({ ...approval, ...item });
+        setConnectorApprovalAction({ state: item.status === "stale" ? "stale" : "failed", error: item.error || "Connector action failed." });
+        return;
+      }
+      setDismissedConnectorApprovalIDs((current) => {
+        const next = { ...current };
+        delete next[approval.id];
+        return next;
+      });
+      setActiveConnectorApprovalID(null);
+      setActiveConnectorApprovalSnapshot(null);
+      setConnectorApprovalNote("");
+      setConnectorApprovalAction({ state: "idle", error: null });
+    } catch (error) {
+      setActiveConnectorApprovalSnapshot(approval);
+      setConnectorApprovalAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: error.message });
+    }
+  }
+
+  async function declineActiveConnectorRequest() {
+    if (!activeConnectorApproval) return;
+    setConnectorApprovalAction({ state: "declining", error: null });
+    try {
+      await declineConnectorActionApproval(activeConnectorApproval.id, connectorApprovalNote);
+      setDismissedConnectorApprovalIDs((current) => {
+        const next = { ...current };
+        delete next[activeConnectorApproval.id];
+        return next;
+      });
+      setActiveConnectorApprovalID(null);
+      setActiveConnectorApprovalSnapshot(null);
+      setConnectorApprovalNote("");
+      setConnectorApprovalAction({ state: "idle", error: null });
+    } catch (error) {
+      setConnectorApprovalAction({ state: "error", error: error.message });
     }
   }
 
@@ -386,6 +478,18 @@ export function ConsolePage() {
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {selectedPendingApprovals.length}
+              </Button>
+            ) : null}
+            {pendingConnectorApprovals.length > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9 border border-amber-500/70 bg-amber-950/30 px-3 text-amber-100 hover:bg-amber-900/40"
+                onClick={() => openConnectorApproval(pendingConnectorApprovals[0])}
+                title="Pending connector approvals"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {pendingConnectorApprovals.length}
               </Button>
             ) : null}
             <Button
@@ -526,6 +630,15 @@ export function ConsolePage() {
         onRun={approveActiveRequest}
         onDecline={declineActiveRequest}
         onClose={closeApprovalDialog}
+      />
+      <ConnectorActionApprovalDialog
+        approval={activeConnectorApproval}
+        note={connectorApprovalNote}
+        action={connectorApprovalAction}
+        onNoteChange={setConnectorApprovalNote}
+        onRun={approveActiveConnectorRequest}
+        onDecline={declineActiveConnectorRequest}
+        onClose={closeConnectorApprovalDialog}
       />
       <FileTransferDialog
         open={fileTransferOpen}

@@ -255,6 +255,9 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	if request.ID < 1 || request.TokenID == nil || *request.TokenID != tokenID {
 		t.Fatalf("unexpected request identity: %#v", request)
 	}
+	if request.TokenName != "connector-codex" {
+		t.Fatalf("token name = %q", request.TokenName)
+	}
 	if request.TargetName != "main-db" || request.ProfileLabel != "readonly" || request.ConnectorKind != "postgres" {
 		t.Fatalf("unexpected request metadata: %#v", request)
 	}
@@ -283,6 +286,66 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	}
 	if finished.DisplayText != "1 row" {
 		t.Fatalf("display text = %q", finished.DisplayText)
+	}
+}
+
+func TestStoreActionRequestApprovalHelpers(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:              &tokenID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        "postgres",
+		ActionName:           "query_readonly",
+		Input:                map[string]any{"sql": "select 1"},
+		EncryptedPayloadJSON: "encrypted",
+		Status:               connectors.ResultApprovalPending,
+	})
+	if err != nil {
+		t.Fatalf("insert pending action request: %v", err)
+	}
+	pending, err := store.ListActionRequests(ctx, ActionRequestFilter{Status: string(connectors.ResultApprovalPending)})
+	if err != nil {
+		t.Fatalf("list pending action requests: %v", err)
+	}
+	if len(pending) != 1 || pending[0].ID != request.ID {
+		t.Fatalf("unexpected pending requests: %#v", pending)
+	}
+	running, err := store.MarkActionRequestRunning(ctx, request.ID)
+	if err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	if running.Status != connectors.ResultRunning {
+		t.Fatalf("status = %q", running.Status)
+	}
+	if _, err := store.DeclineActionRequest(ctx, request.ID, "no"); !errors.Is(err, ErrActionRequestNotPending) {
+		t.Fatalf("expected running request not to decline, got %v", err)
+	}
+
+	second, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:              &tokenID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        "postgres",
+		ActionName:           "get_schemas",
+		Input:                map[string]any{},
+		EncryptedPayloadJSON: "encrypted",
+		Status:               connectors.ResultApprovalPending,
+	})
+	if err != nil {
+		t.Fatalf("insert second pending action request: %v", err)
+	}
+	declined, err := store.DeclineActionRequest(ctx, second.ID, "not this profile")
+	if err != nil {
+		t.Fatalf("decline action request: %v", err)
+	}
+	if declined.Status != connectors.ResultDeclined || declined.CompletedAt == nil || declined.Error != "not this profile" {
+		t.Fatalf("unexpected declined request: %#v", declined)
 	}
 }
 

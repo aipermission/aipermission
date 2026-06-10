@@ -3,7 +3,10 @@ package api
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +16,7 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -113,6 +117,100 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	}
 	if result.Result.Handles.RequestID != result.Request.ID || result.Result.Handles.FollowupTool == "" {
 		t.Fatalf("pending result missing followup handle: %#v", result.Result)
+	}
+}
+
+func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    postgresconnector.ActionQueryReadonly,
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
+	}
+	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
+		Source:     commandRequestSourceMCP,
+		TokenID:    token.ID,
+		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		ActionName: postgresconnector.ActionQueryReadonly,
+		Input:      map[string]any{"sql": "select 1"},
+		Reason:     "smoke",
+	})
+	if err != nil {
+		t.Fatalf("call connector action: %v", err)
+	}
+
+	listResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?status=approval_pending", "", nil)
+	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
+		t.Fatalf("list connector approvals failed: %d %s", listResponse.Code, listResponse.Body.String())
+	}
+	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/decline", "", declineApprovalRequest{UserNote: "not now"})
+	if declineResponse.Code != http.StatusOK || !strings.Contains(declineResponse.Body.String(), `"status":"declined"`) {
+		t.Fatalf("decline connector approval failed: %d %s", declineResponse.Code, declineResponse.Body.String())
+	}
+	mcpResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-action-requests/"+strconv.FormatInt(result.Request.ID, 10), token.TokenValue, nil)
+	if mcpResponse.Code != http.StatusOK || !strings.Contains(mcpResponse.Body.String(), `"status":"declined"`) || !strings.Contains(mcpResponse.Body.String(), "not now") {
+		t.Fatalf("mcp connector request should show decline: %d %s", mcpResponse.Code, mcpResponse.Body.String())
+	}
+}
+
+func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    postgresconnector.ActionQueryReadonly,
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
+	}
+	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
+		Source:     commandRequestSourceMCP,
+		TokenID:    token.ID,
+		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		ActionName: postgresconnector.ActionQueryReadonly,
+		Input:      map[string]any{"sql": "select 1"},
+		Reason:     "smoke",
+	})
+	if err != nil {
+		t.Fatalf("call connector action: %v", err)
+	}
+	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    postgresconnector.ActionQueryReadonly,
+		ExecutionRule: connectortargets.ActionPermissionBlocked,
+	}); err != nil {
+		t.Fatalf("block connector permission: %v", err)
+	}
+
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runApprovalRequest{})
+	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
+		t.Fatalf("expected stale conflict, got %d %s", runResponse.Code, runResponse.Body.String())
+	}
+	stale, err := store.GetActionRequest(context.Background(), result.Request.ID)
+	if err != nil {
+		t.Fatalf("get stale connector request: %v", err)
+	}
+	if stale.Status != connectors.ResultStale {
+		t.Fatalf("status = %q", stale.Status)
 	}
 }
 

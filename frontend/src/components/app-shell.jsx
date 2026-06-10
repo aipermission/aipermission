@@ -18,6 +18,7 @@ export function Shell({ theme, setTheme }) {
   const [tokens, setTokens] = useState({ state: "loading", data: [], error: null });
   const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
   const [approvals, setApprovals] = useState({ state: "loading", data: [], error: null });
+  const [connectorActionApprovals, setConnectorActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [messages, setMessages] = useState({ state: "loading", data: [], error: null });
   const [fileTransferBatches, setFileTransferBatches] = useState({ state: "loading", data: [], error: null });
   const [databaseStatus, setDatabaseStatus] = useState({ state: "loading", data: null, error: null });
@@ -96,6 +97,15 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
+  async function loadConnectorActionApprovals() {
+    try {
+      const data = await apiGet("/api/connector-action-approvals");
+      setConnectorActionApprovals({ state: "ready", data, error: null });
+    } catch (error) {
+      setConnectorActionApprovals({ state: "error", data: [], error: error.message });
+    }
+  }
+
   async function loadMessages() {
     try {
       const data = await apiGet("/api/messages");
@@ -135,7 +145,7 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function refreshAll() {
-    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadServers(), loadSSHKeys(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadServers(), loadSSHKeys(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
   }
 
   useEffect(() => {
@@ -149,7 +159,7 @@ export function Shell({ theme, setTheme }) {
         return;
       }
       if (location.pathname === "/console") {
-        await Promise.all([loadStatus(), loadDatabaseStatus(), loadConsoleSessions(), loadApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+        await Promise.all([loadStatus(), loadDatabaseStatus(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
       } else {
         await refreshAll();
       }
@@ -357,6 +367,23 @@ export function Shell({ theme, setTheme }) {
     return item;
   }
 
+  async function runConnectorActionApproval(requestID) {
+    try {
+      const item = await apiPost(`/api/connector-action-approvals/${requestID}/run`, {});
+      await loadConnectorActionApprovals();
+      return item;
+    } catch (error) {
+      await loadConnectorActionApprovals();
+      throw error;
+    }
+  }
+
+  async function declineConnectorActionApproval(requestID, userNote = "") {
+    const item = await apiPost(`/api/connector-action-approvals/${requestID}/decline`, { user_note: userNote });
+    await loadConnectorActionApprovals();
+    return item;
+  }
+
   async function markMessagesRead(serverID) {
     const result = await apiPost("/api/messages/read", { server_id: Number(serverID) });
     await loadMessages();
@@ -447,8 +474,9 @@ export function Shell({ theme, setTheme }) {
   }
 
   const pendingApprovalCount = approvals.data.filter((approval) => approval.status === "pending_approval").length;
+  const pendingConnectorActionApprovalCount = connectorActionApprovals.data.filter((approval) => approval.status === "approval_pending").length;
   const unreadMessageCount = messages.data.filter(isUnreadMessage).length;
-  const consoleAttentionCount = pendingApprovalCount + unreadMessageCount;
+  const consoleAttentionCount = pendingApprovalCount + pendingConnectorActionApprovalCount + unreadMessageCount;
   const activeTransferCount = fileTransferBatches.data.filter(isActiveTransferBatch).length;
 
   return (
@@ -521,6 +549,7 @@ export function Shell({ theme, setTheme }) {
               sshKeys,
               tokens,
               approvals,
+              connectorActionApprovals,
               messages,
               mcpRuntime,
               loadStatus,
@@ -528,6 +557,7 @@ export function Shell({ theme, setTheme }) {
               loadSSHKeys,
               loadTokens,
               loadApprovals,
+              loadConnectorActionApprovals,
               loadMessages,
               markMessagesRead,
               setMCPRuntimeEnabled,
@@ -545,6 +575,8 @@ export function Shell({ theme, setTheme }) {
               resizeConsoleSession,
               runApproval,
               declineApproval,
+              runConnectorActionApproval,
+              declineConnectorActionApproval,
               theme,
               toggleTheme,
             }}

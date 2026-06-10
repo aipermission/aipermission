@@ -357,6 +357,7 @@ type ActionPermission struct {
 type ActionRequest struct {
 	ID                   int64
 	TokenID              *int64
+	TokenName            string
 	TargetID             int64
 	TargetName           string
 	ProfileID            int64
@@ -397,6 +398,11 @@ type FinishActionRequestInput struct {
 	Output      any
 	DisplayText string
 	Error       string
+}
+
+type ActionRequestFilter struct {
+	Status string
+	Limit  int
 }
 
 func (s *Store) SetActionPermission(ctx context.Context, input SetActionPermissionInput) error {
@@ -646,6 +652,65 @@ func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionReque
 	return s.GetActionRequest(ctx, input.ID)
 }
 
+func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64) (ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+	}
+	if id < 1 {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE connector_action_requests
+		SET status = ?, error = ''
+		WHERE id = ? AND status = ?`,
+		string(connectors.ResultRunning),
+		id,
+		string(connectors.ResultApprovalPending),
+	)
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	if affected == 0 {
+		return ActionRequest{}, ErrActionRequestNotPending
+	}
+	return s.GetActionRequest(ctx, id)
+}
+
+func (s *Store) DeclineActionRequest(ctx context.Context, id int64, message string) (ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+	}
+	if id < 1 {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	now := nowString()
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE connector_action_requests
+		SET status = ?, error = ?, completed_at = ?
+		WHERE id = ? AND status = ?`,
+		string(connectors.ResultDeclined),
+		strings.TrimSpace(message),
+		now,
+		id,
+		string(connectors.ResultApprovalPending),
+	)
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	if affected == 0 {
+		return ActionRequest{}, ErrActionRequestNotPending
+	}
+	return s.GetActionRequest(ctx, id)
+}
+
 func (s *Store) GetActionRequest(ctx context.Context, id int64) (ActionRequest, error) {
 	if s == nil || s.db == nil {
 		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
@@ -662,6 +727,41 @@ func (s *Store) GetActionRequest(ctx context.Context, id int64) (ActionRequest, 
 		return ActionRequest{}, err
 	}
 	return request, nil
+}
+
+func (s *Store) ListActionRequests(ctx context.Context, filter ActionRequestFilter) ([]ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("connector target store is not configured")
+	}
+	where := []string{"(? = '' OR r.status = ?)"}
+	args := []any{strings.TrimSpace(filter.Status), strings.TrimSpace(filter.Status)}
+	limit := filter.Limit
+	if limit < 1 || limit > 100 {
+		limit = 100
+	}
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, actionRequestSelectSQL()+`
+		WHERE `+strings.Join(where, " AND ")+`
+		ORDER BY r.created_at DESC, r.id DESC
+		LIMIT ?`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list connector action requests: %w", err)
+	}
+	defer rows.Close()
+	items := []ActionRequest{}
+	for rows.Next() {
+		item, err := scanActionRequest(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate connector action requests: %w", err)
+	}
+	return items, nil
 }
 
 func (s *Store) validateActionPermissions(ctx context.Context, tokenID int64, inputs []SetActionPermissionInput) error {
@@ -803,6 +903,7 @@ var (
 	ErrTargetProfileNotFound    = errors.New("connector target profile not found")
 	ErrActionPermissionNotFound = errors.New("connector action permission not found")
 	ErrActionRequestNotFound    = errors.New("connector action request not found")
+	ErrActionRequestNotPending  = errors.New("connector action request is not pending")
 )
 
 func jsonObjectString(value map[string]any) (string, error) {
@@ -933,14 +1034,16 @@ func scanActionPermission(row rowScanner) (ActionPermission, error) {
 func actionRequestSelectSQL() string {
 	return `
 		SELECT
-			r.id, r.token_id, r.target_id, t.name, r.profile_id, p.label,
+			r.id, r.token_id, COALESCE(tok.name, ''),
+			r.target_id, t.name, r.profile_id, p.label,
 			r.connector_kind, r.action_name, r.input_json, r.encrypted_payload_json,
 			r.reason, r.status, r.output_json, r.display_text, r.error,
 			r.approval_context, r.approval_context_hash, r.approval_context_drift,
 			r.created_at, r.completed_at
 		FROM connector_action_requests r
 		JOIN connector_targets t ON t.id = r.target_id
-		JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id`
+		JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id
+		LEFT JOIN api_tokens tok ON tok.id = r.token_id`
 }
 
 func scanActionRequest(row rowScanner) (ActionRequest, error) {
@@ -952,6 +1055,7 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 	if err := row.Scan(
 		&request.ID,
 		&tokenID,
+		&request.TokenName,
 		&request.TargetID,
 		&request.TargetName,
 		&request.ProfileID,
@@ -1019,7 +1123,9 @@ func validActionRequestStatus(status connectors.ResultStatus) bool {
 		connectors.ResultRunning,
 		connectors.ResultApprovalPending,
 		connectors.ResultBlocked,
-		connectors.ResultStale:
+		connectors.ResultStale,
+		connectors.ResultDeclined,
+		connectors.ResultError:
 		return true
 	default:
 		return false
@@ -1032,7 +1138,9 @@ func validActionRequestTerminalStatus(status connectors.ResultStatus) bool {
 		connectors.ResultFailed,
 		connectors.ResultCanceled,
 		connectors.ResultBlocked,
-		connectors.ResultStale:
+		connectors.ResultStale,
+		connectors.ResultDeclined,
+		connectors.ResultError:
 		return true
 	default:
 		return false

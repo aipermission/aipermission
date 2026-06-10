@@ -12,6 +12,7 @@ const sidebarSource = readFileSync(join(currentDir, "..", "components", "app-sid
 const unlockSource = readFileSync(join(currentDir, "..", "pages", "unlock.jsx"), "utf8");
 const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
 const approvalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "approval-dialog.jsx"), "utf8");
+const connectorApprovalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "connector-action-approval-dialog.jsx"), "utf8");
 const serversSource = readFileSync(join(currentDir, "..", "pages", "servers.jsx"), "utf8");
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
@@ -103,6 +104,16 @@ test("Approval dialog warns before persisting command context", () => {
   assert.match(consolePageSource, /activeApprovalSnapshot/);
   assert.match(consolePageSource, /isStaleApprovalError/);
   assert.match(consolePageSource, /item\?\.status === "error"/);
+});
+
+test("Console exposes connector action approvals", () => {
+  assert.match(shellSource, /\/api\/connector-action-approvals/);
+  assert.match(consolePageSource, /ConnectorActionApprovalDialog/);
+  assert.match(consolePageSource, /pendingConnectorApprovals/);
+  assert.match(consolePageSource, /runConnectorActionApproval/);
+  assert.match(consolePageSource, /declineConnectorActionApproval/);
+  assert.match(connectorApprovalDialogSource, /structured connector action/);
+  assert.match(connectorApprovalDialogSource, /Decline note/);
 });
 
 test("Server host key dialog handles first approval and changed fingerprints", () => {
