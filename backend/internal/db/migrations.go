@@ -451,6 +451,80 @@ var serverSSHAdvancedSettingsStatements = []string{
 	`ALTER TABLE servers ADD COLUMN force_shell_command TEXT NOT NULL DEFAULT '';`,
 }
 
+var connectorPersistenceStatements = []string{
+	`CREATE TABLE IF NOT EXISTS connector_targets (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		connector_kind TEXT NOT NULL,
+		name TEXT NOT NULL UNIQUE,
+		config_json TEXT NOT NULL DEFAULT '{}',
+		status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);`,
+	`CREATE TABLE IF NOT EXISTS connector_credential_profiles (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		target_id INTEGER NOT NULL,
+		connector_kind TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		label TEXT NOT NULL,
+		public_json TEXT NOT NULL DEFAULT '{}',
+		encrypted_secret_json TEXT NOT NULL DEFAULT '',
+		risk_label TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(target_id, label),
+		UNIQUE(id, target_id),
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE CASCADE
+	);`,
+	`CREATE TABLE IF NOT EXISTS token_connector_action_permissions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		token_id INTEGER NOT NULL,
+		target_id INTEGER NOT NULL,
+		profile_id INTEGER NOT NULL,
+		action_name TEXT NOT NULL,
+		execution_rule TEXT NOT NULL CHECK (execution_rule IN ('always_run', 'approval_required', 'blocked')),
+		expires_at TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(token_id, target_id, profile_id, action_name),
+		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE CASCADE,
+		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE CASCADE
+	);`,
+	`CREATE TABLE IF NOT EXISTS connector_action_requests (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		token_id INTEGER,
+		target_id INTEGER NOT NULL,
+		profile_id INTEGER NOT NULL,
+		connector_kind TEXT NOT NULL,
+		action_name TEXT NOT NULL,
+		input_json TEXT NOT NULL DEFAULT '{}',
+		encrypted_payload_json TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,
+		output_json TEXT NOT NULL DEFAULT '{}',
+		display_text TEXT NOT NULL DEFAULT '',
+		error TEXT NOT NULL DEFAULT '',
+		approval_context TEXT NOT NULL DEFAULT '',
+		approval_context_hash TEXT NOT NULL DEFAULT '',
+		approval_context_drift TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		completed_at TEXT,
+		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL,
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE CASCADE,
+		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE CASCADE
+	);`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_targets_kind_name ON connector_targets(connector_kind, name);`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_credential_profiles_target ON connector_credential_profiles(target_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_token ON token_connector_action_permissions(token_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_lookup ON token_connector_action_permissions(token_id, target_id, profile_id, action_name);`,
+	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_expires_at ON token_connector_action_permissions(expires_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_token_status_created ON connector_action_requests(token_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_target_status_created ON connector_action_requests(target_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_kind_action_created ON connector_action_requests(connector_kind, action_name, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_approval_context_hash ON connector_action_requests(approval_context_hash);`,
+}
+
 var migrations = []migration{
 	{
 		version:     1,
@@ -502,6 +576,11 @@ var migrations = []migration{
 		description: "server ssh advanced startup settings",
 		statements:  serverSSHAdvancedSettingsStatements,
 	},
+	{
+		version:     11,
+		description: "connector target and action persistence",
+		statements:  connectorPersistenceStatements,
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {
@@ -536,7 +615,7 @@ func migrate(database *sql.DB) error {
 }
 
 func ensureCurrentSchema(database *sql.DB) error {
-	for _, statement := range sqlStatements(historyLabelStatements, historyLabelIndexStatements, fileTransferStatements) {
+	for _, statement := range sqlStatements(historyLabelStatements, historyLabelIndexStatements, fileTransferStatements, connectorPersistenceStatements) {
 		if _, err := database.Exec(statement); err != nil {
 			return fmt.Errorf("ensure current schema: %w", err)
 		}
@@ -613,6 +692,7 @@ func runMigrationMaintenance(database *sql.DB) error {
 	for _, statement := range []string{
 		`UPDATE console_sessions SET status = 'closed', error = 'gateway restarted', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('connecting', 'connected')`,
 		`UPDATE command_requests SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
+		`UPDATE connector_action_requests SET status = 'error', error = 'gateway restarted while connector action was running', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
 		`UPDATE file_transfers SET status = 'failed', error = 'gateway restarted while file transfer was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'pending_approval', 'running', 'paused')`,
 		`UPDATE file_transfer_batches SET status = 'failed', error = 'gateway restarted while file transfer queue was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'pending_approval', 'running', 'paused')`,
 	} {

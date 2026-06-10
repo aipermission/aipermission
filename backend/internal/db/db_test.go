@@ -81,6 +81,28 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !columnExists(t, database, "file_transfer_batches", "overwrite") {
 		t.Fatalf("file_transfer_batches.overwrite column was not created")
 	}
+	for _, table := range []string{
+		"connector_targets",
+		"connector_credential_profiles",
+		"token_connector_action_permissions",
+		"connector_action_requests",
+	} {
+		if !tableExists(t, database, table) {
+			t.Fatalf("%s table was not created", table)
+		}
+	}
+	if !columnExists(t, database, "connector_targets", "config_json") {
+		t.Fatalf("connector_targets.config_json column was not created")
+	}
+	if !columnExists(t, database, "connector_credential_profiles", "encrypted_secret_json") {
+		t.Fatalf("connector_credential_profiles.encrypted_secret_json column was not created")
+	}
+	if !columnExists(t, database, "token_connector_action_permissions", "action_name") {
+		t.Fatalf("token_connector_action_permissions.action_name column was not created")
+	}
+	if !columnExists(t, database, "connector_action_requests", "approval_context_hash") {
+		t.Fatalf("connector_action_requests.approval_context_hash column was not created")
+	}
 	var foreignKeys int
 	if err := database.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
 		t.Fatalf("query foreign keys pragma: %v", err)
@@ -94,6 +116,7 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	); err == nil {
 		t.Fatalf("foreign key violation should fail")
 	}
+	assertConnectorProfileTargetForeignKeys(t, database)
 	if LooksLikePlainSQLite(path) {
 		t.Fatalf("encrypted database should not have plaintext sqlite header")
 	}
@@ -153,6 +176,83 @@ func TestOpenEncryptedRepairsMissingFileTransferSchema(t *testing.T) {
 	defer reopened.Close()
 	if !tableExists(t, reopened, "file_transfers") {
 		t.Fatalf("file_transfers table should be repaired")
+	}
+}
+
+func TestOpenEncryptedRepairsMissingConnectorPersistenceSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secure.db")
+	database, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	for _, table := range []string{
+		"connector_action_requests",
+		"token_connector_action_permissions",
+		"connector_credential_profiles",
+		"connector_targets",
+	} {
+		if _, err := database.Exec(`DROP TABLE ` + table); err != nil {
+			t.Fatalf("drop %s: %v", table, err)
+		}
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("reopen encrypted db: %v", err)
+	}
+	defer reopened.Close()
+	if !tableExists(t, reopened, "connector_targets") {
+		t.Fatalf("connector_targets table should be repaired")
+	}
+	if !tableExists(t, reopened, "connector_credential_profiles") {
+		t.Fatalf("connector_credential_profiles table should be repaired")
+	}
+	if !tableExists(t, reopened, "token_connector_action_permissions") {
+		t.Fatalf("token_connector_action_permissions table should be repaired")
+	}
+	if !tableExists(t, reopened, "connector_action_requests") {
+		t.Fatalf("connector_action_requests table should be repaired")
+	}
+}
+
+func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secure.db")
+	database, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	if _, err := database.Exec(`
+		INSERT INTO connector_action_requests (
+			target_id, profile_id, connector_kind, action_name, status, created_at
+		)
+		VALUES (?, ?, 'postgres', 'query_readonly', 'running', datetime('now'))`,
+		targetID,
+		profileID,
+	); err != nil {
+		t.Fatalf("insert running connector action: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("reopen encrypted db: %v", err)
+	}
+	defer reopened.Close()
+	var status, message string
+	if err := reopened.QueryRow(`SELECT status, error FROM connector_action_requests LIMIT 1`).Scan(&status, &message); err != nil {
+		t.Fatalf("read connector action: %v", err)
+	}
+	if status != "error" {
+		t.Fatalf("expected restarted connector action to be error, got %q", status)
+	}
+	if message != "gateway restarted while connector action was running" {
+		t.Fatalf("unexpected error message: %q", message)
 	}
 }
 
@@ -366,6 +466,78 @@ func assertFTSMatchCount(t *testing.T, database *sql.DB, table string, query str
 	if count != expected {
 		t.Fatalf("expected %d %s matches for %q, got %d", expected, table, query, count)
 	}
+}
+
+func assertConnectorProfileTargetForeignKeys(t *testing.T, database *sql.DB) {
+	t.Helper()
+	if _, err := database.Exec(`
+		INSERT INTO api_tokens (name, token_hash, token_prefix, created_at, updated_at)
+		VALUES ('codex', 'hash', 'aip_xxx', datetime('now'), datetime('now'))`,
+	); err != nil {
+		t.Fatalf("insert token: %v", err)
+	}
+	firstTargetID, firstProfileID := insertConnectorTargetAndProfile(t, database)
+	secondTargetID, _ := insertConnectorTargetAndProfile(t, database)
+	if _, err := database.Exec(`
+		INSERT INTO token_connector_action_permissions (
+			token_id, target_id, profile_id, action_name, execution_rule, created_at, updated_at
+		)
+		VALUES (1, ?, ?, 'query_readonly', 'approval_required', datetime('now'), datetime('now'))`,
+		firstTargetID,
+		firstProfileID,
+	); err != nil {
+		t.Fatalf("insert connector action permission: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO token_connector_action_permissions (
+			token_id, target_id, profile_id, action_name, execution_rule, created_at, updated_at
+		)
+		VALUES (1, ?, ?, 'query_readonly', 'approval_required', datetime('now'), datetime('now'))`,
+		secondTargetID,
+		firstProfileID,
+	); err == nil {
+		t.Fatalf("expected mismatched connector profile/target permission to fail")
+	}
+	if _, err := database.Exec(`
+		INSERT INTO connector_action_requests (
+			target_id, profile_id, connector_kind, action_name, status, created_at
+		)
+		VALUES (?, ?, 'postgres', 'query_readonly', 'running', datetime('now'))`,
+		secondTargetID,
+		firstProfileID,
+	); err == nil {
+		t.Fatalf("expected mismatched connector profile/target request to fail")
+	}
+}
+
+func insertConnectorTargetAndProfile(t *testing.T, database *sql.DB) (int64, int64) {
+	t.Helper()
+	result, err := database.Exec(`
+		INSERT INTO connector_targets (connector_kind, name, config_json, created_at, updated_at)
+		VALUES ('postgres', 'postgres-' || lower(hex(randomblob(4))), '{"host":"127.0.0.1"}', datetime('now'), datetime('now'))`,
+	)
+	if err != nil {
+		t.Fatalf("insert connector target: %v", err)
+	}
+	targetID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("target id: %v", err)
+	}
+	result, err = database.Exec(`
+		INSERT INTO connector_credential_profiles (
+			target_id, connector_kind, kind, label, public_json, encrypted_secret_json, created_at, updated_at
+		)
+		VALUES (?, 'postgres', 'username_password', 'readonly', '{"username":"app_readonly"}', 'encrypted', datetime('now'), datetime('now'))`,
+		targetID,
+	)
+	if err != nil {
+		t.Fatalf("insert connector profile: %v", err)
+	}
+	profileID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("profile id: %v", err)
+	}
+	return targetID, profileID
 }
 
 func tableExists(t *testing.T, database *sql.DB, table string) bool {
