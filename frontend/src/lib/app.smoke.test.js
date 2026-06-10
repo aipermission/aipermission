@@ -27,6 +27,7 @@ const bulkCommandDialogSource = readFileSync(join(currentDir, "..", "components"
 const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
 const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "token-permission-panel.jsx"), "utf8");
 const permissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "permission-dialog.jsx"), "utf8");
+const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"), "utf8");
 
 test("App keeps the primary route surface available", () => {
   for (const route of ["/console", "/servers", "/connectors", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
@@ -100,6 +101,15 @@ test("Token permission controls expose temporary grant lifetimes", () => {
   assert.match(permissionDialogSource, /1 hour/);
   assert.match(permissionDialogSource, /4 hours/);
   assert.match(permissionDialogSource, /1 day/);
+});
+
+test("Token page exposes connector action permissions", () => {
+  assert.match(connectorsSource, /Add Postgres target/);
+  assert.match(connectorPermissionDialogSource, /\/api\/tokens\/\$\{tokenID\}\/connector-permissions/);
+  assert.match(connectorPermissionDialogSource, /\/api\/connectors\/postgres/);
+  assert.match(connectorPermissionDialogSource, /approval_required/);
+  assert.match(connectorPermissionDialogSource, /always_run/);
+  assert.match(connectorPermissionDialogSource, /Save connector permissions/);
 });
 
 test("Approval dialog warns before persisting command context", () => {

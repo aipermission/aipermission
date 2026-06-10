@@ -1,4 +1,4 @@
-import { Ban, CalendarClock, KeyRound, PlugZap, Plus, RefreshCcw, TicketCheck } from "lucide-react";
+import { Ban, CalendarClock, Database, KeyRound, PlugZap, Plus, RefreshCcw, TicketCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
@@ -13,6 +13,7 @@ import { Drawer } from "../components/ui/drawer";
 import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { PermissionDialog } from "../components/tokens/permission-dialog";
+import { ConnectorPermissionDialog } from "../components/tokens/connector-permission-dialog";
 import { TokenInstallDialog } from "../components/tokens/token-install-dialog";
 
 const tokenExpiryOptions = [
@@ -30,6 +31,7 @@ export function TokensPage() {
   const [form, setForm] = useState(emptyForm);
   const [createdToken, setCreatedToken] = useState(null);
   const [permissionDialog, setPermissionDialog] = useState(null);
+  const [connectorPermissionDialog, setConnectorPermissionDialog] = useState(null);
   const { permissionState, loadAllTokenPermissions, setTokenServerRule, setTokenAllServerRules } = useTokenPermissions(tokens.data);
   const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
   const [bulkDialog, setBulkDialog] = useState({ open: false, token: null, rule: "approval_required", lifetime: "permanent" });
@@ -171,11 +173,11 @@ export function TokensPage() {
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
-              <th className="w-[28%] px-4 py-3 font-semibold">Name</th>
-              <th className="w-[22%] px-4 py-3 font-semibold">Servers</th>
-              <th className="w-[11%] px-4 py-3 font-semibold">Status</th>
-              <th className="w-[17%] px-4 py-3 font-semibold">Created / expires</th>
-              <th className="w-[22%] px-4 py-3 text-right font-semibold">Actions</th>
+              <th className="w-[24%] px-4 py-3 font-semibold">Name</th>
+              <th className="w-[18%] px-4 py-3 font-semibold">Servers</th>
+              <th className="w-[10%] px-4 py-3 font-semibold">Status</th>
+              <th className="w-[16%] px-4 py-3 font-semibold">Created / expires</th>
+              <th className="w-[32%] px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
@@ -245,6 +247,17 @@ export function TokensPage() {
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 px-3"
+                        onClick={() => setConnectorPermissionDialog(token)}
+                        disabled={inactive}
+                        title="Set this token's connector action permissions"
+                      >
+                        <Database className="h-4 w-4" />
+                        Connectors
+                      </Button>
                       <Button
                         type="button"
                         variant="outline"
@@ -325,6 +338,7 @@ export function TokensPage() {
       </Drawer>
 
       <PermissionDialog value={permissionDialog} permissionState={permissionState} onClose={() => setPermissionDialog(null)} onSetRule={setTokenServerRule} />
+      <ConnectorPermissionDialog token={connectorPermissionDialog} onClose={() => setConnectorPermissionDialog(null)} />
       <Dialog
         open={bulkDialog.open}
         title="Set all server permissions"
