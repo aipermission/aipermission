@@ -1,10 +1,9 @@
 # Connectors
 
-`internal/connectors` defines the small internal contract for future
-connector-shaped targets.
+`internal/connectors` defines the small internal contract for connector-shaped
+targets.
 
-The package is intentionally inert in the current SSH runtime. It introduces
-shared vocabulary and types only:
+The package introduces shared vocabulary and types:
 
 - connector
 - target
@@ -26,5 +25,7 @@ Gateway knows permission.
 AI knows only actions.
 ```
 
-Do not add connector implementations here until the SSH behavior-preserving
-adapter boundary is ready.
+Built-in connector packages belong below this directory. Keep connector
+implementations small: target schemas, credential schemas, help/action
+metadata, preparation validation, and execution logic. Do not let a connector
+write audit/history records directly.
