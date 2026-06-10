@@ -21,3 +21,17 @@ test("read_console accepts either one server id or multiple server ids", async (
   assert.match(source, /Use either server_id or server_ids, not both/);
   assert.match(source, /server_ids must not contain duplicates/);
 });
+
+test("connector tools route through the MCP connector API", async () => {
+  const source = await serverSource();
+
+  assert.match(source, /server\.tool\(\s*"list_connector_targets"/);
+  assert.match(source, /server\.tool\(\s*"get_connector_help"/);
+  assert.match(source, /server\.tool\(\s*"get_connector_actions"/);
+  assert.match(source, /server\.tool\(\s*"call_connector_action"/);
+  assert.match(source, /server\.tool\(\s*"get_connector_action_request"/);
+  assert.match(source, /apiGet\("\/api\/mcp\/connector-targets"/);
+  assert.match(source, /apiGet\(`\/api\/mcp\/connector-help\?\$\{params\.toString\(\)\}`\)/);
+  assert.match(source, /apiPost\("\/api\/mcp\/connector-actions\/call"/);
+  assert.match(source, /apiGet\(`\/api\/mcp\/connector-action-requests\/\$\{request_id\}`\)/);
+});

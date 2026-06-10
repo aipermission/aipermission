@@ -183,6 +183,73 @@ server.tool(
 );
 
 server.tool(
+  "list_connector_targets",
+  "List non-SSH connector targets this aipermission token can access. Credentials and secrets are never returned.",
+  {},
+  async () => {
+    return jsonToolResult(() => apiGet("/api/mcp/connector-targets"));
+  }
+);
+
+server.tool(
+  "get_connector_help",
+  "Read AI-facing help for one connector target/profile. Use this before calling connector actions for the first time.",
+  {
+    target_ref: z.string().min(1).describe("Target ref from list_connector_targets, such as postgres:7:11."),
+  },
+  async ({ target_ref }) => {
+    return jsonToolResult(() => {
+      const params = new URLSearchParams({ target_ref });
+      return apiGet(`/api/mcp/connector-help?${params.toString()}`);
+    });
+  }
+);
+
+server.tool(
+  "get_connector_actions",
+  "List actions exposed by one connector target/profile. Action execution is still checked against token permissions.",
+  {
+    target_ref: z.string().min(1).describe("Target ref from list_connector_targets, such as postgres:7:11."),
+  },
+  async ({ target_ref }) => {
+    return jsonToolResult(() => {
+      const params = new URLSearchParams({ target_ref });
+      return apiGet(`/api/mcp/connector-actions?${params.toString()}`);
+    });
+  }
+);
+
+server.tool(
+  "call_connector_action",
+  "Call one connector action through AIPermission. If status is approval_pending, follow assistant_hint and poll get_connector_action_request.",
+  {
+    target_ref: z.string().min(1).describe("Target ref from list_connector_targets."),
+    action_name: z.string().min(1).describe("Action name from get_connector_actions."),
+    input: z.record(z.unknown()).optional().describe("Connector-specific action input."),
+    reason: z.string().optional().describe("Why this connector action is needed."),
+  },
+  async ({ target_ref, action_name, input, reason }) => {
+    return jsonToolResult(() => apiPost("/api/mcp/connector-actions/call", {
+      target_ref,
+      action_name,
+      input: input || {},
+      reason: reason || "",
+    }));
+  }
+);
+
+server.tool(
+  "get_connector_action_request",
+  "Read one connector action request by id. Use this after call_connector_action returns approval_pending.",
+  {
+    request_id: z.number().int().positive().describe("Request id returned by call_connector_action."),
+  },
+  async ({ request_id }) => {
+    return jsonToolResult(() => apiGet(`/api/mcp/connector-action-requests/${request_id}`));
+  }
+);
+
+server.tool(
   "list_file_transfers",
   "List file transfer records visible to this token. Results never include local temp paths, archive paths, local upload contents, or file contents.",
   {
