@@ -5,10 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -24,11 +29,14 @@ const (
 	defaultMaxRows = 100
 	maxRows        = 1000
 	maxSQLBytes    = 20000
+	queryTimeout   = 20 * time.Second
 )
 
 var (
 	ErrUnsupportedAction = errors.New("unsupported postgres connector action")
-	ErrExecutionNotWired = errors.New("postgres connector execution is not wired yet")
+	ErrUnsupportedMode   = errors.New("postgres connector connection mode is not supported yet")
+	ErrMissingSecret     = errors.New("postgres connector credential is missing required secret")
+	ErrInvalidConfig     = errors.New("postgres connector target config is invalid")
 
 	disallowedReadonlyTerms = regexp.MustCompile(`\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|call|do|vacuum|analyze|reindex|cluster|refresh|merge)\b`)
 )
@@ -327,8 +335,354 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 	}
 }
 
-func (Connector) ExecuteAction(context.Context, connectors.RuntimeContext, connectors.PreparedAction) (connectors.ActionResult, error) {
-	return connectors.ActionResult{}, ErrExecutionNotWired
+func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	if runtime.Target.ConnectorKind != Kind {
+		return connectors.ActionResult{}, fmt.Errorf("target connector kind must be %s", Kind)
+	}
+	if connectionMode(runtime.Target) != "direct" {
+		return connectors.ActionResult{}, ErrUnsupportedMode
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+
+	conn, err := connect(ctx, runtime)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	defer conn.Close(context.Background())
+
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return connectors.ActionResult{}, fmt.Errorf("start read-only transaction: %w", err)
+	}
+	defer tx.Rollback(context.Background())
+
+	var output queryOutput
+	switch action.ActionName {
+	case ActionGetSchemas:
+		output, err = queryRows(ctx, tx, `
+			SELECT nspname AS schema
+			FROM pg_namespace
+			WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'
+			ORDER BY nspname`,
+			200,
+		)
+	case ActionGetTables:
+		schema := payloadString(action.Payload, "schema")
+		includeSystem := payloadBool(action.Payload, "include_system")
+		output, err = getTables(ctx, tx, schema, includeSystem)
+	case ActionDescribeTable:
+		schema := payloadString(action.Payload, "schema")
+		table := payloadString(action.Payload, "table")
+		if table == "" {
+			return connectors.ActionResult{}, fmt.Errorf("%s table is required", ActionDescribeTable)
+		}
+		output, err = describeTable(ctx, tx, schema, table)
+	case ActionQueryReadonly:
+		sql := payloadString(action.Payload, "sql")
+		if err := validateReadonlySQL(sql); err != nil {
+			return connectors.ActionResult{}, err
+		}
+		output, err = queryRows(ctx, tx, sql, payloadInt(action.Payload, "max_rows", defaultMaxRows))
+	default:
+		return connectors.ActionResult{}, fmt.Errorf("%w: %s", ErrUnsupportedAction, action.ActionName)
+	}
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return connectors.ActionResult{}, fmt.Errorf("commit read-only transaction: %w", err)
+	}
+	return connectors.ActionResult{
+		Status:      connectors.ResultCompleted,
+		Output:      output.ToMap(),
+		DisplayText: output.DisplayText(),
+		Metadata: map[string]any{
+			"row_count":  output.RowCount,
+			"truncated":  output.Truncated,
+			"max_rows":   output.MaxRows,
+			"action":     action.ActionName,
+			"target_ref": action.TargetRef,
+		},
+	}, nil
+}
+
+func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeContext) (connectors.TestResult, error) {
+	if connectionMode(runtime.Target) != "direct" {
+		return connectors.TestResult{Status: connectors.TestUnknownError, Message: "over_ssh mode is not wired yet"}, ErrUnsupportedMode
+	}
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	conn, err := connect(ctx, runtime)
+	if err != nil {
+		return connectors.TestResult{Status: classifyTestError(err), Message: err.Error()}, nil
+	}
+	defer conn.Close(context.Background())
+	var one int
+	if err := conn.QueryRow(ctx, "select 1").Scan(&one); err != nil {
+		return connectors.TestResult{Status: classifyTestError(err), Message: err.Error()}, nil
+	}
+	return connectors.TestResult{Status: connectors.TestOK, Message: "Postgres connection succeeded"}, nil
+}
+
+type queryOutput struct {
+	Columns   []string         `json:"columns"`
+	Rows      []map[string]any `json:"rows"`
+	RowCount  int              `json:"row_count"`
+	MaxRows   int              `json:"max_rows"`
+	Truncated bool             `json:"truncated"`
+}
+
+func (o queryOutput) ToMap() map[string]any {
+	return map[string]any{
+		"columns":   o.Columns,
+		"rows":      o.Rows,
+		"row_count": o.RowCount,
+		"max_rows":  o.MaxRows,
+		"truncated": o.Truncated,
+	}
+}
+
+func (o queryOutput) DisplayText() string {
+	text := fmt.Sprintf("%d row", o.RowCount)
+	if o.RowCount != 1 {
+		text += "s"
+	}
+	if o.Truncated {
+		text += fmt.Sprintf(" (truncated at %d)", o.MaxRows)
+	}
+	return text
+}
+
+func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn, error) {
+	username := strings.TrimSpace(publicString(runtime.Profile.Public, "username"))
+	if username == "" && runtime.Secrets != nil {
+		secretUsername, err := runtime.Secrets.GetSecret(ctx, "username")
+		if err == nil {
+			username = strings.TrimSpace(secretUsername)
+		}
+	}
+	if username == "" {
+		return nil, fmt.Errorf("%w: username", ErrMissingSecret)
+	}
+	if runtime.Secrets == nil {
+		return nil, fmt.Errorf("%w: password", ErrMissingSecret)
+	}
+	password, err := runtime.Secrets.GetSecret(ctx, "password")
+	if err != nil || strings.TrimSpace(password) == "" {
+		return nil, fmt.Errorf("%w: password", ErrMissingSecret)
+	}
+
+	host := targetString(runtime.Target.Config, "host")
+	database := targetString(runtime.Target.Config, "database")
+	if host == "" {
+		return nil, fmt.Errorf("%w: host is required", ErrInvalidConfig)
+	}
+	if database == "" {
+		return nil, fmt.Errorf("%w: database is required", ErrInvalidConfig)
+	}
+
+	connURL := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(username, password),
+		Host:   net.JoinHostPort(host, strconv.Itoa(targetPort(runtime.Target.Config))),
+		Path:   "/" + database,
+	}
+	query := connURL.Query()
+	query.Set("sslmode", sslMode(runtime.Target.Config))
+	query.Set("connect_timeout", "10")
+	connURL.RawQuery = query.Encode()
+
+	config, err := pgx.ParseConfig(connURL.String())
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres connection config: %w", err)
+	}
+	if config.RuntimeParams == nil {
+		config.RuntimeParams = map[string]string{}
+	}
+	config.RuntimeParams["application_name"] = "aipermission"
+	config.RuntimeParams["statement_timeout"] = strconv.Itoa(int(queryTimeout.Milliseconds()))
+	config.RuntimeParams["default_transaction_read_only"] = "on"
+
+	conn, err := pgx.ConnectConfig(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("connect postgres: %w", err)
+	}
+	return conn, nil
+}
+
+func getTables(ctx context.Context, tx pgx.Tx, schema string, includeSystem bool) (queryOutput, error) {
+	query := `
+		SELECT table_schema, table_name, table_type
+		FROM information_schema.tables
+		WHERE ($1 = '' OR table_schema = $1)`
+	if !includeSystem {
+		query += ` AND table_schema NOT IN ('pg_catalog', 'information_schema') AND table_schema NOT LIKE 'pg_toast%'`
+	}
+	query += ` ORDER BY table_schema, table_name`
+	return queryRows(ctx, tx, query, 1000, schema)
+}
+
+func describeTable(ctx context.Context, tx pgx.Tx, schema string, table string) (queryOutput, error) {
+	query := `
+		SELECT table_schema, table_name, ordinal_position, column_name, data_type, is_nullable, column_default
+		FROM information_schema.columns
+		WHERE table_name = $1
+			AND ($2 = '' OR table_schema = $2)
+			AND table_schema NOT IN ('pg_catalog', 'information_schema')
+		ORDER BY table_schema, table_name, ordinal_position`
+	return queryRows(ctx, tx, query, 500, table, schema)
+}
+
+func queryRows(ctx context.Context, tx pgx.Tx, sql string, rowLimit int, args ...any) (queryOutput, error) {
+	if rowLimit < 1 {
+		rowLimit = defaultMaxRows
+	}
+	if rowLimit > maxRows {
+		rowLimit = maxRows
+	}
+	rows, err := tx.Query(ctx, sql, args...)
+	if err != nil {
+		return queryOutput{}, fmt.Errorf("query postgres: %w", err)
+	}
+	defer rows.Close()
+
+	fields := rows.FieldDescriptions()
+	columns := make([]string, 0, len(fields))
+	for _, field := range fields {
+		columns = append(columns, field.Name)
+	}
+	items := []map[string]any{}
+	for rows.Next() {
+		values, err := rows.Values()
+		if err != nil {
+			return queryOutput{}, fmt.Errorf("read postgres row: %w", err)
+		}
+		if len(items) >= rowLimit {
+			return queryOutput{
+				Columns:   columns,
+				Rows:      items,
+				RowCount:  len(items),
+				MaxRows:   rowLimit,
+				Truncated: true,
+			}, nil
+		}
+		item := make(map[string]any, len(columns))
+		for index, column := range columns {
+			var value any
+			if index < len(values) {
+				value = normalizePostgresValue(values[index])
+			}
+			item[column] = value
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return queryOutput{}, fmt.Errorf("iterate postgres rows: %w", err)
+	}
+	return queryOutput{Columns: columns, Rows: items, RowCount: len(items), MaxRows: rowLimit}, nil
+}
+
+func normalizePostgresValue(value any) any {
+	switch typed := value.(type) {
+	case []byte:
+		return string(typed)
+	case time.Time:
+		return typed.UTC().Format(time.RFC3339Nano)
+	default:
+		return typed
+	}
+}
+
+func connectionMode(target connectors.TargetView) string {
+	mode := strings.TrimSpace(targetString(target.Config, "connection_mode"))
+	if mode == "" {
+		return "direct"
+	}
+	return mode
+}
+
+func targetString(config map[string]any, name string) string {
+	if config == nil {
+		return ""
+	}
+	value, ok := config[name]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func targetPort(config map[string]any) int {
+	value := intInput(config, "port", 5432)
+	if value < 1 || value > 65535 {
+		return 5432
+	}
+	return value
+}
+
+func sslMode(config map[string]any) string {
+	mode := targetString(config, "ssl_mode")
+	switch mode {
+	case "disable", "prefer", "require", "verify-full", "verify_full":
+		if mode == "verify_full" {
+			return "verify-full"
+		}
+		return mode
+	default:
+		return "prefer"
+	}
+}
+
+func publicString(public map[string]any, name string) string {
+	if public == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(public[name]))
+}
+
+func payloadString(payload map[string]any, name string) string {
+	if payload == nil {
+		return ""
+	}
+	value, ok := payload[name]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func payloadBool(payload map[string]any, name string) bool {
+	return boolInput(payload, name)
+}
+
+func payloadInt(payload map[string]any, name string, fallback int) int {
+	value := intInput(payload, name, fallback)
+	if value < 1 {
+		return fallback
+	}
+	if value > maxRows {
+		return maxRows
+	}
+	return value
+}
+
+func classifyTestError(err error) connectors.TestStatus {
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "password authentication failed"),
+		strings.Contains(message, "authentication failed"):
+		return connectors.TestFailedAuth
+	case strings.Contains(message, "permission denied"):
+		return connectors.TestFailedPermission
+	case strings.Contains(message, "tls"), strings.Contains(message, "ssl"):
+		return connectors.TestFailedTLS
+	case strings.Contains(message, "connect"), strings.Contains(message, "timeout"), strings.Contains(message, "refused"), strings.Contains(message, "no such host"):
+		return connectors.TestFailedNetwork
+	default:
+		return connectors.TestUnknownError
+	}
 }
 
 func targetSummary(target connectors.TargetView, action string) string {

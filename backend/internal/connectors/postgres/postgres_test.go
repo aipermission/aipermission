@@ -162,10 +162,48 @@ func TestPrepareUnsupportedAction(t *testing.T) {
 	}
 }
 
-func TestExecuteActionNotWired(t *testing.T) {
-	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{}, connectors.PreparedAction{ActionName: ActionQueryReadonly})
-	if !errors.Is(err, ErrExecutionNotWired) {
-		t.Fatalf("expected ErrExecutionNotWired, got %v", err)
+func TestExecuteActionRejectsUnsupportedConnectionMode(t *testing.T) {
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: connectors.TargetView{
+			ConnectorKind: Kind,
+			Config:        map[string]any{"connection_mode": "over_ssh"},
+		},
+	}, connectors.PreparedAction{ActionName: ActionQueryReadonly})
+	if !errors.Is(err, ErrUnsupportedMode) {
+		t.Fatalf("expected ErrUnsupportedMode, got %v", err)
+	}
+}
+
+func TestExecuteActionRequiresCredentialSecrets(t *testing.T) {
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: connectors.TargetView{
+			ConnectorKind: Kind,
+			Config: map[string]any{
+				"connection_mode": "direct",
+				"host":            "127.0.0.1",
+				"port":            5432,
+				"database":        "app",
+			},
+		},
+		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
+		Secrets: fakeSecrets{},
+	}, connectors.PreparedAction{ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
+	if !errors.Is(err, ErrMissingSecret) {
+		t.Fatalf("expected ErrMissingSecret, got %v", err)
+	}
+}
+
+func TestExecuteActionValidatesTargetConfigBeforeDial(t *testing.T) {
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: connectors.TargetView{
+			ConnectorKind: Kind,
+			Config:        map[string]any{"connection_mode": "direct", "database": "app"},
+		},
+		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
+		Secrets: fakeSecrets{"password": "secret"},
+	}, connectors.PreparedAction{ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("expected ErrInvalidConfig, got %v", err)
 	}
 }
 
@@ -182,4 +220,14 @@ func hasField(schema connectors.Schema, name string) bool {
 		}
 	}
 	return false
+}
+
+type fakeSecrets map[string]string
+
+func (s fakeSecrets) GetSecret(_ context.Context, name string) (string, error) {
+	value, ok := s[name]
+	if !ok {
+		return "", ErrMissingSecret
+	}
+	return value, nil
 }
