@@ -198,6 +198,7 @@ History page for per-server output, exit code, error, and status:
 ```txt
 GET /api/connectors
 GET /api/connectors/{kind}
+GET /api/targets
 GET /api/connector-targets
 POST /api/connector-targets
 GET /api/connector-targets/{id}
@@ -231,6 +232,11 @@ UI. They do not return credential secrets and do not execute actions.
 schemas, action definitions, and AI-readable help text. For example, the
 Postgres connector describes metadata actions such as `get_schemas`,
 `get_tables`, `describe_table`, and the bounded `query_readonly` action.
+
+`GET /api/targets` returns the unified target/profile list used by the console
+and permission UI. It includes SSH targets represented as connector refs such as
+`ssh:3:5` plus non-SSH connector profiles such as `postgres:7:11`. Secret
+payloads are never included.
 
 Connector target endpoints manage configured non-SSH connector targets and
 credential profiles. Profile secrets are encrypted through the vault layer and

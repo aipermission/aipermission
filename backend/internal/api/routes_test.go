@@ -245,6 +245,31 @@ func TestConnectorCatalogRoutes(t *testing.T) {
 	}
 }
 
+func TestUnifiedTargetListIncludesSSHAndConnectorProfiles(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+	sshServer := fixture.createKeyAndServer(t, "core-1")
+	store := connectortargets.NewStore(fixture.db)
+	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+
+	response := performJSON(handler, http.MethodGet, "/api/targets", "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list targets failed: %d %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{
+		`"connector_kind":"ssh"`,
+		`"target_name":"core-1"`,
+		`"server_id":` + strconv.FormatInt(sshServer.ID, 10),
+		`"ref":"postgres:` + strconv.FormatInt(pgTarget.ID, 10) + `:` + strconv.FormatInt(pgProfile.ID, 10) + `"`,
+		`"profile_label":"readonly"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("target list missing %s: %s", want, body)
+		}
+	}
+}
+
 func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
