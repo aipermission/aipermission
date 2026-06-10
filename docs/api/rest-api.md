@@ -771,12 +771,24 @@ GET  /api/mcp/requests/{id}
 GET  /api/mcp/requests
 GET  /api/mcp/console
 POST /api/mcp/console/restart
+GET  /api/mcp/connector-targets
+GET  /api/mcp/connector-help
+GET  /api/mcp/connector-actions
+POST /api/mcp/connector-actions/call
+GET  /api/mcp/connector-action-requests/{id}
 POST /api/mcp/messages
 ```
 
 MCP endpoints authenticate with the API token. They reject revoked tokens and check token/server permissions.
 
 `GET /api/mcp/servers` returns only servers visible to that token and not blocked.
+
+Connector MCP endpoints expose non-SSH connector targets visible to the token,
+AI-readable connector help, action lists, action execution, and action request
+polling. `POST /api/mcp/connector-actions/call` evaluates the exact
+token/target/profile/action permission before execution. `always_run` actions
+execute immediately, `approval_required` actions create a pending connector
+action request, and `blocked` or missing permissions do not execute.
 
 The web UI also exposes `GET/PUT /api/settings/mcp-runtime` for the local user.
 That route is protected by the UI session and CSRF checks, not by MCP token auth.
