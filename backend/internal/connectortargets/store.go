@@ -327,6 +327,51 @@ type ActionPermission struct {
 	UpdatedAt     string
 }
 
+type ActionRequest struct {
+	ID                   int64
+	TokenID              *int64
+	TargetID             int64
+	TargetName           string
+	ProfileID            int64
+	ProfileLabel         string
+	ConnectorKind        string
+	ActionName           string
+	Input                map[string]any
+	EncryptedPayloadJSON string
+	Reason               string
+	Status               connectors.ResultStatus
+	Output               any
+	DisplayText          string
+	Error                string
+	ApprovalContext      string
+	ApprovalContextHash  string
+	ApprovalContextDrift string
+	CreatedAt            string
+	CompletedAt          *string
+}
+
+type InsertActionRequestInput struct {
+	TokenID              *int64
+	TargetID             int64
+	ProfileID            int64
+	ConnectorKind        string
+	ActionName           string
+	Input                map[string]any
+	EncryptedPayloadJSON string
+	Reason               string
+	Status               connectors.ResultStatus
+	ApprovalContext      string
+	ApprovalContextHash  string
+}
+
+type FinishActionRequestInput struct {
+	ID          int64
+	Status      connectors.ResultStatus
+	Output      any
+	DisplayText string
+	Error       string
+}
+
 func (s *Store) SetActionPermission(ctx context.Context, input SetActionPermissionInput) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("connector target store is not configured")
@@ -355,6 +400,47 @@ func (s *Store) SetActionPermission(ctx context.Context, input SetActionPermissi
 		now,
 	)
 	return err
+}
+
+func (s *Store) GetActionPermission(ctx context.Context, tokenID int64, targetID int64, profileID int64, actionName string, now time.Time) (ActionPermission, error) {
+	if s == nil || s.db == nil {
+		return ActionPermission{}, fmt.Errorf("connector target store is not configured")
+	}
+	if tokenID < 1 || targetID < 1 || profileID < 1 || !connectors.ValidIdentifier(actionName) {
+		return ActionPermission{}, ErrActionPermissionNotFound
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT
+			p.token_id, p.target_id, t.name, p.profile_id, cp.label,
+			t.connector_kind, cp.kind, p.action_name, p.execution_rule,
+			COALESCE(p.expires_at, ''), p.created_at, p.updated_at
+		FROM token_connector_action_permissions p
+		JOIN connector_targets t ON t.id = p.target_id
+		JOIN connector_credential_profiles cp ON cp.id = p.profile_id AND cp.target_id = p.target_id
+		WHERE
+			p.token_id = ?
+			AND p.target_id = ?
+			AND p.profile_id = ?
+			AND p.action_name = ?
+			AND t.status = 'active'
+			AND (COALESCE(p.expires_at, '') = '' OR p.expires_at > ?)`,
+		tokenID,
+		targetID,
+		profileID,
+		actionName,
+		now.UTC().Format(time.RFC3339),
+	)
+	permission, err := scanActionPermission(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ActionPermission{}, ErrActionPermissionNotFound
+	}
+	if err != nil {
+		return ActionPermission{}, err
+	}
+	return permission, nil
 }
 
 func (s *Store) ReplaceActionPermissions(ctx context.Context, tokenID int64, inputs []SetActionPermissionInput) ([]ActionPermission, error) {
@@ -425,22 +511,9 @@ func (s *Store) ListActionPermissions(ctx context.Context, tokenID int64) ([]Act
 
 	permissions := []ActionPermission{}
 	for rows.Next() {
-		var item ActionPermission
-		if err := rows.Scan(
-			&item.TokenID,
-			&item.TargetID,
-			&item.TargetName,
-			&item.ProfileID,
-			&item.ProfileLabel,
-			&item.ConnectorKind,
-			&item.ProfileKind,
-			&item.ActionName,
-			&item.ExecutionRule,
-			&item.ExpiresAt,
-			&item.CreatedAt,
-			&item.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan connector action permission: %w", err)
+		item, err := scanActionPermission(rows)
+		if err != nil {
+			return nil, err
 		}
 		permissions = append(permissions, item)
 	}
@@ -448,6 +521,120 @@ func (s *Store) ListActionPermissions(ctx context.Context, tokenID int64) ([]Act
 		return nil, fmt.Errorf("iterate connector action permissions: %w", err)
 	}
 	return permissions, nil
+}
+
+func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionRequestInput) (ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+	}
+	if err := validateActionRequestInput(input); err != nil {
+		return ActionRequest{}, err
+	}
+	inputJSON, err := jsonObjectString(input.Input)
+	if err != nil {
+		return ActionRequest{}, ValidationError("action input must be a JSON object")
+	}
+	now := nowString()
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO connector_action_requests (
+			token_id, target_id, profile_id, connector_kind, action_name, input_json,
+			encrypted_payload_json, reason, status, approval_context,
+			approval_context_hash, created_at
+		)
+		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?
+		FROM connector_targets t
+		JOIN connector_credential_profiles p ON p.target_id = t.id
+		WHERE
+			t.id = ?
+			AND p.id = ?
+			AND t.connector_kind = ?
+			AND p.connector_kind = t.connector_kind
+			AND t.status = 'active'`,
+		nullableInt64(input.TokenID),
+		input.ActionName,
+		inputJSON,
+		strings.TrimSpace(input.EncryptedPayloadJSON),
+		strings.TrimSpace(input.Reason),
+		string(input.Status),
+		strings.TrimSpace(input.ApprovalContext),
+		strings.TrimSpace(input.ApprovalContextHash),
+		now,
+		input.TargetID,
+		input.ProfileID,
+		input.ConnectorKind,
+	)
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	if affected == 0 {
+		return ActionRequest{}, ErrTargetProfileNotFound
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	return s.GetActionRequest(ctx, id)
+}
+
+func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionRequestInput) (ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+	}
+	if input.ID < 1 {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	if !validActionRequestTerminalStatus(input.Status) {
+		return ActionRequest{}, ValidationError("invalid terminal action request status")
+	}
+	outputJSON, err := jsonValueString(input.Output)
+	if err != nil {
+		return ActionRequest{}, ValidationError("action output must be valid JSON")
+	}
+	now := nowString()
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE connector_action_requests
+		SET status = ?, output_json = ?, display_text = ?, error = ?, completed_at = ?
+		WHERE id = ?`,
+		string(input.Status),
+		outputJSON,
+		strings.TrimSpace(input.DisplayText),
+		strings.TrimSpace(input.Error),
+		now,
+		input.ID,
+	)
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	if affected == 0 {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	return s.GetActionRequest(ctx, input.ID)
+}
+
+func (s *Store) GetActionRequest(ctx context.Context, id int64) (ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+	}
+	if id < 1 {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	row := s.db.QueryRowContext(ctx, actionRequestSelectSQL()+` WHERE r.id = ?`, id)
+	request, err := scanActionRequest(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	return request, nil
 }
 
 func (s *Store) validateActionPermissions(ctx context.Context, tokenID int64, inputs []SetActionPermissionInput) error {
@@ -584,9 +771,11 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 }
 
 var (
-	ErrInvalidTargetRef      = errors.New("invalid connector target ref")
-	ErrTargetNotFound        = errors.New("connector target not found")
-	ErrTargetProfileNotFound = errors.New("connector target profile not found")
+	ErrInvalidTargetRef         = errors.New("invalid connector target ref")
+	ErrTargetNotFound           = errors.New("connector target not found")
+	ErrTargetProfileNotFound    = errors.New("connector target profile not found")
+	ErrActionPermissionNotFound = errors.New("connector action permission not found")
+	ErrActionRequestNotFound    = errors.New("connector action request not found")
 )
 
 func jsonObjectString(value map[string]any) (string, error) {
@@ -603,6 +792,20 @@ func jsonObjectString(value map[string]any) (string, error) {
 	return string(encoded), nil
 }
 
+func jsonValueString(value any) (string, error) {
+	if value == nil {
+		return "null", nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	if !json.Valid(encoded) {
+		return "", fmt.Errorf("value must be valid JSON")
+	}
+	return string(encoded), nil
+}
+
 func parseJSONObject(value string) (map[string]any, error) {
 	if strings.TrimSpace(value) == "" {
 		return map[string]any{}, nil
@@ -613,6 +816,17 @@ func parseJSONObject(value string) (map[string]any, error) {
 	}
 	if decoded == nil {
 		return map[string]any{}, nil
+	}
+	return decoded, nil
+}
+
+func parseJSONValue(value string) (any, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	var decoded any
+	if err := json.Unmarshal([]byte(value), &decoded); err != nil {
+		return nil, err
 	}
 	return decoded, nil
 }
@@ -666,6 +880,143 @@ func scanCredentialProfile(row rowScanner) (CredentialProfile, error) {
 	}
 	profile.Public = public
 	return profile, nil
+}
+
+func scanActionPermission(row rowScanner) (ActionPermission, error) {
+	var item ActionPermission
+	if err := row.Scan(
+		&item.TokenID,
+		&item.TargetID,
+		&item.TargetName,
+		&item.ProfileID,
+		&item.ProfileLabel,
+		&item.ConnectorKind,
+		&item.ProfileKind,
+		&item.ActionName,
+		&item.ExecutionRule,
+		&item.ExpiresAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	); err != nil {
+		return ActionPermission{}, fmt.Errorf("scan connector action permission: %w", err)
+	}
+	return item, nil
+}
+
+func actionRequestSelectSQL() string {
+	return `
+		SELECT
+			r.id, r.token_id, r.target_id, t.name, r.profile_id, p.label,
+			r.connector_kind, r.action_name, r.input_json, r.encrypted_payload_json,
+			r.reason, r.status, r.output_json, r.display_text, r.error,
+			r.approval_context, r.approval_context_hash, r.approval_context_drift,
+			r.created_at, r.completed_at
+		FROM connector_action_requests r
+		JOIN connector_targets t ON t.id = r.target_id
+		JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id`
+}
+
+func scanActionRequest(row rowScanner) (ActionRequest, error) {
+	var request ActionRequest
+	var tokenID sql.NullInt64
+	var inputJSON string
+	var outputJSON string
+	var completedAt sql.NullString
+	if err := row.Scan(
+		&request.ID,
+		&tokenID,
+		&request.TargetID,
+		&request.TargetName,
+		&request.ProfileID,
+		&request.ProfileLabel,
+		&request.ConnectorKind,
+		&request.ActionName,
+		&inputJSON,
+		&request.EncryptedPayloadJSON,
+		&request.Reason,
+		&request.Status,
+		&outputJSON,
+		&request.DisplayText,
+		&request.Error,
+		&request.ApprovalContext,
+		&request.ApprovalContextHash,
+		&request.ApprovalContextDrift,
+		&request.CreatedAt,
+		&completedAt,
+	); err != nil {
+		return ActionRequest{}, fmt.Errorf("scan connector action request: %w", err)
+	}
+	if tokenID.Valid {
+		request.TokenID = &tokenID.Int64
+	}
+	input, err := parseJSONObject(inputJSON)
+	if err != nil {
+		return ActionRequest{}, fmt.Errorf("decode connector action input: %w", err)
+	}
+	request.Input = input
+	output, err := parseJSONValue(outputJSON)
+	if err != nil {
+		return ActionRequest{}, fmt.Errorf("decode connector action output: %w", err)
+	}
+	request.Output = output
+	if completedAt.Valid {
+		request.CompletedAt = &completedAt.String
+	}
+	return request, nil
+}
+
+func validateActionRequestInput(input InsertActionRequestInput) error {
+	if input.TargetID < 1 || input.ProfileID < 1 {
+		return ValidationError("target_id and profile_id are required")
+	}
+	if input.TokenID != nil && *input.TokenID < 1 {
+		return ValidationError("token_id must be positive")
+	}
+	if !connectors.ValidIdentifier(input.ConnectorKind) {
+		return ValidationError("invalid connector kind")
+	}
+	if !connectors.ValidIdentifier(input.ActionName) {
+		return ValidationError("invalid action name")
+	}
+	if !validActionRequestStatus(input.Status) {
+		return ValidationError("invalid action request status")
+	}
+	return nil
+}
+
+func validActionRequestStatus(status connectors.ResultStatus) bool {
+	switch status {
+	case connectors.ResultCompleted,
+		connectors.ResultFailed,
+		connectors.ResultCanceled,
+		connectors.ResultRunning,
+		connectors.ResultApprovalPending,
+		connectors.ResultBlocked,
+		connectors.ResultStale:
+		return true
+	default:
+		return false
+	}
+}
+
+func validActionRequestTerminalStatus(status connectors.ResultStatus) bool {
+	switch status {
+	case connectors.ResultCompleted,
+		connectors.ResultFailed,
+		connectors.ResultCanceled,
+		connectors.ResultBlocked,
+		connectors.ResultStale:
+		return true
+	default:
+		return false
+	}
+}
+
+func nullableInt64(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func cloneMap(value map[string]any) map[string]any {

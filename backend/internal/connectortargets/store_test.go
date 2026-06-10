@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
 func TestConnectorTargetRefRoundTrip(t *testing.T) {
@@ -185,6 +186,96 @@ func TestStoreReplaceAndListActionPermissions(t *testing.T) {
 	}
 	if len(permissions) != 0 {
 		t.Fatalf("expected permissions to be cleared, got %#v", permissions)
+	}
+}
+
+func TestStoreGetsActiveActionPermission(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	expiresAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	if err := store.SetActionPermission(ctx, SetActionPermissionInput{
+		TokenID:       tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "query_readonly",
+		ExecutionRule: ActionPermissionApprovalRequired,
+		ExpiresAt:     &expiresAt,
+	}); err != nil {
+		t.Fatalf("set action permission: %v", err)
+	}
+
+	permission, err := store.GetActionPermission(ctx, tokenID, target.ID, profile.ID, "query_readonly", expiresAt.Add(-time.Minute))
+	if err != nil {
+		t.Fatalf("get active action permission: %v", err)
+	}
+	if permission.ExecutionRule != ActionPermissionApprovalRequired || permission.TargetName != "main-db" {
+		t.Fatalf("unexpected permission: %#v", permission)
+	}
+
+	_, err = store.GetActionPermission(ctx, tokenID, target.ID, profile.ID, "query_readonly", expiresAt.Add(time.Minute))
+	if !errors.Is(err, ErrActionPermissionNotFound) {
+		t.Fatalf("expected expired permission to be hidden, got %v", err)
+	}
+}
+
+func TestStoreActionRequestLifecycle(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:              &tokenID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        "postgres",
+		ActionName:           "query_readonly",
+		Input:                map[string]any{"sql": "select 1", "max_rows": 10},
+		EncryptedPayloadJSON: "encrypted-payload",
+		Reason:               "smoke",
+		Status:               connectors.ResultRunning,
+		ApprovalContext:      `{"target":"postgres:1:1"}`,
+		ApprovalContextHash:  "ctx-hash",
+	})
+	if err != nil {
+		t.Fatalf("insert action request: %v", err)
+	}
+	if request.ID < 1 || request.TokenID == nil || *request.TokenID != tokenID {
+		t.Fatalf("unexpected request identity: %#v", request)
+	}
+	if request.TargetName != "main-db" || request.ProfileLabel != "readonly" || request.ConnectorKind != "postgres" {
+		t.Fatalf("unexpected request metadata: %#v", request)
+	}
+	if request.Input["sql"] != "select 1" || request.EncryptedPayloadJSON != "encrypted-payload" {
+		t.Fatalf("unexpected request payload fields: %#v", request)
+	}
+	if output, ok := request.Output.(map[string]any); !ok || len(output) != 0 {
+		t.Fatalf("new request output should be empty object, got %#v", request.Output)
+	}
+
+	finished, err := store.FinishActionRequest(ctx, FinishActionRequestInput{
+		ID:          request.ID,
+		Status:      connectors.ResultCompleted,
+		Output:      []map[string]any{{"one": 1}},
+		DisplayText: "1 row",
+	})
+	if err != nil {
+		t.Fatalf("finish action request: %v", err)
+	}
+	if finished.Status != connectors.ResultCompleted || finished.CompletedAt == nil {
+		t.Fatalf("unexpected finished request: %#v", finished)
+	}
+	rows, ok := finished.Output.([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("unexpected output shape: %#v", finished.Output)
+	}
+	if finished.DisplayText != "1 row" {
+		t.Fatalf("display text = %q", finished.DisplayText)
 	}
 }
 
