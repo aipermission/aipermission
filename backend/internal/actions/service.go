@@ -17,8 +17,8 @@ var (
 // TargetResolver resolves a stable target reference into the public target and
 // selected credential profile used for a connector action.
 //
-// A future resolver can map refs like "ssh:12" or "postgres:main-readonly"
-// without making numeric IDs ambiguous.
+// Refs include the connector kind, target id, and credential profile id, for
+// example "ssh:12:3" or "postgres:7:11".
 type TargetResolver interface {
 	ResolveActionTarget(ctx context.Context, targetRef string) (ResolvedTarget, error)
 }

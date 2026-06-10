@@ -11,7 +11,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -125,9 +124,8 @@ func (s mcpHandlers) mcpExec(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	prepared, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+	prepared, err := auth.runtime.prepareSSHConnectorAction(r.Context(), request.ServerID, actions.PrepareRequest{
 		Source:     commandRequestSourceMCP,
-		TargetRef:  connectortargets.SSHTargetRef(request.ServerID),
 		ActionName: sshconnector.ActionExec,
 		Input:      map[string]any{"command": request.Command},
 		Reason:     request.Reason,
@@ -345,9 +343,8 @@ func (s mcpHandlers) mcpReadConsole(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+	if _, err := auth.runtime.prepareSSHConnectorAction(r.Context(), serverID, actions.PrepareRequest{
 		Source:     commandRequestSourceMCP,
-		TargetRef:  connectortargets.SSHTargetRef(serverID),
 		ActionName: sshconnector.ActionReadConsole,
 		Input:      map[string]any{"tail_bytes": tail},
 	}); err != nil {

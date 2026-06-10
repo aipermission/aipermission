@@ -14,49 +14,61 @@ import (
 )
 
 func TestSSHTargetRefRoundTrip(t *testing.T) {
-	ref := SSHTargetRef(42)
-	if ref != "ssh:42" {
+	ref := SSHTargetRef(42, 7)
+	if ref != "ssh:42:7" {
 		t.Fatalf("ref = %q", ref)
 	}
-	id, ok := ParseSSHTargetRef(ref)
-	if !ok || id != 42 {
-		t.Fatalf("parse = %d ok=%v", id, ok)
+	targetID, profileID, ok := ParseSSHTargetRef(ref)
+	if !ok || targetID != 42 || profileID != 7 {
+		t.Fatalf("parse = %d %d ok=%v", targetID, profileID, ok)
 	}
 }
 
 func TestParseSSHTargetRefRejectsInvalidRefs(t *testing.T) {
-	for _, ref := range []string{"", "server:1", "ssh:", "ssh:0", "ssh:not-number"} {
-		if _, ok := ParseSSHTargetRef(ref); ok {
+	for _, ref := range []string{"", "server:1:2", "ssh:", "ssh:0:1", "ssh:1:0", "ssh:not-number", "ssh:1"} {
+		if _, _, ok := ParseSSHTargetRef(ref); ok {
 			t.Fatalf("expected %q to be rejected", ref)
 		}
 	}
 }
 
-func TestResolverMapsLegacySSHServerToConnectorViews(t *testing.T) {
+func TestResolverMapsSSHConnectorProfileToConnectorViews(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	serverID := insertTargetTestServer(t, database, keyID)
+	store := NewStore(database)
+	if err := store.SyncSSHServers(ctx); err != nil {
+		t.Fatalf("sync ssh targets: %v", err)
+	}
+	targetRef, err := store.SSHTargetRefForServer(ctx, serverID)
+	if err != nil {
+		t.Fatalf("ssh target ref for server: %v", err)
+	}
 
-	resolved, err := NewResolver(database).ResolveActionTarget(ctx, SSHTargetRef(serverID))
+	resolved, err := NewResolver(database).ResolveActionTarget(ctx, targetRef)
 	if err != nil {
 		t.Fatalf("resolve target: %v", err)
 	}
 
-	if resolved.Target.ID != serverID || resolved.Target.Ref != SSHTargetRef(serverID) {
+	targetID, profileID, ok := ParseSSHTargetRef(targetRef)
+	if !ok {
+		t.Fatalf("invalid ssh target ref: %q", targetRef)
+	}
+	if resolved.Target.ID != targetID || resolved.Target.Ref != targetRef {
 		t.Fatalf("unexpected target identity: %#v", resolved.Target)
 	}
 	if resolved.Target.ConnectorKind != sshconnector.Kind {
 		t.Fatalf("connector kind = %q", resolved.Target.ConnectorKind)
 	}
-	if resolved.Target.Config["host"] != "10.0.0.10" || resolved.Target.Config["port"] != 2222 {
+	if resolved.Target.Config["host"] != "10.0.0.10" || resolved.Target.Config["port"] != float64(2222) {
 		t.Fatalf("unexpected target config: %#v", resolved.Target.Config)
 	}
 	if resolved.Target.Config["startup_input_after_connect"] != "q" {
 		t.Fatalf("startup input missing: %#v", resolved.Target.Config)
 	}
 
-	if resolved.Profile.ID != keyID || resolved.Profile.TargetID != serverID {
+	if resolved.Profile.ID != profileID || resolved.Profile.TargetID != targetID {
 		t.Fatalf("unexpected profile identity: %#v", resolved.Profile)
 	}
 	if resolved.Profile.ConnectorKind != sshconnector.Kind || resolved.Profile.Kind != "private_key" {
@@ -64,6 +76,9 @@ func TestResolverMapsLegacySSHServerToConnectorViews(t *testing.T) {
 	}
 	if resolved.Profile.Public["username"] != "admin" {
 		t.Fatalf("username public metadata missing: %#v", resolved.Profile.Public)
+	}
+	if resolved.Profile.Public["ssh_key_id"].(float64) != float64(keyID) {
+		t.Fatalf("ssh_key_id public metadata missing: %#v", resolved.Profile.Public)
 	}
 	if resolved.Profile.Public["fingerprint"] != "SHA256:test" {
 		t.Fatalf("fingerprint public metadata missing: %#v", resolved.Profile.Public)
@@ -77,11 +92,48 @@ func TestResolverReturnsNotFoundForMissingOrInvalidTarget(t *testing.T) {
 	database := openTargetTestDB(t)
 	resolver := NewResolver(database)
 
-	for _, ref := range []string{"ssh:999", "postgres:1", "ssh:bad"} {
+	for _, ref := range []string{"ssh:999:1", "postgres:1", "ssh:bad"} {
 		_, err := resolver.ResolveActionTarget(context.Background(), ref)
 		if !errors.Is(err, actions.ErrTargetNotFound) {
 			t.Fatalf("ResolveActionTarget(%q) error = %v", ref, err)
 		}
+	}
+}
+
+func TestStoreSyncSSHServersUpdatesConnectorProfile(t *testing.T) {
+	database := openTargetTestDB(t)
+	ctx := context.Background()
+	keyID := insertTargetTestSSHKey(t, database, "main")
+	serverID := insertTargetTestServer(t, database, keyID)
+	store := NewStore(database)
+
+	if err := store.SyncSSHServers(ctx); err != nil {
+		t.Fatalf("sync ssh targets: %v", err)
+	}
+	firstRef, err := store.SSHTargetRefForServer(ctx, serverID)
+	if err != nil {
+		t.Fatalf("first ref: %v", err)
+	}
+
+	if _, err := database.Exec(`UPDATE servers SET username = 'readonly', host = '10.0.0.11', updated_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), serverID); err != nil {
+		t.Fatalf("update server: %v", err)
+	}
+	if err := store.SyncSSHServers(ctx); err != nil {
+		t.Fatalf("resync ssh targets: %v", err)
+	}
+	secondRef, err := store.SSHTargetRefForServer(ctx, serverID)
+	if err != nil {
+		t.Fatalf("second ref: %v", err)
+	}
+	if firstRef != secondRef {
+		t.Fatalf("sync should update the same target/profile ref: first=%q second=%q", firstRef, secondRef)
+	}
+	resolved, err := NewResolver(database).ResolveActionTarget(ctx, secondRef)
+	if err != nil {
+		t.Fatalf("resolve updated ref: %v", err)
+	}
+	if resolved.Target.Config["host"] != "10.0.0.11" || resolved.Profile.Public["username"] != "readonly" {
+		t.Fatalf("sync did not update connector views: target=%#v profile=%#v", resolved.Target, resolved.Profile)
 	}
 }
 

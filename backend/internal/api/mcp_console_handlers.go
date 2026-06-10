@@ -6,7 +6,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -49,9 +48,8 @@ func (s mcpHandlers) mcpRestartConsoleSession(w http.ResponseWriter, r *http.Req
 		})
 		return
 	}
-	if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+	if _, err := auth.runtime.prepareSSHConnectorAction(r.Context(), request.ServerID, actions.PrepareRequest{
 		Source:     commandRequestSourceMCP,
-		TargetRef:  connectortargets.SSHTargetRef(request.ServerID),
 		ActionName: sshconnector.ActionRestartConsoleSession,
 	}); err != nil {
 		writeInternalError(w)

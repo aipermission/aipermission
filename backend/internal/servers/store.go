@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 type Server struct {
@@ -87,7 +89,13 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (Server, erro
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Server{}, fmt.Errorf("begin create server: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO servers (name, host, port, username, ssh_key_id, auth_type, key_label, encrypted_secret, description, startup_input_after_connect, force_shell_command, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		normalized.Name,
@@ -115,6 +123,12 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (Server, erro
 	if err != nil {
 		return Server{}, fmt.Errorf("read server id: %w", err)
 	}
+	if _, err := connectortargets.SyncSSHServerByID(ctx, tx, id); err != nil {
+		return Server{}, fmt.Errorf("sync server connector target: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Server{}, fmt.Errorf("commit create server: %w", err)
+	}
 	return s.Get(ctx, id)
 }
 
@@ -125,7 +139,13 @@ func (s *Store) Update(ctx context.Context, id int64, request UpdateRequest) (Se
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Server{}, fmt.Errorf("begin update server: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(
 		ctx,
 		`UPDATE servers SET name = ?, host = ?, port = ?, username = ?, ssh_key_id = ?, auth_type = ?, key_label = ?, encrypted_secret = ?, description = ?, startup_input_after_connect = ?, force_shell_command = ?, updated_at = ? WHERE id = ?`,
 		normalized.Name,
@@ -156,11 +176,26 @@ func (s *Store) Update(ctx context.Context, id int64, request UpdateRequest) (Se
 	if affected == 0 {
 		return Server{}, ErrNotFound
 	}
+	if _, err := connectortargets.SyncSSHServerByID(ctx, tx, id); err != nil {
+		return Server{}, fmt.Errorf("sync server connector target: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Server{}, fmt.Errorf("commit update server: %w", err)
+	}
 	return s.Get(ctx, id)
 }
 
 func (s *Store) Delete(ctx context.Context, id int64) error {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM servers WHERE id = ?`, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete server: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := connectortargets.DeleteSSHServerMapping(ctx, tx, id); err != nil {
+		return fmt.Errorf("delete server connector target: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM servers WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete server: %w", err)
 	}
@@ -171,7 +206,14 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	if affected == 0 {
 		return ErrNotFound
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete server: %w", err)
+	}
 	return nil
+}
+
+func (s *Store) SyncConnectorTargets(ctx context.Context) error {
+	return connectortargets.NewStore(s.db).SyncSSHServers(ctx)
 }
 
 func normalizeRequest(ctx context.Context, db *sql.DB, request CreateRequest) (CreateRequest, error) {

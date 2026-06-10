@@ -188,6 +188,7 @@ func TestOpenEncryptedRepairsMissingConnectorPersistenceSchema(t *testing.T) {
 	for _, table := range []string{
 		"connector_action_requests",
 		"token_connector_action_permissions",
+		"ssh_connector_profile_runtimes",
 		"connector_credential_profiles",
 		"connector_targets",
 	} {
@@ -215,6 +216,9 @@ func TestOpenEncryptedRepairsMissingConnectorPersistenceSchema(t *testing.T) {
 	}
 	if !tableExists(t, reopened, "connector_action_requests") {
 		t.Fatalf("connector_action_requests table should be repaired")
+	}
+	if !tableExists(t, reopened, "ssh_connector_profile_runtimes") {
+		t.Fatalf("ssh_connector_profile_runtimes table should be repaired")
 	}
 }
 

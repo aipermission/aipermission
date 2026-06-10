@@ -20,15 +20,23 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
-func TestRuntimePrepareConnectorActionUsesLegacySSHResolver(t *testing.T) {
+func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
 	keyID := insertAPITestSSHKey(t, database, "main")
 	serverID := insertAPITestServer(t, database, keyID)
+	store := connectortargets.NewStore(database)
+	if err := store.SyncSSHServers(context.Background()); err != nil {
+		t.Fatalf("sync ssh targets: %v", err)
+	}
+	targetRef, err := store.SSHTargetRefForServer(context.Background(), serverID)
+	if err != nil {
+		t.Fatalf("ssh target ref for server: %v", err)
+	}
 	runtime := &databaseRuntime{database: database}
 
 	prepared, err := runtime.prepareConnectorAction(context.Background(), actions.PrepareRequest{
 		Source:     "mcp",
-		TargetRef:  connectortargets.SSHTargetRef(serverID),
+		TargetRef:  targetRef,
 		ActionName: sshconnector.ActionExec,
 		Input:      map[string]any{"command": "uptime"},
 		Reason:     "smoke",
@@ -41,10 +49,10 @@ func TestRuntimePrepareConnectorActionUsesLegacySSHResolver(t *testing.T) {
 	if prepared.Action.ConnectorKind != sshconnector.Kind {
 		t.Fatalf("connector kind = %q", prepared.Action.ConnectorKind)
 	}
-	if prepared.Action.TargetRef != connectortargets.SSHTargetRef(serverID) {
+	if prepared.Action.TargetRef != targetRef {
 		t.Fatalf("target ref = %q", prepared.Action.TargetRef)
 	}
-	if prepared.Action.ProfileID != keyID {
+	if prepared.Action.ProfileID < 1 {
 		t.Fatalf("profile id = %d", prepared.Action.ProfileID)
 	}
 	if prepared.Action.Payload["command"] != "uptime" {

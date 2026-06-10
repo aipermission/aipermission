@@ -123,6 +123,10 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		_ = database.Close()
 		return nil, err
 	}
+	if err := runtime.servers.SyncConnectorTargets(context.Background()); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	runtime.mcpStarted = settings.MCPStartEnabled
 	runtime.securitySettings = settings
 	runtime.securityLoaded = true

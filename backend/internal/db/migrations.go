@@ -455,11 +455,12 @@ var connectorPersistenceStatements = []string{
 	`CREATE TABLE IF NOT EXISTS connector_targets (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		connector_kind TEXT NOT NULL,
-		name TEXT NOT NULL UNIQUE,
+		name TEXT NOT NULL,
 		config_json TEXT NOT NULL DEFAULT '{}',
 		status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
 		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
+		updated_at TEXT NOT NULL,
+		UNIQUE(connector_kind, name)
 	);`,
 	`CREATE TABLE IF NOT EXISTS connector_credential_profiles (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -491,6 +492,17 @@ var connectorPersistenceStatements = []string{
 		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE CASCADE,
 		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE CASCADE
 	);`,
+	`CREATE TABLE IF NOT EXISTS ssh_connector_profile_runtimes (
+		target_id INTEGER NOT NULL,
+		profile_id INTEGER NOT NULL,
+		server_id INTEGER NOT NULL UNIQUE,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(target_id, profile_id),
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE CASCADE,
+		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE CASCADE,
+		FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+	);`,
 	`CREATE TABLE IF NOT EXISTS connector_action_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		token_id INTEGER,
@@ -516,6 +528,7 @@ var connectorPersistenceStatements = []string{
 	);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_targets_kind_name ON connector_targets(connector_kind, name);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_credential_profiles_target ON connector_credential_profiles(target_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_ssh_connector_profile_runtimes_server ON ssh_connector_profile_runtimes(server_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_token ON token_connector_action_permissions(token_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_lookup ON token_connector_action_permissions(token_id, target_id, profile_id, action_name);`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_expires_at ON token_connector_action_permissions(expires_at);`,

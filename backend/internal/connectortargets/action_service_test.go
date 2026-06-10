@@ -11,10 +11,18 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 )
 
-func TestActionServicePreparesLegacySSHExec(t *testing.T) {
+func TestActionServicePreparesSSHExec(t *testing.T) {
 	database := openTargetTestDB(t)
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	serverID := insertTargetTestServer(t, database, keyID)
+	store := NewStore(database)
+	if err := store.SyncSSHServers(context.Background()); err != nil {
+		t.Fatalf("sync ssh targets: %v", err)
+	}
+	targetRef, err := store.SSHTargetRefForServer(context.Background(), serverID)
+	if err != nil {
+		t.Fatalf("ssh target ref for server: %v", err)
+	}
 	registry, err := builtin.NewRegistry()
 	if err != nil {
 		t.Fatalf("builtin registry: %v", err)
@@ -23,23 +31,23 @@ func TestActionServicePreparesLegacySSHExec(t *testing.T) {
 
 	prepared, err := service.Prepare(context.Background(), actions.PrepareRequest{
 		Source:     "mcp",
-		TargetRef:  SSHTargetRef(serverID),
+		TargetRef:  targetRef,
 		ActionName: sshconnector.ActionExec,
 		Input:      map[string]any{"command": "hostname"},
 		Reason:     "smoke",
 		CreatedAt:  time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
-		t.Fatalf("prepare legacy ssh exec: %v", err)
+		t.Fatalf("prepare ssh exec: %v", err)
 	}
 
 	if prepared.Action.ConnectorKind != sshconnector.Kind {
 		t.Fatalf("connector kind = %q", prepared.Action.ConnectorKind)
 	}
-	if prepared.Action.TargetRef != SSHTargetRef(serverID) {
+	if prepared.Action.TargetRef != targetRef {
 		t.Fatalf("target ref = %q", prepared.Action.TargetRef)
 	}
-	if prepared.Action.ProfileID != keyID {
+	if prepared.Action.ProfileID < 1 {
 		t.Fatalf("profile id = %d", prepared.Action.ProfileID)
 	}
 	if prepared.Action.Risk != connectors.RiskWrite {
@@ -50,10 +58,18 @@ func TestActionServicePreparesLegacySSHExec(t *testing.T) {
 	}
 }
 
-func TestActionServicePreparesLegacySSHReadConsole(t *testing.T) {
+func TestActionServicePreparesSSHReadConsole(t *testing.T) {
 	database := openTargetTestDB(t)
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	serverID := insertTargetTestServer(t, database, keyID)
+	store := NewStore(database)
+	if err := store.SyncSSHServers(context.Background()); err != nil {
+		t.Fatalf("sync ssh targets: %v", err)
+	}
+	targetRef, err := store.SSHTargetRefForServer(context.Background(), serverID)
+	if err != nil {
+		t.Fatalf("ssh target ref for server: %v", err)
+	}
 	registry, err := builtin.NewRegistry()
 	if err != nil {
 		t.Fatalf("builtin registry: %v", err)
@@ -62,15 +78,15 @@ func TestActionServicePreparesLegacySSHReadConsole(t *testing.T) {
 
 	prepared, err := service.Prepare(context.Background(), actions.PrepareRequest{
 		Source:     "mcp",
-		TargetRef:  SSHTargetRef(serverID),
+		TargetRef:  targetRef,
 		ActionName: sshconnector.ActionReadConsole,
 		Input:      map[string]any{"tail_bytes": 4096},
 	})
 	if err != nil {
-		t.Fatalf("prepare legacy ssh read_console: %v", err)
+		t.Fatalf("prepare ssh read_console: %v", err)
 	}
 
-	if prepared.Action.ProfileID != keyID {
+	if prepared.Action.ProfileID < 1 {
 		t.Fatalf("profile id = %d", prepared.Action.ProfileID)
 	}
 	if prepared.Action.Risk != connectors.RiskRead {

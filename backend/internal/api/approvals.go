@@ -11,7 +11,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
@@ -182,9 +181,8 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, driftReason+"; ask the AI to send a fresh request")
 		return
 	}
-	prepared, err := runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+	prepared, err := runtime.prepareSSHConnectorAction(r.Context(), item.ServerID, actions.PrepareRequest{
 		Source:     item.Source,
-		TargetRef:  connectortargets.SSHTargetRef(item.ServerID),
 		ActionName: sshconnector.ActionExec,
 		Input:      map[string]any{"command": command},
 		Reason:     item.Reason,

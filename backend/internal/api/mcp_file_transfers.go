@@ -11,7 +11,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/execution"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -306,9 +305,8 @@ func (s mcpHandlers) mcpBrowseRemoteFiles(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+	if _, err := auth.runtime.prepareSSHConnectorAction(r.Context(), request.ServerID, actions.PrepareRequest{
 		Source:     commandRequestSourceMCP,
-		TargetRef:  connectortargets.SSHTargetRef(request.ServerID),
 		ActionName: sshconnector.ActionBrowseRemoteFiles,
 		Input:      map[string]any{"path": remotePath},
 	}); err != nil {
@@ -361,9 +359,8 @@ func (s mcpHandlers) mcpStartFileDownload(w http.ResponseWriter, r *http.Request
 	if permission.Rule == tokens.RuleApprovalRequired {
 		initialStatus = filetransfer.StatusPendingApproval
 	}
-	if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+	if _, err := auth.runtime.prepareSSHConnectorAction(r.Context(), request.ServerID, actions.PrepareRequest{
 		Source:     commandRequestSourceMCP,
-		TargetRef:  connectortargets.SSHTargetRef(request.ServerID),
 		ActionName: sshconnector.ActionStartFileDownload,
 		Input: map[string]any{
 			"remote_paths": request.RemotePaths,
@@ -437,9 +434,8 @@ func (s mcpHandlers) mcpStartFileUpload(w http.ResponseWriter, r *http.Request) 
 		}
 		return true
 	}, func(nextServerID int64, remoteDir string, fileNames []string, nextOverwrite bool) bool {
-		if _, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+		if _, err := auth.runtime.prepareSSHConnectorAction(r.Context(), nextServerID, actions.PrepareRequest{
 			Source:     commandRequestSourceMCP,
-			TargetRef:  connectortargets.SSHTargetRef(nextServerID),
 			ActionName: sshconnector.ActionUploadFiles,
 			Input: map[string]any{
 				"local_paths": fileNames,

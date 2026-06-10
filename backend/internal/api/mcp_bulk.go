@@ -8,7 +8,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -87,9 +86,8 @@ func (s mcpHandlers) mcpBulkExec(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		command := request.Command
-		prepared, err := auth.runtime.prepareConnectorAction(r.Context(), actions.PrepareRequest{
+		prepared, err := auth.runtime.prepareSSHConnectorAction(r.Context(), serverID, actions.PrepareRequest{
 			Source:     commandRequestSourceMCP,
-			TargetRef:  connectortargets.SSHTargetRef(serverID),
 			ActionName: sshconnector.ActionExec,
 			Input:      map[string]any{"command": command},
 			Reason:     request.Reason,
