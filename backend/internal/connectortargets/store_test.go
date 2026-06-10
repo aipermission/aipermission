@@ -148,6 +148,77 @@ func TestStoreSetActionPermissionUpsertsRuleAndExpiration(t *testing.T) {
 	}
 }
 
+func TestStoreReplaceAndListActionPermissions(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+	expiresAt := time.Now().UTC().Add(time.Hour)
+
+	permissions, err := store.ReplaceActionPermissions(ctx, tokenID, []SetActionPermissionInput{
+		{
+			TargetID:      target.ID,
+			ProfileID:     profile.ID,
+			ActionName:    "query_readonly",
+			ExecutionRule: ActionPermissionApprovalRequired,
+			ExpiresAt:     &expiresAt,
+		},
+	})
+	if err != nil {
+		t.Fatalf("replace action permissions: %v", err)
+	}
+	if len(permissions) != 1 {
+		t.Fatalf("expected 1 permission, got %#v", permissions)
+	}
+	got := permissions[0]
+	if got.TokenID != tokenID || got.TargetName != "main-db" || got.ProfileLabel != "readonly" || got.ConnectorKind != "postgres" {
+		t.Fatalf("unexpected permission metadata: %#v", got)
+	}
+	if got.ExecutionRule != ActionPermissionApprovalRequired || got.ExpiresAt == "" {
+		t.Fatalf("unexpected permission rule/expiry: %#v", got)
+	}
+
+	permissions, err = store.ReplaceActionPermissions(ctx, tokenID, nil)
+	if err != nil {
+		t.Fatalf("clear action permissions: %v", err)
+	}
+	if len(permissions) != 0 {
+		t.Fatalf("expected permissions to be cleared, got %#v", permissions)
+	}
+}
+
+func TestStoreReplaceActionPermissionsValidatesInput(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+	expiresAt := time.Now().UTC().Add(time.Hour)
+
+	_, err := store.ReplaceActionPermissions(ctx, tokenID, []SetActionPermissionInput{
+		{TargetID: target.ID, ProfileID: profile.ID, ActionName: "query_readonly", ExecutionRule: ActionPermissionAlwaysRun},
+		{TargetID: target.ID, ProfileID: profile.ID, ActionName: "query_readonly", ExecutionRule: ActionPermissionApprovalRequired},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate permission validation error")
+	}
+
+	_, err = store.ReplaceActionPermissions(ctx, tokenID, []SetActionPermissionInput{
+		{TargetID: target.ID, ProfileID: profile.ID, ActionName: "query_readonly", ExecutionRule: ActionPermissionBlocked, ExpiresAt: &expiresAt},
+	})
+	if err == nil {
+		t.Fatal("expected blocked expires_at validation error")
+	}
+
+	_, err = store.ReplaceActionPermissions(ctx, tokenID, []SetActionPermissionInput{
+		{TargetID: target.ID, ProfileID: profile.ID + 100, ActionName: "query_readonly", ExecutionRule: ActionPermissionAlwaysRun},
+	})
+	if err == nil {
+		t.Fatal("expected missing profile validation error")
+	}
+}
+
 func TestResolverMapsGenericConnectorRefToConnectorViews(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)

@@ -87,6 +87,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/tokens/{id}/revoke", tokens.revokeToken)
 	s.mux.HandleFunc("GET /api/tokens/{id}/permissions", tokens.listTokenPermissions)
 	s.mux.HandleFunc("PUT /api/tokens/{id}/permissions", tokens.updateTokenPermissions)
+	s.mux.HandleFunc("GET /api/tokens/{id}/connector-permissions", tokens.listTokenConnectorPermissions)
+	s.mux.HandleFunc("PUT /api/tokens/{id}/connector-permissions", tokens.updateTokenConnectorPermissions)
 	s.mux.HandleFunc("GET /api/backup/download", backup.downloadDatabase)
 	s.mux.HandleFunc("POST /api/backup/import", backup.importDatabase)
 	s.mux.HandleFunc("POST /api/databases/rename", databases.renameDatabase)

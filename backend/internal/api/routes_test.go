@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/servers"
@@ -296,6 +297,46 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	}
 	if profile.Public["username"] != "app_readonly" {
 		t.Fatalf("profile public metadata missing: %#v", profile.Public)
+	}
+
+	token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "connector-agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	permissionExpiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	updatePermissions := performJSON(handler, http.MethodPut, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions", "", updateConnectorPermissionsRequest{
+		Permissions: []connectorPermissionInput{
+			{
+				TargetID:      target.ID,
+				ProfileID:     profile.ID,
+				ActionName:    "query_readonly",
+				ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
+				ExpiresAt:     permissionExpiresAt,
+			},
+		},
+	})
+	if updatePermissions.Code != http.StatusOK {
+		t.Fatalf("update connector permissions failed: %d %s", updatePermissions.Code, updatePermissions.Body.String())
+	}
+	if !strings.Contains(updatePermissions.Body.String(), `"target_ref":"postgres:`) || !strings.Contains(updatePermissions.Body.String(), `"query_readonly"`) {
+		t.Fatalf("connector permission response missing target ref/action: %s", updatePermissions.Body.String())
+	}
+	listPermissions := performJSON(handler, http.MethodGet, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions", "", nil)
+	if listPermissions.Code != http.StatusOK || !strings.Contains(listPermissions.Body.String(), `"profile_label":"readonly"`) {
+		t.Fatalf("list connector permissions failed: %d %s", listPermissions.Code, listPermissions.Body.String())
+	}
+	badPermission := performJSON(handler, http.MethodPut, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions", "", updateConnectorPermissionsRequest{
+		Permissions: []connectorPermissionInput{
+			{
+				TargetID:      target.ID,
+				ProfileID:     profile.ID,
+				ActionName:    "drop_database",
+				ExecutionRule: string(connectortargets.ActionPermissionAlwaysRun),
+			},
+		},
+	})
+	if badPermission.Code != http.StatusBadRequest {
+		t.Fatalf("unsupported connector action should fail, got %d %s", badPermission.Code, badPermission.Body.String())
 	}
 
 	getTarget := performJSON(handler, http.MethodGet, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", nil)

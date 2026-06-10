@@ -563,6 +563,8 @@ POST   /api/tokens
 POST   /api/tokens/{id}/revoke
 GET    /api/tokens/{id}/permissions
 PUT    /api/tokens/{id}/permissions
+GET    /api/tokens/{id}/connector-permissions
+PUT    /api/tokens/{id}/connector-permissions
 GET    /api/settings/security
 PUT    /api/settings/security
 GET    /api/settings/retention
@@ -665,6 +667,28 @@ blocked
 `PUT` replaces the full permission set for the token. Servers not included are inaccessible to that token.
 
 Permissions can be edited from the Console token panel or from the Tokens page dot/dialog flow.
+
+Connector permission update shape:
+
+```json
+{
+  "permissions": [
+    {
+      "target_id": 7,
+      "profile_id": 11,
+      "action_name": "query_readonly",
+      "execution_rule": "approval_required",
+      "expires_at": "2026-06-10T12:00:00Z"
+    }
+  ]
+}
+```
+
+`PUT /api/tokens/{id}/connector-permissions` replaces the full connector action
+permission set for the token. Each grant binds one connector target, one
+credential profile, and one connector action. The response includes safe
+metadata such as target name, profile label, connector kind, and target ref; it
+never includes credential secrets.
 
 ## Backup And Import
 

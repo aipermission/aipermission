@@ -312,24 +312,27 @@ type SetActionPermissionInput struct {
 	ExpiresAt     *time.Time
 }
 
+type ActionPermission struct {
+	TokenID       int64
+	TargetID      int64
+	TargetName    string
+	ProfileID     int64
+	ProfileLabel  string
+	ConnectorKind string
+	ProfileKind   string
+	ActionName    string
+	ExecutionRule ActionPermissionRule
+	ExpiresAt     string
+	CreatedAt     string
+	UpdatedAt     string
+}
+
 func (s *Store) SetActionPermission(ctx context.Context, input SetActionPermissionInput) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("connector target store is not configured")
 	}
-	if input.TokenID < 1 || input.TargetID < 1 || input.ProfileID < 1 {
-		return ValidationError("token_id, target_id, and profile_id are required")
-	}
-	if !connectors.ValidIdentifier(input.ActionName) {
-		return ValidationError("invalid action name")
-	}
-	switch input.ExecutionRule {
-	case ActionPermissionAlwaysRun, ActionPermissionApprovalRequired, ActionPermissionBlocked:
-	default:
-		return ValidationError("invalid execution rule")
-	}
-	var expiresAt any
-	if input.ExpiresAt != nil {
-		expiresAt = input.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	if err := validateActionPermissionInput(input); err != nil {
+		return err
 	}
 	now := nowString()
 	_, err := s.db.ExecContext(ctx, `
@@ -347,11 +350,160 @@ func (s *Store) SetActionPermission(ctx context.Context, input SetActionPermissi
 		input.ProfileID,
 		input.ActionName,
 		input.ExecutionRule,
-		expiresAt,
+		actionPermissionExpiresAt(input),
 		now,
 		now,
 	)
 	return err
+}
+
+func (s *Store) ReplaceActionPermissions(ctx context.Context, tokenID int64, inputs []SetActionPermissionInput) ([]ActionPermission, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("connector target store is not configured")
+	}
+	if tokenID < 1 {
+		return nil, ValidationError("token_id is required")
+	}
+	if err := s.validateActionPermissions(ctx, tokenID, inputs); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin connector permission update: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM token_connector_action_permissions WHERE token_id = ?`, tokenID); err != nil {
+		return nil, fmt.Errorf("clear connector action permissions: %w", err)
+	}
+	now := nowString()
+	for _, input := range inputs {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO token_connector_action_permissions (
+				token_id, target_id, profile_id, action_name, execution_rule, expires_at,
+				created_at, updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			tokenID,
+			input.TargetID,
+			input.ProfileID,
+			input.ActionName,
+			input.ExecutionRule,
+			actionPermissionExpiresAt(input),
+			now,
+			now,
+		); err != nil {
+			return nil, fmt.Errorf("insert connector action permission: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit connector permission update: %w", err)
+	}
+	return s.ListActionPermissions(ctx, tokenID)
+}
+
+func (s *Store) ListActionPermissions(ctx context.Context, tokenID int64) ([]ActionPermission, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("connector target store is not configured")
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			p.token_id, p.target_id, t.name, p.profile_id, cp.label,
+			t.connector_kind, cp.kind, p.action_name, p.execution_rule,
+			COALESCE(p.expires_at, ''), p.created_at, p.updated_at
+		FROM token_connector_action_permissions p
+		JOIN connector_targets t ON t.id = p.target_id
+		JOIN connector_credential_profiles cp ON cp.id = p.profile_id AND cp.target_id = p.target_id
+		WHERE p.token_id = ? AND t.status = 'active'
+		ORDER BY t.connector_kind, t.name, cp.label, p.action_name`,
+		tokenID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list connector action permissions: %w", err)
+	}
+	defer rows.Close()
+
+	permissions := []ActionPermission{}
+	for rows.Next() {
+		var item ActionPermission
+		if err := rows.Scan(
+			&item.TokenID,
+			&item.TargetID,
+			&item.TargetName,
+			&item.ProfileID,
+			&item.ProfileLabel,
+			&item.ConnectorKind,
+			&item.ProfileKind,
+			&item.ActionName,
+			&item.ExecutionRule,
+			&item.ExpiresAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan connector action permission: %w", err)
+		}
+		permissions = append(permissions, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate connector action permissions: %w", err)
+	}
+	return permissions, nil
+}
+
+func (s *Store) validateActionPermissions(ctx context.Context, tokenID int64, inputs []SetActionPermissionInput) error {
+	seen := map[string]bool{}
+	for _, input := range inputs {
+		input.TokenID = tokenID
+		if err := validateActionPermissionInput(input); err != nil {
+			return err
+		}
+		key := fmt.Sprintf("%d:%d:%s", input.TargetID, input.ProfileID, input.ActionName)
+		if seen[key] {
+			return ValidationError("connector action permissions must be unique per target, profile, and action")
+		}
+		seen[key] = true
+		var exists int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT 1
+			FROM connector_targets t
+			JOIN connector_credential_profiles p ON p.target_id = t.id
+			WHERE t.id = ? AND p.id = ? AND t.status = 'active'`,
+			input.TargetID,
+			input.ProfileID,
+		).Scan(&exists)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ValidationError("connector target/profile does not exist")
+		}
+		if err != nil {
+			return fmt.Errorf("validate connector target/profile: %w", err)
+		}
+	}
+	return nil
+}
+
+func validateActionPermissionInput(input SetActionPermissionInput) error {
+	if input.TokenID < 1 || input.TargetID < 1 || input.ProfileID < 1 {
+		return ValidationError("token_id, target_id, and profile_id are required")
+	}
+	if !connectors.ValidIdentifier(input.ActionName) {
+		return ValidationError("invalid action name")
+	}
+	switch input.ExecutionRule {
+	case ActionPermissionAlwaysRun, ActionPermissionApprovalRequired, ActionPermissionBlocked:
+	default:
+		return ValidationError("invalid execution rule")
+	}
+	if input.ExecutionRule == ActionPermissionBlocked && input.ExpiresAt != nil {
+		return ValidationError("expires_at is not supported for blocked permissions")
+	}
+	return nil
+}
+
+func actionPermissionExpiresAt(input SetActionPermissionInput) any {
+	if input.ExpiresAt == nil {
+		return nil
+	}
+	return input.ExpiresAt.UTC().Format(time.RFC3339)
 }
 
 func ConnectorTargetRef(connectorKind string, targetID int64, profileID int64) string {
