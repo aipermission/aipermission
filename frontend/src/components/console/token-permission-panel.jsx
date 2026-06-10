@@ -4,8 +4,38 @@ import { effectiveRule, expiresAtFromLifetime, maskedToken, permissionCardClass,
 import { Badge, CountBadge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Notice } from "../ui/notice";
+import { ConnectorTokenPermissionPanel } from "./connector-token-permission-panel";
 
 export function TokenPermissionPanel({ tokens, selectedServer, selectedTarget, permissionState, unreadMessages, compact = false, onToggleCompact, onRefresh, onSetRule, onOpenMessages }) {
+  if (selectedTarget && !selectedServer && selectedTarget.connector_kind !== "ssh") {
+    return (
+      <ConnectorTokenPermissionPanel
+        tokens={tokens}
+        selectedTarget={selectedTarget}
+        compact={compact}
+        onToggleCompact={onToggleCompact}
+        onRefresh={onRefresh}
+      />
+    );
+  }
+
+  return (
+    <SSHTokenPermissionPanel
+      tokens={tokens}
+      selectedServer={selectedServer}
+      selectedTarget={selectedTarget}
+      permissionState={permissionState}
+      unreadMessages={unreadMessages}
+      compact={compact}
+      onToggleCompact={onToggleCompact}
+      onRefresh={onRefresh}
+      onSetRule={onSetRule}
+      onOpenMessages={onOpenMessages}
+    />
+  );
+}
+
+function SSHTokenPermissionPanel({ tokens, selectedServer, selectedTarget, permissionState, unreadMessages, compact = false, onToggleCompact, onRefresh, onSetRule, onOpenMessages }) {
   const activeTokens = tokens.data.filter((token) => !token.revoked_at);
   const [openTokenID, setOpenTokenID] = useState(null);
   const compactPanelRef = useRef(null);
@@ -129,12 +159,6 @@ export function TokenPermissionPanel({ tokens, selectedServer, selectedTarget, p
         {tokens.state === "error" ? <Notice tone="bad">{tokens.error}</Notice> : null}
         {tokens.state === "ready" && tokens.data.length === 0 ? <Notice>Create a token first.</Notice> : null}
         {tokens.state === "ready" && tokens.data.length > 0 && activeTokens.length === 0 ? <Notice>No active tokens.</Notice> : null}
-        {!selectedServer && selectedTarget ? (
-          <Notice>
-            Connector action permissions are configured from the Tokens page. SSH server permissions remain available here.
-          </Notice>
-        ) : null}
-
         <div className="grid gap-3">
           {activeTokens.map((token) => {
             const permissions = permissionState.data[token.id] || {};

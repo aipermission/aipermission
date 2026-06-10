@@ -27,6 +27,7 @@ const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "component
 const bulkCommandDialogSource = readFileSync(join(currentDir, "..", "components", "console", "bulk-command-dialog.jsx"), "utf8");
 const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
 const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "token-permission-panel.jsx"), "utf8");
+const connectorTokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "connector-token-permission-panel.jsx"), "utf8");
 const permissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "permission-dialog.jsx"), "utf8");
 const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"), "utf8");
 
@@ -134,6 +135,10 @@ test("Console exposes connector action approvals", () => {
   assert.match(consolePageSource, /StructuredConnectorPanel/);
   assert.match(consolePageSource, /target=/);
   assert.match(consolePageSource, /Structured connector target/);
+  assert.match(tokenPermissionPanelSource, /ConnectorTokenPermissionPanel/);
+  assert.match(connectorTokenPermissionPanelSource, /\/api\/connectors\/\$\{selectedTarget\.connector_kind\}/);
+  assert.match(connectorTokenPermissionPanelSource, /\/api\/tokens\/\$\{token\.id\}\/connector-permissions/);
+  assert.match(connectorTokenPermissionPanelSource, /Connector permissions bind one token, target profile, and action/);
   assert.match(consolePageSource, /pendingConnectorApprovals/);
   assert.match(consolePageSource, /runConnectorActionApproval/);
   assert.match(consolePageSource, /declineConnectorActionApproval/);
