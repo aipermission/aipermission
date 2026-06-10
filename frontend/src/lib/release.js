@@ -1,6 +1,19 @@
-export const appVersion = "0.1.13";
+export const appVersion = "0.1.14";
 
 export const changelogEntries = [
+  {
+    version: "0.1.14",
+    label: "AGPL licensing",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "AIPermission is licensed under AGPL-3.0-only from v0.1.14 onward.",
+          "Versions up to and including v0.1.13 remain available under their original MIT license.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.13",
     label: "MCP multi-server commands",

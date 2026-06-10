@@ -110,4 +110,7 @@ This package talks to a local AIPermission gateway. `AIPERMISSION_API_URL` must 
 
 ## License
 
-MIT
+AGPL-3.0-only from v0.1.14 onward.
+
+Versions up to and including v0.1.13 were released under MIT and remain
+available under their original MIT license.

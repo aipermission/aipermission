@@ -2,6 +2,7 @@
   "name": "aipermission-monorepo",
   "private": true,
   "description": "Local permission gateway for AI agents.",
+  "license": "AGPL-3.0-only",
   "workspaces": [
     "frontend",
     "packages/mcp",

@@ -21,7 +21,7 @@
     <img alt="Local-only" src="https://img.shields.io/badge/security-local--only-064e3b" />
     <img alt="MCP" src="https://img.shields.io/badge/MCP-ready-0f766e" />
     <img alt="Docker" src="https://img.shields.io/badge/runtime-Docker-2563eb" />
-    <img alt="License" src="https://img.shields.io/badge/license-MIT-111827" />
+    <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--only-111827" />
   </p>
 </div>
 
@@ -450,4 +450,12 @@ The first release will focus on:
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+AIPermission is licensed under AGPL-3.0-only from v0.1.14 onward. See
+[LICENSE](LICENSE).
+
+Versions up to and including v0.1.13 were released under MIT. Those historical
+releases remain available under their original MIT license.
+
+Commercial use is allowed under the AGPL, but modified versions must comply
+with the AGPL. The AIPermission name and logo identify the official project;
+forks must not imply endorsement by the AIPermission project.

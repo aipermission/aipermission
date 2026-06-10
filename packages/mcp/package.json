@@ -1,9 +1,9 @@
 {
   "name": "@aipermission/mcp",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "mcpName": "io.github.aipermission/aipermission-mcp",
   "description": "Local-first MCP bridge for the aipermission gateway.",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "homepage": "https://github.com/aipermission/aipermission/tree/main/packages/mcp#readme",
   "repository": {

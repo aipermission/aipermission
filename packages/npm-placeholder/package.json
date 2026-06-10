@@ -2,7 +2,7 @@
   "name": "aipermission",
   "version": "0.0.4",
   "description": "Placeholder package for AIPermission. Use @aipermission/mcp.",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "homepage": "https://github.com/aipermission/aipermission#readme",
   "repository": {

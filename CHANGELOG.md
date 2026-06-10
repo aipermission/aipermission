@@ -7,6 +7,14 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-06-10
+
+### Changed
+
+- Relicensed AIPermission to AGPL-3.0-only from this release onward.
+- Documented that versions up to and including v0.1.13 remain available under
+  their original MIT license.
+
 ## [0.1.13] - 2026-06-09
 
 ### Added

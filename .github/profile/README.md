@@ -20,7 +20,7 @@
     <img alt="Local-only" src="https://img.shields.io/badge/security-local--only-064e3b" />
     <img alt="MCP" src="https://img.shields.io/badge/MCP-ready-0f766e" />
     <img alt="Runtime" src="https://img.shields.io/badge/runtime-Docker-2563eb" />
-    <img alt="License" src="https://img.shields.io/badge/license-MIT-111827" />
+    <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--only-111827" />
   </p>
 </div>
 
