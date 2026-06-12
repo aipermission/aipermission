@@ -134,7 +134,7 @@ export function MCPSetupPage() {
         <CardContent className="grid gap-3 text-sm text-stone-600">
           <Step number="1" title="Create a token" text="Each AI client or agent should get its own token." />
           <Step number="2" title="Run init" text="The CLI writes the provider-specific MCP config using that token." />
-          <Step number="3" title="Grant permissions" text="Use Console or Tokens to choose which servers are blocked, prompt, or always run." />
+          <Step number="3" title="Grant permissions" text="Use Console or Tokens to choose which connector target actions are disabled, prompt, or always run." />
           <Step number="4" title="Use the MCP name" text="Tell the AI to use the configured MCP server, for example `aipermission-default`." />
         </CardContent>
       </Card>

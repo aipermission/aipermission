@@ -9,7 +9,7 @@ import { TerminalBlock } from "../ui/terminal-block";
 
 const terminalStatuses = new Set(["completed", "failed", "error", "declined", "stale", "untracked"]);
 
-export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRefresh }) {
+export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRefresh }) {
   const [selected, setSelected] = useState({});
   const [command, setCommand] = useState("");
   const [reason, setReason] = useState("");
@@ -18,14 +18,14 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
   const [runState, setRunState] = useState({ state: "idle", error: null, items: [], parallelism: 3 });
   const [selectedResultID, setSelectedResultID] = useState(null);
 
-  const visibleServers = useMemo(() => {
+  const visibleTargets = useMemo(() => {
     const query = targetQuery.trim().toLowerCase();
-    if (!query) return servers;
-    return servers.filter((server) => `${server.name} ${server.username} ${server.host}`.toLowerCase().includes(query));
-  }, [servers, targetQuery]);
+    if (!query) return targets;
+    return targets.filter((target) => `${target.name} ${target.username} ${target.host}`.toLowerCase().includes(query));
+  }, [targets, targetQuery]);
   const selectedIDs = useMemo(
-    () => servers.filter((server) => selected[server.id]).map((server) => Number(server.id)),
-    [servers, selected]
+    () => targets.filter((target) => selected[target.id]).map((target) => Number(target.id)),
+    [targets, selected]
   );
   const confirmationText = selectedIDs.length > 0 ? `RUN ON ${selectedIDs.length} SERVERS` : "RUN ON 0 SERVERS";
   const canRun = selectedIDs.length > 0 && command.trim() && confirmation === confirmationText && runState.state !== "starting";
@@ -34,8 +34,8 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
   useEffect(() => {
     if (!open) return;
     const initial = {};
-    if (selectedServer?.id) {
-      initial[selectedServer.id] = true;
+    if (selectedTarget?.id) {
+      initial[selectedTarget.id] = true;
     }
     setSelected(initial);
     setCommand("");
@@ -44,7 +44,7 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
     setTargetQuery("");
     setRunState({ state: "idle", error: null, items: [], parallelism: 3 });
     setSelectedResultID(null);
-  }, [open, selectedServer?.id]);
+  }, [open, selectedTarget?.id]);
 
   useEffect(() => {
     if (!open || !hasActiveItems) return undefined;
@@ -54,16 +54,16 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
     return () => window.clearInterval(timer);
   }, [open, hasActiveItems, runState.items.map((item) => `${item.request_id}:${item.status}`).join(",")]);
 
-  function toggleServer(serverID) {
+  function toggleTarget(serverID) {
     setSelected((current) => ({ ...current, [serverID]: !current[serverID] }));
     setConfirmation("");
   }
 
-  function setAllServers(value) {
+  function setAllTargets(value) {
     const next = {};
     if (value) {
-      servers.forEach((server) => {
-        next[server.id] = true;
+      targets.forEach((target) => {
+        next[target.id] = true;
       });
     }
     setSelected(next);
@@ -82,7 +82,7 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
     setSelectedResultID(null);
     try {
       const data = await apiPost("/api/console/bulk-exec", {
-        server_ids: selectedIDs,
+        target_ids: selectedIDs,
         command: command.trim(),
         reason: reason.trim(),
         confirmation,
@@ -124,7 +124,7 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
     <Dialog
       open={open}
       title="Bulk command"
-      description="Run one shell command across selected servers."
+      description="Run one shell command across selected SSH connector targets."
       onClose={onClose}
       size="wide"
       className="h-[calc(100vh-100px)] !w-[100vw] !min-w-[1024px] !max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]"
@@ -141,10 +141,10 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
                 <p className="text-xs text-stone-500">{selectedIDs.length} selected</p>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllServers(true)}>
+                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(true)}>
                   All
                 </Button>
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllServers(false)}>
+                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(false)}>
                   None
                 </Button>
               </div>
@@ -153,17 +153,17 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
               className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-emerald-700"
               value={targetQuery}
               onChange={(event) => setTargetQuery(event.target.value)}
-              placeholder="Search servers"
+              placeholder="Search targets"
             />
           </div>
           <div className="min-h-0 overflow-auto rounded-md border border-stone-200">
-            {visibleServers.map((server) => (
+            {visibleTargets.map((server) => (
               <label key={server.id} className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50">
                 <input
                   type="checkbox"
                   className="mt-1 h-4 w-4 accent-emerald-800"
                   checked={Boolean(selected[server.id])}
-                  onChange={() => toggleServer(server.id)}
+                  onChange={() => toggleTarget(server.id)}
                 />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold text-stone-900">{server.name}</span>
@@ -173,7 +173,7 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
                 </span>
               </label>
             ))}
-            {visibleServers.length === 0 ? <p className="px-3 py-6 text-center text-sm text-stone-500">No matching servers.</p> : null}
+            {visibleTargets.length === 0 ? <p className="px-3 py-6 text-center text-sm text-stone-500">No matching targets.</p> : null}
           </div>
         </section>
 
@@ -208,7 +208,7 @@ export function BulkCommandDialog({ open, servers, selectedServer, onClose, onRe
                 >
                   <Copy className="h-3.5 w-3.5" />
                 </button>{" "}
-                before starting. Runs {runState.parallelism} servers at a time.
+                before starting. Runs {runState.parallelism} targets at a time.
               </span>
             </Notice>
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -273,7 +273,7 @@ function BulkCommandResultRow({ item, selected, onSelect }) {
       onClick={onSelect}
     >
       <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-sm font-semibold text-stone-950">{item.server_name}</span>
+        <span className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.server_name}</span>
         <Badge tone={statusTone(item.status)} className="shrink-0 px-2 py-0.5 text-[11px]">
           {statusLabel(item.status)}
         </Badge>
@@ -299,7 +299,7 @@ function BulkCommandResultDetail({ item }) {
     <article className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 rounded-md border border-stone-200 p-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-stone-950">{item.server_name}</p>
+          <p className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.server_name}</p>
           <p className="text-xs text-stone-500">Request #{item.request_id}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

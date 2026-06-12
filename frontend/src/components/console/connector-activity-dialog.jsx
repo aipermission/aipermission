@@ -17,7 +17,7 @@ export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose })
     <Dialog
       open={open}
       title="Connector activity"
-      description="Recent structured connector actions, including always-run actions that do not appear in the SSH terminal."
+      description="Recent structured connector requests, including always-run requests that do not appear in the SSH terminal."
       onClose={onClose}
       size="wide"
       className="h-[calc(100vh-100px)] !w-[85vw] !min-w-[1024px] !max-w-[1440px] grid-rows-[auto_minmax(0,1fr)]"
@@ -27,7 +27,7 @@ export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose })
         <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-stone-200 bg-stone-50 px-3 py-2">
             <div>
-              <p className="text-xs font-semibold uppercase text-stone-500">Recent actions</p>
+              <p className="text-xs font-semibold uppercase text-stone-500">Recent requests</p>
               <p className="text-xs text-stone-500">{items.length} shown</p>
             </div>
             <Button type="button" variant="outline" className="h-8 px-2" onClick={onRefresh} disabled={approvals?.state === "loading"}>
@@ -54,7 +54,7 @@ export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose })
                 </span>
               </button>
             ))}
-            {items.length === 0 ? <p className="p-3 text-sm text-stone-500">No connector actions yet.</p> : null}
+            {items.length === 0 ? <p className="p-3 text-sm text-stone-500">No connector activity yet.</p> : null}
           </div>
         </aside>
 
@@ -82,7 +82,7 @@ export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose })
               </div>
             </>
           ) : (
-            <div className="grid place-items-center text-sm text-stone-500">Select a connector action to inspect input and output.</div>
+            <div className="grid place-items-center text-sm text-stone-500">Select a connector request to inspect input and output.</div>
           )}
         </section>
       </div>

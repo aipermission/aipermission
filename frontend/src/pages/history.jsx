@@ -1,21 +1,26 @@
 import { Download, RefreshCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiDelete, apiDownload, apiGet, apiPost } from "../lib/api";
-import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { formatBytes, transferProgress } from "../components/console/file-transfer-utils";
 import { CopyButton } from "../components/ui/copy-button";
 import { Dialog } from "../components/ui/dialog";
 import { Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { PaginationBar } from "../components/ui/pagination-bar";
 import { TerminalBlock } from "../components/ui/terminal-block";
+import { formatBytes } from "../components/console/file-transfer-utils";
+import { connectorBadgeTone, connectorKindLabel } from "../connectors/templates/common";
+import { supportedConnectorKinds } from "../connectors/templates/catalog";
+import { getConnectorModel } from "../connectors/templates/registry";
+import { apiDelete, apiDownload, apiGet, apiPost } from "../lib/api";
+import { useGateway } from "../lib/gateway-context";
 
 const statusOptions = [
   { value: "", label: "All statuses" },
-  { value: "pending_approval", label: "Pending" },
+  { value: "pending_approval", label: "Pending approval" },
+  { value: "pending", label: "Pending" },
   { value: "running", label: "Running" },
+  { value: "paused", label: "Paused" },
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
   { value: "stale", label: "Stale" },
@@ -29,27 +34,19 @@ const sourceOptions = [
   { value: "", label: "All sources" },
   { value: "mcp", label: "MCP" },
   { value: "manual", label: "Manual" },
-];
-
-const transferStatusOptions = [
-  { value: "", label: "All statuses" },
-  { value: "pending", label: "Pending" },
-  { value: "running", label: "Running" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-  { value: "canceled", label: "Canceled" },
-];
-
-const transferDirectionOptions = [
-  { value: "", label: "All directions" },
-  { value: "upload", label: "Upload" },
-  { value: "download", label: "Download" },
+  { value: "ui", label: "UI" },
 ];
 
 export function HistoryPage() {
-  const { servers, approvals, loadApprovals } = useGateway();
-  const [activeTab, setActiveTab] = useState("commands");
-  const [filters, setFilters] = useState({ query: "", status: "", source: "", serverID: "", labelID: "" });
+  const { targets } = useGateway();
+  const [filters, setFilters] = useState({
+    query: "",
+    connectorKind: "",
+    status: "",
+    source: "",
+    targetRef: "",
+    labelID: "",
+  });
   const [state, setState] = useState({
     state: "idle",
     data: [],
@@ -59,31 +56,45 @@ export function HistoryPage() {
     next_offset: null,
     error: null,
   });
-  const [selected, setSelected] = useState(null);
   const [labels, setLabels] = useState({ state: "idle", data: [], error: null });
-  const [fileRefreshToken, setFileRefreshToken] = useState(0);
-  const [connectorRefreshToken, setConnectorRefreshToken] = useState(0);
-
-  const stats = useMemo(() => {
-    const data = state.data;
-    return {
-      total: state.total,
-      shown: data.length,
-      pending: data.filter((item) => item.status === "pending_approval").length,
-      failed: data.filter((item) => item.status === "failed" || item.status === "error").length,
-    };
-  }, [state.data, state.total]);
+  const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     void loadLabels();
   }, []);
+
+  const targetItems = targets?.data || [];
+  const targetSignature = targetItems.map((target) => target.ref).join(",");
+  const connectorKindOptions = useMemo(
+    () => [{ value: "", label: "All connectors" }, ...supportedConnectorKinds.map((kind) => ({ value: kind, label: connectorKindLabel(kind) }))],
+    []
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadHistory(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.status, filters.source, filters.serverID, filters.labelID]);
+  }, [filters.query, filters.connectorKind, filters.status, filters.source, filters.targetRef, filters.labelID, targetSignature]);
+
+  useEffect(() => {
+    const hasActive = state.data.some((item) => ["pending", "pending_approval", "running", "paused"].includes(item.status));
+    if (!hasActive) return undefined;
+    const timer = window.setInterval(() => {
+      void loadHistory(state.offset, { silent: true });
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [state.data, state.offset]);
+
+  const stats = useMemo(() => {
+    const data = state.data;
+    return {
+      total: state.total,
+      shown: data.length,
+      active: data.filter((item) => ["pending", "pending_approval", "running", "paused"].includes(item.status)).length,
+      failed: data.filter((item) => ["failed", "error", "stale"].includes(item.status)).length,
+    };
+  }, [state.data, state.total]);
 
   async function loadLabels() {
     setLabels((current) => ({ ...current, state: "loading", error: null }));
@@ -95,20 +106,27 @@ export function HistoryPage() {
     }
   }
 
-  async function loadHistory(offset = state.offset) {
-    setState((current) => ({ ...current, state: "loading", error: null }));
+  async function loadHistory(offset = state.offset, options = {}) {
+    if (!options.silent) {
+      setState((current) => ({ ...current, state: "loading", error: null }));
+    }
     const params = new URLSearchParams({
-      paginated: "true",
       limit: String(state.limit),
       offset: String(Math.max(0, offset)),
     });
     if (filters.query.trim()) params.set("q", filters.query.trim());
+    if (filters.connectorKind) params.set("connector_kind", filters.connectorKind);
     if (filters.status) params.set("status", filters.status);
     if (filters.source) params.set("source", filters.source);
-    if (filters.serverID) params.set("server_id", filters.serverID);
+    const selectedTarget = targetItems.find((target) => target.ref === filters.targetRef);
+    if (selectedTarget?.server_id) {
+      params.set("server_id", String(selectedTarget.server_id));
+    } else if (selectedTarget?.id) {
+      params.set("target_id", String(selectedTarget.id));
+    }
     if (filters.labelID) params.set("label_id", filters.labelID);
     try {
-      const data = await apiGet(`/api/approvals?${params.toString()}`);
+      const data = await apiGet(`/api/history?${params.toString()}`);
       setState({
         state: "ready",
         data: data.items || [],
@@ -118,7 +136,6 @@ export function HistoryPage() {
         next_offset: data.next_offset ?? null,
         error: null,
       });
-      await loadApprovals();
     } catch (error) {
       setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
     }
@@ -127,7 +144,7 @@ export function HistoryPage() {
   async function openHistoryItem(item) {
     setSelected(item);
     try {
-      const detail = await apiGet(`/api/approvals/${item.id}`);
+      const detail = await apiGet(`/api/history/${item.id}`);
       setSelected(detail);
     } catch {
       setSelected(item);
@@ -143,13 +160,13 @@ export function HistoryPage() {
   }
 
   async function attachLabel(id, payload) {
-    const nextLabels = await apiPost(`/api/approvals/${id}/labels`, payload);
+    const nextLabels = await apiPost(`/api/history/${id}/labels`, payload);
     updateItemLabels(id, nextLabels || []);
     await loadLabels();
   }
 
   async function detachLabel(id, labelID) {
-    const nextLabels = await apiDelete(`/api/approvals/${id}/labels/${labelID}`);
+    const nextLabels = await apiDelete(`/api/history/${id}/labels/${labelID}`);
     updateItemLabels(id, nextLabels || []);
     if (filters.labelID && String(labelID) === String(filters.labelID)) {
       setState((current) => ({
@@ -168,83 +185,61 @@ export function HistoryPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">History</h3>
-          <p className="text-sm text-stone-500">Review SSH commands, connector actions, and file transfers executed through the gateway.</p>
+          <p className="text-sm text-stone-500">Review every gateway activity through one connector-aware stream.</p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            if (activeTab === "commands") {
-              loadHistory(state.offset);
-            } else if (activeTab === "files") {
-              setFileRefreshToken((current) => current + 1);
-            } else {
-              setConnectorRefreshToken((current) => current + 1);
-            }
-          }}
-          disabled={activeTab === "commands" && state.state === "loading"}
-        >
+        <Button type="button" variant="outline" onClick={() => loadHistory(state.offset)} disabled={state.state === "loading"}>
           <RefreshCcw className="h-4 w-4" />
           Refresh
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-1 md:w-fit md:min-w-[36rem]">
-        <Button type="button" variant={activeTab === "commands" ? "default" : "ghost"} className="h-9" onClick={() => setActiveTab("commands")}>
-          SSH History
-        </Button>
-        <Button type="button" variant={activeTab === "connectors" ? "default" : "ghost"} className="h-9" onClick={() => setActiveTab("connectors")}>
-          Connector History
-        </Button>
-        <Button type="button" variant={activeTab === "files" ? "default" : "ghost"} className="h-9" onClick={() => setActiveTab("files")}>
-          File Transfer History
-        </Button>
-      </div>
-
-      {activeTab === "commands" ? (
-        <>
       <div className="grid gap-3 md:grid-cols-4">
         <HistoryStat label="Total" value={stats.total} />
         <HistoryStat label="Shown" value={stats.shown} />
-        <HistoryStat label="Pending" value={stats.pending} tone="warn" />
-        <HistoryStat label="Failed/error" value={stats.failed} tone="bad" />
+        <HistoryStat label="Active" value={stats.active} tone="warn" />
+        <HistoryStat label="Failed/stale" value={stats.failed} tone="bad" />
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_150px_180px_180px_180px]">
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_150px_160px_150px_220px_220px]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <Input
             value={filters.query}
             onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
-            placeholder="Search commands, reasons, output, or tokens"
+            placeholder="Search targets, actions, output, paths, or tokens"
             className="pl-9"
           />
         </div>
-        <Select
-          value={filters.source}
-          onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}
-        >
+        <Select value={filters.connectorKind} onChange={(event) => setFilters((current) => ({ ...current, connectorKind: event.target.value }))}>
+          {connectorKindOptions.map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+          {statusOptions.map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}>
           {sourceOptions.map((option) => (
             <option key={option.value || "all"} value={option.value}>
               {option.label}
             </option>
           ))}
         </Select>
-        <Select
-          value={filters.serverID}
-          onChange={(event) => setFilters((current) => ({ ...current, serverID: event.target.value }))}
-        >
-          <option value="">All servers</option>
-          {servers.data.map((server) => (
-            <option key={server.id} value={server.id}>
-              {server.name}
+        <Select value={filters.targetRef} onChange={(event) => setFilters((current) => ({ ...current, targetRef: event.target.value }))}>
+          <option value="">All connectors</option>
+          {targetItems.map((target) => (
+            <option key={target.ref} value={target.ref}>
+              {targetOptionLabel(target)}
             </option>
           ))}
         </Select>
-        <Select
-          value={filters.labelID}
-          onChange={(event) => setFilters((current) => ({ ...current, labelID: event.target.value }))}
-        >
+        <Select value={filters.labelID} onChange={(event) => setFilters((current) => ({ ...current, labelID: event.target.value }))}>
           <option value="">All labels</option>
           {labels.data.map((label) => (
             <option key={label.id} value={label.id}>
@@ -252,20 +247,16 @@ export function HistoryPage() {
             </option>
           ))}
         </Select>
-        <Select
-          value={filters.status}
-          onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setFilters({ query: "", connectorKind: "", status: "", source: "", targetRef: "", labelID: "" })}
         >
-          {statusOptions.map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
+          Clear filters
+        </Button>
       </div>
 
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-      {approvals.state === "error" ? <Notice tone="bad">{approvals.error}</Notice> : null}
       {labels.state === "error" ? <Notice tone="bad">{labels.error}</Notice> : null}
 
       <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
@@ -273,12 +264,12 @@ export function HistoryPage() {
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
               <th className="w-[12%] px-4 py-3 font-semibold">Status</th>
-              <th className="w-[16%] px-4 py-3 font-semibold">Server</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">Source</th>
-              <th className="w-[26%] px-4 py-3 font-semibold">Command</th>
-              <th className="w-[8%] px-4 py-3 font-semibold">Labels</th>
-              <th className="w-[12%] px-4 py-3 font-semibold">Exit</th>
-              <th className="w-[8%] px-4 py-3 text-right font-semibold">Time</th>
+              <th className="w-[12%] px-4 py-3 font-semibold">Connector</th>
+              <th className="w-[22%] px-4 py-3 font-semibold">Target</th>
+              <th className="w-[14%] px-4 py-3 font-semibold">Action</th>
+              <th className="w-[20%] px-4 py-3 font-semibold">Summary</th>
+              <th className="w-[10%] px-4 py-3 font-semibold">Labels</th>
+              <th className="w-[10%] px-4 py-3 text-right font-semibold">Time</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
@@ -292,29 +283,30 @@ export function HistoryPage() {
             {state.state !== "loading" && state.data.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={7}>
-                  No command history yet.
+                  No history yet.
                 </td>
               </tr>
             ) : null}
             {state.state !== "loading"
               ? state.data.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="cursor-pointer transition hover:bg-stone-50"
-                    onClick={() => openHistoryItem(item)}
-                  >
+                  <tr key={item.id} className="cursor-pointer transition hover:bg-stone-50" onClick={() => openHistoryItem(item)}>
                     <td className="px-4 py-3">
                       <StatusBadge status={item.status} />
                     </td>
-                    <td className="truncate px-4 py-3 font-medium text-stone-900">{item.server_name}</td>
                     <td className="px-4 py-3">
-                      <SourceCell item={item} />
+                      <ConnectorBadge kind={item.connector_kind} />
                     </td>
-                    <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{oneLine(item.command)}</td>
+                    <td className="truncate px-4 py-3">
+                      <div className="truncate font-medium text-stone-900">{item.target_name || "-"}</div>
+                      {item.profile_label ? <div className="truncate text-xs text-stone-500">{item.profile_label}</div> : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <ActionBadge item={item} />
+                    </td>
+                    <td className="truncate px-4 py-3 text-stone-700">{entrySummary(item)}</td>
                     <td className="px-4 py-3">
                       <LabelPreview labels={item.labels || []} />
                     </td>
-                    <td className="px-4 py-3 text-stone-600">{item.exit_code ?? "-"}</td>
                     <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>
                   </tr>
                 ))
@@ -341,340 +333,7 @@ export function HistoryPage() {
         onAttachLabel={attachLabel}
         onDetachLabel={detachLabel}
       />
-        </>
-      ) : activeTab === "files" ? (
-        <FileTransfersPanel servers={servers} refreshToken={fileRefreshToken} />
-      ) : (
-        <ConnectorHistoryPanel refreshToken={connectorRefreshToken} />
-      )}
     </section>
-  );
-}
-
-function ConnectorHistoryPanel({ refreshToken }) {
-  const [filters, setFilters] = useState({ query: "", status: "" });
-  const [state, setState] = useState({ state: "idle", data: [], error: null });
-  const [selected, setSelected] = useState(null);
-
-  useEffect(() => {
-    void loadConnectorActions();
-  }, []);
-
-  useEffect(() => {
-    if (!refreshToken) return;
-    void loadConnectorActions();
-  }, [refreshToken]);
-
-  async function loadConnectorActions() {
-    setState((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet("/api/connector-action-approvals");
-      setState({ state: "ready", data: data || [], error: null });
-    } catch (error) {
-      setState({ state: "error", data: [], error: error.message });
-    }
-  }
-
-  async function openConnectorAction(item) {
-    setSelected(item);
-    try {
-      const detail = await apiGet(`/api/connector-action-approvals/${item.id}`);
-      setSelected(detail);
-    } catch {
-      setSelected(item);
-    }
-  }
-
-  const filtered = state.data.filter((item) => {
-    if (filters.status && item.status !== filters.status) return false;
-    const query = filters.query.trim().toLowerCase();
-    if (!query) return true;
-    return [
-      item.target_name,
-      item.target_ref,
-      item.profile_label,
-      item.connector_kind,
-      item.action_name,
-      item.reason,
-      item.display_text,
-      item.error,
-      JSON.stringify(item.input || {}),
-      JSON.stringify(item.output || {}),
-    ]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  });
-
-  const stats = {
-    total: state.data.length,
-    shown: filtered.length,
-    pending: filtered.filter((item) => item.status === "approval_pending" || item.status === "running").length,
-    failed: filtered.filter((item) => item.status === "failed" || item.status === "error" || item.status === "stale").length,
-  };
-
-  return (
-    <>
-      <div className="grid gap-3 md:grid-cols-4">
-        <HistoryStat label="Total" value={stats.total} />
-        <HistoryStat label="Shown" value={stats.shown} />
-        <HistoryStat label="Pending/running" value={stats.pending} tone="warn" />
-        <HistoryStat label="Failed/error" value={stats.failed} tone="bad" />
-      </div>
-
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_220px]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-          <Input
-            value={filters.query}
-            onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
-            placeholder="Search connector action, target, reason, input, or output"
-            className="pl-9"
-          />
-        </div>
-        <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
-          {statusOptions.filter((option) => option.value !== "untracked").map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-      </div>
-
-      {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-
-      <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
-          <thead className="bg-stone-50 text-xs uppercase text-stone-500">
-            <tr>
-              <th className="w-[13%] px-4 py-3 font-semibold">Status</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">Target</th>
-              <th className="w-[13%] px-4 py-3 font-semibold">Profile</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">Action</th>
-              <th className="w-[24%] px-4 py-3 font-semibold">Summary</th>
-              <th className="w-[14%] px-4 py-3 text-right font-semibold">Time</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-stone-100">
-            {state.state === "loading" ? (
-              <tr>
-                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={6}>
-                  Loading connector history...
-                </td>
-              </tr>
-            ) : null}
-            {state.state !== "loading" && filtered.length === 0 ? (
-              <tr>
-                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={6}>
-                  No connector history yet.
-                </td>
-              </tr>
-            ) : null}
-            {state.state !== "loading"
-              ? filtered.map((item) => (
-                  <tr key={item.id} className="cursor-pointer transition hover:bg-stone-50" onClick={() => openConnectorAction(item)}>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={item.status} />
-                    </td>
-                    <td className="truncate px-4 py-3 font-medium text-stone-900">{item.target_name || item.target_ref}</td>
-                    <td className="truncate px-4 py-3 text-stone-700">{item.profile_label || "-"}</td>
-                    <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{item.action_name}</td>
-                    <td className="truncate px-4 py-3 text-stone-600">{item.display_text || item.reason || item.error || "-"}</td>
-                    <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>
-                  </tr>
-                ))
-              : null}
-          </tbody>
-        </table>
-      </div>
-
-      <ConnectorHistoryDialog item={selected} onClose={() => setSelected(null)} />
-    </>
-  );
-}
-
-function FileTransfersPanel({ servers, refreshToken }) {
-  const [filters, setFilters] = useState({ query: "", direction: "", status: "", serverID: "" });
-  const [state, setState] = useState({ state: "idle", data: [], total: 0, limit: 50, offset: 0, next_offset: null, error: null });
-  const [selected, setSelected] = useState(null);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadTransfers(0);
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [filters.query, filters.direction, filters.status, filters.serverID]);
-
-  useEffect(() => {
-    if (!refreshToken) return;
-    void loadTransfers(state.offset);
-  }, [refreshToken]);
-
-  useEffect(() => {
-    const hasActiveTransfer = state.data.some((item) => item.status === "pending" || item.status === "running");
-    if (!hasActiveTransfer) return undefined;
-    const timer = window.setInterval(() => {
-      void loadTransfers(state.offset, { silent: true });
-    }, 1200);
-    return () => window.clearInterval(timer);
-  }, [state.data, state.offset]);
-
-  async function loadTransfers(offset = state.offset, options = {}) {
-    if (!options.silent) {
-      setState((current) => ({ ...current, state: "loading", error: null }));
-    }
-    const params = new URLSearchParams({
-      paginated: "true",
-      limit: String(state.limit),
-      offset: String(Math.max(0, offset)),
-    });
-    if (filters.query.trim()) params.set("q", filters.query.trim());
-    if (filters.direction) params.set("direction", filters.direction);
-    if (filters.status) params.set("status", filters.status);
-    if (filters.serverID) params.set("server_id", filters.serverID);
-    try {
-      const data = await apiGet(`/api/file-transfers?${params.toString()}`);
-      setState({
-        state: "ready",
-        data: data.items || [],
-        total: data.total || 0,
-        limit: data.limit || state.limit,
-        offset: data.offset || 0,
-        next_offset: data.next_offset ?? null,
-        error: null,
-      });
-    } catch (error) {
-      setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
-    }
-  }
-
-  async function openTransfer(item) {
-    setSelected(item);
-    try {
-      const detail = await apiGet(`/api/file-transfers/${item.id}`);
-      setSelected(detail);
-    } catch {
-      setSelected(item);
-    }
-  }
-
-  const pageStart = state.total === 0 ? 0 : state.offset + 1;
-  const pageEnd = Math.min(state.offset + state.data.length, state.total);
-  const stats = {
-    total: state.total,
-    shown: state.data.length,
-    running: state.data.filter((item) => item.status === "running" || item.status === "pending").length,
-    failed: state.data.filter((item) => item.status === "failed" || item.status === "canceled").length,
-  };
-
-  return (
-    <>
-      <div className="grid gap-3 md:grid-cols-4">
-        <HistoryStat label="Total" value={stats.total} />
-        <HistoryStat label="Shown" value={stats.shown} />
-        <HistoryStat label="Running" value={stats.running} tone="neutral" />
-        <HistoryStat label="Failed/canceled" value={stats.failed} tone="bad" />
-      </div>
-
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-          <Input
-            value={filters.query}
-            onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
-            placeholder="Search files, paths, or servers"
-            className="pl-9"
-          />
-        </div>
-        <Select value={filters.direction} onChange={(event) => setFilters((current) => ({ ...current, direction: event.target.value }))}>
-          {transferDirectionOptions.map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Select value={filters.serverID} onChange={(event) => setFilters((current) => ({ ...current, serverID: event.target.value }))}>
-          <option value="">All servers</option>
-          {servers.data.map((server) => (
-            <option key={server.id} value={server.id}>
-              {server.name}
-            </option>
-          ))}
-        </Select>
-        <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
-          {transferStatusOptions.map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-      </div>
-
-      {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-
-      <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
-          <thead className="bg-stone-50 text-xs uppercase text-stone-500">
-            <tr>
-              <th className="w-[13%] px-4 py-3 font-semibold">Status</th>
-              <th className="w-[16%] px-4 py-3 font-semibold">Server</th>
-              <th className="w-[13%] px-4 py-3 font-semibold">Direction</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">File</th>
-              <th className="w-[24%] px-4 py-3 font-semibold">Remote path</th>
-              <th className="w-[9%] px-4 py-3 font-semibold">Progress</th>
-              <th className="w-[7%] px-4 py-3 text-right font-semibold">Time</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-stone-100">
-            {state.state === "loading" ? (
-              <tr>
-                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={7}>
-                  Loading file transfers...
-                </td>
-              </tr>
-            ) : null}
-            {state.state !== "loading" && state.data.length === 0 ? (
-              <tr>
-                <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={7}>
-                  No file transfers yet.
-                </td>
-              </tr>
-            ) : null}
-            {state.state !== "loading"
-              ? state.data.map((item) => (
-                  <tr key={item.id} className="cursor-pointer transition hover:bg-stone-50" onClick={() => openTransfer(item)}>
-                    <td className="px-4 py-3">
-                      <TransferStatusBadge status={item.status} />
-                    </td>
-                    <td className="truncate px-4 py-3 font-medium text-stone-900">{item.server_name}</td>
-                    <td className="px-4 py-3">
-                      <DirectionBadge direction={item.direction} />
-                    </td>
-                    <td className="truncate px-4 py-3 font-medium text-stone-800">{item.file_name || "-"}</td>
-                    <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{item.remote_path}</td>
-                    <td className="px-4 py-3">
-                      <TransferProgressCell item={item} />
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>
-                  </tr>
-                ))
-              : null}
-          </tbody>
-        </table>
-      </div>
-
-      <PaginationBar
-        start={pageStart}
-        end={pageEnd}
-        total={state.total}
-        disabled={state.state === "loading"}
-        onPrevious={() => loadTransfers(Math.max(0, state.offset - state.limit))}
-        onNext={() => loadTransfers(state.next_offset)}
-        hasPrevious={state.offset > 0}
-        hasNext={state.next_offset !== null && state.next_offset !== undefined}
-      />
-
-      <FileTransferHistoryDialog item={selected} onClose={() => setSelected(null)} onRefresh={openTransfer} />
-    </>
   );
 }
 
@@ -687,154 +346,6 @@ function HistoryStat({ label, value, tone = "neutral" }) {
       </div>
     </div>
   );
-}
-
-function FileTransferHistoryDialog({ item, onClose, onRefresh }) {
-  const [state, setState] = useState({ state: "idle", error: null });
-  if (!item) return null;
-  const progress = transferProgress(item);
-
-  async function downloadResult() {
-    setState({ state: "downloading", error: null });
-    try {
-      await apiDownload(`/api/file-transfers/${item.id}/download`, item.file_name || "aipermission-download");
-      setState({ state: "idle", error: null });
-    } catch (error) {
-      setState({ state: "error", error: error.message });
-    }
-  }
-
-  async function refresh() {
-    setState({ state: "refreshing", error: null });
-    try {
-      await onRefresh(item);
-      setState({ state: "idle", error: null });
-    } catch (error) {
-      setState({ state: "error", error: error.message });
-    }
-  }
-
-  return (
-    <Dialog
-      open={Boolean(item)}
-      title={`Transfer #${item.id}`}
-      description={`${item.server_name} · ${formatDateTime(item.created_at)}`}
-      onClose={onClose}
-      size="xl"
-      className="max-h-[calc(100vh-80px)]"
-      bodyClassName="overflow-auto"
-    >
-      <div className="grid gap-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <TransferStatusBadge status={item.status} />
-          <DirectionBadge direction={item.direction} />
-          {item.checksum_sha256 ? <Badge>sha256</Badge> : null}
-          {item.size_bytes > 0 ? <Badge>{formatBytes(item.size_bytes)}</Badge> : null}
-        </div>
-
-        <div className="grid gap-3 rounded-md border border-stone-200 bg-stone-50 p-4 text-sm md:grid-cols-2">
-          <TransferField label="File" value={item.file_name || "-"} />
-          <TransferField label="Server" value={item.server_name || "-"} />
-          <TransferField label="Remote path" value={item.remote_path || "-"} mono wide />
-          <TransferField label="Local source" value={item.local_path || "-"} mono />
-          <TransferField label="Started" value={formatDateTime(item.started_at)} />
-          <TransferField label="Completed" value={formatDateTime(item.completed_at)} />
-          <TransferField label="Checksum SHA256" value={item.checksum_sha256 || "-"} mono wide />
-          {item.error ? <TransferField label="Error" value={item.error} wide /> : null}
-        </div>
-
-        <div className="grid gap-2">
-          <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-            <div className="h-full rounded-full bg-emerald-700" style={{ width: `${progress.percent}%` }} />
-          </div>
-          <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
-            <span>{progress.label}</span>
-            <span>{progress.percent}%</span>
-          </div>
-        </div>
-
-        {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
-
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="outline" onClick={refresh} disabled={state.state === "refreshing"}>
-            <RefreshCcw className="h-4 w-4" />
-            Refresh
-          </Button>
-          {item.direction === "download" && item.status === "completed" ? (
-            <Button type="button" onClick={downloadResult} disabled={state.state === "downloading"}>
-              <Download className="h-4 w-4" />
-              Save download
-            </Button>
-          ) : null}
-        </div>
-      </div>
-    </Dialog>
-  );
-}
-
-function ConnectorHistoryDialog({ item, onClose }) {
-  if (!item) return null;
-  return (
-    <Dialog
-      open={Boolean(item)}
-      title={`Connector request #${item.id}`}
-      description={`${item.target_name || item.target_ref} · ${formatDateTime(item.created_at)}`}
-      onClose={onClose}
-      size="wide"
-      className="h-[calc(100vh-100px)] grid-rows-[auto_minmax(0,1fr)]"
-      bodyClassName="min-h-0 overflow-hidden p-0"
-    >
-      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-        <div className="grid gap-2 border-b border-stone-200 px-5 py-3">
-          <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-            <span className="min-w-0 truncate text-sm text-stone-600">
-              {item.reason ? item.reason : "No reason provided."}
-            </span>
-            <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
-              <StatusBadge status={item.status} />
-              <Badge>{item.connector_kind}</Badge>
-              {item.profile_label ? <Badge>{item.profile_label}</Badge> : null}
-              {item.token_name ? <Badge>{item.token_name}</Badge> : null}
-            </div>
-          </div>
-          {item.error ? (
-            <Notice tone="bad" className="py-2 text-xs">
-              {item.error}
-            </Notice>
-          ) : null}
-        </div>
-
-        <div className="grid min-h-0 gap-4 p-5 lg:grid-cols-2">
-          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
-            <SectionHeader label={`Input: ${item.action_name}`} value={formatConnectorJSON(item.input || {})} />
-            <TerminalBlock>{formatConnectorJSON(item.input || {})}</TerminalBlock>
-          </div>
-          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
-            <SectionHeader label="Output" value={formatConnectorJSON(item.output ?? item.display_text ?? {})} />
-            <TerminalBlock>{formatConnectorJSON(item.output ?? item.display_text ?? {})}</TerminalBlock>
-          </div>
-        </div>
-      </div>
-    </Dialog>
-  );
-}
-
-function TransferField({ label, value, mono = false, wide = false }) {
-  return (
-    <div className={`grid min-w-0 gap-1 ${wide ? "md:col-span-2" : ""}`}>
-      <span className="text-xs font-semibold uppercase text-stone-500">{label}</span>
-      <span className={`min-w-0 break-words ${mono ? "font-mono text-xs" : ""}`}>{value || "-"}</span>
-    </div>
-  );
-}
-
-function formatConnectorJSON(value) {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value ?? {}, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabel }) {
@@ -852,7 +363,7 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
   }, [item?.id]);
 
   if (!item) return null;
-  const output = [item.stdout, item.stderr, item.error].filter(Boolean).join("\n\n");
+
   const attachedLabels = item.labels || [];
   const attachedNames = new Set(attachedLabels.map((label) => label.name.toLowerCase()));
   const labelQuery = labelName.trim().toLowerCase();
@@ -861,6 +372,8 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
     .filter((label) => !labelQuery || label.name.toLowerCase().includes(labelQuery))
     .slice(0, 10);
   const showSuggestions = suggestionsOpen && suggestions.length > 0;
+  const input = entryInput(item);
+  const output = entryOutput(item);
 
   function focusLabelInput() {
     window.setTimeout(() => labelInputRef.current?.focus(), 0);
@@ -869,8 +382,7 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
   async function addLabel(value = labelName) {
     const name = value.trim();
     if (!name) return;
-    const normalized = name.toLowerCase();
-    if (attachedNames.has(normalized)) {
+    if (attachedNames.has(name.toLowerCase())) {
       setLabelName("");
       return;
     }
@@ -880,6 +392,18 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
       setLabelName("");
       setSuggestionsOpen(false);
       setActiveSuggestion(0);
+      setState({ state: "idle", error: null });
+      focusLabelInput();
+    } catch (error) {
+      setState({ state: "error", error: error.message });
+      focusLabelInput();
+    }
+  }
+
+  async function removeLabel(labelID) {
+    setState({ state: "saving", error: null });
+    try {
+      await onDetachLabel(item.id, labelID);
       setState({ state: "idle", error: null });
       focusLabelInput();
     } catch (error) {
@@ -911,28 +435,21 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
     }
   }
 
-  function submitLabel(event) {
-    event.preventDefault();
-    void addLabel();
-  }
-
-  async function removeLabel(labelID) {
-    setState({ state: "saving", error: null });
+  async function downloadTransfer() {
+    setState({ state: "downloading", error: null });
     try {
-      await onDetachLabel(item.id, labelID);
+      await apiDownload(`/api/file-transfers/${item.source_ref_id}/download`, transferFileName(item));
       setState({ state: "idle", error: null });
-      focusLabelInput();
     } catch (error) {
       setState({ state: "error", error: error.message });
-      focusLabelInput();
     }
   }
 
   return (
     <Dialog
       open={Boolean(item)}
-      title={`Request #${item.id}`}
-      description={`${item.server_name} · ${formatDateTime(item.created_at)}`}
+      title={`History #${item.id}`}
+      description={`${item.target_name || "unknown target"} · ${formatDateTime(item.created_at)}`}
       onClose={onClose}
       size="wide"
       className="h-[calc(100vh-100px)] grid-rows-[auto_minmax(0,1fr)]"
@@ -941,106 +458,136 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
         <div className="grid gap-2 border-b border-stone-200 px-5 py-3">
           <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-            <span className="min-w-0 truncate text-sm text-stone-600">
-              {item.reason ? item.reason : "No reason provided."}
-            </span>
+            <span className="min-w-0 truncate text-sm text-stone-600">{entrySummary(item)}</span>
             <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
               <StatusBadge status={item.status} />
-              {item.token_name ? <Badge>{item.token_name}</Badge> : null}
+              <ConnectorBadge kind={item.connector_kind} />
+              <ActionBadge item={item} />
               <SourceBadge source={item.source} />
-              {item.session_id ? <Badge>session {item.session_id}</Badge> : null}
+              {item.profile_label ? <Badge>{item.profile_label}</Badge> : null}
+              {item.token_name ? <Badge>{item.token_name}</Badge> : null}
               {item.exit_code !== undefined && item.exit_code !== null ? <Badge>exit {item.exit_code}</Badge> : null}
-              {item.output_truncated ? <Badge tone="warn">output truncated</Badge> : null}
             </div>
           </div>
+
           {item.status === "untracked" ? (
             <p className="truncate rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              <span className="font-semibold">Not tracked:</span> {trackingReasonLabel(item.tracking_reason)}
+              <span className="font-semibold">Not tracked:</span> output or exit status was not captured for this manual terminal command.
             </p>
           ) : null}
-          {item.user_note ? (
-            <p className="truncate rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              <span className="font-semibold">User note:</span> {item.user_note}
-            </p>
-          ) : null}
-          {item.policy_warnings?.length ? (
-            <Notice tone="warn" className="py-2 text-xs">
-              <span className="font-semibold">Policy warning:</span> {item.policy_warnings.map((warning) => warning.message).join(" ")}
-            </Notice>
-          ) : null}
-          <div className="grid gap-2">
-            <form className="relative min-w-0" onSubmit={submitLabel}>
-              <div className="flex min-h-10 min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-md border border-stone-200 bg-white px-2 py-1.5 focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/15">
-                {attachedLabels.map((label) => (
+          {item.error ? <Notice tone="bad">{item.error}</Notice> : null}
+
+          <form className="relative min-w-0" onSubmit={(event) => event.preventDefault()}>
+            <div className="flex min-h-10 min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-md border border-stone-200 bg-white px-2 py-1.5 focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/15">
+              {attachedLabels.map((label) => (
+                <button
+                  key={label.id}
+                  type="button"
+                  className="inline-flex max-w-44 shrink-0 items-center gap-1 rounded-full border bg-transparent px-2.5 py-1 text-xs font-semibold"
+                  style={labelStyle(label)}
+                  onClick={() => removeLabel(label.id)}
+                  disabled={state.state === "saving"}
+                  title="Remove label"
+                >
+                  <span className="truncate">{label.name}</span>
+                  <X className="h-3 w-3" />
+                </button>
+              ))}
+              <input
+                ref={labelInputRef}
+                value={labelName}
+                onChange={(event) => {
+                  setLabelName(event.target.value);
+                  setSuggestionsOpen(true);
+                  setActiveSuggestion(0);
+                }}
+                onFocus={() => {
+                  setSuggestionsOpen(true);
+                  setActiveSuggestion(0);
+                }}
+                onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+                onKeyDown={handleLabelKeyDown}
+                placeholder={attachedLabels.length === 0 ? "Type a label and press Enter" : "Add another label"}
+                disabled={state.state === "saving"}
+                className="h-7 min-w-40 flex-1 shrink-0 border-0 bg-transparent px-1 text-sm outline-none placeholder:text-stone-400"
+              />
+            </div>
+            {showSuggestions ? (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-stone-200 bg-white shadow-lg">
+                {suggestions.map((label, index) => (
                   <button
                     key={label.id}
                     type="button"
-                    className="inline-flex max-w-44 shrink-0 items-center gap-1 rounded-full border bg-transparent px-2.5 py-1 text-xs font-semibold"
-                    style={labelStyle(label)}
-                    onClick={() => removeLabel(label.id)}
-                    disabled={state.state === "saving"}
-                    title="Remove label"
+                    className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
+                      index === activeSuggestion ? "bg-emerald-50 text-emerald-950" : "text-stone-800 hover:bg-stone-50"
+                    }`}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      void addLabel(label.name);
+                    }}
                   >
                     <span className="truncate">{label.name}</span>
-                    <X className="h-3 w-3" />
+                    <span className="text-xs text-stone-400">Enter</span>
                   </button>
                 ))}
-                <input
-                  ref={labelInputRef}
-                  value={labelName}
-                  onChange={(event) => {
-                    setLabelName(event.target.value);
-                    setSuggestionsOpen(true);
-                    setActiveSuggestion(0);
-                  }}
-                  onFocus={() => {
-                    setSuggestionsOpen(true);
-                    setActiveSuggestion(0);
-                  }}
-                  onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
-                  onKeyDown={handleLabelKeyDown}
-                  placeholder={attachedLabels.length === 0 ? "Type a label and press Enter" : "Add another label"}
-                  disabled={state.state === "saving"}
-                  className="h-7 min-w-40 flex-1 shrink-0 border-0 bg-transparent px-1 text-sm outline-none placeholder:text-stone-400"
-                />
               </div>
-              {showSuggestions ? (
-                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-stone-200 bg-white shadow-lg">
-                  {suggestions.map((label, index) => (
-                    <button
-                      key={label.id}
-                      type="button"
-                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
-                        index === activeSuggestion ? "bg-emerald-50 text-emerald-950" : "text-stone-800 hover:bg-stone-50"
-                      }`}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        void addLabel(label.name);
-                      }}
-                    >
-                      <span className="truncate">{label.name}</span>
-                      <span className="text-xs text-stone-400">Enter</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </form>
-          </div>
+            ) : null}
+          </form>
           {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
         </div>
 
         <div className="grid min-h-0 gap-4 p-5 lg:grid-cols-2">
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
-            <SectionHeader label="Command" value={item.command} />
-            <TerminalBlock>{item.command}</TerminalBlock>
+            <SectionHeader label={inputLabel(item)} value={input} />
+            <TerminalBlock>{input || "No input captured."}</TerminalBlock>
           </div>
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
             <SectionHeader label="Output" value={output} />
-            <TerminalBlock>{output || "No output captured."}</TerminalBlock>
+            {item.activity_type === "file_transfer" ? <TransferDetail item={item} /> : <TerminalBlock>{output || "No output captured."}</TerminalBlock>}
           </div>
         </div>
+
+        {item.activity_type === "file_transfer" && item.action_name === "download" && item.status === "completed" ? (
+          <div className="flex justify-end border-t border-stone-200 px-5 py-3">
+            <Button type="button" onClick={downloadTransfer} disabled={state.state === "downloading"}>
+              <Download className="h-4 w-4" />
+              Save download
+            </Button>
+          </div>
+        ) : null}
       </div>
     </Dialog>
+  );
+}
+
+function TransferDetail({ item }) {
+  const percent = progressPercent(item);
+  return (
+    <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 rounded-md border border-stone-200 bg-stone-50 p-4">
+      <div className="grid gap-2 text-sm">
+        <TransferField label="Remote path" value={item.summary || item.input_text || "-"} mono />
+        <TransferField label="Bytes" value={`${formatBytes(item.bytes_done || 0)} / ${formatBytes(item.bytes_total || 0)}`} />
+      </div>
+      <div className="grid gap-1">
+        <div className="h-2 overflow-hidden rounded-full bg-stone-100">
+          <div className="h-full rounded-full bg-emerald-700" style={{ width: `${percent}%` }} />
+        </div>
+        <div className="flex items-center justify-between text-xs text-stone-500">
+          <span>{item.status}</span>
+          <span>{percent}%</span>
+        </div>
+      </div>
+      <TerminalBlock>{item.output_text || item.error || "No transfer output captured."}</TerminalBlock>
+    </div>
+  );
+}
+
+function TransferField({ label, value, mono = false }) {
+  return (
+    <div className="grid min-w-0 gap-1">
+      <span className="text-xs font-semibold uppercase text-stone-500">{label}</span>
+      <span className={`min-w-0 break-words ${mono ? "font-mono text-xs" : ""}`}>{value || "-"}</span>
+    </div>
   );
 }
 
@@ -1060,24 +607,6 @@ function LabelPreview({ labels }) {
   );
 }
 
-function SourceCell({ item }) {
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <SourceBadge source={item.source} />
-      {item.source === "manual" ? (
-        <span className="truncate text-xs text-stone-500">local console</span>
-      ) : (
-        <span className="truncate text-xs text-stone-600">{item.token_name || "deleted token"}</span>
-      )}
-    </div>
-  );
-}
-
-function SourceBadge({ source }) {
-  const value = source || "mcp";
-  return <Badge tone={value === "manual" ? "warn" : "neutral"}>{value === "manual" ? "manual" : "mcp"}</Badge>;
-}
-
 function SectionHeader({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -1091,6 +620,8 @@ function StatusBadge({ status }) {
   const tone = {
     completed: "good",
     canceled: "warn",
+    paused: "warn",
+    pending: "neutral",
     running: "neutral",
     pending_approval: "warn",
     declined: "warn",
@@ -1102,35 +633,23 @@ function StatusBadge({ status }) {
   return <Badge tone={tone}>{statusLabel(status)}</Badge>;
 }
 
-function TransferStatusBadge({ status }) {
-  const tone = {
-    completed: "good",
-    running: "neutral",
-    pending: "neutral",
-    canceled: "warn",
-    failed: "bad",
-  }[status] || "neutral";
-  return <Badge tone={tone}>{status || "unknown"}</Badge>;
+function ConnectorBadge({ kind }) {
+  return <Badge tone={connectorBadgeTone(kind)}>{connectorKindLabel(kind || "connector")}</Badge>;
 }
 
-function DirectionBadge({ direction }) {
-  return <Badge tone={direction === "upload" ? "warn" : "neutral"}>{direction || "transfer"}</Badge>;
+function ActionBadge({ item }) {
+  const label = {
+    command: item.source === "manual" ? "manual" : item.action_name || "exec",
+    action: item.action_name || "action",
+    file_transfer: item.action_name || "transfer",
+  }[item.activity_type] || item.action_name || "activity";
+  return <Badge tone={item.activity_type === "file_transfer" ? "warn" : "neutral"}>{label}</Badge>;
 }
 
-function TransferProgressCell({ item }) {
-  const progress = transferProgress(item);
-  const active = item.status === "pending" || item.status === "running";
-  return (
-    <div className="grid min-w-0 gap-1.5">
-      <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
-        <div
-          className={`h-full rounded-full bg-emerald-700 transition-all ${active ? "animate-pulse" : ""}`}
-          style={{ width: `${progress.percent}%` }}
-        />
-      </div>
-      <span className="truncate text-xs text-stone-600">{item.status === "completed" && !item.size_bytes ? "done" : progress.label}</span>
-    </div>
-  );
+function SourceBadge({ source }) {
+  const value = source || "mcp";
+  const tone = value === "manual" ? "warn" : value === "ui" ? "good" : "neutral";
+  return <Badge tone={tone}>{value}</Badge>;
 }
 
 function labelStyle(label) {
@@ -1144,41 +663,65 @@ function labelStyle(label) {
 function statusLabel(status) {
   if (status === "pending_approval") return "pending";
   if (status === "untracked") return "not tracked";
-  if (status === "canceled") return "canceled";
-  if (status === "stale") return "stale";
   return status || "unknown";
 }
 
-function trackingReasonLabel(reason) {
-  const labels = {
-    interactive_editor: "interactive editor command",
-    interactive_repl: "interactive REPL command",
-    interactive_tui: "interactive terminal program",
-    nested_shell: "nested shell boundary",
-    long_running_stream: "long-running stream command",
-    background_job: "background job command",
-    may_prompt: "command may prompt interactively",
-    multiline_or_heredoc: "multiline command preview only",
-    compound_command: "compound command shape",
-    command_preview_truncated: "command preview was truncated",
-    manual_output_not_tracked: "manual command output is available only in the console transcript",
-    exit_code_unavailable: "manual command completed; shell exit code was not captured",
-    unsupported_shell: "unsupported shell",
-    untrusted_command_text: "command text was not trusted",
-    history_recall_untracked: "command was recalled with an arrow key; command text was not captured",
-    marker_desync: "capture marker desynchronized",
-    active_exec_paused: "capture paused while an MCP command was running",
-    manual_capture_superseded: "manual capture was superseded by a newer command",
-    prompt_not_detected: "shell prompt was not detected before the next command",
-    session_closed: "console session closed before command output could be completed",
-    output_buffer_limit: "output exceeded the capture limit",
-    privacy_history_suppressed: "history privacy settings suppressed capture",
-  };
-  return labels[reason] || reason || "AIPermission did not capture output or lifecycle for this command.";
+function entrySummary(item) {
+  return item.summary || item.title || item.action_name || item.input_text || item.error || "-";
 }
 
-function oneLine(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
+function entryInput(item) {
+  if (item.input_text) return item.input_text;
+  return prettyJSON(item.input_json);
+}
+
+function entryOutput(item) {
+  if (item.output_text) return item.output_text;
+  const json = prettyJSON(item.output_json);
+  if (json && json !== "{}") return json;
+  return item.error || "";
+}
+
+function inputLabel(item) {
+  if (item.activity_type === "file_transfer") return item.action_name === "upload" ? "Upload" : "Download";
+  if (item.activity_type === "action") return `Input: ${item.action_name}`;
+  return "Command";
+}
+
+function prettyJSON(value) {
+  if (!value) return "";
+  if (typeof value !== "string") {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function progressPercent(item) {
+  const total = Number(item.bytes_total || item.progress_total || 0);
+  const done = Number(item.bytes_done || item.progress_current || 0);
+  if (total <= 0) return item.status === "completed" ? 100 : 0;
+  return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+}
+
+function transferFileName(item) {
+  const summary = String(item.summary || "").split("/").filter(Boolean).pop();
+  return summary || item.title || "aipermission-download";
+}
+
+function targetOptionLabel(target) {
+  if (!target) return "Unknown connector";
+  const model = getConnectorModel(target.connector_kind);
+  const name = model?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "connector";
+  const profile = model?.targetProfileLabel?.({ target }) || target.profile_label || "default";
+  return `${name} / ${profile}`;
 }
 
 function formatShortTime(value) {

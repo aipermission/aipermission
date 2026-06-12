@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
+const connectorTemplatesDir = join(currentDir, "..", "connectors", "templates");
+const indexSource = readFileSync(join(currentDir, "..", "..", "index.html"), "utf8");
+const themeInitSource = readFileSync(join(currentDir, "..", "..", "public", "theme-init.js"), "utf8");
 const appSource = readFileSync(join(currentDir, "..", "App.jsx"), "utf8");
 const apiSource = readFileSync(join(currentDir, "api.js"), "utf8");
 const nginxSource = readFileSync(join(currentDir, "..", "..", "nginx.conf"), "utf8");
@@ -14,13 +17,13 @@ const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
 const approvalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "approval-dialog.jsx"), "utf8");
 const connectorApprovalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "connector-action-approval-dialog.jsx"), "utf8");
 const connectorActivityDialogSource = readFileSync(join(currentDir, "..", "components", "console", "connector-activity-dialog.jsx"), "utf8");
-const serversSource = readFileSync(join(currentDir, "..", "pages", "servers.jsx"), "utf8");
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
 const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
+const auditLogsSource = readFileSync(join(currentDir, "..", "pages", "audit-logs.jsx"), "utf8");
 const consolePageSource = readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8");
 const connectorsSource = readFileSync(join(currentDir, "..", "pages", "connectors.jsx"), "utf8");
-const sshKeysSource = readFileSync(join(currentDir, "..", "pages", "ssh-keys.jsx"), "utf8");
+const credentialsSource = readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8");
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-dialog.jsx"), "utf8");
 const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-browser-dialog.jsx"), "utf8");
 const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-confirm-dialogs.jsx"), "utf8");
@@ -30,20 +33,123 @@ const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "componen
 const connectorTokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "connector-token-permission-panel.jsx"), "utf8");
 const permissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "permission-dialog.jsx"), "utf8");
 const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"), "utf8");
+const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "connectors", "templates", "common.jsx"), "utf8");
+const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
+const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "catalog.js"), "utf8");
+const sshConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "form.jsx"), "utf8");
+const sshCredentialFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "credential-form.jsx"), "utf8");
+const sshCredentialRowActionsTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "credential-row-actions.jsx"), "utf8");
+const sshConnectorListItemTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "list-item.jsx"), "utf8");
+const sshConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "console.jsx"), "utf8");
+const sshConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "metadata.json"), "utf8");
+const sshConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "model.js"), "utf8");
+const sshConnectorOperationsSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "operations.jsx"), "utf8");
+const postgresConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "form.jsx"), "utf8");
+const postgresCredentialFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "credential-form.jsx"), "utf8");
+const postgresConnectorListItemTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "list-item.jsx"), "utf8");
+const postgresConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "console.jsx"), "utf8");
+const postgresConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"), "utf8");
+const postgresConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "model.js"), "utf8");
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 test("App keeps the primary route surface available", () => {
-  for (const route of ["/console", "/servers", "/connectors", "/history", "/audit-logs", "/tokens", "/ssh-keys", "/mcp-setup", "/security", "/settings"]) {
+  for (const route of ["/console", "/connectors", "/history", "/audit-logs", "/tokens", "/credentials", "/mcp-setup", "/security", "/settings"]) {
     assert.match(appSource, new RegExp(`path="${route}"`));
     assert.match(sidebarSource, new RegExp(`to: "${route}"`));
   }
+  assert.match(appSource, /path="\/servers"/);
+  assert.match(appSource, /<Navigate to="\/connectors" replace/);
+  assert.doesNotMatch(sidebarSource, /to: "\/servers"/);
 });
 
-test("Connectors page wires the Postgres target APIs", () => {
-  assert.match(connectorsSource, /\/api\/connectors\/postgres/);
-  assert.match(connectorsSource, /\/api\/connector-targets\?kind=postgres/);
+test("Connectors page wires generic connector templates", () => {
+  assert.match(connectorsSource, /Add connector/);
+  assert.match(connectorsSource, /Connector type/);
+  assert.match(connectorsSource, /Operations/);
+  assert.match(connectorsSource, /showUnderConstruction/);
+  assert.match(connectorsSource, /getConnectorTemplate\(form\.connector_kind\)\?\.Form/);
+  assert.match(connectorsSource, /getConnectorModel\(target\.connector_kind\)/);
+  assert.match(connectorsSource, /model\.save/);
+  assert.match(connectorsSource, /model\.deleteTarget/);
+  assert.match(connectorsSource, /model\.test/);
+  assert.match(connectorTemplateRegistrySource, /ssh:\s*Object\.freeze/);
+  assert.match(connectorTemplateRegistrySource, /postgres:\s*Object\.freeze/);
+  assert.match(connectorTemplateRegistrySource, /metadata: getConnectorMetadata\("ssh"\)/);
+  assert.match(connectorTemplateRegistrySource, /metadata: getConnectorMetadata\("postgres"\)/);
+  assert.match(connectorTemplateRegistrySource, /model: SSHConnectorModel/);
+  assert.match(connectorTemplateRegistrySource, /model: PostgresConnectorModel/);
+  assert.match(connectorTemplateCatalogSource, /supportedConnectorKinds/);
+  assert.match(sshConnectorMetadataSource, /"label": "SSH"/);
+  assert.match(sshConnectorMetadataSource, /"icon": "server"/);
+  assert.match(postgresConnectorMetadataSource, /"label": "Postgres"/);
+  assert.match(postgresConnectorMetadataSource, /"icon": "database"/);
+  assert.match(connectorTemplateRegistrySource, /CredentialForm/);
+  assert.match(connectorTemplateRegistrySource, /CredentialRowActions/);
+  assert.match(connectorTemplateRegistrySource, /RowActions/);
+  assert.match(connectorTemplateRegistrySource, /ToolbarActions/);
+  assert.match(connectorTemplateRegistrySource, /Operations/);
+  assert.match(connectorTemplateRegistrySource, /ConnectorTemplateNotFound/);
+  assert.match(sshConnectorFormTemplateSource, /SSHConnectorFormTemplate/);
+  assert.match(sshConnectorListItemTemplateSource, /SSHConnectorRowActionsTemplate/);
+  assert.match(sshConnectorConsoleTemplateSource, /SSHConnectorConsoleTemplate/);
+  assert.match(sshConnectorModelSource, /apiPost\("\/api\/connector-targets\/test"/);
+  assert.match(sshConnectorModelSource, /apiPost\("\/api\/connector-targets"/);
+  assert.match(sshConnectorModelSource, /apiPut\(`\/api\/connector-targets\/\$\{targetID\}`/);
+  assert.match(sshConnectorModelSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}/);
+  assert.doesNotMatch(sshConnectorModelSource, /\/api\/servers\/test-connection/);
+  assert.match(sshConnectorModelSource, /\/profiles\/\$\{profile\.id\}\/test/);
+  assert.doesNotMatch(sshConnectorModelSource, /apiPut\(`\/api\/servers\//);
+  assert.doesNotMatch(sshConnectorModelSource, /apiDelete\(`\/api\/servers\//);
+  assert.match(sshConnectorModelSource, /deleteDialog/);
+  assert.match(postgresConnectorFormTemplateSource, /PostgresConnectorFormTemplate/);
+  assert.match(postgresConnectorListItemTemplateSource, /PostgresConnectorRowActionsTemplate/);
+  assert.match(postgresConnectorConsoleTemplateSource, /PostgresConnectorConsoleTemplate/);
+  assert.match(postgresConnectorModelSource, /apiPut\(`\/api\/connector-targets\/\$\{target\.id\}`/);
+  assert.match(postgresConnectorModelSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}`/);
+  assert.match(postgresConnectorModelSource, /\/profiles\/\$\{profile\.id\}\/test/);
+  assert.match(postgresConnectorModelSource, /deleteDialog/);
+  assert.match(sshConnectorModelSource, /function targetEndpoint/);
+  assert.match(postgresConnectorModelSource, /function targetEndpoint/);
+  assert.match(connectorsSource, /model\?\.targetEndpoint/);
+  assert.doesNotMatch(connectorTemplateCommonSource, /target\.connector_kind ===/);
+  assert.doesNotMatch(connectorTemplateCommonSource, /kind === "ssh"|kind === "postgres"/);
+  assert.match(sshConnectorListItemTemplateSource, /Check Docker/);
+  assert.match(sshConnectorListItemTemplateSource, /Install key/);
+  assert.match(sshConnectorListItemTemplateSource, /Install key for/);
+  assert.match(postgresConnectorListItemTemplateSource, /Create user/);
+  assert.match(postgresConnectorListItemTemplateSource, /Backup management/);
+  assert.match(postgresConnectorListItemTemplateSource, /onUnderConstruction/);
+  assert.doesNotMatch(sshConnectorListItemTemplateSource, /Delete SSH connector|Edit SSH connector|Test SSH/);
+  assert.match(connectorsSource, /title="Test connection"/);
+  assert.match(connectorsSource, /title="Edit connector"/);
+  assert.match(connectorsSource, /title="Delete connector"/);
+  assert.match(connectorsSource, /\/api\/connectors\/\$\{item\.kind\}/);
   assert.match(connectorsSource, /\/api\/connector-targets/);
-  assert.match(connectorsSource, /connection_mode:\s*"direct"/);
-  assert.match(connectorsSource, /query_readonly|Postgres actions/);
+  assert.doesNotMatch(connectorsSource, /connection_mode:\s*"direct"/);
+  assert.doesNotMatch(connectorsSource, /apiPut\(`\/api\/connector-targets\/\$\{target\.id\}`/);
+  assert.doesNotMatch(connectorsSource, /apiPut\(`\/api\/servers\/\$\{serverID\}`/);
+  assert.doesNotMatch(connectorsSource, /\/api\/servers\//);
+  assert.doesNotMatch(connectorsSource, /\/api\/ssh-host-keys/);
+  assert.doesNotMatch(connectorsSource, /\/profiles\/\$\{profile\.id\}\/test/);
+  assert.doesNotMatch(shellSource, /apiGet\("\/api\/servers"\)/);
+  assert.match(shellSource, /liveConsoleRuntimeTargets/);
+});
+
+test("Connector template folders are registered in catalog and registry", () => {
+  const kinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  assert.deepEqual(kinds, ["postgres", "ssh"]);
+  for (const kind of kinds) {
+    const escaped = escapeRegExp(kind);
+    assert.match(connectorTemplateCatalogSource, new RegExp(`${escaped}:\\s*Object\\.freeze`));
+    assert.match(connectorTemplateRegistrySource, new RegExp(`${escaped}:\\s*Object\\.freeze`));
+    assert.match(connectorTemplateRegistrySource, new RegExp(`getConnectorMetadata\\("${escaped}"\\)`));
+  }
 });
 
 test("App uses the current unlock API endpoints", () => {
@@ -74,6 +180,9 @@ test("nginx accepts encrypted database imports without HTML error pages", () => 
 });
 
 test("App applies the persisted theme before unlock and exposes bundled changelog metadata", () => {
+  assert.match(indexSource, /<script src="\/theme-init\.js"><\/script>/);
+  assert.doesNotMatch(indexSource, /localStorage\.getItem\("aipermission-theme"\)/);
+  assert.match(themeInitSource, /localStorage\.getItem\("aipermission-theme"\)/);
   assert.match(appSource, /useTheme\(\)/);
   assert.match(appSource, /<Shell theme=\{theme\} setTheme=\{setTheme\}/);
   assert.match(sidebarSource, /onSetTheme\("dark"\)/);
@@ -85,7 +194,7 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(releaseSource, /appVersion = "0\.1\.14"/);
   assert.match(releaseSource, /AGPL licensing/);
   assert.match(releaseSource, /MCP multi-server commands/);
-  assert.match(releaseSource, /MCP exec can run the same command across multiple visible servers/);
+  assert.match(releaseSource, /MCP exec can run the same command across multiple visible SSH targets/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
@@ -95,10 +204,17 @@ test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
 });
 
 test("Token permission controls expose temporary grant lifetimes", () => {
-  assert.match(tokenPermissionPanelSource, /PermissionLifetimeControls/);
-  assert.match(tokenPermissionPanelSource, /onSetTemporary\("1h"\)/);
-  assert.match(tokenPermissionPanelSource, /onSetTemporary\("4h"\)/);
-  assert.match(tokenPermissionPanelSource, /onSetTemporary\("1d"\)/);
+  assert.match(connectorTokenPermissionPanelSource, /import \{ effectiveRule, expiresAtFromLifetime/);
+  assert.match(connectorTokenPermissionPanelSource, /ProfileLifetimeControls/);
+  assert.match(connectorTokenPermissionPanelSource, /Basic/);
+  assert.match(connectorTokenPermissionPanelSource, /Grouped/);
+  assert.match(connectorTokenPermissionPanelSource, /Advanced/);
+  assert.match(connectorTokenPermissionPanelSource, /All operations/);
+  assert.match(connectorTokenPermissionPanelSource, /Read operations/);
+  assert.match(connectorTokenPermissionPanelSource, /Write operations/);
+  assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("1h"\)/);
+  assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("4h"\)/);
+  assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("1d"\)/);
   assert.match(permissionDialogSource, /Lifetime/);
   assert.match(permissionDialogSource, /1 hour/);
   assert.match(permissionDialogSource, /4 hours/);
@@ -106,9 +222,11 @@ test("Token permission controls expose temporary grant lifetimes", () => {
 });
 
 test("Token page exposes connector action permissions", () => {
-  assert.match(connectorsSource, /Add Postgres target/);
+  assert.match(connectorsSource, /Add connector/);
+  assert.match(connectorsSource, /import \{ supportedConnectorKinds \}/);
   assert.match(connectorPermissionDialogSource, /\/api\/tokens\/\$\{tokenID\}\/connector-permissions/);
-  assert.match(connectorPermissionDialogSource, /\/api\/connectors\/postgres/);
+  assert.match(connectorPermissionDialogSource, /\/api\/connectors"/);
+  assert.match(connectorPermissionDialogSource, /\/api\/connector-targets\/\$\{target\.id\}\/profiles\/\$\{profile\.id\}\/actions/);
   assert.match(connectorPermissionDialogSource, /approval_required/);
   assert.match(connectorPermissionDialogSource, /always_run/);
   assert.match(connectorPermissionDialogSource, /Save connector permissions/);
@@ -132,58 +250,55 @@ test("Console exposes connector action approvals", () => {
   assert.match(shellSource, /\/api\/connector-action-approvals/);
   assert.match(consolePageSource, /ConnectorActionApprovalDialog/);
   assert.match(consolePageSource, /ConnectorActivityDialog/);
-  assert.match(consolePageSource, /StructuredConnectorPanel/);
+  assert.match(consolePageSource, /SelectedConnectorConsoleTemplate/);
+  assert.match(consolePageSource, /selectedConnectorTemplate\?\.Console/);
+  assert.match(consolePageSource, /useConnectorPermissions/);
+  assert.match(postgresConnectorConsoleTemplateSource, /PostgresConnectorToolbarActionsTemplate/);
+  assert.match(postgresConnectorConsoleTemplateSource, /Session requests/);
+  assert.match(consolePageSource, /structuredSessionsByTarget/);
+  assert.match(consolePageSource, /onNewStructuredSession/);
   assert.match(consolePageSource, /target=/);
-  assert.match(consolePageSource, /Structured connector target/);
+  assert.match(consolePageSource, /Search connectors/);
+  assert.match(consolePageSource, /Connectors/);
+  assert.match(consolePageSource, /targetUsesLiveConsole/);
+  assert.match(consolePageSource, /getConnectorModel/);
+  assert.match(consolePageSource, /ConnectorIcon/);
   assert.match(tokenPermissionPanelSource, /ConnectorTokenPermissionPanel/);
-  assert.match(connectorTokenPermissionPanelSource, /\/api\/connectors\/\$\{selectedTarget\.connector_kind\}/);
-  assert.match(connectorTokenPermissionPanelSource, /\/api\/tokens\/\$\{token\.id\}\/connector-permissions/);
-  assert.match(connectorTokenPermissionPanelSource, /Connector permissions bind one token, target profile, and action/);
+  assert.match(connectorTokenPermissionPanelSource, /connectorPermissionState/);
+  assert.match(connectorTokenPermissionPanelSource, /loadConnectorActions\?\.\(\{ \.\.\.selectedTarget, profile_id: profile\.profile_id/);
+  assert.match(connectorTokenPermissionPanelSource, /connectorActionCacheKey\(selectedTarget, profile\.profile_id\)/);
+  assert.match(connectorPermissionDialogSource, /\/api\/connector-targets\/\$\{target\.id\}\/profiles\/\$\{profile\.id\}\/actions/);
+  assert.match(connectorTokenPermissionPanelSource, /ProfileLifetimeControls/);
+  assert.match(sshConnectorConsoleTemplateSource, /SSHConnectorToolbarActionsTemplate/);
   assert.match(consolePageSource, /pendingConnectorApprovals/);
   assert.match(consolePageSource, /runConnectorActionApproval/);
   assert.match(consolePageSource, /declineConnectorActionApproval/);
   assert.match(connectorApprovalDialogSource, /structured connector action/);
   assert.match(connectorApprovalDialogSource, /Decline note/);
-  assert.match(connectorActivityDialogSource, /Recent structured connector actions/);
-  assert.match(connectorActivityDialogSource, /always-run actions/);
+  assert.match(connectorActivityDialogSource, /Recent structured connector requests/);
+  assert.match(connectorActivityDialogSource, /always-run requests/);
 });
 
-test("Server host key dialog handles first approval and changed fingerprints", () => {
-  assert.match(serversSource, /unknown_ssh_host_key/);
-  assert.match(serversSource, /changed_ssh_host_key/);
-  assert.match(serversSource, /Replace trusted fingerprint/);
-  assert.match(serversSource, /Previously trusted/);
-  assert.match(serversSource, /replace: Boolean\(hostKey\.changed\)/);
-});
-
-test("Servers page exposes on-demand Docker checks", () => {
-  assert.match(serversSource, /\/api\/servers\/\$\{server\.id\}\/docker-check/);
-  assert.match(serversSource, /\/api\/servers\/\$\{server\.id\}\/docker-logs/);
-  assert.match(serversSource, /Check Docker/);
-  assert.match(serversSource, /Container details/);
-  assert.match(serversSource, /Container logs/);
-  assert.match(serversSource, /No running Docker containers/);
-});
-
-test("Servers page exposes advanced SSH startup settings", () => {
-  assert.match(serversSource, /Advanced SSH startup/);
-  assert.match(serversSource, /startup_input_after_connect/);
-  assert.match(serversSource, /force_shell_command/);
-  assert.match(serversSource, /Startup input after connect/);
-  assert.match(serversSource, /Force shell command/);
-  assert.match(serversSource, /QNAP/);
-});
-
-test("Servers page can prefill servers from host config", () => {
-  assert.match(serversSource, /\/api\/ssh-config\/discover/);
-  assert.match(serversSource, /\/api\/ssh-config\/parse/);
-  assert.match(serversSource, /Import SSH hosts/);
-  assert.match(serversSource, /imports host metadata only/i);
-  assert.match(serversSource, /Import from this computer/);
-  assert.match(serversSource, /Container config/);
-  assert.match(serversSource, /Choose host config file/);
-  assert.match(serversSource, /Scan container config/);
-  assert.match(serversSource, /Parse pasted hosts/);
+test("SSH connector template owns SSH-specific operations", () => {
+  assert.match(sshConnectorModelSource, /unknown_ssh_host_key/);
+  assert.match(sshConnectorModelSource, /changed_ssh_host_key/);
+  assert.match(sshConnectorOperationsSource, /Replace trusted fingerprint/);
+  assert.match(sshConnectorOperationsSource, /Previously trusted/);
+  assert.match(sshConnectorOperationsSource, /replace: Boolean\(hostKey\.changed\)/);
+  assert.match(sshConnectorOperationsSource, /\/api\/ssh-host-keys\/approve/);
+  assert.match(sshConnectorOperationsSource, /Check Docker/);
+  assert.match(sshConnectorOperationsSource, /Container details/);
+  assert.match(sshConnectorOperationsSource, /Container logs/);
+  assert.match(sshConnectorOperationsSource, /No running Docker containers/);
+  assert.match(sshConnectorModelSource, /\/api\/connectors\/ssh\/targets\/\$\{target\.id\}\/operations\/docker-check/);
+  assert.match(sshConnectorModelSource, /\/api\/connectors\/ssh\/targets\/\$\{target\.id\}\/operations\/docker-logs/);
+  assert.doesNotMatch(sshConnectorModelSource, /\/api\/servers\/\$\{server\.id\}\/docker/);
+  assert.match(sshConnectorFormTemplateSource, /Advanced SSH startup/);
+  assert.match(sshConnectorFormTemplateSource, /startup_input_after_connect/);
+  assert.match(sshConnectorFormTemplateSource, /force_shell_command/);
+  assert.match(sshConnectorFormTemplateSource, /Startup input after connect/);
+  assert.match(sshConnectorFormTemplateSource, /Force shell command/);
+  assert.match(sshConnectorFormTemplateSource, /QNAP/);
 });
 
 test("Settings database delete requires a confirmation dialog and current password", () => {
@@ -198,24 +313,35 @@ test("Settings database delete requires a confirmation dialog and current passwo
 
 test("History page exposes label filtering and item label endpoints", () => {
   assert.match(historySource, /\/api\/history-labels/);
-  assert.match(historySource, /Connector History/);
-  assert.match(historySource, /\/api\/connector-action-approvals/);
-  assert.match(historySource, /ConnectorHistoryPanel/);
-  assert.match(historySource, /ConnectorHistoryDialog/);
+  assert.match(historySource, /\/api\/history\?/);
+  assert.match(historySource, /\/api\/history\/\$\{item\.id\}/);
+  assert.match(historySource, /\/api\/history\/\$\{id\}\/labels/);
+  assert.match(historySource, /All connectors/);
+  assert.match(historySource, /targetRef/);
+  assert.match(historySource, /target_id/);
   assert.match(historySource, /label_id/);
   assert.match(historySource, /source/);
+  assert.match(historySource, /connector_kind/);
+  assert.doesNotMatch(historySource, /All activity/);
   assert.match(historySource, /SourceBadge/);
   assert.match(historySource, /Not tracked/);
   assert.match(historySource, /Stale/);
-  assert.match(historySource, /\/api\/approvals\/\$\{id\}\/labels/);
   assert.doesNotMatch(historySource, /setLabelDialogOpen/);
 });
 
+test("Audit page exposes connector-aware filters", () => {
+  assert.match(auditLogsSource, /connector_kind/);
+  assert.match(auditLogsSource, /target_id/);
+  assert.match(auditLogsSource, /All connectors/);
+  assert.match(auditLogsSource, /auditTargetLabel/);
+  assert.match(auditLogsSource, /connectorKindOptions/);
+});
+
 test("Console and History expose SSH file transfer flows", () => {
-  assert.match(historySource, /File Transfer History/);
-  assert.match(historySource, /\/api\/file-transfers\?/);
-  assert.match(historySource, /\/api\/file-transfers\/\$\{item\.id\}\/download/);
-  assert.match(historySource, /DirectionBadge/);
+  assert.match(historySource, /file_transfer/);
+  assert.match(historySource, /TransferDetail/);
+  assert.match(historySource, /\/api\/file-transfers\/\$\{item\.source_ref_id\}\/download/);
+  assert.match(historySource, /Save download/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/upload-batch/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/download-batch/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/browse/);
@@ -240,7 +366,7 @@ test("Console and History expose SSH file transfer flows", () => {
 
 test("Console exposes stuck command recovery controls", () => {
   assert.match(shellSource, /restartConsoleSession/);
-  assert.match(shellSource, /\/api\/console\/servers\/\$\{serverID\}\/restart/);
+  assert.match(shellSource, /\/api\/console\/targets\/\$\{serverID\}\/restart/);
   assert.match(consolePageSource, /ConsoleRecoveryPanel/);
   assert.match(consolePageSource, /AI command running/);
   assert.match(consolePageSource, /Manual command running/);
@@ -264,11 +390,32 @@ test("Settings page exposes history label management", () => {
   assert.match(settingsSource, /removes the label from every related history entry/i);
 });
 
-test("SSH keys page supports explicit private key import", () => {
-  assert.match(sshKeysSource, /\/api\/ssh-keys\/import/);
-  assert.match(sshKeysSource, /Import key/);
-  assert.match(sshKeysSource, /Choose key file/);
-  assert.match(sshKeysSource, /type="file" onChange=\{readImportFile\}/);
-  assert.match(sshKeysSource, /privateKeyPlaceholder/);
-  assert.match(sshKeysSource, /The passphrase is not saved/);
+test("Credentials page supports explicit private key import", () => {
+  assert.match(credentialsSource, /Add credential/);
+  assert.match(credentialsSource, /Operations/);
+  assert.match(credentialsSource, /Actions/);
+  assert.match(credentialsSource, /getConnectorTemplate\(drawer\.kind\)\?\.CredentialForm/);
+  assert.match(credentialsSource, /model\.saveCredential/);
+  assert.match(credentialsSource, /model\.deleteCredential/);
+  assert.match(sshConnectorModelSource, /\/api\/connectors\/ssh\/credentials\/import/);
+  assert.match(sshConnectorModelSource, /apiPut\(`\/api\/connectors\/ssh\/credentials\/\$\{row\.id\}`/);
+  assert.match(postgresConnectorModelSource, /\/api\/connector-targets\/\$\{form\.target_id\}\/profiles/);
+  assert.match(postgresConnectorModelSource, /apiPut\(`\/api\/connector-targets\/\$\{form\.target_id\}\/profiles\/\$\{row\.id\}`/);
+  assert.doesNotMatch(credentialsSource, /apiPost|apiPut|apiDelete/);
+  assert.match(credentialsSource, /Edit credential/);
+  assert.match(sshCredentialFormTemplateSource, /formMode === "edit"/);
+  assert.match(sshCredentialFormTemplateSource, /Save SSH credential/);
+  assert.match(sshCredentialFormTemplateSource, /Import credential/);
+  assert.match(sshCredentialFormTemplateSource, /Choose key file/);
+  assert.match(sshCredentialFormTemplateSource, /type="file" onChange=\{onReadImportFile\}/);
+  assert.match(sshCredentialFormTemplateSource, /privateKeyPlaceholder/);
+  assert.match(sshCredentialFormTemplateSource, /The passphrase is not saved/);
+  assert.match(sshCredentialRowActionsTemplateSource, /install_command/);
+  assert.match(credentialsSource, /CredentialRowActionsTemplate \? <CredentialRowActionsTemplate row=\{row\}/);
+  assert.doesNotMatch(credentialsSource, /CopyButton/);
+  assert.match(postgresCredentialFormTemplateSource, /Create Postgres credential/);
+  assert.match(postgresCredentialFormTemplateSource, /Save Postgres credential/);
+  assert.match(postgresCredentialFormTemplateSource, /Leave blank to keep current password/);
+  assert.match(postgresCredentialFormTemplateSource, /Select Postgres target/);
+  assert.match(postgresCredentialFormTemplateSource, /Password/);
 });

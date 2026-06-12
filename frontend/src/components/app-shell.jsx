@@ -7,15 +7,15 @@ import { TransferCenter } from "./transfer-center";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Notice } from "./ui/notice";
+import { getConnectorModel } from "../connectors/templates/registry";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
   function toggleTheme() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }
   const [status, setStatus] = useState({ state: "loading", data: null, error: null });
-  const [servers, setServers] = useState({ state: "loading", data: [], error: null });
   const [targets, setTargets] = useState({ state: "loading", data: [], error: null });
-  const [sshKeys, setSSHKeys] = useState({ state: "loading", data: [], error: null });
+  const [credentials, setCredentials] = useState({ state: "loading", data: [], error: null });
   const [tokens, setTokens] = useState({ state: "loading", data: [], error: null });
   const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
   const [approvals, setApprovals] = useState({ state: "loading", data: [], error: null });
@@ -48,15 +48,6 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  async function loadServers() {
-    try {
-      const data = await apiGet("/api/servers");
-      setServers({ state: "ready", data, error: null });
-    } catch (error) {
-      setServers({ state: "error", data: [], error: error.message });
-    }
-  }
-
   async function loadTargets() {
     try {
       const data = await apiGet("/api/targets");
@@ -66,12 +57,12 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  async function loadSSHKeys() {
+  async function loadCredentials() {
     try {
-      const data = await apiGet("/api/ssh-keys");
-      setSSHKeys({ state: "ready", data, error: null });
+      const data = await apiGet("/api/connectors/ssh/credentials");
+      setCredentials({ state: "ready", data, error: null });
     } catch (error) {
-      setSSHKeys({ state: "error", data: [], error: error.message });
+      setCredentials({ state: "error", data: [], error: error.message });
     }
   }
 
@@ -155,7 +146,7 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function refreshAll() {
-    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadServers(), loadTargets(), loadSSHKeys(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadTargets(), loadCredentials(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
   }
 
   useEffect(() => {
@@ -205,6 +196,15 @@ export function Shell({ theme, setTheme }) {
     if (status.state === "error") return "unreachable";
     return "checking";
   }, [status.state]);
+  const liveConsoleTargets = useMemo(() => {
+    if (targets.state === "error") {
+      return { state: "error", data: [], error: targets.error };
+    }
+    if (targets.state === "loading") {
+      return { state: "loading", data: [], error: null };
+    }
+    return { state: "ready", data: liveConsoleRuntimeTargets(targets.data), error: null };
+  }, [targets.state, targets.data, targets.error]);
 
   function patchConsoleSession(sessionID, updater) {
     setConsoleSessions((current) => {
@@ -355,7 +355,7 @@ export function Shell({ theme, setTheme }) {
         delete consoleConnectionsRef.current[session.id];
       }
     });
-    const result = await apiPost(`/api/console/servers/${serverID}/restart`, {});
+    const result = await apiPost(`/api/console/targets/${serverID}/restart`, {});
     await Promise.all([loadConsoleSessions(), loadApprovals()]);
     return result;
   }
@@ -555,18 +555,17 @@ export function Shell({ theme, setTheme }) {
           <Outlet
             context={{
               status,
-              servers,
+              liveConsoleTargets,
               targets,
-              sshKeys,
+              credentials,
               tokens,
               approvals,
               connectorActionApprovals,
               messages,
               mcpRuntime,
               loadStatus,
-              loadServers,
               loadTargets,
-              loadSSHKeys,
+              loadCredentials,
               loadTokens,
               loadApprovals,
               loadConnectorActionApprovals,
@@ -626,6 +625,34 @@ function isLiveConsoleSession(session) {
 
 function latestSessionForServer(sessions, serverID) {
   return sessions.find((session) => Number(session.server_id) === Number(serverID)) || null;
+}
+
+function liveConsoleRuntimeTargets(targets) {
+  return (targets || [])
+    .filter((target) => {
+      const model = getConnectorModel(target.connector_kind);
+      return Boolean(model?.usesLiveConsole?.({ target }) && target.server_id);
+    })
+    .map((target) => {
+      const model = getConnectorModel(target.connector_kind);
+      const profile = target.public || target.profiles?.[0]?.public || {};
+      return {
+        id: target.server_id,
+        name: model?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref,
+        host: target.config?.host || "",
+        port: target.config?.port || 0,
+        username: profile.username || target.config?.username || "",
+        ssh_key_id: profile.ssh_key_id || target.config?.ssh_key_id || 0,
+        description: target.config?.description || "",
+        startup_input_after_connect: target.config?.startup_input_after_connect || "",
+        force_shell_command: target.config?.force_shell_command || "",
+        connector_ref: target.ref,
+        connector_kind: target.connector_kind,
+        target_id: target.target_id,
+        profile_id: target.profile_id,
+        target,
+      };
+    });
 }
 
 function mergeConsoleSessionData(next, current) {

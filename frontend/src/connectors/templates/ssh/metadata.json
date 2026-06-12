@@ -1,0 +1,8 @@
+{
+  "kind": "ssh",
+  "label": "SSH",
+  "icon": "server",
+  "badge_tone": "good",
+  "summary": "Persistent shell, file transfer, remote browsing, and command execution.",
+  "version": "0.1"
+}

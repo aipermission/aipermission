@@ -5,8 +5,7 @@ import { useTheme } from "./lib/theme";
 import { Notice } from "./components/ui/notice";
 import { Shell } from "./components/app-shell";
 import { DashboardPage } from "./pages/dashboard";
-import { SSHKeysPage } from "./pages/ssh-keys";
-import { ServersPage } from "./pages/servers";
+import { CredentialsPage } from "./pages/credentials";
 import { SettingsPage } from "./pages/settings";
 import { SecurityPage } from "./pages/security";
 import { HistoryPage } from "./pages/history";
@@ -64,8 +63,8 @@ export default function App() {
       <Routes>
         <Route element={<Shell theme={theme} setTheme={setTheme} />}>
           <Route index element={<DashboardPage />} />
-          <Route path="/ssh-keys" element={<SSHKeysPage />} />
-          <Route path="/servers" element={<ServersPage />} />
+          <Route path="/credentials" element={<CredentialsPage />} />
+          <Route path="/servers" element={<Navigate to="/connectors" replace />} />
           <Route path="/connectors" element={<ConnectorsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />

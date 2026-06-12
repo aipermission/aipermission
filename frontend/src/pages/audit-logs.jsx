@@ -18,8 +18,8 @@ const actorOptions = [
 ];
 
 export function AuditLogsPage() {
-  const { servers } = useGateway();
-  const [filters, setFilters] = useState({ query: "", actor: "", serverID: "" });
+  const { targets } = useGateway();
+  const [filters, setFilters] = useState({ query: "", actor: "", connectorKind: "", targetID: "" });
   const [state, setState] = useState({
     state: "idle",
     data: [],
@@ -36,16 +36,31 @@ export function AuditLogsPage() {
       void loadAuditLogs(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.actor, filters.serverID]);
+  }, [filters.query, filters.actor, filters.connectorKind, filters.targetID]);
 
-  const serverOptions = useMemo(() => {
+  const targetOptions = useMemo(() => {
     const options = new Map();
-    servers.data.forEach((server) => options.set(String(server.id), server.name));
+    (targets.data || []).forEach((target) => {
+      const id = target.target_id || target.id;
+      if (id) options.set(String(id), target.target_name || target.name || target.ref || `target ${id}`);
+    });
     state.data.forEach((item) => {
-      if (item.server_id) options.set(String(item.server_id), item.server_name || `server ${item.server_id}`);
+      if (item.target_id) options.set(String(item.target_id), item.target_name || `target ${item.target_id}`);
+      if (!item.target_id && item.server_id) options.set(`server:${item.server_id}`, item.server_name || `server ${item.server_id}`);
     });
     return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1]));
-  }, [servers.data, state.data]);
+  }, [targets.data, state.data]);
+
+  const connectorKindOptions = useMemo(() => {
+    const kinds = new Set();
+    (targets.data || []).forEach((target) => {
+      if (target.connector_kind) kinds.add(target.connector_kind);
+    });
+    state.data.forEach((item) => {
+      if (item.connector_kind) kinds.add(item.connector_kind);
+    });
+    return [...kinds].sort();
+  }, [targets.data, state.data]);
 
   const stats = useMemo(
     () => ({
@@ -65,7 +80,9 @@ export function AuditLogsPage() {
     });
     if (filters.query.trim()) params.set("q", filters.query.trim());
     if (filters.actor) params.set("actor", filters.actor);
-    if (filters.serverID) params.set("server_id", filters.serverID);
+    if (filters.connectorKind) params.set("connector_kind", filters.connectorKind);
+    if (filters.targetID && !filters.targetID.startsWith("server:")) params.set("target_id", filters.targetID);
+    if (filters.targetID?.startsWith("server:")) params.set("server_id", filters.targetID.slice("server:".length));
     try {
       const data = await apiGet(`/api/audit-logs?${params.toString()}`);
       setState({
@@ -115,7 +132,7 @@ export function AuditLogsPage() {
         <AuditStat label="User" value={stats.user} tone="good" />
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_180px_220px]">
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_160px_180px_220px]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <Input
@@ -136,11 +153,22 @@ export function AuditLogsPage() {
           ))}
         </Select>
         <Select
-          value={filters.serverID}
-          onChange={(event) => setFilters((current) => ({ ...current, serverID: event.target.value }))}
+          value={filters.connectorKind}
+          onChange={(event) => setFilters((current) => ({ ...current, connectorKind: event.target.value }))}
         >
-          <option value="">All servers</option>
-          {serverOptions.map(([id, name]) => (
+          <option value="">All types</option>
+          {connectorKindOptions.map((kind) => (
+            <option key={kind} value={kind}>
+              {kind}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={filters.targetID}
+          onChange={(event) => setFilters((current) => ({ ...current, targetID: event.target.value }))}
+        >
+          <option value="">All connectors</option>
+          {targetOptions.map(([id, name]) => (
             <option key={id} value={id}>
               {name}
             </option>
@@ -156,7 +184,7 @@ export function AuditLogsPage() {
             <tr>
               <th className="w-[10%] px-4 py-3 font-semibold">Actor</th>
               <th className="w-[24%] px-4 py-3 font-semibold">Action</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">Server</th>
+              <th className="w-[18%] px-4 py-3 font-semibold">Target</th>
               <th className="w-[16%] px-4 py-3 font-semibold">Token</th>
               <th className="w-[22%] px-4 py-3 font-semibold">Payload</th>
               <th className="w-[10%] px-4 py-3 text-right font-semibold">Time</th>
@@ -190,7 +218,7 @@ export function AuditLogsPage() {
                     <td className="truncate px-4 py-3">
                       <ActionBadge action={item.action} />
                     </td>
-                    <td className="truncate px-4 py-3 font-medium text-stone-900">{item.server_name || "-"}</td>
+                    <td className="truncate px-4 py-3 font-medium text-stone-900">{auditTargetLabel(item)}</td>
                     <td className="truncate px-4 py-3 text-stone-600">{item.token_name || "-"}</td>
                     <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{payloadPreview(item.payload_json)}</td>
                     <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>
@@ -247,6 +275,8 @@ function AuditDialog({ item, onClose }) {
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <ActionBadge action={item.action} />
             <ActorBadge actor={item.actor_type} />
+            {item.connector_kind ? <Badge tone="neutral">{item.connector_kind}</Badge> : null}
+            {auditTargetLabel(item) !== "-" ? <Badge>{auditTargetLabel(item)}</Badge> : null}
             {item.server_name ? <Badge>{item.server_name}</Badge> : null}
             {item.token_name ? <Badge>{item.token_name}</Badge> : null}
           </div>
@@ -290,6 +320,10 @@ function payloadPreview(value) {
     if (parts.length > 0) return parts.join(", ");
   }
   return oneLine(value || "{}");
+}
+
+function auditTargetLabel(item) {
+  return item.target_name || item.server_name || (item.target_id ? `target ${item.target_id}` : "-");
 }
 
 function prettyPayload(value) {

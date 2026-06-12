@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
-  let tokenPermissions = [];
+  let connectorPermissions = [];
   let mcpRuntimeEnabled = false;
   await page.route("http://localhost:8080/api/unlock/status", async (route) => {
     await route.fulfill({
@@ -31,11 +31,23 @@ test.beforeEach(async ({ page }) => {
   await page.route("http://localhost:8080/api/status", async (route) => {
     await route.fulfill({ json: { service: "aipermission", status: "running", config: {}, features: [] } });
   });
-  await page.route("http://localhost:8080/api/servers", async (route) => {
-    await route.fulfill({ json: [{ id: 1, name: "worker-1", host: "127.0.0.1", port: 22, username: "root" }] });
+  await page.route("http://localhost:8080/api/targets", async (route) => {
+    await route.fulfill({ json: { items: [targetProfile()] } });
   });
-  await page.route("http://localhost:8080/api/ssh-keys", async (route) => {
-    await route.fulfill({ json: [] });
+  await page.route("http://localhost:8080/api/connectors", async (route) => {
+    await route.fulfill({ json: { items: [{ kind: "ssh", label: "SSH", version: "0.1" }] } });
+  });
+  await page.route("http://localhost:8080/api/connector-targets", async (route) => {
+    await route.fulfill({ json: { items: [targetSummary()] } });
+  });
+  await page.route("http://localhost:8080/api/connector-targets/1", async (route) => {
+    await route.fulfill({ json: targetDetail() });
+  });
+  await page.route("http://localhost:8080/api/connector-targets/1/profiles/1/actions", async (route) => {
+    await route.fulfill({ json: { items: [sshExecAction()] } });
+  });
+  await page.route("http://localhost:8080/api/connectors/ssh/credentials", async (route) => {
+    await route.fulfill({ json: [{ id: 1, name: "main", key_type: "ed25519", fingerprint: "SHA256:test" }] });
   });
   await page.route("http://localhost:8080/api/tokens", async (route) => {
     await route.fulfill({ json: [{ id: 1, name: "agent", token_prefix: "aip_test", created_at: "2026-05-31T00:00:00Z" }] });
@@ -72,14 +84,14 @@ test.beforeEach(async ({ page }) => {
     }
     await route.fulfill({ json: { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 } });
   });
-  await page.route("http://localhost:8080/api/tokens/1/permissions", async (route) => {
+  await page.route("http://localhost:8080/api/tokens/1/connector-permissions", async (route) => {
     if (route.request().method() === "PUT") {
       const body = route.request().postDataJSON();
-      tokenPermissions = body.permissions || [];
-      await route.fulfill({ json: tokenPermissions });
+      connectorPermissions = body.permissions || [];
+      await route.fulfill({ json: { items: connectorPermissions } });
       return;
     }
-    await route.fulfill({ json: tokenPermissions });
+    await route.fulfill({ json: { items: connectorPermissions } });
   });
 });
 
@@ -104,9 +116,9 @@ test("renders security settings and updates MCP metadata exposure", async ({ pag
   await page.getByRole("link", { name: /Security/ }).click();
 
   await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
-  await expect(page.getByText("MCP server lists hide host, port, and username by default.")).toBeVisible();
+  await expect(page.getByText("MCP connector targets hide SSH host, port, and username by default.")).toBeVisible();
   await page.getByLabel("Expose endpoint metadata to MCP").click();
-  await expect(page.getByText("MCP list_servers now includes host, port, and username metadata.")).toBeVisible();
+  await expect(page.getByText("MCP connector targets now include SSH host, port, and username metadata.")).toBeVisible();
 });
 
 test("imports a database from the unlock screen", async ({ page }) => {
@@ -138,16 +150,17 @@ test("renders settings retention controls", async ({ page }) => {
   await expect(page.getByText("Retention settings saved and cleanup ran.")).toBeVisible();
 });
 
-test("updates token server permission from the Tokens page", async ({ page }) => {
+test("updates token connector permission from the Tokens page", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox").fill("local-password");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await page.locator('aside a[href="/tokens"]').click();
 
-  await page.getByTitle("worker-1: Disabled").click();
-  await expect(page.getByRole("dialog", { name: "agent -> worker-1" })).toBeVisible();
+  await page.getByRole("button", { name: "Connectors" }).click();
+  await expect(page.getByRole("dialog", { name: "agent connector permissions" })).toBeVisible();
   await page.getByRole("button", { name: /Prompt/ }).click();
-  await expect(page.getByTitle("worker-1: Prompt")).toBeVisible();
+  await page.getByRole("button", { name: "Save connector permissions" }).click();
+  await expect(page.getByText("Connector permissions saved.")).toBeVisible();
 });
 
 function unlockedStatus() {
@@ -157,5 +170,57 @@ function unlockedStatus() {
     database_name: "Default",
     unlocked_databases: [{ id: "default", name: "Default", current: true }],
     databases: [{ id: "default", name: "Default", state: "unlocked" }],
+  };
+}
+
+function targetSummary() {
+  return {
+    id: 1,
+    ref: "ssh:1:1",
+    connector_kind: "ssh",
+    name: "worker-1",
+    config: { host: "127.0.0.1", port: 22 },
+    status: "active",
+  };
+}
+
+function targetDetail() {
+  return {
+    ...targetSummary(),
+    profiles: [
+      {
+        id: 1,
+        target_id: 1,
+        ref: "ssh:1:1",
+        connector_kind: "ssh",
+        kind: "private_key",
+        label: "main",
+        public: { username: "root", ssh_key_id: 1 },
+      },
+    ],
+  };
+}
+
+function targetProfile() {
+  return {
+    ref: "ssh:1:1",
+    connector_kind: "ssh",
+    target_id: 1,
+    profile_id: 1,
+    target_name: "worker-1",
+    profile_label: "main",
+    server_id: 1,
+    config: { host: "127.0.0.1", port: 22 },
+    public: { username: "root", ssh_key_id: 1 },
+  };
+}
+
+function sshExecAction() {
+  return {
+    name: "exec",
+    label: "Run command",
+    description: "Run a non-interactive command.",
+    category: "command",
+    risk: "write",
   };
 }

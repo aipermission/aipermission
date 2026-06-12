@@ -7,13 +7,7 @@
     <link rel="apple-touch-icon" href="/icon.png" />
     <meta name="theme-color" content="#022c22" />
     <title>aipermission</title>
-    <script>
-      (() => {
-        const theme = localStorage.getItem("aipermission-theme") || "dark";
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.style.colorScheme = theme;
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

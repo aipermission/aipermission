@@ -1,4 +1,4 @@
-import { Activity, History, KeyRound, PlugZap, Server, TerminalSquare, TicketCheck } from "lucide-react";
+import { Activity, Cable, History, KeyRound, PlugZap, TerminalSquare, TicketCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { apiUrl, mcpApiUrl } from "../lib/api";
 import { Badge } from "../components/ui/badge";
@@ -6,28 +6,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { useGateway } from "../lib/gateway-context";
 
 export function DashboardPage() {
-  const { servers, sshKeys, tokens, gatewayState } = useGateway();
+  const { targets, credentials, tokens, gatewayState } = useGateway();
   const activeTokens = tokens.data.filter((token) => !token.revoked_at).length;
 
   return (
     <section className="grid gap-5">
       <section className="grid gap-4 md:grid-cols-3">
-        <Metric to="/servers" icon={Server} title="Servers" value={servers.data.length} detail="registered SSH targets" />
+        <Metric to="/connectors" icon={Cable} title="Connectors" value={targets.data.length} detail="registered targets" />
         <Metric to="/tokens" icon={TicketCheck} title="Tokens" value={activeTokens} detail="active MCP/API tokens" />
-        <Metric to="/ssh-keys" icon={KeyRound} title="SSH Keys" value={sshKeys.data.length} detail="gateway-owned keypairs" />
+        <Metric to="/credentials" icon={KeyRound} title="Credentials" value={credentials.data.length} detail="gateway-owned profiles" />
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1fr_0.85fr]">
         <Card>
           <CardHeader>
             <CardTitle>Getting Started</CardTitle>
-            <CardDescription>Small path, clear control: create a key, add a server, give a token permission, then let the AI work through MCP.</CardDescription>
+            <CardDescription>Small path, clear control: create a credential, add a connector, give a token permission, then let the AI work through MCP.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <LifecycleStep number="1" to="/ssh-keys" icon={KeyRound} title="Create an SSH key" text="Generate a gateway-owned ed25519 key. aipermission keeps the private key local and encrypted." />
-            <LifecycleStep number="2" to="/servers" icon={Server} title="Add a server" text="Pick the SSH key, copy the install command, paste it on the VPS, then save. The app tests the connection first." />
+            <LifecycleStep number="1" to="/credentials" icon={KeyRound} title="Create a credential" text="Generate or import a connector credential. aipermission keeps private material local and encrypted." />
+            <LifecycleStep number="2" to="/connectors" icon={Cable} title="Add a connector" text="Create an SSH or database target, attach a credential profile, then test it through the connector pipeline." />
             <LifecycleStep number="3" to="/tokens" icon={TicketCheck} title="Create a token and install MCP" text="Create one token per AI client or session, then use Install to copy the provider-specific init command." />
-            <LifecycleStep number="4" to="/console" icon={TerminalSquare} title="Grant server permission" text="Open Console, select a server and token, then choose blocked, prompt, or always run." />
+            <LifecycleStep number="4" to="/console" icon={TerminalSquare} title="Grant connector permission" text="Open Console, select a target and token, then choose disabled, prompt, or always." />
             <LifecycleStep number="5" to="/mcp-setup" icon={PlugZap} title="Use it with your AI" text="Tell the AI which MCP server name to use, such as aipermission-default." />
             <LifecycleStep number="6" to="/history" icon={History} title="Review history" text="Inspect executed commands, reasons, outputs, approvals, and failures after the session." />
           </CardContent>

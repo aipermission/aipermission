@@ -1,8 +1,7 @@
 import { useMemo } from "react";
-import { effectiveRule } from "../../lib/permissions";
 import { emptySession, isLiveConsoleSession, isUnreadMessage, latestSessionForServer } from "./helpers";
 
-export function useConsolePageState({ servers, tokens, approvals, messages, sessions, selectedServerID, permissionState, now = Date.now(), allowServerFallback = true }) {
+export function useConsolePageState({ servers, approvals, messages, sessions, selectedServerID, allowServerFallback = true }) {
   const selectedServer = useMemo(() => {
     if (!servers.data.length) return null;
     if (!selectedServerID) return allowServerFallback ? servers.data[0] : null;
@@ -15,11 +14,6 @@ export function useConsolePageState({ servers, tokens, approvals, messages, sess
   const unreadMessages = messages.data.filter(isUnreadMessage);
   const selectedPendingApprovals = selectedServer ? pendingApprovals.filter((approval) => Number(approval.server_id) === Number(selectedServer.id)) : [];
   const selectedUnreadMessages = selectedServer ? unreadMessages.filter((message) => Number(message.server_id) === Number(selectedServer.id)) : [];
-
-  const selectedTokenOptions = useMemo(() => {
-    if (!selectedServer) return [];
-    return tokens.data.filter((token) => !token.revoked_at && effectiveRule(permissionState.data[token.id]?.[selectedServer.id], now));
-  }, [tokens.data, selectedServer?.id, permissionState.data, now]);
 
   const defaultServerID = useMemo(() => {
     if (!servers.data.length) return "";
@@ -41,7 +35,6 @@ export function useConsolePageState({ servers, tokens, approvals, messages, sess
     unreadMessages,
     selectedPendingApprovals,
     selectedUnreadMessages,
-    selectedTokenOptions,
     defaultServerID,
   };
 }

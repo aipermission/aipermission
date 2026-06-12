@@ -1,15 +1,3 @@
-export function permissionsToMap(permissions) {
-  return Object.fromEntries(
-    permissions.map((permission) => [
-      permission.server_id,
-      {
-        execution_rule: permission.execution_rule,
-        expires_at: permission.expires_at || "",
-      },
-    ])
-  );
-}
-
 export const permissionLifetimeOptions = [
   { value: "permanent", label: "Permanent", ms: 0 },
   { value: "1h", label: "1 hour", ms: 60 * 60 * 1000 },
@@ -81,7 +69,7 @@ export function permissionCardClass(rule) {
 }
 
 export function maskedToken(value) {
-  if (!value) return "legacy token unavailable";
+  if (!value) return "token value unavailable";
   if (value.length <= 14) return value;
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }

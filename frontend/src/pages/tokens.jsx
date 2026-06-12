@@ -2,17 +2,15 @@ import { Ban, CalendarClock, Database, KeyRound, PlugZap, Plus, RefreshCcw, Tick
 import { useEffect, useMemo, useState } from "react";
 import { apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
-import { effectiveRule, expiresAtFromLifetime, maskedToken, permissionLifetimeLabel, ruleDotClass, ruleLabel } from "../lib/permissions";
+import { effectiveRule, maskedToken } from "../lib/permissions";
 import { useAsyncAction } from "../lib/use-async-action";
-import { useTokenPermissions } from "../lib/use-token-permissions";
+import { useConnectorPermissions } from "../lib/use-connector-permissions";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CopyButton } from "../components/ui/copy-button";
-import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
-import { PermissionDialog } from "../components/tokens/permission-dialog";
 import { ConnectorPermissionDialog } from "../components/tokens/connector-permission-dialog";
 import { TokenInstallDialog } from "../components/tokens/token-install-dialog";
 
@@ -26,15 +24,13 @@ const tokenExpiryOptions = [
 
 const emptyForm = { name: "cursor-maintenance", expires_in: "never" };
 export function TokensPage() {
-  const { tokens, servers, loadTokens } = useGateway();
+  const { tokens, loadTokens, loadTargets } = useGateway();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [createdToken, setCreatedToken] = useState(null);
-  const [permissionDialog, setPermissionDialog] = useState(null);
   const [connectorPermissionDialog, setConnectorPermissionDialog] = useState(null);
-  const { permissionState, loadAllTokenPermissions, setTokenServerRule, setTokenAllServerRules } = useTokenPermissions(tokens.data);
+  const { connectorPermissionState, loadAllConnectorPermissions } = useConnectorPermissions(tokens.data);
   const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
-  const [bulkDialog, setBulkDialog] = useState({ open: false, token: null, rule: "approval_required", lifetime: "permanent" });
   const { actionState: state, runAction } = useAsyncAction();
   const [tokenFilter, setTokenFilter] = useState("active");
 
@@ -58,12 +54,12 @@ export function TokensPage() {
 
   useEffect(() => {
     if (tokens.state !== "ready") return;
-    loadAllTokenPermissions(tokens.data);
+    loadAllConnectorPermissions(tokens.data);
   }, [tokens.state, tokens.data.map((token) => token.id).join(",")]);
 
   async function refreshTokensAndPermissions() {
     const tokenItems = await loadTokens();
-    await loadAllTokenPermissions(tokenItems);
+    await Promise.all([loadTargets(), loadAllConnectorPermissions(tokenItems)]);
   }
 
   async function createToken(event) {
@@ -90,13 +86,6 @@ export function TokensPage() {
         await loadTokens();
       },
     });
-  }
-
-  async function applyBulkPermissions(event) {
-    event.preventDefault();
-    if (!bulkDialog.token) return;
-    await setTokenAllServerRules(bulkDialog.token, servers.data, bulkDialog.rule, { expiresAt: expiresAtFromLifetime(bulkDialog.lifetime) });
-    setBulkDialog({ open: false, token: null, rule: "approval_required", lifetime: "permanent" });
   }
 
   return (
@@ -167,14 +156,14 @@ export function TokensPage() {
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       {tokens.state === "error" ? <Notice tone="bad">{tokens.error}</Notice> : null}
-      {permissionState.state === "error" ? <Notice tone="bad">{permissionState.error}</Notice> : null}
+      {connectorPermissionState.state === "error" ? <Notice tone="bad">{connectorPermissionState.error}</Notice> : null}
 
       <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
               <th className="w-[24%] px-4 py-3 font-semibold">Name</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">Servers</th>
+              <th className="w-[18%] px-4 py-3 font-semibold">Connector grants</th>
               <th className="w-[10%] px-4 py-3 font-semibold">Status</th>
               <th className="w-[16%] px-4 py-3 font-semibold">Created / expires</th>
               <th className="w-[32%] px-4 py-3 text-right font-semibold">Actions</th>
@@ -185,8 +174,8 @@ export function TokensPage() {
               const status = tokenStatus(token);
               const revoked = Boolean(token.revoked_at);
               const inactive = status !== "active";
-              const permissions = permissionState.data[token.id] || {};
-              const allowedCount = servers.data.filter((server) => Boolean(effectiveRule(permissions[server.id]))).length;
+              const permissions = connectorPermissionState.data[token.id] || [];
+              const grantSummary = connectorGrantSummary(permissions);
               return (
                 <tr className="hover:bg-stone-50" key={token.id}>
                   <td className="px-4 py-4">
@@ -211,25 +200,17 @@ export function TokensPage() {
                     </div>
                   </td>
                   <td className="px-4 py-4">
-                    <div className="grid gap-1.5">
-                      <div className="flex flex-wrap gap-1.5">
-                        {servers.data.map((server) => {
-                          const permission = permissions[server.id];
-                          const rule = effectiveRule(permission);
-                          return (
-                            <button
-                              type="button"
-                              key={server.id}
-                              title={`${server.name}: ${ruleLabel(rule)}${rule ? ` - ${permissionLifetimeLabel(permission)}` : ""}`}
-                              className={`h-4 w-4 rounded-full border border-white shadow-sm ring-1 ring-stone-200 ${ruleDotClass(rule)}`}
-                              onClick={() => setPermissionDialog({ token, server })}
-                              disabled={inactive}
-                            />
-                          );
-                        })}
+                    <div className="grid gap-1.5 text-xs">
+                      <div className="flex flex-wrap gap-1">
+                        {grantSummary.kinds.map((kind) => (
+                          <Badge key={kind} tone="neutral">{kind}</Badge>
+                        ))}
+                        {grantSummary.kinds.length === 0 ? <Badge tone="neutral">none</Badge> : null}
                       </div>
-                      <span className="text-[11px] text-stone-500">
-                        {servers.data.length === 0 ? "No servers" : `${allowedCount}/${servers.data.length} servers`}
+                      <span className="text-stone-500">
+                        {grantSummary.activeActions === 0
+                          ? "No active grants"
+                          : `${grantSummary.activeActions} action grant${grantSummary.activeActions === 1 ? "" : "s"} / ${grantSummary.targetProfiles} target profile${grantSummary.targetProfiles === 1 ? "" : "s"}`}
                       </span>
                     </div>
                   </td>
@@ -257,16 +238,6 @@ export function TokensPage() {
                       >
                         <Database className="h-4 w-4" />
                         Connectors
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-9 px-3"
-                        onClick={() => setBulkDialog({ open: true, token, rule: "approval_required", lifetime: "permanent" })}
-                        disabled={inactive || servers.data.length === 0 || permissionState.savingKey === `${token.id}:all`}
-                        title="Set this token's permission for all servers"
-                      >
-                        Bulk
                       </Button>
                       <Button
                         type="button"
@@ -337,48 +308,7 @@ export function TokensPage() {
         </form>
       </Drawer>
 
-      <PermissionDialog value={permissionDialog} permissionState={permissionState} onClose={() => setPermissionDialog(null)} onSetRule={setTokenServerRule} />
       <ConnectorPermissionDialog token={connectorPermissionDialog} onClose={() => setConnectorPermissionDialog(null)} />
-      <Dialog
-        open={bulkDialog.open}
-        title="Set all server permissions"
-        description={bulkDialog.token ? `Apply one permission rule to every server for ${bulkDialog.token.name}.` : ""}
-        onClose={() => setBulkDialog({ open: false, token: null, rule: "approval_required", lifetime: "permanent" })}
-        size="md"
-      >
-        <form className="grid gap-4" onSubmit={applyBulkPermissions}>
-          <Notice>Use this for broad maintenance windows. You can still override individual servers afterwards.</Notice>
-          <Field>
-            Permission rule
-            <Select value={bulkDialog.rule} onChange={(event) => setBulkDialog((current) => ({ ...current, rule: event.target.value }))}>
-              <option value="">Disabled for all servers</option>
-              <option value="approval_required">Prompt for all servers</option>
-              <option value="always_run">Always run for all servers</option>
-            </Select>
-          </Field>
-          <Field>
-            Lifetime
-            <Select
-              value={bulkDialog.lifetime}
-              onChange={(event) => setBulkDialog((current) => ({ ...current, lifetime: event.target.value }))}
-              disabled={!bulkDialog.rule}
-            >
-              <option value="permanent">Permanent</option>
-              <option value="1h">1 hour</option>
-              <option value="4h">4 hours</option>
-              <option value="1d">1 day</option>
-            </Select>
-          </Field>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={() => setBulkDialog({ open: false, token: null, rule: "approval_required", lifetime: "permanent" })}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!bulkDialog.token || permissionState.savingKey === `${bulkDialog.token?.id}:all`}>
-              Apply to all servers
-            </Button>
-          </div>
-        </form>
-      </Dialog>
       <TokenInstallDialog
         state={installDialog}
         onChange={setInstallDialog}
@@ -386,6 +316,17 @@ export function TokensPage() {
       />
     </section>
   );
+}
+
+function connectorGrantSummary(permissions) {
+  const active = permissions.filter((permission) => Boolean(effectiveRule(permission)));
+  const kinds = [...new Set(active.map((permission) => permission.connector_kind).filter(Boolean))].sort();
+  const targetProfiles = new Set(active.map((permission) => `${permission.connector_kind}:${permission.target_id}:${permission.profile_id}`));
+  return {
+    activeActions: active.length,
+    targetProfiles: targetProfiles.size,
+    kinds,
+  };
 }
 
 function TokenStat({ icon: Icon, label, value, tone = "neutral", selected = false, onClick }) {

@@ -21,8 +21,8 @@ export const changelogEntries = [
       {
         title: "Added",
         items: [
-          "MCP exec can run the same command across multiple visible servers with server_ids while keeping per-server request, approval, output, and error records.",
-          "MCP read_console can inspect several always-run server consoles in one read-only call.",
+          "MCP exec can run the same command across multiple visible SSH targets while keeping per-target request, approval, output, and error records.",
+          "MCP read_console can inspect several always-run SSH target consoles in one read-only call.",
           "MCP command responses can include basic policy warnings for common high-risk command patterns.",
         ],
       },
@@ -48,7 +48,7 @@ export const changelogEntries = [
       {
         title: "Added",
         items: [
-          "Console Bulk command can run one shell command across multiple selected servers from the local UI.",
+          "Console Bulk command can run one shell command across multiple selected SSH targets from the local UI.",
           "Bulk command requires an explicit confirmation phrase and records one manual command request per target server.",
           "Bulk results show per-server status with selectable captured output and compact target search.",
         ],
@@ -69,7 +69,7 @@ export const changelogEntries = [
       {
         title: "Added",
         items: [
-          "Servers can store optional advanced SSH startup settings for NAS and appliance targets that show a menu before shell access.",
+          "SSH connectors can store optional advanced startup settings for NAS and appliance targets that show a menu before shell access.",
           "Advanced startup settings can send post-connect input such as q plus newline, or start a specific shell command when needed.",
         ],
       },
@@ -94,7 +94,7 @@ export const changelogEntries = [
         items: [
           "Console shows the active long-running MCP command, running age, token label, command, and reason for the selected server.",
           "Local operators can restart a stuck persistent console session from the Console UI.",
-          "MCP hints and operator instructions now describe the get_request, read_console, and restart_console_session recovery sequence.",
+          "MCP hints and operator instructions now describe the get_connector_action_request, read_console, and restart_console_session recovery sequence.",
         ],
       },
       {
@@ -136,7 +136,7 @@ export const changelogEntries = [
           "Token/server permissions can expire after a temporary maintenance window.",
           "Console token controls can set active Prompt or Always permissions to 1 hour, 4 hours, or 1 day.",
           "The always-run warning shows a countdown when an active Always grant is temporary.",
-          "MCP list_servers reports temporary grant expiration and omits expired grants.",
+          "MCP target discovery reports temporary grant expiration and omits expired grants.",
         ],
       },
       {
@@ -272,7 +272,7 @@ export const changelogEntries = [
         items: [
           "History labels for tagging command requests and filtering History by label.",
           "History label cleanup from Settings without deleting command history records.",
-          "On-demand Docker quick checks from the Servers page.",
+          "On-demand Docker quick checks from SSH connector targets.",
           "Docker container details and tail-configurable Docker logs dialogs.",
         ],
       },
