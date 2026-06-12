@@ -19,6 +19,9 @@ func TestConnectorMetadataAndSchemas(t *testing.T) {
 	if !hasField(targetSchema, "connection_mode") || !hasField(targetSchema, "host") || !hasField(targetSchema, "database") {
 		t.Fatalf("expected connection_mode, host, and database target fields, got %#v", targetSchema.Fields)
 	}
+	if fieldOptionsContain(targetSchema, "connection_mode", "over_ssh") {
+		t.Fatalf("target schema must not advertise unsupported over_ssh mode: %#v", targetSchema.Fields)
+	}
 
 	credentialSchemas := connector.CredentialSchemas()
 	if len(credentialSchemas) != 1 || credentialSchemas[0].Kind != "username_password" {
@@ -41,7 +44,7 @@ func TestGetHelpAndActionList(t *testing.T) {
 		t.Fatalf("unexpected help: %#v", help)
 	}
 
-	actions, err := connector.GetActionList(context.Background(), target)
+	actions, err := connector.GetActionList(context.Background(), target, connectors.CredentialProfileView{ConnectorKind: Kind, Kind: "username_password"})
 	if err != nil {
 		t.Fatalf("action list: %v", err)
 	}
@@ -217,6 +220,20 @@ func hasField(schema connectors.Schema, name string) bool {
 	for _, field := range schema.Fields {
 		if field.Name == name {
 			return true
+		}
+	}
+	return false
+}
+
+func fieldOptionsContain(schema connectors.Schema, name string, value string) bool {
+	for _, field := range schema.Fields {
+		if field.Name != name {
+			continue
+		}
+		for _, option := range field.Options {
+			if option.Value == value {
+				return true
+			}
 		}
 	}
 	return false

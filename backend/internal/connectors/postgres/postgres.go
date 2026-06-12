@@ -69,10 +69,9 @@ func (Connector) TargetSchema() connectors.Schema {
 			Type:        connectors.FieldSelect,
 			Required:    true,
 			Default:     "direct",
-			Description: "Use direct for locally reachable databases. Over SSH will route through a configured SSH target.",
+			Description: "Direct connection from the local gateway to a reachable Postgres host.",
 			Options: []connectors.FieldOption{
 				{Value: "direct", Label: "Direct"},
-				{Value: "over_ssh", Label: "Over SSH"},
 			},
 		},
 		{
@@ -109,12 +108,6 @@ func (Connector) TargetSchema() connectors.Schema {
 				{Value: "require", Label: "Require"},
 				{Value: "verify_full", Label: "Verify full"},
 			},
-		},
-		{
-			Name:        "ssh_transport_target_ref",
-			Label:       "SSH transport target",
-			Type:        connectors.FieldString,
-			Description: "Optional SSH target ref used when connection_mode is over_ssh.",
 		},
 	}}
 }
@@ -170,7 +163,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 	}, nil
 }
 
-func (Connector) GetActionList(context.Context, connectors.TargetView) ([]connectors.ActionDefinition, error) {
+func (Connector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
 	return []connectors.ActionDefinition{
 		{
 			Name:        ActionGetSchemas,
@@ -409,7 +402,7 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 
 func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeContext) (connectors.TestResult, error) {
 	if connectionMode(runtime.Target) != "direct" {
-		return connectors.TestResult{Status: connectors.TestUnknownError, Message: "over_ssh mode is not wired yet"}, ErrUnsupportedMode
+		return connectors.TestResult{Status: connectors.TestUnknownError, Message: "unsupported postgres connection mode"}, ErrUnsupportedMode
 	}
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
