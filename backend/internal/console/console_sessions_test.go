@@ -6,13 +6,13 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/gorilla/websocket"
 )
@@ -1179,22 +1179,9 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 		t.Fatalf("open test database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := database.Exec(`
-		INSERT INTO servers (name, host, port, username, ssh_key_id, created_at, updated_at)
-		VALUES ('worker-1', '127.0.0.1', 23, 'root', 1, ?, ?)`,
-		now,
-		now,
-	)
-	if err != nil {
-		t.Fatalf("insert server: %v", err)
-	}
-	serverID, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("read server id: %v", err)
-	}
-	manager := NewManager(database, func(context.Context, int64) (servers.Server, sshkeys.PrivateKey, error) {
-		return servers.Server{}, sshkeys.PrivateKey{}, errors.New("ssh dial: dial tcp 127.0.0.1:23: connect: connection refused")
+	serverID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 23)
+	manager := NewManager(database, func(context.Context, int64) (Target, sshkeys.PrivateKey, error) {
+		return Target{}, sshkeys.PrivateKey{}, errors.New("ssh dial: dial tcp 127.0.0.1:23: connect: connection refused")
 	}, "", nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -1219,19 +1206,7 @@ func TestConsoleSessionManagerListGetAndCloseServer(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := database.Exec(`
-		INSERT INTO servers (name, host, port, username, ssh_key_id, created_at, updated_at)
-		VALUES ('worker-1', '127.0.0.1', 22, 'root', 0, ?, ?)`,
-		now,
-		now,
-	)
-	if err != nil {
-		t.Fatalf("insert server: %v", err)
-	}
-	serverID, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("read server id: %v", err)
-	}
+	serverID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
 		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 'hello', 120, 32, ?, ?)`,
@@ -1281,19 +1256,7 @@ func TestConsoleTranscriptPersistsAppendOnlyChunksAndBoundedSnapshot(t *testing.
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := database.Exec(`
-		INSERT INTO servers (name, host, port, username, ssh_key_id, created_at, updated_at)
-		VALUES ('worker-1', '127.0.0.1', 22, 'root', 0, ?, ?)`,
-		now,
-		now,
-	)
-	if err != nil {
-		t.Fatalf("insert server: %v", err)
-	}
-	serverID, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("read server id: %v", err)
-	}
+	serverID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
 		INSERT INTO console_sessions (server_id, name, status, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 120, 32, ?, ?)`,
@@ -1367,6 +1330,41 @@ type manualHistoryRow struct {
 	sessionID      sql.NullInt64
 }
 
+func insertConsoleTestSSHProfile(t *testing.T, database *sql.DB, name string, host string, port int) int64 {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	targetResult, err := database.Exec(`
+		INSERT INTO connector_targets (connector_kind, name, config_json, created_at, updated_at)
+		VALUES ('ssh', ?, ?, ?, ?)`,
+		name,
+		`{"host":"`+host+`","port":`+strconv.Itoa(port)+`}`,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert connector target: %v", err)
+	}
+	targetID, err := targetResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("read target id: %v", err)
+	}
+	profileResult, err := database.Exec(`
+		INSERT INTO connector_credential_profiles (target_id, connector_kind, kind, label, public_json, encrypted_secret_json, created_at, updated_at)
+		VALUES (?, 'ssh', 'private_key', 'root', '{"username":"root","ssh_key_id":0}', '', ?, ?)`,
+		targetID,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert connector profile: %v", err)
+	}
+	profileID, err := profileResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("read profile id: %v", err)
+	}
+	return profileID
+}
+
 func newManualHistoryTestSession(t *testing.T) (*sql.DB, *Manager, *managedConsoleSession) {
 	t.Helper()
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
@@ -1375,19 +1373,7 @@ func newManualHistoryTestSession(t *testing.T) (*sql.DB, *Manager, *managedConso
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := database.Exec(`
-		INSERT INTO servers (name, host, port, username, ssh_key_id, created_at, updated_at)
-		VALUES ('worker-1', '127.0.0.1', 22, 'root', 0, ?, ?)`,
-		now,
-		now,
-	)
-	if err != nil {
-		t.Fatalf("insert server: %v", err)
-	}
-	serverID, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("read server id: %v", err)
-	}
+	serverID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
 		INSERT INTO console_sessions (server_id, name, status, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 120, 32, ?, ?)`,

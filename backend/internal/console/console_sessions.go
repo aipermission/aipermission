@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
@@ -62,6 +61,16 @@ type Record struct {
 	ClosedAt   *string `json:"closed_at"`
 }
 
+type Target struct {
+	ID                       int64
+	Name                     string
+	Host                     string
+	Port                     int
+	Username                 string
+	StartupInputAfterConnect string
+	ForceShellCommand        string
+}
+
 type CreateRequest struct {
 	ServerID      int64  `json:"server_id"`
 	Name          string `json:"name"`
@@ -107,7 +116,7 @@ type consoleSessionManualPause struct {
 
 type Manager struct {
 	db          *sql.DB
-	getMaterial func(context.Context, int64) (servers.Server, sshkeys.PrivateKey, error)
+	getMaterial func(context.Context, int64) (Target, sshkeys.PrivateKey, error)
 	knownHosts  string
 	redact      func(string) string
 

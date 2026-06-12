@@ -1,5 +1,4 @@
-// Package sshconnector defines the SSH connector contract without wiring it
-// into the current runtime path yet.
+// Package sshconnector defines the SSH connector contract.
 package sshconnector
 
 import (
@@ -21,20 +20,23 @@ const (
 	ActionRestartConsoleSession = "restart_console_session"
 	ActionBrowseRemoteFiles     = "browse_remote_files"
 	ActionStartFileDownload     = "start_file_download"
-	ActionUploadFiles           = "upload_files"
+
+	RuntimeServiceName = "ssh"
 
 	defaultConsoleTailBytes = 20000
 	maxConsoleTailBytes     = 100000
 )
 
 var (
-	ErrUnsupportedAction = errors.New("unsupported ssh connector action")
-	ErrExecutionNotWired = errors.New("ssh connector execution is not wired yet")
+	ErrUnsupportedAction  = errors.New("unsupported ssh connector action")
+	ErrRuntimeUnavailable = errors.New("ssh connector runtime is unavailable")
 )
 
-// Connector describes the current SSH feature set as a connector-shaped target.
-// Existing MCP/API handlers still own execution until the connector runtime is
-// introduced.
+type RuntimeExecutor interface {
+	ExecuteSSHAction(context.Context, connectors.RuntimeContext, connectors.PreparedAction) (connectors.ActionResult, error)
+}
+
+// Connector describes the SSH feature set as a connector-shaped target.
 type Connector struct{}
 
 func New() Connector {
@@ -82,6 +84,12 @@ func (Connector) TargetSchema() connectors.Schema {
 			Type:        connectors.FieldString,
 			Description: "Optional text sent after PTY connect for menu-based devices such as NAS appliances.",
 		},
+		{
+			Name:        "force_shell_command",
+			Label:       "Force shell command",
+			Type:        connectors.FieldString,
+			Description: "Optional shell command used for targets that need an explicit shell after login.",
+		},
 	}}
 }
 
@@ -90,7 +98,7 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 		{
 			Kind:        "private_key",
 			Label:       "SSH private key",
-			Description: "Gateway-managed or imported SSH private key. Passphrases are used only during import and are not stored.",
+			Description: "Gateway-managed or imported SSH private key referenced by this target profile.",
 			Schema: connectors.Schema{Fields: []connectors.Field{
 				{
 					Name:        "username",
@@ -100,18 +108,29 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 					Description: "Remote SSH username for this credential profile.",
 				},
 				{
-					Name:        "private_key",
-					Label:       "Private key",
-					Type:        connectors.FieldMultilineSecret,
+					Name:        "ssh_key_id",
+					Label:       "Gateway key id",
+					Type:        connectors.FieldNumber,
 					Required:    true,
-					Secret:      true,
-					Description: "Private key material stored through the encrypted vault layer.",
+					Description: "Local encrypted SSH key material selected from Credentials.",
 				},
 				{
-					Name:        "public_key",
-					Label:       "Public key",
-					Type:        connectors.FieldMultiline,
-					Description: "Public key line used for remote authorized_keys installation.",
+					Name:        "key_name",
+					Label:       "Key name",
+					Type:        connectors.FieldString,
+					Description: "Public local key label copied for display.",
+				},
+				{
+					Name:        "key_type",
+					Label:       "Key type",
+					Type:        connectors.FieldString,
+					Description: "Public local key type copied for display.",
+				},
+				{
+					Name:        "fingerprint",
+					Label:       "Fingerprint",
+					Type:        connectors.FieldString,
+					Description: "Public SSH key fingerprint copied for display.",
 				},
 			}},
 		},
@@ -133,18 +152,18 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use read_console only for always-run targets when you need live persistent console output.",
 			"Use restart_console_session when a persistent console appears stuck before sending more commands.",
 			"Use browse_remote_files before file transfers when the remote path is uncertain.",
-			"Use start_file_download for remote-to-local transfer queues and upload_files for local-to-remote transfer queues.",
+			"Use start_file_download for remote-to-local transfer queues.",
 			"Prefer bounded output: tail -n, journalctl --no-pager -n, docker logs --tail, or redirect full output to a temp file.",
 		},
 		Warnings: []string{
 			"SSH commands execute on the target shell after token permission and approval checks.",
 			"Avoid printing secrets. Redaction is best-effort and cannot make secret output safe.",
-			"list_servers style target metadata is not a live health check; execution errors are the reachability signal.",
+			"Connector target visibility is not a live SSH health check; execution errors are the reachability signal.",
 		},
 	}, nil
 }
 
-func (Connector) GetActionList(context.Context, connectors.TargetView) ([]connectors.ActionDefinition, error) {
+func (Connector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
 	return []connectors.ActionDefinition{
 		{
 			Name:        ActionExec,
@@ -225,36 +244,6 @@ func (Connector) GetActionList(context.Context, connectors.TargetView) ([]connec
 					Label:       "Archive name",
 					Type:        connectors.FieldString,
 					Description: "Optional archive filename for multi-file downloads.",
-				},
-			}},
-			OutputHint: connectors.OutputHint{Format: "json"},
-		},
-		{
-			Name:        ActionUploadFiles,
-			Label:       "Upload files",
-			Description: "Create a local-to-remote file transfer queue.",
-			Category:    "files",
-			Risk:        connectors.RiskWrite,
-			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{
-					Name:        "local_paths",
-					Label:       "Local paths",
-					Type:        connectors.FieldJSON,
-					Required:    true,
-					Description: "Array of local file paths selected by the local client.",
-				},
-				{
-					Name:        "remote_dir",
-					Label:       "Remote directory",
-					Type:        connectors.FieldString,
-					Required:    true,
-					Description: "Remote directory where files should be uploaded.",
-				},
-				{
-					Name:        "overwrite",
-					Label:       "Overwrite",
-					Type:        connectors.FieldBoolean,
-					Description: "Whether existing remote files may be overwritten.",
 				},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json"},
@@ -351,41 +340,17 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.ContextMaterial["remote_paths"] = remotePaths
 		base.ContextMaterial["archive_name"] = archiveName
 		return base, nil
-	case ActionUploadFiles:
-		localPaths := stringSliceInput(req.Input, "local_paths")
-		if len(localPaths) == 0 {
-			return connectors.PreparedAction{}, fmt.Errorf("%s local_paths is required", ActionUploadFiles)
-		}
-		remoteDir := strings.TrimSpace(stringInput(req.Input, "remote_dir"))
-		if remoteDir == "" {
-			return connectors.PreparedAction{}, fmt.Errorf("%s remote_dir is required", ActionUploadFiles)
-		}
-		overwrite := boolInput(req.Input, "overwrite")
-		base.Risk = connectors.RiskWrite
-		base.Title = "Upload SSH files"
-		base.Summary = targetSummary(req.Target, "Start a local-to-remote transfer queue")
-		base.Preview = map[string]any{
-			"local_paths": localPaths,
-			"remote_dir":  remoteDir,
-			"overwrite":   overwrite,
-			"items":       len(localPaths),
-		}
-		base.Payload = map[string]any{
-			"local_paths": localPaths,
-			"remote_dir":  remoteDir,
-			"overwrite":   overwrite,
-		}
-		base.ContextMaterial["local_paths"] = localPaths
-		base.ContextMaterial["remote_dir"] = remoteDir
-		base.ContextMaterial["overwrite"] = overwrite
-		return base, nil
 	default:
 		return connectors.PreparedAction{}, fmt.Errorf("%w: %s", ErrUnsupportedAction, req.ActionName)
 	}
 }
 
-func (Connector) ExecuteAction(context.Context, connectors.RuntimeContext, connectors.PreparedAction) (connectors.ActionResult, error) {
-	return connectors.ActionResult{}, ErrExecutionNotWired
+func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	executor, ok := runtime.Service(RuntimeServiceName).(RuntimeExecutor)
+	if !ok || executor == nil {
+		return connectors.ActionResult{}, ErrRuntimeUnavailable
+	}
+	return executor.ExecuteSSHAction(ctx, runtime, action)
 }
 
 func targetSummary(target connectors.TargetView, action string) string {

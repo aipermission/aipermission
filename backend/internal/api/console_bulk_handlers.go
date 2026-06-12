@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aipermission/aipermission/backend/internal/servers"
+	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 )
 
 type bulkConsoleCommandRequest struct {
-	ServerIDs    []int64 `json:"server_ids"`
+	TargetIDs    []int64 `json:"target_ids"`
 	Command      string  `json:"command"`
 	Reason       string  `json:"reason"`
 	Confirmation string  `json:"confirmation"`
@@ -30,8 +30,8 @@ type bulkConsoleCommandResponse struct {
 
 type bulkConsoleCommandResponseItem struct {
 	RequestID  int64  `json:"request_id"`
-	ServerID   int64  `json:"server_id"`
-	ServerName string `json:"server_name"`
+	TargetID   int64  `json:"target_id"`
+	TargetName string `json:"target_name"`
 	Status     string `json:"status"`
 }
 
@@ -58,25 +58,25 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	serverIDs, err := normalizeBulkConsoleServerIDs(request.ServerIDs)
+	targetIDs, err := normalizeBulkConsoleTargetIDs(request.TargetIDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	expectedConfirmation := bulkConsoleConfirmation(len(serverIDs))
+	expectedConfirmation := bulkConsoleConfirmation(len(targetIDs))
 	if request.Confirmation != expectedConfirmation {
 		writeError(w, http.StatusBadRequest, "confirmation must be "+expectedConfirmation)
 		return
 	}
 
-	targets := make([]servers.Server, 0, len(serverIDs))
-	for _, serverID := range serverIDs {
-		server, err := runtime.servers.Get(r.Context(), serverID)
+	targets := make([]console.Target, 0, len(targetIDs))
+	for _, targetID := range targetIDs {
+		target, _, err := s.serverSSHMaterialFromRuntime(r.Context(), runtime, targetID)
 		if err != nil {
-			handleServerError(w, err)
+			handleServerSSHMaterialError(w, err)
 			return
 		}
-		targets = append(targets, server)
+		targets = append(targets, target)
 	}
 
 	items := make([]bulkConsoleCommandResponseItem, 0, len(targets))
@@ -94,14 +94,14 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 		}
 		items = append(items, bulkConsoleCommandResponseItem{
 			RequestID:  requestID,
-			ServerID:   target.ID,
-			ServerName: target.Name,
+			TargetID:   target.ID,
+			TargetName: target.Name,
 			Status:     "running",
 		})
 	}
 
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "console.bulk_exec.started", map[string]any{
-		"server_count": len(items),
+		"target_count": len(items),
 		"request_ids":  bulkConsoleRequestIDs(items),
 		"command":      request.Command,
 	})
@@ -113,21 +113,21 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 	})
 }
 
-func normalizeBulkConsoleServerIDs(values []int64) ([]int64, error) {
+func normalizeBulkConsoleTargetIDs(values []int64) ([]int64, error) {
 	if len(values) == 0 {
-		return nil, fmt.Errorf("server_ids is required")
+		return nil, fmt.Errorf("target_ids is required")
 	}
 	if len(values) > bulkConsoleCommandMaxServers {
-		return nil, fmt.Errorf("server_ids must contain %d servers or fewer", bulkConsoleCommandMaxServers)
+		return nil, fmt.Errorf("target_ids must contain %d targets or fewer", bulkConsoleCommandMaxServers)
 	}
 	seen := map[int64]bool{}
 	result := make([]int64, 0, len(values))
 	for _, value := range values {
 		if value < 1 {
-			return nil, fmt.Errorf("server_ids must contain positive ids")
+			return nil, fmt.Errorf("target_ids must contain positive ids")
 		}
 		if seen[value] {
-			return nil, fmt.Errorf("server_ids must not contain duplicates")
+			return nil, fmt.Errorf("target_ids must not contain duplicates")
 		}
 		seen[value] = true
 		result = append(result, value)
@@ -158,7 +158,7 @@ func (s *Server) runBulkConsoleCommands(runtime *databaseRuntime, command string
 				defer wg.Done()
 				sem <- struct{}{}
 				defer func() { <-sem }()
-				s.runBulkConsoleCommand(runtime, item.RequestID, item.ServerID, command)
+				s.runBulkConsoleCommand(runtime, item.RequestID, item.TargetID, command)
 			}()
 		}
 		wg.Wait()

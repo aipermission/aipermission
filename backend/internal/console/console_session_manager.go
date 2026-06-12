@@ -10,12 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/gorilla/websocket"
 )
 
-func NewManager(db *sql.DB, getMaterial func(context.Context, int64) (servers.Server, sshkeys.PrivateKey, error), knownHosts string, redact func(string) string) *Manager {
+func NewManager(db *sql.DB, getMaterial func(context.Context, int64) (Target, sshkeys.PrivateKey, error), knownHosts string, redact func(string) string) *Manager {
 	if redact == nil {
 		redact = func(value string) string { return value }
 	}
@@ -30,9 +29,10 @@ func NewManager(db *sql.DB, getMaterial func(context.Context, int64) (servers.Se
 
 func (m *Manager) List(ctx context.Context, serverID int64) ([]Record, error) {
 	query := `
-		SELECT cs.id, cs.server_id, srv.name, cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
+		SELECT cs.id, cs.server_id, COALESCE(t.name, ''), cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
 		FROM console_sessions cs
-		JOIN servers srv ON srv.id = cs.server_id
+		LEFT JOIN connector_credential_profiles p ON p.id = cs.server_id AND p.connector_kind = 'ssh'
+		LEFT JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = 'ssh'
 		WHERE (? = 0 OR cs.server_id = ?)
 			ORDER BY CASE WHEN cs.status IN ('connecting', 'connected') THEN 0 ELSE 1 END, cs.updated_at DESC, cs.created_at DESC, cs.id DESC
 			LIMIT 100`
@@ -120,9 +120,10 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 
 func (m *Manager) Get(ctx context.Context, id int64) (Record, error) {
 	row := m.db.QueryRowContext(ctx, `
-		SELECT cs.id, cs.server_id, srv.name, cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
+		SELECT cs.id, cs.server_id, COALESCE(t.name, ''), cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
 		FROM console_sessions cs
-		JOIN servers srv ON srv.id = cs.server_id
+		LEFT JOIN connector_credential_profiles p ON p.id = cs.server_id AND p.connector_kind = 'ssh'
+		LEFT JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = 'ssh'
 		WHERE cs.id = ?`, id)
 	record, err := scanConsoleSession(row)
 	if err != nil {

@@ -8,10 +8,10 @@ import (
 )
 
 func (r *databaseRuntime) prepareSSHConnectorAction(ctx context.Context, serverID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
-	targetRef, err := connectortargets.NewStore(r.database).SSHTargetRefForServer(ctx, serverID)
+	target, profile, err := connectortargets.NewStore(r.database).SSHRuntimeForConsoleID(ctx, serverID)
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
-	request.TargetRef = targetRef
+	request.TargetRef = connectortargets.SSHTargetRef(target.ID, profile.ID)
 	return r.prepareConnectorAction(ctx, request)
 }

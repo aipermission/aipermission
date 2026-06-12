@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/execution"
+	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 )
 
 type dockerCheckResponse struct {
@@ -76,43 +77,23 @@ type dockerLogsResponse struct {
 	CheckedAt    string `json:"checked_at"`
 }
 
-func (s serverConnectionHandlers) checkDocker(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-
+func (s *Server) dockerCheckForServer(ctx context.Context, runtime *databaseRuntime, server console.Target, privateKey sshkeys.PrivateKey) (dockerCheckResponse, error) {
 	const command = `if ! command -v docker >/dev/null 2>&1; then
   printf '__AIPERMISSION_DOCKER_UNAVAILABLE__\n'
   exit 0
 fi
 docker ps --format '{{json .}}'`
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-	defer cancel()
-
-	server, privateKey, err := s.serverSSHMaterial(ctx, id)
-	if err != nil {
-		handleServerSSHMaterialError(w, err)
-		return
-	}
-
 	result, err := execution.RunCommand(ctx, s.executionTarget(server, privateKey), command)
 	if err != nil {
-		if writeUnknownHostKeyError(w, err) {
-			return
-		}
-		writeError(w, http.StatusBadGateway, sshCommandFailureMessage(err))
-		return
+		return dockerCheckResponse{}, err
 	}
-
 	containers, available := parseDockerPSOutput(result.Stdout)
-	runtime := s.activeRuntime()
-	s.writeAudit(r.Context(), runtime, "user", nil, server.ID, "server.docker_check", map[string]any{
+	s.writeAudit(ctx, runtime, "user", nil, server.ID, "server.docker_check", map[string]any{
 		"available":  available,
 		"exit_code":  result.ExitCode,
 		"containers": len(containers),
 	})
-	writeJSON(w, http.StatusOK, dockerCheckResponse{
+	return dockerCheckResponse{
 		ServerID:   server.ID,
 		ServerName: server.Name,
 		Available:  available,
@@ -124,56 +105,26 @@ docker ps --format '{{json .}}'`
 		ExitCode:   result.ExitCode,
 		DurationMS: result.DurationMS,
 		CheckedAt:  time.Now().UTC().Format(time.RFC3339),
-	})
+	}, nil
 }
 
-func (s serverConnectionHandlers) readDockerLogs(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	var request dockerLogsRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	containerRef := strings.TrimSpace(request.ContainerRef)
-	if err := validateDockerContainerRef(containerRef); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	tail := normalizeDockerLogsTail(request.Tail)
-
+func (s *Server) dockerLogsForServer(ctx context.Context, runtime *databaseRuntime, server console.Target, privateKey sshkeys.PrivateKey, containerRef string, tailValue int) (dockerLogsResponse, error) {
+	tail := normalizeDockerLogsTail(tailValue)
 	command := fmt.Sprintf(`if ! command -v docker >/dev/null 2>&1; then
   printf 'docker command is not available\n' >&2
   exit 127
 fi
 docker logs --tail %s --timestamps %s`, strconv.Itoa(tail), shellQuote(containerRef))
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
-	server, privateKey, err := s.serverSSHMaterial(ctx, id)
-	if err != nil {
-		handleServerSSHMaterialError(w, err)
-		return
-	}
-
 	result, err := execution.RunCommand(ctx, s.executionTarget(server, privateKey), command)
 	if err != nil {
-		if writeUnknownHostKeyError(w, err) {
-			return
-		}
-		writeError(w, http.StatusBadGateway, sshCommandFailureMessage(err))
-		return
+		return dockerLogsResponse{}, err
 	}
-
-	runtime := s.activeRuntime()
-	s.writeAudit(r.Context(), runtime, "user", nil, server.ID, "server.docker_logs", map[string]any{
+	s.writeAudit(ctx, runtime, "user", nil, server.ID, "server.docker_logs", map[string]any{
 		"container_ref": containerRef,
 		"exit_code":     result.ExitCode,
 		"tail":          tail,
 	})
-	writeJSON(w, http.StatusOK, dockerLogsResponse{
+	return dockerLogsResponse{
 		ServerID:     server.ID,
 		ServerName:   server.Name,
 		ContainerRef: containerRef,
@@ -184,7 +135,7 @@ docker logs --tail %s --timestamps %s`, strconv.Itoa(tail), shellQuote(container
 		ExitCode:     result.ExitCode,
 		DurationMS:   result.DurationMS,
 		CheckedAt:    time.Now().UTC().Format(time.RFC3339),
-	})
+	}, nil
 }
 
 func normalizeDockerLogsTail(value int) int {

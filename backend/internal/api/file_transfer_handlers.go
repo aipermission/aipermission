@@ -17,9 +17,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/execution"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 )
 
@@ -974,7 +975,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 }
 
 func (s fileTransferHandlers) writeFileTransferStartError(w http.ResponseWriter, err error) bool {
-	if errors.Is(err, servers.ErrNotFound) || errors.Is(err, sshkeys.ErrNotFound) {
+	if errors.Is(err, connectortargets.ErrTargetProfileNotFound) || errors.Is(err, sshkeys.ErrNotFound) {
 		handleServerSSHMaterialError(w, err)
 		return true
 	}
@@ -1691,12 +1692,8 @@ func (s fileTransferHandlers) scheduleTransferTempCleanup(path string) {
 	})
 }
 
-func (s fileTransferHandlers) serverSSHMaterialFromRuntime(ctx context.Context, runtime *databaseRuntime, serverID int64) (servers.Server, sshkeys.PrivateKey, error) {
-	server, privateKey, err := s.serverSSHMaterialForRuntime(runtime)(ctx, serverID)
-	if err != nil {
-		return servers.Server{}, sshkeys.PrivateKey{}, err
-	}
-	return server, privateKey, nil
+func (s fileTransferHandlers) serverSSHMaterialFromRuntime(ctx context.Context, runtime *databaseRuntime, serverID int64) (console.Target, sshkeys.PrivateKey, error) {
+	return s.Server.serverSSHMaterialFromRuntime(ctx, runtime, serverID)
 }
 
 func parseFormInt64(w http.ResponseWriter, r *http.Request, field string) (int64, bool) {

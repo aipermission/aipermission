@@ -23,8 +23,8 @@ func TestConnectorMetadataAndSchemas(t *testing.T) {
 	if len(credentialSchemas) != 1 || credentialSchemas[0].Kind != "private_key" {
 		t.Fatalf("unexpected credential schemas: %#v", credentialSchemas)
 	}
-	if !hasField(credentialSchemas[0].Schema, "username") || !hasField(credentialSchemas[0].Schema, "private_key") {
-		t.Fatalf("expected username and private_key credential fields, got %#v", credentialSchemas[0].Schema.Fields)
+	if !hasField(credentialSchemas[0].Schema, "username") || !hasField(credentialSchemas[0].Schema, "ssh_key_id") {
+		t.Fatalf("expected username and ssh_key_id credential fields, got %#v", credentialSchemas[0].Schema.Fields)
 	}
 }
 
@@ -40,12 +40,12 @@ func TestGetHelpAndActionList(t *testing.T) {
 		t.Fatalf("unexpected help: %#v", help)
 	}
 
-	actions, err := connector.GetActionList(context.Background(), target)
+	actions, err := connector.GetActionList(context.Background(), target, connectors.CredentialProfileView{ConnectorKind: Kind, Kind: "private_key"})
 	if err != nil {
 		t.Fatalf("action list: %v", err)
 	}
-	if len(actions) != 6 {
-		t.Fatalf("expected 6 actions, got %d", len(actions))
+	if len(actions) != 5 {
+		t.Fatalf("expected 5 actions, got %d", len(actions))
 	}
 	if actions[0].Name != ActionExec || actions[0].Risk != connectors.RiskWrite {
 		t.Fatalf("unexpected exec action: %#v", actions[0])
@@ -61,9 +61,6 @@ func TestGetHelpAndActionList(t *testing.T) {
 	}
 	if actions[4].Name != ActionStartFileDownload || actions[4].Risk != connectors.RiskRead {
 		t.Fatalf("unexpected download action: %#v", actions[4])
-	}
-	if actions[5].Name != ActionUploadFiles || actions[5].Risk != connectors.RiskWrite {
-		t.Fatalf("unexpected upload action: %#v", actions[5])
 	}
 }
 
@@ -179,50 +176,6 @@ func TestPrepareStartFileDownloadRequiresRemotePaths(t *testing.T) {
 	}
 }
 
-func TestPrepareUploadFiles(t *testing.T) {
-	prepared, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
-		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
-		ActionName: ActionUploadFiles,
-		Input: map[string]any{
-			"local_paths": []string{"/tmp/report.txt", "/tmp/log.txt"},
-			"remote_dir":  " /home/root ",
-			"overwrite":   "true",
-		},
-	})
-	if err != nil {
-		t.Fatalf("prepare upload: %v", err)
-	}
-	if got := prepared.Payload["remote_dir"]; got != "/home/root" {
-		t.Fatalf("remote_dir = %#v", got)
-	}
-	if got := prepared.Payload["overwrite"]; got != true {
-		t.Fatalf("overwrite = %#v", got)
-	}
-	if prepared.Preview["items"] != 2 {
-		t.Fatalf("items preview = %#v", prepared.Preview["items"])
-	}
-}
-
-func TestPrepareUploadFilesRequiresPathsAndRemoteDir(t *testing.T) {
-	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
-		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
-		ActionName: ActionUploadFiles,
-		Input:      map[string]any{"local_paths": []string{"/tmp/report.txt"}},
-	})
-	if err == nil {
-		t.Fatal("expected missing remote_dir error")
-	}
-
-	_, err = New().PrepareAction(context.Background(), connectors.ActionRequest{
-		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
-		ActionName: ActionUploadFiles,
-		Input:      map[string]any{"remote_dir": "/home/root"},
-	})
-	if err == nil {
-		t.Fatal("expected missing local_paths error")
-	}
-}
-
 func TestPrepareRejectsUnknownAction(t *testing.T) {
 	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
 		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
@@ -233,10 +186,10 @@ func TestPrepareRejectsUnknownAction(t *testing.T) {
 	}
 }
 
-func TestExecuteActionNotWired(t *testing.T) {
+func TestExecuteActionRequiresRuntime(t *testing.T) {
 	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{}, connectors.PreparedAction{})
-	if !errors.Is(err, ErrExecutionNotWired) {
-		t.Fatalf("expected ErrExecutionNotWired, got %v", err)
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("expected ErrRuntimeUnavailable, got %v", err)
 	}
 }
 

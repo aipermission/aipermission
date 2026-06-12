@@ -154,14 +154,14 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 		t.Fatalf("unexpected completed batch: %#v", completed)
 	}
 
-	batches, total, err := store.ListBatches(ctx, BatchListFilter{Direction: DirectionUpload, ServerIDs: []int64{serverID}, Query: "worker"})
+	batches, total, err := store.ListBatches(ctx, BatchListFilter{Direction: DirectionUpload, TargetIDs: []int64{serverID}, Query: "worker"})
 	if err != nil {
 		t.Fatalf("list batches: %v", err)
 	}
 	if total != 1 || len(batches) != 1 || batches[0].ID != batch.ID {
 		t.Fatalf("unexpected batch list: total=%d items=%#v", total, batches)
 	}
-	batches, total, err = store.ListBatches(ctx, BatchListFilter{ServerIDs: []int64{serverID + 1000}})
+	batches, total, err = store.ListBatches(ctx, BatchListFilter{TargetIDs: []int64{serverID + 1000}})
 	if err != nil {
 		t.Fatalf("list filtered batches: %v", err)
 	}
@@ -385,25 +385,32 @@ func TestStoreValidatesFileTransfers(t *testing.T) {
 
 func insertTestServer(t *testing.T, database *sql.DB) int64 {
 	t.Helper()
-	result, err := database.Exec(
-		`INSERT INTO servers (name, host, port, username, ssh_key_id, auth_type, key_label, encrypted_secret, description, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+	targetResult, err := database.Exec(
+		`INSERT INTO connector_targets (connector_kind, name, config_json, created_at, updated_at)
+		VALUES ('ssh', ?, ?, datetime('now'), datetime('now'))`,
 		"worker-1",
-		"127.0.0.1",
-		22,
-		"root",
-		1,
-		"private_key",
-		"",
-		"gateway-managed-ssh-key",
-		"",
+		`{"host":"127.0.0.1","port":22}`,
 	)
 	if err != nil {
-		t.Fatalf("insert server: %v", err)
+		t.Fatalf("insert connector target: %v", err)
 	}
-	id, err := result.LastInsertId()
+	targetID, err := targetResult.LastInsertId()
 	if err != nil {
-		t.Fatalf("server id: %v", err)
+		t.Fatalf("target id: %v", err)
 	}
-	return id
+	profileResult, err := database.Exec(
+		`INSERT INTO connector_credential_profiles (
+			target_id, connector_kind, kind, label, public_json, encrypted_secret_json, created_at, updated_at
+		)
+		VALUES (?, 'ssh', 'private_key', 'root', '{"username":"root","ssh_key_id":1}', 'encrypted', datetime('now'), datetime('now'))`,
+		targetID,
+	)
+	if err != nil {
+		t.Fatalf("insert connector profile: %v", err)
+	}
+	profileID, err := profileResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("profile id: %v", err)
+	}
+	return profileID
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 type commandRequestInsert struct {
@@ -40,14 +41,6 @@ func (s *Server) insertCommandRequestWithOptions(ctx context.Context, runtime *d
 	if request.Source == "" {
 		request.Source = commandRequestSourceMCP
 	}
-	approvalContext := ""
-	approvalContextHash := ""
-	if request.Source == commandRequestSourceMCP && request.Status == "pending_approval" && request.TokenID != nil && *request.TokenID > 0 {
-		approvalContext, approvalContextHash, err = s.buildApprovalContextSnapshot(ctx, runtime, *request.TokenID, request.ServerID, request.Command, now)
-		if err != nil {
-			return 0, fmt.Errorf("build approval context snapshot: %w", err)
-		}
-	}
 	storedCommand := s.redactForPersistence(ctx, runtime, request.Command)
 	storedReason := s.redactForPersistence(ctx, runtime, request.Reason)
 	result, err := runtime.database.ExecContext(ctx, `
@@ -60,14 +53,21 @@ func (s *Server) insertCommandRequestWithOptions(ctx context.Context, runtime *d
 		encryptedCommand,
 		storedReason,
 		request.Status,
-		approvalContext,
-		approvalContextHash,
+		"",
+		"",
 		now,
 	)
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if err := history.NewStore(runtime.database).SyncCommandRequest(ctx, id); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 func (s *Server) commandRequestApprovalContextHash(ctx context.Context, runtime *databaseRuntime, id int64) string {
@@ -124,8 +124,10 @@ func (s *Server) finishActiveCommandRequest(runtime *databaseRuntime, requestID 
 }
 
 func (s *Server) setCommandRequestSession(ctx context.Context, runtime *databaseRuntime, id int64, sessionID int64) error {
-	_, err := runtime.database.ExecContext(ctx, `UPDATE command_requests SET session_id = ? WHERE id = ?`, sessionID, id)
-	return err
+	if _, err := runtime.database.ExecContext(ctx, `UPDATE command_requests SET session_id = ? WHERE id = ?`, sessionID, id); err != nil {
+		return err
+	}
+	return history.NewStore(runtime.database).SyncCommandRequest(ctx, id)
 }
 
 func (s *Server) finishCommandRequest(ctx context.Context, runtime *databaseRuntime, id int64, status string, sessionID int64, stdout string, stderr string, exitCode int, errorText string) error {
@@ -135,7 +137,7 @@ func (s *Server) finishCommandRequest(ctx context.Context, runtime *databaseRunt
 	stderr = s.redactForPersistence(ctx, runtime, stderr)
 	errorText = s.redactForPersistence(ctx, runtime, errorText)
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := runtime.database.ExecContext(ctx, `
+	if _, err := runtime.database.ExecContext(ctx, `
 		UPDATE command_requests
 		SET status = ?, session_id = NULLIF(?, 0), stdout = ?, stderr = ?, exit_code = ?, error = ?, completed_at = ?
 		WHERE id = ? AND status = 'running'`,
@@ -147,17 +149,59 @@ func (s *Server) finishCommandRequest(ctx context.Context, runtime *databaseRunt
 		errorText,
 		now,
 		id,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	return history.NewStore(runtime.database).SyncCommandRequest(ctx, id)
+}
+
+func (s *Server) commandRequestIDs(ctx context.Context, runtime *databaseRuntime, where string, args ...any) ([]int64, error) {
+	if runtime == nil || runtime.database == nil {
+		return nil, nil
+	}
+	rows, err := runtime.database.QueryContext(ctx, `SELECT id FROM command_requests WHERE `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *Server) syncCommandRequestIDs(ctx context.Context, runtime *databaseRuntime, ids []int64) error {
+	if runtime == nil || runtime.database == nil {
+		return nil
+	}
+	store := history.NewStore(runtime.database)
+	for _, id := range ids {
+		if err := store.SyncCommandRequest(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) cancelRunningCommandRequests(ctx context.Context, runtime *databaseRuntime, errorText string) error {
 	if runtime == nil || runtime.database == nil {
 		return nil
 	}
+	ids, err := s.commandRequestIDs(ctx, runtime, `status = 'running'`)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	errorText = s.redactForPersistence(ctx, runtime, errorText)
-	_, err := runtime.database.ExecContext(ctx, `
+	_, err = runtime.database.ExecContext(ctx, `
 		UPDATE command_requests
 		SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
 		WHERE status = 'running'`,
@@ -167,16 +211,23 @@ func (s *Server) cancelRunningCommandRequests(ctx context.Context, runtime *data
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "database is closed") {
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return s.syncCommandRequestIDs(ctx, runtime, ids)
 }
 
 func (s *Server) cancelRunningCommandRequestsForSession(ctx context.Context, runtime *databaseRuntime, sessionID int64, errorText string) error {
 	if runtime == nil || runtime.database == nil || sessionID < 1 {
 		return nil
 	}
+	ids, err := s.commandRequestIDs(ctx, runtime, `status = 'running' AND session_id = ?`, sessionID)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	errorText = s.redactForPersistence(ctx, runtime, errorText)
-	_, err := runtime.database.ExecContext(ctx, `
+	_, err = runtime.database.ExecContext(ctx, `
 		UPDATE command_requests
 		SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
 		WHERE status = 'running' AND session_id = ?`,
@@ -187,12 +238,19 @@ func (s *Server) cancelRunningCommandRequestsForSession(ctx context.Context, run
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "database is closed") {
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return s.syncCommandRequestIDs(ctx, runtime, ids)
 }
 
 func (s *Server) cancelRunningCommandRequestsForServer(ctx context.Context, runtime *databaseRuntime, serverID int64, errorText string) (int64, error) {
 	if runtime == nil || runtime.database == nil || serverID < 1 {
 		return 0, nil
+	}
+	ids, err := s.commandRequestIDs(ctx, runtime, `status = 'running' AND server_id = ?`, serverID)
+	if err != nil {
+		return 0, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	errorText = s.redactForPersistence(ctx, runtime, errorText)
@@ -208,6 +266,9 @@ func (s *Server) cancelRunningCommandRequestsForServer(ctx context.Context, runt
 		return 0, nil
 	}
 	if err != nil {
+		return 0, err
+	}
+	if err := s.syncCommandRequestIDs(ctx, runtime, ids); err != nil {
 		return 0, err
 	}
 	affected, err := result.RowsAffected()

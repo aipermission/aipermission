@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/execution"
-	"github.com/aipermission/aipermission/backend/internal/servers"
 )
 
 type hostKeyApprovalRequest struct {
@@ -58,7 +59,7 @@ func (s sshHostKeyHandlers) approveSSHHostKey(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "host is required")
 		return
 	}
-	if err := servers.ValidateHost(request.Host); err != nil {
+	if err := validateSSHHost(request.Host); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -92,6 +93,24 @@ func (s sshHostKeyHandlers) approveSSHHostKey(w http.ResponseWriter, r *http.Req
 		KeyType:           key.Type(),
 		FingerprintSHA256: execution.HostKeyFingerprintSHA256(key),
 	})
+}
+
+func validateSSHHost(host string) error {
+	if len([]rune(host)) > 255 {
+		return connectortargets.ValidationError("host must be 255 characters or fewer")
+	}
+	if strings.Contains(host, "://") || strings.ContainsAny(host, "/\\") {
+		return connectortargets.ValidationError("host must be a hostname or IP address, not a URL")
+	}
+	if strings.ContainsAny(host, " \t\r\n") {
+		return connectortargets.ValidationError("host cannot contain whitespace")
+	}
+	for _, r := range host {
+		if unicode.IsControl(r) {
+			return connectortargets.ValidationError("host cannot contain control characters")
+		}
+	}
+	return nil
 }
 
 func writeUnknownHostKeyError(w http.ResponseWriter, err error) bool {

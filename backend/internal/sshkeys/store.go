@@ -6,9 +6,11 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"database/sql"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -46,6 +48,10 @@ type ImportRequest struct {
 	Name       string `json:"name"`
 	PrivateKey string `json:"private_key"`
 	Passphrase string `json:"passphrase,omitempty"`
+}
+
+type UpdateRequest struct {
+	Name string `json:"name"`
 }
 
 type privateKeySecret struct {
@@ -223,6 +229,45 @@ func (s *Store) Import(ctx context.Context, request ImportRequest) (SSHKey, erro
 	return s.Get(ctx, id)
 }
 
+func (s *Store) Update(ctx context.Context, id int64, request UpdateRequest) (SSHKey, error) {
+	request.Name = strings.TrimSpace(request.Name)
+	if id < 1 {
+		return SSHKey{}, ErrNotFound
+	}
+	if request.Name == "" {
+		return SSHKey{}, ValidationError("name is required")
+	}
+	if err := validateName(request.Name); err != nil {
+		return SSHKey{}, err
+	}
+
+	existing, err := s.Get(ctx, id)
+	if err != nil {
+		return SSHKey{}, err
+	}
+	publicKey, err := publicKeyWithComment(existing.PublicKey, "aipermission-"+request.Name)
+	if err != nil {
+		return SSHKey{}, err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := s.db.ExecContext(ctx, `UPDATE ssh_keys SET name = ?, public_key = ?, updated_at = ? WHERE id = ?`, request.Name, publicKey, now, id)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return SSHKey{}, ValidationError("ssh key name already exists")
+		}
+		return SSHKey{}, fmt.Errorf("update ssh key: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return SSHKey{}, fmt.Errorf("read rows affected: %w", err)
+	}
+	if affected == 0 {
+		return SSHKey{}, ErrNotFound
+	}
+	return s.Get(ctx, id)
+}
+
 func validateName(name string) error {
 	if len([]rune(name)) > 80 {
 		return ValidationError("name must be 80 characters or fewer")
@@ -235,13 +280,21 @@ func validateName(name string) error {
 	return nil
 }
 
+func publicKeyWithComment(publicKey string, comment string) (string, error) {
+	parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	if err != nil {
+		return "", fmt.Errorf("parse ssh public key: %w", err)
+	}
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(parsed))) + " " + comment, nil
+}
+
 func (s *Store) Delete(ctx context.Context, id int64) error {
-	var usageCount int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM servers WHERE ssh_key_id = ?`, id).Scan(&usageCount); err != nil {
+	usageCount, err := s.connectorProfileUsageCount(ctx, id)
+	if err != nil {
 		return fmt.Errorf("check ssh key usage: %w", err)
 	}
 	if usageCount > 0 {
-		return ValidationError("ssh key is used by one or more servers")
+		return ValidationError("ssh key is used by one or more SSH connector profiles")
 	}
 
 	result, err := s.db.ExecContext(ctx, `DELETE FROM ssh_keys WHERE id = ?`, id)
@@ -256,6 +309,54 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) connectorProfileUsageCount(ctx context.Context, id int64) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT public_json FROM connector_credential_profiles WHERE connector_kind = 'ssh'`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return 0, err
+		}
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+			return 0, err
+		}
+		if int64MetadataValue(metadata, "ssh_key_id") == id {
+			count++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func int64MetadataValue(metadata map[string]any, key string) int64 {
+	value, ok := metadata[key]
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return int64(typed)
+	case int64:
+		return typed
+	case float64:
+		return int64(typed)
+	case json.Number:
+		parsed, _ := strconv.ParseInt(string(typed), 10, 64)
+		return parsed
+	default:
+		parsed, _ := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(value)), 10, 64)
+		return parsed
+	}
 }
 
 func generateKey(name string, keyType string) (string, string, string, error) {

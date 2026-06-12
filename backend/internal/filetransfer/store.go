@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 const (
@@ -120,7 +122,7 @@ type ListFilter struct {
 	Direction string
 	Status    string
 	ServerID  int64
-	ServerIDs []int64
+	TargetIDs []int64
 	Query     string
 	Limit     int
 	Offset    int
@@ -130,7 +132,7 @@ type BatchListFilter struct {
 	Direction string
 	Status    string
 	ServerID  int64
-	ServerIDs []int64
+	TargetIDs []int64
 	Query     string
 	Limit     int
 	Offset    int
@@ -142,6 +144,36 @@ type Store struct {
 
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
+}
+
+func (s *Store) syncTransferHistory(ctx context.Context, id int64) error {
+	if id < 1 {
+		return nil
+	}
+	return history.NewStore(s.db).SyncFileTransfer(ctx, id)
+}
+
+func (s *Store) syncBatchTransferHistory(ctx context.Context, batchID int64) error {
+	if batchID < 1 {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM file_transfers WHERE batch_id = ?`, batchID)
+	if err != nil {
+		return fmt.Errorf("read batch transfer ids for history sync: %w", err)
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan batch transfer id for history sync: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate batch transfer ids for history sync: %w", err)
+	}
+	return s.syncTransferHistoryIDs(ctx, ids)
 }
 
 func (s *Store) Create(ctx context.Context, request CreateRequest) (Record, error) {
@@ -178,18 +210,26 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (Record, erro
 	if err != nil {
 		return Record{}, fmt.Errorf("read file transfer id: %w", err)
 	}
-	return s.Get(ctx, id)
+	item, err := s.Get(ctx, id)
+	if err != nil {
+		return Record{}, err
+	}
+	if err := s.syncTransferHistory(ctx, id); err != nil {
+		return Record{}, err
+	}
+	return item, nil
 }
 
 func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 	var item Record
 	err := s.db.QueryRowContext(ctx, `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(srv.name, ''), ft.direction, ft.source, ft.status,
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
 			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
 			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN servers srv ON srv.id = ft.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
 		WHERE ft.id = ?`,
 		id,
 	).Scan(
@@ -228,19 +268,20 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, error) {
 	filter = normalizeListFilter(filter)
 	where, args := listWhere(filter)
-	countQuery := `SELECT COUNT(*) FROM file_transfers ft LEFT JOIN servers srv ON srv.id = ft.server_id` + where
+	countQuery := `SELECT COUNT(*) FROM file_transfers ft LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh' LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'` + where
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count file transfers: %w", err)
 	}
 
 	query := `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(srv.name, ''), ft.direction, ft.source, ft.status,
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
 			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
 			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN servers srv ON srv.id = ft.server_id` + where + `
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'` + where + `
 		ORDER BY ft.created_at DESC, ft.id DESC
 		LIMIT ? OFFSET ?`
 	args = append(args, filter.Limit, filter.Offset)
@@ -294,20 +335,21 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]BatchRecord, int, error) {
 	filter = normalizeBatchListFilter(filter)
 	where, args := batchListWhere(filter)
-	countQuery := `SELECT COUNT(*) FROM file_transfer_batches b LEFT JOIN servers srv ON srv.id = b.server_id` + where
+	countQuery := `SELECT COUNT(*) FROM file_transfer_batches b LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id AND cp.connector_kind = 'ssh' LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'` + where
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count file transfer batches: %w", err)
 	}
 
 	query := `
-		SELECT b.id, b.server_id, COALESCE(srv.name, ''), b.direction, b.source, b.status,
+		SELECT b.id, b.server_id, COALESCE(ct.name, ''), b.direction, b.source, b.status,
 			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, b.total_items, b.completed_items, b.failed_items,
 			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
 			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
 		FROM file_transfer_batches b
-		LEFT JOIN servers srv ON srv.id = b.server_id` + where + `
+		LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'` + where + `
 		ORDER BY b.created_at DESC, b.id DESC
 		LIMIT ? OFFSET ?`
 	args = append(args, filter.Limit, filter.Offset)
@@ -430,20 +472,28 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 	if err := tx.Commit(); err != nil {
 		return BatchRecord{}, fmt.Errorf("commit file transfer batch: %w", err)
 	}
-	return s.GetBatch(ctx, batchID)
+	batch, err := s.GetBatch(ctx, batchID)
+	if err != nil {
+		return BatchRecord{}, err
+	}
+	if err := s.syncBatchTransferHistory(ctx, batchID); err != nil {
+		return BatchRecord{}, err
+	}
+	return batch, nil
 }
 
 func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 	var item BatchRecord
 	var overwrite int
 	err := s.db.QueryRowContext(ctx, `
-		SELECT b.id, b.server_id, COALESCE(srv.name, ''), b.direction, b.source, b.status,
+		SELECT b.id, b.server_id, COALESCE(ct.name, ''), b.direction, b.source, b.status,
 			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, b.total_items, b.completed_items, b.failed_items,
 			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
 			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
 		FROM file_transfer_batches b
-		LEFT JOIN servers srv ON srv.id = b.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
 		WHERE b.id = ?`,
 		id,
 	).Scan(
@@ -488,13 +538,14 @@ func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 
 func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(srv.name, ''),
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(ct.name, ''),
 			ft.direction, ft.source, ft.status, ft.local_path, ft.remote_path, ft.file_name,
 			ft.size_bytes, ft.transferred_bytes, ft.bytes_per_second, ft.eta_seconds,
 			ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN servers srv ON srv.id = ft.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
 		WHERE ft.batch_id = ?
 		ORDER BY ft.queue_index ASC, ft.id ASC`,
 		batchID,
@@ -542,13 +593,14 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 
 func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(srv.name, ''),
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.server_id, COALESCE(ct.name, ''),
 			ft.direction, ft.source, ft.status, ft.local_path, ft.remote_path, ft.file_name,
 			ft.size_bytes, ft.transferred_bytes, ft.bytes_per_second, ft.eta_seconds,
 			ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN servers srv ON srv.id = ft.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
 		WHERE ft.batch_id = ? AND ft.status = ?
 		ORDER BY ft.queue_index ASC, ft.id ASC
 		LIMIT 1`,
@@ -608,6 +660,11 @@ func (s *Store) MarkRunning(ctx context.Context, id int64) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read file transfer running rows: %w", err)
 	}
+	if rows > 0 {
+		if err := s.syncTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
+	}
 	return rows > 0, nil
 }
 
@@ -630,6 +687,11 @@ func (s *Store) MarkBatchRunning(ctx context.Context, id int64) (bool, error) {
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return false, fmt.Errorf("read file transfer batch running rows: %w", err)
+	}
+	if rows > 0 {
+		if err := s.syncBatchTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
 	}
 	return rows > 0, nil
 }
@@ -775,6 +837,9 @@ func (s *Store) ApproveBatch(ctx context.Context, id int64, request BatchApprova
 	if err != nil {
 		return BatchRecord{}, nil, err
 	}
+	if err := s.syncBatchTransferHistory(ctx, id); err != nil {
+		return BatchRecord{}, nil, err
+	}
 	return batch, rejected, nil
 }
 
@@ -819,7 +884,7 @@ func (s *Store) UpdateProgressStats(ctx context.Context, id int64, transferred i
 	if err != nil {
 		return fmt.Errorf("update file transfer progress: %w", err)
 	}
-	return nil
+	return s.syncTransferHistory(ctx, id)
 }
 
 func (s *Store) Complete(ctx context.Context, id int64, transferred int64, checksum string) (bool, error) {
@@ -845,6 +910,11 @@ func (s *Store) Complete(ctx context.Context, id int64, transferred int64, check
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return false, fmt.Errorf("read completed file transfer rows: %w", err)
+	}
+	if rows > 0 {
+		if err := s.syncTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
 	}
 	return rows > 0, nil
 }
@@ -872,6 +942,11 @@ func (s *Store) Fail(ctx context.Context, id int64, errorText string) (bool, err
 	if err != nil {
 		return false, fmt.Errorf("read failed file transfer rows: %w", err)
 	}
+	if rows > 0 {
+		if err := s.syncTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
+	}
 	return rows > 0, nil
 }
 
@@ -898,6 +973,11 @@ func (s *Store) Cancel(ctx context.Context, id int64, errorText string) (bool, e
 	if err != nil {
 		return false, fmt.Errorf("read canceled file transfer rows: %w", err)
 	}
+	if rows > 0 {
+		if err := s.syncTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
+	}
 	return rows > 0, nil
 }
 
@@ -918,6 +998,11 @@ func (s *Store) Pause(ctx context.Context, id int64) (bool, error) {
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return false, fmt.Errorf("read paused file transfer rows: %w", err)
+	}
+	if rows > 0 {
+		if err := s.syncTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
 	}
 	return rows > 0, nil
 }
@@ -951,6 +1036,11 @@ func (s *Store) PauseBatch(ctx context.Context, id int64) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read paused file transfer batch rows: %w", err)
 	}
+	if rows > 0 {
+		if err := s.syncBatchTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
+	}
 	return rows > 0, nil
 }
 
@@ -982,6 +1072,11 @@ func (s *Store) ResumeBatch(ctx context.Context, id int64) (bool, error) {
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return false, fmt.Errorf("read resumed file transfer batch rows: %w", err)
+	}
+	if rows > 0 {
+		if err := s.syncBatchTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
 	}
 	return rows > 0, nil
 }
@@ -1096,6 +1191,14 @@ func (s *Store) UpdatePausedBatchQueue(ctx context.Context, id int64, orderedPen
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit file transfer batch queue update: %w", err)
 	}
+	for _, item := range removed {
+		if err := history.NewStore(s.db).DeleteSourceRef(ctx, history.SourceFileTransfer, item.ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.syncBatchTransferHistory(ctx, id); err != nil {
+		return nil, err
+	}
 	return removed, nil
 }
 
@@ -1137,11 +1240,20 @@ func (s *Store) CancelBatch(ctx context.Context, id int64, errorText string) (bo
 	if err != nil {
 		return false, fmt.Errorf("read canceled file transfer batch rows: %w", err)
 	}
+	if rows > 0 {
+		if err := s.syncBatchTransferHistory(ctx, id); err != nil {
+			return false, err
+		}
+	}
 	return rows > 0, nil
 }
 
 func (s *Store) FailActive(ctx context.Context, transferError string, batchError string) error {
 	now := nowString()
+	ids, err := s.transferIDsByStatuses(ctx, StatusPendingApproval, StatusPending, StatusRunning, StatusPaused)
+	if err != nil {
+		return err
+	}
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
@@ -1172,7 +1284,50 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 	); err != nil {
 		return fmt.Errorf("fail active file transfer batches: %w", err)
 	}
+	return s.syncTransferHistoryIDs(ctx, ids)
+}
+
+func (s *Store) syncTransferHistoryIDs(ctx context.Context, ids []int64) error {
+	for _, id := range ids {
+		if err := s.syncTransferHistory(ctx, id); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func (s *Store) transferIDsByStatuses(ctx context.Context, statuses ...string) ([]int64, error) {
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, 0, len(statuses))
+	args := make([]any, 0, len(statuses))
+	for _, status := range statuses {
+		placeholders = append(placeholders, "?")
+		args = append(args, status)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id
+		FROM file_transfers
+		WHERE status IN (`+strings.Join(placeholders, ",")+`)`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer ids for history sync: %w", err)
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan transfer id for history sync: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate transfer ids for history sync: %w", err)
+	}
+	return ids, nil
 }
 
 func (s *Store) RecalculateBatch(ctx context.Context, id int64) error {
@@ -1291,15 +1446,15 @@ func listWhere(filter ListFilter) (string, []any) {
 		clauses = append(clauses, "ft.server_id = ?")
 		args = append(args, filter.ServerID)
 	}
-	if len(filter.ServerIDs) > 0 {
-		clauses = append(clauses, "ft.server_id IN ("+placeholders(len(filter.ServerIDs))+")")
-		for _, id := range filter.ServerIDs {
+	if len(filter.TargetIDs) > 0 {
+		clauses = append(clauses, "ft.server_id IN ("+placeholders(len(filter.TargetIDs))+")")
+		for _, id := range filter.TargetIDs {
 			args = append(args, id)
 		}
 	}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
-		clauses = append(clauses, "(ft.remote_path LIKE ? OR ft.local_path LIKE ? OR ft.file_name LIKE ? OR COALESCE(srv.name, '') LIKE ?)")
+		clauses = append(clauses, "(ft.remote_path LIKE ? OR ft.local_path LIKE ? OR ft.file_name LIKE ? OR COALESCE(ct.name, '') LIKE ?)")
 		args = append(args, like, like, like, like)
 	}
 	if len(clauses) == 0 {
@@ -1323,15 +1478,15 @@ func batchListWhere(filter BatchListFilter) (string, []any) {
 		clauses = append(clauses, "b.server_id = ?")
 		args = append(args, filter.ServerID)
 	}
-	if len(filter.ServerIDs) > 0 {
-		clauses = append(clauses, "b.server_id IN ("+placeholders(len(filter.ServerIDs))+")")
-		for _, id := range filter.ServerIDs {
+	if len(filter.TargetIDs) > 0 {
+		clauses = append(clauses, "b.server_id IN ("+placeholders(len(filter.TargetIDs))+")")
+		for _, id := range filter.TargetIDs {
 			args = append(args, id)
 		}
 	}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
-		clauses = append(clauses, "(b.archive_name LIKE ? OR COALESCE(srv.name, '') LIKE ?)")
+		clauses = append(clauses, "(b.archive_name LIKE ? OR COALESCE(ct.name, '') LIKE ?)")
 		args = append(args, like, like)
 	}
 	if len(clauses) == 0 {
@@ -1449,7 +1604,7 @@ func normalizeListFilter(filter ListFilter) ListFilter {
 	filter.Direction = strings.TrimSpace(filter.Direction)
 	filter.Status = strings.TrimSpace(filter.Status)
 	filter.Query = strings.TrimSpace(filter.Query)
-	filter.ServerIDs = normalizeServerIDs(filter.ServerIDs)
+	filter.TargetIDs = normalizeTargetIDs(filter.TargetIDs)
 	if filter.Limit < 1 || filter.Limit > 100 {
 		filter.Limit = 50
 	}
@@ -1473,7 +1628,7 @@ func normalizeBatchListFilter(filter BatchListFilter) BatchListFilter {
 	filter.Direction = strings.TrimSpace(filter.Direction)
 	filter.Status = strings.TrimSpace(filter.Status)
 	filter.Query = strings.TrimSpace(filter.Query)
-	filter.ServerIDs = normalizeServerIDs(filter.ServerIDs)
+	filter.TargetIDs = normalizeTargetIDs(filter.TargetIDs)
 	if filter.Limit < 1 || filter.Limit > 100 {
 		filter.Limit = 50
 	}
@@ -1493,7 +1648,7 @@ func normalizeBatchListFilter(filter BatchListFilter) BatchListFilter {
 	return filter
 }
 
-func normalizeServerIDs(values []int64) []int64 {
+func normalizeTargetIDs(values []int64) []int64 {
 	if len(values) == 0 {
 		return nil
 	}

@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -235,6 +236,33 @@ func TestSSHKeyStoreDuplicateNameReturnsValidationError(t *testing.T) {
 	}
 }
 
+func TestSSHKeyStoreUpdatesCredentialName(t *testing.T) {
+	ctx := context.Background()
+	_, store := openSSHKeyTestStore(t)
+
+	key, err := store.Create(ctx, CreateRequest{Name: "main", KeyType: TypeED25519})
+	if err != nil {
+		t.Fatalf("create key: %v", err)
+	}
+	updated, err := store.Update(ctx, key.ID, UpdateRequest{Name: "ops"})
+	if err != nil {
+		t.Fatalf("update key: %v", err)
+	}
+	if updated.Name != "ops" || !strings.Contains(updated.PublicKey, "aipermission-ops") || !strings.Contains(updated.InstallCommand, "aipermission-ops") {
+		t.Fatalf("expected updated key name and public comment, got %#v", updated)
+	}
+
+	if _, err := store.Create(ctx, CreateRequest{Name: "existing", KeyType: TypeED25519}); err != nil {
+		t.Fatalf("create existing key: %v", err)
+	}
+	if _, err := store.Update(ctx, key.ID, UpdateRequest{Name: "existing"}); !errors.As(err, new(ValidationError)) {
+		t.Fatalf("expected duplicate update validation error, got %v", err)
+	}
+	if _, err := store.Update(ctx, 999, UpdateRequest{Name: "missing"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected missing update to return ErrNotFound, got %v", err)
+	}
+}
+
 func TestSSHKeyStoreValidatesAndRefusesDeleteWhenInUse(t *testing.T) {
 	ctx := context.Background()
 	database, store := openSSHKeyTestStore(t)
@@ -266,14 +294,28 @@ func TestSSHKeyStoreValidatesAndRefusesDeleteWhenInUse(t *testing.T) {
 		t.Fatalf("create key: %v", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	targetResult, err := database.Exec(`
+		INSERT INTO connector_targets (connector_kind, name, config_json, created_at, updated_at)
+		VALUES ('ssh', 'worker-1', '{"host":"127.0.0.1","port":22}', ?, ?)`,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert connector target: %v", err)
+	}
+	targetID, err := targetResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("read connector target id: %v", err)
+	}
 	if _, err := database.Exec(`
-		INSERT INTO servers (name, host, port, username, ssh_key_id, description, created_at, updated_at)
-		VALUES ('worker-1', '127.0.0.1', 22, 'root', ?, '', ?, ?)`,
-		key.ID,
+		INSERT INTO connector_credential_profiles (target_id, connector_kind, kind, label, public_json, encrypted_secret_json, created_at, updated_at)
+		VALUES (?, 'ssh', 'private_key', 'root', ?, '', ?, ?)`,
+		targetID,
+		`{"username":"root","ssh_key_id":`+strconv.FormatInt(key.ID, 10)+`}`,
 		now,
 		now,
 	); err != nil {
-		t.Fatalf("insert server: %v", err)
+		t.Fatalf("insert connector profile: %v", err)
 	}
 	if err := store.Delete(ctx, key.ID); err == nil {
 		t.Fatalf("expected delete to fail while key is in use")

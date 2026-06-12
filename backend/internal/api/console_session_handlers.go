@@ -127,27 +127,27 @@ func (s consoleHandlers) closeConsoleSession(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, map[string]any{"status": "closed"})
 }
 
-func (s consoleHandlers) restartServerConsoleSession(w http.ResponseWriter, r *http.Request) {
+func (s consoleHandlers) restartTargetConsoleSession(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return
 	}
-	serverID, ok := parseID(w, r)
+	targetID, ok := parseID(w, r)
 	if !ok {
 		return
 	}
-	result, err := s.Server.restartServerConsoleSession(r.Context(), runtime, serverID, "console session restarted by local user before command completed")
+	result, err := s.Server.restartServerConsoleSession(r.Context(), runtime, targetID, "console session restarted by local user before command completed")
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, serverID, "console.session.restarted", map[string]any{
+	s.writeAudit(r.Context(), runtime, "user", nil, targetID, "console.session.restarted", map[string]any{
 		"closed_session_ids":        result.ClosedSessionIDs,
 		"canceled_running_requests": result.CanceledRunningRequests,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":                    "restarted",
-		"server_id":                 serverID,
+		"target_id":                 targetID,
 		"closed_session_ids":        result.ClosedSessionIDs,
 		"canceled_running_requests": result.CanceledRunningRequests,
 	})
