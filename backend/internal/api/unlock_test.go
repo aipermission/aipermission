@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/servers"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -111,7 +111,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 		t.Fatalf("downloaded backup should be a valid encrypted snapshot: %v", err)
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/backup/export", "", map[string]any{"passphrase": "backup-passphrase"}); response.Code != http.StatusNotFound {
-		t.Fatalf("legacy export endpoint should not be registered, got %d %s", response.Code, response.Body.String())
+		t.Fatalf("removed export endpoint should not be registered, got %d %s", response.Code, response.Body.String())
 	}
 
 	if response := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{DatabaseName: "Renamed Database"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"locked"`) {
@@ -276,7 +276,7 @@ func TestDatabaseRenameAndSwitchFailuresKeepActiveRuntime(t *testing.T) {
 		t.Fatalf("valid switch should succeed, got %d %s", switched.Code, switched.Body.String())
 	}
 	if oldCookie != nil {
-		request := httptest.NewRequest(http.MethodGet, "/api/servers", nil)
+		request := httptest.NewRequest(http.MethodGet, "/api/connector-targets", nil)
 		request.RemoteAddr = "127.0.0.1:12345"
 		request.Host = "localhost"
 		request.AddCookie(oldCookie)
@@ -286,7 +286,7 @@ func TestDatabaseRenameAndSwitchFailuresKeepActiveRuntime(t *testing.T) {
 			t.Fatalf("old ui session should not authenticate after workspace switch, got %d", response.Code)
 		}
 	}
-	if response := performJSON(handler, http.MethodGet, "/api/servers", "", nil); response.Code != http.StatusOK {
+	if response := performJSON(handler, http.MethodGet, "/api/connector-targets", "", nil); response.Code != http.StatusOK {
 		t.Fatalf("new ui session should authenticate after workspace switch, got %d %s", response.Code, response.Body.String())
 	}
 }
@@ -413,7 +413,7 @@ func TestPlaintextDatabaseImportIsRejected(t *testing.T) {
 	}
 }
 
-func TestLegacyRestoreEndpointIsNotRegistered(t *testing.T) {
+func TestRemovedRestoreEndpointIsNotRegistered(t *testing.T) {
 	server := newLockedAPITestServer(t)
 	handler := server.Handler()
 	defer server.Close()
@@ -429,7 +429,7 @@ func TestLegacyRestoreEndpointIsNotRegistered(t *testing.T) {
 
 	response := performJSON(handler, http.MethodPost, "/api/backup/restore", "", map[string]any{"backup": map[string]any{}})
 	if response.Code != http.StatusNotFound {
-		t.Fatalf("legacy restore endpoint should not be registered, got %d %s", response.Code, response.Body.String())
+		t.Fatalf("removed restore endpoint should not be registered, got %d %s", response.Code, response.Body.String())
 	}
 }
 
@@ -447,21 +447,18 @@ func TestLockPromotesRemainingUnlockedWorkspaceForMCP(t *testing.T) {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
 	runtime := server.activeRuntime()
-	key, err := runtime.sshKeys.Create(t.Context(), sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519})
-	if err != nil {
-		t.Fatalf("create key: %v", err)
-	}
-	target, err := runtime.servers.Create(t.Context(), servers.CreateRequest{Name: "worker-1", Host: "127.0.0.1", Username: "root", SSHKeyID: key.ID})
-	if err != nil {
-		t.Fatalf("create server: %v", err)
-	}
+	target := createTestSSHConnectorProfile(t, runtime.database, runtime.sshKeys, "worker-1")
 	token, err := runtime.tokens.Create(t.Context(), tokens.CreateRequest{Name: "agent"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	if _, err := runtime.tokens.UpdatePermissions(t.Context(), token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
-		{ServerID: target.ID, ExecutionRule: tokens.RuleApprovalRequired},
-	}}); err != nil {
+	if err := connectortargets.NewStore(runtime.database).SetActionPermission(t.Context(), connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.TargetID,
+		ProfileID:     target.ProfileID,
+		ActionName:    sshconnector.ActionExec,
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
 		t.Fatalf("grant permission: %v", err)
 	}
 
@@ -530,13 +527,13 @@ func TestLockPromotesRemainingUnlockedWorkspaceForMCP(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/lock", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"project-one"`) {
 		t.Fatalf("lock should promote remaining unlocked workspace, got %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(handler, http.MethodGet, "/api/mcp/servers", token.TokenValue, nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"worker-1"`) {
-		t.Fatalf("MCP should keep working for remaining unlocked workspace, got %d %s", response.Code, response.Body.String())
+	if response := performJSON(handler, http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"target_name":"worker-1"`) {
+		t.Fatalf("MCP connector targets should keep working for remaining unlocked workspace, got %d %s", response.Code, response.Body.String())
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/lock", "", map[string]string{"scope": "all"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"state":"locked"`) {
 		t.Fatalf("lock all should lock every workspace, got %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(handler, http.MethodGet, "/api/mcp/servers", token.TokenValue, nil); response.Code != http.StatusLocked {
+	if response := performJSON(handler, http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil); response.Code != http.StatusLocked {
 		t.Fatalf("MCP should stop after lock all, got %d %s", response.Code, response.Body.String())
 	}
 }
@@ -556,14 +553,7 @@ func TestLockMarksRunningCommandRequestsAsError(t *testing.T) {
 	}
 
 	runtime := server.activeRuntime()
-	key, err := runtime.sshKeys.Create(t.Context(), sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519})
-	if err != nil {
-		t.Fatalf("create key: %v", err)
-	}
-	target, err := runtime.servers.Create(t.Context(), servers.CreateRequest{Name: "worker-1", Host: "127.0.0.1", Username: "root", SSHKeyID: key.ID})
-	if err != nil {
-		t.Fatalf("create server: %v", err)
-	}
+	target := createTestSSHConnectorProfile(t, runtime.database, runtime.sshKeys, "worker-1")
 	token, err := runtime.tokens.Create(t.Context(), tokens.CreateRequest{Name: "agent"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)

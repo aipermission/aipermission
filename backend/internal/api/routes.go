@@ -6,11 +6,9 @@ import (
 )
 
 type tokenHandlers struct{ *Server }
-type sshKeyHandlers struct{ *Server }
+type credentialHandlers struct{ *Server }
 type sshConfigHandlers struct{ *Server }
 type sshHostKeyHandlers struct{ *Server }
-type serverResourceHandlers struct{ *Server }
-type serverConnectionHandlers struct{ *Server }
 type consoleHandlers struct{ *Server }
 type securityHandlers struct{ *Server }
 type retentionHandlers struct{ *Server }
@@ -21,6 +19,7 @@ type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
 type messageHandlers struct{ *Server }
 type approvalHandlers struct{ *Server }
+type historyEntryHandlers struct{ *Server }
 type historyLabelHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
 type connectorHandlers struct{ *Server }
@@ -33,10 +32,8 @@ func (s *Server) routes() {
 	security := securityHandlers{s}
 	retention := retentionHandlers{s}
 	redactionRules := redactionRuleHandlers{s}
-	serverResources := serverResourceHandlers{s}
-	serverConnections := serverConnectionHandlers{s}
 	sshHostKeys := sshHostKeyHandlers{s}
-	sshKeys := sshKeyHandlers{s}
+	credentials := credentialHandlers{s}
 	sshConfig := sshConfigHandlers{s}
 	tokens := tokenHandlers{s}
 	backup := backupHandlers{s}
@@ -46,6 +43,7 @@ func (s *Server) routes() {
 	connectorApprovals := connectorActionApprovalHandlers{s}
 	messages := messageHandlers{s}
 	audit := auditHandlers{s}
+	historyEntries := historyEntryHandlers{s}
 	historyLabels := historyLabelHandlers{s}
 	fileTransfers := fileTransferHandlers{s}
 	connectors := connectorHandlers{s}
@@ -68,28 +66,19 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/unlock/setup", unlock.setupUnlock)
 	s.mux.HandleFunc("POST /api/unlock", unlock.unlock)
 	s.mux.HandleFunc("POST /api/lock", unlock.lock)
-	s.mux.HandleFunc("GET /api/servers", serverResources.listServers)
-	s.mux.HandleFunc("POST /api/servers", serverResources.createServer)
-	s.mux.HandleFunc("GET /api/servers/{id}", serverResources.getServer)
-	s.mux.HandleFunc("PUT /api/servers/{id}", serverResources.updateServer)
-	s.mux.HandleFunc("DELETE /api/servers/{id}", serverResources.deleteServer)
-	s.mux.HandleFunc("POST /api/servers/{id}/test", serverConnections.testServer)
-	s.mux.HandleFunc("POST /api/servers/{id}/docker-check", serverConnections.checkDocker)
-	s.mux.HandleFunc("POST /api/servers/{id}/docker-logs", serverConnections.readDockerLogs)
-	s.mux.HandleFunc("POST /api/servers/test-connection", serverConnections.testServerConnection)
 	s.mux.HandleFunc("POST /api/ssh-host-keys/approve", sshHostKeys.approveSSHHostKey)
-	s.mux.HandleFunc("GET /api/ssh-keys", sshKeys.listSSHKeys)
-	s.mux.HandleFunc("POST /api/ssh-keys", sshKeys.createSSHKey)
-	s.mux.HandleFunc("POST /api/ssh-keys/import", sshKeys.importSSHKey)
-	s.mux.HandleFunc("GET /api/ssh-keys/{id}", sshKeys.getSSHKey)
-	s.mux.HandleFunc("DELETE /api/ssh-keys/{id}", sshKeys.deleteSSHKey)
+	s.mux.HandleFunc("GET /api/connectors/ssh/credentials", credentials.listCredentials)
+	s.mux.HandleFunc("POST /api/connectors/ssh/credentials", credentials.createCredential)
+	s.mux.HandleFunc("POST /api/connectors/ssh/credentials/import", credentials.importCredential)
+	s.mux.HandleFunc("GET /api/connectors/ssh/credentials/{id}", credentials.getCredential)
+	s.mux.HandleFunc("PUT /api/connectors/ssh/credentials/{id}", credentials.updateCredential)
+	s.mux.HandleFunc("DELETE /api/connectors/ssh/credentials/{id}", credentials.deleteCredential)
+	s.mux.HandleFunc("POST /api/connectors/ssh/targets/{id}/operations/{operation}", connectorTargets.runConnectorTargetOperation)
 	s.mux.HandleFunc("GET /api/ssh-config/discover", sshConfig.discoverSSHConfig)
 	s.mux.HandleFunc("POST /api/ssh-config/parse", sshConfig.parseSSHConfig)
 	s.mux.HandleFunc("GET /api/tokens", tokens.listTokens)
 	s.mux.HandleFunc("POST /api/tokens", tokens.createToken)
 	s.mux.HandleFunc("POST /api/tokens/{id}/revoke", tokens.revokeToken)
-	s.mux.HandleFunc("GET /api/tokens/{id}/permissions", tokens.listTokenPermissions)
-	s.mux.HandleFunc("PUT /api/tokens/{id}/permissions", tokens.updateTokenPermissions)
 	s.mux.HandleFunc("GET /api/tokens/{id}/connector-permissions", tokens.listTokenConnectorPermissions)
 	s.mux.HandleFunc("PUT /api/tokens/{id}/connector-permissions", tokens.updateTokenConnectorPermissions)
 	s.mux.HandleFunc("GET /api/backup/download", backup.downloadDatabase)
@@ -98,7 +87,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/databases/delete", databases.deleteDatabase)
 	s.mux.HandleFunc("POST /api/databases/switch", databases.switchDatabase)
 	s.mux.HandleFunc("POST /api/databases/change-password", databases.changeDatabasePassword)
-	s.mux.HandleFunc("POST /api/console/exec", serverConnections.consoleExec)
 	s.mux.HandleFunc("POST /api/console/bulk-exec", console.runBulkConsoleCommand)
 	s.mux.HandleFunc("GET /api/console/sessions", console.listConsoleSessions)
 	s.mux.HandleFunc("POST /api/console/sessions", console.createConsoleSession)
@@ -106,17 +94,19 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/console/sessions/{id}/input", console.inputConsoleSession)
 	s.mux.HandleFunc("POST /api/console/sessions/{id}/close", console.closeConsoleSession)
 	s.mux.HandleFunc("GET /api/console/sessions/{id}/attach", console.attachConsoleSession)
-	s.mux.HandleFunc("POST /api/console/servers/{id}/restart", console.restartServerConsoleSession)
+	s.mux.HandleFunc("POST /api/console/targets/{id}/restart", console.restartTargetConsoleSession)
 	s.mux.HandleFunc("GET /api/approvals", approvals.listApprovals)
 	s.mux.HandleFunc("GET /api/approvals/{id}", approvals.getApproval)
 	s.mux.HandleFunc("POST /api/approvals/{id}/run", approvals.runApproval)
 	s.mux.HandleFunc("POST /api/approvals/{id}/decline", approvals.declineApproval)
-	s.mux.HandleFunc("POST /api/approvals/{id}/labels", historyLabels.attachHistoryLabel)
-	s.mux.HandleFunc("DELETE /api/approvals/{id}/labels/{label_id}", historyLabels.detachHistoryLabel)
 	s.mux.HandleFunc("GET /api/connector-action-approvals", connectorApprovals.listConnectorActionApprovals)
 	s.mux.HandleFunc("GET /api/connector-action-approvals/{id}", connectorApprovals.getConnectorActionApproval)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.runConnectorActionApproval)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/decline", connectorApprovals.declineConnectorActionApproval)
+	s.mux.HandleFunc("GET /api/history", historyEntries.listHistoryEntries)
+	s.mux.HandleFunc("GET /api/history/{id}", historyEntries.getHistoryEntry)
+	s.mux.HandleFunc("POST /api/history/{id}/labels", historyLabels.attachHistoryEntryLabel)
+	s.mux.HandleFunc("DELETE /api/history/{id}/labels/{label_id}", historyLabels.detachHistoryEntryLabel)
 	s.mux.HandleFunc("GET /api/history-labels", historyLabels.listHistoryLabels)
 	s.mux.HandleFunc("POST /api/history-labels", historyLabels.createHistoryLabel)
 	s.mux.HandleFunc("DELETE /api/history-labels/{id}", historyLabels.deleteHistoryLabel)
@@ -143,9 +133,16 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/targets", targets.listTargets)
 	s.mux.HandleFunc("GET /api/connector-targets", connectorTargets.listConnectorTargets)
 	s.mux.HandleFunc("POST /api/connector-targets", connectorTargets.createConnectorTarget)
+	s.mux.HandleFunc("POST /api/connector-targets/test", connectorTargets.testConnectorTargetDraft)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}", connectorTargets.getConnectorTarget)
+	s.mux.HandleFunc("PUT /api/connector-targets/{id}", connectorTargets.updateConnectorTarget)
+	s.mux.HandleFunc("DELETE /api/connector-targets/{id}", connectorTargets.deleteConnectorTarget)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles", connectorTargets.listConnectorCredentialProfiles)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles", connectorTargets.createConnectorCredentialProfile)
+	s.mux.HandleFunc("PUT /api/connector-targets/{id}/profiles/{profile_id}", connectorTargets.updateConnectorCredentialProfile)
+	s.mux.HandleFunc("DELETE /api/connector-targets/{id}/profiles/{profile_id}", connectorTargets.deleteConnectorCredentialProfile)
+	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/test", connectorTargets.testConnectorCredentialProfile)
+	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/actions", connectorTargets.listConnectorCredentialProfileActions)
 	s.mux.HandleFunc("GET /api/messages", messages.listMessages)
 	s.mux.HandleFunc("POST /api/messages", messages.createMessage)
 	s.mux.HandleFunc("POST /api/messages/read", messages.markMessagesRead)
@@ -153,30 +150,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/audit-logs/{id}", audit.getAuditLog)
 	s.mux.HandleFunc("GET /api/settings/mcp-runtime", mcp.getMCPRuntime)
 	s.mux.HandleFunc("PUT /api/settings/mcp-runtime", mcp.updateMCPRuntime)
-	s.mux.HandleFunc("GET /api/mcp/servers", mcp.mcpListServers)
-	s.mux.HandleFunc("POST /api/mcp/exec", mcp.mcpExec)
-	s.mux.HandleFunc("POST /api/mcp/bulk-exec", mcp.mcpBulkExec)
-	s.mux.HandleFunc("GET /api/mcp/console", mcp.mcpReadConsole)
-	s.mux.HandleFunc("POST /api/mcp/console/restart", mcp.mcpRestartConsoleSession)
-	s.mux.HandleFunc("GET /api/mcp/requests", mcp.mcpListRequests)
-	s.mux.HandleFunc("GET /api/mcp/requests/{id}", mcp.mcpGetRequest)
-	s.mux.HandleFunc("POST /api/mcp/messages", mcp.mcpCreateMessage)
-	s.mux.HandleFunc("GET /api/mcp/file-transfers", mcp.mcpListFileTransfers)
-	s.mux.HandleFunc("GET /api/mcp/file-transfers/{id}", mcp.mcpGetFileTransfer)
-	s.mux.HandleFunc("GET /api/mcp/file-transfer-batches", mcp.mcpListFileTransferBatches)
-	s.mux.HandleFunc("GET /api/mcp/file-transfer-batches/{id}", mcp.mcpGetFileTransferBatch)
 	s.mux.HandleFunc("GET /api/mcp/connector-targets", mcp.mcpListConnectorTargets)
 	s.mux.HandleFunc("GET /api/mcp/connector-help", mcp.mcpGetConnectorHelp)
 	s.mux.HandleFunc("GET /api/mcp/connector-actions", mcp.mcpGetConnectorActions)
 	s.mux.HandleFunc("POST /api/mcp/connector-actions/call", mcp.mcpCallConnectorAction)
 	s.mux.HandleFunc("GET /api/mcp/connector-action-requests/{id}", mcp.mcpGetConnectorActionRequest)
-	s.mux.HandleFunc("POST /api/mcp/file-transfers/browse", mcp.mcpBrowseRemoteFiles)
-	s.mux.HandleFunc("POST /api/mcp/file-transfers/upload-batch", mcp.mcpStartFileUpload)
-	s.mux.HandleFunc("POST /api/mcp/file-transfers/download-batch", mcp.mcpStartFileDownload)
-	s.mux.HandleFunc("POST /api/mcp/file-transfer-batches/{id}/pause", mcp.mcpPauseFileTransferBatch)
-	s.mux.HandleFunc("POST /api/mcp/file-transfer-batches/{id}/resume", mcp.mcpResumeFileTransferBatch)
-	s.mux.HandleFunc("POST /api/mcp/file-transfer-batches/{id}/cancel", mcp.mcpCancelFileTransferBatch)
-	s.mux.HandleFunc("GET /api/mcp/file-transfer-batches/{id}/download", mcp.mcpDownloadFileTransferBatch)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -197,10 +175,10 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 			"sqlcipher-sqlite-storage",
 			"database-unlock-screen",
 			"encrypted-vault",
-			"ssh-key-management",
-			"server-management",
+			"credential-management",
+			"connector-target-management",
 			"api-token-management",
-			"token-server-permissions",
+			"connector-action-permissions",
 			"persistent-console-sessions",
 			"local-node-mcp-bridge",
 			"encrypted-backup-restore",

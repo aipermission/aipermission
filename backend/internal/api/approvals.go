@@ -12,11 +12,12 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 const (
-	pendingApprovalAssistantHint = "Wait 3 seconds, then call get_request. Continue polling get_request until terminal status."
-	runningAssistantHint         = "Wait 3 seconds, then call get_request again. Use read_console to inspect live output before sending another command to this server. If the request remains running and the console shows no useful progress, use restart_console_session(server_id) to recover the gateway-owned persistent console session."
+	pendingApprovalAssistantHint = "Wait 3 seconds, then poll this approval request until terminal status."
+	runningAssistantHint         = "Wait 3 seconds, then poll this running request again. Use the matching connector action request when operating through MCP."
 	approvalRunPreflightTimeout  = 15 * time.Second
 
 	commandRequestSourceMCP    = "mcp"
@@ -28,7 +29,6 @@ type commandRequestFilter struct {
 	Source   string
 	Status   string
 	ServerID int64
-	LabelID  int64
 	Query    string
 	Limit    int
 	Offset   int
@@ -62,14 +62,6 @@ func (s approvalHandlers) listApprovals(w http.ResponseWriter, r *http.Request) 
 		}
 		filter.ServerID = id
 	}
-	if rawLabelID := strings.TrimSpace(r.URL.Query().Get("label_id")); rawLabelID != "" {
-		id, ok := parseInt64Query(w, rawLabelID, "label_id")
-		if !ok {
-			return
-		}
-		filter.LabelID = id
-	}
-
 	if r.URL.Query().Get("paginated") == "true" {
 		page, err := parsePageRequest(r)
 		if err != nil {
@@ -335,7 +327,10 @@ func (s *Server) markCommandRequestRunning(ctx context.Context, runtime *databas
 	if err != nil {
 		return err
 	}
-	return requireAffected(result)
+	if err := requireAffected(result); err != nil {
+		return err
+	}
+	return history.NewStore(runtime.database).SyncCommandRequest(ctx, id)
 }
 
 func (s *Server) declineCommandRequest(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) error {
@@ -349,7 +344,10 @@ func (s *Server) declineCommandRequest(ctx context.Context, runtime *databaseRun
 	if err != nil {
 		return err
 	}
-	return requireAffected(result)
+	if err := requireAffected(result); err != nil {
+		return err
+	}
+	return history.NewStore(runtime.database).SyncCommandRequest(ctx, id)
 }
 
 var errCommandRequestNotPending = errors.New("command request is not pending")
@@ -368,15 +366,12 @@ func requireAffected(result sql.Result) error {
 func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRuntime, filter commandRequestFilter) ([]commandRequestRecord, error) {
 	where := []string{"(? = '' OR cr.source = ?)", "(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.server_id = ?)", "(? = '' OR cr.status = ?)"}
 	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.ServerID, filter.ServerID, filter.Status, filter.Status}
-	if filter.LabelID != 0 {
-		where = append(where, `cr.id IN (SELECT command_request_id FROM command_request_labels WHERE label_id = ?)`)
-		args = append(args, filter.LabelID)
-	}
 	query := `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.source, cr.command, cr.reason, cr.status,
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-		JOIN servers srv ON srv.id = cr.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY cr.created_at DESC, cr.id DESC
@@ -398,26 +393,19 @@ func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRunti
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if err := s.attachLabelsToCommandRequests(ctx, runtime, items); err != nil {
-		return nil, err
-	}
 	return items, nil
 }
 
 func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *databaseRuntime, filter commandRequestFilter) ([]commandRequestRecord, int, error) {
 	where := []string{"(? = '' OR cr.source = ?)", "(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.server_id = ?)", "(? = '' OR cr.status = ?)"}
 	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.ServerID, filter.ServerID, filter.Status, filter.Status}
-	if filter.LabelID != 0 {
-		where = append(where, `cr.id IN (SELECT command_request_id FROM command_request_labels WHERE label_id = ?)`)
-		args = append(args, filter.LabelID)
-	}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
 		if ftsQuery := buildFTSQuery(filter.Query); ftsQuery != "" {
-			where = append(where, `(cr.id IN (SELECT rowid FROM command_requests_fts WHERE command_requests_fts MATCH ?) OR srv.name LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
+			where = append(where, `(cr.id IN (SELECT rowid FROM command_requests_fts WHERE command_requests_fts MATCH ?) OR COALESCE(ct.name, '') LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
 			args = append(args, ftsQuery, like, like)
 		} else {
-			where = append(where, `(cr.command LIKE ? OR cr.reason LIKE ? OR cr.status LIKE ? OR cr.source LIKE ? OR cr.tracking_reason LIKE ? OR cr.stdout LIKE ? OR cr.stderr LIKE ? OR cr.error LIKE ? OR srv.name LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
+			where = append(where, `(cr.command LIKE ? OR cr.reason LIKE ? OR cr.status LIKE ? OR cr.source LIKE ? OR cr.tracking_reason LIKE ? OR cr.stdout LIKE ? OR cr.stderr LIKE ? OR cr.error LIKE ? OR COALESCE(ct.name, '') LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
 			args = append(args, like, like, like, like, like, like, like, like, like, like)
 		}
 	}
@@ -426,7 +414,8 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 	if err := runtime.database.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM command_requests cr
-		JOIN servers srv ON srv.id = cr.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE `+whereSQL,
 		args...,
@@ -436,10 +425,11 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 
 	queryArgs := append(append([]any{}, args...), filter.Limit, filter.Offset)
 	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.source, cr.command, cr.reason, cr.status,
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, '' AS stdout, '' AS stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-		JOIN servers srv ON srv.id = cr.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE `+whereSQL+`
 		ORDER BY cr.created_at DESC, cr.id DESC
@@ -462,18 +452,16 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
-	if err := s.attachLabelsToCommandRequests(ctx, runtime, items); err != nil {
-		return nil, 0, err
-	}
 	return items, total, nil
 }
 
 func (s *Server) getCommandRequest(ctx context.Context, runtime *databaseRuntime, id int64, tokenID int64, source string) (commandRequestRecord, error) {
 	row := runtime.database.QueryRowContext(ctx, `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, srv.name, cr.source, cr.command, cr.reason, cr.status,
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-		JOIN servers srv ON srv.id = cr.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE cr.id = ? AND (? = '' OR cr.source = ?) AND (? = 0 OR cr.token_id = ?)`,
 		id,
@@ -486,11 +474,6 @@ func (s *Server) getCommandRequest(ctx context.Context, runtime *databaseRuntime
 	if err != nil {
 		return commandRequestRecord{}, err
 	}
-	labels, err := s.labelsForCommandRequest(ctx, runtime, item.ID)
-	if err != nil {
-		return commandRequestRecord{}, err
-	}
-	item.Labels = labels
 	return item, nil
 }
 

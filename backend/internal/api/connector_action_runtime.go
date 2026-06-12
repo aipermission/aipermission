@@ -11,11 +11,14 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
 const (
 	connectorActionToolName          = "connector.call_action"
 	connectorActionApprovalHint      = "Wait 3 seconds, then poll this connector action request until it is completed, failed, declined, stale, or blocked."
+	connectorActionRunningHint       = "Wait 3 seconds, then call get_connector_action_request again. For SSH exec actions, inspect live output with the read_console connector action before sending another long-running command to the same target. If the action appears stuck, use the restart_console_session connector action for that target."
 	connectorActionMissingPermission = "This token is not allowed to run this connector action for the selected target/profile"
 )
 
@@ -128,24 +131,43 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	}
 	result, err := s.executePreparedConnectorAction(ctx, runtime, prepared)
 	if err != nil {
-		finished, finishErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-			ID:     request.ID,
-			Status: connectors.ResultFailed,
-			Error:  err.Error(),
-		})
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error())
 		if finishErr != nil {
 			return connectorActionCallResult{}, finishErr
 		}
-		return connectorActionCallResult{Request: finished, Permission: permission, Result: connectors.ActionResult{Status: connectors.ResultFailed, Error: err.Error()}}, nil
+		return connectorActionCallResult{Request: finished, Permission: permission, Result: connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error}}, nil
 	}
 	status := result.Status
 	if status == "" {
 		status = connectors.ResultCompleted
 	}
-	if status == connectors.ResultRunning || status == connectors.ResultApprovalPending {
-		status = connectors.ResultFailed
-		result.Error = "connector returned a non-terminal result for synchronous execution"
+	if status == connectors.ResultRunning {
+		if !connectorActionSupportsRunning(prepared) {
+			finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution")
+			if finishErr != nil {
+				return connectorActionCallResult{}, finishErr
+			}
+			return connectorActionCallResult{
+				Request:    finished,
+				Permission: permission,
+				Result: connectors.ActionResult{
+					Status: connectors.ResultError,
+					Error:  "connector returned running for an action that does not support asynchronous execution",
+				},
+			}, nil
+		}
+		result.Handles.RequestID = request.ID
+		if result.Handles.FollowupTool == "" {
+			result.Handles.FollowupTool = "get_connector_action_request"
+		}
+		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared)
+		return connectorActionCallResult{Request: request, Permission: permission, Result: result}, nil
 	}
+	if status == connectors.ResultApprovalPending {
+		status = connectors.ResultFailed
+		result.Error = "connector returned approval_pending after execution was already allowed"
+	}
+	result = s.redactConnectorActionResult(context.Background(), runtime, result)
 	finished, err := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
 		ID:          request.ID,
 		Status:      status,
@@ -154,6 +176,9 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 		Error:       result.Error,
 	})
 	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, finished.ID); err != nil {
 		return connectorActionCallResult{}, err
 	}
 	return connectorActionCallResult{Request: finished, Permission: permission, Result: result}, nil
@@ -173,7 +198,11 @@ func (s *Server) insertConnectorActionRequest(
 		return connectortargets.ActionRequest{}, err
 	}
 	capturedAt := time.Now().UTC().Format(time.RFC3339)
-	approvalContext, approvalHash, err := connectorApprovalContext(prepared, tokenID, permission, capturedAt)
+	token, err := runtime.tokens.Get(ctx, tokenID)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	approvalContext, approvalHash, err := connectorApprovalContext(prepared, token, permission, capturedAt)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -183,6 +212,7 @@ func (s *Server) insertConnectorActionRequest(
 		ProfileID:            prepared.Profile.ID,
 		ConnectorKind:        prepared.Target.ConnectorKind,
 		ActionName:           prepared.Action.ActionName,
+		Source:               prepared.Requested.Source,
 		Input:                prepared.Requested.Input,
 		EncryptedPayloadJSON: payload,
 		Reason:               prepared.Requested.Reason,
@@ -193,12 +223,11 @@ func (s *Server) insertConnectorActionRequest(
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
+	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, request.ID); err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
 	if errorText != "" {
-		return connectortargets.NewStore(runtime.database).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-			ID:     request.ID,
-			Status: status,
-			Error:  errorText,
-		})
+		return s.finishConnectorActionRequest(ctx, runtime, request.ID, status, nil, "", errorText)
 	}
 	return request, nil
 }
@@ -223,18 +252,98 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 		}
 	}
 	return connector.ExecuteAction(ctx, connectors.RuntimeContext{
-		Target:  prepared.Target,
-		Profile: prepared.Profile,
-		Secrets: connectorSecretAccessor{values: secrets},
-		Events:  noopConnectorEventSink{},
+		Target:   prepared.Target,
+		Profile:  prepared.Profile,
+		Secrets:  connectorSecretAccessor{values: secrets},
+		Events:   noopConnectorEventSink{},
+		Services: connectorRuntimeServices(prepared.Target.ConnectorKind, s, runtime),
 	}, prepared.Action)
 }
 
-func connectorApprovalContext(prepared actions.PreparedRequest, tokenID int64, permission connectortargets.ActionPermission, capturedAt string) (string, string, error) {
+func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest) {
+	adapter := connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
+	if adapter == nil || !adapter.SupportsRunning(prepared) {
+		return
+	}
+	adapter.FinishRunning(s, runtime, requestID, prepared)
+}
+
+func connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {
+	adapter := connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
+	return adapter != nil && adapter.SupportsRunning(prepared)
+}
+
+func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string) (connectortargets.ActionRequest, error) {
+	redacted := s.redactConnectorActionResult(ctx, runtime, connectors.ActionResult{
+		Output:      output,
+		DisplayText: displayText,
+		Error:       errorText,
+	})
+	finished, err := connectortargets.NewStore(runtime.database).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+		ID:          requestID,
+		Status:      status,
+		Output:      redacted.Output,
+		DisplayText: redacted.DisplayText,
+		Error:       redacted.Error,
+	})
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	return finished, history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, finished.ID)
+}
+
+func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any) any {
+	switch typed := value.(type) {
+	case string:
+		return s.redactForPersistence(ctx, runtime, typed)
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, s.redactedConnectorValue(ctx, runtime, item))
+		}
+		return out
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, s.redactForPersistence(ctx, runtime, item))
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, item := range typed {
+			out[key] = s.redactedConnectorValue(ctx, runtime, item)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult) connectors.ActionResult {
+	result.DisplayText = s.redactForPersistence(ctx, runtime, result.DisplayText)
+	result.Error = s.redactForPersistence(ctx, runtime, result.Error)
+	result.Output = s.redactedConnectorValue(ctx, runtime, result.Output)
+	return result
+}
+
+func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Token, permission connectortargets.ActionPermission, capturedAt string) (string, string, error) {
 	payloadHashMaterial, err := json.Marshal(map[string]any{
 		"input":   prepared.Requested.Input,
 		"payload": prepared.Action.Payload,
 	})
+	if err != nil {
+		return "", "", err
+	}
+	actionDefinition := map[string]any{
+		"name":         prepared.ActionDefinition.Name,
+		"label":        prepared.ActionDefinition.Label,
+		"description":  prepared.ActionDefinition.Description,
+		"category":     prepared.ActionDefinition.Category,
+		"risk":         prepared.ActionDefinition.Risk,
+		"input_schema": prepared.ActionDefinition.InputSchema,
+		"output_hint":  prepared.ActionDefinition.OutputHint,
+	}
+	actionDefinitionHashMaterial, err := json.Marshal(actionDefinition)
 	if err != nil {
 		return "", "", err
 	}
@@ -245,8 +354,15 @@ func connectorApprovalContext(prepared actions.PreparedRequest, tokenID int64, p
 			"name":           connectorActionToolName,
 			"schema_version": approvalContextSchemaVersion,
 		},
+		"connector": map[string]any{
+			"kind":    prepared.Target.ConnectorKind,
+			"version": prepared.ConnectorVersion,
+		},
 		"token": map[string]any{
-			"id": tokenID,
+			"id":         token.ID,
+			"name":       token.Name,
+			"expires_at": token.ExpiresAt,
+			"revoked_at": token.RevokedAt,
 		},
 		"permission": map[string]any{
 			"rule":       permission.ExecutionRule,
@@ -260,15 +376,20 @@ func connectorApprovalContext(prepared actions.PreparedRequest, tokenID int64, p
 			"config":         prepared.Target.Config,
 		},
 		"profile": map[string]any{
-			"id":     prepared.Profile.ID,
-			"kind":   prepared.Profile.Kind,
-			"label":  prepared.Profile.Label,
-			"public": prepared.Profile.Public,
+			"id":              prepared.Profile.ID,
+			"kind":            prepared.Profile.Kind,
+			"label":           prepared.Profile.Label,
+			"risk_label":      prepared.Profile.RiskLabel,
+			"updated_at":      prepared.Profile.UpdatedAt,
+			"secret_revision": prepared.Profile.SecretRevision,
+			"public":          prepared.Profile.Public,
 		},
 		"action": map[string]any{
-			"name":         prepared.Action.ActionName,
-			"risk":         prepared.Action.Risk,
-			"payload_hash": sha256Hex(string(payloadHashMaterial)),
+			"name":            prepared.Action.ActionName,
+			"risk":            prepared.Action.Risk,
+			"definition":      actionDefinition,
+			"definition_hash": sha256Hex(string(actionDefinitionHashMaterial)),
+			"payload_hash":    sha256Hex(string(payloadHashMaterial)),
 		},
 	}
 	hash, err := hashGenericApprovalContext(snapshot)

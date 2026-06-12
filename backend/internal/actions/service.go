@@ -42,10 +42,12 @@ type PrepareRequest struct {
 
 // PreparedRequest is ready for permission evaluation and approval.
 type PreparedRequest struct {
-	Target    connectors.TargetView
-	Profile   connectors.CredentialProfileView
-	Action    connectors.PreparedAction
-	Requested PrepareRequest
+	Target           connectors.TargetView
+	Profile          connectors.CredentialProfileView
+	ConnectorVersion string
+	ActionDefinition connectors.ActionDefinition
+	Action           connectors.PreparedAction
+	Requested        PrepareRequest
 }
 
 // Service owns the generic target -> connector -> prepared action boundary.
@@ -84,6 +86,16 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 	if !ok {
 		return PreparedRequest{}, fmt.Errorf("%w: %s", ErrConnectorUnavailable, resolved.Target.ConnectorKind)
 	}
+	actionDefinition, err := connectorActionDefinition(ctx, connector, resolved.Target, resolved.Profile, request.ActionName)
+	if err != nil {
+		return PreparedRequest{}, err
+	}
+	if connectors.SchemaContainsSecret(actionDefinition.InputSchema) {
+		return PreparedRequest{}, fmt.Errorf("connector action input schema %q includes secret fields; store secrets in credential profiles instead", request.ActionName)
+	}
+	if err := connectors.ValidateSchemaValues(actionDefinition.InputSchema, request.Input); err != nil {
+		return PreparedRequest{}, err
+	}
 
 	createdAt := request.CreatedAt
 	if createdAt.IsZero() {
@@ -103,11 +115,51 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 	if err != nil {
 		return PreparedRequest{}, err
 	}
+	if err := validatePreparedAction(prepared, resolved, actionDefinition, request); err != nil {
+		return PreparedRequest{}, err
+	}
 
 	return PreparedRequest{
-		Target:    resolved.Target,
-		Profile:   resolved.Profile,
-		Action:    prepared,
-		Requested: request,
+		Target:           resolved.Target,
+		Profile:          resolved.Profile,
+		ConnectorVersion: connector.Version(),
+		ActionDefinition: actionDefinition,
+		Action:           prepared,
+		Requested:        request,
 	}, nil
+}
+
+func connectorActionDefinition(ctx context.Context, connector connectors.Connector, target connectors.TargetView, profile connectors.CredentialProfileView, actionName string) (connectors.ActionDefinition, error) {
+	actions, err := connector.GetActionList(ctx, target, profile)
+	if err != nil {
+		return connectors.ActionDefinition{}, err
+	}
+	if err := connectors.ValidateActionDefinitions(actions, connector.Kind()+" actions"); err != nil {
+		return connectors.ActionDefinition{}, err
+	}
+	for _, action := range actions {
+		if action.Name == actionName {
+			return action, nil
+		}
+	}
+	return connectors.ActionDefinition{}, fmt.Errorf("unsupported connector action %q", actionName)
+}
+
+func validatePreparedAction(prepared connectors.PreparedAction, resolved ResolvedTarget, definition connectors.ActionDefinition, request PrepareRequest) error {
+	if prepared.ConnectorKind != resolved.Target.ConnectorKind {
+		return fmt.Errorf("prepared action connector kind drifted from %q to %q", resolved.Target.ConnectorKind, prepared.ConnectorKind)
+	}
+	if prepared.TargetRef != resolved.Target.Ref {
+		return fmt.Errorf("prepared action target ref drifted from %q to %q", resolved.Target.Ref, prepared.TargetRef)
+	}
+	if prepared.ProfileID != resolved.Profile.ID {
+		return fmt.Errorf("prepared action profile id drifted from %d to %d", resolved.Profile.ID, prepared.ProfileID)
+	}
+	if prepared.ActionName != request.ActionName {
+		return fmt.Errorf("prepared action name drifted from %q to %q", request.ActionName, prepared.ActionName)
+	}
+	if prepared.Risk != definition.Risk {
+		return fmt.Errorf("prepared action risk drifted from %q to %q", definition.Risk, prepared.Risk)
+	}
+	return nil
 }

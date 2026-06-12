@@ -6,20 +6,22 @@ import (
 )
 
 type fakeConnector struct {
-	kind    string
-	label   string
-	version string
+	kind              string
+	label             string
+	version           string
+	targetSchema      Schema
+	credentialSchemas []CredentialSchema
 }
 
 func (f fakeConnector) Kind() string                          { return f.kind }
 func (f fakeConnector) Label() string                         { return f.label }
 func (f fakeConnector) Version() string                       { return f.version }
-func (f fakeConnector) TargetSchema() Schema                  { return Schema{} }
-func (f fakeConnector) CredentialSchemas() []CredentialSchema { return nil }
+func (f fakeConnector) TargetSchema() Schema                  { return f.targetSchema }
+func (f fakeConnector) CredentialSchemas() []CredentialSchema { return f.credentialSchemas }
 func (f fakeConnector) GetHelp(context.Context, TargetView) (ConnectorHelp, error) {
 	return ConnectorHelp{ConnectorID: f.kind, Connector: f.label}, nil
 }
-func (f fakeConnector) GetActionList(context.Context, TargetView) ([]ActionDefinition, error) {
+func (f fakeConnector) GetActionList(context.Context, TargetView, CredentialProfileView) ([]ActionDefinition, error) {
 	return []ActionDefinition{{Name: "example", Risk: RiskRead}}, nil
 }
 func (f fakeConnector) PrepareAction(context.Context, ActionRequest) (PreparedAction, error) {
@@ -71,6 +73,69 @@ func TestRegistryRejectsDuplicateKind(t *testing.T) {
 	}
 	if err := registry.Register(fakeConnector{kind: "ssh", label: "SSH again", version: "0.2"}); err == nil {
 		t.Fatal("expected duplicate kind error")
+	}
+}
+
+func TestRegistryRejectsInvalidConnectorContract(t *testing.T) {
+	tests := []struct {
+		name      string
+		connector fakeConnector
+	}{
+		{
+			name: "secret target field",
+			connector: fakeConnector{
+				kind: "api",
+				targetSchema: Schema{Fields: []Field{
+					{Name: "token", Type: FieldSecret, Secret: true},
+				}},
+			},
+		},
+		{
+			name: "credential secret type missing secret flag",
+			connector: fakeConnector{
+				kind: "api",
+				credentialSchemas: []CredentialSchema{{
+					Kind: "api_key",
+					Schema: Schema{Fields: []Field{
+						{Name: "token", Type: FieldSecret, Required: true},
+					}},
+				}},
+			},
+		},
+		{
+			name: "duplicate credential kind",
+			connector: fakeConnector{
+				kind: "api",
+				credentialSchemas: []CredentialSchema{
+					{Kind: "api_key"},
+					{Kind: "api_key"},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := NewRegistry()
+			if err := registry.Register(tt.connector); err == nil {
+				t.Fatal("expected invalid connector contract error")
+			}
+		})
+	}
+}
+
+func TestRegistryAcceptsValidCredentialSchema(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(fakeConnector{
+		kind: "api",
+		credentialSchemas: []CredentialSchema{{
+			Kind: "api_key",
+			Schema: Schema{Fields: []Field{
+				{Name: "token", Type: FieldSecret, Secret: true, Required: true},
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("register valid connector: %v", err)
 	}
 }
 

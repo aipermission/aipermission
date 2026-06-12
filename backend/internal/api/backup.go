@@ -75,9 +75,6 @@ func (s backupHandlers) importDatabaseMultipart(w http.ResponseWriter, r *http.R
 	defer clearStringReferences(&request.DatabasePassword)
 	file, _, err := r.FormFile("sqlite")
 	if err != nil {
-		file, _, err = r.FormFile("file")
-	}
-	if err != nil {
 		writeError(w, http.StatusBadRequest, "database file is required")
 		return
 	}

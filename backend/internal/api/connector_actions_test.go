@@ -16,22 +16,15 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
-	keyID := insertAPITestSSHKey(t, database, "main")
-	serverID := insertAPITestServer(t, database, keyID)
-	store := connectortargets.NewStore(database)
-	if err := store.SyncSSHServers(context.Background()); err != nil {
-		t.Fatalf("sync ssh targets: %v", err)
-	}
-	targetRef, err := store.SSHTargetRefForServer(context.Background(), serverID)
-	if err != nil {
-		t.Fatalf("ssh target ref for server: %v", err)
-	}
+	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, openAPITestVault(t)), "core-1")
+	targetRef := profile.TargetRef
 	runtime := &databaseRuntime{database: database}
 
 	prepared, err := runtime.prepareConnectorAction(context.Background(), actions.PrepareRequest{
@@ -60,10 +53,105 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	}
 }
 
+func TestConnectorRuntimeServicesAreKindScoped(t *testing.T) {
+	if services := connectorRuntimeServices(postgresconnector.Kind, &Server{}, &databaseRuntime{}); len(services) != 0 {
+		t.Fatalf("postgres should not receive ssh runtime services: %#v", services)
+	}
+	services := connectorRuntimeServices(sshconnector.Kind, &Server{}, &databaseRuntime{})
+	if services == nil || services[sshconnector.RuntimeServiceName] == nil {
+		t.Fatalf("ssh runtime service missing: %#v", services)
+	}
+}
+
+func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T) {
+	prepared := actions.PreparedRequest{
+		Target: connectors.TargetView{
+			ID:            1,
+			Ref:           "postgres:1:2",
+			ConnectorKind: postgresconnector.Kind,
+			Name:          "main-db",
+			Config:        map[string]any{"host": "127.0.0.1", "database": "app"},
+		},
+		Profile: connectors.CredentialProfileView{
+			ID:             2,
+			TargetID:       1,
+			Kind:           "username_password",
+			Label:          "readonly",
+			Public:         map[string]any{"username": "app_readonly"},
+			RiskLabel:      "read-only",
+			UpdatedAt:      "2026-06-12T11:59:00Z",
+			SecretRevision: "secret-revision-a",
+		},
+		ConnectorVersion: "0.1",
+		ActionDefinition: connectors.ActionDefinition{
+			Name:        postgresconnector.ActionQueryReadonly,
+			Label:       "Query read-only",
+			Description: "Run bounded read-only SQL.",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "sql", Type: connectors.FieldString, Required: true},
+			}},
+		},
+		Action: connectors.PreparedAction{
+			ConnectorKind: postgresconnector.Kind,
+			TargetRef:     "postgres:1:2",
+			ActionName:    postgresconnector.ActionQueryReadonly,
+			Risk:          connectors.RiskRead,
+			Payload:       map[string]any{"sql": "select 1"},
+		},
+		Requested: actions.PrepareRequest{
+			Source:     commandRequestSourceMCP,
+			TargetRef:  "postgres:1:2",
+			ActionName: postgresconnector.ActionQueryReadonly,
+			Input:      map[string]any{"sql": "select 1"},
+		},
+	}
+	token := tokens.Token{ID: 3, Name: "codex"}
+	permission := connectortargets.ActionPermission{
+		TokenID:       token.ID,
+		TargetID:      prepared.Target.ID,
+		ProfileID:     prepared.Profile.ID,
+		ActionName:    prepared.Action.ActionName,
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}
+
+	_, baseHash, err := connectorApprovalContext(prepared, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context: %v", err)
+	}
+	versionChanged := prepared
+	versionChanged.ConnectorVersion = "0.2"
+	_, versionHash, err := connectorApprovalContext(versionChanged, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context with version change: %v", err)
+	}
+	if versionHash == baseHash {
+		t.Fatalf("connector version drift should change approval hash")
+	}
+	actionChanged := prepared
+	actionChanged.ActionDefinition.Description = "Run read-only SQL with a different contract."
+	_, actionHash, err := connectorApprovalContext(actionChanged, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context with action definition change: %v", err)
+	}
+	if actionHash == baseHash {
+		t.Fatalf("action definition drift should change approval hash")
+	}
+	profileChanged := prepared
+	profileChanged.Profile.SecretRevision = "secret-revision-b"
+	_, profileHash, err := connectorApprovalContext(profileChanged, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context with profile revision change: %v", err)
+	}
+	if profileHash == baseHash {
+		t.Fatalf("credential profile revision drift should change approval hash")
+	}
+}
+
 func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
-	runtime := &databaseRuntime{database: database, vault: secretVault}
+	runtime := connectorActionTestRuntime(database, secretVault)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -91,7 +179,7 @@ func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
 func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
-	runtime := &databaseRuntime{database: database, vault: secretVault}
+	runtime := connectorActionTestRuntime(database, secretVault)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -125,6 +213,67 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	}
 	if result.Result.Handles.RequestID != result.Request.ID || result.Result.Handles.FollowupTool == "" {
 		t.Fatalf("pending result missing followup handle: %#v", result.Result)
+	}
+}
+
+func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(database, secretVault)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+
+	request, err := store.InsertActionRequest(context.Background(), connectortargets.InsertActionRequestInput{
+		TokenID:              &tokenID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        postgresconnector.Kind,
+		ActionName:           postgresconnector.ActionQueryReadonly,
+		Input:                map[string]any{"sql": "select 1"},
+		EncryptedPayloadJSON: "encrypted",
+		Status:               connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert action request: %v", err)
+	}
+	finished, err := server.finishConnectorActionRequest(
+		context.Background(),
+		runtime,
+		request.ID,
+		connectors.ResultFailed,
+		nil,
+		"",
+		"connect failed password=super-secret Bearer abcdefghijklmnopqrstuvwxyz",
+	)
+	if err != nil {
+		t.Fatalf("finish action request: %v", err)
+	}
+	if strings.Contains(finished.Error, "super-secret") || strings.Contains(finished.Error, "abcdefghijklmnopqrstuvwxyz") {
+		t.Fatalf("finished error leaked secret: %q", finished.Error)
+	}
+	if !strings.Contains(finished.Error, "password=[REDACTED]") || !strings.Contains(finished.Error, "Bearer [REDACTED]") {
+		t.Fatalf("finished error was not redacted as expected: %q", finished.Error)
+	}
+	var historyError string
+	if err := database.QueryRow(`
+		SELECT error
+		FROM history_entries
+		WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`,
+		request.ID,
+	).Scan(&historyError); err != nil {
+		t.Fatalf("read history error: %v", err)
+	}
+	if historyError != finished.Error {
+		t.Fatalf("history error drifted from finished request: history=%q finished=%q", historyError, finished.Error)
+	}
+	response := connectorActionToMCPResponse(finished, connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error})
+	if strings.Contains(response.Error, "super-secret") || strings.Contains(response.Error, "abcdefghijklmnopqrstuvwxyz") {
+		t.Fatalf("mcp response leaked secret: %q", response.Error)
+	}
+	if response.Error != finished.Error {
+		t.Fatalf("mcp response error drifted from finished request: response=%q finished=%q", response.Error, finished.Error)
 	}
 }
 
@@ -222,6 +371,66 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 	}
 }
 
+func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
+	for name, mutate := range map[string]func(*testing.T, apiTestFixture, tokens.CreateResponse){
+		"revoked": func(t *testing.T, fixture apiTestFixture, token tokens.CreateResponse) {
+			t.Helper()
+			if _, err := fixture.tokens.Revoke(context.Background(), token.ID); err != nil {
+				t.Fatalf("revoke token: %v", err)
+			}
+		},
+		"expired": func(t *testing.T, fixture apiTestFixture, token tokens.CreateResponse) {
+			t.Helper()
+			if _, err := fixture.db.Exec(`UPDATE api_tokens SET expires_at = ? WHERE id = ?`, time.Now().UTC().Add(-time.Minute).Format(time.RFC3339), token.ID); err != nil {
+				t.Fatalf("expire token: %v", err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newAPITestFixture(t)
+			store := connectortargets.NewStore(fixture.db)
+			token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "codex"})
+			if err != nil {
+				t.Fatalf("create token: %v", err)
+			}
+			target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+			if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
+				TokenID:       token.ID,
+				TargetID:      target.ID,
+				ProfileID:     profile.ID,
+				ActionName:    postgresconnector.ActionQueryReadonly,
+				ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+			}); err != nil {
+				t.Fatalf("set connector permission: %v", err)
+			}
+			result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
+				Source:     commandRequestSourceMCP,
+				TokenID:    token.ID,
+				TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+				ActionName: postgresconnector.ActionQueryReadonly,
+				Input:      map[string]any{"sql": "select 1"},
+				Reason:     "smoke",
+			})
+			if err != nil {
+				t.Fatalf("call connector action: %v", err)
+			}
+
+			mutate(t, fixture, token)
+			runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runApprovalRequest{})
+			if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
+				t.Fatalf("expected stale conflict, got %d %s", runResponse.Code, runResponse.Body.String())
+			}
+			stale, err := store.GetActionRequest(context.Background(), result.Request.ID)
+			if err != nil {
+				t.Fatalf("get stale connector request: %v", err)
+			}
+			if stale.Status != connectors.ResultStale {
+				t.Fatalf("status = %q", stale.Status)
+			}
+		})
+	}
+}
+
 func openAPITestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "test-password")
@@ -232,6 +441,14 @@ func openAPITestDB(t *testing.T) *sql.DB {
 		_ = database.Close()
 	})
 	return database
+}
+
+func connectorActionTestRuntime(database *sql.DB, secretVault *vault.Vault) *databaseRuntime {
+	return &databaseRuntime{
+		database: database,
+		vault:    secretVault,
+		tokens:   tokens.NewStore(database),
+	}
 }
 
 func openAPITestVault(t *testing.T) *vault.Vault {
@@ -293,46 +510,6 @@ func insertAPITestToken(t *testing.T, database *sql.DB) int64 {
 	id, err := result.LastInsertId()
 	if err != nil {
 		t.Fatalf("token id: %v", err)
-	}
-	return id
-}
-
-func insertAPITestSSHKey(t *testing.T, database *sql.DB, name string) int64 {
-	t.Helper()
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := database.Exec(`
-		INSERT INTO ssh_keys (name, key_type, public_key, encrypted_private_key, fingerprint, created_at, updated_at)
-		VALUES (?, 'ed25519', 'ssh-ed25519 AAAATEST aipermission-test', 'encrypted', 'SHA256:test', ?, ?)`,
-		name,
-		now,
-		now,
-	)
-	if err != nil {
-		t.Fatalf("insert ssh key: %v", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("ssh key id: %v", err)
-	}
-	return id
-}
-
-func insertAPITestServer(t *testing.T, database *sql.DB, sshKeyID int64) int64 {
-	t.Helper()
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := database.Exec(`
-		INSERT INTO servers (name, host, port, username, ssh_key_id, description, created_at, updated_at)
-		VALUES ('core-1', '10.0.0.10', 22, 'root', ?, 'test server', ?, ?)`,
-		sshKeyID,
-		now,
-		now,
-	)
-	if err != nil {
-		t.Fatalf("insert server: %v", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("server id: %v", err)
 	}
 	return id
 }

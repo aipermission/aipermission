@@ -14,10 +14,11 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/servers"
+	historypkg "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -31,7 +32,7 @@ func decodeRouteResponse[T any](t *testing.T, responseBody []byte) T {
 	return value
 }
 
-func TestManagementRoutesCoverSSHKeysServersTokensAndPermissions(t *testing.T) {
+func TestManagementRoutesCoverCredentialsTokensAndConnectorTargets(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
 
@@ -43,7 +44,7 @@ func TestManagementRoutesCoverSSHKeysServersTokensAndPermissions(t *testing.T) {
 		t.Fatalf("status should not expose local database paths: %s", statusResponse.Body.String())
 	}
 
-	keyResponse := performJSON(handler, http.MethodPost, "/api/ssh-keys", "", sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519})
+	keyResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials", "", sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519})
 	if keyResponse.Code != http.StatusCreated {
 		t.Fatalf("create key failed: %d %s", keyResponse.Code, keyResponse.Body.String())
 	}
@@ -53,7 +54,7 @@ func TestManagementRoutesCoverSSHKeysServersTokensAndPermissions(t *testing.T) {
 		t.Fatalf("get private key fixture: %v", err)
 	}
 
-	importResponse := performJSON(handler, http.MethodPost, "/api/ssh-keys/import", "", sshkeys.ImportRequest{Name: "imported", PrivateKey: privateKey.PrivateKey})
+	importResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials/import", "", sshkeys.ImportRequest{Name: "imported", PrivateKey: privateKey.PrivateKey})
 	if importResponse.Code != http.StatusCreated {
 		t.Fatalf("import key failed: %d %s", importResponse.Code, importResponse.Body.String())
 	}
@@ -62,13 +63,17 @@ func TestManagementRoutesCoverSSHKeysServersTokensAndPermissions(t *testing.T) {
 		t.Fatalf("unexpected imported key: %#v", importedKey)
 	}
 
-	keyListResponse := performJSON(handler, http.MethodGet, "/api/ssh-keys", "", nil)
+	keyListResponse := performJSON(handler, http.MethodGet, "/api/connectors/ssh/credentials", "", nil)
 	if keyListResponse.Code != http.StatusOK || !strings.Contains(keyListResponse.Body.String(), `"name":"main"`) || !strings.Contains(keyListResponse.Body.String(), `"name":"imported"`) {
 		t.Fatalf("list keys failed: %d %s", keyListResponse.Code, keyListResponse.Body.String())
 	}
-	keyGetResponse := performJSON(handler, http.MethodGet, "/api/ssh-keys/"+strconv.FormatInt(key.ID, 10), "", nil)
+	keyGetResponse := performJSON(handler, http.MethodGet, "/api/connectors/ssh/credentials/"+strconv.FormatInt(key.ID, 10), "", nil)
 	if keyGetResponse.Code != http.StatusOK {
 		t.Fatalf("get key failed: %d %s", keyGetResponse.Code, keyGetResponse.Body.String())
+	}
+	keyUpdateResponse := performJSON(handler, http.MethodPut, "/api/connectors/ssh/credentials/"+strconv.FormatInt(key.ID, 10), "", sshkeys.UpdateRequest{Name: "main-renamed"})
+	if keyUpdateResponse.Code != http.StatusOK || !strings.Contains(keyUpdateResponse.Body.String(), `"name":"main-renamed"`) || !strings.Contains(keyUpdateResponse.Body.String(), "aipermission-main-renamed") {
+		t.Fatalf("update key failed: %d %s", keyUpdateResponse.Code, keyUpdateResponse.Body.String())
 	}
 	sshConfigResponse := performJSON(handler, http.MethodPost, "/api/ssh-config/parse", "", parseSSHConfigRequest{Content: `
 Host worker-from-config
@@ -82,35 +87,6 @@ Host *
 `})
 	if sshConfigResponse.Code != http.StatusOK || !strings.Contains(sshConfigResponse.Body.String(), "worker-from-config") || strings.Contains(sshConfigResponse.Body.String(), `"ignored"`) {
 		t.Fatalf("parse ssh config failed: %d %s", sshConfigResponse.Code, sshConfigResponse.Body.String())
-	}
-
-	serverResponse := performJSON(handler, http.MethodPost, "/api/servers", "", servers.CreateRequest{
-		Name:     "worker-1",
-		Host:     "127.0.0.1",
-		Username: "root",
-		SSHKeyID: key.ID,
-	})
-	if serverResponse.Code != http.StatusCreated {
-		t.Fatalf("create server failed: %d %s", serverResponse.Code, serverResponse.Body.String())
-	}
-	server := decodeRouteResponse[servers.Server](t, serverResponse.Body.Bytes())
-
-	if response := performJSON(handler, http.MethodGet, "/api/servers", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"worker-1"`) {
-		t.Fatalf("list servers failed: %d %s", response.Code, response.Body.String())
-	}
-	if response := performJSON(handler, http.MethodGet, "/api/servers/"+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusOK {
-		t.Fatalf("get server failed: %d %s", response.Code, response.Body.String())
-	}
-	updateResponse := performJSON(handler, http.MethodPut, "/api/servers/"+strconv.FormatInt(server.ID, 10), "", servers.UpdateRequest{
-		Name:        "worker-1b",
-		Host:        "localhost",
-		Port:        2200,
-		Username:    "ubuntu",
-		SSHKeyID:    key.ID,
-		Description: "updated",
-	})
-	if updateResponse.Code != http.StatusOK || !strings.Contains(updateResponse.Body.String(), `"worker-1b"`) {
-		t.Fatalf("update server failed: %d %s", updateResponse.Code, updateResponse.Body.String())
 	}
 
 	tokenResponse := performJSON(handler, http.MethodPost, "/api/tokens", "", tokens.CreateRequest{Name: "agent"})
@@ -140,37 +116,24 @@ Host *
 		t.Fatalf("list tokens should expose token value when reusable copy is enabled: %d %s", response.Code, response.Body.String())
 	}
 
-	permissionExpiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
-	permissionResponse := performJSON(handler, http.MethodPut, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/permissions", "", tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
-		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired, ExpiresAt: permissionExpiresAt},
-	}})
-	if permissionResponse.Code != http.StatusOK || !strings.Contains(permissionResponse.Body.String(), tokens.RuleApprovalRequired) || !strings.Contains(permissionResponse.Body.String(), permissionExpiresAt) {
-		t.Fatalf("update permissions failed: %d %s", permissionResponse.Code, permissionResponse.Body.String())
-	}
-	if response := performJSON(handler, http.MethodGet, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/permissions", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"worker-1b"`) {
-		t.Fatalf("list permissions failed: %d %s", response.Code, response.Body.String())
-	}
 	if response := performJSON(handler, http.MethodPost, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/revoke", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"revoked_at"`) {
 		t.Fatalf("revoke token failed: %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(handler, http.MethodGet, "/api/audit-logs", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "token.permissions.updated") || !strings.Contains(response.Body.String(), "token.revoked") {
+	if response := performJSON(handler, http.MethodGet, "/api/audit-logs", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "token.created") || !strings.Contains(response.Body.String(), "token.revoked") {
 		t.Fatalf("audit log list should include token lifecycle events: %d %s", response.Code, response.Body.String())
 	}
 
-	if response := performJSON(handler, http.MethodDelete, "/api/servers/"+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusNoContent {
-		t.Fatalf("delete server failed: %d %s", response.Code, response.Body.String())
-	}
-	if response := performJSON(handler, http.MethodDelete, "/api/ssh-keys/"+strconv.FormatInt(key.ID, 10), "", nil); response.Code != http.StatusNoContent {
+	if response := performJSON(handler, http.MethodDelete, "/api/connectors/ssh/credentials/"+strconv.FormatInt(key.ID, 10), "", nil); response.Code != http.StatusNoContent {
 		t.Fatalf("delete key failed: %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(handler, http.MethodDelete, "/api/ssh-keys/"+strconv.FormatInt(importedKey.ID, 10), "", nil); response.Code != http.StatusNoContent {
+	if response := performJSON(handler, http.MethodDelete, "/api/connectors/ssh/credentials/"+strconv.FormatInt(importedKey.ID, 10), "", nil); response.Code != http.StatusNoContent {
 		t.Fatalf("delete imported key failed: %d %s", response.Code, response.Body.String())
 	}
 }
 
 func TestRouteValidationAndLockedMiddleware(t *testing.T) {
 	locked := NewLockedServer(fixtureConfigForLockedTest(t))
-	if response := performJSON(locked.Handler(), http.MethodGet, "/api/servers", "", nil); response.Code != http.StatusLocked {
+	if response := performJSON(locked.Handler(), http.MethodGet, "/api/connector-targets", "", nil); response.Code != http.StatusLocked {
 		t.Fatalf("locked server should reject protected route, got %d", response.Code)
 	}
 	if response := performJSON(locked.Handler(), http.MethodGet, "/health", "", nil); response.Code != http.StatusOK {
@@ -179,7 +142,7 @@ func TestRouteValidationAndLockedMiddleware(t *testing.T) {
 
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
-	if response := performJSONWithoutUICookie(handler, http.MethodGet, "/api/servers", "", nil); response.Code != http.StatusUnauthorized {
+	if response := performJSONWithoutUICookie(handler, http.MethodGet, "/api/connector-targets", "", nil); response.Code != http.StatusUnauthorized {
 		t.Fatalf("unlocked management route should require ui session, got %d", response.Code)
 	}
 	if response := performJSONWithoutUICookie(handler, http.MethodGet, "/api/unlock/status", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"session_required"`) {
@@ -197,7 +160,7 @@ func TestRouteValidationAndLockedMiddleware(t *testing.T) {
 	if mutatingResponse.Code != http.StatusForbidden || !strings.Contains(mutatingResponse.Body.String(), "csrf token required") {
 		t.Fatalf("mutating ui route should require csrf token, got %d %s", mutatingResponse.Code, mutatingResponse.Body.String())
 	}
-	if response := performJSON(handler, http.MethodGet, "/api/servers/not-a-number", "", nil); response.Code != http.StatusBadRequest {
+	if response := performJSON(handler, http.MethodGet, "/api/connector-targets/not-a-number", "", nil); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid id should fail, got %d", response.Code)
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/tokens", "", map[string]any{"name": "x", "extra": true}); response.Code != http.StatusBadRequest {
@@ -231,10 +194,13 @@ func TestConnectorCatalogRoutes(t *testing.T) {
 		t.Fatalf("get postgres connector failed: %d %s", detailResponse.Code, detailResponse.Body.String())
 	}
 	body := detailResponse.Body.String()
-	for _, want := range []string{`"kind":"postgres"`, `"target_schema"`, `"credential_schemas"`, `"actions"`, `"query_readonly"`, `"help"`} {
+	for _, want := range []string{`"kind":"postgres"`, `"target_schema"`, `"credential_schemas"`, `"help"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("postgres connector detail missing %s: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `"actions"`) || strings.Contains(body, `"query_readonly"`) {
+		t.Fatalf("connector catalog detail should not expose target/profile-specific actions: %s", body)
 	}
 
 	if response := performJSON(handler, http.MethodGet, "/api/connectors/bad-kind", "", nil); response.Code != http.StatusBadRequest {
@@ -323,6 +289,10 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	if profile.Public["username"] != "app_readonly" {
 		t.Fatalf("profile public metadata missing: %#v", profile.Public)
 	}
+	listProfileActions := performJSON(handler, http.MethodGet, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles/"+strconv.FormatInt(profile.ID, 10)+"/actions", "", nil)
+	if listProfileActions.Code != http.StatusOK || !strings.Contains(listProfileActions.Body.String(), `"query_readonly"`) || !strings.Contains(listProfileActions.Body.String(), `"describe_table"`) {
+		t.Fatalf("target/profile action list failed: %d %s", listProfileActions.Code, listProfileActions.Body.String())
+	}
 
 	token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "connector-agent"})
 	if err != nil {
@@ -380,6 +350,39 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	if encryptedSecret == "" || strings.Contains(encryptedSecret, password) {
 		t.Fatalf("secret was not encrypted: %q", encryptedSecret)
 	}
+
+	updateTarget := performJSON(handler, http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", updateConnectorTargetRequest{
+		Name: "main-db-renamed",
+		Config: map[string]any{
+			"connection_mode": "direct",
+			"host":            "127.0.0.1",
+			"port":            5433,
+			"database":        "app2",
+			"ssl_mode":        "require",
+		},
+	})
+	if updateTarget.Code != http.StatusOK || !strings.Contains(updateTarget.Body.String(), `"main-db-renamed"`) {
+		t.Fatalf("update connector target failed: %d %s", updateTarget.Code, updateTarget.Body.String())
+	}
+	updateProfile := performJSON(handler, http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles/"+strconv.FormatInt(profile.ID, 10), "", updateConnectorCredentialProfileRequest{
+		Kind:  "username_password",
+		Label: "readonly-renamed",
+		Public: map[string]any{
+			"username": "app_reader",
+		},
+		RiskLabel: "read-only",
+	})
+	if updateProfile.Code != http.StatusOK || strings.Contains(updateProfile.Body.String(), password) || !strings.Contains(updateProfile.Body.String(), `"readonly-renamed"`) {
+		t.Fatalf("update connector profile failed or leaked secret: %d %s", updateProfile.Code, updateProfile.Body.String())
+	}
+	var encryptedAfterUpdate string
+	if err := fixture.db.QueryRow(`SELECT encrypted_secret_json FROM connector_credential_profiles WHERE id = ?`, profile.ID).Scan(&encryptedAfterUpdate); err != nil {
+		t.Fatalf("read encrypted profile secret after update: %v", err)
+	}
+	if encryptedAfterUpdate != encryptedSecret {
+		t.Fatalf("profile update without secret should preserve encrypted secret")
+	}
+
 	var auditPayloads string
 	if err := fixture.db.QueryRow(`SELECT COALESCE(group_concat(payload_json, char(10)), '') FROM audit_logs WHERE action LIKE 'connector.%'`).Scan(&auditPayloads); err != nil {
 		t.Fatalf("read connector audit payloads: %v", err)
@@ -401,6 +404,150 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	})
 	if unsupportedProfile.Code != http.StatusBadRequest {
 		t.Fatalf("unsupported profile kind should fail, got %d %s", unsupportedProfile.Code, unsupportedProfile.Body.String())
+	}
+	invalidTargetSchema := performJSON(handler, http.MethodPost, "/api/connector-targets", "", createConnectorTargetRequest{
+		ConnectorKind: "postgres",
+		Name:          "bad-db",
+		Config: map[string]any{
+			"connection_mode": "direct",
+			"host":            "127.0.0.1",
+			"database":        "app",
+			"unexpected":      "nope",
+		},
+	})
+	if invalidTargetSchema.Code != http.StatusBadRequest {
+		t.Fatalf("unknown target schema field should fail, got %d %s", invalidTargetSchema.Code, invalidTargetSchema.Body.String())
+	}
+
+	deleteTarget := performJSON(handler, http.MethodDelete, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", nil)
+	if deleteTarget.Code != http.StatusOK {
+		t.Fatalf("delete connector target failed: %d %s", deleteTarget.Code, deleteTarget.Body.String())
+	}
+	getDeletedTarget := performJSON(handler, http.MethodGet, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", nil)
+	if getDeletedTarget.Code != http.StatusNotFound {
+		t.Fatalf("deleted connector target should be gone, got %d %s", getDeletedTarget.Code, getDeletedTarget.Body.String())
+	}
+}
+
+func TestSSHConnectorProfileRoutesCanonicalizeKeyMetadata(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+	key, err := fixture.sshKeys.Create(context.Background(), sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519})
+	if err != nil {
+		t.Fatalf("create ssh key: %v", err)
+	}
+
+	createTarget := performJSON(handler, http.MethodPost, "/api/connector-targets", "", createConnectorTargetRequest{
+		ConnectorKind: "ssh",
+		Name:          "worker-1",
+		Config: map[string]any{
+			"host": "127.0.0.1",
+			"port": 22,
+		},
+	})
+	if createTarget.Code != http.StatusCreated {
+		t.Fatalf("create ssh target failed: %d %s", createTarget.Code, createTarget.Body.String())
+	}
+	target := decodeRouteResponse[connectorTargetResponse](t, createTarget.Body.Bytes())
+
+	badProfile := performJSON(handler, http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles", "", createConnectorCredentialProfileRequest{
+		Kind:  "private_key",
+		Label: "root",
+		Public: map[string]any{
+			"username":   "root",
+			"ssh_key_id": 999999,
+		},
+	})
+	if badProfile.Code != http.StatusBadRequest {
+		t.Fatalf("dangling ssh_key_id should fail, got %d %s", badProfile.Code, badProfile.Body.String())
+	}
+
+	createProfile := performJSON(handler, http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles", "", createConnectorCredentialProfileRequest{
+		Kind:  "private_key",
+		Label: "root",
+		Public: map[string]any{
+			"username":    "root",
+			"ssh_key_id":  key.ID,
+			"key_name":    "caller-forged-name",
+			"key_type":    "caller-forged-type",
+			"fingerprint": "caller-forged-fingerprint",
+		},
+	})
+	if createProfile.Code != http.StatusCreated {
+		t.Fatalf("create ssh profile failed: %d %s", createProfile.Code, createProfile.Body.String())
+	}
+	profile := decodeRouteResponse[profileSummary](t, createProfile.Body.Bytes())
+	if profile.Public["key_name"] != key.Name || profile.Public["key_type"] != key.KeyType || profile.Public["fingerprint"] != key.Fingerprint {
+		t.Fatalf("ssh profile public metadata was not canonicalized: %#v key=%#v", profile.Public, key)
+	}
+}
+
+func TestConnectorProfileRoutesAllowGenericSSHProfileCreate(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+	key := decodeRouteResponse[sshkeys.SSHKey](t, performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials", "", sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519}).Body.Bytes())
+	createTarget := performJSON(handler, http.MethodPost, "/api/connector-targets", "", createConnectorTargetRequest{
+		ConnectorKind: "ssh",
+		Name:          "core-ssh",
+		Config: map[string]any{
+			"host": "127.0.0.1",
+			"port": 22,
+		},
+	})
+	if createTarget.Code != http.StatusCreated {
+		t.Fatalf("create ssh target failed: %d %s", createTarget.Code, createTarget.Body.String())
+	}
+	target := decodeRouteResponse[connectorTargetResponse](t, createTarget.Body.Bytes())
+	response := performJSON(handler, http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles", "", createConnectorCredentialProfileRequest{
+		Kind:  "private_key",
+		Label: "extra",
+		Public: map[string]any{
+			"username":   "root",
+			"ssh_key_id": key.ID,
+		},
+	})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("generic SSH profile create should succeed, got %d %s", response.Code, response.Body.String())
+	}
+	profile := decodeRouteResponse[profileSummary](t, response.Body.Bytes())
+	if profile.ConnectorKind != "ssh" || profile.Kind != "private_key" || profile.Public["username"] != "root" {
+		t.Fatalf("unexpected ssh profile summary: %#v", profile)
+	}
+
+	getTarget := performJSON(handler, http.MethodGet, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", nil)
+	if getTarget.Code != http.StatusOK {
+		t.Fatalf("get ssh connector target failed: %d %s", getTarget.Code, getTarget.Body.String())
+	}
+	roundTripTarget := decodeRouteResponse[connectorTargetResponse](t, getTarget.Body.Bytes())
+	if _, ok := roundTripTarget.Config["username"]; ok {
+		t.Fatalf("ssh target config should not expose username: %#v", roundTripTarget.Config)
+	}
+	if _, ok := roundTripTarget.Config["ssh_key_id"]; ok {
+		t.Fatalf("ssh target config should not expose ssh_key_id: %#v", roundTripTarget.Config)
+	}
+	if len(roundTripTarget.Profiles) != 1 || roundTripTarget.Profiles[0].Public["username"] != "root" {
+		t.Fatalf("ssh profile metadata missing after target GET: %#v", roundTripTarget.Profiles)
+	}
+	updateTarget := performJSON(handler, http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", updateConnectorTargetRequest{
+		Name:   roundTripTarget.Name,
+		Config: roundTripTarget.Config,
+	})
+	if updateTarget.Code != http.StatusOK {
+		t.Fatalf("ssh target GET -> PUT round-trip failed: %d %s", updateTarget.Code, updateTarget.Body.String())
+	}
+
+	invalidTarget := performJSON(handler, http.MethodPost, "/api/connector-targets", "", createConnectorTargetRequest{
+		ConnectorKind: "ssh",
+		Name:          "bad-ssh",
+		Config: map[string]any{
+			"host":       "127.0.0.1",
+			"port":       22,
+			"username":   "root",
+			"ssh_key_id": key.ID,
+		},
+	})
+	if invalidTarget.Code != http.StatusBadRequest {
+		t.Fatalf("ssh target create should reject profile fields in target config, got %d %s", invalidTarget.Code, invalidTarget.Body.String())
 	}
 }
 
@@ -479,22 +626,13 @@ func TestApprovalAndMCPRequestRoutes(t *testing.T) {
 	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?status=pending_approval&server_id="+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), pendingApprovalAssistantHint) {
 		t.Fatalf("list approvals failed: %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/requests?status=pending_approval", token.TokenValue, nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"pending_approval"`) {
-		t.Fatalf("mcp list requests failed: %d %s", response.Code, response.Body.String())
-	}
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/requests/"+strconv.FormatInt(requestID, 10), token.TokenValue, nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), pendingApprovalAssistantHint) {
-		t.Fatalf("mcp get request failed: %d %s", response.Code, response.Body.String())
-	}
 	manualID := insertManualRouteCommandRequest(t, fixture.db, server.ID, "nano /etc/hosts ...", "interactive_editor")
 	historyManualResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?paginated=true&source=manual", "", nil)
 	if historyManualResponse.Code != http.StatusOK || !strings.Contains(historyManualResponse.Body.String(), `"source":"manual"`) || !strings.Contains(historyManualResponse.Body.String(), `"tracking_reason":"interactive_editor"`) {
 		t.Fatalf("manual history source filter failed: %d %s", historyManualResponse.Code, historyManualResponse.Body.String())
 	}
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/requests", token.TokenValue, nil); response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"source":"manual"`) || strings.Contains(response.Body.String(), "nano /etc/hosts") {
-		t.Fatalf("mcp list requests should not expose manual history rows: %d %s", response.Code, response.Body.String())
-	}
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/requests/"+strconv.FormatInt(manualID, 10), token.TokenValue, nil); response.Code != http.StatusNotFound {
-		t.Fatalf("mcp get request should not expose manual history row, got %d %s", response.Code, response.Body.String())
+	if manualID < 1 {
+		t.Fatalf("expected manual request id")
 	}
 
 	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(requestID, 10)+"/decline", "", declineApprovalRequest{UserNote: "use another path"})
@@ -517,12 +655,18 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	serverOne := fixture.createKeyAndServer(t, "bulk-one")
 	serverTwo := fixture.createKeyAndServer(t, "bulk-two")
-	if _, err := fixture.db.Exec(`UPDATE servers SET port = 1 WHERE id IN (?, ?)`, serverOne.ID, serverTwo.ID); err != nil {
-		t.Fatalf("move test servers to closed port: %v", err)
+	if _, err := fixture.db.Exec(`
+		UPDATE connector_targets
+		SET config_json = '{"host":"127.0.0.1","port":1,"description":"closed port"}'
+		WHERE id IN (?, ?)`,
+		serverOne.TargetID,
+		serverTwo.TargetID,
+	); err != nil {
+		t.Fatalf("move test ssh targets to closed port: %v", err)
 	}
 
 	missingConfirmation := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
-		ServerIDs: []int64{serverOne.ID, serverTwo.ID},
+		TargetIDs: []int64{serverOne.ID, serverTwo.ID},
 		Command:   "hostname",
 		Reason:    "bulk smoke",
 	})
@@ -531,7 +675,7 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 	}
 
 	duplicateServer := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
-		ServerIDs:    []int64{serverOne.ID, serverOne.ID},
+		TargetIDs:    []int64{serverOne.ID, serverOne.ID},
 		Command:      "hostname",
 		Reason:       "bulk smoke",
 		Confirmation: "RUN ON 2 SERVERS",
@@ -541,7 +685,7 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
-		ServerIDs:    []int64{serverOne.ID, serverTwo.ID},
+		TargetIDs:    []int64{serverOne.ID, serverTwo.ID},
 		Command:      "hostname",
 		Reason:       "bulk smoke",
 		Confirmation: "RUN ON 2 SERVERS",
@@ -604,6 +748,9 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("docker request id: %v", err)
 	}
+	if err := historypkg.NewStore(fixture.db).SyncCommandRequest(ctx, dockerID); err != nil {
+		t.Fatalf("sync docker request to history: %v", err)
+	}
 	if _, err := fixture.db.Exec(`
 		INSERT INTO command_requests (token_id, server_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
 		VALUES (?, ?, 'uptime', 'inspect uptime', 'completed', 'uptime output body', '', 0, ?, ?)`,
@@ -633,6 +780,50 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if historyDetailResponse.Code != http.StatusOK || !strings.Contains(historyDetailResponse.Body.String(), "docker output body") {
 		t.Fatalf("history detail should include output: %d %s", historyDetailResponse.Code, historyDetailResponse.Body.String())
 	}
+	unifiedDockerResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?q=docker&limit=1", "", nil)
+	if unifiedDockerResponse.Code != http.StatusOK {
+		t.Fatalf("unified history search failed: %d %s", unifiedDockerResponse.Code, unifiedDockerResponse.Body.String())
+	}
+	unifiedDockerPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, unifiedDockerResponse.Body.Bytes())
+	if unifiedDockerPage.Total != 1 || len(unifiedDockerPage.Items) != 1 || unifiedDockerPage.Items[0].SourceRefID != dockerID {
+		t.Fatalf("unexpected unified docker history page: %#v", unifiedDockerPage)
+	}
+	dockerHistoryID := unifiedDockerPage.Items[0].ID
+	store := connectortargets.NewStore(fixture.db)
+	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	connectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             pgTarget.ID,
+		ProfileID:            pgProfile.ID,
+		ConnectorKind:        "postgres",
+		ActionName:           "query_readonly",
+		Input:                map[string]any{"sql": "select customer from invoices where customer = 'needle_customer'"},
+		EncryptedPayloadJSON: "encrypted-payload",
+		Status:               connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert connector request: %v", err)
+	}
+	if _, err := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+		ID:     connectorRequest.ID,
+		Status: connectors.ResultCompleted,
+		Output: map[string]any{
+			"rows": []any{map[string]any{"customer": "needle_customer"}},
+		},
+	}); err != nil {
+		t.Fatalf("finish connector request: %v", err)
+	}
+	if err := historypkg.NewStore(fixture.db).SyncConnectorActionRequest(ctx, connectorRequest.ID); err != nil {
+		t.Fatalf("sync connector request to history: %v", err)
+	}
+	connectorJSONSearchResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?q=needle_customer&connector_kind=postgres&limit=1", "", nil)
+	if connectorJSONSearchResponse.Code != http.StatusOK {
+		t.Fatalf("unified connector json search failed: %d %s", connectorJSONSearchResponse.Code, connectorJSONSearchResponse.Body.String())
+	}
+	connectorJSONSearchPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, connectorJSONSearchResponse.Body.Bytes())
+	if connectorJSONSearchPage.Total != 1 || len(connectorJSONSearchPage.Items) != 1 || connectorJSONSearchPage.Items[0].SourceRefID != connectorRequest.ID {
+		t.Fatalf("unexpected unified connector json search page: %#v", connectorJSONSearchPage)
+	}
 	labelResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/history-labels", "", createHistoryLabelRequest{Name: "issue-440"})
 	if labelResponse.Code != http.StatusCreated {
 		t.Fatalf("create history label failed: %d %s", labelResponse.Code, labelResponse.Body.String())
@@ -642,11 +833,11 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if reusedLabelResponse.Code != http.StatusOK {
 		t.Fatalf("reused history label should return ok, got %d %s", reusedLabelResponse.Code, reusedLabelResponse.Body.String())
 	}
-	attachResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(dockerID, 10)+"/labels", "", attachHistoryLabelRequest{Name: "docker"})
-	if attachResponse.Code != http.StatusOK || !strings.Contains(attachResponse.Body.String(), `"docker"`) {
+	attachResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/history/"+strconv.FormatInt(dockerHistoryID, 10)+"/labels", "", attachHistoryLabelRequest{Name: "docker"})
+	if attachResponse.Code != http.StatusCreated || !strings.Contains(attachResponse.Body.String(), `"docker"`) {
 		t.Fatalf("attach history label by name failed: %d %s", attachResponse.Code, attachResponse.Body.String())
 	}
-	attachExistingResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(dockerID, 10)+"/labels", "", attachHistoryLabelRequest{LabelID: label.ID})
+	attachExistingResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/history/"+strconv.FormatInt(dockerHistoryID, 10)+"/labels", "", attachHistoryLabelRequest{LabelID: label.ID})
 	if attachExistingResponse.Code != http.StatusOK || !strings.Contains(attachExistingResponse.Body.String(), `"issue-440"`) {
 		t.Fatalf("attach existing history label failed: %d %s", attachExistingResponse.Code, attachExistingResponse.Body.String())
 	}
@@ -654,19 +845,24 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if labelListResponse.Code != http.StatusOK || !strings.Contains(labelListResponse.Body.String(), `"issue-440"`) || !strings.Contains(labelListResponse.Body.String(), `"docker"`) {
 		t.Fatalf("list history labels failed: %d %s", labelListResponse.Code, labelListResponse.Body.String())
 	}
-	filteredByLabelResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?paginated=true&label_id="+strconv.FormatInt(label.ID, 10), "", nil)
-	if filteredByLabelResponse.Code != http.StatusOK {
-		t.Fatalf("history label filter failed: %d %s", filteredByLabelResponse.Code, filteredByLabelResponse.Body.String())
+	unifiedLabelResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?label_id="+strconv.FormatInt(label.ID, 10), "", nil)
+	if unifiedLabelResponse.Code != http.StatusOK {
+		t.Fatalf("unified history label filter failed: %d %s", unifiedLabelResponse.Code, unifiedLabelResponse.Body.String())
 	}
-	filteredByLabelPage := decodeRouteResponse[pageResponse[commandRequestRecord]](t, filteredByLabelResponse.Body.Bytes())
-	if filteredByLabelPage.Total != 1 || len(filteredByLabelPage.Items) != 1 || filteredByLabelPage.Items[0].ID != dockerID || len(filteredByLabelPage.Items[0].Labels) != 2 {
-		t.Fatalf("unexpected label filtered page: %#v", filteredByLabelPage)
+	unifiedLabelPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, unifiedLabelResponse.Body.Bytes())
+	if unifiedLabelPage.Total != 1 || len(unifiedLabelPage.Items) != 1 || unifiedLabelPage.Items[0].SourceRefID != dockerID || len(unifiedLabelPage.Items[0].Labels) != 2 {
+		t.Fatalf("unexpected unified history label page: %#v", unifiedLabelPage)
 	}
-	detachResponse := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/approvals/"+strconv.FormatInt(dockerID, 10)+"/labels/"+strconv.FormatInt(label.ID, 10), "", nil)
+	detachResponse := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/history/"+strconv.FormatInt(dockerHistoryID, 10)+"/labels/"+strconv.FormatInt(label.ID, 10), "", nil)
 	if detachResponse.Code != http.StatusOK || strings.Contains(detachResponse.Body.String(), `"issue-440"`) {
 		t.Fatalf("detach history label failed: %d %s", detachResponse.Code, detachResponse.Body.String())
 	}
-	missingDetachResponse := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/approvals/"+strconv.FormatInt(dockerID, 10)+"/labels/"+strconv.FormatInt(label.ID, 10), "", nil)
+	unifiedDetachedResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?label_id="+strconv.FormatInt(label.ID, 10), "", nil)
+	unifiedDetachedPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, unifiedDetachedResponse.Body.Bytes())
+	if unifiedDetachedResponse.Code != http.StatusOK || unifiedDetachedPage.Total != 0 {
+		t.Fatalf("detached label should filter as empty in unified history: %d %#v", unifiedDetachedResponse.Code, unifiedDetachedPage)
+	}
+	missingDetachResponse := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/history/"+strconv.FormatInt(dockerHistoryID, 10)+"/labels/"+strconv.FormatInt(label.ID, 10), "", nil)
 	if missingDetachResponse.Code != http.StatusNotFound {
 		t.Fatalf("missing label relationship should return not found, got %d %s", missingDetachResponse.Code, missingDetachResponse.Body.String())
 	}
@@ -674,8 +870,8 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if deleteLabelResponse.Code != http.StatusOK {
 		t.Fatalf("delete history label failed: %d %s", deleteLabelResponse.Code, deleteLabelResponse.Body.String())
 	}
-	filterDeletedLabelResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?paginated=true&label_id="+strconv.FormatInt(label.ID, 10), "", nil)
-	filterDeletedLabelPage := decodeRouteResponse[pageResponse[commandRequestRecord]](t, filterDeletedLabelResponse.Body.Bytes())
+	filterDeletedLabelResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?label_id="+strconv.FormatInt(label.ID, 10), "", nil)
+	filterDeletedLabelPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, filterDeletedLabelResponse.Body.Bytes())
 	if filterDeletedLabelResponse.Code != http.StatusOK || filterDeletedLabelPage.Total != 0 {
 		t.Fatalf("deleted label should filter as empty: %d %#v", filterDeletedLabelResponse.Code, filterDeletedLabelPage)
 	}
@@ -698,6 +894,25 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	auditDetailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs/"+strconv.FormatInt(auditPage.Items[0].ID, 10), "", nil)
 	if auditDetailResponse.Code != http.StatusOK || !strings.Contains(auditDetailResponse.Body.String(), "docker image scan") {
 		t.Fatalf("audit detail should include full payload: %d %s", auditDetailResponse.Code, auditDetailResponse.Body.String())
+	}
+	fixture.server.writeAudit(ctx, fixture.server.activeRuntime(), "mcp", &token.ID, 0, "connector_action.completed", map[string]any{
+		"connector_kind":    "ssh",
+		"target_id":         server.TargetID,
+		"profile_id":        server.ProfileID,
+		"action_request_id": int64(777),
+		"detail":            "connector audit metadata",
+	})
+	connectorAuditResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs?connector_kind=ssh&target_id="+strconv.FormatInt(server.TargetID, 10), "", nil)
+	if connectorAuditResponse.Code != http.StatusOK {
+		t.Fatalf("connector audit filter failed: %d %s", connectorAuditResponse.Code, connectorAuditResponse.Body.String())
+	}
+	connectorAuditPage := decodeRouteResponse[pageResponse[auditLogRecord]](t, connectorAuditResponse.Body.Bytes())
+	if connectorAuditPage.Total != 1 || len(connectorAuditPage.Items) != 1 {
+		t.Fatalf("unexpected connector audit page: %#v", connectorAuditPage)
+	}
+	item := connectorAuditPage.Items[0]
+	if item.ConnectorKind != "ssh" || item.TargetID == nil || *item.TargetID != server.TargetID || item.TargetName != "worker-1" || item.ActionRequestID == nil || *item.ActionRequestID != 777 {
+		t.Fatalf("connector audit metadata missing: %#v", item)
 	}
 }
 
@@ -1048,15 +1263,6 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/messages?direction=user_to_ai&server_id="+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "hello agent") {
 		t.Fatalf("list messages failed: %d %s", response.Code, response.Body.String())
 	}
-	if _, err := fixture.tokens.UpdatePermissions(context.Background(), token.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
-		{ServerID: server.ID, ExecutionRule: tokens.RuleAlwaysRun},
-	}}); err != nil {
-		t.Fatalf("update permissions: %v", err)
-	}
-	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/messages", token.TokenValue, createMessageRequest{Message: "from ai", ServerID: &server.ID}); response.Code != http.StatusCreated || !strings.Contains(response.Body.String(), "from ai") {
-		t.Fatalf("mcp create message failed: %d %s", response.Code, response.Body.String())
-	}
-
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := fixture.db.Exec(`
 		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at, closed_at)
@@ -1137,8 +1343,8 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restart request id: %v", err)
 	}
-	restartResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/servers/"+strconv.FormatInt(restartServer.ID, 10)+"/restart", "", map[string]any{})
-	if restartResponse.Code != http.StatusOK || !strings.Contains(restartResponse.Body.String(), `"status":"restarted"`) {
+	restartResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/targets/"+strconv.FormatInt(restartServer.ID, 10)+"/restart", "", map[string]any{})
+	if restartResponse.Code != http.StatusOK || !strings.Contains(restartResponse.Body.String(), `"status":"restarted"`) || !strings.Contains(restartResponse.Body.String(), `"target_id":`) {
 		t.Fatalf("restart console session failed: %d %s", restartResponse.Code, restartResponse.Body.String())
 	}
 	var restartedSessionStatus string
@@ -1157,24 +1363,4 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 		t.Fatalf("restart should mark running request error, status=%s error=%q", restartedRequestStatus, restartedRequestError)
 	}
 
-	blockedServer := fixture.createKeyAndServer(t, "worker-blocked")
-	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/messages", token.TokenValue, createMessageRequest{Message: "blocked", ServerID: &blockedServer.ID}); response.Code != http.StatusForbidden {
-		t.Fatalf("mcp create message for unauthorized server should fail, got %d %s", response.Code, response.Body.String())
-	}
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/console?server_id="+strconv.FormatInt(server.ID, 10)+"&tail=20", token.TokenValue, nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "hello transcript") {
-		t.Fatalf("mcp read console should return transcript tail, got %d %s", response.Code, response.Body.String())
-	}
-
-	approvalToken, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "approval-agent"})
-	if err != nil {
-		t.Fatalf("create approval token: %v", err)
-	}
-	if _, err := fixture.tokens.UpdatePermissions(context.Background(), approvalToken.ID, tokens.UpdatePermissionsRequest{Permissions: []tokens.PermissionInput{
-		{ServerID: server.ID, ExecutionRule: tokens.RuleApprovalRequired},
-	}}); err != nil {
-		t.Fatalf("update approval permissions: %v", err)
-	}
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/console?server_id="+strconv.FormatInt(server.ID, 10)+"&tail=20", approvalToken.TokenValue, nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "requires always_run") || strings.Contains(response.Body.String(), "hello transcript") {
-		t.Fatalf("approval_required token should not read shared transcript, got %d %s", response.Code, response.Body.String())
-	}
 }

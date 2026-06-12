@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,7 +52,7 @@ func (s tokenHandlers) listTokenConnectorPermissions(w http.ResponseWriter, r *h
 		handleTokenError(w, err)
 		return
 	}
-	permissions, err := connectortargets.NewStore(runtime.database).ListActionPermissions(r.Context(), tokenID)
+	permissions, err := activeSupportedConnectorPermissions(r.Context(), runtime, tokenID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
@@ -101,7 +103,7 @@ func connectorPermissionInputs(r *http.Request, store *connectortargets.Store, p
 	}
 	inputs := make([]connectortargets.SetActionPermissionInput, 0, len(permissions))
 	for _, permission := range permissions {
-		target, err := store.GetTarget(r.Context(), permission.TargetID)
+		target, profile, err := connectorTargetProfileViews(r.Context(), store, permission.TargetID, permission.ProfileID)
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +112,7 @@ func connectorPermissionInputs(r *http.Request, store *connectortargets.Store, p
 			return nil, connectortargets.ValidationError("unsupported connector kind")
 		}
 		actionName := strings.TrimSpace(permission.ActionName)
-		if !actionSupported(r, connector, actionName) {
+		if !actionSupported(r, connector, target, profile, actionName) {
 			return nil, connectortargets.ValidationError("unsupported connector action")
 		}
 		expiresAt, err := parseConnectorPermissionExpiresAt(permission.ExpiresAt, permission.ExecutionRule)
@@ -128,12 +130,90 @@ func connectorPermissionInputs(r *http.Request, store *connectortargets.Store, p
 	return inputs, nil
 }
 
-func actionSupported(r *http.Request, connector connectors.Connector, actionName string) bool {
+func activeSupportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, tokenID int64) ([]connectortargets.ActionPermission, error) {
+	if runtime == nil || runtime.database == nil {
+		return nil, connectortargets.ValidationError("database runtime is not available")
+	}
+	store := connectortargets.NewStore(runtime.database)
+	permissions, err := store.ListActionPermissions(ctx, tokenID)
+	if err != nil {
+		return nil, err
+	}
+	registry, err := builtin.NewRegistry()
+	if err != nil {
+		return nil, err
+	}
+	type actionCatalog struct {
+		names map[string]bool
+		err   error
+	}
+	catalogs := map[string]actionCatalog{}
+	supported := make([]connectortargets.ActionPermission, 0, len(permissions))
+	for _, permission := range permissions {
+		cacheKey := strconv.FormatInt(permission.TargetID, 10) + ":" + strconv.FormatInt(permission.ProfileID, 10)
+		catalog, ok := catalogs[cacheKey]
+		if !ok {
+			catalog = actionCatalog{names: map[string]bool{}}
+			target, profile, resolveErr := connectorTargetProfileViews(ctx, store, permission.TargetID, permission.ProfileID)
+			if resolveErr != nil {
+				catalog.err = resolveErr
+			} else {
+				connector, exists := registry.Get(target.ConnectorKind)
+				if !exists {
+					catalog.err = connectortargets.ValidationError("unsupported connector kind")
+				} else {
+					actions, actionsErr := connector.GetActionList(ctx, target, profile)
+					if actionsErr != nil {
+						catalog.err = actionsErr
+					} else if validateErr := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); validateErr != nil {
+						catalog.err = validateErr
+					} else {
+						for _, action := range actions {
+							catalog.names[action.Name] = true
+						}
+					}
+				}
+			}
+			catalogs[cacheKey] = catalog
+		}
+		if catalog.err != nil {
+			return nil, catalog.err
+		}
+		if catalog.names[permission.ActionName] {
+			supported = append(supported, permission)
+		}
+	}
+	return supported, nil
+}
+
+func connectorTargetProfileViews(ctx context.Context, store *connectortargets.Store, targetID int64, profileID int64) (connectors.TargetView, connectors.CredentialProfileView, error) {
+	target, err := store.GetTarget(ctx, targetID)
+	if err != nil {
+		return connectors.TargetView{}, connectors.CredentialProfileView{}, err
+	}
+	profile, err := store.GetCredentialProfile(ctx, targetID, profileID)
+	if err != nil {
+		return connectors.TargetView{}, connectors.CredentialProfileView{}, err
+	}
+	ref := connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID)
+	return connectors.TargetView{
+		ID:            target.ID,
+		Ref:           ref,
+		ConnectorKind: target.ConnectorKind,
+		Name:          target.Name,
+		Config:        target.Config,
+	}, connectortargets.CredentialProfileView(profile), nil
+}
+
+func actionSupported(r *http.Request, connector connectors.Connector, target connectors.TargetView, profile connectors.CredentialProfileView, actionName string) bool {
 	if !connectors.ValidIdentifier(actionName) {
 		return false
 	}
-	actions, err := connector.GetActionList(r.Context(), connectors.TargetView{ConnectorKind: connector.Kind()})
+	actions, err := connector.GetActionList(r.Context(), target, profile)
 	if err != nil {
+		return false
+	}
+	if err := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); err != nil {
 		return false
 	}
 	for _, action := range actions {

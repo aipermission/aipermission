@@ -51,12 +51,15 @@ type TargetView struct {
 // CredentialProfileView is the public, non-secret view of a credential profile
 // bound to a target.
 type CredentialProfileView struct {
-	ID            int64          `json:"id"`
-	TargetID      int64          `json:"target_id"`
-	ConnectorKind string         `json:"connector_kind"`
-	Kind          string         `json:"kind"`
-	Label         string         `json:"label"`
-	Public        map[string]any `json:"public,omitempty"`
+	ID             int64          `json:"id"`
+	TargetID       int64          `json:"target_id"`
+	ConnectorKind  string         `json:"connector_kind"`
+	Kind           string         `json:"kind"`
+	Label          string         `json:"label"`
+	Public         map[string]any `json:"public,omitempty"`
+	RiskLabel      string         `json:"risk_label,omitempty"`
+	UpdatedAt      string         `json:"updated_at,omitempty"`
+	SecretRevision string         `json:"secret_revision,omitempty"`
 }
 
 // ActionDefinition is the machine-readable action contract returned by a

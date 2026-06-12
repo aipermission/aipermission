@@ -19,7 +19,6 @@ type connectorCatalogDetail struct {
 	Version           string                        `json:"version"`
 	TargetSchema      connectors.Schema             `json:"target_schema"`
 	CredentialSchemas []connectors.CredentialSchema `json:"credential_schemas"`
-	Actions           []connectors.ActionDefinition `json:"actions"`
 	Help              connectors.ConnectorHelp      `json:"help"`
 }
 
@@ -63,12 +62,11 @@ func (s connectorHandlers) getConnector(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "connector not found")
 		return
 	}
-	target := connectors.TargetView{ConnectorKind: connector.Kind()}
-	actions, err := connector.GetActionList(r.Context(), target)
-	if err != nil {
+	if err := connectors.ValidateNonSecretSchema(connector.TargetSchema(), connector.Kind()+" target"); err != nil {
 		writeInternalError(w)
 		return
 	}
+	target := connectors.TargetView{ConnectorKind: connector.Kind()}
 	help, err := connector.GetHelp(r.Context(), target)
 	if err != nil {
 		writeInternalError(w)
@@ -80,7 +78,6 @@ func (s connectorHandlers) getConnector(w http.ResponseWriter, r *http.Request) 
 		Version:           connector.Version(),
 		TargetSchema:      connector.TargetSchema(),
 		CredentialSchemas: connector.CredentialSchemas(),
-		Actions:           actions,
 		Help:              help,
 	})
 }

@@ -16,7 +16,7 @@ type Connector interface {
 	CredentialSchemas() []CredentialSchema
 
 	GetHelp(ctx context.Context, target TargetView) (ConnectorHelp, error)
-	GetActionList(ctx context.Context, target TargetView) ([]ActionDefinition, error)
+	GetActionList(ctx context.Context, target TargetView, profile CredentialProfileView) ([]ActionDefinition, error)
 
 	PrepareAction(ctx context.Context, req ActionRequest) (PreparedAction, error)
 	ExecuteAction(ctx context.Context, runtime RuntimeContext, action PreparedAction) (ActionResult, error)
@@ -45,8 +45,20 @@ type RuntimeContext struct {
 	Target  TargetView
 	Profile CredentialProfileView
 
-	Secrets SecretAccessor
-	Events  EventSink
+	Secrets  SecretAccessor
+	Events   EventSink
+	// Services is an explicit escape hatch for gateway-owned runtime adapters
+	// such as SSH PTY/SFTP. Normal structured connectors should use Target,
+	// Profile, Secrets, and their own client code instead of depending on
+	// gateway internals.
+	Services map[string]any
+}
+
+func (c RuntimeContext) Service(name string) any {
+	if c.Services == nil {
+		return nil
+	}
+	return c.Services[name]
 }
 
 // ActionEvent is a structured, redaction-ready progress event.

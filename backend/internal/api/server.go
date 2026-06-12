@@ -10,7 +10,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -23,7 +22,6 @@ type Server struct {
 	workspaces     map[string]*databaseRuntime
 	database       *sql.DB
 	vault          *vault.Vault
-	servers        *servers.Store
 	sshKeys        *sshkeys.Store
 	tokens         *tokens.Store
 	mux            *http.ServeMux
@@ -40,7 +38,6 @@ type databaseRuntime struct {
 	gatewaySecret    string
 	database         *sql.DB
 	vault            *vault.Vault
-	servers          *servers.Store
 	sshKeys          *sshkeys.Store
 	tokens           *tokens.Store
 	fileTransfers    *filetransfer.Store
@@ -60,7 +57,7 @@ type databaseRuntime struct {
 	mcpStarted       bool
 }
 
-func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, serverStore *servers.Store, sshKeyStore *sshkeys.Store, tokenStore *tokens.Store) *Server {
+func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, sshKeyStore *sshkeys.Store, tokenStore *tokens.Store) *Server {
 	activeID := dbpkg.DefaultDatabaseID(cfg.DataPath)
 	server := &Server{
 		config:         cfg,
@@ -69,7 +66,6 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, se
 		workspaces:     map[string]*databaseRuntime{},
 		database:       database,
 		vault:          secretVault,
-		servers:        serverStore,
 		sshKeys:        sshKeyStore,
 		tokens:         tokenStore,
 		mux:            http.NewServeMux(),
@@ -82,7 +78,6 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, se
 		gatewaySecret:    cfg.GatewaySecret,
 		database:         database,
 		vault:            secretVault,
-		servers:          serverStore,
 		sshKeys:          sshKeyStore,
 		tokens:           tokenStore,
 		fileTransfers:    filetransfer.NewStore(database),

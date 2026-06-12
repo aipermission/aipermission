@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
 type messageRecord struct {
@@ -105,56 +103,6 @@ func (s messageHandlers) markMessagesRead(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"status": "read", "count": affected})
 }
 
-func (s mcpHandlers) mcpCreateMessage(w http.ResponseWriter, r *http.Request) {
-	auth, ok := s.authenticateMCP(w, r)
-	if !ok {
-		return
-	}
-	if s.rejectStoppedMCP(w, auth.runtime) {
-		return
-	}
-	var request createMessageRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
-		return
-	}
-	request.TokenID = auth.TokenID
-	request.Direction = "ai_to_user"
-	if request.SessionID != nil {
-		serverID, err := consoleSessionServerID(r.Context(), auth.runtime, *request.SessionID)
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusBadRequest, "session_id not found")
-			return
-		}
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		if request.ServerID != nil && *request.ServerID != serverID {
-			writeError(w, http.StatusBadRequest, "session_id does not belong to server_id")
-			return
-		}
-		request.ServerID = &serverID
-	}
-	if request.ServerID != nil {
-		_, rule, allowed, err := s.mcpPermission(r.Context(), auth.runtime, auth.TokenID, *request.ServerID)
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		if !allowed || rule == tokens.RuleBlocked {
-			writeError(w, http.StatusForbidden, "token is not allowed to send messages for this server")
-			return
-		}
-	}
-	item, err := s.insertMessage(r.Context(), auth.runtime, request)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, item)
-}
-
 type messageFilter struct {
 	TokenID   int64
 	ServerID  int64
@@ -232,7 +180,13 @@ func validateMessageScope(ctx context.Context, runtime *databaseRuntime, request
 
 	if request.ServerID != nil {
 		var serverExists int
-		err := runtime.database.QueryRowContext(ctx, `SELECT 1 FROM servers WHERE id = ?`, *request.ServerID).Scan(&serverExists)
+		err := runtime.database.QueryRowContext(ctx, `
+			SELECT 1
+			FROM connector_credential_profiles cp
+			JOIN connector_targets ct ON ct.id = cp.target_id
+			WHERE cp.id = ? AND cp.connector_kind = 'ssh' AND ct.connector_kind = 'ssh' AND ct.status = 'active'`,
+			*request.ServerID,
+		).Scan(&serverExists)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("server_id does not exist")
 		}
@@ -363,11 +317,12 @@ func (s *Server) listMessageRecords(ctx context.Context, runtime *databaseRuntim
 
 func messageSelectSQL() string {
 	return `
-		SELECT mq.id, mq.token_id, COALESCE(tok.name, ''), mq.server_id, COALESCE(srv.name, ''), mq.session_id,
+		SELECT mq.id, mq.token_id, COALESCE(tok.name, ''), mq.server_id, COALESCE(ct.name, ''), mq.session_id,
 		       mq.direction, mq.message, mq.consumed_at, mq.created_at
 		FROM message_queue mq
 		JOIN api_tokens tok ON tok.id = mq.token_id
-		LEFT JOIN servers srv ON srv.id = mq.server_id`
+		LEFT JOIN connector_credential_profiles cp ON cp.id = mq.server_id AND cp.connector_kind = 'ssh'
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'`
 }
 
 func scanMessage(scanner interface {

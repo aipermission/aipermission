@@ -11,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/servers"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -109,7 +108,6 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		gatewaySecret:    gatewaySecret,
 		database:         database,
 		vault:            secretVault,
-		servers:          servers.NewStore(database),
 		sshKeys:          sshkeys.NewStore(database, secretVault),
 		tokens:           tokens.NewStore(database, secretVault),
 		fileTransfers:    filetransfer.NewStore(database),
@@ -120,10 +118,6 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 	}
 	settings, err := readSecuritySettingsFromDB(context.Background(), runtime)
 	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	if err := runtime.servers.SyncConnectorTargets(context.Background()); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
@@ -206,7 +200,6 @@ func (s *Server) closeActiveRuntimeLocked(promote bool) {
 	}
 	s.database = nil
 	s.vault = nil
-	s.servers = nil
 	s.sshKeys = nil
 	s.tokens = nil
 	if promote {
@@ -235,7 +228,6 @@ func (s *Server) closeAllUnlockedResources() {
 	s.workspaces = map[string]*databaseRuntime{}
 	s.database = nil
 	s.vault = nil
-	s.servers = nil
 	s.sshKeys = nil
 	s.tokens = nil
 }
@@ -250,7 +242,6 @@ func (s *Server) closeRuntimeByIDLocked(id string) {
 	if s.activeDatabase == id {
 		s.database = nil
 		s.vault = nil
-		s.servers = nil
 		s.sshKeys = nil
 		s.tokens = nil
 	}
@@ -286,7 +277,6 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 	if runtime == nil {
 		s.database = nil
 		s.vault = nil
-		s.servers = nil
 		s.sshKeys = nil
 		s.tokens = nil
 		return
@@ -298,7 +288,6 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 	}
 	s.database = runtime.database
 	s.vault = runtime.vault
-	s.servers = runtime.servers
 	s.sshKeys = runtime.sshKeys
 	s.tokens = runtime.tokens
 }

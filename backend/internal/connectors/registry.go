@@ -31,6 +31,9 @@ func (r *Registry) Register(connector Connector) error {
 	if _, exists := r.byKind[kind]; exists {
 		return fmt.Errorf("connector kind %q already registered", kind)
 	}
+	if err := ValidateConnectorContract(connector); err != nil {
+		return err
+	}
 	r.byKind[kind] = connector
 	return nil
 }
@@ -67,4 +70,28 @@ type ConnectorInfo struct {
 // ValidIdentifier validates connector kinds and action names.
 func ValidIdentifier(value string) bool {
 	return identifierPattern.MatchString(value)
+}
+
+func ValidateConnectorContract(connector Connector) error {
+	if connector == nil {
+		return fmt.Errorf("connector is nil")
+	}
+	kind := connector.Kind()
+	if !ValidIdentifier(kind) {
+		return fmt.Errorf("invalid connector kind %q", kind)
+	}
+	if err := ValidateNonSecretSchema(connector.TargetSchema(), kind+" target"); err != nil {
+		return err
+	}
+	seenCredentialKinds := map[string]bool{}
+	for _, schema := range connector.CredentialSchemas() {
+		if seenCredentialKinds[schema.Kind] {
+			return fmt.Errorf("connector %q contains duplicate credential kind %q", kind, schema.Kind)
+		}
+		seenCredentialKinds[schema.Kind] = true
+		if err := ValidateCredentialSchemaDefinition(schema); err != nil {
+			return fmt.Errorf("connector %q: %w", kind, err)
+		}
+	}
+	return nil
 }
