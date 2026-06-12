@@ -2,7 +2,9 @@
 
 AIPermission has published its first public release candidate. The local-only
 SSH/MCP MVP is usable today; the next releases focus on dogfooding polish,
-small safety improvements, and clearer contributor paths.
+small safety improvements, clearer contributor paths, and the connector
+architecture that lets SSH, Postgres, API, Redis, and future integrations share
+one permission pipeline.
 
 Related notes:
 
@@ -50,7 +52,7 @@ AIPermission is intentionally:
 - Local-only.
 - Single-user.
 - Developer-focused.
-- SSH-based.
+- Connector-based, with built-in SSH.
 - Human-in-the-loop.
 
 These requests conflict with the project principles and should normally be
@@ -75,14 +77,14 @@ AIPermission against real VPS maintenance tasks.
 - Browser title that shows MCP Started/Stopped and the active database.
 - Safer database deletion with a second password confirmation.
 - Manual update checks from the in-app Changelog dialog.
-- Bulk token permission updates across all servers.
+- Bulk token permission updates across connector targets.
 - Approval-run notes delivered back to the AI.
 
 `0.1.2` ships:
 
 - History labels for tagging command requests and filtering History by label.
 - History label cleanup from Settings without deleting command history records.
-- On-demand Docker quick checks from the Servers page.
+- On-demand Docker quick checks from SSH connector targets.
 - Docker container details and tail-configurable Docker logs dialogs.
 
 `0.1.4` ships:
@@ -102,8 +104,8 @@ AIPermission against real VPS maintenance tasks.
 - Single-file upload to a selected SSH server over SFTP.
 - Single-file remote download over SFTP, served through the browser after the
   transfer reaches `completed`.
-- File Transfer History with pagination, search, server/status/direction
-  filters, status/progress metadata, checksums, and detail view.
+- Unified History with pagination, search, connector/status/source filters,
+  status/progress metadata, checksums, and detail view.
 - File contents are not stored in SQLCipher; only metadata and progress are
   persisted.
 
@@ -129,13 +131,13 @@ AIPermission against real VPS maintenance tasks.
 
 `0.1.8` ships:
 
-- Optional expiration timestamps for token/server permission grants.
+- Optional expiration timestamps for token action permission grants.
 - Temporary Prompt or Always permissions from the Console token panel and Tokens
   page permission dialogs.
 - Countdown text in the Console always-run warning for temporary `always_run`
   grants.
-- MCP permission checks omit expired grants from server lists, command
-  execution, console reads, and file-transfer tools.
+- MCP permission checks omit expired grants from connector target lists,
+  actions, SSH console reads, and file-transfer actions.
 
 ## Early RC Follow-Ups
 
@@ -162,11 +164,43 @@ tag:
 - [ ] Add a documented release cadence for small RC follow-up updates.
 - [ ] Open and maintain a visible good-first-issue pool.
 
+## 0.2 Connector Architecture
+
+The 0.2 line moves AIPermission from an SSH-only mental model toward connector
+targets:
+
+```txt
+connector target + credential profile + action
+  -> token permission
+  -> approval policy
+  -> execution
+  -> history + audit
+```
+
+Goals:
+
+- Keep SSH working as a built-in connector with its own terminal and file-transfer surface.
+- Add Postgres as the first structured connector.
+- Store connector permissions by target/profile/action instead of by a
+  connector-specific table.
+- Render connector UI through frontend templates so contributors can add a
+  connector without editing every route page.
+- Keep local-only, single-user, human-in-the-loop boundaries unchanged.
+
+Non-goals:
+
+- Hosted connector execution.
+- Team/RBAC collaboration.
+- LAN-accessible gateway mode.
+- A generic cloud integration marketplace in the 0.2 release.
+
 ## Later Ideas
 
 These may be useful, but they are not required for the RC:
 
-- [ ] SQL query tools with explicit database credential boundaries.
+- [ ] API connector definitions from operator-reviewed JSON.
+- [ ] Redis or queue connector exploration after Postgres proves the shared
+  target/profile/action model.
 - [ ] Optional sensitive/no-persist console sessions.
 - [ ] Export filters for History and Audit data.
 - [ ] FTS5 search only if the SQLCipher driver/build supports it without

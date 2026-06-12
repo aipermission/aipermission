@@ -16,10 +16,10 @@ Status: implemented.
 ## Sprint 2: Gateway Data Model
 
 - versioned migrations
-- server table
+- connector target table
 - SSH key table
 - token table
-- token-server permission table
+- token action permission table
 - command request table
 - message queue table
 - audit table
@@ -30,7 +30,7 @@ Status: implemented. `command_requests` powers MCP execution, approval flow, and
 
 ## Sprint 3: Server, Token, Permission UI
 
-- SSH Keys page
+- Credentials page
 - `ed25519` and `rsa` keypair generation
 - public key install command
 - server CRUD
@@ -38,7 +38,7 @@ Status: implemented. `command_requests` powers MCP execution, approval flow, and
 - reusable token copy setting
 - token permission dot summary
 - backend-owned persistent PTY console sessions
-- console-side token/server permission editing
+- console-side token action permission editing
 - execution rule selection: blocked, prompt, always run
 
 Status: implemented.
@@ -46,7 +46,7 @@ Status: implemented.
 ## Sprint 4: SSH Execution
 
 - gateway-generated SSH key authentication
-- SSH key selection on server records
+- SSH credential profile selection on connector targets
 - command timeout
 - stdout/stderr/exit code capture
 - command result persistence
@@ -59,12 +59,11 @@ Status: implemented.
 - npm MCP package
 - `init` CLI for provider config
 - `install-skill` / operator instruction installer
-- `list_servers`
-- `exec`
-- `read_console`
-- `get_request`
-- `list_requests`
-- `send_message`
+- `list_connector_targets`
+- `get_connector_help`
+- `get_connector_actions`
+- `call_connector_action`
+- `get_connector_action_request`
 - token-scoped access
 - direct `always_run` execution
 

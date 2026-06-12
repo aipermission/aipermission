@@ -25,7 +25,7 @@ Compose publishes host ports only on `127.0.0.1` by default. This is an intentio
 
 The backend refuses to start when `AIPERMISSION_BACKEND_HOST` is `0.0.0.0` or any non-loopback address. In Docker Compose, the backend shares the frontend network namespace, binds only to `127.0.0.1`, and the frontend nginx proxies `/api` to it. Do not change Compose port bindings to `0.0.0.0` or a LAN address. The localhost bind is the security boundary; Host-header checks are defense in depth only. Remote/LAN access is unsupported.
 
-This is not meant to be bypassed with a reverse proxy or a Compose override. The gateway is not designed for remote hosting, LAN sharing, or team access. Remote machines belong in the Servers list as SSH targets; they should not host the AIPermission web/API gateway for other clients.
+This is not meant to be bypassed with a reverse proxy or a Compose override. The gateway is not designed for remote hosting, LAN sharing, or team access. Remote machines belong in the Connectors list as SSH targets; they should not host the AIPermission web/API gateway for other clients.
 
 If the default frontend port is occupied, it can be changed through environment variables.
 

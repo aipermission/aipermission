@@ -15,7 +15,7 @@ the core project.
 
 ## Consequences
 
-- Token/server permissions scope AI agent access, not human team membership.
+- Token target/profile/action permissions scope AI agent access, not human team membership.
 - The local UI is protected by local-only networking, database unlock, browser
   session, and CSRF checks.
 - Team collaboration proposals should normally be closed as `wontfix`.

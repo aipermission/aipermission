@@ -17,8 +17,8 @@ private key into the same encrypted local vault.
 The gateway vault may store:
 
 - gateway-generated or explicitly imported SSH private keys
-- future PostgreSQL or database credentials
-- future connection secrets
+- Postgres/database credentials for connector profiles
+- connector-specific connection secrets
 
 The SQLite database is encrypted with SQLCipher. Secret payloads such as SSH private keys are also encrypted by the gateway vault layer. API token lookup uses hashes. Token values are shown once by default; if reusable token copy is enabled in Security, token values created after that setting is enabled are stored with vault encryption for local MCP setup.
 
@@ -53,7 +53,7 @@ This avoids collecting server passwords. The bootstrap action happens from the u
 An API token is not an SSH credential. It does not replace an SSH private key or database password. It is still a bearer credential for the local gateway, so anyone holding it can perform the operations allowed by that token while the relevant database is unlocked.
 
 The MCP Started/Stopped runtime switch is an additional local safety brake.
-Stopping MCP does not revoke tokens or delete saved token/server permissions; it
+Stopping MCP does not revoke tokens or delete saved connector action permissions; it
 blocks new MCP command execution until the local user starts MCP again from the
 web UI. By default, unlocked databases start with MCP execution stopped unless
 Security enables automatic MCP start for that database.
@@ -64,7 +64,7 @@ Rules:
 - token values are shown once by default
 - reusable token copy can be enabled in Security for tokens created afterward
 - tokens can be created with an expiration timestamp for temporary MCP access
-- token/server permissions can also expire for temporary maintenance grants
+- token action permissions can also expire for temporary maintenance grants
 - token lookup uses hashes
 - stored reusable token values are encrypted by the gateway vault
 - revoked or expired tokens are rejected by MCP endpoints
@@ -94,9 +94,11 @@ MCP responses must never include:
 - decrypted connection strings
 - vault encryption keys
 
-`list_servers()` returns only metadata for servers the token may access.
+`list_connector_targets()` returns only metadata for target/profile/action
+grants the token may access.
 
-`exec()` uses credentials only inside the gateway at execution time.
+`call_connector_action()` uses credentials only inside the gateway at execution
+time.
 
 SSH host key pins live in the local `known_hosts` file under the data path. That file is outside the encrypted database and contains remote host key metadata only, not SSH private keys.
 

@@ -4,9 +4,9 @@ Status: accepted
 
 ## Context
 
-AIPermission stores server records, token metadata, audit data, command history,
-message queues, and vaulted SSH private keys. The database may be backed up and
-moved between machines.
+AIPermission stores connector targets, credential profiles, token metadata,
+audit data, command/action history, message queues, and vaulted secret payloads.
+The database may be backed up and moved between machines.
 
 ## Decision
 

@@ -65,7 +65,7 @@ Mitigations:
 - project-local MCP config files are added to `.git/info/exclude` by the MCP init command when possible
 - tokens can be revoked from the UI
 - tokens can expire automatically when created for temporary access
-- token/server permissions can expire automatically for temporary maintenance
+- token action permissions can expire automatically for temporary maintenance
   windows
 - MCP auth uses SHA256 hashes of high-entropy random tokens, not stored reusable token payloads
 
@@ -90,8 +90,9 @@ Mitigations:
 - Security can add custom regex redaction rules on top of the built-in basic rules
 - approval execution uses a separate encrypted raw command payload so redaction cannot change the command that is run after approval
 - approval-required commands store an approval-context snapshot and become
-  `stale` if token permission, token validity, server profile, SSH key
-  fingerprint, MCP tool metadata, or command payload hash changes before Run
+  `stale` if token permission, token validity, target/profile context, SSH key
+  fingerprint, MCP tool metadata, connector kind/version, action definition, or
+  action payload hash changes before Run
 - docs and approval dialogs warn that command text, output, notes, transcripts, and audit payloads may be persisted
 - operator instructions tell agents to avoid printing secrets
 - users can prefer existence checks and redacted output commands
@@ -119,11 +120,11 @@ UI sessions and auth rate-limit counters are in-memory process state. Restarting
 
 ### `always_run` Misuse
 
-Risk: a token/server pair runs commands without human approval.
+Risk: a token/connector target/action grant runs without human approval.
 
 Mitigations:
 
-- permissions are explicit per token/server
+- permissions are explicit per token, connector target, credential profile, and action
 - `approval_required` is the recommended default for real systems
 - `always_run` should be temporary and scoped to trusted maintenance windows
 - revoke tokens or remove permissions when work is done

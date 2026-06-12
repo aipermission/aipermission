@@ -3,8 +3,8 @@
   <h1>AIPermission</h1>
   <p><strong>Local permission gateway for AI agents.</strong></p>
   <p>
-    Give AI assistants temporary, scoped command access to your own servers
-    without sharing SSH credentials.
+    Give AI assistants temporary, scoped action access to your local connector
+    targets without sharing SSH keys or database credentials.
   </p>
   <p>
     <a href="#quick-start">Quick Start</a>
@@ -29,16 +29,17 @@
 
 ## What It Is
 
-AIPermission is a local developer tool that lets you run a small gateway on your machine, register your VPS/server targets, create API tokens for AI tools, and decide per token/server whether commands run automatically or wait for your approval.
+AIPermission is a local developer tool that lets you run a small gateway on your machine, register connector targets, create API tokens for AI tools, and decide per token/target/action whether work runs automatically or waits for your approval.
 
-In practical terms, it is a local AI command gateway, MCP permission gateway, and SSH command broker for developer-owned servers.
+In practical terms, it is a local AI action gateway, MCP permission gateway,
+and connector runtime for developer-owned systems.
 
 It is built for a very specific workflow:
 
 | You keep control of | The AI gets |
 | --- | --- |
 | SSH private keys inside the local gateway | scoped MCP tools |
-| per-token server permissions | only approved server visibility |
+| per-token target/action permissions | only approved connector targets and actions |
 | Run / Decline approval flow | command results and live console output |
 | encrypted local database and backups | no SSH passwords or private keys |
 
@@ -81,11 +82,11 @@ Without a tool like this, an AI assistant usually says:
 
 That loop is slow when you are debugging servers, containers, Kubernetes nodes, logs, memory pressure, disk usage, or suspicious system behavior.
 
-With `aipermission`, the AI can inspect approved servers directly through MCP while you keep control:
+With `aipermission`, the AI can inspect approved connector targets directly through MCP while you keep control:
 
-- SSH private keys stay inside the local gateway.
-- The AI sees only servers allowed for its token.
-- You can require approval before commands run.
+- SSH private keys and database credentials stay inside the local gateway.
+- The AI sees only targets and actions allowed for its token.
+- You can require approval before actions run.
 - You can watch the same persistent console live.
 - You can send notes to the AI while it is working.
 - You can revoke the token or remove permissions when the work is done.
@@ -104,7 +105,7 @@ The UI is built around the live control loop: approve commands, watch the persis
 
 | Token-scoped access | Auditable command history |
 | --- | --- |
-| ![AIPermission token page with server permission dots and token creation drawer](docs/assets/screenshots/06-tokens-create.png) | ![AIPermission history detail showing command and output side by side](docs/assets/screenshots/12-history-detail.png) |
+| ![AIPermission token page with connector action permission controls and token creation drawer](docs/assets/screenshots/06-tokens-create.png) | ![AIPermission history detail showing command and output side by side](docs/assets/screenshots/12-history-detail.png) |
 
 ## Current MVP
 
@@ -115,18 +116,18 @@ Implemented:
 - React web UI
 - gateway-generated SSH keys (`ed25519` and `rsa`)
 - explicit existing SSH private key import into the encrypted local vault
-- SSH host import from OpenSSH config files for prefilling server records
-- copy/paste public key install command for servers
-- server management and SSH connection test
+- SSH host import from OpenSSH config files for prefilling connector targets
+- copy/paste public key install command for SSH targets
+- connector target management and connection tests
 - optional advanced SSH startup settings for menu-based NAS/appliance shells
 - API token create, copy, revoke
 - token expiration for temporary MCP access
-- token-to-server permissions with optional temporary expiration
+- token-to-target/action permissions with optional temporary expiration
 - execution rules: `always_run`, `approval_required`, `blocked`
 - global MCP Started/Stopped switch that preserves permissions while blocking live execution
 - persistent web console with live PTY streaming
-- UI bulk command execution across selected servers with per-server history rows
-- MCP bridge with command, console, message, and conservative upload/download transfer tools
+- UI bulk SSH command execution across selected connector targets with per-target history rows
+- MCP bridge with connector action tools for SSH, Postgres, and future local integrations
 - approval dialog with Run / Decline / note
 - approval-context snapshots that stale old pending commands after permission,
   server, SSH-key, or command-context drift
@@ -141,10 +142,11 @@ Implemented:
 - local browser session cookie for the web REST API after unlock
 - encrypted database download/import (`.aipdb`)
 - first-connect SSH host fingerprint approval with later `known_hosts` verification
+- connector target/profile/action pipeline for SSH, Postgres, and future local
+  integrations
 
 Out of scope for the current MVP:
 
-- SQL query tools
 - advanced command risk analysis
 - directory transfer, recursive copy, remote glob expansion, and restart-surviving resumable file transfers
 
@@ -196,16 +198,15 @@ The Docker Compose UI port binds to `127.0.0.1` by default. The backend is not p
 
 1. Open the web UI.
 2. Create the local database password on first run, import a database file, or unlock an existing database. New database passwords must be at least 14 characters and include uppercase letters, lowercase letters, and numbers. Unlock issues a local browser session cookie for web REST calls; if the cookie is deleted or expires while the backend is still unlocked, the UI asks for the same database password again and continues.
-3. Create or import an SSH key in `SSH Keys`.
-4. Copy the generated install command.
-5. Paste it on your VPS/server.
-6. Add the server in `Servers` and select that SSH key.
-7. Test the SSH connection.
-8. Create a token in `Tokens`.
-9. Give that token permission for one or more servers.
-10. Configure your MCP client with the token.
-11. Start MCP from the sidebar when you are ready to let the AI execute through saved permissions.
-12. Ask your AI assistant to use `aipermission`.
+3. Create or import an SSH credential in `Credentials`, or create a connector-specific credential profile.
+4. Add a connector target in `Connectors` and select the credential profile.
+5. For SSH targets, copy the generated public-key install command and paste it on the remote machine when needed.
+6. Test the connector target.
+7. Create a token in `Tokens`.
+8. Give that token permission for one or more target/profile/action combinations.
+9. Configure your MCP client with the token.
+10. Start MCP from the sidebar when you are ready to let the AI execute through saved permissions.
+11. Ask your AI assistant to use `aipermission`.
 
 The public key install command looks like:
 
@@ -219,17 +220,17 @@ passphrases are used only during import and are not saved.
 
 ## Execution Rules
 
-Each token/server pair has one execution rule:
+Each token/target/action grant has one execution rule:
 
-- `blocked`: the token cannot execute or read this server through MCP
-- `approval_required`: command creates a pending approval in the UI
-- `always_run`: command runs immediately through the persistent console
+- `blocked`: the token cannot use that connector action through MCP
+- `approval_required`: the action creates a pending approval in the UI
+- `always_run`: the action runs immediately after permission checks
 
-In API/MCP data, denied access is represented as `blocked`. In the UI, an unset permission can appear as disabled because there is no token/server permission row yet.
+In API/MCP data, denied access is represented as `blocked`. In the UI, an unset permission can appear as disabled because there is no token/target/action permission row yet.
 
 Use `approval_required` for real systems until you trust the workflow. Use `always_run` for low-risk maintenance sessions or temporary local/dev servers.
 
-Token/server permissions can be permanent or temporary. A temporary grant has an
+Token action permissions can be permanent or temporary. A temporary grant has an
 `expires_at` timestamp; after it expires, MCP no longer treats that permission
 as effective. This is useful for short maintenance windows, especially temporary
 `always_run` access.
@@ -278,32 +279,40 @@ Example MCP config:
 Expected MCP tools:
 
 ```txt
-list_servers()
-exec(server_id, command, reason?)
-exec(server_ids, command, reason)
-read_console(server_id, tail?)
-read_console(server_ids, tail?)
-restart_console_session(server_id)
-get_request(request_id)
-list_requests(status?)
-send_message(message, server_id?, session_id?)
+list_connector_targets()
+get_connector_help(target_ref)
+get_connector_actions(target_ref)
+call_connector_action(target_ref, action_name, input?, reason?)
+get_connector_action_request(request_id)
 ```
 
-`list_servers` is permission-scoped, not a live SSH health check. It tells the
-agent which servers the token may try to use. Current reachability is learned
-when the gateway actually attempts SSH and returns a dial, timeout,
-authentication, or host-key error.
+The MCP surface is connector-first. SSH, Postgres, and future integrations use
+the same target/profile/action permission pipeline. `list_connector_targets` is
+permission-scoped, not a live health check. Current reachability is learned when
+the connector action actually runs and returns a dial, timeout, authentication,
+host-key, credential, or service error.
 
-If a command returns `approval_pending`, the response includes an `assistant_hint` telling the AI to poll `get_request` until the request reaches a terminal state.
+For SSH, call `get_connector_actions(target_ref)` to discover actions such as
+`exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
+`start_file_download`.
 
-Pending command approvals store an approval-context snapshot. If the token
-permission, token validity, server profile, SSH key fingerprint, MCP tool
-metadata, or command payload hash changes before the operator clicks Run, the
-request becomes `stale` and must be sent again.
+If an action returns `approval_pending` or `running`, the response includes an
+`assistant_hint` telling the AI to poll `get_connector_action_request` until the
+request reaches a terminal state.
 
-`exec` is intended for non-interactive commands. The gateway closes stdin for MCP command bodies so stdin-reading commands cannot consume the internal shell wrapper. Use explicit flags such as `-y`/`--no-pager`, create files inside the command when needed, or use the web console for interactive work.
+Pending connector approvals store an approval-context snapshot. If the token
+permission, token validity, target profile, connector metadata, or action
+payload hash changes before the operator clicks Run, the request becomes
+`stale` and must be sent again.
 
-Approved MCP commands run through the target server's shell. Shell operators such as `;`, `&&`, pipes, redirects, command substitution, and globs are interpreted by that shell, so review approval dialogs as shell command bodies.
+SSH connector `exec` is intended for non-interactive commands. Use explicit
+flags such as `-y`/`--no-pager`, create files inside the command when needed, or
+use the web console for interactive work.
+
+Approved SSH connector commands run through the target server's shell. Shell
+operators such as `;`, `&&`, pipes, redirects, command substitution, and globs
+are interpreted by that shell, so review approval dialogs as shell command
+bodies.
 
 Optional operator instructions:
 
@@ -311,7 +320,7 @@ Optional operator instructions:
 npx -y @aipermission/mcp install-skill --client codex
 ```
 
-Supported clients are `codex`, `claude-code`, `cursor`, `vscode`, `windsurf`, `antigravity`, `gemini`, and `custom`. Restart the AI client after installing, then ask it to use the `aipermission` MCP server. The instructions guide approval polling, console reads, reasons, messages, and secret-safe command habits.
+Supported clients are `codex`, `claude-code`, `cursor`, `vscode`, `windsurf`, `antigravity`, `gemini`, and `custom`. Restart the AI client after installing, then ask it to use the `aipermission` MCP server. The instructions guide connector discovery, approval polling, reasons, and secret-safe action habits.
 
 More detail: [MCP client setup](docs/setup/mcp-client-setup.md)
 
@@ -325,10 +334,10 @@ Important boundaries:
   the user, then stored inside the encrypted local gateway.
 - AI clients authenticate with API tokens, not SSH credentials.
 - API tokens are shown once by default. Security can enable reusable token copy for newly created tokens; reusable values are stored with gateway vault encryption.
-- API tokens and token/server permissions can use expiration timestamps for
+- API tokens and token action permissions can use expiration timestamps for
   temporary maintenance access.
-- Tokens only see servers explicitly permitted for that token.
-- Revoked tokens, expired tokens, and expired token/server permission grants are
+- Tokens only see connector target/profile/action grants explicitly permitted for that token.
+- Revoked tokens, expired tokens, and expired token action permission grants are
   rejected by MCP permission checks.
 - Server credentials are not returned by REST or MCP responses.
 - SSH host keys require first-connect fingerprint approval and are verified on later connections.
@@ -433,6 +442,7 @@ Start here:
 - [Use Cases](docs/mvp/use-cases.md)
 - [MCP Tools](docs/api/mcp-tools.md)
 - [Threat Model](docs/security/threat-model.md)
+- [Add A Connector](docs/development/add-a-connector.md)
 - [Development Testing](docs/development/testing.md)
 - [Roadmap](docs/ROADMAP.md)
 

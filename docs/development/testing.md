@@ -49,18 +49,20 @@ Then verify:
 2. An encrypted database can be created or unlocked.
 3. SSH key creation shows an install command.
 4. Existing SSH private key import stores the key without returning private material in API responses.
-5. SSH config discovery or parsing can prefill a server form without silently importing private keys.
-6. Server connection test asks for host fingerprint approval on first contact.
-7. A token can be created and scoped to one server.
-8. An `approval_required` MCP command appears in Console and can be Run or Declined.
-9. An `always_run` MCP command streams to the persistent console.
-10. History and Audit Logs show the command lifecycle.
-11. Console can upload a queued set of local files to a remote folder, including
+5. SSH config discovery or parsing can prefill an SSH connector form without silently importing private keys.
+6. SSH connector connection test asks for host fingerprint approval on first contact.
+7. A Postgres connector target/profile can be created with a dedicated read-only database role.
+8. A token can be scoped to one connector target/profile/action combination.
+9. MCP `list_connector_targets`, `get_connector_actions`, and `call_connector_action` show only token-allowed actions for the selected target/profile.
+10. An `approval_required` SSH or Postgres connector action appears in Console and can be Run or Declined.
+11. An `always_run` SSH command streams to the persistent console, while a Postgres action appears in the structured activity surface and History.
+12. History and Audit Logs show connector kind, target/profile context, input, output, status, and redacted errors.
+13. Console can upload a queued set of local files to a remote folder, including
     overwrite confirmation when a remote file already exists.
-12. Console can download one or more remote files, pause/resume or cancel an
-    active queue, and History > File Transfer History can show completed
-    transfer metadata. Multi-file downloads should save as a zip.
-13. Settings can download an `.aipdb` backup and import it as a named database.
+14. Console can download one or more remote files, pause/resume or cancel an
+    active queue, and History can show completed transfer metadata through the
+    unified connector activity stream. Multi-file downloads should save as a zip.
+15. Settings can download an `.aipdb` backup and import it as a named database.
 
 ## npm Publish Checks
 

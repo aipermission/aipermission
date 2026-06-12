@@ -6,7 +6,7 @@ Prerequisites:
 
 1. The gateway is running with `docker compose up`.
 2. An API token exists in the web UI.
-3. The token has at least one server permission.
+3. The token has at least one connector target/profile/action permission.
 
 For Docker runtime details, see [Docker Runtime](docker-runtime.md).
 
@@ -77,7 +77,7 @@ npx -y @aipermission/mcp init \
   --print
 ```
 
-`--token TOKEN` remains for compatibility, but it is not recommended because shell history can store it.
+Do not pass tokens as shell arguments. Use the hidden prompt for interactive setup or `--token-stdin` for automation.
 
 ## Manual Config
 
@@ -99,7 +99,14 @@ MCP server config shape:
 }
 ```
 
-If the related server permission is not `always_run`, a smoke test returns `approval_pending`. After the user clicks Run or Decline in Console, the MCP client checks the result with `get_request(request_id)`. Long-running `always_run` commands can be observed with `read_console(server_id)`, and multi-server command output can be inspected with `read_console(server_ids, tail)`. If a request remains running and the console shows no useful progress, `restart_console_session(server_id)` closes the gateway-owned persistent console session so the next command opens a fresh SSH session.
+If the related connector action permission is not `always_run`, a smoke test
+returns `approval_pending`. After the user clicks Run or Decline in Console, the
+MCP client checks the result with
+`get_connector_action_request(request_id)`. Long-running SSH `exec` actions can
+be observed with the SSH connector's `read_console` action. If an SSH request
+remains running and the console shows no useful progress, the
+`restart_console_session` connector action closes the gateway-owned persistent
+console session so the next SSH `exec` action opens a fresh session.
 
 Provider config file targets:
 
@@ -222,15 +229,11 @@ If a client cannot load instruction files automatically, paste the generated ins
 The MCP client should see:
 
 ```txt
-list_servers()
-exec(server_id, command, reason?)
-exec(server_ids, command, reason)
-read_console(server_id, tail?)
-read_console(server_ids, tail?)
-restart_console_session(server_id)
-get_request(request_id)
-list_requests(status?)
-send_message(message, server_id?, session_id?)
+list_connector_targets()
+get_connector_help(target_ref)
+get_connector_actions(target_ref)
+call_connector_action(target_ref, action_name, input?, reason?)
+get_connector_action_request(request_id)
 ```
 
 For tool details, see [MCP Tools](../api/mcp-tools.md).

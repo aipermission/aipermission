@@ -43,9 +43,9 @@ Import never overwrites an existing database file. If a requested name collides 
 
 Import is available while the backend is locked.
 
-## Unsupported Legacy Formats
+## Removed Export Formats
 
-Older `.aipbackup` JSON export/restore endpoints are no longer registered in the public REST surface. They are not the recommended workflow and the product UI does not expose that flow.
+Older `.aipbackup` JSON export/restore endpoints are no longer registered in the public REST surface. The supported workflow is encrypted `.aipdb` download/import only.
 
 Active user flow:
 

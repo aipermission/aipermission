@@ -32,6 +32,7 @@ Start here:
 ## Development
 
 - [Development Architecture](development/architecture.md)
+- [Add A Connector](development/add-a-connector.md)
 - [Development Testing](development/testing.md)
 - [Good First Issue Pool](community/good-first-issues.md)
 - [GitHub Labels](maintainers/labels.md)
@@ -54,5 +55,5 @@ Start here:
 ## Open Questions
 
 - How should manual terminal command event parsing be added to structured history?
-- If SQL query tools are added after the RC, what credential boundary and readonly defaults should they require?
+- How strict should each connector be about read-only defaults, schema masking, and credential profile boundaries?
 - How should advanced command risk analysis connect to the approval flow?

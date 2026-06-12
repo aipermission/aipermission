@@ -108,15 +108,15 @@ When updating docs, check whether the change touches:
 - gateway secret / master password assumptions
 - SSH credential storage
 - API token creation, masked UI display, copy behavior, revoke behavior
-- token-to-server permissions
+- token-to-connector target/profile/action permissions
 - execution rules: `always_run`, `approval_required`, `blocked`
-- MCP tools: `list_servers`, `exec`
+- MCP tools: `list_connector_targets`, `get_connector_help`, `get_connector_actions`, `call_connector_action`, `get_connector_action_request`
 - approval dashboard behavior
 - Run / Decline / approval note behavior
 - live message queue behavior
 - audit log contents
 - backup download/import behavior
-- PostgreSQL/query roadmap
+- Postgres connector behavior and query boundaries
 - security boundary: credentials never leave gateway
 - developer-tool positioning vs DevOps-platform positioning
 - local-only gateway positioning vs remote-hosted/LAN-shared positioning
@@ -133,15 +133,16 @@ Use the established aipermission naming:
 - `gateway` is the local backend that owns credentials, policy, execution, approvals, and audit.
 - `MCP client` means Cursor, Windsurf, or another AI tool integration.
 - `API token` means the gateway access token used by MCP/API clients.
-- `server` means a remote SSH target stored in the gateway.
-- `database` means a configured DB target, initially PostgreSQL in the roadmap.
+- `connector target` means a saved SSH, Postgres, or future integration target.
+- `server` is acceptable only when specifically describing an SSH connector target.
+- `database` means a configured Postgres connector target/profile.
 - `execution rule` means `always_run`, `approval_required`, or `blocked`.
 - `approval note` means a note attached to one pending command.
 - `live message queue` means a user message delivered through the next MCP response.
 
 Do not describe the MVP as a full DevOps platform, orchestration platform, or permanent production control plane.
 
-Do not describe the gateway as remotely hostable, LAN-shareable, or suitable for central team access. Remote machines are SSH targets; the gateway itself stays on the developer's local machine.
+Do not describe the gateway as remotely hostable, LAN-shareable, or suitable for central team access. Remote systems are connector targets; the gateway itself stays on the developer's local machine.
 
 ## Security Documentation Rules
 
@@ -158,8 +159,8 @@ Always preserve these rules:
 - Revoked tokens must stop working immediately.
 - Backup files are raw SQLCipher `.aipdb` database downloads protected by the database password.
 - The encrypted DB must include enough vault material to restore encrypted SSH keys on another machine.
-- `list_servers` returns only servers allowed for that token.
-- `exec` checks token validity, target permission, and execution rule before running.
+- `list_connector_targets` returns only target/profile/action grants allowed for that token.
+- `call_connector_action` checks token validity, target/profile/action permission, and execution rule before running.
 - Audit logs must not contain credential values.
 
 When a doc mentions credential storage, also mention SQLCipher database encryption, unrecoverable database password behavior, and the gateway vault encryption layer for secret payloads.
@@ -168,29 +169,23 @@ When a doc mentions credential storage, also mention SQLCipher database encrypti
 
 Document MCP behavior through explicit tool contracts.
 
-For MVP, keep the public MCP surface to:
+Keep the public MCP surface connector-first:
 
 ```text
-list_servers()
-exec(server_id, command, reason?)
-exec(server_ids, command, reason)
-read_console(server_id, tail?)
-read_console(server_ids, tail?)
-restart_console_session(server_id)
-get_request(request_id)
-list_requests(status?)
-send_message(message, server_id?, session_id?)
+list_connector_targets()
+get_connector_help(target_ref)
+get_connector_actions(target_ref)
+call_connector_action(target_ref, action_name, input?, reason?)
+get_connector_action_request(request_id)
 ```
 
 When writing examples, show:
 
-- token-scoped server visibility
+- token-scoped connector target visibility
 - `always_run` response
 - `approval_required` non-blocking `approval_pending` + `request_id` behavior
-- `get_request` polling behavior after approval
-- `send_message` AI-to-user behavior
-- Console Messages user-to-AI `user_note` consumption
-- `declined` response with `user_note`
+- `get_connector_action_request` polling behavior after approval
+- `declined` response with operator note/error text
 - `blocked` response
 
 Do not imply the AI can open arbitrary SSH sessions or see credentials.
@@ -200,14 +195,14 @@ Do not imply the AI can open arbitrary SSH sessions or see credentials.
 When documenting command execution, include the approval decision path:
 
 ```text
-MCP exec request
+MCP connector action request
 -> token validation
 -> target permission check
 -> execution rule check
 -> direct run or pending approval
 -> approval_pending + request_id for prompt flow
 -> Run / Decline
--> get_request result / decline / blocked response
+-> get_connector_action_request result / decline / blocked response
 ```
 
 For notes, separate:
@@ -236,14 +231,15 @@ out of scope unless the project intentionally creates a separate fork/product.
 
 ## PostgreSQL Documentation Rules
 
-PostgreSQL is part of the near roadmap, not the first server-only slice unless implemented.
-
-When documenting it, keep the boundary clear:
+When documenting PostgreSQL, keep the boundary clear:
 
 - AI never sees DB passwords.
 - Gateway stores DB credentials in the vault.
 - Recommended DB user is readonly.
-- Future tools can be `list_databases()` and `query(database_id, sql, reason?)`; do not document them as implemented until the MCP/API surface exists.
+- Database access should be documented as connector actions, for example
+  `list_connector_targets`, `get_connector_actions`, and
+  `call_connector_action`; avoid inventing product-specific MCP tools unless
+  the API actually adds them.
 - Advanced SQL safety such as parser enforcement, masking, limits, and readonly transactions can be deferred.
 
 ## Index Maintenance

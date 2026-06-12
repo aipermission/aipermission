@@ -90,7 +90,7 @@ If the database password is forgotten, the encrypted SQLite file cannot be opene
 
 The user loses:
 
-- local server records
+- local connector targets and credential profiles
 - API tokens
 - command/session history
 - gateway-stored SSH private keys
@@ -120,7 +120,7 @@ SSH host key pins are not part of the SQLCipher database. They live in the local
 ## Product Decision
 
 Token values are shown once by default. Tokens may also have an `expires_at`
-timestamp for temporary MCP access. Token/server permission grants can also have
+timestamp for temporary MCP access. Token action permission grants can also have
 an `expires_at` timestamp for temporary maintenance windows. When reusable token
 copy is disabled, newly created token values are not stored for later copying;
 authentication still uses SHA256 hashes of high-entropy random token values.

@@ -9,9 +9,14 @@ Related central notes:
 - [MVP Scope](mvp/scope.md)
 - [Use Cases](mvp/use-cases.md)
 
-`aipermission` is a local developer gateway that lets AI coding assistants operate on remote servers without receiving SSH private keys, SSH passwords, or database credentials.
+`aipermission` is a local developer gateway that lets AI coding assistants
+operate on connector targets without receiving SSH private keys, SSH passwords,
+or database credentials.
 
-Database targets and SQL tools are on the roadmap. The current MVP focuses on server access and SSH command execution.
+The current model ships with SSH and Postgres connectors. SSH provides live
+terminal/file-transfer actions; Postgres provides structured metadata and
+bounded read-only query actions. Both use the same target, credential profile,
+token permission, approval, history, and audit pipeline.
 
 The product is intentionally not positioned as a full DevOps platform.
 
@@ -21,10 +26,12 @@ The product is intentionally not positioned as a full DevOps platform.
 
 AIPermission is designed to run on the developer's own machine.
 
-Remote servers are SSH targets. They are not places where the gateway is meant to be hosted for other users. The supported shape is:
+Remote servers and databases are connector targets reached from the local
+gateway. They are not places where the gateway is meant to be hosted for other
+users. The supported shape is:
 
 ```txt
-developer machine -> local Docker gateway -> SSH to configured remote servers
+developer machine -> local Docker gateway -> configured connector targets
 ```
 
 The unsupported shapes are:
@@ -41,7 +48,7 @@ The backend refuses non-loopback bind addresses such as `0.0.0.0`, and Docker Co
 
 ## Problem
 
-When a developer debugs a real system with an AI assistant, the assistant often wants to run commands on several machines:
+When a developer debugs a real system with an AI assistant, the assistant often wants to inspect several targets:
 
 - "Run this on core-1."
 - "Check Kubernetes state on control-1."
@@ -53,7 +60,7 @@ Without a tool like aipermission, the developer becomes a terminal operator:
 1. SSH into a server.
 2. Copy and run a command.
 3. Copy the output back to the AI.
-4. Repeat for every server and every command.
+4. Repeat for every target and every action.
 
 This is slow, tiring, and error-prone. Worse, it can tempt people to paste SSH keys, passwords, or database credentials into AI tools. aipermission exists to avoid that.
 
@@ -69,30 +76,33 @@ It is for:
 - freelance developers
 - full-stack developers using Codex, Claude Code, Cursor, Windsurf, VS Code, Gemini CLI, or similar tools
 
-The user grants temporary, scoped access to selected servers. The AI calls the gateway through MCP. The gateway checks token validity, server permission, and execution rule. It either runs the command, asks the user for approval, or blocks the request.
+The user grants temporary, scoped access to selected connector targets and actions. The AI calls the gateway through MCP. The gateway checks token validity, target/profile/action permission, and execution rule. It either runs the action, asks the user for approval, or blocks the request.
 
 Credentials never leave the gateway.
 
-Saved token/server permissions are separate from the live MCP execution switch.
+Saved token action permissions are separate from the live MCP execution switch.
 By default, each unlock starts with MCP execution stopped. The user starts MCP
 from the sidebar when they are ready; Security can opt into automatic MCP start
 for a database.
 
-This model also works well with AI client instructions or skills. For example, a developer can define a workflow like "check a new VPS before adding it to the cluster" or "inspect container health across allowed servers." aipermission provides the execution layer without exposing credentials.
+This model also works well with AI client instructions or skills. For example,
+a developer can define a workflow like "check a new VPS before adding it to the
+cluster", "inspect container health across allowed SSH targets", or "describe a
+readonly Postgres schema." aipermission provides the execution layer without
+exposing credentials.
 
 ## Typical Flow
 
 1. The developer starts aipermission with local Docker.
 2. The developer opens the local web UI.
-3. The developer creates an SSH key in the gateway.
-4. The developer pastes the public key install command on the server.
-5. The developer adds the server record.
-6. The developer creates an API token.
-7. The developer grants that token access to selected servers.
-8. The MCP client connects to the gateway with that token.
-9. The AI operates through the gateway.
-10. The developer watches, approves, declines, or sends notes from the web UI.
-11. When the work is done, the token can be revoked, permissions can be removed, the database can be locked, or Docker can be stopped.
+3. The developer creates a credential profile, such as an SSH key or Postgres readonly role.
+4. The developer adds a connector target and binds it to a credential profile.
+5. The developer creates an API token.
+6. The developer grants that token access to selected target/profile/action combinations.
+7. The MCP client connects to the gateway with that token.
+8. The AI operates through the gateway.
+9. The developer watches, approves, declines, or sends notes from the web UI.
+10. When the work is done, the token can be revoked, permissions can be removed, the database can be locked, or Docker can be stopped.
 
 ## What It Is Not
 
@@ -109,7 +119,12 @@ For the MVP, aipermission is not:
 
 It is a local, developer-controlled bridge for temporary AI-assisted debugging, maintenance, and investigation.
 
-If a token has access to a server such as `control-1`, and that server has the required CLI tools and network access, the AI can use those tools through `exec`. The gateway does not need to understand every external system; it provides the permission, approval, execution, and audit layer.
+If a token has access to an SSH target such as `control-1`, and that target has
+the required CLI tools and network access, the AI can use those tools through
+the SSH `exec` action. For structured systems such as Postgres, connector
+actions expose a smaller purpose-built surface. The gateway does not need to
+own every external system; it provides the permission, approval, execution, and
+audit layer.
 
 ## High-Level Architecture
 
@@ -124,7 +139,8 @@ aipermission gateway
         |
         | auth + permission check + approval flow
         v
-Remote server
+Connector target
+SSH server / Postgres database / future local integration
 ```
 
 The AI assistant does not receive SSH credentials or database passwords.
@@ -135,12 +151,12 @@ Gateway responsibilities:
 
 - local encrypted credential storage
 - API token management
-- server permission checks
+- connector target/profile/action permission checks
 - execution rule checks
 - pending approval management
 - user message queue
-- command request history
-- SSH connections
+- command/action history
+- connector runtimes
 - audit events
 
 ## Local Runtime Model
@@ -170,8 +186,8 @@ Examples:
 - gateway-generated SSH private key
 - explicitly imported SSH private key
 - SSH username
-- future PostgreSQL connection data
-- future database passwords
+- Postgres connection data
+- database passwords
 
 Rules:
 
@@ -201,20 +217,21 @@ An API token is not an SSH password. It represents gateway permission.
 
 ## API Token And Permission Model
 
-The developer creates an API token in the web UI and grants it access to one or more servers:
+The developer creates an API token in the web UI and grants it access to one or
+more connector target/profile/action combinations:
 
 ```txt
 token: cursor-maintenance-session
 
-allowed servers:
-- core-1
-- core-2
-- control-1
-- worker-1
-- worker-2
+allowed connector targets:
+- ssh:core-1/admin -> exec approval_required
+- ssh:core-1/admin -> read_console always_run
+- postgres:main-db/readonly -> query_readonly approval_required
 ```
 
-The AI assistant can see and use only the targets allowed by that token. For example, if the token can access five servers, `list_servers` returns only those five.
+The AI assistant can see and use only the connector targets and actions allowed
+by that token. For example, if the token can access five SSH targets and one
+Postgres target, `list_connector_targets` returns only those target/profile refs.
 
 If the same token exists in more than one unlocked database, MCP authentication returns a conflict. The gateway does not guess which workspace should receive the command.
 
@@ -223,60 +240,58 @@ If the same token exists in more than one unlocked database, MCP authentication 
 Current tools:
 
 ```txt
-list_servers()
-exec(server_id, command, reason?)
-exec(server_ids, command, reason)
-read_console(server_id, tail?)
-read_console(server_ids, tail?)
-restart_console_session(server_id)
-get_request(request_id)
-list_requests(status?)
-send_message(message, server_id?, session_id?)
+list_connector_targets()
+get_connector_help(target_ref)
+get_connector_actions(target_ref)
+call_connector_action(target_ref, action_name, input?, reason?)
+get_connector_action_request(request_id)
 ```
 
-Future SQL tools may include:
-
-```txt
-list_databases()
-query(database_id, sql, reason?)
-```
-
-Those SQL tools are not implemented in the current MVP.
+SSH, Postgres, and future integrations are exposed as connector actions instead
+of separate product-specific MCP tools.
 
 ## Command Flow
 
 Example MCP call:
 
-```txt
-exec(3, "ls", "Inspect the current directory")
+```json
+{
+  "target_ref": "ssh:3:1",
+  "action_name": "exec",
+  "input": { "command": "ls" },
+  "reason": "Inspect the current directory."
+}
 ```
 
 Gateway steps:
 
 1. Validate the API token.
-2. Check whether token can access server `3`.
-3. Load the server connection data from the encrypted vault.
-4. Check the token/server execution rule.
+2. Resolve the connector target and credential profile.
+3. Check whether the token can run that connector action.
+4. Load the required secret payload inside the gateway.
+5. Check the token action execution rule.
 5. Run directly, create pending approval, or block.
 6. Return a result or a follow-up request id.
 
-If server `3` is named `core-1`, the AI may see:
+If the SSH target is named `core-1`, the AI may see:
 
 ```json
 {
-  "id": 3,
-  "name": "core-1"
+  "target_ref": "ssh:3:1",
+  "target_name": "core-1",
+  "connector_kind": "ssh",
+  "profile_label": "admin"
 }
 ```
 
 The SSH credential for `core-1` never leaves the gateway.
 
 If the global MCP switch is stopped, new MCP command execution is blocked even
-when the token still has saved server permissions.
+when the token still has saved connector action permissions.
 
 ## Execution Rules
 
-Each token/server relationship has one rule:
+Each token/target/profile/action relationship has one rule:
 
 - `always_run`
 - `approval_required`
@@ -284,11 +299,13 @@ Each token/server relationship has one rule:
 
 ### always_run
 
-If the token can access the target, the command runs directly in the backend-owned persistent console session.
+If the token can access the target action, the action runs directly through the
+connector runtime. SSH `exec` uses the backend-owned persistent console session.
 
 ### approval_required
 
-The command appears in the web UI for user approval. The MCP response is non-blocking and returns `approval_pending` plus `request_id`.
+The connector action appears in the web UI for user approval. The MCP response
+is non-blocking and returns `approval_pending` plus `request_id`.
 
 The user can:
 
@@ -298,26 +315,27 @@ The user can:
 
 If the user clicks Run, the gateway first verifies that the approval context is
 still the one that was shown when the pending request was created. Token
-permission, token validity, server profile, SSH key fingerprint, MCP tool
-metadata, or command payload drift makes the request `stale` and requires a new
-AI request.
+permission, token validity, connector target/profile, connector metadata, or
+action payload drift makes the request `stale` and requires a new AI request.
 
-If the request is still current, the gateway executes the command in the persistent console session. If the user typed a note while approving, the gateway delivers it through the message queue to the matching MCP token. The AI follows progress with `get_request(request_id)`. `read_console(server_id)` and `read_console(server_ids, tail)` are reserved for tokens with `always_run` permission so approval-only tokens cannot read unrelated manual console transcripts.
+If the request is still current, the gateway executes the connector action. The
+AI follows progress with `get_connector_action_request(request_id)`.
 
 If the user clicks Decline, the request becomes `declined`; any operator note is returned as `user_note`.
 
 ### blocked
 
-The token cannot run commands on that server.
+The token cannot run that connector action for that target/profile.
 
 ## Approval UI
 
-If a command requires approval, it is visible in the web dashboard.
+If a connector action requires approval, it is visible in the web dashboard.
 
 The pending command dialog should show:
 
-- server name
-- command
+- target name
+- connector action
+- action input
 - AI reason
 - token name
 - request time
@@ -325,7 +343,8 @@ The pending command dialog should show:
 - Decline button
 - note field
 
-The MCP request is not held open while waiting for the user. The AI polls with `get_request`.
+The MCP request is not held open while waiting for the user. The AI polls with
+`get_connector_action_request`.
 
 ## User Notes And Message Queue
 
@@ -344,29 +363,21 @@ For this cluster, kubectl should be run only from control-1. Do not try kubectl 
 
 The gateway stores the message and injects it into the next matching MCP response as `user_note`.
 
-## Database Access Roadmap
+## Database Access
 
-The same model can be applied to SQL databases later.
+Postgres uses the same connector action model:
 
-Future database flow:
-
-1. Developer adds a database target in the dashboard.
-2. Gateway stores credentials in the encrypted vault.
-3. AI receives only scoped query tools.
-4. Gateway validates token access.
+1. Developer adds a Postgres connector target in the dashboard.
+2. Gateway stores credential profiles in the encrypted vault.
+3. AI receives only scoped connector actions such as `get_schemas`,
+   `get_tables`, `describe_table`, and `query_readonly`.
+4. Gateway validates token access and the action execution rule.
 5. Query runs through the gateway.
 6. Results are returned without exposing the database password.
 
-Recommended PostgreSQL setup is a readonly database user.
+Recommended PostgreSQL setup is a dedicated readonly database user.
 
-Possible future tools:
-
-```txt
-list_databases()
-query(database_id, sql, reason?)
-```
-
-Advanced SQL safety can be deferred:
+Additional SQL safety hardening can grow over time:
 
 - SELECT-only policy
 - parser enforcement
@@ -378,7 +389,7 @@ Advanced SQL safety can be deferred:
 
 `aipermission` lets the developer say:
 
-> "AI, you may inspect these servers through this token. You cannot see credentials. If approval is required, I will decide in the panel."
+> "AI, you may inspect these connector targets through this token. You cannot see credentials. If approval is required, I will decide in the panel."
 
 This reduces copy-paste terminal work while keeping the developer in control.
 

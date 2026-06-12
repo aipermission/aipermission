@@ -49,39 +49,25 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 
 ## Tools
 
-- `list_servers`
-- `exec`
-- `get_request`
-- `list_requests`
-- `read_console`
-- `restart_console_session`
-- `send_message`
-- `list_file_transfers`
-- `get_file_transfer`
-- `list_file_transfer_batches`
-- `get_file_transfer_batch`
-- `browse_remote_files`
-- `start_file_download`
-- `save_file_download`
-- `upload_files`
-- `pause_file_transfer_batch`
-- `resume_file_transfer_batch`
-- `cancel_file_transfer_batch`
+- `list_connector_targets`
+- `get_connector_help`
+- `get_connector_actions`
+- `call_connector_action`
+- `get_connector_action_request`
 
-`exec` is intended for non-interactive commands. The gateway closes stdin for MCP command bodies so stdin-reading commands cannot consume the internal shell wrapper. Use the web console for interactive work.
+All integration work goes through connector targets. SSH, Postgres, and future
+connectors share the same model: target, credential profile, connector action,
+token action permission, approval, history, and audit.
 
-Command responses can include `policy_warnings` for common high-risk command
-patterns. They are best-effort safety rails and do not replace token
-permissions, approval review, or operator judgment.
+For SSH, call `get_connector_actions(target_ref)` to discover actions such as
+`exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
+`start_file_download`. SSH `exec` is intended for non-interactive commands. Use
+the web console for truly interactive work.
 
-File transfer tools are intentionally conservative. MCP can list transfer
-metadata, browse remote directories, start remote download queues, save
-completed downloads to explicit local paths, upload explicit local files, and
-pause/resume/cancel queues. `always_run` starts queues immediately.
-`approval_required` creates a local approval queue in AIPermission Transfer
-Center; the operator can approve selected files and reject the rest with a note.
-MCP tool responses never include file contents, gateway temporary paths, archive
-staging paths, or local upload contents.
+Connector responses can include `approval_pending` or `running`. Poll
+`get_connector_action_request(request_id)` until the request reaches a terminal
+status. MCP tool responses never include file contents, gateway temporary paths,
+archive staging paths, or local upload contents.
 
 ## Operator Skill
 
@@ -102,11 +88,24 @@ Supported clients:
 - `gemini`: `GEMINI.md`
 - `custom`: prints portable Markdown to stdout
 
-These instructions teach the agent how to poll `approval_pending` and `running` requests, handle `stale` approvals by sending a fresh request, read live console output, recover stuck persistent console sessions with `restart_console_session`, write short reasons, use explicit file transfer paths, and avoid printing secrets. The default installer uses the operator instruction bundled in the npm package; `--source` accepts local file paths only and rejects HTTP(S) sources.
+These instructions teach the agent how to discover connector targets, poll
+`approval_pending` and `running` connector action requests, handle `stale`
+approvals by sending a fresh request, write short reasons, use explicit file
+transfer paths, and avoid printing secrets. The default installer uses the
+operator instruction bundled in the npm package; `--source` accepts local file
+paths only and rejects HTTP(S) sources.
 
 ## Security Boundary
 
-This package talks to a local AIPermission gateway. `AIPERMISSION_API_URL` must point to `localhost`, `127.0.0.1`, or `[::1]`; remote URLs are rejected before the bearer token is sent. Do not expose the gateway on LAN or the public internet, and do not use it as a shared DevOps service. Tokens grant access only to the servers and execution rules configured in the gateway UI. Token/server permissions may be temporary; expired grants are omitted from `list_servers` and no longer authorize command, console, or file-transfer tools. `list_servers` is permission-scoped, not a live SSH health check; treat `exec` connection errors as the current reachability signal.
+This package talks to a local AIPermission gateway. `AIPERMISSION_API_URL` must
+point to `localhost`, `127.0.0.1`, or `[::1]`; remote URLs are rejected before
+the bearer token is sent. Do not expose the gateway on LAN or the public
+internet, and do not use it as a shared DevOps service. Tokens grant access only
+to connector targets, credential profiles, and action rules configured in the
+gateway UI. Connector permissions may be temporary; expired grants are omitted
+from `list_connector_targets` and no longer authorize connector actions. Target
+visibility is permission-scoped, not a live health check; treat action execution
+errors as the current reachability signal.
 
 ## License
 

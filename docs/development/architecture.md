@@ -4,7 +4,7 @@ AIPermission is a monorepo because the gateway, frontend, MCP bridge, operator i
 
 ```txt
 aipermission/
-  backend/                  Go local gateway and SSH/MCP execution API
+  backend/                  Go local gateway, connector runtime, and MCP API
   frontend/                 React web UI served by local nginx
   packages/mcp/             npm MCP bridge package
   packages/npm-placeholder/ unscoped npm placeholder package
@@ -14,21 +14,46 @@ aipermission/
 ## Runtime Shape
 
 ```txt
-browser -> localhost frontend/nginx -> backend API -> encrypted SQLite + SSH targets
-MCP client -> localhost frontend/nginx -> backend /api/mcp/* -> SSH targets
+browser -> localhost frontend/nginx -> backend API -> encrypted SQLite + connector targets
+MCP client -> localhost frontend/nginx -> backend /api/mcp/* -> connector targets
 ```
 
 The backend is not a LAN service. Docker Compose publishes the UI on `127.0.0.1`, the backend binds to loopback, and nginx proxies `/api` internally.
 
+Connector targets use one shared security pipeline:
+
+```txt
+target + credential profile + action
+  -> token permission
+  -> approval policy
+  -> connector execution
+  -> history + audit
+```
+
+SSH and Postgres are built-in connectors that share the same target/profile,
+permission, approval, history, and audit model. SSH owns a live terminal and
+file-transfer surface; Postgres owns structured database actions. Future
+connectors should add their own execution surface without adding a new
+permission or audit pipeline.
+
 ## Backend Boundaries
 
 - `internal/api`: HTTP routes, MCP handlers, UI session/CSRF, approval/message flows, and workspace lifecycle orchestration.
+- `internal/connectors`: connector contracts and built-in connector
+  implementations. Connector packages describe target schemas, credential
+  schemas, help/actions, validation, and execution. They do not own
+  permissions, audit, or history.
+- `internal/connectortargets`: connector target/profile/action storage plus the
+  shared action request model.
+- `internal/actions`: shared action execution service used by structured
+  connectors after permission checks.
+- `internal/history`: unified history projection for command, action, and file
+  transfer activity.
 - `internal/console`: persistent SSH console sessions, PTY websocket attach, AI command execution inside a shell session, transcript display cleanup, and transcript redaction before persistence. Console persistence uses a bounded session snapshot plus append-only transcript chunks so long-running sessions do not rewrite one large transcript row on every flush.
 - `internal/db`: SQLCipher open, schema migrations, database catalog, encrypted database lifecycle.
 - `internal/tokens`: API token create/hash/revoke/permission storage.
-- `internal/sshkeys`: gateway-owned SSH key generation, explicit private key import, and vault-backed private key storage.
-- `internal/sshconfig`: conservative SSH config host discovery/parsing for server form prefill.
-- `internal/servers`: SSH target records.
+- `internal/sshkeys`: gateway-owned SSH key generation, explicit private key import, and vault-backed private key storage used by the SSH connector.
+- `internal/sshconfig`: conservative SSH config host discovery/parsing for SSH connector form prefill.
 - `internal/execution`: SSH command execution, SFTP file transfer primitives,
   and host key verification.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
@@ -42,8 +67,17 @@ Large API files should be split by behavior before they become cross-domain modu
 - `src/pages`: route-level pages.
 - `src/components`: reusable UI and domain components.
 - `src/lib`: API client, gateway context, hooks, and shared helpers.
+- `src/connectors/templates`: connector UI templates. Each connector kind owns
+  its form, credential form, row actions, console surface, toolbar actions, and
+  display model.
 
-Keep token permission logic in shared hooks such as `useTokenPermissions` instead of duplicating it between Console and Tokens pages.
+Keep token connector-action permission logic in shared hooks such as
+`useConnectorPermissions` instead of duplicating it between Console and Tokens
+pages.
+
+Route-level pages should render connector-specific UI through
+`src/connectors/templates/registry.jsx`. Avoid adding new `if kind === "..."`
+branches to pages when the behavior belongs to a connector template.
 
 ## MCP Package
 

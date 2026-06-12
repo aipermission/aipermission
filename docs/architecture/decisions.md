@@ -61,7 +61,7 @@ Consequence:
 
 ## ADR-004: MCP Tokens Are Scoped Runtime Bearer Credentials
 
-Decision: MCP clients authenticate with API tokens, and token/server permissions determine visible servers and command behavior.
+Decision: MCP clients authenticate with API tokens, and token target/profile/action permissions determine visible connector actions.
 
 Reason:
 
@@ -83,7 +83,7 @@ Reason:
 
 - A developer may leave `always_run` permissions configured for a project but not want MCP execution live immediately after startup.
 - The safest default is stopped unless the user explicitly enables automatic start for that database.
-- Start/Stop should not delete token/server permission configuration.
+- Start/Stop should not delete token action permission configuration.
 
 Consequence:
 
@@ -96,10 +96,10 @@ when it was created.
 
 Reason:
 
-- A user approves a concrete command for a concrete token/server permission and
-  server profile, not a reusable command pattern.
-- Token permission, token validity, server profile, SSH key, MCP tool metadata,
-  or command payload changes can make an old approval misleading.
+- A user approves a concrete connector action for a concrete token, target,
+  credential profile, and permission state, not a reusable command pattern.
+- Token permission, token validity, target/profile config, SSH key, MCP tool
+  metadata, or command payload changes can make an old approval misleading.
 
 Consequence:
 

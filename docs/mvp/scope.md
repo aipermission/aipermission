@@ -4,13 +4,13 @@ The first public MVP should stay small, usable, and honest about its boundaries.
 
 Main target:
 
-> After `docker compose up`, a user can create SSH keys, add servers, create API tokens, grant token/server permissions, connect an MCP client, call `list_servers`, and run commands through `exec`. Commands either run directly or wait for approval according to their execution rule.
+> After `docker compose up`, a user can create credentials, add connector targets, create API tokens, grant token/target/profile/action permissions, connect an MCP client, call `list_connector_targets`, and run actions through `call_connector_action`. Actions either run directly or wait for approval according to their execution rule.
 
 ## Product Boundary
 
 The MVP is not a DevOps platform. It does not own production operations. It gives a developer a controlled, token-scoped, auditable execution channel for debugging, maintenance, incident triage, and temporary AI-assisted automation.
 
-The MVP does not introduce first-class management modules for every external system. If an allowed server has the needed CLI tools and access, the AI can operate at command level through `exec`.
+The MVP does not introduce first-class management modules for every external system. SSH remains a connector, so if an allowed SSH target has the needed CLI tools and access, the AI can operate at command level through the SSH connector `exec` action.
 
 The gateway itself is local-only. It is not designed to run on a remote server for browser/MCP clients, to be shared on a LAN, or to act as a central team control plane.
 
@@ -23,16 +23,16 @@ The gateway itself is local-only. It is not designed to run on a remote server f
 - encrypted credential vault
 - named local databases
 - backup/import with `.aipdb`
-- SSH key management
+- credential/profile management
 - gateway-generated `ed25519` and `rsa` keypairs
 - public key install command
-- server management
+- connector target management
 - persistent console sessions
 - API token creation and revocation
-- token-to-server permissions
+- token-to-target/profile/action permissions
 - execution rules: `always_run`, `approval_required`, `blocked`
-- MCP `list_servers`
-- MCP `exec`
+- MCP connector target discovery
+- MCP connector action execution
 - approval dialog and request polling
 - Run / Decline / note
 - live message queue
@@ -43,7 +43,7 @@ The gateway itself is local-only. It is not designed to run on a remote server f
 ## Deferred
 
 - advanced command risk analysis
-- PostgreSQL query tools
+- advanced Postgres/query policy outside the local connector pipeline
 - SQL parser and masking
 - multi-server batch execution
 - manual terminal command event parsing for structured history

@@ -8,7 +8,7 @@ part of the security model, not marketing copy.
 - Local-only
 - Single-user
 - Developer-focused
-- SSH-based
+- Connector-based, with built-in SSH
 - Human-in-the-loop
 
 ## AIPermission Intentionally Rejects
@@ -27,7 +27,7 @@ powerful, so the product keeps the trust boundary small:
 - the gateway runs on the developer's own machine,
 - the browser UI talks to localhost,
 - MCP clients authenticate with local API tokens,
-- SSH keys stay inside the encrypted local gateway,
+- connector credentials stay inside the encrypted local gateway,
 - humans can require approval before commands run.
 
 Turning the gateway into a shared service would require a different product:
@@ -67,6 +67,8 @@ These areas can evolve without changing the core identity:
 - documentation and troubleshooting,
 - local command policy warnings,
 - temporary token or permission expiration.
+- additional local connector types that preserve the same target/profile/action
+  permission model.
 
 When in doubt, ask whether the proposal keeps AIPermission a local permission
 gateway for one developer. If it turns the project into a hosted operations

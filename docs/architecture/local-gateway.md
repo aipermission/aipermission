@@ -4,7 +4,7 @@
 
 The user runs it on their own machine with Docker. The gateway owns the web UI, HTTP API, MCP bridge behavior, SQLite storage, encrypted vault, approval flow, and audit/history records.
 
-This is a product design decision, not only a default setting. The gateway is not intended to be installed on a remote VPS, shared across a LAN, or exposed as a team DevOps service. Remote servers are only SSH targets reached from the local gateway.
+This is a product design decision, not only a default setting. The gateway is not intended to be installed on a remote VPS, shared across a LAN, or exposed as a team DevOps service. Remote systems are connector targets reached from the local gateway.
 
 ## Runtime Shape
 
@@ -17,21 +17,21 @@ Developer machine
     sqlite        -> Docker volume / data path
 ```
 
-No agent is installed on remote servers. The gateway decrypts credentials locally and opens SSH connections only when an approved or permitted action needs them.
+No agent is installed on remote systems. The gateway decrypts credentials locally and opens connector connections only when an approved or permitted action needs them.
 
 ## Responsibilities
 
 The gateway is responsible for:
 
-- server records
+- connector targets and credential profiles
 - credential encryption and decryption
 - API token creation and revocation
-- token-to-server permissions
+- token-to-connector target/profile/action permissions
 - execution rule checks
-- MCP `list_servers` and `exec` requests
+- MCP connector target discovery and connector action requests
 - pending approval flow
 - live message queue
-- command request history
+- command/action history
 - audit events
 
 ## Product Boundary
@@ -51,7 +51,7 @@ If an allowed server already has the needed CLI tools, config files, and network
 When the work is done, the user can:
 
 - revoke the token
-- remove server permissions
+- remove connector action permissions
 - lock the database
 - stop Docker
 

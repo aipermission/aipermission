@@ -19,11 +19,11 @@ and this project uses semantic versioning once public releases begin.
 
 ### Added
 
-- MCP `exec` can now run the same command across multiple visible servers with
-  `server_ids`, while preserving one request, approval decision, audit record,
-  output, and error per target.
-- MCP `read_console` can now inspect several always-run server consoles in one
-  read-only call with `server_ids`.
+- MCP `exec` can now run the same command across multiple visible SSH targets,
+  while preserving one request, approval decision, audit record, output, and
+  error per target.
+- MCP `read_console` can now inspect several always-run SSH target consoles in
+  one read-only call.
 - MCP command responses can include basic policy warnings for common high-risk
   command patterns such as destructive file operations, package/service changes,
   firewall changes, credential reads, and container/cluster destructive actions.
@@ -73,7 +73,7 @@ and this project uses semantic versioning once public releases begin.
 
 ### Added
 
-- Servers can now store optional advanced SSH startup settings for NAS and
+- SSH connectors can now store optional advanced startup settings for NAS and
   appliance targets that show an interactive menu before a normal shell.
 - Advanced startup settings support post-connect input, such as `q\n` for some
   QNAP menus, and an optional forced shell command for compatibility targets.
