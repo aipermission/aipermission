@@ -33,11 +33,10 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		SELECT
 			t.id, t.connector_kind, t.name, t.config_json, t.status,
 			p.id, p.kind, p.label, p.public_json,
-			COALESCE(r.server_id, 0),
+			CASE WHEN t.connector_kind = 'ssh' THEN p.id ELSE 0 END,
 			t.created_at, t.updated_at
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
-		LEFT JOIN ssh_connector_profile_runtimes r ON r.target_id = t.id AND r.profile_id = p.id
 		WHERE t.status = 'active'
 		ORDER BY t.connector_kind, t.name, p.label, p.id`)
 	if err != nil {

@@ -36,15 +36,9 @@ func TestResolverMapsSSHConnectorProfileToConnectorViews(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()
 	keyID := insertTargetTestSSHKey(t, database, "main")
-	serverID := insertTargetTestServer(t, database, keyID)
 	store := NewStore(database)
-	if err := store.SyncSSHServers(ctx); err != nil {
-		t.Fatalf("sync ssh targets: %v", err)
-	}
-	targetRef, err := store.SSHTargetRefForServer(ctx, serverID)
-	if err != nil {
-		t.Fatalf("ssh target ref for server: %v", err)
-	}
+	target, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
+	targetRef := SSHTargetRef(target.ID, profile.ID)
 
 	resolved, err := NewResolver(database).ResolveActionTarget(ctx, targetRef)
 	if err != nil {
@@ -100,40 +94,22 @@ func TestResolverReturnsNotFoundForMissingOrInvalidTarget(t *testing.T) {
 	}
 }
 
-func TestStoreSyncSSHServersUpdatesConnectorProfile(t *testing.T) {
+func TestStoreSSHRuntimeForConsoleIDUsesCredentialProfile(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()
 	keyID := insertTargetTestSSHKey(t, database, "main")
-	serverID := insertTargetTestServer(t, database, keyID)
 	store := NewStore(database)
+	_, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
 
-	if err := store.SyncSSHServers(ctx); err != nil {
-		t.Fatalf("sync ssh targets: %v", err)
-	}
-	firstRef, err := store.SSHTargetRefForServer(ctx, serverID)
+	mapping, err := store.SSHRuntimeMappingForConsoleID(ctx, profile.ID)
 	if err != nil {
-		t.Fatalf("first ref: %v", err)
+		t.Fatalf("runtime mapping: %v", err)
 	}
-
-	if _, err := database.Exec(`UPDATE servers SET username = 'readonly', host = '10.0.0.11', updated_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), serverID); err != nil {
-		t.Fatalf("update server: %v", err)
+	if mapping.ServerID != profile.ID || mapping.ProfileID != profile.ID || mapping.TargetID != profile.TargetID {
+		t.Fatalf("unexpected mapping: %#v profile=%#v", mapping, profile)
 	}
-	if err := store.SyncSSHServers(ctx); err != nil {
-		t.Fatalf("resync ssh targets: %v", err)
-	}
-	secondRef, err := store.SSHTargetRefForServer(ctx, serverID)
-	if err != nil {
-		t.Fatalf("second ref: %v", err)
-	}
-	if firstRef != secondRef {
-		t.Fatalf("sync should update the same target/profile ref: first=%q second=%q", firstRef, secondRef)
-	}
-	resolved, err := NewResolver(database).ResolveActionTarget(ctx, secondRef)
-	if err != nil {
-		t.Fatalf("resolve updated ref: %v", err)
-	}
-	if resolved.Target.Config["host"] != "10.0.0.11" || resolved.Profile.Public["username"] != "readonly" {
-		t.Fatalf("sync did not update connector views: target=%#v profile=%#v", resolved.Target, resolved.Profile)
+	if mapping.Username != "admin" || mapping.SSHKeyID != keyID {
+		t.Fatalf("unexpected ssh metadata: %#v", mapping)
 	}
 }
 
@@ -169,25 +145,38 @@ func insertTargetTestSSHKey(t *testing.T, database *sql.DB, name string) int64 {
 	return id
 }
 
-func insertTargetTestServer(t *testing.T, database *sql.DB, sshKeyID int64) int64 {
+func createTargetTestSSHProfile(t *testing.T, ctx context.Context, store *Store, sshKeyID int64, name string, username string, host string, port int) (Target, CredentialProfile) {
 	t.Helper()
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := database.Exec(`
-		INSERT INTO servers (
-			name, host, port, username, ssh_key_id, description,
-			startup_input_after_connect, force_shell_command, created_at, updated_at
-		)
-		VALUES ('core-1', '10.0.0.10', 2222, 'admin', ?, 'NAS gateway', 'q', 'bash -l', ?, ?)`,
-		sshKeyID,
-		now,
-		now,
-	)
+	target, err := store.CreateTarget(ctx, CreateTargetInput{
+		ConnectorKind: sshconnector.Kind,
+		Name:          name,
+		Config: map[string]any{
+			"host":                        host,
+			"port":                        port,
+			"description":                 "NAS gateway",
+			"startup_input_after_connect": "q",
+			"force_shell_command":         "bash -l",
+		},
+	})
 	if err != nil {
-		t.Fatalf("insert server: %v", err)
+		t.Fatalf("create ssh target: %v", err)
 	}
-	id, err := result.LastInsertId()
+	profile, err := store.CreateCredentialProfile(ctx, CreateCredentialProfileInput{
+		TargetID:            target.ID,
+		ConnectorKind:       sshconnector.Kind,
+		Kind:                "private_key",
+		Label:               username,
+		EncryptedSecretJSON: "{}",
+		Public: map[string]any{
+			"username":    username,
+			"ssh_key_id":  sshKeyID,
+			"key_name":    "main",
+			"key_type":    "ed25519",
+			"fingerprint": "SHA256:test",
+		},
+	})
 	if err != nil {
-		t.Fatalf("server id: %v", err)
+		t.Fatalf("create ssh profile: %v", err)
 	}
-	return id
+	return target, profile
 }

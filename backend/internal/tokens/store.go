@@ -17,12 +17,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
-const (
-	RuleAlwaysRun        = "always_run"
-	RuleApprovalRequired = "approval_required"
-	RuleBlocked          = "blocked"
-)
-
 type Token struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
@@ -45,25 +39,6 @@ type CreateOptions struct {
 
 type CreateResponse struct {
 	Token
-}
-
-type Permission struct {
-	ServerID      int64  `json:"server_id"`
-	ServerName    string `json:"server_name"`
-	ExecutionRule string `json:"execution_rule"`
-	ExpiresAt     string `json:"expires_at,omitempty"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
-}
-
-type PermissionInput struct {
-	ServerID      int64  `json:"server_id"`
-	ExecutionRule string `json:"execution_rule"`
-	ExpiresAt     string `json:"expires_at,omitempty"`
-}
-
-type UpdatePermissionsRequest struct {
-	Permissions []PermissionInput `json:"permissions"`
 }
 
 type Store struct {
@@ -185,114 +160,7 @@ func (s *Store) Revoke(ctx context.Context, id int64) (Token, error) {
 	return s.Get(ctx, id)
 }
 
-func (s *Store) ListPermissions(ctx context.Context, tokenID int64) ([]Permission, error) {
-	if _, err := s.Get(ctx, tokenID); err != nil {
-		return nil, err
-	}
-
-	rows, err := s.db.QueryContext(ctx, `SELECT p.server_id, srv.name, p.execution_rule, COALESCE(p.expires_at, ''), p.created_at, p.updated_at FROM token_server_permissions p JOIN servers srv ON srv.id = p.server_id WHERE p.token_id = ? ORDER BY srv.name`, tokenID)
-	if err != nil {
-		return nil, fmt.Errorf("list token permissions: %w", err)
-	}
-	defer rows.Close()
-
-	items := []Permission{}
-	for rows.Next() {
-		var item Permission
-		if err := rows.Scan(&item.ServerID, &item.ServerName, &item.ExecutionRule, &item.ExpiresAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan token permission: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate token permissions: %w", err)
-	}
-	return items, nil
-}
-
-func (s *Store) UpdatePermissions(ctx context.Context, tokenID int64, request UpdatePermissionsRequest) ([]Permission, error) {
-	if _, err := s.Get(ctx, tokenID); err != nil {
-		return nil, err
-	}
-	if err := validatePermissions(ctx, s.db, request.Permissions); err != nil {
-		return nil, err
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin permission update: %w", err)
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.ExecContext(ctx, `DELETE FROM token_server_permissions WHERE token_id = ?`, tokenID); err != nil {
-		return nil, fmt.Errorf("clear token permissions: %w", err)
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	for _, permission := range request.Permissions {
-		expiresAt, err := normalizePermissionExpiresAt(permission)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO token_server_permissions (token_id, server_id, execution_rule, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, tokenID, permission.ServerID, permission.ExecutionRule, expiresAt, now, now); err != nil {
-			return nil, fmt.Errorf("insert token permission: %w", err)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit permission update: %w", err)
-	}
-	return s.ListPermissions(ctx, tokenID)
-}
-
-func validatePermissions(ctx context.Context, db *sql.DB, permissions []PermissionInput) error {
-	seen := map[int64]bool{}
-	for _, permission := range permissions {
-		if permission.ServerID < 1 {
-			return ValidationError("server_id is required")
-		}
-		if seen[permission.ServerID] {
-			return ValidationError("server_id must be unique per token")
-		}
-		seen[permission.ServerID] = true
-		if !validRule(permission.ExecutionRule) {
-			return ValidationError("execution_rule must be always_run, approval_required, or blocked")
-		}
-		if _, err := normalizePermissionExpiresAt(permission); err != nil {
-			return err
-		}
-		var exists int
-		err := db.QueryRowContext(ctx, `SELECT 1 FROM servers WHERE id = ?`, permission.ServerID).Scan(&exists)
-		if errors.Is(err, sql.ErrNoRows) {
-			return ValidationError("server_id does not exist")
-		}
-		if err != nil {
-			return fmt.Errorf("validate server: %w", err)
-		}
-	}
-	return nil
-}
-
-func validRule(rule string) bool {
-	switch rule {
-	case RuleAlwaysRun, RuleApprovalRequired, RuleBlocked:
-		return true
-	default:
-		return false
-	}
-}
-
 func normalizeTokenExpiresAt(value string) (string, error) {
-	return normalizeFutureTimestamp("expires_at", value)
-}
-
-func normalizePermissionExpiresAt(permission PermissionInput) (string, error) {
-	value := strings.TrimSpace(permission.ExpiresAt)
-	if value == "" {
-		return "", nil
-	}
-	if permission.ExecutionRule == RuleBlocked {
-		return "", ValidationError("expires_at is not supported for blocked permissions")
-	}
 	return normalizeFutureTimestamp("expires_at", value)
 }
 

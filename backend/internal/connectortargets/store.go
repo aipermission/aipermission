@@ -2,7 +2,9 @@ package connectortargets
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,6 +66,12 @@ type CreateTargetInput struct {
 	Config        map[string]any
 }
 
+type UpdateTargetInput struct {
+	ID     int64
+	Name   string
+	Config map[string]any
+}
+
 func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Target, error) {
 	if s == nil || s.db == nil {
 		return Target{}, fmt.Errorf("connector target store is not configured")
@@ -108,6 +116,67 @@ func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Targ
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}, nil
+}
+
+func (s *Store) UpdateTarget(ctx context.Context, input UpdateTargetInput) (Target, error) {
+	if s == nil || s.db == nil {
+		return Target{}, fmt.Errorf("connector target store is not configured")
+	}
+	if input.ID < 1 {
+		return Target{}, ErrTargetNotFound
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return Target{}, ValidationError("target name is required")
+	}
+	configJSON, err := jsonObjectString(input.Config)
+	if err != nil {
+		return Target{}, ValidationError("target config must be a JSON object")
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE connector_targets
+		SET name = ?, config_json = ?, updated_at = ?
+		WHERE id = ? AND status = 'active'`,
+		name,
+		configJSON,
+		nowString(),
+		input.ID,
+	)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return Target{}, ValidationError("connector target name already exists")
+		}
+		return Target{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return Target{}, err
+	}
+	if affected == 0 {
+		return Target{}, ErrTargetNotFound
+	}
+	return s.GetTarget(ctx, input.ID)
+}
+
+func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("connector target store is not configured")
+	}
+	if id < 1 {
+		return ErrTargetNotFound
+	}
+	result, err := s.db.ExecContext(ctx, `DELETE FROM connector_targets WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrTargetNotFound
+	}
+	return nil
 }
 
 func (s *Store) ListTargets(ctx context.Context, filter ListTargetsFilter) ([]Target, error) {
@@ -185,6 +254,20 @@ type CredentialProfile struct {
 	UpdatedAt           string
 }
 
+func CredentialProfileView(profile CredentialProfile) connectors.CredentialProfileView {
+	return connectors.CredentialProfileView{
+		ID:             profile.ID,
+		TargetID:       profile.TargetID,
+		ConnectorKind:  profile.ConnectorKind,
+		Kind:           profile.Kind,
+		Label:          profile.Label,
+		Public:         cloneMap(profile.Public),
+		RiskLabel:      profile.RiskLabel,
+		UpdatedAt:      profile.UpdatedAt,
+		SecretRevision: secretRevision(profile.EncryptedSecretJSON),
+	}
+}
+
 type CreateCredentialProfileInput struct {
 	TargetID            int64
 	ConnectorKind       string
@@ -192,6 +275,17 @@ type CreateCredentialProfileInput struct {
 	Label               string
 	Public              map[string]any
 	EncryptedSecretJSON string
+	RiskLabel           string
+}
+
+type UpdateCredentialProfileInput struct {
+	TargetID            int64
+	ProfileID           int64
+	ConnectorKind       string
+	Kind                string
+	Label               string
+	Public              map[string]any
+	EncryptedSecretJSON *string
 	RiskLabel           string
 }
 
@@ -265,6 +359,103 @@ func (s *Store) CreateCredentialProfile(ctx context.Context, input CreateCredent
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}, nil
+}
+
+func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredentialProfileInput) (CredentialProfile, error) {
+	if s == nil || s.db == nil {
+		return CredentialProfile{}, fmt.Errorf("connector target store is not configured")
+	}
+	if input.TargetID < 1 || input.ProfileID < 1 {
+		return CredentialProfile{}, ErrTargetProfileNotFound
+	}
+	if !connectors.ValidIdentifier(input.ConnectorKind) {
+		return CredentialProfile{}, ValidationError("invalid connector kind")
+	}
+	if !connectors.ValidIdentifier(input.Kind) {
+		return CredentialProfile{}, ValidationError("invalid credential kind")
+	}
+	label := strings.TrimSpace(input.Label)
+	if label == "" {
+		return CredentialProfile{}, ValidationError("profile label is required")
+	}
+	publicJSON, err := jsonObjectString(input.Public)
+	if err != nil {
+		return CredentialProfile{}, ValidationError("profile public metadata must be a JSON object")
+	}
+	now := nowString()
+	var result sql.Result
+	if input.EncryptedSecretJSON == nil {
+		result, err = s.db.ExecContext(ctx, `
+			UPDATE connector_credential_profiles
+			SET connector_kind = ?, kind = ?, label = ?, public_json = ?, risk_label = ?, updated_at = ?
+			WHERE id = ? AND target_id = ? AND connector_kind = ?`,
+			input.ConnectorKind,
+			input.Kind,
+			label,
+			publicJSON,
+			strings.TrimSpace(input.RiskLabel),
+			now,
+			input.ProfileID,
+			input.TargetID,
+			input.ConnectorKind,
+		)
+	} else {
+		result, err = s.db.ExecContext(ctx, `
+			UPDATE connector_credential_profiles
+			SET connector_kind = ?, kind = ?, label = ?, public_json = ?, encrypted_secret_json = ?, risk_label = ?, updated_at = ?
+			WHERE id = ? AND target_id = ? AND connector_kind = ?`,
+			input.ConnectorKind,
+			input.Kind,
+			label,
+			publicJSON,
+			*input.EncryptedSecretJSON,
+			strings.TrimSpace(input.RiskLabel),
+			now,
+			input.ProfileID,
+			input.TargetID,
+			input.ConnectorKind,
+		)
+	}
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return CredentialProfile{}, ValidationError("connector profile label already exists")
+		}
+		return CredentialProfile{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return CredentialProfile{}, err
+	}
+	if affected == 0 {
+		return CredentialProfile{}, ErrTargetProfileNotFound
+	}
+	return s.GetCredentialProfile(ctx, input.TargetID, input.ProfileID)
+}
+
+func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, profileID int64) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("connector target store is not configured")
+	}
+	if targetID < 1 || profileID < 1 {
+		return ErrTargetProfileNotFound
+	}
+	result, err := s.db.ExecContext(ctx, `
+		DELETE FROM connector_credential_profiles
+		WHERE id = ? AND target_id = ?`,
+		profileID,
+		targetID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrTargetProfileNotFound
+	}
+	return nil
 }
 
 func (s *Store) ListCredentialProfiles(ctx context.Context, targetID int64) ([]CredentialProfile, error) {
@@ -364,6 +555,7 @@ type ActionRequest struct {
 	ProfileLabel         string
 	ConnectorKind        string
 	ActionName           string
+	Source               string
 	Input                map[string]any
 	EncryptedPayloadJSON string
 	Reason               string
@@ -384,6 +576,7 @@ type InsertActionRequestInput struct {
 	ProfileID            int64
 	ConnectorKind        string
 	ActionName           string
+	Source               string
 	Input                map[string]any
 	EncryptedPayloadJSON string
 	Reason               string
@@ -522,8 +715,15 @@ func (s *Store) ReplaceActionPermissions(ctx context.Context, tokenID int64, inp
 }
 
 func (s *Store) ListActionPermissions(ctx context.Context, tokenID int64) ([]ActionPermission, error) {
+	return s.ListActiveActionPermissions(ctx, tokenID, time.Now().UTC())
+}
+
+func (s *Store) ListActiveActionPermissions(ctx context.Context, tokenID int64, now time.Time) ([]ActionPermission, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("connector target store is not configured")
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
@@ -533,9 +733,13 @@ func (s *Store) ListActionPermissions(ctx context.Context, tokenID int64) ([]Act
 		FROM token_connector_action_permissions p
 		JOIN connector_targets t ON t.id = p.target_id
 		JOIN connector_credential_profiles cp ON cp.id = p.profile_id AND cp.target_id = p.target_id
-		WHERE p.token_id = ? AND t.status = 'active'
+		WHERE
+			p.token_id = ?
+			AND t.status = 'active'
+			AND (COALESCE(p.expires_at, '') = '' OR p.expires_at > ?)
 		ORDER BY t.connector_kind, t.name, cp.label, p.action_name`,
 		tokenID,
+		now.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list connector action permissions: %w", err)
@@ -570,11 +774,11 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO connector_action_requests (
-			token_id, target_id, profile_id, connector_kind, action_name, input_json,
+			token_id, target_id, profile_id, connector_kind, action_name, source, input_json,
 			encrypted_payload_json, reason, status, approval_context,
 			approval_context_hash, created_at
 		)
-		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?
+		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
 		WHERE
@@ -585,6 +789,7 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 			AND t.status = 'active'`,
 		nullableInt64(input.TokenID),
 		input.ActionName,
+		actionRequestSource(input.Source),
 		inputJSON,
 		strings.TrimSpace(input.EncryptedPayloadJSON),
 		strings.TrimSpace(input.Reason),
@@ -849,13 +1054,14 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, ErrInvalidTargetRef
 	}
 	var targetConfigJSON string
-	var profilePublicJSON string
 	var target connectors.TargetView
-	var profile connectors.CredentialProfileView
+	var profile CredentialProfile
+	var profilePublicJSON string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			t.id, t.connector_kind, t.name, t.config_json,
-			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json
+			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json,
+			p.encrypted_secret_json, p.risk_label, p.updated_at
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
 		WHERE
@@ -878,6 +1084,9 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 		&profile.Kind,
 		&profile.Label,
 		&profilePublicJSON,
+		&profile.EncryptedSecretJSON,
+		&profile.RiskLabel,
+		&profile.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, ErrTargetProfileNotFound
@@ -894,7 +1103,7 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 	if err != nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, fmt.Errorf("decode profile public metadata: %w", err)
 	}
-	return target, profile, nil
+	return target, CredentialProfileView(profile), nil
 }
 
 var (
@@ -932,6 +1141,14 @@ func jsonValueString(value any) (string, error) {
 		return "", fmt.Errorf("value must be valid JSON")
 	}
 	return string(encoded), nil
+}
+
+func secretRevision(encryptedSecretJSON string) string {
+	if strings.TrimSpace(encryptedSecretJSON) == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(encryptedSecretJSON))
+	return hex.EncodeToString(sum[:])
 }
 
 func parseJSONObject(value string) (map[string]any, error) {
@@ -1036,7 +1253,7 @@ func actionRequestSelectSQL() string {
 		SELECT
 			r.id, r.token_id, COALESCE(tok.name, ''),
 			r.target_id, t.name, r.profile_id, p.label,
-			r.connector_kind, r.action_name, r.input_json, r.encrypted_payload_json,
+			r.connector_kind, r.action_name, r.source, r.input_json, r.encrypted_payload_json,
 			r.reason, r.status, r.output_json, r.display_text, r.error,
 			r.approval_context, r.approval_context_hash, r.approval_context_drift,
 			r.created_at, r.completed_at
@@ -1062,6 +1279,7 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 		&request.ProfileLabel,
 		&request.ConnectorKind,
 		&request.ActionName,
+		&request.Source,
 		&inputJSON,
 		&request.EncryptedPayloadJSON,
 		&request.Reason,
@@ -1113,6 +1331,14 @@ func validateActionRequestInput(input InsertActionRequestInput) error {
 		return ValidationError("invalid action request status")
 	}
 	return nil
+}
+
+func actionRequestSource(source string) string {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return "mcp"
+	}
+	return source
 }
 
 func validActionRequestStatus(status connectors.ResultStatus) bool {

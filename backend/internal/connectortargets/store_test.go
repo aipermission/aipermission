@@ -229,6 +229,43 @@ func TestStoreGetsActiveActionPermission(t *testing.T) {
 	}
 }
 
+func TestStoreListActionPermissionsHidesExpiredPermissions(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	if err := store.SetActionPermission(ctx, SetActionPermissionInput{
+		TokenID:       tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "query_readonly",
+		ExecutionRule: ActionPermissionAlwaysRun,
+		ExpiresAt:     &expiredAt,
+	}); err != nil {
+		t.Fatalf("set expired action permission: %v", err)
+	}
+	if err := store.SetActionPermission(ctx, SetActionPermissionInput{
+		TokenID:       tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "get_tables",
+		ExecutionRule: ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set active action permission: %v", err)
+	}
+
+	permissions, err := store.ListActionPermissions(ctx, tokenID)
+	if err != nil {
+		t.Fatalf("list action permissions: %v", err)
+	}
+	if len(permissions) != 1 || permissions[0].ActionName != "get_tables" {
+		t.Fatalf("expected only active permissions, got %#v", permissions)
+	}
+}
+
 func TestStoreActionRequestLifecycle(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)
@@ -254,6 +291,9 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	}
 	if request.ID < 1 || request.TokenID == nil || *request.TokenID != tokenID {
 		t.Fatalf("unexpected request identity: %#v", request)
+	}
+	if request.Source != "mcp" {
+		t.Fatalf("default source = %q", request.Source)
 	}
 	if request.TokenName != "connector-codex" {
 		t.Fatalf("token name = %q", request.TokenName)

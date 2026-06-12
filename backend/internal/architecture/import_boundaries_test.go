@@ -20,7 +20,6 @@ func TestConnectorGroundworkImportBoundaries(t *testing.T) {
 		modulePath + "/internal/db",
 		modulePath + "/internal/execution",
 		modulePath + "/internal/filetransfer",
-		modulePath + "/internal/servers",
 		modulePath + "/internal/sshconfig",
 		modulePath + "/internal/sshkeys",
 		modulePath + "/internal/tokens",

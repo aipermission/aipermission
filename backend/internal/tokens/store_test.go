@@ -23,26 +23,6 @@ func openTokenTestDB(t *testing.T) *sql.DB {
 	return database
 }
 
-func insertTokenTestServer(t *testing.T, database *sql.DB, name string) int64 {
-	t.Helper()
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := database.Exec(`
-		INSERT INTO servers (name, host, port, username, ssh_key_id, description, created_at, updated_at)
-		VALUES (?, '127.0.0.1', 22, 'root', 1, '', ?, ?)`,
-		name,
-		now,
-		now,
-	)
-	if err != nil {
-		t.Fatalf("insert server: %v", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("server id: %v", err)
-	}
-	return id
-}
-
 func TestTokenStoreCreateListGetAndRevoke(t *testing.T) {
 	ctx := context.Background()
 	store := NewStore(openTokenTestDB(t))
@@ -190,63 +170,5 @@ func TestTokenStoreValidatesCreate(t *testing.T) {
 	}
 	if _, err := store.Get(ctx, 123); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
-	}
-}
-
-func TestTokenPermissionsReplaceAndValidateMatrix(t *testing.T) {
-	ctx := context.Background()
-	database := openTokenTestDB(t)
-	store := NewStore(database)
-	token, err := store.Create(ctx, CreateRequest{Name: "agent"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
-	betaID := insertTokenTestServer(t, database, "worker-beta")
-	alphaID := insertTokenTestServer(t, database, "worker-alpha")
-	permissionExpiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
-
-	permissions, err := store.UpdatePermissions(ctx, token.ID, UpdatePermissionsRequest{Permissions: []PermissionInput{
-		{ServerID: betaID, ExecutionRule: RuleAlwaysRun, ExpiresAt: permissionExpiresAt},
-		{ServerID: alphaID, ExecutionRule: RuleApprovalRequired},
-	}})
-	if err != nil {
-		t.Fatalf("update permissions: %v", err)
-	}
-	if len(permissions) != 2 {
-		t.Fatalf("unexpected permission count: %#v", permissions)
-	}
-	if permissions[0].ServerName != "worker-alpha" || permissions[1].ServerName != "worker-beta" {
-		t.Fatalf("permissions should be sorted by server name: %#v", permissions)
-	}
-	if permissions[1].ExpiresAt != permissionExpiresAt {
-		t.Fatalf("permission expires_at should round-trip, got %#v", permissions[1])
-	}
-
-	permissions, err = store.UpdatePermissions(ctx, token.ID, UpdatePermissionsRequest{Permissions: []PermissionInput{
-		{ServerID: alphaID, ExecutionRule: RuleBlocked},
-	}})
-	if err != nil {
-		t.Fatalf("replace permissions: %v", err)
-	}
-	if len(permissions) != 1 || permissions[0].ExecutionRule != RuleBlocked {
-		t.Fatalf("permissions were not replaced: %#v", permissions)
-	}
-
-	badInputs := []UpdatePermissionsRequest{
-		{Permissions: []PermissionInput{{ServerID: 0, ExecutionRule: RuleAlwaysRun}}},
-		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: "root"}}},
-		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: RuleAlwaysRun, ExpiresAt: "tomorrow"}}},
-		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: RuleAlwaysRun, ExpiresAt: time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)}}},
-		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: RuleBlocked, ExpiresAt: permissionExpiresAt}}},
-		{Permissions: []PermissionInput{{ServerID: alphaID, ExecutionRule: RuleAlwaysRun}, {ServerID: alphaID, ExecutionRule: RuleBlocked}}},
-		{Permissions: []PermissionInput{{ServerID: 99999, ExecutionRule: RuleAlwaysRun}}},
-	}
-	for _, request := range badInputs {
-		if _, err := store.UpdatePermissions(ctx, token.ID, request); err == nil {
-			t.Fatalf("expected bad permission input to fail: %#v", request)
-		}
-	}
-	if _, err := store.ListPermissions(ctx, 99999); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("expected ErrNotFound for missing token, got %v", err)
 	}
 }

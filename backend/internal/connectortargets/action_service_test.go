@@ -14,15 +14,9 @@ import (
 func TestActionServicePreparesSSHExec(t *testing.T) {
 	database := openTargetTestDB(t)
 	keyID := insertTargetTestSSHKey(t, database, "main")
-	serverID := insertTargetTestServer(t, database, keyID)
 	store := NewStore(database)
-	if err := store.SyncSSHServers(context.Background()); err != nil {
-		t.Fatalf("sync ssh targets: %v", err)
-	}
-	targetRef, err := store.SSHTargetRefForServer(context.Background(), serverID)
-	if err != nil {
-		t.Fatalf("ssh target ref for server: %v", err)
-	}
+	target, profile := createTargetTestSSHProfile(t, context.Background(), store, keyID, "core-1", "admin", "10.0.0.10", 2222)
+	targetRef := SSHTargetRef(target.ID, profile.ID)
 	registry, err := builtin.NewRegistry()
 	if err != nil {
 		t.Fatalf("builtin registry: %v", err)
@@ -61,15 +55,9 @@ func TestActionServicePreparesSSHExec(t *testing.T) {
 func TestActionServicePreparesSSHReadConsole(t *testing.T) {
 	database := openTargetTestDB(t)
 	keyID := insertTargetTestSSHKey(t, database, "main")
-	serverID := insertTargetTestServer(t, database, keyID)
 	store := NewStore(database)
-	if err := store.SyncSSHServers(context.Background()); err != nil {
-		t.Fatalf("sync ssh targets: %v", err)
-	}
-	targetRef, err := store.SSHTargetRefForServer(context.Background(), serverID)
-	if err != nil {
-		t.Fatalf("ssh target ref for server: %v", err)
-	}
+	target, profile := createTargetTestSSHProfile(t, context.Background(), store, keyID, "core-1", "admin", "10.0.0.10", 2222)
+	targetRef := SSHTargetRef(target.ID, profile.ID)
 	registry, err := builtin.NewRegistry()
 	if err != nil {
 		t.Fatalf("builtin registry: %v", err)

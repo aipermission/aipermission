@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -42,8 +43,11 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !tableExists(t, database, "history_labels") {
 		t.Fatalf("history_labels table was not created")
 	}
-	if !tableExists(t, database, "command_request_labels") {
-		t.Fatalf("command_request_labels table was not created")
+	if !tableExists(t, database, "history_entries") {
+		t.Fatalf("history_entries table was not created")
+	}
+	if !tableExists(t, database, "history_entry_labels") {
+		t.Fatalf("history_entry_labels table was not created")
 	}
 	if !tableExists(t, database, "file_transfers") {
 		t.Fatalf("file_transfers table was not created")
@@ -53,9 +57,6 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	}
 	if !columnExists(t, database, "api_tokens", "expires_at") {
 		t.Fatalf("api_tokens.expires_at column was not created")
-	}
-	if !columnExists(t, database, "token_server_permissions", "expires_at") {
-		t.Fatalf("token_server_permissions.expires_at column was not created")
 	}
 	if !columnExists(t, database, "command_requests", "source") {
 		t.Fatalf("command_requests.source column was not created")
@@ -103,18 +104,32 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !columnExists(t, database, "connector_action_requests", "approval_context_hash") {
 		t.Fatalf("connector_action_requests.approval_context_hash column was not created")
 	}
+	if !columnExists(t, database, "connector_action_requests", "source") {
+		t.Fatalf("connector_action_requests.source column was not created")
+	}
+	for _, column := range []string{"connector_kind", "target_id", "profile_id", "action_request_id"} {
+		if !columnExists(t, database, "audit_logs", column) {
+			t.Fatalf("audit_logs.%s column was not created", column)
+		}
+	}
+	var connectorTriggerSQL string
+	if err := database.QueryRow(`SELECT COALESCE(group_concat(sql, char(10)), '') FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%connector%'`).Scan(&connectorTriggerSQL); err != nil {
+		t.Fatalf("read connector trigger sql: %v", err)
+	}
+	if strings.Contains(connectorTriggerSQL, "upload_files") {
+		t.Fatalf("ssh permission mirror trigger should not create unsupported upload_files action:\n%s", connectorTriggerSQL)
+	}
+	for _, retiredTable := range []string{"servers", "token_server_permissions", "ssh_connector_profile_runtimes"} {
+		if tableExists(t, database, retiredTable) {
+			t.Fatalf("retired table %s should not be created in the connector-native schema", retiredTable)
+		}
+	}
 	var foreignKeys int
 	if err := database.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
 		t.Fatalf("query foreign keys pragma: %v", err)
 	}
 	if foreignKeys != 1 {
 		t.Fatalf("foreign keys should be enabled for the connection")
-	}
-	if _, err := database.Exec(`
-		INSERT INTO token_server_permissions (token_id, server_id, execution_rule, created_at, updated_at)
-		VALUES (999, 999, 'always_run', datetime('now'), datetime('now'))`,
-	); err == nil {
-		t.Fatalf("foreign key violation should fail")
 	}
 	assertConnectorProfileTargetForeignKeys(t, database)
 	if LooksLikePlainSQLite(path) {
@@ -133,9 +148,6 @@ func TestOpenEncryptedRepairsMissingHistoryLabelSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open encrypted db: %v", err)
 	}
-	if _, err := database.Exec(`DROP TABLE command_request_labels`); err != nil {
-		t.Fatalf("drop command_request_labels: %v", err)
-	}
 	if _, err := database.Exec(`DROP TABLE history_labels`); err != nil {
 		t.Fatalf("drop history_labels: %v", err)
 	}
@@ -150,9 +162,6 @@ func TestOpenEncryptedRepairsMissingHistoryLabelSchema(t *testing.T) {
 	defer reopened.Close()
 	if !tableExists(t, reopened, "history_labels") {
 		t.Fatalf("history_labels table should be repaired")
-	}
-	if !tableExists(t, reopened, "command_request_labels") {
-		t.Fatalf("command_request_labels table should be repaired")
 	}
 }
 
@@ -188,7 +197,6 @@ func TestOpenEncryptedRepairsMissingConnectorPersistenceSchema(t *testing.T) {
 	for _, table := range []string{
 		"connector_action_requests",
 		"token_connector_action_permissions",
-		"ssh_connector_profile_runtimes",
 		"connector_credential_profiles",
 		"connector_targets",
 	} {
@@ -217,8 +225,69 @@ func TestOpenEncryptedRepairsMissingConnectorPersistenceSchema(t *testing.T) {
 	if !tableExists(t, reopened, "connector_action_requests") {
 		t.Fatalf("connector_action_requests table should be repaired")
 	}
-	if !tableExists(t, reopened, "ssh_connector_profile_runtimes") {
-		t.Fatalf("ssh_connector_profile_runtimes table should be repaired")
+}
+
+func TestOpenEncryptedRepairsConnectorAuditHardeningColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secure.db")
+	database, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	if _, err := database.Exec(`DROP TABLE connector_action_requests`); err != nil {
+		t.Fatalf("drop connector_action_requests: %v", err)
+	}
+	if _, err := database.Exec(`CREATE TABLE connector_action_requests (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		token_id INTEGER,
+		target_id INTEGER NOT NULL,
+		profile_id INTEGER NOT NULL,
+		connector_kind TEXT NOT NULL,
+		action_name TEXT NOT NULL,
+		input_json TEXT NOT NULL DEFAULT '{}',
+		encrypted_payload_json TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,
+		output_json TEXT NOT NULL DEFAULT '{}',
+		display_text TEXT NOT NULL DEFAULT '',
+		error TEXT NOT NULL DEFAULT '',
+		approval_context TEXT NOT NULL DEFAULT '',
+		approval_context_hash TEXT NOT NULL DEFAULT '',
+		approval_context_drift TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		completed_at TEXT
+	)`); err != nil {
+		t.Fatalf("create older connector_action_requests: %v", err)
+	}
+	if _, err := database.Exec(`DROP TABLE audit_logs`); err != nil {
+		t.Fatalf("drop audit_logs: %v", err)
+	}
+	if _, err := database.Exec(`CREATE TABLE audit_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		actor_type TEXT NOT NULL,
+		token_id INTEGER,
+		server_id INTEGER,
+		action TEXT NOT NULL,
+		payload_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create older audit_logs: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("reopen encrypted db: %v", err)
+	}
+	defer reopened.Close()
+	if !columnExists(t, reopened, "connector_action_requests", "source") {
+		t.Fatalf("connector_action_requests.source column should be repaired")
+	}
+	for _, column := range []string{"connector_kind", "target_id", "profile_id", "action_request_id"} {
+		if !columnExists(t, reopened, "audit_logs", column) {
+			t.Fatalf("audit_logs.%s column should be repaired", column)
+		}
 	}
 }
 
@@ -257,6 +326,15 @@ func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
 	}
 	if message != "gateway restarted while connector action was running" {
 		t.Fatalf("unexpected error message: %q", message)
+	}
+	if err := reopened.QueryRow(`SELECT status, error FROM history_entries WHERE source_ref_type = 'connector_action_request' LIMIT 1`).Scan(&status, &message); err != nil {
+		t.Fatalf("read connector action history entry: %v", err)
+	}
+	if status != "error" {
+		t.Fatalf("expected restarted connector action history entry to be error, got %q", status)
+	}
+	if message != "gateway restarted while connector action was running" {
+		t.Fatalf("unexpected history entry error message: %q", message)
 	}
 }
 
@@ -388,15 +466,11 @@ func TestFTS4SearchIndexesTrackHistoryAndAuditRows(t *testing.T) {
 		t.Fatalf("audit_logs_fts table was not created")
 	}
 
-	if _, err := database.Exec(`
-		INSERT INTO servers (name, host, port, username, ssh_key_id, created_at, updated_at)
-		VALUES ('worker-1', '127.0.0.1', 22, 'root', 1, datetime('now'), datetime('now'))`,
-	); err != nil {
-		t.Fatalf("insert server: %v", err)
-	}
+	_, profileID := insertConnectorTargetAndProfile(t, database)
 	result, err := database.Exec(`
 		INSERT INTO command_requests (server_id, command, reason, status, stdout, stderr, created_at)
-		VALUES (1, 'docker ps', 'inspect containers', 'completed', 'nginx container output', '', datetime('now'))`,
+		VALUES (?, 'docker ps', 'inspect containers', 'completed', 'nginx container output', '', datetime('now'))`,
+		profileID,
 	)
 	if err != nil {
 		t.Fatalf("insert command request: %v", err)

@@ -95,8 +95,8 @@ func (s historyLabelHandlers) deleteHistoryLabel(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
-func (s historyLabelHandlers) attachHistoryLabel(w http.ResponseWriter, r *http.Request) {
-	requestID, ok := parsePathInt64(w, r, "id", "request id")
+func (s historyLabelHandlers) attachHistoryEntryLabel(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
 	if !ok {
 		return
 	}
@@ -109,51 +109,54 @@ func (s historyLabelHandlers) attachHistoryLabel(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if !commandRequestExists(r.Context(), runtime, requestID) {
-		writeError(w, http.StatusNotFound, "command request not found")
-		return
-	}
-
 	var label historyLabelRecord
+	var created bool
 	var err error
 	if request.LabelID > 0 {
 		label, err = s.getHistoryLabel(r.Context(), runtime, request.LabelID)
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "label not found")
+			return
+		}
 	} else {
-		label, _, err = s.createOrGetHistoryLabel(r.Context(), runtime, request.Name, request.Color)
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "history label not found")
-		return
+		label, created, err = s.createOrGetHistoryLabel(r.Context(), runtime, request.Name, request.Color)
 	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
+	if !historyEntryExists(r.Context(), runtime, id) {
+		writeError(w, http.StatusNotFound, "history entry not found")
+		return
+	}
 	if _, err := runtime.database.ExecContext(r.Context(), `
-		INSERT OR IGNORE INTO command_request_labels (command_request_id, label_id, created_at)
+		INSERT OR IGNORE INTO history_entry_labels (history_entry_id, label_id, created_at)
 		VALUES (?, ?, datetime('now'))`,
-		requestID,
+		id,
 		label.ID,
 	); err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "history.label.attached", map[string]any{
-		"request_id": requestID,
-		"label_id":   label.ID,
-		"name":       label.Name,
-	})
-	labels, err := s.labelsForCommandRequest(r.Context(), runtime, requestID)
+	labels, err := s.labelsForHistoryEntry(r.Context(), runtime, id)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, labels)
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	s.writeAudit(r.Context(), runtime, "user", nil, 0, "history.label.attached", map[string]any{
+		"history_entry_id": id,
+		"label_id":         label.ID,
+		"created":          created,
+	})
+	writeJSON(w, status, labels)
 }
 
-func (s historyLabelHandlers) detachHistoryLabel(w http.ResponseWriter, r *http.Request) {
-	requestID, ok := parsePathInt64(w, r, "id", "request id")
+func (s historyLabelHandlers) detachHistoryEntryLabel(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
 	if !ok {
 		return
 	}
@@ -165,14 +168,14 @@ func (s historyLabelHandlers) detachHistoryLabel(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	if !commandRequestExists(r.Context(), runtime, requestID) {
-		writeError(w, http.StatusNotFound, "command request not found")
+	if !historyEntryExists(r.Context(), runtime, id) {
+		writeError(w, http.StatusNotFound, "history entry not found")
 		return
 	}
 	result, err := runtime.database.ExecContext(r.Context(), `
-		DELETE FROM command_request_labels
-		WHERE command_request_id = ? AND label_id = ?`,
-		requestID,
+		DELETE FROM history_entry_labels
+		WHERE history_entry_id = ? AND label_id = ?`,
+		id,
 		labelID,
 	)
 	if err != nil {
@@ -188,15 +191,15 @@ func (s historyLabelHandlers) detachHistoryLabel(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusNotFound, "history label relationship not found")
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "history.label.detached", map[string]any{
-		"request_id": requestID,
-		"label_id":   labelID,
-	})
-	labels, err := s.labelsForCommandRequest(r.Context(), runtime, requestID)
+	labels, err := s.labelsForHistoryEntry(r.Context(), runtime, id)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
+	s.writeAudit(r.Context(), runtime, "user", nil, 0, "history.label.detached", map[string]any{
+		"history_entry_id": id,
+		"label_id":         labelID,
+	})
 	writeJSON(w, http.StatusOK, labels)
 }
 
@@ -260,71 +263,9 @@ func (s *Server) createOrGetHistoryLabel(ctx context.Context, runtime *databaseR
 	return label, affected > 0, err
 }
 
-func (s *Server) labelsForCommandRequest(ctx context.Context, runtime *databaseRuntime, requestID int64) ([]historyLabelRecord, error) {
-	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT hl.id, hl.name, hl.color, hl.created_at, hl.updated_at
-		FROM history_labels hl
-		JOIN command_request_labels crl ON crl.label_id = hl.id
-		WHERE crl.command_request_id = ?
-		ORDER BY lower(hl.name), hl.id`,
-		requestID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	labels := []historyLabelRecord{}
-	for rows.Next() {
-		var label historyLabelRecord
-		if err := rows.Scan(&label.ID, &label.Name, &label.Color, &label.CreatedAt, &label.UpdatedAt); err != nil {
-			return nil, err
-		}
-		labels = append(labels, label)
-	}
-	return labels, rows.Err()
-}
-
-func (s *Server) attachLabelsToCommandRequests(ctx context.Context, runtime *databaseRuntime, items []commandRequestRecord) error {
-	if len(items) == 0 {
-		return nil
-	}
-	ids := make([]string, 0, len(items))
-	args := make([]any, 0, len(items))
-	byID := map[int64]int{}
-	for index := range items {
-		items[index].Labels = []historyLabelRecord{}
-		ids = append(ids, "?")
-		args = append(args, items[index].ID)
-		byID[items[index].ID] = index
-	}
-	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT crl.command_request_id, hl.id, hl.name, hl.color, hl.created_at, hl.updated_at
-		FROM command_request_labels crl
-		JOIN history_labels hl ON hl.id = crl.label_id
-		WHERE crl.command_request_id IN (`+strings.Join(ids, ",")+`)
-		ORDER BY lower(hl.name), hl.id`,
-		args...,
-	)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var requestID int64
-		var label historyLabelRecord
-		if err := rows.Scan(&requestID, &label.ID, &label.Name, &label.Color, &label.CreatedAt, &label.UpdatedAt); err != nil {
-			return err
-		}
-		if index, ok := byID[requestID]; ok {
-			items[index].Labels = append(items[index].Labels, label)
-		}
-	}
-	return rows.Err()
-}
-
-func commandRequestExists(ctx context.Context, runtime *databaseRuntime, id int64) bool {
+func historyEntryExists(ctx context.Context, runtime *databaseRuntime, id int64) bool {
 	var exists int
-	err := runtime.database.QueryRowContext(ctx, `SELECT 1 FROM command_requests WHERE id = ?`, id).Scan(&exists)
+	err := runtime.database.QueryRowContext(ctx, `SELECT 1 FROM history_entries WHERE id = ?`, id).Scan(&exists)
 	return err == nil
 }
 
