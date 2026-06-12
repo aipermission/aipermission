@@ -122,6 +122,9 @@ export function parseFlags(argv) {
       result.tokenStdin = true;
       continue;
     }
+    if (key === "token") {
+      throw new Error("--token is not supported; use the hidden prompt or --token-stdin");
+    }
     result[key] = inlineValue ?? argv[i + 1] ?? "";
     if (inlineValue === undefined) {
       i += 1;
@@ -227,10 +230,6 @@ async function ask(rl, label, defaultValue = "") {
 async function resolveToken(flags, rl) {
   if (flags.tokenStdin) {
     return flags.stdinToken;
-  }
-  if (flags.token) {
-    console.warn(`${color.yellow}Warning:${color.reset} --token can be saved in shell history. Prefer the hidden prompt or --token-stdin.`);
-    return String(flags.token).trim();
   }
   return askSecret(rl, "API token");
 }

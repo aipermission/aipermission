@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -72,26 +71,4 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 	s.authLimiter.recordFailure(limitKey)
 	writeError(w, http.StatusUnauthorized, "invalid, revoked, or expired API token")
 	return mcpAuthContext{}, false
-}
-
-func (s *Server) mcpPermission(ctx context.Context, runtime *databaseRuntime, tokenID int64, serverID int64) (string, string, bool, error) {
-	var serverName string
-	var rule string
-	err := runtime.database.QueryRowContext(ctx, `
-		SELECT srv.name, p.execution_rule
-		FROM token_server_permissions p
-		JOIN servers srv ON srv.id = p.server_id
-		WHERE p.token_id = ? AND p.server_id = ?
-			AND (COALESCE(p.expires_at, '') = '' OR p.expires_at > ?)`,
-		tokenID,
-		serverID,
-		time.Now().UTC().Format(time.RFC3339),
-	).Scan(&serverName, &rule)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", false, nil
-	}
-	if err != nil {
-		return "", "", false, err
-	}
-	return serverName, rule, true, nil
 }

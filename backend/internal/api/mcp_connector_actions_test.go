@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
@@ -38,6 +39,15 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set blocked action permission: %v", err)
 	}
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "no_longer_supported",
+		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("set unsupported action permission: %v", err)
+	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
 	if response.Code != http.StatusOK {
@@ -54,9 +64,19 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 		t.Fatalf("target ref = %q", items[0].TargetRef)
 	}
 	if len(items[0].Actions) != 1 || items[0].Actions[0].Name != postgresconnector.ActionGetSchemas {
-		t.Fatalf("blocked actions should be hidden: %#v", items[0].Actions)
+		t.Fatalf("blocked and unsupported actions should be hidden: %#v", items[0].Actions)
 	}
 	if len(items[0].Hints) == 0 {
 		t.Fatalf("expected connector hints")
+	}
+
+	actionsResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-actions?target_ref="+connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID), token.TokenValue, nil)
+	if actionsResponse.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", actionsResponse.Code, actionsResponse.Body.String())
+	}
+	if !strings.Contains(actionsResponse.Body.String(), postgresconnector.ActionGetSchemas) ||
+		strings.Contains(actionsResponse.Body.String(), postgresconnector.ActionQueryReadonly) ||
+		strings.Contains(actionsResponse.Body.String(), "no_longer_supported") {
+		t.Fatalf("unexpected action discovery response: %s", actionsResponse.Body.String())
 	}
 }

@@ -20,6 +20,7 @@ test("parseFlags supports kebab-case, inline values, and booleans", () => {
     }
   );
   assert.deepEqual(parseFlags(["--token-stdin"]), { tokenStdin: true });
+  assert.throws(() => parseFlags(["--token", "secret"]), /--token is not supported/);
 });
 
 test("sanitizeName keeps MCP-safe names", () => {

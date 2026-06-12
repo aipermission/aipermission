@@ -39,8 +39,7 @@ Install skill flags:
   --source /path/to/SKILL.md  Local file only; HTTP(S) sources are rejected
 
 Security:
-  Prefer the hidden token prompt or --token-stdin. --token is still accepted
-  for automation, but it can be saved in shell history. AIPERMISSION_API_URL
-  must point to localhost, 127.0.0.1, or [::1].
+  Use the hidden token prompt or --token-stdin. AIPERMISSION_API_URL must point
+  to localhost, 127.0.0.1, or [::1].
 	`);
 }

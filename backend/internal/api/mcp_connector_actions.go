@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -56,7 +57,7 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	permissions, err := connectortargets.NewStore(auth.runtime.database).ListActionPermissions(r.Context(), auth.TokenID)
+	permissions, err := activeSupportedConnectorPermissions(r.Context(), auth.runtime, auth.TokenID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
@@ -118,16 +119,31 @@ func (s mcpHandlers) mcpGetConnectorActions(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	target, _, connector, ok := s.resolveMCPConnectorTarget(w, r, auth)
+	target, profile, connector, ok := s.resolveMCPConnectorTarget(w, r, auth)
 	if !ok {
 		return
 	}
-	actions, err := connector.GetActionList(r.Context(), target)
+	actions, err := connector.GetActionList(r.Context(), target, profile)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": actions})
+	if err := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); err != nil {
+		writeInternalError(w)
+		return
+	}
+	allowed, err := permittedConnectorActions(r.Context(), auth.runtime, auth.TokenID, target.ID, profile.ID)
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	filtered := make([]connectors.ActionDefinition, 0, len(actions))
+	for _, action := range actions {
+		if allowed[action.Name] {
+			filtered = append(filtered, action)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": filtered})
 }
 
 func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +171,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := validateTextLimit("reason", request.Reason, maxReasonBytes); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()))
 		return
 	}
 	result, err := s.callConnectorAction(r.Context(), auth.runtime, connectorActionCall{
@@ -171,7 +187,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 			handleConnectorTargetError(w, err)
 			return
 		}
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()))
 		return
 	}
 	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, "mcp.connector_action."+string(result.Result.Status), map[string]any{
@@ -219,7 +235,7 @@ func (s mcpHandlers) resolveMCPConnectorTarget(w http.ResponseWriter, r *http.Re
 		handleConnectorTargetError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
-	permissions, err := connectortargets.NewStore(auth.runtime.database).ListActionPermissions(r.Context(), auth.TokenID)
+	permissions, err := activeSupportedConnectorPermissions(r.Context(), auth.runtime, auth.TokenID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
@@ -246,6 +262,24 @@ func (s mcpHandlers) resolveMCPConnectorTarget(w http.ResponseWriter, r *http.Re
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
 	return target, profile, connector, true
+}
+
+func permittedConnectorActions(ctx context.Context, runtime *databaseRuntime, tokenID int64, targetID int64, profileID int64) (map[string]bool, error) {
+	permissions, err := activeSupportedConnectorPermissions(ctx, runtime, tokenID)
+	if err != nil {
+		return nil, err
+	}
+	allowed := map[string]bool{}
+	for _, permission := range permissions {
+		if permission.TargetID != targetID || permission.ProfileID != profileID {
+			continue
+		}
+		if permission.ExecutionRule == connectortargets.ActionPermissionBlocked {
+			continue
+		}
+		allowed[permission.ActionName] = true
+	}
+	return allowed, nil
 }
 
 func connectorActionToMCPResponse(request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
@@ -278,18 +312,25 @@ func connectorActionRequestToMCPResponse(request connectortargets.ActionRequest)
 		response.RetryAfterSeconds = 3
 		response.AssistantHint = connectorActionApprovalHint
 	}
+	if request.Status == connectors.ResultRunning {
+		response.RetryAfterSeconds = 3
+		response.AssistantHint = connectorActionRunningHintForRequest(request)
+	}
 	return response
 }
 
-func connectorTargetHints(connectorKind string) []string {
-	switch connectorKind {
-	case "postgres":
-		return []string{
-			"Use get_connector_help and get_connector_actions before calling a Postgres action for the first time.",
-			"Prefer get_schemas, get_tables, and describe_table before writing SQL.",
-			"query_readonly is bounded and read-only, but the selected database credential profile still defines the real database permissions.",
+func connectorActionRunningHintForRequest(request connectortargets.ActionRequest) string {
+	if adapter := connectorRuntimeAdapterFor(request.ConnectorKind); adapter != nil {
+		if hint := strings.TrimSpace(adapter.RunningHint(request)); hint != "" {
+			return hint
 		}
-	default:
-		return []string{"Use get_connector_help and get_connector_actions before calling connector actions."}
+	}
+	return "Wait 3 seconds, then call get_connector_action_request again until this request is completed, failed, canceled, stale, or error."
+}
+
+func connectorTargetHints(_ string) []string {
+	return []string{
+		"Use get_connector_help and get_connector_actions before calling connector actions for the first time.",
+		"Target, credential profile, and token action permission decide what the connector can do; prefer approval_required until the workflow is trusted.",
 	}
 }

@@ -2,8 +2,6 @@ package api
 
 import (
 	"time"
-
-	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
 const (
@@ -15,88 +13,6 @@ type mcpAuthContext struct {
 	TokenID int64
 	Name    string
 	runtime *databaseRuntime
-}
-
-type mcpServerItem struct {
-	ID            int64    `json:"id"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description,omitempty"`
-	Host          string   `json:"host,omitempty"`
-	Port          int      `json:"port,omitempty"`
-	Username      string   `json:"username,omitempty"`
-	ExecutionRule string   `json:"execution_rule"`
-	ExpiresAt     string   `json:"expires_at,omitempty"`
-	Hints         []string `json:"hints"`
-}
-
-type mcpExecRequest struct {
-	ServerID int64  `json:"server_id"`
-	Command  string `json:"command"`
-	Reason   string `json:"reason,omitempty"`
-}
-
-type mcpBulkExecRequest struct {
-	ServerIDs []int64 `json:"server_ids"`
-	Command   string  `json:"command"`
-	Reason    string  `json:"reason"`
-}
-
-type mcpExecResponse struct {
-	Status            string                 `json:"status"`
-	RequestID         int64                  `json:"request_id,omitempty"`
-	SessionID         int64                  `json:"session_id,omitempty"`
-	ServerID          int64                  `json:"server_id"`
-	ServerName        string                 `json:"server_name,omitempty"`
-	Command           string                 `json:"command"`
-	Stdout            string                 `json:"stdout,omitempty"`
-	Stderr            string                 `json:"stderr,omitempty"`
-	ExitCode          int                    `json:"exit_code,omitempty"`
-	Error             string                 `json:"error,omitempty"`
-	UserNote          *string                `json:"user_note"`
-	DurationMS        int64                  `json:"duration_ms,omitempty"`
-	RetryAfterSeconds int                    `json:"retry_after_seconds,omitempty"`
-	AssistantHint     string                 `json:"assistant_hint,omitempty"`
-	PolicyWarnings    []commandPolicyWarning `json:"policy_warnings,omitempty"`
-}
-
-type mcpBulkExecResponse struct {
-	Status            string                    `json:"status"`
-	Command           string                    `json:"command"`
-	Parallelism       int                       `json:"parallelism"`
-	Items             []mcpBulkExecResponseItem `json:"items"`
-	RetryAfterSeconds int                       `json:"retry_after_seconds,omitempty"`
-	AssistantHint     string                    `json:"assistant_hint,omitempty"`
-	PolicyWarnings    []commandPolicyWarning    `json:"policy_warnings,omitempty"`
-}
-
-type mcpBulkExecResponseItem struct {
-	Status              string `json:"status"`
-	RequestID           int64  `json:"request_id,omitempty"`
-	ServerID            int64  `json:"server_id"`
-	ServerName          string `json:"server_name,omitempty"`
-	ExecutionRule       string `json:"execution_rule,omitempty"`
-	ApprovalContextHash string `json:"approval_context_hash,omitempty"`
-	Error               string `json:"error,omitempty"`
-}
-
-type mcpConsoleResponse struct {
-	Status     string  `json:"status"`
-	SessionID  int64   `json:"session_id,omitempty"`
-	ServerID   int64   `json:"server_id"`
-	ServerName string  `json:"server_name,omitempty"`
-	Transcript string  `json:"transcript,omitempty"`
-	Error      string  `json:"error,omitempty"`
-	UserNote   *string `json:"user_note,omitempty"`
-}
-
-type mcpRestartConsoleResponse struct {
-	Status                  string  `json:"status"`
-	ServerID                int64   `json:"server_id"`
-	ServerName              string  `json:"server_name,omitempty"`
-	ClosedSessionIDs        []int64 `json:"closed_session_ids"`
-	CanceledRunningRequests int64   `json:"canceled_running_requests"`
-	AssistantHint           string  `json:"assistant_hint,omitempty"`
-	Error                   string  `json:"error,omitempty"`
 }
 
 type commandRequestRecord struct {
@@ -122,7 +38,6 @@ type commandRequestRecord struct {
 	RetryAfterSeconds int                    `json:"retry_after_seconds,omitempty"`
 	AssistantHint     string                 `json:"assistant_hint,omitempty"`
 	PolicyWarnings    []commandPolicyWarning `json:"policy_warnings,omitempty"`
-	Labels            []historyLabelRecord   `json:"labels"`
 }
 
 type historyLabelRecord struct {
@@ -131,24 +46,4 @@ type historyLabelRecord struct {
 	Color     string `json:"color"`
 	CreatedAt string `json:"created_at,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
-}
-
-func mcpServerHints(executionRule string) []string {
-	hints := []string{
-		"list_servers is permission-scoped, not a live SSH health check; treat exec dial, timeout, SSH authentication, and host key errors as the current reachability signal.",
-		"Use a short reason when calling exec so the operator can approve or audit the command.",
-		"For install/uninstall verification in the same shell, run 'hash -r 2>/dev/null || true' before checking command -v.",
-		"On Debian/Ubuntu, dpkg -l can show removed packages as rc; use dpkg-query installed state 'ii' to verify packages are installed.",
-		"Prefer non-interactive commands; set DEBIAN_FRONTEND=noninteractive for apt operations and use -y only when the action is intentional.",
-		"For long or noisy output, use bounded commands such as tail -n, journalctl --no-pager -n, docker logs --tail, or redirect full output to a temp file.",
-		"Before destructive actions, inspect first and make the destructive command explicit in the reason.",
-		"Use absolute paths or 'cd /path && command' when directory context matters.",
-		"Avoid printing secrets; inspect whether a file/key exists before catting environment files or credential paths.",
-		"Read console output before sending another long-running command to the same server.",
-		"If a request stays running and read_console shows no useful progress, use restart_console_session(server_id) before sending more commands.",
-	}
-	if executionRule == tokens.RuleApprovalRequired {
-		hints = append(hints, "This server requires approval; after exec returns approval_pending, poll get_request until it is completed, failed, or declined.")
-	}
-	return hints
 }
