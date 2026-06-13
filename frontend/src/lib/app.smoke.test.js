@@ -34,6 +34,7 @@ const connectorTokenPermissionPanelSource = readFileSync(join(currentDir, "..", 
 const permissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "permission-dialog.jsx"), "utf8");
 const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"), "utf8");
 const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "connectors", "templates", "common.jsx"), "utf8");
+const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "connectors", "templates", "target-profile-save.js"), "utf8");
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
 const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "catalog.js"), "utf8");
 const sshConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "form.jsx"), "utf8");
@@ -96,8 +97,8 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(sshConnectorListItemTemplateSource, /SSHConnectorRowActionsTemplate/);
   assert.match(sshConnectorConsoleTemplateSource, /SSHConnectorConsoleTemplate/);
   assert.match(sshConnectorModelSource, /apiPost\("\/api\/connector-targets\/test"/);
-  assert.match(sshConnectorModelSource, /apiPost\("\/api\/connector-targets"/);
-  assert.match(sshConnectorModelSource, /apiPut\(`\/api\/connector-targets\/\$\{targetID\}`/);
+  assert.match(sshConnectorModelSource, /createTargetWithProfile/);
+  assert.match(sshConnectorModelSource, /updateTargetWithProfile/);
   assert.match(sshConnectorModelSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}/);
   assert.doesNotMatch(sshConnectorModelSource, /\/api\/servers\/test-connection/);
   assert.match(sshConnectorModelSource, /\/profiles\/\$\{profile\.id\}\/test/);
@@ -107,10 +108,14 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(postgresConnectorFormTemplateSource, /PostgresConnectorFormTemplate/);
   assert.match(postgresConnectorListItemTemplateSource, /PostgresConnectorRowActionsTemplate/);
   assert.match(postgresConnectorConsoleTemplateSource, /PostgresConnectorConsoleTemplate/);
-  assert.match(postgresConnectorModelSource, /apiPut\(`\/api\/connector-targets\/\$\{target\.id\}`/);
+  assert.match(postgresConnectorModelSource, /createTargetWithProfile/);
+  assert.match(postgresConnectorModelSource, /updateTargetWithProfile/);
   assert.match(postgresConnectorModelSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}`/);
   assert.match(postgresConnectorModelSource, /\/profiles\/\$\{profile\.id\}\/test/);
   assert.match(postgresConnectorModelSource, /deleteDialog/);
+  assert.match(connectorTargetProfileSaveSource, /apiPost\("\/api\/connector-targets"/);
+  assert.match(connectorTargetProfileSaveSource, /apiPut\(`\/api\/connector-targets\/\$\{targetID\}`/);
+  assert.match(connectorTargetProfileSaveSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}`/);
   assert.match(sshConnectorModelSource, /function targetEndpoint/);
   assert.match(postgresConnectorModelSource, /function targetEndpoint/);
   assert.match(connectorsSource, /model\?\.targetEndpoint/);

@@ -1,4 +1,5 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api";
+import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
 
 const emptyPostgresCredentialForm = { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only" };
 
@@ -223,19 +224,13 @@ export async function resumeHostKeyAction() {
 }
 
 async function createTarget({ form }) {
-  const target = await apiPost("/api/connector-targets", {
-    connector_kind: "postgres",
-    name: form.name,
-    config: {
-      connection_mode: "direct",
-      host: form.host,
-      port: Number(form.port) || 5432,
-      database: form.database,
-      ssl_mode: form.ssl_mode,
+  await createTargetWithProfile({
+    targetPayload: {
+      connector_kind: "postgres",
+      name: form.name,
+      config: postgresTargetConfigFromForm(form),
     },
-  });
-  try {
-    await apiPost(`/api/connector-targets/${target.id}/profiles`, {
+    profilePayload: {
       kind: "username_password",
       label: form.profile_label,
       public: {
@@ -245,27 +240,14 @@ async function createTarget({ form }) {
         password: form.password,
       },
       risk_label: form.risk_label || "read-only",
-    });
-  } catch (error) {
-    await apiDelete(`/api/connector-targets/${target.id}`).catch(() => {});
-    throw error;
-  }
+    },
+  });
 }
 
 async function updateTarget({ form, target }) {
   const profile = target?.profiles?.[0];
   if (!target || !profile) throw new Error("Postgres connector profile is not loaded.");
-  await apiPut(`/api/connector-targets/${target.id}`, {
-    name: form.name,
-    config: {
-      connection_mode: "direct",
-      host: form.host,
-      port: Number(form.port) || 5432,
-      database: form.database,
-      ssl_mode: form.ssl_mode,
-    },
-  });
-  const payload = {
+  const profilePayload = {
     kind: profile.kind || "username_password",
     label: form.profile_label,
     public: {
@@ -274,17 +256,28 @@ async function updateTarget({ form, target }) {
     risk_label: form.risk_label || "read-only",
   };
   if (form.password) {
-    payload.secret = { password: form.password };
+    profilePayload.secret = { password: form.password };
   }
-  try {
-    await apiPut(`/api/connector-targets/${target.id}/profiles/${profile.id}`, payload);
-  } catch (error) {
-    await apiPut(`/api/connector-targets/${target.id}`, {
-      name: target.name,
-      config: target.config,
-    }).catch(() => {});
-    throw error;
-  }
+  await updateTargetWithProfile({
+    targetID: target.id,
+    previousTarget: target,
+    profileID: profile.id,
+    targetPayload: {
+      name: form.name,
+      config: postgresTargetConfigFromForm(form),
+    },
+    profilePayload,
+  });
+}
+
+function postgresTargetConfigFromForm(form) {
+  return {
+    connection_mode: "direct",
+    host: form.host,
+    port: Number(form.port) || 5432,
+    database: form.database,
+    ssl_mode: form.ssl_mode,
+  };
 }
 
 function credentialMetadata(profile) {

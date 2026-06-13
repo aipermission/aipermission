@@ -1,4 +1,5 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api";
+import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
 
 const emptySSHCredentialForm = { name: "main", key_type: "ed25519" };
 const emptySSHCredentialImportForm = { name: "imported-key", private_key: "", passphrase: "" };
@@ -281,21 +282,18 @@ async function createFromPayload({ payload, setupLater }) {
       throw new Error(testResult.stderr || testResult.stdout || "SSH connection test failed. Paste the install command on the server first, or choose setup later.");
     }
   }
-  const target = await apiPost("/api/connector-targets", {
-    connector_kind: "ssh",
-    name: payload.name,
-    config: targetConfigFromPayload(payload),
-  });
-  try {
-    await apiPost(`/api/connector-targets/${target.id}/profiles`, {
+  await createTargetWithProfile({
+    targetPayload: {
+      connector_kind: "ssh",
+      name: payload.name,
+      config: targetConfigFromPayload(payload),
+    },
+    profilePayload: {
       kind: "private_key",
       label: payload.username,
       public: profilePublicFromPayload(payload),
-    });
-  } catch (error) {
-    await apiDelete(`/api/connector-targets/${target.id}`).catch(() => {});
-    throw error;
-  }
+    },
+  });
 }
 
 async function saveFromPayload({ targetID, payload, setupLater, previousTarget }) {
@@ -309,27 +307,22 @@ async function saveFromPayload({ targetID, payload, setupLater, previousTarget }
       throw new Error(testResult.stderr || testResult.stdout || "SSH connection test failed. Paste the install command on the target first, or choose setup later.");
     }
   }
-  const target = await apiPut(`/api/connector-targets/${targetID}`, {
-    name: payload.name,
-    config: targetConfigFromPayload(payload),
-  });
-  const profile = target?.profiles?.[0];
+  const profile = previousTarget?.profiles?.[0];
   if (!profile) throw new Error("SSH connector profile is not loaded.");
-  try {
-    await apiPut(`/api/connector-targets/${targetID}/profiles/${profile.id}`, {
+  await updateTargetWithProfile({
+    targetID,
+    previousTarget,
+    profileID: profile.id,
+    targetPayload: {
+      name: payload.name,
+      config: targetConfigFromPayload(payload),
+    },
+    profilePayload: {
       kind: profile.kind || "private_key",
       label: payload.username,
       public: profilePublicFromPayload(payload),
-    });
-  } catch (error) {
-    if (previousTarget) {
-      await apiPut(`/api/connector-targets/${targetID}`, {
-        name: previousTarget.name,
-        config: previousTarget.config,
-      }).catch(() => {});
-    }
-    throw error;
-  }
+    },
+  });
 }
 
 export async function checkDocker({ target }) {
