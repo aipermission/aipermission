@@ -219,13 +219,17 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		_ = history.NewStore(runtime.database).SyncConnectorActionRequest(context.Background(), stale.ID)
 		return stale, fmt.Errorf("%s", reason)
 	}
+	rawInput, rawPayload, rawReason, err := connectorActionExecutionPayload(runtime, item)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
 	targetRef := connectortargets.ConnectorTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID)
 	prepared, err := runtime.prepareConnectorAction(ctx, actions.PrepareRequest{
 		Source:     commandRequestSourceMCP,
 		TargetRef:  targetRef,
 		ActionName: item.ActionName,
-		Input:      item.Input,
-		Reason:     item.Reason,
+		Input:      rawInput,
+		Reason:     rawReason,
 		CreatedAt:  time.Now().UTC(),
 	})
 	if err != nil {
@@ -276,12 +280,8 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		_ = history.NewStore(runtime.database).SyncConnectorActionRequest(context.Background(), stale.ID)
 		return stale, fmt.Errorf("connector approval context changed; ask the AI to send a fresh request")
 	}
-	payload := map[string]any{}
-	if item.EncryptedPayloadJSON != "" {
-		if err := runtime.vault.DecryptJSON(item.EncryptedPayloadJSON, &payload); err != nil {
-			return connectortargets.ActionRequest{}, err
-		}
-		prepared.Action.Payload = payload
+	if rawPayload != nil {
+		prepared.Action.Payload = rawPayload
 	}
 	if _, err := store.MarkActionRequestRunning(ctx, item.ID); err != nil {
 		return connectortargets.ActionRequest{}, err
@@ -361,6 +361,36 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 
 func connectorApprovalFinishStatuses() []connectors.ResultStatus {
 	return []connectors.ResultStatus{connectors.ResultApprovalPending, connectors.ResultRunning}
+}
+
+func connectorActionExecutionPayload(runtime *databaseRuntime, item connectortargets.ActionRequest) (map[string]any, map[string]any, string, error) {
+	if item.EncryptedPayloadJSON == "" {
+		return cloneMapAny(item.Input), nil, item.Reason, nil
+	}
+	var envelope connectorActionExecutionEnvelope
+	if err := runtime.vault.DecryptJSON(item.EncryptedPayloadJSON, &envelope); err == nil && (envelope.Input != nil || envelope.Payload != nil) {
+		reason := envelope.Reason
+		if reason == "" {
+			reason = item.Reason
+		}
+		return cloneMapAny(envelope.Input), cloneMapAny(envelope.Payload), reason, nil
+	}
+	var payload map[string]any
+	if err := runtime.vault.DecryptJSON(item.EncryptedPayloadJSON, &payload); err != nil {
+		return nil, nil, "", err
+	}
+	return cloneMapAny(payload), cloneMapAny(payload), item.Reason, nil
+}
+
+func cloneMapAny(input map[string]any) map[string]any {
+	if input == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
 
 func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest) connectorActionApprovalItem {

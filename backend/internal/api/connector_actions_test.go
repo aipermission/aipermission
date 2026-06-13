@@ -148,6 +148,15 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	if profileHash == baseHash {
 		t.Fatalf("credential profile revision drift should change approval hash")
 	}
+	tokenRenamed := token
+	tokenRenamed.Name = "renamed-token-label"
+	_, renamedTokenHash, err := connectorApprovalContext(prepared, tokenRenamed, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context with token rename: %v", err)
+	}
+	if renamedTokenHash != baseHash {
+		t.Fatalf("token label changes should not change approval hash")
+	}
 }
 
 func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
@@ -300,12 +309,18 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if mcpResponse.Input["access_token"] != "[REDACTED]" || approvalResponse.Input["access_token"] != "[REDACTED]" {
 		t.Fatalf("response input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
 	}
-	var decryptedPayload map[string]any
+	var decryptedPayload connectorActionExecutionEnvelope
 	if err := secretVault.DecryptJSON(encryptedPayload, &decryptedPayload); err != nil {
 		t.Fatalf("decrypt execution payload: %v", err)
 	}
-	if decryptedPayload["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload["sql"].(string), "super-secret") {
+	if decryptedPayload.Input["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Input["sql"].(string), "super-secret") {
 		t.Fatalf("encrypted execution payload should preserve raw input: %#v", decryptedPayload)
+	}
+	if decryptedPayload.Payload["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Payload["sql"].(string), "super-secret") {
+		t.Fatalf("encrypted execution payload should preserve raw action payload: %#v", decryptedPayload)
+	}
+	if !strings.Contains(decryptedPayload.Reason, "raw-reason-token") || !strings.Contains(decryptedPayload.Reason, "reason-secret") {
+		t.Fatalf("encrypted execution payload should preserve raw reason: %#v", decryptedPayload)
 	}
 }
 
@@ -377,6 +392,9 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 					"customer_secret": "visible-only-if-buggy",
 					"token":           "token-value",
 					"access_token":    "access-token-value",
+					"password_hash":   "password-hash-value",
+					"api_token_hash":  "api-token-hash-value",
+					"secret_value":    "secret-value",
 					"name":            "safe",
 				},
 			},
@@ -422,11 +440,18 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	).Scan(&outputJSON); err != nil {
 		t.Fatalf("read connector action output: %v", err)
 	}
-	if strings.Contains(outputJSON, "visible-only-if-buggy") || strings.Contains(outputJSON, "token-value") || strings.Contains(outputJSON, "access-token-value") {
-		t.Fatalf("structured connector output leaked sensitive field values: %s", outputJSON)
+	for _, secret := range []string{"visible-only-if-buggy", "token-value", "access-token-value", "password-hash-value", "api-token-hash-value", "secret-value"} {
+		if strings.Contains(outputJSON, secret) {
+			t.Fatalf("structured connector output leaked sensitive field value %q: %s", secret, outputJSON)
+		}
 	}
-	if !strings.Contains(outputJSON, `"customer_secret":"[REDACTED]"`) || !strings.Contains(outputJSON, `"token":"[REDACTED]"`) || !strings.Contains(outputJSON, `"access_token":"[REDACTED]"`) || !strings.Contains(outputJSON, `"name":"safe"`) {
-		t.Fatalf("structured connector output was not field-redacted as expected: %s", outputJSON)
+	for _, marker := range []string{`"customer_secret":"[REDACTED]"`, `"token":"[REDACTED]"`, `"access_token":"[REDACTED]"`, `"password_hash":"[REDACTED]"`, `"api_token_hash":"[REDACTED]"`, `"secret_value":"[REDACTED]"`} {
+		if !strings.Contains(outputJSON, marker) {
+			t.Fatalf("structured connector output missing redacted marker %s: %s", marker, outputJSON)
+		}
+	}
+	if !strings.Contains(outputJSON, `"name":"safe"`) {
+		t.Fatalf("structured connector output leaked sensitive field values: %s", outputJSON)
 	}
 }
 
@@ -470,6 +495,51 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	mcpResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-action-requests/"+strconv.FormatInt(result.Request.ID, 10), token.TokenValue, nil)
 	if mcpResponse.Code != http.StatusOK || !strings.Contains(mcpResponse.Body.String(), `"status":"declined"`) || !strings.Contains(mcpResponse.Body.String(), "not now") {
 		t.Fatalf("mcp connector request should show decline: %d %s", mcpResponse.Code, mcpResponse.Body.String())
+	}
+}
+
+func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    postgresconnector.ActionQueryReadonly,
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
+	}
+	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
+		Source:     commandRequestSourceMCP,
+		TokenID:    token.ID,
+		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		ActionName: postgresconnector.ActionQueryReadonly,
+		Input:      map[string]any{"sql": "select 'password=super-secret' as value"},
+		Reason:     "smoke",
+	})
+	if err != nil {
+		t.Fatalf("call connector action: %v", err)
+	}
+	if !strings.Contains(fmt.Sprint(result.Request.Input["sql"]), "password=[REDACTED]") {
+		t.Fatalf("display input should be redacted: %#v", result.Request.Input)
+	}
+
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runApprovalRequest{})
+	if runResponse.Code != http.StatusOK {
+		t.Fatalf("approval run should not fail stale because display input was redacted: %d %s", runResponse.Code, runResponse.Body.String())
+	}
+	finished, err := store.GetActionRequest(context.Background(), result.Request.ID)
+	if err != nil {
+		t.Fatalf("get finished connector request: %v", err)
+	}
+	if finished.Status == connectors.ResultStale {
+		t.Fatalf("request should not become stale from redacted display input: %#v", finished)
 	}
 }
 
@@ -542,6 +612,13 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
 	}
+	encryptedPayload, err := fixture.server.activeRuntime().vault.EncryptJSON(connectorActionExecutionEnvelope{
+		Input:   map[string]any{},
+		Payload: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("encrypt pending payload: %v", err)
+	}
 	request, err := store.InsertActionRequest(context.Background(), connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
@@ -550,7 +627,7 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 		ActionName:           badAction,
 		Source:               commandRequestSourceMCP,
 		Input:                map[string]any{},
-		EncryptedPayloadJSON: "{}",
+		EncryptedPayloadJSON: encryptedPayload,
 		Status:               connectors.ResultApprovalPending,
 		ApprovalContextHash:  "old-context",
 	})

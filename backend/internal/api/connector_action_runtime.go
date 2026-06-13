@@ -10,7 +10,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -36,6 +35,12 @@ type connectorActionCallResult struct {
 	Request    connectortargets.ActionRequest
 	Permission connectortargets.ActionPermission
 	Result     connectors.ActionResult
+}
+
+type connectorActionExecutionEnvelope struct {
+	Input   map[string]any `json:"input"`
+	Payload map[string]any `json:"payload"`
+	Reason  string         `json:"reason,omitempty"`
 }
 
 type connectorSecretAccessor struct {
@@ -195,7 +200,11 @@ func (s *Server) insertConnectorActionRequest(
 	status connectors.ResultStatus,
 	errorText string,
 ) (connectortargets.ActionRequest, error) {
-	payload, err := runtime.vault.EncryptJSON(prepared.Action.Payload)
+	payload, err := runtime.vault.EncryptJSON(connectorActionExecutionEnvelope{
+		Input:   prepared.Requested.Input,
+		Payload: prepared.Action.Payload,
+		Reason:  prepared.Requested.Reason,
+	})
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -238,11 +247,7 @@ func (s *Server) insertConnectorActionRequest(
 }
 
 func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, prepared actions.PreparedRequest) (connectors.ActionResult, error) {
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
-	connector, ok := registry.Get(prepared.Target.ConnectorKind)
+	connector, ok := runtime.connectorRegistry().Get(prepared.Target.ConnectorKind)
 	if !ok {
 		return connectors.ActionResult{}, fmt.Errorf("connector not found: %s", prepared.Target.ConnectorKind)
 	}
@@ -354,14 +359,22 @@ func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databa
 
 func connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {
 	fields := map[string]bool{
-		"api_key":       true,
-		"apikey":        true,
-		"authorization": true,
-		"credential":    true,
-		"password":      true,
-		"private_key":   true,
-		"secret":        true,
-		"token":         true,
+		"api_key":          true,
+		"api_token_hash":   true,
+		"apikey":           true,
+		"authorization":    true,
+		"credential":       true,
+		"credential_hash":  true,
+		"credential_value": true,
+		"password":         true,
+		"password_hash":    true,
+		"private_key":      true,
+		"refresh_token":    true,
+		"secret":           true,
+		"secret_hash":      true,
+		"secret_value":     true,
+		"token":            true,
+		"token_hash":       true,
 	}
 	for _, hint := range hints {
 		for _, field := range hint.SensitiveFields {
@@ -430,7 +443,6 @@ func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Tok
 		},
 		"token": map[string]any{
 			"id":         token.ID,
-			"name":       token.Name,
 			"expires_at": token.ExpiresAt,
 			"revoked_at": token.RevokedAt,
 		},

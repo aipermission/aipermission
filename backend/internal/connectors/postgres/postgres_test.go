@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
 )
 
 func TestConnectorMetadataAndSchemas(t *testing.T) {
@@ -116,7 +117,8 @@ func TestPrepareDescribeTableRequiresTable(t *testing.T) {
 }
 
 func TestPrepareReadonlyQuery(t *testing.T) {
-	prepared, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+	connector := New()
+	request := connectors.ActionRequest{
 		Target:     connectors.TargetView{Ref: "postgres:7:11", Name: "main-db", ConnectorKind: Kind},
 		Profile:    connectors.CredentialProfileView{ID: 11, ConnectorKind: Kind},
 		ActionName: ActionQueryReadonly,
@@ -125,7 +127,9 @@ func TestPrepareReadonlyQuery(t *testing.T) {
 			"max_rows": float64(maxRows + 500),
 		},
 		Reason: "inspect active users",
-	})
+	}
+	connectortest.AssertPrepareActionDeterministic(t, connector, request)
+	prepared, err := connector.PrepareAction(context.Background(), request)
 	if err != nil {
 		t.Fatalf("prepare query_readonly: %v", err)
 	}

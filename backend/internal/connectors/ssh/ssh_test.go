@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
 )
 
 func TestConnectorMetadataAndSchemas(t *testing.T) {
@@ -66,13 +67,15 @@ func TestGetHelpAndActionList(t *testing.T) {
 
 func TestPrepareExec(t *testing.T) {
 	connector := New()
-	prepared, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
+	request := connectors.ActionRequest{
 		Target:     connectors.TargetView{Ref: "ssh:worker-2", Name: "worker-2", ConnectorKind: Kind},
 		Profile:    connectors.CredentialProfileView{ID: 42, ConnectorKind: Kind, Kind: "private_key", Label: "root"},
 		ActionName: ActionExec,
 		Input:      map[string]any{"command": " apt update "},
 		Reason:     "maintenance",
-	})
+	}
+	connectortest.AssertPrepareActionDeterministic(t, connector, request)
+	prepared, err := connector.PrepareAction(context.Background(), request)
 	if err != nil {
 		t.Fatalf("prepare exec: %v", err)
 	}
