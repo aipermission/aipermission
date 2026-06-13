@@ -36,7 +36,7 @@ The gateway core remains responsible for:
 
 - API token authentication
 - target/profile/action permission checks
-- Prompt/Always/Disabled policy handling
+- `approval_required`, `always_run`, and `blocked` policy handling
 - approval requests and stale-context checks
 - redaction, history, and audit
 - local-only HTTP/MCP boundaries
@@ -48,10 +48,25 @@ Target and action input schemas must not declare secret fields. Store secret
 values in credential profiles and resolve them through `RuntimeContext.Secrets`
 only after permission and approval checks pass.
 
+Action inputs are persisted and returned to the UI/MCP as redacted display
+payloads. The gateway keeps the raw execution payload only in the encrypted
+connector action payload. Do not rely on action input JSON for secrets or
+post-approval execution material; put secrets in credential profiles and let
+`PrepareAction` build the raw payload that `ExecuteAction` needs.
+
 Credential schema fields that use `secret` or `multiline_secret` must also set
 `secret: true`. The registry rejects ambiguous schemas, and runtime validation
 still treats those field types as secret so contributor mistakes cannot leak
 credential material into public profile metadata.
+
+Credential schema fields marked as secret must not declare defaults. Defaults
+are returned to UI and catalog callers as schema metadata, so secret defaults
+would leak credential material before the profile is ever saved.
+
+Use `OutputHint.SensitiveFields` for structured response fields that should be
+masked even when their names are connector-specific. The gateway also masks a
+small default set such as `password`, `token`, `secret`, `api_key`, and
+`authorization`, but connector-specific names must be explicit.
 
 Approval-required requests hash the connector kind/version, action definition,
 target/profile public metadata, profile revision, encrypted secret revision,
@@ -60,9 +75,16 @@ changes before Run, the shared approval layer marks the request `stale`.
 Connector packages should keep action definitions stable and intentionally
 versioned.
 
+Target/profile deletion is archival from the connector action point of view.
+Archived targets and profiles are hidden from future permission checks and
+action execution, but existing action requests remain readable so history and
+audit can prove what happened. Late async finishers must not overwrite terminal
+states such as `stale`, `canceled`, or `completed`.
+
 Actions that return `running` need a runtime adapter owned by the gateway API
-layer. The adapter is responsible for polling/finalizing the action and syncing
-history. Connector packages should not add their own request lifecycle tables.
+layer. The adapter is responsible for polling/finalizing the action, redacting
+intermediate responses, syncing history, and providing MCP assistant hints.
+Connector packages should not add their own request lifecycle tables.
 
 SSH is the built-in compatibility adapter, not the template for new
 connectors. It uses gateway-owned runtime services for persistent PTY sessions,
@@ -75,6 +97,21 @@ SSH runtime tables and API payloads may still say `server_id`. In the connector
 model that is an SSH runtime/profile id used by the compatibility adapter, not a
 generic target id. New connectors should not create `server_id`-style mirrors;
 they should use connector action requests and unified history.
+
+Likewise, new connectors should not add connector-specific draft-test route
+branches, command tables, file-transfer tables, or route operation branches
+unless a reusable gateway adapter contract has been designed first.
+
+For the 0.2 compatibility adapter, an SSH target supports one credential
+profile. That keeps the existing persistent console, SFTP queue, authorized_keys
+cleanup, and MCP compatibility behavior deterministic while the generic
+connector model stays target/profile/action based for Postgres and future
+connectors.
+
+The Postgres connector is a read-oriented MVP. It uses read-only transactions,
+statement timeouts, row caps, and output byte caps, but it is not a replacement
+for database roles. Operators should use dedicated read-only Postgres users for
+AI profiles.
 
 ## Frontend Templates
 

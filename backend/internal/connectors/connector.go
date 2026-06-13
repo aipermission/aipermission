@@ -7,6 +7,11 @@ import "context"
 // GetHelp, GetActionList, and PrepareAction must be side-effect-free and should
 // not need raw secret access. ExecuteAction receives RuntimeContext only after
 // core permission and approval rules allow execution.
+//
+// Normal structured connectors should return terminal ActionResult statuses
+// from ExecuteAction. Returning ResultRunning is reserved for gateway-owned
+// runtime adapters that can finalize the request, sync history, and provide
+// polling hints from internal/api.
 type Connector interface {
 	Kind() string
 	Label() string
@@ -45,8 +50,8 @@ type RuntimeContext struct {
 	Target  TargetView
 	Profile CredentialProfileView
 
-	Secrets  SecretAccessor
-	Events   EventSink
+	Secrets SecretAccessor
+	Events  EventSink
 	// Services is an explicit escape hatch for gateway-owned runtime adapters
 	// such as SSH PTY/SFTP. Normal structured connectors should use Target,
 	// Profile, Secrets, and their own client code instead of depending on

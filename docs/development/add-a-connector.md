@@ -27,6 +27,15 @@ These rules are part of the connector contract:
   also set `secret: true`. The registry rejects malformed credential schemas,
   and runtime validation treats those field types as secret even if a
   contributor forgot the flag.
+- Secret credential fields must not declare defaults. Schema metadata is
+  readable by the local UI/API, so defaults are for non-secret UI hints only.
+- Connector-specific structured output secrets must be listed in
+  `OutputHint.SensitiveFields` so the shared redaction layer masks them in MCP
+  responses, history, and audit.
+- Action input JSON is persisted and returned as a redacted display payload.
+  The raw execution payload is kept only in the encrypted connector action
+  payload. Never put API tokens, passwords, private keys, or tenant secrets in
+  action input schemas; define them as credential profile fields instead.
 - `GetHelp`, `GetActionList`, and `PrepareAction` are side-effect-free and must
   not read raw secrets.
 - `ExecuteAction` is the only connector method that receives raw secrets, and
@@ -37,6 +46,10 @@ These rules are part of the connector contract:
 - Non-SSH connector actions are synchronous in 0.2.x. If a connector needs
   `running`/polling semantics, add a reusable gateway runtime adapter contract
   first; do not add connector-local polling tables.
+- New connectors must not add `server_id`, SSH-style command tables,
+  file-transfer tables, draft-test route branches, or operation routes unless a
+  reusable adapter contract has been reviewed. Use connector action requests and
+  unified history by default.
 - Route pages render through frontend templates. Do not add `if kind ===
   "redis"` branches to generic pages.
 
@@ -53,6 +66,18 @@ connector target id. New connectors must not add their own `server_id` model or
 copy SSH command/file-transfer tables. They should use connector action
 requests and unified history unless a reusable gateway runtime adapter has been
 designed first.
+
+The `Credentials` page stores connector credential profiles. The older SSH key
+material is now one kind of connector credential profile, not the model for
+every connector. For API or Redis-style connectors, add the profile fields that
+the connector needs and keep secret values in encrypted credential schemas.
+
+For 0.2.x, SSH targets intentionally support one credential profile in the
+compatibility adapter. That avoids hidden profile selection in persistent
+console, SFTP transfer, authorized_keys cleanup, and MCP compatibility paths.
+New connectors should support multiple profiles through the generic
+target/profile/action model unless their adapter contract explicitly says
+otherwise.
 
 ## Backend Contract
 
@@ -81,16 +106,33 @@ such as host, port, database name, or API base URL. Use credential schemas for
 passwords, tokens, private keys, tenant secrets, and anything that should be
 vault-encrypted. If a credential schema uses a secret field type, mark that
 field with `secret: true`; ambiguous secret fields fail registry validation.
+Do not put defaults on secret credential fields.
 
 The Connectors page manages a target and its default credential profile.
 Additional profiles for the same target belong on the Credentials page. Token
 permissions always bind one target, one credential profile, and one action.
+
+Draft target tests before save are currently SSH-only because SSH host-key
+approval and remote key installation happen before the local target/profile is
+persisted. Normal structured connectors should implement saved profile tests
+through `TestableConnector`; do not add connector-specific draft-test branches
+to generic route handlers without designing a reusable contract first.
 
 Action input schemas must not contain secret fields. Put passwords, API keys,
 tokens, private keys, and tenant-specific secret material in credential profile
 schemas so the gateway can encrypt and redact them consistently. `PrepareAction`
 may validate references to credential profile metadata, but raw secrets are
 available only through `RuntimeContext.Secrets` during approved execution.
+For connector-specific output fields that contain sensitive material, set
+`ActionDefinition.OutputHint.SensitiveFields`. The gateway masks those field
+names in structured output before returning MCP responses or persisting
+history/audit payloads.
+
+The same redaction rule applies to action inputs and approval displays. The
+gateway persists redacted input JSON, while the raw prepared execution payload
+is encrypted separately for the action runner. Tests for a connector should
+prove that realistic secret-looking input/output values are masked in MCP
+responses and history.
 
 Approval-required actions store a context snapshot when the request is created.
 That snapshot includes token validity, permission rule, target/profile public
@@ -107,11 +149,15 @@ invent connector-local polling tables.
 
 ## Frontend Templates
 
-Add templates under:
+Add templates and register them under:
 
 ```txt
 frontend/src/connectors/templates/<kind>/
 ```
+
+The folder alone is not enough. Static registration is required in
+`registry.jsx` and `catalog.js` so the Vite bundle and route-level pages know
+which template module to render.
 
 Expected files:
 
@@ -136,6 +182,28 @@ Template slots:
 | `CredentialRowActions` | optional | Extra credential-row actions, such as copying an SSH install command. |
 | `ToolbarActions` | optional | Connector-specific Console toolbar actions, such as Files or Bulk for SSH. |
 | `Operations` | optional | Connector-specific dialogs/operations launched from list rows. |
+
+`model.js` is the connector UI contract. Keep these exports small and
+connector-local:
+
+| Export | Required | Purpose |
+|---|---:|---|
+| `emptyForm` | yes | Initial add-target form state. |
+| `formFromTarget` | yes | Convert saved target/profile data into edit form state. |
+| `save` | yes | Create or update the target plus default profile. Use shared target/profile helpers where possible. |
+| `deleteTarget` | yes | Invoke generic target delete/archive, plus connector-specific cleanup options when needed. |
+| `test` | yes | Run the saved target/profile connection test. |
+| `targetDisplayName` / `targetSubtitle` / `targetEndpoint` | yes | Labels used by generic target lists and console headers. |
+| `targetProfileLabel` | yes | Profile label shown in the Console token panel. |
+| `usesLiveConsole` | yes | `true` only for adapters that own a live terminal runtime. |
+| `deleteDialog` | yes | Copy and action buttons for target deletion. |
+| `emptyCredentialState`, `credentialStateFromRow`, `credentialFormProps`, `saveCredential`, `deleteCredential`, `credentialRows` | yes | Generic Credentials page integration. |
+| `credentialHint`, `canEdit`, `canDelete` | yes | Generic row affordances. |
+| `hostKeyActionFromError`, `resumeHostKeyAction` | yes | Return `null` / throw for non-SSH connectors; SSH uses this for host-key approval retry. |
+
+Connector templates may add optional exports for connector-owned operations,
+but generic Test/Edit/Delete and permission/history behavior must stay in the
+shared pages and stores.
 
 Register the connector in:
 
@@ -170,6 +238,29 @@ A Redis connector should add only Redis-specific behavior:
 It should not add a Redis-specific token permission table, approval table,
 history page, audit route, MCP tool family, or global UI page.
 
+Minimal Redis skeleton checklist:
+
+- `backend/internal/connectors/redis/redis.go`
+- `backend/internal/connectors/redis/redis_test.go`
+- backend registry entry and registry test
+- `frontend/src/connectors/templates/redis/metadata.json`
+- `frontend/src/connectors/templates/redis/model.js`
+- `frontend/src/connectors/templates/redis/form.jsx`
+- `frontend/src/connectors/templates/redis/credential-form.jsx`
+- `frontend/src/connectors/templates/redis/list-item.jsx`
+- `frontend/src/connectors/templates/redis/console.jsx`
+- frontend registry/catalog entries and smoke tests
+- README, REST/MCP docs, and connector-specific safety notes
+
+## Postgres Safety Boundary
+
+The built-in Postgres connector is intentionally conservative. `query_readonly`
+rejects obvious write statements, enforces a SQL size limit, executes with a
+read-only transaction, applies a statement timeout, caps row count, and caps
+returned output bytes before MCP/history persistence. Those controls are not a
+substitute for database-level least privilege. Use dedicated read-only roles for
+AI profiles and prefer `approval_required` for exploratory SQL.
+
 ## Tests
 
 Add focused tests for:
@@ -179,8 +270,12 @@ Add focused tests for:
 - action list visibility for a real target/profile
 - target schema rejection for secret fields
 - action input schema rejection for secret fields
-- blocked, Prompt, and Always permission behavior
+- secret credential schema rejection when defaults are present
+- connector-specific `OutputHint.SensitiveFields` redaction
+- `blocked`, `approval_required`, and `always_run` permission behavior
 - approval-required execution and stale-context behavior
+- stale request finalization when target/profile/action context changes or is
+  deleted before approval
 - history/audit persistence through the shared pipeline
 - structured input/output JSON search through unified history
 - connector action source propagation into unified history
@@ -200,6 +295,10 @@ Exact checklist for built-in connector registration:
   and `frontend/src/connectors/templates/catalog.js`
 - frontend smoke coverage in `frontend/src/lib/app.smoke.test.js`
 - public docs updates for user-visible setup, REST, MCP, or security behavior
+
+Before review, grep for the connector kind outside its implementation and
+template folders. Expected references are registration, tests, and docs. New
+generic pages should not gain connector-specific branches.
 
 ## Documentation
 

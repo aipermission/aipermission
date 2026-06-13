@@ -77,9 +77,9 @@ npm publish
 - Create or unlock an encrypted database.
 - Capture fresh screenshots after final visual polish: unlock screen, dashboard, console approval dialog, tokens permissions, settings/security, history/audit.
 - Create an SSH key and confirm the install command copies correctly.
-- Add a server and run the SSH connection test.
+- Add an SSH connector target and run the SSH connection test.
 - Approve the first SSH host fingerprint after verifying it from a trusted source.
-- Create a token and grant one server permission.
+- Create a token and grant one connector target/action permission.
 - Run one `approval_required` MCP command and approve it from Console.
 - Run one `always_run` MCP command and confirm live Console output appears.
 - Check the History page for the executed command and confirm the Audit Logs page shows the persisted audit entries from the encrypted database.

@@ -217,12 +217,14 @@ If a test or SSH-backed action reaches an unknown host key, the backend returns:
 
 The UI asks the user to verify and approve the fingerprint. `POST /api/ssh-host-keys/approve` records the key in the local `known_hosts` file.
 
-`DELETE /api/connector-targets/{id}` deletes only the local connector target
-record. SSH targets also support `?remove_key=true`, which first connects with
-the target's gateway key, removes remote `~/.ssh/authorized_keys` entries
-containing that public key blob, then deletes the local record. This handles
-changed comments or authorized_keys options. If remote cleanup fails or removes
-zero entries, the local record is kept.
+`DELETE /api/connector-targets/{id}` removes the connector from active local
+use by archiving the target and hiding its credential profiles from future
+permission checks. Connector action requests, history rows, and audit records
+remain readable for review. SSH targets also support `?remove_key=true`, which
+first connects with the target's gateway key, removes remote
+`~/.ssh/authorized_keys` entries containing that public key blob, then archives
+the local target. This handles changed comments or authorized_keys options. If
+remote cleanup fails or removes zero entries, the local target remains active.
 
 `POST /api/connector-targets/{id}/profiles` creates one credential profile:
 
@@ -259,8 +261,12 @@ generic connector actions and not MCP tools.
 profile. If the `secret` object is omitted, the existing encrypted secret is
 kept. If `secret` is present, the vault payload is replaced.
 
-`DELETE /api/connector-targets/{id}/profiles/{profile_id}` removes one
-connector credential profile.
+`DELETE /api/connector-targets/{id}/profiles/{profile_id}` archives one
+connector credential profile. Archived profiles are hidden from future
+permission checks, while previous action requests and history keep their target
+and profile labels. The 0.2 SSH compatibility adapter rejects deleting the last
+SSH profile; delete the SSH connector target instead so persistent console,
+file-transfer, and authorized_keys cleanup state is handled together.
 
 `POST /api/connector-targets/{id}/profiles/{profile_id}/test` runs the
 connector's side-effect-free connection test when the connector implements one.
@@ -270,6 +276,12 @@ The response includes `ok`, connector-specific `status`, message, and duration.
 action contract for that exact target/profile pair. Token permission UIs should
 prefer this route over connector catalog actions because future connectors may
 expose different actions for different profiles.
+
+Postgres `query_readonly` is defense-in-depth, not a SQL sandbox. It rejects
+obvious writes, runs inside a read-only transaction, caps rows and output bytes,
+and applies a statement timeout, but operators should still use dedicated
+least-privilege database roles and prefer `approval_required` for ad-hoc
+queries over sensitive data.
 
 ## Console Commands
 
@@ -351,15 +363,20 @@ status, progress, and checksum only. File contents are never stored in
 SQLCipher. Uploads and downloads use private short-lived temporary staging
 files under the local data directory.
 
-The local UI can upload local files and download remote files. MCP can list
-transfer status, browse remote directories, start remote download queues, save
-completed downloads to explicit local paths, upload explicitly named local
-files, and pause/resume/cancel queues. MCP transfer management requires
-`always_run` or `approval_required` permission for that server. `always_run`
-starts the queue immediately. `approval_required` creates a
-`pending_approval` queue in the local Transfer Center; only locally approved
-items are copied. MCP tool responses never include file contents, local
-temporary paths, archive staging paths, or local upload contents.
+These endpoints are SSH runtime/UI compatibility endpoints. They use the shared
+SSH target/profile identity and are normalized into history/audit, but they are
+not separate generic connector-action REST endpoints. MCP file-transfer support
+is exposed through connector actions and still goes through token
+target/profile/action permission checks.
+
+The local UI can upload local files, download remote files, and pause/resume or
+cancel transfer queues. MCP uses the generic connector-action tools instead of
+separate file-transfer wrappers. In 0.2.x the SSH connector exposes remote
+browsing and remote-to-local download queue creation through
+`browse_remote_files` and `start_file_download`; uploads, save-file dialogs, and
+queue pause/resume/cancel remain local web UI operations. MCP transfer-related
+responses never include file contents, local temporary paths, archive staging
+paths, or local upload contents.
 
 `GET /api/file-transfers` returns paginated transfer history. Optional filters
 include `direction`, `status`, the SSH runtime `server_id`, and `q`:
@@ -693,6 +710,10 @@ approval_required
 blocked
 ```
 
+The UI may show `Disabled` when no connector permission row exists for a
+token/target/profile/action. The API-level `blocked` rule is an explicit stored
+deny state; omitted permissions and `blocked` both prevent execution.
+
 ```json
 {
   "permissions": [
@@ -831,15 +852,20 @@ POST /api/history-labels
 DELETE /api/history-labels/{id}
 ```
 
-`GET /api/history` is the canonical connector activity stream. SSH terminal
-requests, manually typed Console input, Postgres requests, and SSH file
-transfers all pass through the same permission pipeline and are normalized into
-history entries. Use `connector_kind` to filter by connector type (`ssh`,
-`postgres`, and future connectors). `activity_type` is a technical shape filter
-for API clients that need command/action/file-transfer-specific payloads:
+`GET /api/history` is the canonical activity stream for connector targets.
+MCP connector actions pass through the connector action token permission,
+approval, history, and audit pipeline. SSH UI console/manual input and
+SFTP-backed file transfers are local UI/runtime compatibility surfaces; they
+are normalized into unified history/audit where possible, but they are not all
+token-scoped connector action approvals. Use `connector_kind` to filter by
+connector type (`ssh`, `postgres`, and future connectors). `activity_type` is a
+technical shape filter for API clients that need command/action/file-transfer
+payloads. Use `target_id` to filter one connector target, and `profile_id` when
+the target has multiple credential profiles such as `admin` and `readonly`:
 
 ```txt
 GET /api/history?limit=50&offset=0&connector_kind=ssh&activity_type=file_transfer&status=completed&q=backup
+GET /api/history?connector_kind=postgres&target_id=7&profile_id=11
 ```
 
 `GET /api/history/{id}` returns the detail payload for one normalized history
@@ -912,11 +938,12 @@ Connector approvals use separate endpoints because they execute structured
 connector requests rather than SSH shell commands. `GET
 /api/connector-action-approvals?status=approval_pending` lists pending
 connector requests for the local UI. Run validates the current
-token/profile/action permission and approval-context hash before decrypting the
-stored payload and executing the connector. Connector approval context includes
-token validity, permission rule, target/profile public metadata, connector
-kind/version, action definition, and payload hash. If that context changed, the
-request becomes `stale` and the AI must send a fresh connector call.
+token/target/profile/action permission and approval-context hash before
+decrypting the stored payload and executing the connector. Connector approval
+context includes token validity, permission rule, target/profile public
+metadata, profile revision, encrypted secret revision, connector kind/version,
+action definition, and payload hash. If that context changed, the request
+becomes `stale` and the AI must send a fresh connector call.
 
 ## Messages
 
