@@ -64,6 +64,7 @@ test("App keeps the primary route surface available", () => {
   assert.match(appSource, /path="\/servers"/);
   assert.match(appSource, /<Navigate to="\/connectors" replace/);
   assert.doesNotMatch(sidebarSource, /to: "\/servers"/);
+  assert.match(shellSource, /Promise\.allSettled/);
 });
 
 test("Connectors page wires generic connector templates", () => {
@@ -101,7 +102,7 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(sshConnectorModelSource, /updateTargetWithProfile/);
   assert.match(sshConnectorModelSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}/);
   assert.doesNotMatch(sshConnectorModelSource, /\/api\/servers\/test-connection/);
-  assert.match(sshConnectorModelSource, /\/profiles\/\$\{profile\.id\}\/test/);
+  assert.match(sshConnectorModelSource, /\/profiles\/\$\{selectedProfile\.id\}\/test/);
   assert.doesNotMatch(sshConnectorModelSource, /apiPut\(`\/api\/servers\//);
   assert.doesNotMatch(sshConnectorModelSource, /apiDelete\(`\/api\/servers\//);
   assert.match(sshConnectorModelSource, /deleteDialog/);
@@ -111,7 +112,7 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(postgresConnectorModelSource, /createTargetWithProfile/);
   assert.match(postgresConnectorModelSource, /updateTargetWithProfile/);
   assert.match(postgresConnectorModelSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}`/);
-  assert.match(postgresConnectorModelSource, /\/profiles\/\$\{profile\.id\}\/test/);
+  assert.match(postgresConnectorModelSource, /\/profiles\/\$\{selectedProfile\.id\}\/test/);
   assert.match(postgresConnectorModelSource, /deleteDialog/);
   assert.match(connectorTargetProfileSaveSource, /apiPost\("\/api\/connector-targets"/);
   assert.match(connectorTargetProfileSaveSource, /apiPut\(`\/api\/connector-targets\/\$\{targetID\}`/);
@@ -140,6 +141,11 @@ test("Connectors page wires generic connector templates", () => {
   assert.doesNotMatch(connectorsSource, /\/api\/ssh-host-keys/);
   assert.doesNotMatch(connectorsSource, /\/profiles\/\$\{profile\.id\}\/test/);
   assert.doesNotMatch(shellSource, /apiGet\("\/api\/servers"\)/);
+  assert.doesNotMatch(shellSource, /\/api\/connectors\/ssh\/credentials/);
+  assert.doesNotMatch(shellSource, /ssh_key_id|target\.config\?\.host|target\.config\?\.username/);
+  assert.match(shellSource, /loadCredentialResources/);
+  assert.match(sshConnectorModelSource, /loadCredentialResources/);
+  assert.match(sshConnectorModelSource, /liveConsoleRuntimeTarget/);
   assert.match(shellSource, /liveConsoleRuntimeTargets/);
 });
 
@@ -196,10 +202,10 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.1\.14"/);
-  assert.match(releaseSource, /AGPL licensing/);
-  assert.match(releaseSource, /MCP multi-server commands/);
-  assert.match(releaseSource, /MCP exec can run the same command across multiple visible SSH targets/);
+  assert.match(releaseSource, /appVersion = "0\.2\.0"/);
+  assert.match(releaseSource, /Connector-native baseline/);
+  assert.match(releaseSource, /SSH and Postgres now run through the same connector target/);
+  assert.match(releaseSource, /Pre-0\.2 preview databases are not migrated automatically/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
@@ -295,8 +301,8 @@ test("SSH connector template owns SSH-specific operations", () => {
   assert.match(sshConnectorOperationsSource, /Container details/);
   assert.match(sshConnectorOperationsSource, /Container logs/);
   assert.match(sshConnectorOperationsSource, /No running Docker containers/);
-  assert.match(sshConnectorModelSource, /\/api\/connectors\/ssh\/targets\/\$\{target\.id\}\/operations\/docker-check/);
-  assert.match(sshConnectorModelSource, /\/api\/connectors\/ssh\/targets\/\$\{target\.id\}\/operations\/docker-logs/);
+  assert.match(sshConnectorModelSource, /\/api\/connector-targets\/\$\{target\.id\}\/operations\/docker-check/);
+  assert.match(sshConnectorModelSource, /\/api\/connector-targets\/\$\{target\.id\}\/operations\/docker-logs/);
   assert.doesNotMatch(sshConnectorModelSource, /\/api\/servers\/\$\{server\.id\}\/docker/);
   assert.match(sshConnectorFormTemplateSource, /Advanced SSH startup/);
   assert.match(sshConnectorFormTemplateSource, /startup_input_after_connect/);
@@ -375,7 +381,7 @@ test("Console exposes stuck command recovery controls", () => {
   assert.match(consolePageSource, /ConsoleRecoveryPanel/);
   assert.match(consolePageSource, /AI command running/);
   assert.match(consolePageSource, /Manual command running/);
-  assert.match(consolePageSource, /Looks stuck\? Restart opens a fresh SSH session/);
+  assert.match(consolePageSource, /Looks stuck\? Restart opens a fresh console session/);
   assert.match(consolePageSource, /commandPreview/);
   assert.match(consolePageSource, /Restart/);
 });

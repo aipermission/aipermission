@@ -7,6 +7,41 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-13
+
+### Added
+
+- Added the connector-native runtime model: connector target, credential
+  profile, token action permission, approval policy, connector execution,
+  history, and audit.
+- Added Postgres as the first structured connector, with schema discovery,
+  table metadata, and bounded read-only SQL actions through database credential
+  profiles.
+- Added connector UI templates for target forms, credential forms, connector
+  list operations, Console activity surfaces, and toolbar actions.
+- Added connector approval-context snapshots that cover target/profile metadata,
+  credential revisions, connector action definitions, permission state, and
+  prepared payload hashes before approval execution.
+
+### Changed
+
+- SSH now uses the same connector target/profile/action vocabulary as
+  structured connectors, while keeping its live terminal and file transfer
+  adapter surfaces.
+- Reset the local schema as a clean 0.2 connector-native baseline while the
+  project is still pre-1.0.
+- Pre-0.2 preview databases are not migrated automatically. Create a fresh 0.2
+  database before testing this release. If a real user needs to preserve
+  important 0.1.x data, open an issue and we can provide a separate one-time
+  import tool instead of keeping runtime compatibility code.
+
+### Security
+
+- Structured connector outputs use shared redaction before MCP responses,
+  history, and audit persistence.
+- Target schemas reject secret fields; credential profile schemas own encrypted
+  secret material.
+
 ## [0.1.14] - 2026-06-10
 
 ### Changed

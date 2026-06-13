@@ -1,6 +1,34 @@
-export const appVersion = "0.1.14";
+export const appVersion = "0.2.0";
 
 export const changelogEntries = [
+  {
+    version: "0.2.0",
+    label: "Connector-native baseline",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "SSH and Postgres now run through the same connector target, credential profile, token action permission, approval, history, and audit pipeline.",
+          "Connector UI templates define target forms, credential forms, list operations, console/activity surfaces, and toolbar actions per connector kind.",
+          "Postgres connector actions support schema discovery, table metadata, and bounded read-only SQL through database credential profiles.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "The local database schema is reset as a clean 0.2 connector-native baseline while the project is still pre-1.0.",
+          "Pre-0.2 preview databases are not migrated automatically. Create a fresh 0.2 database before testing this release.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Connector approvals include context snapshots for target/profile metadata, credential revisions, connector action definitions, permission state, and prepared payload hashes.",
+          "Structured connector outputs use shared redaction before MCP responses, history, and audit persistence.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.1.14",
     label: "AGPL licensing",
