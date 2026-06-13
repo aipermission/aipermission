@@ -53,8 +53,8 @@ func (s *Store) SyncCommandRequest(ctx context.Context, id int64) error {
 			cr.completed_at,
 			COALESCE(cr.completed_at, datetime('now'))
 		FROM command_requests cr
-		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE cr.id = ?
 		ON CONFLICT(source_ref_type, source_ref_id) DO UPDATE SET
 			token_id = excluded.token_id,
@@ -166,8 +166,8 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 			ft.completed_at,
 			ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.id = ?
 		ON CONFLICT(source_ref_type, source_ref_id) DO UPDATE SET
 			server_id = excluded.server_id,

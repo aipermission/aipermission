@@ -532,10 +532,12 @@ export function ConsolePage() {
               status={selectedTargetStatus({
                 target: selectedTarget,
                 session: selectedSession,
-                pendingCount: selectedPendingApprovals.length,
-                runningCount: selectedTargetUsesLiveConsole
-                  ? approvals.data.filter((approval) => approval.status === "running" && selectedServer && Number(approval.server_id) === Number(selectedServer.id)).length
-                  : connectorActionApprovals.data.filter((approval) => approval.status === "running" && selectedTarget && approval.target_ref === selectedTarget.ref).length,
+                pendingCount: selectedPendingApprovals.length + selectedPendingConnectorApprovals.length,
+                runningCount:
+                  (selectedTargetUsesLiveConsole
+                    ? approvals.data.filter((approval) => approval.status === "running" && selectedServer && Number(approval.server_id) === Number(selectedServer.id)).length
+                    : 0) +
+                  connectorActionApprovals.data.filter((approval) => approval.status === "running" && selectedTarget && approval.target_ref === selectedTarget.ref).length,
               })}
             />
             <div className="min-w-0">
@@ -743,12 +745,10 @@ function TargetListItem({
   const server = serverID ? servers.data.find((item) => Number(item.id) === Number(serverID)) : null;
   const session = serverID ? latestSessionForServer(sessions, serverID) || emptySession : emptySession;
   const active = selectedTarget && selectedTarget.ref === target.ref;
-  const pendingCount = serverID
-    ? pendingApprovals.filter((approval) => Number(approval.server_id) === Number(serverID)).length
-    : pendingConnectorApprovals.filter((approval) => approval.target_ref === target.ref).length;
-  const runningCount = serverID
-    ? approvals.data.filter((approval) => approval.status === "running" && Number(approval.server_id) === Number(serverID)).length
-    : connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === target.ref).length;
+  const connectorPendingCount = pendingConnectorApprovals.filter((approval) => approval.target_ref === target.ref).length;
+  const connectorRunningCount = connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === target.ref).length;
+  const pendingCount = (serverID ? pendingApprovals.filter((approval) => Number(approval.server_id) === Number(serverID)).length : 0) + connectorPendingCount;
+  const runningCount = (serverID ? approvals.data.filter((approval) => approval.status === "running" && Number(approval.server_id) === Number(serverID)).length : 0) + connectorRunningCount;
   const unreadCount = serverID ? unreadMessages.filter((message) => Number(message.server_id) === Number(serverID)).length : 0;
   const attentionCount = pendingCount + unreadCount;
   const status = selectedTargetStatus({ target, session, pendingCount, runningCount });
@@ -816,7 +816,7 @@ function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
           </span>
         ) : null}
         <span className={`min-w-0 truncate font-mono ${mutedClass}`}>{commandPreview}</span>
-        {showRecoveryHint ? <span className="shrink-0 font-medium">Looks stuck? Restart opens a fresh SSH session.</span> : null}
+        {showRecoveryHint ? <span className="shrink-0 font-medium">Looks stuck? Restart opens a fresh console session.</span> : null}
       </div>
       {action.error ? <span className="max-w-80 truncate text-red-300">{action.error}</span> : null}
       <Button
@@ -829,7 +829,7 @@ function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
         }`}
         onClick={onRestart}
         disabled={action.state === "running"}
-        title="Close the gateway-owned persistent console session and let the next command open a fresh SSH session"
+        title="Close the gateway-owned persistent console session and let the next command open a fresh one"
       >
         <RefreshCcw className="h-3.5 w-3.5" />
         {action.state === "running" ? "Restarting..." : "Restart"}

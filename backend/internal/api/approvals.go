@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/history"
 )
@@ -173,11 +172,10 @@ func (s approvalHandlers) runApproval(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, driftReason+"; ask the AI to send a fresh request")
 		return
 	}
-	prepared, err := runtime.prepareSSHConnectorAction(r.Context(), item.ServerID, actions.PrepareRequest{
-		Source:     item.Source,
-		ActionName: sshconnector.ActionExec,
-		Input:      map[string]any{"command": command},
-		Reason:     item.Reason,
+	prepared, err := runtime.prepareLiveConsoleConnectorAction(r.Context(), item.ServerID, actions.PrepareRequest{
+		Source: item.Source,
+		Input:  map[string]any{"command": command},
+		Reason: item.Reason,
 	})
 	if err != nil {
 		writeInternalError(w)
@@ -370,8 +368,8 @@ func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRunti
 		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+			LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id
+			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY cr.created_at DESC, cr.id DESC
@@ -414,8 +412,8 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 	if err := runtime.database.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM command_requests cr
-		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+			LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id
+			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE `+whereSQL,
 		args...,
@@ -428,8 +426,8 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, '' AS stdout, '' AS stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+			LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id
+			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE `+whereSQL+`
 		ORDER BY cr.created_at DESC, cr.id DESC
@@ -460,8 +458,8 @@ func (s *Server) getCommandRequest(ctx context.Context, runtime *databaseRuntime
 		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.server_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+			LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id
+			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE cr.id = ? AND (? = '' OR cr.source = ?) AND (? = 0 OR cr.token_id = ?)`,
 		id,

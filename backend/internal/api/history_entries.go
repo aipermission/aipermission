@@ -218,7 +218,7 @@ func historyEntryWhere(filter historyEntryFilter) (string, []any) {
 		"(? = '' OR he.status = ?)",
 		"(? = '' OR he.source = ?)",
 		"(? = 0 OR he.server_id = ?)",
-		"(? = 0 OR he.target_id = ? OR he.server_id IN (SELECT id FROM connector_credential_profiles WHERE connector_kind = 'ssh' AND target_id = ?))",
+		"(? = 0 OR he.target_id = ? OR he.server_id IN (SELECT id FROM connector_credential_profiles WHERE target_id = ?))",
 		"(? = 0 OR he.profile_id = ? OR he.server_id = ?)",
 	}
 	args := []any{

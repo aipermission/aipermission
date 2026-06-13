@@ -30,14 +30,13 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := runtime.database.QueryContext(r.Context(), `
-		SELECT
-			t.id, t.connector_kind, t.name, t.config_json, t.status,
-			p.id, p.kind, p.label, p.public_json,
-			CASE WHEN t.connector_kind = 'ssh' THEN p.id ELSE 0 END,
-			t.created_at, t.updated_at
-		FROM connector_targets t
-		JOIN connector_credential_profiles p ON p.target_id = t.id
-		WHERE t.status = 'active' AND p.status = 'active' AND p.connector_kind = t.connector_kind
+			SELECT
+				t.id, t.connector_kind, t.name, t.config_json, t.status,
+				p.id, p.kind, p.label, p.public_json,
+				t.created_at, t.updated_at
+			FROM connector_targets t
+			JOIN connector_credential_profiles p ON p.target_id = t.id
+			WHERE t.status = 'active' AND p.status = 'active' AND p.connector_kind = t.connector_kind
 		ORDER BY t.connector_kind, t.name, p.label, p.id`)
 	if err != nil {
 		writeInternalError(w)
@@ -60,7 +59,6 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 			&item.ProfileKind,
 			&item.ProfileLabel,
 			&publicJSON,
-			&item.ServerID,
 			&item.CreatedAt,
 			&item.UpdatedAt,
 		); err != nil {
@@ -80,6 +78,9 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		}
 		item.Config = config
 		item.Public = public
+		if adapter := connectorLiveConsoleTargetAdapterFor(item.ConnectorKind); adapter != nil {
+			item.ServerID = adapter.LiveConsoleProfileID(item.ProfileID)
+		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {

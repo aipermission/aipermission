@@ -18,19 +18,20 @@ export function emptyForm() {
   };
 }
 
-export function formFromTarget({ target }) {
-  const profile = target.profiles?.[0] || {};
+export function formFromTarget({ target, profile }) {
+  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
   return {
     connector_kind: "postgres",
+    profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
     name: target.name || "",
     host: target.config?.host || "",
     port: target.config?.port || 5432,
     database: target.config?.database || "",
     ssl_mode: target.config?.ssl_mode || "prefer",
-    profile_label: profile.label || "readonly",
-    username: profile.public?.username || "",
+    profile_label: selectedProfile.label || "readonly",
+    username: selectedProfile.public?.username || "",
     password: "",
-    risk_label: profile.risk_label || "read-only",
+    risk_label: selectedProfile.risk_label || "read-only",
   };
 }
 
@@ -156,10 +157,10 @@ export function credentialRows({ targets }) {
   );
 }
 
-export async function test({ target }) {
-  const profile = target.profiles?.[0];
-  if (!profile) throw new Error("Connector profile is not loaded.");
-  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${profile.id}/test`, {});
+export async function test({ target, profile }) {
+  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+  if (!selectedProfile) throw new Error("Connector profile is not loaded.");
+  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
   return { ok: data.ok, error: data.message || null, data };
 }
 
@@ -245,7 +246,7 @@ async function createTarget({ form }) {
 }
 
 async function updateTarget({ form, target }) {
-  const profile = target?.profiles?.[0];
+  const profile = target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) || (target?.profiles?.length === 1 ? target.profiles[0] : null);
   if (!target || !profile) throw new Error("Postgres connector profile is not loaded.");
   const profilePayload = {
     kind: profile.kind || "username_password",

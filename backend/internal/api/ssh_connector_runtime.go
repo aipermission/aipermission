@@ -17,21 +17,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
-type connectorRuntimeAdapter interface {
-	RuntimeServices(server *Server, runtime *databaseRuntime) map[string]any
-	SupportsRunning(prepared actions.PreparedRequest) bool
-	FinishRunning(server *Server, runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest)
-	RunningHint(request connectortargets.ActionRequest) string
-}
-
 type sshRuntimeAdapter struct{}
-
-func connectorRuntimeAdapterFor(kind string) connectorRuntimeAdapter {
-	if kind == sshconnector.Kind {
-		return sshRuntimeAdapter{}
-	}
-	return nil
-}
 
 func connectorRuntimeServices(kind string, server *Server, runtime *databaseRuntime) map[string]any {
 	adapter := connectorRuntimeAdapterFor(kind)
@@ -45,6 +31,10 @@ func (sshRuntimeAdapter) RuntimeServices(server *Server, runtime *databaseRuntim
 	return map[string]any{
 		sshconnector.RuntimeServiceName: sshConnectorRuntimeExecutor{server: server, runtime: runtime},
 	}
+}
+
+func (sshRuntimeAdapter) LiveConsoleActionName() string {
+	return sshconnector.ActionExec
 }
 
 func (sshRuntimeAdapter) SupportsRunning(prepared actions.PreparedRequest) bool {

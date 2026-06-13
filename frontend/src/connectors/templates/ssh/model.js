@@ -1,4 +1,4 @@
-import { apiDelete, apiPost, apiPut } from "../../../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "../../../lib/api";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
 
 const emptySSHCredentialForm = { name: "main", key_type: "ed25519" };
@@ -19,11 +19,12 @@ export function emptyForm({ firstCredentialID = "" } = {}) {
   };
 }
 
-export function formFromTarget({ target, server }) {
-  const profile = target?.profiles?.[0] || {};
-  const profilePublic = profile.public || {};
+export function formFromTarget({ target, profile, server }) {
+  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+  const profilePublic = selectedProfile.public || {};
   return {
     connector_kind: "ssh",
+    profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
     name: target?.name || server?.name || "",
     host: target?.config?.host || server?.host || "",
     port: target?.config?.port || server?.port || 22,
@@ -75,6 +76,11 @@ export function emptyCredentialState() {
     form: { ...emptySSHCredentialForm },
     importForm: { ...emptySSHCredentialImportForm },
   };
+}
+
+export async function loadCredentialResources() {
+  const data = await apiGet("/api/connectors/ssh/credentials");
+  return data.items || data || [];
 }
 
 export function credentialStateFromRow({ row }) {
@@ -165,10 +171,10 @@ export function credentialRows({ credentials, targets = [] }) {
   });
 }
 
-export async function test({ target }) {
-  const profile = target?.profiles?.[0];
-  if (!target || !profile) throw new Error("SSH connector profile is not loaded.");
-  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${profile.id}/test`, {});
+export async function test({ target, profile }) {
+  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+  if (!target || !selectedProfile) throw new Error("SSH connector profile is not loaded.");
+  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
   return { ok: data.ok, error: data.message || data.stderr || null, data };
 }
 
@@ -180,15 +186,17 @@ export function canDelete({ target }) {
   return Boolean(target);
 }
 
-export function credentialHint({ target, credentials }) {
-  const sshKeyID = target.profiles?.[0]?.public?.ssh_key_id;
+export function credentialHint({ target, profile, credentials }) {
+  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+  const sshKeyID = selectedProfile?.public?.ssh_key_id;
   if (!sshKeyID) return null;
   const key = credentials.find((item) => Number(item.id) === Number(sshKeyID));
   return key ? `Key: ${key.name}` : `Key: #${sshKeyID}`;
 }
 
-export function targetEndpoint({ target }) {
-  const username = target.profiles?.[0]?.public?.username || "ssh";
+export function targetEndpoint({ target, profile }) {
+  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+  const username = selectedProfile?.public?.username || "ssh";
   const host = target.config?.host || "host";
   const port = target.config?.port || 22;
   return `${username}@${host}:${port}`;
@@ -199,7 +207,7 @@ export function targetDisplayName({ target }) {
 }
 
 export function targetSubtitle({ target, server }) {
-  const username = target?.public?.username || target?.profiles?.[0]?.public?.username || server?.username || "ssh";
+  const username = target?.public?.username || server?.username || "ssh";
   const host = target?.config?.host || server?.host || "host";
   const port = target?.config?.port || server?.port || 22;
   return `${username}@${host}:${port}`;
@@ -213,15 +221,34 @@ export function usesLiveConsole() {
   return true;
 }
 
+export function liveConsoleRuntimeTarget({ target }) {
+  const profile = target.public || {};
+  return {
+    id: target.server_id,
+    name: targetDisplayName({ target }),
+    host: target.config?.host || "",
+    port: target.config?.port || 0,
+    username: profile.username || "",
+    ssh_key_id: profile.ssh_key_id || 0,
+    description: target.config?.description || "",
+    startup_input_after_connect: target.config?.startup_input_after_connect || "",
+    force_shell_command: target.config?.force_shell_command || "",
+    connector_ref: target.ref,
+    connector_kind: target.connector_kind,
+    target_id: target.target_id,
+    profile_id: target.profile_id,
+    target,
+  };
+}
+
 export function deleteDialog({ target }) {
-  const sshKeyID = target?.profiles?.[0]?.public?.ssh_key_id;
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this SSH connector from aipermission. You can also remove the selected gateway public key from remote authorized_keys first.",
     details: [
       { label: "Connector", value: target?.name },
       { label: "Reference", value: target ? `${target.connector_kind}:${target.id}` : "" },
-      { label: "Credential", value: sshKeyID ? `SSH key #${sshKeyID}` : "" },
+      { label: "Profiles", value: target?.profiles?.length ? `${target.profiles.length} credential profile${target.profiles.length === 1 ? "" : "s"}` : "" },
     ],
     notice:
       "Remote key cleanup connects to the target, removes entries containing the selected gateway public key blob from ~/.ssh/authorized_keys, then deletes the local connector record.",
@@ -232,16 +259,16 @@ export function deleteDialog({ target }) {
   };
 }
 
-export function hostKeyActionFromError(error, { mode, form, target, testKey, operation, container }) {
+export function hostKeyActionFromError(error, { mode, form, target, profile, testKey, operation, container }) {
   if (!isHostKeyError(error)) return null;
   if (operation === "test") {
-    return { kind: "ssh", type: "test", target, testKey };
+    return { kind: "ssh", type: "test", target, profile, testKey };
   }
   if (operation === "docker-check") {
-    return { kind: "ssh", type: "docker-check", target };
+    return { kind: "ssh", type: "docker-check", target, profile };
   }
   if (operation === "docker-logs") {
-    return { kind: "ssh", type: "docker-logs", target, container };
+    return { kind: "ssh", type: "docker-logs", target, profile, container };
   }
   return {
     kind: "ssh",
@@ -263,7 +290,7 @@ export async function resumeHostKeyAction(action) {
     return { message: "Connector updated." };
   }
   if (action.type === "test") {
-    const profile = action.target?.profiles?.[0];
+    const profile = action.profile || (action.target?.profiles?.length === 1 ? action.target.profiles[0] : null);
     if (!action.target || !profile) throw new Error("SSH connector profile is not loaded.");
     const data = await apiPost(`/api/connector-targets/${action.target.id}/profiles/${profile.id}/test`, {});
     return { testKey: action.testKey, test: { ok: data.ok, error: data.stderr || null, data } };
@@ -307,7 +334,7 @@ async function saveFromPayload({ targetID, payload, setupLater, previousTarget }
       throw new Error(testResult.stderr || testResult.stdout || "SSH connection test failed. Paste the install command on the target first, or choose setup later.");
     }
   }
-  const profile = previousTarget?.profiles?.[0];
+  const profile = previousTarget?.profiles?.find((item) => Number(item.id) === Number(payload.profile_id)) || (previousTarget?.profiles?.length === 1 ? previousTarget.profiles[0] : null);
   if (!profile) throw new Error("SSH connector profile is not loaded.");
   await updateTargetWithProfile({
     targetID,
@@ -325,14 +352,14 @@ async function saveFromPayload({ targetID, payload, setupLater, previousTarget }
   });
 }
 
-export async function checkDocker({ target }) {
-  if (!target) throw new Error("SSH connector target is not loaded.");
-  return apiPost(`/api/connectors/ssh/targets/${target.id}/operations/docker-check`, {});
+export async function checkDocker({ target, profile }) {
+  if (!target || !profile) throw new Error("SSH connector target profile is not loaded.");
+  return apiPost(`/api/connector-targets/${target.id}/operations/docker-check`, { profile_id: Number(profile.id) });
 }
 
-export async function readDockerLogs({ target, container, tail = 300 }) {
-  if (!target || !container) throw new Error("SSH connector target is not loaded.");
-  return apiPost(`/api/connectors/ssh/targets/${target.id}/operations/docker-logs`, { container_ref: container.id || container.name, tail: Number(tail) || 300 });
+export async function readDockerLogs({ target, profile, container, tail = 300 }) {
+  if (!target || !profile || !container) throw new Error("SSH connector target profile is not loaded.");
+  return apiPost(`/api/connector-targets/${target.id}/operations/docker-logs`, { profile_id: Number(profile.id), container_ref: container.id || container.name, tail: Number(tail) || 300 });
 }
 
 function payloadFromForm(form) {
@@ -342,6 +369,7 @@ function payloadFromForm(form) {
     port: Number(form.port),
     username: form.username,
     ssh_key_id: Number(form.ssh_key_id),
+    profile_id: Number(form.profile_id || 0),
     description: form.description,
     startup_input_after_connect: form.startup_input_after_connect,
     force_shell_command: form.force_shell_command,

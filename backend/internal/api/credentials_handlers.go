@@ -2,8 +2,6 @@ package api
 
 import (
 	"net/http"
-
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 )
 
 func (s credentialHandlers) listCredentials(w http.ResponseWriter, r *http.Request) {
@@ -11,12 +9,11 @@ func (s credentialHandlers) listCredentials(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	items, err := runtime.sshKeys.List(r.Context())
-	if err != nil {
-		writeInternalError(w)
+	adapter, ok := credentialResourceAdapter(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, items)
+	adapter.ListCredentialResources(s, w, r, runtime)
 }
 
 func (s credentialHandlers) createCredential(w http.ResponseWriter, r *http.Request) {
@@ -24,18 +21,11 @@ func (s credentialHandlers) createCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	var request sshkeys.CreateRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	adapter, ok := credentialResourceAdapter(w, r)
+	if !ok {
 		return
 	}
-
-	item, err := runtime.sshKeys.Create(r.Context(), request)
-	if err != nil {
-		handleSSHKeyError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, item)
+	adapter.CreateCredentialResource(s, w, r, runtime)
 }
 
 func (s credentialHandlers) importCredential(w http.ResponseWriter, r *http.Request) {
@@ -43,18 +33,11 @@ func (s credentialHandlers) importCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	var request sshkeys.ImportRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	adapter, ok := credentialResourceAdapter(w, r)
+	if !ok {
 		return
 	}
-
-	item, err := runtime.sshKeys.Import(r.Context(), request)
-	if err != nil {
-		handleSSHKeyError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, item)
+	adapter.ImportCredentialResource(s, w, r, runtime)
 }
 
 func (s credentialHandlers) getCredential(w http.ResponseWriter, r *http.Request) {
@@ -62,17 +45,11 @@ func (s credentialHandlers) getCredential(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	id, ok := parseID(w, r)
+	adapter, ok := credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
-
-	item, err := runtime.sshKeys.Get(r.Context(), id)
-	if err != nil {
-		handleSSHKeyError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	adapter.GetCredentialResource(s, w, r, runtime)
 }
 
 func (s credentialHandlers) updateCredential(w http.ResponseWriter, r *http.Request) {
@@ -80,22 +57,11 @@ func (s credentialHandlers) updateCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	id, ok := parseID(w, r)
+	adapter, ok := credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
-	var request sshkeys.UpdateRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
-		return
-	}
-
-	item, err := runtime.sshKeys.Update(r.Context(), id, request)
-	if err != nil {
-		handleSSHKeyError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	adapter.UpdateCredentialResource(s, w, r, runtime)
 }
 
 func (s credentialHandlers) deleteCredential(w http.ResponseWriter, r *http.Request) {
@@ -103,14 +69,18 @@ func (s credentialHandlers) deleteCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	id, ok := parseID(w, r)
+	adapter, ok := credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
+	adapter.DeleteCredentialResource(s, w, r, runtime)
+}
 
-	if err := runtime.sshKeys.Delete(r.Context(), id); err != nil {
-		handleSSHKeyError(w, err)
-		return
+func credentialResourceAdapter(w http.ResponseWriter, r *http.Request) (connectorCredentialResourceAdapter, bool) {
+	adapter, ok := connectorAPIAdapterFor(r.PathValue("kind")).(connectorCredentialResourceAdapter)
+	if !ok {
+		writeError(w, http.StatusNotFound, "connector credential resources are not supported")
+		return nil, false
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return adapter, true
 }

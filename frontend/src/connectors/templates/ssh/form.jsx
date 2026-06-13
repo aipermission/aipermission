@@ -66,7 +66,7 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
       <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark-soft-panel">
         <div>
           <p className="text-sm font-semibold text-stone-900">Advanced SSH startup</p>
-          <p className="mt-1 text-xs text-stone-500">Optional compatibility settings for appliances that show an interactive menu before a normal shell.</p>
+          <p className="mt-1 text-xs text-stone-500">Optional startup settings for appliances that show an interactive menu before a normal shell.</p>
         </div>
         <Field>
           Startup input after connect

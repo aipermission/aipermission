@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 )
 
 type connectorCatalogItem struct {
@@ -26,11 +25,7 @@ func (s connectorHandlers) listConnectors(w http.ResponseWriter, r *http.Request
 	if _, ok := s.activeRuntimeOrLocked(w); !ok {
 		return
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := s.connectorRegistry()
 	infos := registry.List()
 	items := make([]connectorCatalogItem, 0, len(infos))
 	for _, info := range infos {
@@ -52,11 +47,7 @@ func (s connectorHandlers) getConnector(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid connector kind")
 		return
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := s.connectorRegistry()
 	connector, ok := registry.Get(kind)
 	if !ok {
 		writeError(w, http.StatusNotFound, "connector not found")

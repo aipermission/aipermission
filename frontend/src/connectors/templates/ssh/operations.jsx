@@ -15,52 +15,53 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
 
   useEffect(() => {
     if (operation.open && operation.type === "docker-check" && (!operation.state || operation.state === "idle")) {
-      void checkDocker(operation.target);
+      void checkDocker(operation.target, operation.profile);
     }
-  }, [operation.open, operation.type, operation.state, operation.target?.id]);
+  }, [operation.open, operation.type, operation.state, operation.target?.id, operation.profile?.id]);
 
   function close() {
     onChange({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   }
 
-  async function checkDocker(target = operation.target) {
-    if (!target) return;
-    onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, state: "loading", data: null, error: null });
+  async function checkDocker(target = operation.target, profile = operation.profile) {
+    if (!target || !profile) return;
+    onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, profile, state: "loading", data: null, error: null });
     try {
-      const data = await model.checkDocker({ target });
-      onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, state: "ready", data, error: null });
+      const data = await model.checkDocker({ target, profile });
+      onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, profile, state: "ready", data, error: null });
     } catch (error) {
-      const action = model.hostKeyActionFromError(error, { operation: "docker-check", target });
+      const action = model.hostKeyActionFromError(error, { operation: "docker-check", target, profile });
       if (action) {
         onChange({ open: true, connector_kind: "ssh", type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
         return;
       }
-      onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, state: "error", data: null, error: error.message });
+      onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, profile, state: "error", data: null, error: error.message });
     }
   }
 
-  async function readDockerLogs(target, container, tail = 300) {
-    if (!target || !container) return;
+  async function readDockerLogs(target, container, tail = 300, profile = operation.profile) {
+    if (!target || !profile || !container) return;
     onChange((current) => ({
       open: true,
       connector_kind: "ssh",
       type: "docker-logs",
       target,
+      profile,
       container,
       state: "loading",
       data: current?.open && (current.container?.id || current.container?.name) === (container.id || container.name) ? current.data : null,
       error: null,
     }));
     try {
-      const data = await model.readDockerLogs({ target, container, tail });
-      onChange({ open: true, connector_kind: "ssh", type: "docker-logs", target, container, state: "ready", data, error: null });
+      const data = await model.readDockerLogs({ target, profile, container, tail });
+      onChange({ open: true, connector_kind: "ssh", type: "docker-logs", target, profile, container, state: "ready", data, error: null });
     } catch (error) {
-      const action = model.hostKeyActionFromError(error, { operation: "docker-logs", target, container });
+      const action = model.hostKeyActionFromError(error, { operation: "docker-logs", target, profile, container });
       if (action) {
         onChange({ open: true, connector_kind: "ssh", type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
         return;
       }
-      onChange((current) => ({ open: true, connector_kind: "ssh", type: "docker-logs", target, container, state: "error", data: current?.data, error: error.message }));
+      onChange((current) => ({ open: true, connector_kind: "ssh", type: "docker-logs", target, profile, container, state: "error", data: current?.data, error: error.message }));
     }
   }
 
@@ -76,9 +77,9 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
         replace: Boolean(hostKey.changed),
       });
       if (action.type === "docker-check") {
-        await checkDocker(action.target);
+        await checkDocker(action.target, action.profile);
       } else if (action.type === "docker-logs") {
-        await readDockerLogs(action.target, action.container);
+        await readDockerLogs(action.target, action.container, undefined, action.profile);
       } else {
         const result = await model.resumeHostKeyAction(action);
         await onHostKeyActionComplete?.(result, action);
@@ -155,7 +156,7 @@ function HostKeyApprovalDialog({ value, onApprove, onClose }) {
 
 function ServerInstallDialog({ value, credentials, onClose }) {
   const target = value.target;
-  const profile = target?.profiles?.[0];
+  const profile = value.profile;
   const keyID = profile?.public?.ssh_key_id;
   const key = credentials.find((item) => Number(item.id) === Number(keyID)) || null;
   const username = profile?.public?.username || target?.config?.username || "ssh";
@@ -236,7 +237,7 @@ function DockerCheckDialog({ value, onReadLogs, onClose }) {
                               <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Details" onClick={() => setDetailContainer(container)}>
                                 <Info className="h-4 w-4" />
                               </Button>
-                              <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Logs" onClick={() => onReadLogs(value.target, container)}>
+                              <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Logs" onClick={() => onReadLogs(value.target, container, undefined, value.profile)}>
                                 <FileText className="h-4 w-4" />
                               </Button>
                             </div>
@@ -315,7 +316,7 @@ function DockerLogsDialog({ value, onRefresh, onClose }) {
     if (!canRefresh) return;
     const boundedTail = Math.max(1, Math.min(5000, Number(tail) || 300));
     setTail(boundedTail);
-    void onRefresh(value.target, value.container, boundedTail);
+    void onRefresh(value.target, value.container, boundedTail, value.profile);
   }
 
   return (

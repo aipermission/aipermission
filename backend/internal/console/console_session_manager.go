@@ -31,8 +31,8 @@ func (m *Manager) List(ctx context.Context, serverID int64) ([]Record, error) {
 	query := `
 		SELECT cs.id, cs.server_id, COALESCE(t.name, ''), cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
 		FROM console_sessions cs
-		LEFT JOIN connector_credential_profiles p ON p.id = cs.server_id AND p.connector_kind = 'ssh'
-		LEFT JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles p ON p.id = cs.server_id
+		LEFT JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = p.connector_kind
 		WHERE (? = 0 OR cs.server_id = ?)
 			ORDER BY CASE WHEN cs.status IN ('connecting', 'connected') THEN 0 ELSE 1 END, cs.updated_at DESC, cs.created_at DESC, cs.id DESC
 			LIMIT 100`
@@ -122,8 +122,8 @@ func (m *Manager) Get(ctx context.Context, id int64) (Record, error) {
 	row := m.db.QueryRowContext(ctx, `
 		SELECT cs.id, cs.server_id, COALESCE(t.name, ''), cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
 		FROM console_sessions cs
-		LEFT JOIN connector_credential_profiles p ON p.id = cs.server_id AND p.connector_kind = 'ssh'
-		LEFT JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles p ON p.id = cs.server_id
+		LEFT JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = p.connector_kind
 		WHERE cs.id = ?`, id)
 	record, err := scanConsoleSession(row)
 	if err != nil {

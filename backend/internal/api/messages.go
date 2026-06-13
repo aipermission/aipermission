@@ -179,19 +179,24 @@ func validateMessageScope(ctx context.Context, runtime *databaseRuntime, request
 	}
 
 	if request.ServerID != nil {
-		var serverExists int
+		var profileID int64
+		var connectorKind string
 		err := runtime.database.QueryRowContext(ctx, `
-			SELECT 1
-			FROM connector_credential_profiles cp
-			JOIN connector_targets ct ON ct.id = cp.target_id
-			WHERE cp.id = ? AND cp.connector_kind = 'ssh' AND ct.connector_kind = 'ssh' AND ct.status = 'active'`,
+				SELECT cp.id, cp.connector_kind
+				FROM connector_credential_profiles cp
+				JOIN connector_targets ct ON ct.id = cp.target_id
+				WHERE cp.id = ? AND cp.status = 'active' AND ct.status = 'active' AND ct.connector_kind = cp.connector_kind`,
 			*request.ServerID,
-		).Scan(&serverExists)
+		).Scan(&profileID, &connectorKind)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("server_id does not exist")
 		}
 		if err != nil {
 			return err
+		}
+		adapter := connectorLiveConsoleTargetAdapterFor(connectorKind)
+		if adapter == nil || adapter.LiveConsoleProfileID(profileID) == 0 {
+			return errors.New("server_id does not reference a live console connector profile")
 		}
 	}
 	return nil
@@ -317,12 +322,12 @@ func (s *Server) listMessageRecords(ctx context.Context, runtime *databaseRuntim
 
 func messageSelectSQL() string {
 	return `
-		SELECT mq.id, mq.token_id, COALESCE(tok.name, ''), mq.server_id, COALESCE(ct.name, ''), mq.session_id,
-		       mq.direction, mq.message, mq.consumed_at, mq.created_at
-		FROM message_queue mq
-		JOIN api_tokens tok ON tok.id = mq.token_id
-		LEFT JOIN connector_credential_profiles cp ON cp.id = mq.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'`
+			SELECT mq.id, mq.token_id, COALESCE(tok.name, ''), mq.server_id, COALESCE(ct.name, ''), mq.session_id,
+			       mq.direction, mq.message, mq.consumed_at, mq.created_at
+			FROM message_queue mq
+			JOIN api_tokens tok ON tok.id = mq.token_id
+			LEFT JOIN connector_credential_profiles cp ON cp.id = mq.server_id
+			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind`
 }
 
 func scanMessage(scanner interface {

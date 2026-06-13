@@ -68,7 +68,12 @@ func (s *Store) SSHRuntimeForConsoleID(ctx context.Context, profileID int64) (co
 			p.encrypted_secret_json, p.risk_label, p.updated_at
 		FROM connector_credential_profiles p
 		JOIN connector_targets t ON t.id = p.target_id
-		WHERE p.id = ? AND p.connector_kind = ? AND t.connector_kind = ? AND t.status = 'active'`,
+		WHERE p.id = ?
+			AND p.connector_kind = ?
+			AND t.connector_kind = ?
+			AND p.connector_kind = t.connector_kind
+			AND p.status = 'active'
+			AND t.status = 'active'`,
 		profileID,
 		sshconnector.Kind,
 		sshconnector.Kind,

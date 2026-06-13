@@ -821,7 +821,7 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	}
 	sshTargetHistoryPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, sshTargetHistoryResponse.Body.Bytes())
 	if sshTargetHistoryPage.Total != 2 {
-		t.Fatalf("ssh target filter should include legacy command and connector action rows, got %#v", sshTargetHistoryPage)
+		t.Fatalf("ssh target filter should include live-console command and connector action rows, got %#v", sshTargetHistoryPage)
 	}
 	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
 	connectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
@@ -1182,9 +1182,9 @@ func TestSSHConnectorTargetDeleteAllowsZeroProfileRollback(t *testing.T) {
 	}
 }
 
-func TestSSHConnectorTargetRejectsSecondProfile(t *testing.T) {
+func TestSSHConnectorTargetAllowsMultipleProfiles(t *testing.T) {
 	fixture := newAPITestFixture(t)
-	server := fixture.createKeyAndServer(t, "single-profile")
+	server := fixture.createKeyAndServer(t, "multi-profile")
 	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(server.TargetID, 10)+"/profiles", "", createConnectorCredentialProfileRequest{
 		Kind:  "private_key",
 		Label: "backup-root",
@@ -1193,17 +1193,33 @@ func TestSSHConnectorTargetRejectsSecondProfile(t *testing.T) {
 			"ssh_key_id": server.SSHKeyID,
 		},
 	})
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "one credential profile") {
-		t.Fatalf("second SSH profile should be rejected, got %d %s", response.Code, response.Body.String())
+	if response.Code != http.StatusCreated {
+		t.Fatalf("second SSH profile should be allowed, got %d %s", response.Code, response.Body.String())
+	}
+	targetResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-targets/"+strconv.FormatInt(server.TargetID, 10), "", nil)
+	if targetResponse.Code != http.StatusOK {
+		t.Fatalf("get multi-profile target failed: %d %s", targetResponse.Code, targetResponse.Body.String())
+	}
+	target := decodeRouteResponse[connectorTargetResponse](t, targetResponse.Body.Bytes())
+	if len(target.Profiles) != 2 {
+		t.Fatalf("expected two profiles on SSH connector target, got %#v", target.Profiles)
 	}
 }
 
-func TestSSHConnectorTargetRejectsDeletingLastProfile(t *testing.T) {
+func TestSSHConnectorTargetAllowsDeletingLastProfile(t *testing.T) {
 	fixture := newAPITestFixture(t)
-	server := fixture.createKeyAndServer(t, "last-profile")
+	server := fixture.createKeyAndServer(t, "delete-profile")
 	response := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/connector-targets/"+strconv.FormatInt(server.TargetID, 10)+"/profiles/"+strconv.FormatInt(server.ProfileID, 10), "", nil)
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "delete the connector target instead") {
-		t.Fatalf("last SSH profile delete should be rejected, got %d %s", response.Code, response.Body.String())
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("last SSH profile delete should be allowed, got %d %s", response.Code, response.Body.String())
+	}
+	targetResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-targets/"+strconv.FormatInt(server.TargetID, 10), "", nil)
+	if targetResponse.Code != http.StatusOK {
+		t.Fatalf("target should remain after deleting last profile: %d %s", targetResponse.Code, targetResponse.Body.String())
+	}
+	target := decodeRouteResponse[connectorTargetResponse](t, targetResponse.Body.Bytes())
+	if len(target.Profiles) != 0 {
+		t.Fatalf("expected target without profiles after profile delete, got %#v", target.Profiles)
 	}
 }
 

@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
@@ -24,6 +26,7 @@ type Server struct {
 	vault          *vault.Vault
 	sshKeys        *sshkeys.Store
 	tokens         *tokens.Store
+	registry       *connectors.Registry
 	mux            *http.ServeMux
 	mu             sync.RWMutex
 	lifecycleMu    sync.RWMutex
@@ -40,6 +43,7 @@ type databaseRuntime struct {
 	vault            *vault.Vault
 	sshKeys          *sshkeys.Store
 	tokens           *tokens.Store
+	registry         *connectors.Registry
 	fileTransfers    *filetransfer.Store
 	consoleSessions  *console.Manager
 	transferMu       sync.Mutex
@@ -59,6 +63,7 @@ type databaseRuntime struct {
 
 func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, sshKeyStore *sshkeys.Store, tokenStore *tokens.Store) *Server {
 	activeID := dbpkg.DefaultDatabaseID(cfg.DataPath)
+	registry := mustBuiltinConnectorRegistry()
 	server := &Server{
 		config:         cfg,
 		activeDataPath: cfg.DataPath,
@@ -68,6 +73,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, ss
 		vault:          secretVault,
 		sshKeys:        sshKeyStore,
 		tokens:         tokenStore,
+		registry:       registry,
 		mux:            http.NewServeMux(),
 		authLimiter:    newAuthRateLimiter(),
 		uiSessions:     map[string]uiSessionRecord{},
@@ -80,6 +86,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, ss
 		vault:            secretVault,
 		sshKeys:          sshKeyStore,
 		tokens:           tokenStore,
+		registry:         registry,
 		fileTransfers:    filetransfer.NewStore(database),
 		transferCancels:  map[int64]context.CancelFunc{},
 		batchCancels:     map[int64]context.CancelFunc{},
@@ -98,10 +105,33 @@ func NewLockedServer(cfg config.Config) *Server {
 		activeDataPath: cfg.DataPath,
 		activeDatabase: dbpkg.DefaultDatabaseID(cfg.DataPath),
 		workspaces:     map[string]*databaseRuntime{},
+		registry:       mustBuiltinConnectorRegistry(),
 		mux:            http.NewServeMux(),
 		authLimiter:    newAuthRateLimiter(),
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 	server.routes()
 	return server
+}
+
+func mustBuiltinConnectorRegistry() *connectors.Registry {
+	registry, err := builtin.NewRegistry()
+	if err != nil {
+		panic(err)
+	}
+	return registry
+}
+
+func (s *Server) connectorRegistry() *connectors.Registry {
+	if s != nil && s.registry != nil {
+		return s.registry
+	}
+	return mustBuiltinConnectorRegistry()
+}
+
+func (runtime *databaseRuntime) connectorRegistry() *connectors.Registry {
+	if runtime != nil && runtime.registry != nil {
+		return runtime.registry
+	}
+	return mustBuiltinConnectorRegistry()
 }

@@ -61,10 +61,11 @@ export function ConnectorTokenPermissionPanel({
       let changed = false;
       for (const token of activeTokens) {
         const stored = readStoredConnectorProfileID(selectedTarget, token.id);
-        const currentID = current[token.id] || stored || selectedTarget.profile_id || targetProfiles[0].profile_id;
+        const fallbackID = selectedTarget.profile_id || (targetProfiles.length === 1 ? targetProfiles[0].profile_id : "");
+        const currentID = current[token.id] || stored || fallbackID;
         const valid = targetProfiles.some((profile) => Number(profile.profile_id) === Number(currentID));
-        const nextID = valid ? Number(currentID) : Number(targetProfiles[0].profile_id);
-        if (Number(next[token.id]) !== nextID) {
+        const nextID = valid ? Number(currentID) : fallbackID ? Number(fallbackID) : "";
+        if (String(next[token.id] || "") !== String(nextID || "")) {
           next[token.id] = nextID;
           changed = true;
         }
@@ -121,6 +122,7 @@ export function ConnectorTokenPermissionPanel({
 
   function selectProfile(token, profileID) {
     const nextID = Number(profileID);
+    if (!Number.isFinite(nextID) || nextID <= 0) return;
     setProfileByToken((current) => ({ ...current, [token.id]: nextID }));
     writeStoredConnectorProfileID(selectedTarget, token.id, nextID);
     void loadConnectorActions?.({ ...selectedTarget, profile_id: nextID });
@@ -377,6 +379,7 @@ function ProfileSelect({ profiles, value, onChange }) {
     <label className="grid gap-1 text-xs font-semibold text-stone-600">
       Profile
       <Select value={value ? String(value) : ""} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Select profile</option>
         {profiles.map((profile) => (
           <option key={profile.profile_id} value={profile.profile_id}>
             {profile.profile_label || `Profile ${profile.profile_id}`}

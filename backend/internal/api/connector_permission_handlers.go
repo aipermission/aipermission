@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -79,7 +78,7 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 		return
 	}
 	store := connectortargets.NewStore(runtime.database)
-	inputs, err := connectorPermissionInputs(r, store, request.Permissions)
+	inputs, err := connectorPermissionInputs(r, runtime.connectorRegistry(), store, request.Permissions)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
@@ -96,11 +95,7 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 	writeJSON(w, http.StatusOK, map[string]any{"items": connectorPermissionResponses(permissions)})
 }
 
-func connectorPermissionInputs(r *http.Request, store *connectortargets.Store, permissions []connectorPermissionInput) ([]connectortargets.SetActionPermissionInput, error) {
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		return nil, err
-	}
+func connectorPermissionInputs(r *http.Request, registry *connectors.Registry, store *connectortargets.Store, permissions []connectorPermissionInput) ([]connectortargets.SetActionPermissionInput, error) {
 	inputs := make([]connectortargets.SetActionPermissionInput, 0, len(permissions))
 	for _, permission := range permissions {
 		target, profile, err := connectorTargetProfileViews(r.Context(), store, permission.TargetID, permission.ProfileID)
@@ -139,10 +134,7 @@ func activeSupportedConnectorPermissions(ctx context.Context, runtime *databaseR
 	if err != nil {
 		return nil, err
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		return nil, err
-	}
+	registry := runtime.connectorRegistry()
 	type actionCatalog struct {
 		names map[string]bool
 		err   error

@@ -10,12 +10,8 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/execution"
 	"github.com/aipermission/aipermission/backend/internal/history"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 )
 
 type createConnectorTargetRequest struct {
@@ -57,6 +53,7 @@ type connectorTargetTestResponse struct {
 }
 
 type connectorTargetOperationRequest struct {
+	ProfileID    int64  `json:"profile_id,omitempty"`
 	ContainerRef string `json:"container_ref,omitempty"`
 	Tail         int    `json:"tail,omitempty"`
 }
@@ -119,11 +116,7 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := runtime.connectorRegistry()
 	connector, ok := registry.Get(strings.TrimSpace(request.ConnectorKind))
 	if !ok {
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
@@ -164,11 +157,7 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := runtime.connectorRegistry()
 	connector, ok := registry.Get(strings.TrimSpace(request.ConnectorKind))
 	if !ok {
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
@@ -178,11 +167,8 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// SSH is the built-in runtime adapter for live PTY/SFTP and host-key
-	// approval. New connectors should implement TestableConnector instead of
-	// adding connector-specific branches here.
-	if strings.TrimSpace(request.ConnectorKind) == sshconnector.Kind {
-		s.testSSHConnectorDraft(w, r, runtime, request)
+	if adapter := connectorDraftTesterFor(request.ConnectorKind); adapter != nil {
+		adapter.TestDraft(s, w, r, runtime, request)
 		return
 	}
 	if err := connectors.ValidateSchemaValues(connector.TargetSchema(), request.Config); err != nil {
@@ -235,11 +221,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := runtime.connectorRegistry()
 	connector, ok := registry.Get(existing.ConnectorKind)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
@@ -290,11 +272,8 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	// SSH remote authorized_keys cleanup and live runtime shutdown are
-	// adapter-owned compatibility behavior, not the model for new connector
-	// delete flows.
-	if target.ConnectorKind == sshconnector.Kind {
-		s.deleteSSHConnectorTarget(w, r, runtime, target)
+	if adapter := connectorTargetDeleterFor(target.ConnectorKind); adapter != nil {
+		adapter.DeleteTarget(s, w, r, runtime, target)
 		return
 	}
 	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, id, 0, "connector target was deleted; ask the AI to send a fresh request")
@@ -357,22 +336,13 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if target.ConnectorKind == sshconnector.Kind {
-		profiles, err := store.ListCredentialProfiles(r.Context(), target.ID)
-		if err != nil {
+	if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
+		if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, store, target); err != nil {
 			handleConnectorTargetError(w, err)
 			return
 		}
-		if len(profiles) > 0 {
-			writeError(w, http.StatusBadRequest, "SSH connector targets support one credential profile in the 0.2 compatibility adapter")
-			return
-		}
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := runtime.connectorRegistry()
 	connector, ok := registry.Get(target.ConnectorKind)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
@@ -394,6 +364,10 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 	public, err := s.canonicalCredentialPublic(r.Context(), runtime, target.ConnectorKind, strings.TrimSpace(request.Kind), request.Public)
 	if err != nil {
 		handleConnectorTargetError(w, err)
+		return
+	}
+	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, request.Secret, true); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	secret := request.Secret
@@ -452,11 +426,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := runtime.connectorRegistry()
 	connector, ok := registry.Get(target.ConnectorKind)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
@@ -478,6 +448,10 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 	public, err := s.canonicalCredentialPublic(r.Context(), runtime, target.ConnectorKind, strings.TrimSpace(request.Kind), request.Public)
 	if err != nil {
 		handleConnectorTargetError(w, err)
+		return
+	}
+	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, request.Secret, request.Secret != nil); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	var encryptedSecret *string
@@ -537,14 +511,9 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if target.ConnectorKind == sshconnector.Kind {
-		profiles, err := store.ListCredentialProfiles(r.Context(), targetID)
-		if err != nil {
+	if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
+		if err := adapter.BeforeDeleteCredentialProfile(r.Context(), s, runtime, store, target, profile); err != nil {
 			handleConnectorTargetError(w, err)
-			return
-		}
-		if len(profiles) <= 1 {
-			writeError(w, http.StatusBadRequest, "SSH connector targets require one credential profile; delete the connector target instead")
 			return
 		}
 	}
@@ -552,12 +521,6 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 	if err != nil {
 		writeInternalError(w)
 		return
-	}
-	if target.ConnectorKind == sshconnector.Kind {
-		if _, err := s.restartServerConsoleSession(r.Context(), runtime, profile.ID, "SSH credential profile was deleted before command completed"); err != nil {
-			writeInternalError(w)
-			return
-		}
 	}
 	if err := store.DeleteCredentialProfile(r.Context(), targetID, profileID); err != nil {
 		handleConnectorTargetError(w, err)
@@ -623,17 +586,11 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		handleConnectorTargetError(w, err)
 		return
 	}
-	// SSH profile tests need host-key approval and gateway-managed key material.
-	// Other connectors use the generic TestableConnector path below.
-	if target.ConnectorKind == sshconnector.Kind {
-		s.testSSHConnectorProfile(w, r, runtime, target.ID, profile.ID)
+	if adapter := connectorCredentialProfileTesterFor(target.ConnectorKind); adapter != nil {
+		adapter.TestCredentialProfile(s, w, r, runtime, target, profile)
 		return
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := runtime.connectorRegistry()
 	connector, ok := registry.Get(target.ConnectorKind)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
@@ -660,10 +617,11 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 	defer cancel()
 	start := time.Now()
 	result, err := testable.TestConnection(ctx, connectors.RuntimeContext{
-		Target:  target,
-		Profile: profile,
-		Secrets: connectorSecretAccessor{values: secrets},
-		Events:  noopConnectorEventSink{},
+		Target:   target,
+		Profile:  profile,
+		Secrets:  connectorSecretAccessor{values: secrets},
+		Services: connectorRuntimeServices(target.ConnectorKind, s.Server, runtime),
+		Events:   noopConnectorEventSink{},
 	})
 	if err != nil {
 		writeJSON(w, http.StatusOK, connectorTargetTestResponse{
@@ -718,11 +676,7 @@ func (s connectorTargetHandlers) listConnectorCredentialProfileActions(w http.Re
 		handleConnectorTargetError(w, err)
 		return
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
+	registry := runtime.connectorRegistry()
 	connector, ok := registry.Get(target.ConnectorKind)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
@@ -756,294 +710,17 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		handleConnectorTargetError(w, err)
 		return
 	}
-	// Operations are template-launched, connector-specific conveniences. Today
-	// only the SSH runtime adapter exposes Docker checks/logs here; new
-	// connectors should prefer normal connector actions unless an adapter-level
-	// operation is deliberately reviewed.
-	if target.ConnectorKind != sshconnector.Kind {
+	adapter := connectorTargetOperationRunnerFor(target.ConnectorKind)
+	if adapter == nil {
 		writeError(w, http.StatusBadRequest, "operation is not supported for this connector")
 		return
 	}
-	mapping, err := singleSSHRuntimeMappingForTarget(r.Context(), store, target.ID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-	server, privateKey, err := s.serverSSHMaterial(ctx, mapping.ServerID)
-	if err != nil {
-		handleServerSSHMaterialError(w, err)
-		return
-	}
-	switch operation {
-	case "docker-check":
-		response, err := s.dockerCheckForServer(ctx, runtime, server, privateKey)
-		if err != nil {
-			if writeUnknownHostKeyError(w, err) {
-				return
-			}
-			writeError(w, http.StatusBadGateway, sshCommandFailureMessage(err))
-			return
-		}
-		writeJSON(w, http.StatusOK, response)
-	case "docker-logs":
-		var request connectorTargetOperationRequest
-		if err := decodeJSON(w, r, &request); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json body")
-			return
-		}
-		containerRef := strings.TrimSpace(request.ContainerRef)
-		if err := validateDockerContainerRef(containerRef); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		response, err := s.dockerLogsForServer(ctx, runtime, server, privateKey, containerRef, request.Tail)
-		if err != nil {
-			if writeUnknownHostKeyError(w, err) {
-				return
-			}
-			writeError(w, http.StatusBadGateway, sshCommandFailureMessage(err))
-			return
-		}
-		writeJSON(w, http.StatusOK, response)
-	default:
-		writeError(w, http.StatusBadRequest, "unsupported connector operation")
-	}
-}
-
-func (s connectorTargetHandlers) deleteSSHConnectorTarget(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectortargets.Target) {
-	store := connectortargets.NewStore(runtime.database)
-	profiles, err := store.ListCredentialProfiles(r.Context(), target.ID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	removedKeys := int64(0)
-	if r.URL.Query().Get("remove_key") == "true" {
-		if len(profiles) == 0 {
-			writeError(w, http.StatusBadRequest, "remote SSH key cleanup requires a saved credential profile")
-			return
-		}
-		for _, profile := range profiles {
-			server, privateKey, err := s.serverSSHMaterial(r.Context(), profile.ID)
-			if err != nil {
-				handleServerSSHMaterialError(w, err)
-				return
-			}
-			sshKeyID := int64ConfigValue(profile.Public, "ssh_key_id")
-			sshKey, err := runtime.sshKeys.Get(r.Context(), sshKeyID)
-			if err != nil {
-				writeInternalError(w)
-				return
-			}
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			result, err := execution.RunCommand(ctx, s.executionTarget(server, privateKey), removeAuthorizedKeyCommand(sshKey.PublicKey))
-			cancel()
-			if err != nil {
-				writeError(w, http.StatusBadGateway, "remote key uninstall failed")
-				return
-			}
-			if result.ExitCode != 0 {
-				message := strings.TrimSpace(result.Stderr + result.Stdout)
-				if message == "" {
-					message = "remote key uninstall failed"
-				}
-				writeError(w, http.StatusBadGateway, message)
-				return
-			}
-			removedKeys++
-		}
-	}
-	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, 0, "SSH connector target was deleted; ask the AI to send a fresh request")
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	canceledCommands := int64(0)
-	for _, profile := range profiles {
-		result, err := s.restartServerConsoleSession(r.Context(), runtime, profile.ID, "SSH connector target was deleted before command completed")
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		canceledCommands += result.CanceledRunningRequests
-	}
-	if err := store.DeleteTarget(r.Context(), target.ID); err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.deleted", map[string]any{
-		"target_id":                target.ID,
-		"connector_kind":           sshconnector.Kind,
-		"name":                     target.Name,
-		"remote_key_removed":       removedKeys > 0,
-		"remote_keys_removed":      removedKeys,
-		"stale_connector_requests": staleRequests,
-		"canceled_commands":        canceledCommands,
-	})
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKeys > 0, "remote_keys_removed": removedKeys})
-}
-
-func (s connectorTargetHandlers) testSSHConnectorProfile(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, targetID int64, profileID int64) {
-	const command = `printf 'aipermission-ok\n'; uname -a`
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-	defer cancel()
-	start := time.Now()
-	server, privateKey, err := s.serverSSHMaterial(ctx, profileID)
-	if err != nil {
-		handleServerSSHMaterialError(w, err)
-		return
-	}
-	result, err := execution.RunCommand(ctx, s.executionTarget(server, privateKey), command)
-	if err != nil {
-		if writeUnknownHostKeyError(w, err) {
-			return
-		}
-		writeJSON(w, http.StatusOK, connectorTargetTestResponse{
-			TargetID:      targetID,
-			ProfileID:     profileID,
-			ConnectorKind: sshconnector.Kind,
-			OK:            false,
-			Status:        "connection_failed",
-			Message:       sshConnectionFailureMessage(err),
-			DurationMS:    time.Since(start).Milliseconds(),
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, connectorTargetTestResponse{
-		TargetID:      targetID,
-		ProfileID:     profileID,
-		ConnectorKind: sshconnector.Kind,
-		OK:            result.ExitCode == 0,
-		Status:        "ok",
-		Message:       strings.TrimSpace(result.Stderr + result.Stdout),
-		Details: map[string]any{
-			"command":   command,
-			"stdout":    result.Stdout,
-			"stderr":    result.Stderr,
-			"exit_code": result.ExitCode,
-		},
-		DurationMS: result.DurationMS,
-	})
-}
-
-func (s connectorTargetHandlers) testSSHConnectorDraft(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, request createConnectorTargetRequest) {
-	payload, err := s.sshConnectorPayload(r.Context(), runtime, request.Name, request.Config)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	privateKey, err := runtime.sshKeys.GetPrivateKey(r.Context(), int64ConfigValue(payload.ProfilePublic, "ssh_key_id"))
-	if err != nil {
-		handleSSHKeyError(w, err)
-		return
-	}
-	const command = `printf 'aipermission-ok\n'; uname -a`
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-	defer cancel()
-	start := time.Now()
-	result, err := execution.RunCommand(ctx, execution.Target{
-		Host:           stringConfigValue(payload.TargetConfig, "host"),
-		Port:           intConfigValue(payload.TargetConfig, "port", 22),
-		Username:       stringConfigValue(payload.ProfilePublic, "username"),
-		PrivateKey:     privateKey.PrivateKey,
-		KnownHostsPath: s.knownHostsPath(),
-	}, command)
-	if err != nil {
-		if writeUnknownHostKeyError(w, err) {
-			return
-		}
-		writeJSON(w, http.StatusOK, connectorTargetTestResponse{
-			ConnectorKind: sshconnector.Kind,
-			OK:            false,
-			Status:        "connection_failed",
-			Message:       sshConnectionFailureMessage(err),
-			DurationMS:    time.Since(start).Milliseconds(),
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, connectorTargetTestResponse{
-		ConnectorKind: sshconnector.Kind,
-		OK:            result.ExitCode == 0,
-		Status:        "ok",
-		Message:       strings.TrimSpace(result.Stderr + result.Stdout),
-		Details: map[string]any{
-			"command":   command,
-			"stdout":    result.Stdout,
-			"stderr":    result.Stderr,
-			"exit_code": result.ExitCode,
-		},
-		DurationMS: result.DurationMS,
-	})
-}
-
-func singleSSHRuntimeMappingForTarget(ctx context.Context, store *connectortargets.Store, targetID int64) (connectortargets.SSHRuntimeMapping, error) {
-	profiles, err := store.ListCredentialProfiles(ctx, targetID)
-	if err != nil {
-		return connectortargets.SSHRuntimeMapping{}, err
-	}
-	if len(profiles) == 0 {
-		return connectortargets.SSHRuntimeMapping{}, connectortargets.ErrTargetProfileNotFound
-	}
-	if len(profiles) > 1 {
-		return connectortargets.SSHRuntimeMapping{}, connectortargets.ValidationError("SSH connector targets support one credential profile in the 0.2 compatibility adapter")
-	}
-	profileID := int64(0)
-	for _, profile := range profiles {
-		profileID = profile.ID
-	}
-	mapping, _, _, err := store.SSHRuntimeForTargetRef(ctx, connectortargets.SSHTargetRef(targetID, profileID))
-	return mapping, err
-}
-
-type sshConnectorPayload struct {
-	Name          string
-	TargetConfig  map[string]any
-	ProfileLabel  string
-	ProfilePublic map[string]any
-}
-
-func (s connectorTargetHandlers) sshConnectorPayload(ctx context.Context, runtime *databaseRuntime, name string, config map[string]any) (sshConnectorPayload, error) {
-	if config == nil {
-		config = map[string]any{}
-	}
-	targetConfig, err := sshTargetConfigFromConnectorConfig(config)
-	if err != nil {
-		return sshConnectorPayload{}, err
-	}
-	sshConnector := sshconnector.New()
-	if err := connectors.ValidateNonSecretSchema(sshConnector.TargetSchema(), "ssh target"); err != nil {
-		return sshConnectorPayload{}, err
-	}
-	if err := connectors.ValidateSchemaValues(sshConnector.TargetSchema(), targetConfig); err != nil {
-		return sshConnectorPayload{}, err
-	}
-	username := stringConfigValue(config, "username")
-	if username == "" {
-		return sshConnectorPayload{}, connectortargets.ValidationError("username is required")
-	}
-	profilePublic, err := s.canonicalSSHCredentialPublic(ctx, runtime, map[string]any{
-		"username":   username,
-		"ssh_key_id": config["ssh_key_id"],
-	})
-	if err != nil {
-		return sshConnectorPayload{}, err
-	}
-	return sshConnectorPayload{
-		Name:          strings.TrimSpace(name),
-		TargetConfig:  targetConfig,
-		ProfileLabel:  strings.TrimSpace(username),
-		ProfilePublic: profilePublic,
-	}, nil
+	adapter.RunTargetOperation(s, w, r, runtime, target, operation)
 }
 
 func (s connectorTargetHandlers) canonicalCredentialPublic(ctx context.Context, runtime *databaseRuntime, connectorKind string, credentialKind string, public map[string]any) (map[string]any, error) {
-	if strings.TrimSpace(connectorKind) == sshconnector.Kind {
-		if strings.TrimSpace(credentialKind) != "private_key" {
-			return nil, connectortargets.ValidationError("unsupported SSH credential kind")
-		}
-		return s.canonicalSSHCredentialPublic(ctx, runtime, public)
+	if adapter := connectorCredentialCanonicalizerFor(connectorKind); adapter != nil {
+		return adapter.CanonicalCredentialPublic(ctx, s, runtime, credentialKind, public)
 	}
 	if public == nil {
 		return map[string]any{}, nil
@@ -1053,55 +730,6 @@ func (s connectorTargetHandlers) canonicalCredentialPublic(ctx context.Context, 
 		copied[key] = value
 	}
 	return copied, nil
-}
-
-func (s connectorTargetHandlers) canonicalSSHCredentialPublic(ctx context.Context, runtime *databaseRuntime, public map[string]any) (map[string]any, error) {
-	username := stringConfigValue(public, "username")
-	if username == "" {
-		return nil, connectortargets.ValidationError("username is required")
-	}
-	sshKeyID := int64ConfigValue(public, "ssh_key_id")
-	if sshKeyID < 1 {
-		return nil, connectortargets.ValidationError("ssh_key_id is required")
-	}
-	key, err := runtime.sshKeys.Get(ctx, sshKeyID)
-	if err != nil {
-		if errors.Is(err, sshkeys.ErrNotFound) {
-			return nil, connectortargets.ValidationError("ssh_key_id does not reference an existing SSH credential")
-		}
-		return nil, err
-	}
-	return map[string]any{
-		"username":    username,
-		"ssh_key_id":  key.ID,
-		"key_name":    key.Name,
-		"key_type":    key.KeyType,
-		"fingerprint": key.Fingerprint,
-	}, nil
-}
-
-func sshTargetConfigFromConnectorConfig(config map[string]any) (map[string]any, error) {
-	allowed := map[string]bool{
-		"host":                        true,
-		"port":                        true,
-		"description":                 true,
-		"startup_input_after_connect": true,
-		"force_shell_command":         true,
-		"username":                    true,
-		"ssh_key_id":                  true,
-	}
-	for key := range config {
-		if !allowed[key] {
-			return nil, connectortargets.ValidationError("unsupported SSH connector field " + key)
-		}
-	}
-	return map[string]any{
-		"host":                        config["host"],
-		"port":                        config["port"],
-		"description":                 config["description"],
-		"startup_input_after_connect": config["startup_input_after_connect"],
-		"force_shell_command":         config["force_shell_command"],
-	}, nil
 }
 
 func stringConfigValue(config map[string]any, key string) string {

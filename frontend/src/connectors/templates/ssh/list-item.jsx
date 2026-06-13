@@ -1,7 +1,7 @@
 import { Container, Copy } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 
-export function SSHConnectorRowActionsTemplate({ target, onOperation }) {
+export function SSHConnectorRowActionsTemplate({ target, profile, onOperation }) {
   return (
     <>
       <Button
@@ -9,8 +9,8 @@ export function SSHConnectorRowActionsTemplate({ target, onOperation }) {
         variant="outline"
         className="h-9 w-9 px-0"
         title={target ? `Install key for ${target.name}` : "Install key"}
-        disabled={!target}
-        onClick={() => target && onOperation({ connector_kind: target.connector_kind, type: "install", target, open: true })}
+        disabled={!target || !profile}
+        onClick={() => target && profile && onOperation({ connector_kind: target.connector_kind, type: "install", target, profile, open: true })}
       >
         <Copy className="h-4 w-4" />
       </Button>
@@ -19,8 +19,8 @@ export function SSHConnectorRowActionsTemplate({ target, onOperation }) {
         variant="outline"
         className="h-9 w-9 px-0"
         title={target ? `Check Docker for ${target.name}` : "Check Docker"}
-        disabled={!target}
-        onClick={() => target && onOperation({ connector_kind: target.connector_kind, type: "docker-check", target, open: true, state: "idle" })}
+        disabled={!target || !profile}
+        onClick={() => target && profile && onOperation({ connector_kind: target.connector_kind, type: "docker-check", target, profile, open: true, state: "idle" })}
       >
         <Container className="h-4 w-4" />
       </Button>

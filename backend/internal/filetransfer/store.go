@@ -228,8 +228,8 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.id = ?`,
 		id,
 	).Scan(
@@ -268,7 +268,7 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, error) {
 	filter = normalizeListFilter(filter)
 	where, args := listWhere(filter)
-	countQuery := `SELECT COUNT(*) FROM file_transfers ft LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh' LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'` + where
+	countQuery := `SELECT COUNT(*) FROM file_transfers ft LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count file transfers: %w", err)
@@ -280,8 +280,8 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'` + where + `
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where + `
 		ORDER BY ft.created_at DESC, ft.id DESC
 		LIMIT ? OFFSET ?`
 	args = append(args, filter.Limit, filter.Offset)
@@ -335,7 +335,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]BatchRecord, int, error) {
 	filter = normalizeBatchListFilter(filter)
 	where, args := batchListWhere(filter)
-	countQuery := `SELECT COUNT(*) FROM file_transfer_batches b LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id AND cp.connector_kind = 'ssh' LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'` + where
+	countQuery := `SELECT COUNT(*) FROM file_transfer_batches b LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count file transfer batches: %w", err)
@@ -348,8 +348,8 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
 		FROM file_transfer_batches b
-		LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'` + where + `
+		LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where + `
 		ORDER BY b.created_at DESC, b.id DESC
 		LIMIT ? OFFSET ?`
 	args = append(args, filter.Limit, filter.Offset)
@@ -492,8 +492,8 @@ func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
 		FROM file_transfer_batches b
-		LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles cp ON cp.id = b.server_id
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE b.id = ?`,
 		id,
 	).Scan(
@@ -544,8 +544,8 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 			ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.batch_id = ?
 		ORDER BY ft.queue_index ASC, ft.id ASC`,
 		batchID,
@@ -599,8 +599,8 @@ func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record
 			ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id AND cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.batch_id = ? AND ft.status = ?
 		ORDER BY ft.queue_index ASC, ft.id ASC
 		LIMIT 1`,

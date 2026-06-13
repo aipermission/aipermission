@@ -110,6 +110,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		vault:            secretVault,
 		sshKeys:          sshkeys.NewStore(database, secretVault),
 		tokens:           tokens.NewStore(database, secretVault),
+		registry:         s.connectorRegistry(),
 		fileTransfers:    filetransfer.NewStore(database),
 		transferCancels:  map[int64]context.CancelFunc{},
 		batchCancels:     map[int64]context.CancelFunc{},

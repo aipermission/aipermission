@@ -40,7 +40,7 @@ export function useConnectorPermissions(initialTokens = []) {
       if (typeof targetOrKind === "object") {
         const target = targetOrKind;
         const targetID = target.target_id || target.id;
-        const profileID = target.profile_id || target.profiles?.[0]?.id;
+        const profileID = target.profile_id || (target.profiles?.length === 1 ? target.profiles[0]?.id : "");
         if (!targetID || !profileID) return [];
         const result = await apiGet(`/api/connector-targets/${targetID}/profiles/${profileID}/actions`);
         const actions = result.items || [];

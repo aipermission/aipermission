@@ -36,6 +36,8 @@ export const connectorTemplates = Object.freeze({
   }),
 });
 
+assertConnectorTemplateRegistration();
+
 export function getConnectorTemplate(kind) {
   return connectorTemplates[kind] || null;
 }
@@ -56,4 +58,17 @@ export function ConnectorTemplateNotFound({ kind, slot, as = "div", colSpan = 5 
     );
   }
   return <Notice tone="bad">{message}</Notice>;
+}
+
+function assertConnectorTemplateRegistration() {
+  const catalogKinds = Object.keys(connectorTemplateMetadata).sort();
+  const registryKinds = Object.keys(connectorTemplates).sort();
+  if (catalogKinds.length !== registryKinds.length || catalogKinds.some((kind, index) => kind !== registryKinds[index])) {
+    throw new Error(`Connector template catalog/registry mismatch. catalog=${catalogKinds.join(",")} registry=${registryKinds.join(",")}`);
+  }
+  for (const kind of registryKinds) {
+    if (!connectorTemplates[kind]?.metadata) {
+      throw new Error(`Connector template ${kind} is missing metadata`);
+    }
+  }
 }

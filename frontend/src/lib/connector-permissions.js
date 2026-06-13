@@ -12,15 +12,16 @@ export function profilesForConnectorTarget(targets, selectedTarget) {
 
 export function selectedConnectorProfile(tokenID, selectedTarget, profiles, profileByToken = {}) {
   const id = selectedConnectorProfileID(tokenID, selectedTarget, profiles, profileByToken);
-  return profiles.find((profile) => Number(profile.profile_id) === Number(id)) || profiles[0] || null;
+  return profiles.find((profile) => Number(profile.profile_id) === Number(id)) || null;
 }
 
 export function selectedConnectorProfileID(tokenID, selectedTarget, profiles, profileByToken = {}) {
   if (!selectedTarget) return "";
   const stored = profileByToken[tokenID] || readStoredConnectorProfileID(selectedTarget, tokenID);
-  const fallback = selectedTarget.profile_id || profiles[0]?.profile_id || "";
+  const fallback = selectedTarget.profile_id || (profiles.length === 1 ? profiles[0]?.profile_id : "") || "";
   const candidate = stored || fallback;
-  return profiles.some((profile) => Number(profile.profile_id) === Number(candidate)) ? Number(candidate) : Number(fallback);
+  if (profiles.some((profile) => Number(profile.profile_id) === Number(candidate))) return Number(candidate);
+  return fallback ? Number(fallback) : "";
 }
 
 export function readStoredConnectorProfileID(target, tokenID) {

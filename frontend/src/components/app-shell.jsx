@@ -7,6 +7,7 @@ import { TransferCenter } from "./transfer-center";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Notice } from "./ui/notice";
+import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
@@ -59,8 +60,19 @@ export function Shell({ theme, setTheme }) {
 
   async function loadCredentials() {
     try {
-      const data = await apiGet("/api/connectors/ssh/credentials");
+      const results = await Promise.allSettled(
+        supportedConnectorKinds.map(async (kind) => {
+          const model = getConnectorModel(kind);
+          if (!model?.loadCredentialResources) return [];
+          return model.loadCredentialResources();
+        })
+      );
+      const data = results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+      const rejected = results.find((result) => result.status === "rejected");
       setCredentials({ state: "ready", data, error: null });
+      if (rejected) {
+        console.warn("Some connector credential resources failed to load", rejected.reason);
+      }
     } catch (error) {
       setCredentials({ state: "error", data: [], error: error.message });
     }
@@ -631,27 +643,11 @@ function liveConsoleRuntimeTargets(targets) {
   return (targets || [])
     .filter((target) => {
       const model = getConnectorModel(target.connector_kind);
-      return Boolean(model?.usesLiveConsole?.({ target }) && target.server_id);
+      return Boolean(model?.usesLiveConsole?.({ target }) && target.server_id && model?.liveConsoleRuntimeTarget);
     })
     .map((target) => {
       const model = getConnectorModel(target.connector_kind);
-      const profile = target.public || target.profiles?.[0]?.public || {};
-      return {
-        id: target.server_id,
-        name: model?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref,
-        host: target.config?.host || "",
-        port: target.config?.port || 0,
-        username: profile.username || target.config?.username || "",
-        ssh_key_id: profile.ssh_key_id || target.config?.ssh_key_id || 0,
-        description: target.config?.description || "",
-        startup_input_after_connect: target.config?.startup_input_after_connect || "",
-        force_shell_command: target.config?.force_shell_command || "",
-        connector_ref: target.ref,
-        connector_kind: target.connector_kind,
-        target_id: target.target_id,
-        profile_id: target.profile_id,
-        target,
-      };
+      return model.liveConsoleRuntimeTarget({ target });
     });
 }
 

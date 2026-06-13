@@ -70,10 +70,10 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	if page.Query != "" {
 		like := "%" + page.Query + "%"
 		if ftsQuery := buildFTSQuery(page.Query); ftsQuery != "" {
-			where = append(where, `(a.id IN (SELECT rowid FROM audit_logs_fts WHERE audit_logs_fts MATCH ?) OR COALESCE(t.name, '') LIKE ? OR COALESCE(ssh_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
+			where = append(where, `(a.id IN (SELECT rowid FROM audit_logs_fts WHERE audit_logs_fts MATCH ?) OR COALESCE(t.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
 			args = append(args, ftsQuery, like, like, like)
 		} else {
-			where = append(where, `(a.action LIKE ? OR a.actor_type LIKE ? OR a.payload_json LIKE ? OR a.connector_kind LIKE ? OR COALESCE(t.name, '') LIKE ? OR COALESCE(ssh_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
+			where = append(where, `(a.action LIKE ? OR a.actor_type LIKE ? OR a.payload_json LIKE ? OR a.connector_kind LIKE ? OR COALESCE(t.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
 			args = append(args, like, like, like, like, like, like, like)
 		}
 	}
@@ -83,8 +83,8 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		SELECT COUNT(*)
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN connector_credential_profiles ssh_cp ON ssh_cp.id = a.server_id AND ssh_cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ssh_ct ON ssh_ct.id = ssh_cp.target_id AND ssh_ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.server_id
+		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
 		LEFT JOIN connector_targets ct ON ct.id = a.target_id
 		WHERE `+whereSQL,
 		args...,
@@ -95,13 +95,13 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	queryArgs := append(append([]any{}, args...), page.Limit, page.Offset)
 	rows, err := runtime.database.QueryContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.server_id, COALESCE(ssh_ct.name, ''),
+		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.server_id, COALESCE(profile_ct.name, ''),
 			a.connector_kind, a.target_id, COALESCE(ct.name, ''), a.profile_id, a.action_request_id,
 			a.action, substr(a.payload_json, 1, 500), a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN connector_credential_profiles ssh_cp ON ssh_cp.id = a.server_id AND ssh_cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ssh_ct ON ssh_ct.id = ssh_cp.target_id AND ssh_ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.server_id
+		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
 		LEFT JOIN connector_targets ct ON ct.id = a.target_id
 		WHERE `+whereSQL+`
 		ORDER BY a.created_at DESC, a.id DESC
@@ -140,13 +140,13 @@ func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row := runtime.database.QueryRowContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.server_id, COALESCE(ssh_ct.name, ''),
+		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.server_id, COALESCE(profile_ct.name, ''),
 			a.connector_kind, a.target_id, COALESCE(ct.name, ''), a.profile_id, a.action_request_id,
 			a.action, a.payload_json, a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN connector_credential_profiles ssh_cp ON ssh_cp.id = a.server_id AND ssh_cp.connector_kind = 'ssh'
-		LEFT JOIN connector_targets ssh_ct ON ssh_ct.id = ssh_cp.target_id AND ssh_ct.connector_kind = 'ssh'
+		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.server_id
+		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
 		LEFT JOIN connector_targets ct ON ct.id = a.target_id
 		WHERE a.id = ?`,
 		id,

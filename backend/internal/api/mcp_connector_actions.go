@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -19,6 +18,7 @@ type mcpConnectorTargetItem struct {
 	ProfileID     int64                     `json:"profile_id"`
 	ProfileLabel  string                    `json:"profile_label"`
 	ProfileKind   string                    `json:"profile_kind"`
+	Metadata      map[string]any            `json:"metadata,omitempty"`
 	Actions       []mcpConnectorActionGrant `json:"actions"`
 	Hints         []string                  `json:"hints,omitempty"`
 }
@@ -62,6 +62,12 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 		handleConnectorTargetError(w, err)
 		return
 	}
+	settings, err := readSecuritySettings(r.Context(), auth.runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	store := connectortargets.NewStore(auth.runtime.database)
 	itemsByRef := map[string]*mcpConnectorTargetItem{}
 	order := []string{}
 	for _, permission := range permissions {
@@ -81,6 +87,14 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 				ProfileKind:   permission.ProfileKind,
 				Hints:         connectorTargetHints(permission.ConnectorKind),
 			}
+			if settings.ExposeMCPServerMetadata {
+				target, profile, err := connectorTargetProfileViews(r.Context(), store, permission.TargetID, permission.ProfileID)
+				if err != nil {
+					handleConnectorTargetError(w, err)
+					return
+				}
+				item.Metadata = connectorMCPMetadata(target, profile)
+			}
 			itemsByRef[ref] = item
 			order = append(order, ref)
 		}
@@ -95,6 +109,13 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 		items = append(items, *itemsByRef[ref])
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func connectorMCPMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
+	if adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
+		return adapter.LiveConsoleTargetMetadata(target, profile)
+	}
+	return nil
 }
 
 func (s mcpHandlers) mcpGetConnectorHelp(w http.ResponseWriter, r *http.Request) {
@@ -251,12 +272,7 @@ func (s mcpHandlers) resolveMCPConnectorTarget(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusForbidden, "token has no active connector actions for this target/profile")
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		writeInternalError(w)
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
-	}
-	connector, ok := registry.Get(target.ConnectorKind)
+	connector, ok := auth.runtime.connectorRegistry().Get(target.ConnectorKind)
 	if !ok {
 		writeError(w, http.StatusNotFound, "connector not found")
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false

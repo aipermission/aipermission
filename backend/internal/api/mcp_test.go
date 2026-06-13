@@ -16,6 +16,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
+	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
@@ -238,6 +239,60 @@ func TestMCPConnectorTargetsRequireValidToken(t *testing.T) {
 	response = performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("expected revoked token to be unauthorized, got %d", response.Code)
+	}
+}
+
+func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	profile := fixture.createKeyAndServer(t, "core-1")
+	store := connectortargets.NewStore(fixture.db)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      profile.TargetID,
+		ProfileID:     profile.ProfileID,
+		ActionName:    sshconnector.ActionExec,
+		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list connector targets failed: %d %s", response.Code, response.Body.String())
+	}
+	var items []mcpConnectorTargetItem
+	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode connector targets: %v", err)
+	}
+	if len(items) != 1 || len(items[0].Metadata) != 0 {
+		t.Fatalf("metadata should be hidden by default: %#v", items)
+	}
+
+	settingsResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/security", "", updateSecuritySettingsRequest{ExposeMCPServerMetadata: true})
+	if settingsResponse.Code != http.StatusOK {
+		t.Fatalf("enable metadata setting failed: %d %s", settingsResponse.Code, settingsResponse.Body.String())
+	}
+	response = performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list connector targets with metadata failed: %d %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode connector targets with metadata: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one connector target, got %#v", items)
+	}
+	metadata := items[0].Metadata
+	if metadata["host"] != profile.Host || metadata["username"] != profile.Username || int64ConfigValue(metadata, "port") != int64(profile.Port) {
+		t.Fatalf("unexpected exposed metadata: %#v", metadata)
+	}
+	if _, ok := metadata["ssh_key_id"]; ok {
+		t.Fatalf("metadata should not expose credential ids: %#v", metadata)
 	}
 }
 

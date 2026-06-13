@@ -113,14 +113,31 @@ func TestStoreSSHRuntimeForConsoleIDUsesCredentialProfile(t *testing.T) {
 	}
 }
 
-func TestStoreRejectsSecondSSHCredentialProfile(t *testing.T) {
+func TestStoreSSHRuntimeForConsoleIDRejectsArchivedProfile(t *testing.T) {
+	database := openTargetTestDB(t)
+	ctx := context.Background()
+	keyID := insertTargetTestSSHKey(t, database, "main")
+	store := NewStore(database)
+	target, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
+
+	if err := store.DeleteCredentialProfile(ctx, target.ID, profile.ID); err != nil {
+		t.Fatalf("delete credential profile: %v", err)
+	}
+
+	_, err := store.SSHRuntimeMappingForConsoleID(ctx, profile.ID)
+	if !errors.Is(err, ErrTargetProfileNotFound) {
+		t.Fatalf("archived profile should not resolve runtime mapping, got %v", err)
+	}
+}
+
+func TestStoreAllowsSecondSSHCredentialProfile(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	store := NewStore(database)
 	target, _ := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
 
-	_, err := store.CreateCredentialProfile(ctx, CreateCredentialProfileInput{
+	profile, err := store.CreateCredentialProfile(ctx, CreateCredentialProfileInput{
 		TargetID:            target.ID,
 		ConnectorKind:       sshconnector.Kind,
 		Kind:                "private_key",
@@ -131,8 +148,11 @@ func TestStoreRejectsSecondSSHCredentialProfile(t *testing.T) {
 			"ssh_key_id": keyID,
 		},
 	})
-	if err == nil {
-		t.Fatal("expected second SSH credential profile to be rejected")
+	if err != nil {
+		t.Fatalf("second SSH credential profile should be allowed: %v", err)
+	}
+	if profile.TargetID != target.ID || profile.Label != "readonly" {
+		t.Fatalf("unexpected second profile: %#v", profile)
 	}
 }
 

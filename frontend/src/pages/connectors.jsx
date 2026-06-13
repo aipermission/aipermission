@@ -8,7 +8,7 @@ import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Field, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
-import { ConnectorIcon, ConnectorKindCell, ProfilesCell, StatusCell, TargetCell, connectorKindLabel, connectorSummary } from "../connectors/templates/common";
+import { ConnectorIcon, ConnectorKindCell, StatusCell, TargetCell, connectorKindLabel, connectorSummary } from "../connectors/templates/common";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
 
@@ -28,6 +28,7 @@ export function ConnectorsPage() {
   const [tests, setTests] = useState({});
   const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [profileSelections, setProfileSelections] = useState({});
   const [toast, setToast] = useState("");
 
   const firstCredentialID = useMemo(() => (credentials.data[0] ? String(credentials.data[0].id) : ""), [credentials.data]);
@@ -54,6 +55,23 @@ export function ConnectorsPage() {
     void loadCatalog();
     void refreshConnectors();
   }, []);
+
+  useEffect(() => {
+    setProfileSelections((current) => {
+      const next = {};
+      for (const target of targets.data || []) {
+        const key = targetProfileSelectionKey(target);
+        const profiles = target.profiles || [];
+        const currentID = current[key];
+        if (profiles.length === 1) {
+          next[key] = String(profiles[0].id);
+        } else if (profiles.some((profile) => String(profile.id) === String(currentID))) {
+          next[key] = String(currentID);
+        }
+      }
+      return next;
+    });
+  }, [targets.data.map((target) => `${target.connector_kind}:${target.id}:${(target.profiles || []).map((profile) => profile.id).join(",")}`).join("|")]);
 
   async function refreshConnectors() {
     await Promise.all([loadTargets(), loadUnifiedTargets()]);
@@ -97,14 +115,29 @@ export function ConnectorsPage() {
     window.setTimeout(() => setToast(""), 2200);
   }
 
-  function openEditDrawer(target) {
+  function selectedProfileForTarget(target) {
+    const profiles = target?.profiles || [];
+    if (profiles.length === 1) return profiles[0];
+    const selectedID = profileSelections[targetProfileSelectionKey(target)];
+    return profiles.find((profile) => String(profile.id) === String(selectedID)) || null;
+  }
+
+  function selectProfile(target, profileID) {
+    setProfileSelections((current) => ({ ...current, [targetProfileSelectionKey(target)]: String(profileID || "") }));
+  }
+
+  function openEditDrawer(target, profile = selectedProfileForTarget(target)) {
     const model = getConnectorModel(target.connector_kind);
     if (!model?.formFromTarget) {
       setState({ state: "error", error: `Connector model not found for ${target.connector_kind}.`, message: "" });
       return;
     }
+    if ((target.profiles || []).length > 0 && !profile) {
+      setState({ state: "error", error: "Select a credential profile before editing profile-bound settings.", message: "" });
+      return;
+    }
     setState({ state: "idle", error: null, message: "" });
-    setForm(model.formFromTarget({ target }));
+    setForm(model.formFromTarget({ target, profile }));
     setDrawer({ open: true, mode: "edit", kind: target.connector_kind, target });
   }
 
@@ -180,19 +213,23 @@ export function ConnectorsPage() {
     await refreshConnectors();
   }
 
-  async function testConnector(target) {
-    const testKey = connectorTestKey(target);
+  async function testConnector(target, profile = selectedProfileForTarget(target)) {
+    const testKey = connectorTestKey(target, profile);
     const model = getConnectorModel(target.connector_kind);
     if (!model?.test) {
       setTests((current) => ({ ...current, [testKey]: { state: "error", error: `Connector model not found for ${target.connector_kind}.`, data: null } }));
       return;
     }
+    if (!profile) {
+      setTests((current) => ({ ...current, [testKey]: { state: "error", error: "Select a credential profile before testing.", data: null } }));
+      return;
+    }
     setTests((current) => ({ ...current, [testKey]: { state: "testing", error: null, data: null } }));
     try {
-      const result = await model.test({ target });
+      const result = await model.test({ target, profile });
       setTests((current) => ({ ...current, [testKey]: { state: result.ok ? "ok" : "error", error: result.error, data: result.data } }));
     } catch (error) {
-      const action = model.hostKeyActionFromError?.(error, { operation: "test", target, testKey });
+      const action = model.hostKeyActionFromError?.(error, { operation: "test", target, profile, testKey });
       if (action && openConnectorChallenge(error, action)) {
         setTests((current) => ({ ...current, [testKey]: { state: "idle", error: null, data: null } }));
         return;
@@ -235,7 +272,9 @@ export function ConnectorsPage() {
         catalog={catalog}
         unifiedTargets={unifiedTargets.data}
         credentials={credentials.data}
+        profileSelections={profileSelections}
         tests={tests}
+        onSelectProfile={selectProfile}
         onTestConnector={testConnector}
         onOperation={setConnectorOperation}
         onUnderConstruction={showUnderConstruction}
@@ -307,7 +346,7 @@ export function ConnectorsPage() {
   );
 }
 
-function ConnectorTargetsTable({ targets, catalog, unifiedTargets, credentials, tests, onTestConnector, onOperation, onUnderConstruction, onEdit, onDelete }) {
+function ConnectorTargetsTable({ targets, catalog, unifiedTargets, credentials, profileSelections, tests, onSelectProfile, onTestConnector, onOperation, onUnderConstruction, onEdit, onDelete }) {
   return (
     <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
       <table className="w-full table-fixed border-collapse text-left text-sm">
@@ -329,7 +368,9 @@ function ConnectorTargetsTable({ targets, catalog, unifiedTargets, credentials, 
               catalog={catalog}
               unifiedTargets={unifiedTargets}
               credentials={credentials}
+              selectedProfileID={profileSelections[targetProfileSelectionKey(target)] || ""}
               tests={tests}
+              onSelectProfile={onSelectProfile}
               onTestConnector={onTestConnector}
               onOperation={onOperation}
               onUnderConstruction={onUnderConstruction}
@@ -353,22 +394,27 @@ function ConnectorTargetsTable({ targets, catalog, unifiedTargets, credentials, 
   );
 }
 
-function connectorTestKey(target) {
-  const profileID = target.profiles?.[0]?.id || "target";
+function targetProfileSelectionKey(target) {
+  return `${target?.connector_kind || ""}:${target?.id || ""}`;
+}
+
+function connectorTestKey(target, profile) {
+  const profileID = profile?.id || "target";
   return `${target.connector_kind}:${target.id}:${profileID}`;
 }
 
 function ConnectorTargetRow(props) {
-  const { target, catalog, unifiedTargets, credentials, tests, onTestConnector, onOperation, onUnderConstruction, onEdit, onDelete } = props;
+  const { target, catalog, unifiedTargets, credentials, selectedProfileID, tests, onSelectProfile, onTestConnector, onOperation, onUnderConstruction, onEdit, onDelete } = props;
   const template = getConnectorTemplate(target.connector_kind);
   const model = template?.model;
   const RowActionsTemplate = template?.RowActions;
-  const profileRef = target.profiles?.[0]?.ref || "";
+  const profile = selectedConnectorProfile(target, selectedProfileID);
+  const profileRef = profile?.ref || "";
   const runtime = unifiedTargets.find((item) => item.ref === profileRef);
-  const endpoint = model?.targetEndpoint?.({ target, runtime }) || target.ref || `${target.connector_kind}:${target.id}`;
-  const credentialHint = model?.credentialHint?.({ target, credentials }) || null;
-  const test = tests[connectorTestKey(target)];
-  const canEdit = model?.canEdit?.({ target }) ?? true;
+  const endpoint = model?.targetEndpoint?.({ target, profile, runtime }) || target.ref || `${target.connector_kind}:${target.id}`;
+  const credentialHint = model?.credentialHint?.({ target, profile, credentials }) || null;
+  const test = tests[connectorTestKey(target, profile)];
+  const canEdit = Boolean(profile) && (model?.canEdit?.({ target, profile }) ?? true);
   const canDelete = model?.canDelete?.({ target }) ?? true;
 
   return (
@@ -377,7 +423,7 @@ function ConnectorTargetRow(props) {
       <TargetCell target={target} endpoint={endpoint} />
       <td className="px-4 py-4">
         <div className="grid gap-1.5">
-          <ProfilesCell target={target} />
+          <ConnectorProfilesCell target={target} selectedProfileID={profile?.id || ""} onSelectProfile={onSelectProfile} />
           {credentialHint ? <span className="truncate text-xs text-stone-500">{credentialHint}</span> : null}
         </div>
       </td>
@@ -392,6 +438,7 @@ function ConnectorTargetRow(props) {
           {RowActionsTemplate ? (
             <RowActionsTemplate
               target={target}
+              profile={profile}
               onOperation={onOperation}
               onUnderConstruction={onUnderConstruction}
             />
@@ -402,10 +449,10 @@ function ConnectorTargetRow(props) {
       </td>
       <td className="px-4 py-4">
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Test connection" disabled={test?.state === "testing"} onClick={() => onTestConnector(target)}>
+          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Test connection" disabled={!profile || test?.state === "testing"} onClick={() => onTestConnector(target, profile)}>
             <PlugZap className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Edit connector" disabled={!canEdit} onClick={() => canEdit && onEdit(target)}>
+          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Edit connector" disabled={!canEdit} onClick={() => canEdit && onEdit(target, profile)}>
             <Edit3 className="h-4 w-4" />
           </Button>
           <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Delete connector" disabled={!canDelete} onClick={() => canDelete && onDelete(target)}>
@@ -414,6 +461,32 @@ function ConnectorTargetRow(props) {
         </div>
       </td>
     </tr>
+  );
+}
+
+function selectedConnectorProfile(target, selectedProfileID) {
+  const profiles = target?.profiles || [];
+  if (profiles.length === 1) return profiles[0];
+  return profiles.find((profile) => String(profile.id) === String(selectedProfileID)) || null;
+}
+
+function ConnectorProfilesCell({ target, selectedProfileID, onSelectProfile }) {
+  const profiles = target.profiles || [];
+  if (profiles.length === 0) {
+    return <span className="text-xs text-stone-500">No profiles</span>;
+  }
+  if (profiles.length === 1) {
+    return <Badge tone="neutral" title={profiles[0].ref}>{profiles[0].label}</Badge>;
+  }
+  return (
+    <Select value={selectedProfileID ? String(selectedProfileID) : ""} onChange={(event) => onSelectProfile(target, event.target.value)} className="h-9 text-xs">
+      <option value="">Select profile</option>
+      {profiles.map((profile) => (
+        <option value={profile.id} key={profile.id}>
+          {profile.label}
+        </option>
+      ))}
+    </Select>
   );
 }
 
