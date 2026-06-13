@@ -54,7 +54,7 @@ POST /api/connector-targets/test
 GET /api/connector-targets/{id}
 PUT /api/connector-targets/{id}
 DELETE /api/connector-targets/{id}
-POST /api/connectors/ssh/targets/{id}/operations/{operation}
+POST /api/connector-targets/{id}/operations/{operation}
 GET /api/connector-targets/{id}/profiles
 POST /api/connector-targets/{id}/profiles
 PUT /api/connector-targets/{id}/profiles/{profile_id}
@@ -156,10 +156,10 @@ gateway-managed key selection happen before the target is saved. Other
 connectors should normally use saved profile tests through
 `POST /api/connector-targets/{id}/profiles/{profile_id}/test`.
 
-`POST /api/connectors/ssh/targets/{id}/operations/docker-check` runs a read-only,
-on-demand Docker status command through the SSH connector. It does not persist
-inventory or poll in the background. The response includes whether Docker is
-available and the current running containers:
+`POST /api/connector-targets/{id}/operations/docker-check` runs a read-only,
+on-demand Docker status command through the SSH connector adapter. It does not
+persist inventory or poll in the background. The response includes whether
+Docker is available and the current running containers:
 
 ```json
 {
@@ -183,7 +183,7 @@ available and the current running containers:
 
 If Docker is installed but the status command fails, the response keeps `available: true` and returns `ok: false` with stderr/stdout details. The UI shows this as a Docker access/service problem rather than as an empty container list.
 
-`POST /api/connectors/ssh/targets/{id}/operations/docker-logs` reads the latest logs
+`POST /api/connector-targets/{id}/operations/docker-logs` reads the latest logs
 for one container from the selected SSH target. The request body is:
 
 ```json
@@ -251,11 +251,12 @@ non-secret config. Connector-specific runtime behavior, such as SSH remote-key
 cleanup, host-key approval, persistent console, and SFTP-backed file transfer,
 is owned by the connector implementation.
 
-`POST /api/connectors/ssh/targets/{id}/operations/{operation}` runs an
-SSH-template UI operation for one saved SSH target. This currently backs
-on-demand Docker checks and bounded Docker log reads through operations such as
-`docker-check` and `docker-logs`. These operations are local UI helpers, not
-generic connector actions and not MCP tools.
+`POST /api/connector-targets/{id}/operations/{operation}` runs a connector
+template UI operation for one saved target when that connector adapter supports
+the operation. The built-in SSH adapter currently backs on-demand Docker checks
+and bounded Docker log reads through operations such as `docker-check` and
+`docker-logs`. These operations are local UI helpers, not generic connector
+actions and not MCP tools.
 
 `PUT /api/connector-targets/{id}/profiles/{profile_id}` updates one credential
 profile. If the `secret` object is omitted, the existing encrypted secret is
@@ -264,9 +265,10 @@ kept. If `secret` is present, the vault payload is replaced.
 `DELETE /api/connector-targets/{id}/profiles/{profile_id}` archives one
 connector credential profile. Archived profiles are hidden from future
 permission checks, while previous action requests and history keep their target
-and profile labels. The 0.2 SSH compatibility adapter rejects deleting the last
-SSH profile; delete the SSH connector target instead so persistent console,
-file-transfer, and authorized_keys cleanup state is handled together.
+and profile labels. Built-in SSH follows the same profile lifecycle as other
+connectors: deleting a profile cancels that profile's live-console runtime, and
+deleting the target handles persistent console, file-transfer, and
+authorized_keys cleanup state together.
 
 `POST /api/connector-targets/{id}/profiles/{profile_id}/test` runs the
 connector's side-effect-free connection test when the connector implements one.
@@ -363,15 +365,15 @@ status, progress, and checksum only. File contents are never stored in
 SQLCipher. Uploads and downloads use private short-lived temporary staging
 files under the local data directory.
 
-These endpoints are SSH runtime/UI compatibility endpoints. They use the shared
-SSH target/profile identity and are normalized into history/audit, but they are
-not separate generic connector-action REST endpoints. MCP file-transfer support
-is exposed through connector actions and still goes through token
-target/profile/action permission checks.
+These endpoints are local UI endpoints for the SSH connector's SFTP transfer
+capability. They use the shared target/profile identity and are normalized into
+history/audit, but they are not generic connector-action REST endpoints. MCP
+file-transfer support is exposed through connector actions and still goes
+through token target/profile/action permission checks.
 
 The local UI can upload local files, download remote files, and pause/resume or
 cancel transfer queues. MCP uses the generic connector-action tools instead of
-separate file-transfer wrappers. In 0.2.x the SSH connector exposes remote
+separate file-transfer HTTP endpoints. In 0.2.x the SSH connector exposes remote
 browsing and remote-to-local download queue creation through
 `browse_remote_files` and `start_file_download`; uploads, save-file dialogs, and
 queue pause/resume/cancel remain local web UI operations. MCP transfer-related
@@ -514,7 +516,7 @@ Remote paths must be absolute file paths. Directory transfer, recursive copy,
 remote glob expansion, restart-surviving resumable transfers, and
 SSH-agent/ProxyJump based transfers are not part of this MVP.
 
-MCP uses connector actions instead of separate file-transfer HTTP wrappers.
+MCP uses connector actions instead of separate file-transfer HTTP endpoints.
 For SSH remote browsing and download queues, call `call_connector_action` with
 the SSH connector actions `browse_remote_files` or `start_file_download`.
 Transfer queue state is visible in the local Transfer Center UI.
@@ -534,24 +536,27 @@ Transfer queue state is visible in the local Transfer Center UI.
 Connector responses never include file contents, local temporary paths, or
 archive staging paths.
 
-## SSH Connector Credentials
+## Connector Credential Resources
 
 ```txt
-GET    /api/connectors/ssh/credentials
-POST   /api/connectors/ssh/credentials
-POST   /api/connectors/ssh/credentials/import
-GET    /api/connectors/ssh/credentials/{id}
-PUT    /api/connectors/ssh/credentials/{id}
-DELETE /api/connectors/ssh/credentials/{id}
+GET    /api/connectors/{kind}/credentials
+POST   /api/connectors/{kind}/credentials
+POST   /api/connectors/{kind}/credentials/import
+GET    /api/connectors/{kind}/credentials/{id}
+PUT    /api/connectors/{kind}/credentials/{id}
+DELETE /api/connectors/{kind}/credentials/{id}
 GET    /api/ssh-config/discover
 POST   /api/ssh-config/parse
 ```
 
-These endpoints manage gateway-owned SSH key material used by the built-in SSH
-connector template. Other connector credential profiles are managed under
-`/api/connector-targets/{id}/profiles`.
+These endpoints manage connector-owned credential resources. In 0.2.x the
+built-in SSH connector uses them for gateway-owned SSH key material. Other
+connector credential profiles are managed under
+`/api/connector-targets/{id}/profiles`; future connectors may add resource
+handlers only when their template needs connector-owned material outside a
+single target profile.
 
-Create shape:
+SSH credential resource create shape:
 
 ```json
 {
@@ -560,7 +565,7 @@ Create shape:
 }
 ```
 
-Supported `key_type` values:
+Supported SSH `key_type` values:
 
 ```txt
 ed25519
@@ -827,6 +832,15 @@ token/target/profile/action permission before execution. `always_run` actions
 execute immediately, `approval_required` actions create a pending connector
 action request, and `blocked` or missing permissions do not execute.
 
+`GET /api/mcp/connector-targets` is permission-scoped and does not perform live
+health checks. By default it returns only target/profile/action identifiers,
+labels, rules, expiry, and connector hints. If the local user enables
+`expose_mcp_server_metadata` in Security settings, SSH target refs may also
+include an allowlisted `metadata` object with `host`, `port`, and `username` so
+AI clients can write clearer operator reasons. The metadata object never
+contains private keys, reusable API tokens, encrypted secrets, SSH key ids, or
+raw credential payloads.
+
 The web UI also exposes `GET/PUT /api/settings/mcp-runtime` for the local user.
 That route is protected by the UI session and CSRF checks, not by MCP token auth.
 It controls whether new MCP connector action execution is currently Started or
@@ -855,9 +869,11 @@ DELETE /api/history-labels/{id}
 `GET /api/history` is the canonical activity stream for connector targets.
 MCP connector actions pass through the connector action token permission,
 approval, history, and audit pipeline. SSH UI console/manual input and
-SFTP-backed file transfers are local UI/runtime compatibility surfaces; they
-are normalized into unified history/audit where possible, but they are not all
-token-scoped connector action approvals. Use `connector_kind` to filter by
+SFTP-backed file transfers are SSH runtime adapter surfaces; they are
+normalized into unified history/audit, but local UI activity is not an MCP
+token approval request. `server_id` on these endpoints is the SSH
+connector-profile runtime id kept for the live-console/file-transfer API
+payloads, not a generic connector target id. Use `connector_kind` to filter by
 connector type (`ssh`, `postgres`, and future connectors). `activity_type` is a
 technical shape filter for API clients that need command/action/file-transfer
 payloads. Use `target_id` to filter one connector target, and `profile_id` when

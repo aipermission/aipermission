@@ -58,7 +58,18 @@ SSH host key records live in `known_hosts`. The first unknown host key must be a
 
 SQLite databases are encrypted with SQLCipher. On first web use, the user creates a database password with at least 14 characters, uppercase letters, lowercase letters, and numbers. After container restarts, the UI shows the unlock screen and requires the same password. If the browser session cookie is missing while the backend process is still unlocked, the UI asks for the same password again and issues a new local session cookie without using the database password as a request token.
 
-Schema migrations use a versioned `schema_migrations` table. New migrations are recorded one by one. Runtime maintenance closes stale running sessions after restart, but does not delete old data. Configurable retention cleanup is stored in database settings, runs after unlock, and can also be triggered manually from Settings.
+Version 0.2.0 starts from a clean connector-native database baseline while the
+project is still pre-1.0. Pre-0.2 preview databases are not migrated
+automatically. Create a fresh 0.2 database before testing this release. If a
+real user needs to preserve important 0.1.x data, open an issue and we can
+provide a separate one-time import tool instead of keeping long-term runtime
+compatibility code in the gateway.
+
+Schema migrations use a versioned `schema_migrations` table from the 0.2
+baseline onward. Runtime maintenance closes stale running sessions after
+restart, but does not delete old data. Configurable retention cleanup is stored
+in database settings, runs after unlock, and can also be triggered manually from
+Settings.
 
 Settings Change Password verifies the current password and re-encrypts the active database. Older `.aipdb` backups still open with their original password; later backups use the new password.
 

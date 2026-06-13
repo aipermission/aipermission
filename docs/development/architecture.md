@@ -36,6 +36,32 @@ file-transfer surface; Postgres owns structured database actions. Future
 connectors should add their own execution surface without adding a new
 permission or audit pipeline.
 
+The 0.2 connector line is treated as a clean connector-schema boundary. It is
+allowed to make breaking local database changes while the project is still
+pre-1.0, and the implementation should avoid long-term compatibility shims that
+keep SSH outside the shared connector path. Pre-0.2 preview databases are not
+migrated automatically; users should create a fresh 0.2 database before testing
+the connector-native line. If a real user needs to preserve important 0.1.x
+data, handle it with a separate one-time import tool instead of runtime
+compatibility code.
+
+Connector work has two classes:
+
+| Capability | Normal structured connector | Runtime-integrated connector |
+|---|---|---|
+| Examples | Postgres, Redis, API recipes | SSH live terminal and SFTP |
+| Backend connector package | yes | yes |
+| Frontend template folder | yes | yes |
+| Shared target/profile/action permissions | yes | yes |
+| Shared approval, history, and audit | yes | yes |
+| New permission/history/audit tables | no | no |
+| Generic route branches such as `kind == "redis"` | no | no |
+| `connector_api_adapters.go` work | no | only after design review |
+| Live console / file transfer / owned credential resources | no | adapter contract required |
+
+If a connector cannot fit the normal structured path, treat that as a design
+review signal before adding gateway-owned adapter capabilities.
+
 ## Backend Boundaries
 
 - `internal/api`: HTTP routes, MCP handlers, UI session/CSRF, approval/message flows, and workspace lifecycle orchestration.
@@ -47,6 +73,11 @@ permission or audit pipeline.
   shared action request model.
 - `internal/actions`: shared action execution service used by structured
   connectors after permission checks.
+- `internal/api/connector_api_adapters.go`: gateway-owned connector capability
+  adapters. Generic API handlers ask these adapters whether a connector
+  supports live-console runtime ids, draft tests, target operations, async
+  finalization, or other gateway-owned behavior. They should not branch on a
+  connector kind directly.
 - `internal/history`: unified history projection for command, action, and file
   transfer activity.
 - `internal/console`: persistent SSH console sessions, PTY websocket attach, AI command execution inside a shell session, transcript display cleanup, and transcript redaction before persistence. Console persistence uses a bounded session snapshot plus append-only transcript chunks so long-running sessions do not rewrite one large transcript row on every flush.

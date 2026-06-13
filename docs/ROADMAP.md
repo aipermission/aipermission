@@ -186,6 +186,9 @@ Goals:
 - Render connector UI through frontend templates so contributors can add a
   connector without editing every route page.
 - Keep local-only, single-user, human-in-the-loop boundaries unchanged.
+- Treat the 0.2 connector line as a clean pre-1.0 schema boundary. Avoid
+  permanent compatibility code that keeps SSH outside the shared
+  connector path.
 
 Non-goals:
 

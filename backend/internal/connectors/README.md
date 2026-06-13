@@ -32,6 +32,11 @@ A connector implementation must provide:
 - `PrepareAction` validation and command/query/request shaping
 - `ExecuteAction` execution after the gateway has allowed the action
 
+`GetHelp`, `GetActionList`, and `PrepareAction` must stay side-effect-free.
+`GetActionList` should be static for a target/profile and must not depend on
+network reachability because permission reads and MCP discovery call it on read
+paths.
+
 The gateway core remains responsible for:
 
 - API token authentication
@@ -75,6 +80,11 @@ changes before Run, the shared approval layer marks the request `stale`.
 Connector packages should keep action definitions stable and intentionally
 versioned.
 
+`PrepareAction` must be deterministic for the same request. Connector tests
+should call `connectortest.AssertPrepareActionDeterministic` so approval
+context hashes cannot drift because of timestamps, random defaults, map
+iteration order, or hidden runtime state.
+
 Target/profile deletion is archival from the connector action point of view.
 Archived targets and profiles are hidden from future permission checks and
 action execution, but existing action requests remain readable so history and
@@ -86,27 +96,23 @@ layer. The adapter is responsible for polling/finalizing the action, redacting
 intermediate responses, syncing history, and providing MCP assistant hints.
 Connector packages should not add their own request lifecycle tables.
 
-SSH is the built-in compatibility adapter, not the template for new
-connectors. It uses gateway-owned runtime services for persistent PTY sessions,
-SFTP/file transfer, host-key approval, generated/imported gateway keys, and
-remote authorized_keys cleanup. New connectors such as Redis or HTTP API
-connectors should follow the Postgres-style target/profile/action path unless a
-new adapter capability is deliberately designed for every connector.
+Connector-specific gateway capabilities live behind adapter contracts in
+`internal/api/connector_api_adapters.go`. SSH uses those contracts for
+persistent PTY sessions, SFTP/file transfer, host-key approval,
+generated/imported gateway keys, and remote authorized_keys cleanup. The generic
+HTTP handlers should ask the adapter what the connector supports; they should
+not branch on `kind == "ssh"` or `kind == "postgres"`.
 
-SSH runtime tables and API payloads may still say `server_id`. In the connector
-model that is an SSH runtime/profile id used by the compatibility adapter, not a
-generic target id. New connectors should not create `server_id`-style mirrors;
-they should use connector action requests and unified history.
+New connectors such as Redis or HTTP API connectors should follow the
+target/profile/action path by default. If they need a capability beyond the
+shared action runner, design a reusable adapter contract first instead of
+adding connector-specific command tables, file-transfer tables, draft-test route
+branches, or operation branches to generic handlers.
 
-Likewise, new connectors should not add connector-specific draft-test route
-branches, command tables, file-transfer tables, or route operation branches
-unless a reusable gateway adapter contract has been designed first.
-
-For the 0.2 compatibility adapter, an SSH target supports one credential
-profile. That keeps the existing persistent console, SFTP queue, authorized_keys
-cleanup, and MCP compatibility behavior deterministic while the generic
-connector model stays target/profile/action based for Postgres and future
-connectors.
+Live-console runtime payloads expose a field named `server_id` because existing
+console routes use that payload name. In the connector model that value is a
+connector-profile runtime id supplied by the live-console adapter, not a
+generic target id and not an invitation to create connector-specific mirrors.
 
 The Postgres connector is a read-oriented MVP. It uses read-only transactions,
 statement timeouts, row caps, and output byte caps, but it is not a replacement
@@ -145,6 +151,10 @@ history, and audit use the shared target/profile/action vocabulary.
 `RuntimeContext.Services` is reserved for gateway-owned runtime adapters. A
 connector receives only services for its own kind. Do not use it as a general
 escape hatch for arbitrary gateway internals.
+
+The 0.2 connector line is a clean database baseline. Do not add runtime
+fallbacks for pre-0.2 preview schemas; if a real user needs old data, handle it
+with a separate one-time import tool.
 
 ## Adding A Connector
 

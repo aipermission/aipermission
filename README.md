@@ -446,9 +446,32 @@ Start here:
 - [Development Testing](docs/development/testing.md)
 - [Roadmap](docs/ROADMAP.md)
 
+## Developing Connectors
+
+Most future connectors should be structured connectors: add a backend connector
+package, frontend templates, registration, docs, and tests. They use the shared
+target/profile/action permission, approval, history, and audit pipeline without
+adding connector-specific permission tables, MCP tool families, or route-level
+branches.
+
+Runtime-integrated connectors are different. SSH is the built-in example
+because it owns a live terminal, SFTP file transfer, host-key approval, and
+gateway-owned key resources. New runtime capabilities require a reviewed
+adapter contract before touching generic API routes.
+
+See [Add A Connector](docs/development/add-a-connector.md) for the contributor
+checklist, required template files, security invariants, and the exact places a
+Redis/API-style connector should touch.
+
 ## Project Status
 
 This project is in active RC testing. The current goal is to validate the local developer workflow with early users before the first stable release.
+
+Version 0.2.0 is a connector-native baseline. Pre-0.2 preview databases are not
+migrated automatically; create a fresh 0.2 database before testing this release.
+If a real user needs to preserve important 0.1.x data, open an issue and we can
+provide a separate one-time import tool instead of keeping runtime compatibility
+code.
 
 The first release will focus on:
 

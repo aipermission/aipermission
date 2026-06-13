@@ -86,6 +86,24 @@ Visibility is permission-scoped, not a live health check. A visible SSH target
 may still be powered off, unreachable, reject authentication, or require host
 key review. Treat action execution errors as the current reachability signal.
 
+Endpoint metadata is off by default. When the local user enables
+`Expose server endpoint metadata to MCP` in Security settings, SSH refs may
+include:
+
+```json
+{
+  "metadata": {
+    "host": "10.0.0.12",
+    "port": 22,
+    "username": "root"
+  }
+}
+```
+
+This is for clearer operator reasons only. MCP discovery still omits private
+keys, reusable tokens, encrypted secrets, SSH key ids, and raw credential
+payloads.
+
 ## get_connector_help
 
 Returns connector-specific operator guidance for one `target_ref`. Call it

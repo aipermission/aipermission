@@ -37,47 +37,60 @@ These rules are part of the connector contract:
   payload. Never put API tokens, passwords, private keys, or tenant secrets in
   action input schemas; define them as credential profile fields instead.
 - `GetHelp`, `GetActionList`, and `PrepareAction` are side-effect-free and must
-  not read raw secrets.
+  not read raw secrets. `GetActionList` should be static for a target/profile
+  and should not open network connections; permission screens and MCP discovery
+  call it during read paths.
+- `PrepareAction` must be deterministic for the same target/profile/action
+  input. Use `connectortest.AssertPrepareActionDeterministic` in connector
+  tests so approval-context hashes cannot drift because of timestamps, random
+  defaults, map iteration, or hidden runtime state.
 - `ExecuteAction` is the only connector method that receives raw secrets, and
   only after the gateway has allowed the action.
 - Action input schemas must not contain secret fields. Put passwords, API keys,
   tokens, private keys, tenant ids that must remain secret, and similar material
   in credential profile schemas.
-- Non-SSH connector actions are synchronous in 0.2.x. If a connector needs
-  `running`/polling semantics, add a reusable gateway runtime adapter contract
-  first; do not add connector-local polling tables.
-- New connectors must not add `server_id`, SSH-style command tables,
+- Synchronous connector actions can use the shared connector action runner
+  directly. If a connector needs `running`/polling semantics or another
+  gateway-owned capability, add a reusable adapter contract first; do not add
+  connector-local polling tables.
+- New connectors must not add connector-specific command tables,
   file-transfer tables, draft-test route branches, or operation routes unless a
   reusable adapter contract has been reviewed. Use connector action requests and
   unified history by default.
 - Route pages render through frontend templates. Do not add `if kind ===
   "redis"` branches to generic pages.
 
-SSH is the built-in compatibility adapter, not the template for new connectors.
-It has extra gateway-owned behavior for persistent PTY sessions, SFTP transfer,
-host-key approval, key generation/import, and remote authorized_keys cleanup.
-New connectors should follow the generic Postgres-style target/profile/action
-path unless they have an explicitly reviewed core adapter reason.
+Connector-specific gateway capabilities live behind adapter contracts in
+`internal/api/connector_api_adapters.go`. SSH uses those contracts for
+persistent PTY sessions, SFTP transfer, host-key approval, key
+generation/import, and remote authorized_keys cleanup. Generic route handlers
+must ask the adapter what the connector supports instead of branching on a
+connector kind.
 
-Some SSH runtime surfaces still expose `server_id` because the live terminal,
-SSH command request rows, and file-transfer queues need a stable runtime id.
-For 0.2.x this id is an SSH adapter/profile-backed runtime id, not the generic
-connector target id. New connectors must not add their own `server_id` model or
-copy SSH command/file-transfer tables. They should use connector action
-requests and unified history unless a reusable gateway runtime adapter has been
-designed first.
+Some live-console runtime surfaces expose `server_id` because existing console
+routes use that payload name. In the connector model this value is a
+connector-profile runtime id supplied by the live-console adapter, not the
+generic target id. New connectors must not add their own `server_id` model or
+copy SSH command/file-transfer tables unless a reusable gateway runtime adapter
+has been designed first.
 
-The `Credentials` page stores connector credential profiles. The older SSH key
-material is now one kind of connector credential profile, not the model for
-every connector. For API or Redis-style connectors, add the profile fields that
-the connector needs and keep secret values in encrypted credential schemas.
+The `Credentials` page manages connector credential profiles and
+connector-owned credential resources. SSH key material is a resource used by
+SSH profiles, not a generic model for every connector. For API or Redis-style
+connectors, add only the profile/resource fields that the connector needs and
+keep secret values in encrypted credential schemas.
 
-For 0.2.x, SSH targets intentionally support one credential profile in the
-compatibility adapter. That avoids hidden profile selection in persistent
-console, SFTP transfer, authorized_keys cleanup, and MCP compatibility paths.
-New connectors should support multiple profiles through the generic
-target/profile/action model unless their adapter contract explicitly says
-otherwise.
+Targets can have multiple credential profiles. Connector templates decide how
+to expose profile selection in the UI, while token permissions always bind the
+exact target/profile/action tuple that will run. Built-in SSH uses the same
+target/profile/action model as structured connectors; persistent console and
+file-transfer features receive a connector-profile runtime id from the SSH
+adapter.
+
+The 0.2 connector line is a clean baseline. Do not add compatibility branches
+for pre-0.2 preview database layouts. If a real user needs to preserve
+important 0.1.x data, build a separate offline import tool rather than keeping
+runtime fallback code in the gateway.
 
 ## Backend Contract
 
@@ -112,11 +125,12 @@ The Connectors page manages a target and its default credential profile.
 Additional profiles for the same target belong on the Credentials page. Token
 permissions always bind one target, one credential profile, and one action.
 
-Draft target tests before save are currently SSH-only because SSH host-key
-approval and remote key installation happen before the local target/profile is
-persisted. Normal structured connectors should implement saved profile tests
-through `TestableConnector`; do not add connector-specific draft-test branches
-to generic route handlers without designing a reusable contract first.
+Draft target tests before save are connector capabilities. SSH implements that
+capability because host-key approval and remote key installation happen before
+the local target/profile is persisted. Normal structured connectors should
+implement saved profile tests through `TestableConnector`; do not add
+connector-specific draft-test branches to generic route handlers without
+designing a reusable contract first.
 
 Action input schemas must not contain secret fields. Put passwords, API keys,
 tokens, private keys, and tenant-specific secret material in credential profile
@@ -146,6 +160,12 @@ directly from `ExecuteAction`. Long-running `running` actions require an
 explicit runtime adapter in `internal/api` so polling, output finalization,
 redaction, history sync, and MCP assistant hints stay centralized. Do not
 invent connector-local polling tables.
+
+`RuntimeContext.Services` is reserved for reviewed gateway-owned runtime
+adapters. Normal structured connectors should not depend on arbitrary gateway
+services. If a new connector needs a capability similar to live terminals,
+file transfer, or async progress, first define a reusable adapter contract and
+document why the shared action runner is not enough.
 
 ## Frontend Templates
 
@@ -178,7 +198,7 @@ Template slots:
 | `form.jsx` | yes | Add/edit target fields for the connector target schema. |
 | `credential-form.jsx` | yes | Add/edit credential profile fields for the credential schema. |
 | `list-item.jsx` | yes | Connector-specific row operations on the Connectors page. Do not put generic Edit/Delete/Test actions here. |
-| `console.jsx` | yes | Structured activity surface or live-console wrapper for the Console page. |
+| `console.jsx` | yes | Structured activity surface or live-console template for the Console page. |
 | `CredentialRowActions` | optional | Extra credential-row actions, such as copying an SSH install command. |
 | `ToolbarActions` | optional | Connector-specific Console toolbar actions, such as Files or Bulk for SSH. |
 | `Operations` | optional | Connector-specific dialogs/operations launched from list rows. |
