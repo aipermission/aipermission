@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -207,6 +208,46 @@ func TestExecuteActionValidatesTargetConfigBeforeDial(t *testing.T) {
 	}, connectors.PreparedAction{ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("expected ErrInvalidConfig, got %v", err)
+	}
+}
+
+func TestPublicStringMissingKeyIsEmpty(t *testing.T) {
+	if got := publicString(map[string]any{"username": " app "}, "username"); got != "app" {
+		t.Fatalf("username = %q", got)
+	}
+	if got := publicString(map[string]any{"username": "app"}, "missing"); got != "" {
+		t.Fatalf("missing public value should be empty, got %q", got)
+	}
+	if got := publicString(map[string]any{"username": nil}, "username"); got != "" {
+		t.Fatalf("nil public value should be empty, got %q", got)
+	}
+}
+
+func TestBoundPostgresValueCapsLargeStrings(t *testing.T) {
+	value, size, truncated := boundPostgresValue(strings.Repeat("x", maxCellBytes+100), maxOutputBytes)
+	text, ok := value.(string)
+	if !ok {
+		t.Fatalf("expected bounded string, got %#v", value)
+	}
+	if !truncated || !strings.HasSuffix(text, truncatedSuffix) {
+		t.Fatalf("expected truncated suffix, value=%q truncated=%v", text[len(text)-len(truncatedSuffix):], truncated)
+	}
+	if len(text) > maxCellBytes || size != len(text) {
+		t.Fatalf("bounded size mismatch len=%d size=%d", len(text), size)
+	}
+}
+
+func TestBoundPostgresValueRespectsRemainingBudgetAndUTF8(t *testing.T) {
+	value, size, truncated := boundPostgresValue("🙂🙂🙂", 8)
+	text, ok := value.(string)
+	if !ok {
+		t.Fatalf("expected bounded string, got %#v", value)
+	}
+	if !truncated || len(text) > 8 || !utf8.ValidString(text) {
+		t.Fatalf("expected utf8-safe truncation within budget, text=%q len=%d truncated=%v", text, len(text), truncated)
+	}
+	if size != len(text) {
+		t.Fatalf("size = %d len=%d", size, len(text))
 	}
 }
 

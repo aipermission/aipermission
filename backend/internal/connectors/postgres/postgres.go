@@ -3,6 +3,7 @@ package postgresconnector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -29,8 +30,12 @@ const (
 	defaultMaxRows = 100
 	maxRows        = 1000
 	maxSQLBytes    = 20000
+	maxOutputBytes = 500000
+	maxCellBytes   = 64000
 	queryTimeout   = 20 * time.Second
 )
+
+const truncatedSuffix = "...[truncated]"
 
 var (
 	ErrUnsupportedAction = errors.New("unsupported postgres connector action")
@@ -241,7 +246,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 					Description: "Maximum rows to return.",
 				},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxRows, MaxBytes: 500000},
+			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxRows, MaxBytes: maxOutputBytes},
 		},
 	}, nil
 }
@@ -432,6 +437,7 @@ func (o queryOutput) ToMap() map[string]any {
 		"rows":      o.Rows,
 		"row_count": o.RowCount,
 		"max_rows":  o.MaxRows,
+		"max_bytes": maxOutputBytes,
 		"truncated": o.Truncated,
 	}
 }
@@ -442,7 +448,7 @@ func (o queryOutput) DisplayText() string {
 		text += "s"
 	}
 	if o.Truncated {
-		text += fmt.Sprintf(" (truncated at %d)", o.MaxRows)
+		text += " (truncated)"
 	}
 	return text
 }
@@ -546,7 +552,12 @@ func queryRows(ctx context.Context, tx pgx.Tx, sql string, rowLimit int, args ..
 		columns = append(columns, field.Name)
 	}
 	items := []map[string]any{}
+	outputBytes := 0
+	truncated := false
 	for rows.Next() {
+		if outputBytes >= maxOutputBytes {
+			return queryOutput{Columns: columns, Rows: items, RowCount: len(items), MaxRows: rowLimit, Truncated: true}, nil
+		}
 		values, err := rows.Values()
 		if err != nil {
 			return queryOutput{}, fmt.Errorf("read postgres row: %w", err)
@@ -564,16 +575,29 @@ func queryRows(ctx context.Context, tx pgx.Tx, sql string, rowLimit int, args ..
 		for index, column := range columns {
 			var value any
 			if index < len(values) {
-				value = normalizePostgresValue(values[index])
+				var valueBytes int
+				var valueTruncated bool
+				value, valueBytes, valueTruncated = boundPostgresValue(normalizePostgresValue(values[index]), maxOutputBytes-outputBytes)
+				outputBytes += valueBytes
+				if valueTruncated {
+					truncated = true
+				}
 			}
 			item[column] = value
+			if outputBytes >= maxOutputBytes {
+				truncated = true
+				break
+			}
 		}
 		items = append(items, item)
+		if truncated && outputBytes >= maxOutputBytes {
+			return queryOutput{Columns: columns, Rows: items, RowCount: len(items), MaxRows: rowLimit, Truncated: true}, nil
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return queryOutput{}, fmt.Errorf("iterate postgres rows: %w", err)
 	}
-	return queryOutput{Columns: columns, Rows: items, RowCount: len(items), MaxRows: rowLimit}, nil
+	return queryOutput{Columns: columns, Rows: items, RowCount: len(items), MaxRows: rowLimit, Truncated: truncated}, nil
 }
 
 func normalizePostgresValue(value any) any {
@@ -585,6 +609,71 @@ func normalizePostgresValue(value any) any {
 	default:
 		return typed
 	}
+}
+
+func boundPostgresValue(value any, remainingBytes int) (any, int, bool) {
+	if remainingBytes <= 0 {
+		return truncateStringWithSuffix("", 0), 0, true
+	}
+	limit := minInt(maxCellBytes, remainingBytes)
+	switch typed := value.(type) {
+	case string:
+		if len(typed) > limit {
+			truncated := truncateStringWithSuffix(typed, limit)
+			return truncated, len(truncated), true
+		}
+		return typed, len(typed), false
+	case nil:
+		return nil, minInt(4, remainingBytes), false
+	default:
+		encoded, err := json.Marshal(typed)
+		if err == nil && len(encoded) <= limit {
+			return typed, len(encoded), false
+		}
+		text := fmt.Sprint(typed)
+		truncated := truncateStringWithSuffix(text, limit)
+		return truncated, len(truncated), true
+	}
+}
+
+func truncateStringWithSuffix(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if len(value) <= limit {
+		return value
+	}
+	if limit <= len(truncatedSuffix) {
+		return truncateUTF8Bytes(truncatedSuffix, limit)
+	}
+	return truncateUTF8Bytes(value, limit-len(truncatedSuffix)) + truncatedSuffix
+}
+
+func truncateUTF8Bytes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if len(value) <= limit {
+		return value
+	}
+	cut := 0
+	for index := range value {
+		if index > limit {
+			break
+		}
+		cut = index
+	}
+	if cut == 0 {
+		return ""
+	}
+	return value[:cut]
+}
+
+func minInt(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func connectionMode(target connectors.TargetView) string {
@@ -631,7 +720,11 @@ func publicString(public map[string]any, name string) string {
 	if public == nil {
 		return ""
 	}
-	return strings.TrimSpace(fmt.Sprint(public[name]))
+	value, ok := public[name]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func payloadString(payload map[string]any, name string) string {
