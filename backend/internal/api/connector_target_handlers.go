@@ -14,6 +14,7 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/execution"
+	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 )
 
@@ -289,10 +290,16 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	// SSH remote authorized_keys cleanup is adapter-owned compatibility
-	// behavior, not the model for new connector delete flows.
-	if target.ConnectorKind == sshconnector.Kind && r.URL.Query().Get("remove_key") == "true" {
+	// SSH remote authorized_keys cleanup and live runtime shutdown are
+	// adapter-owned compatibility behavior, not the model for new connector
+	// delete flows.
+	if target.ConnectorKind == sshconnector.Kind {
 		s.deleteSSHConnectorTarget(w, r, runtime, target)
+		return
+	}
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, id, 0, "connector target was deleted; ask the AI to send a fresh request")
+	if err != nil {
+		writeInternalError(w)
 		return
 	}
 	if err := store.DeleteTarget(r.Context(), id); err != nil {
@@ -300,9 +307,10 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.deleted", map[string]any{
-		"target_id":      target.ID,
-		"connector_kind": target.ConnectorKind,
-		"name":           target.Name,
+		"target_id":                target.ID,
+		"connector_kind":           target.ConnectorKind,
+		"name":                     target.Name,
+		"stale_connector_requests": staleRequests,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -348,6 +356,17 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
+	}
+	if target.ConnectorKind == sshconnector.Kind {
+		profiles, err := store.ListCredentialProfiles(r.Context(), target.ID)
+		if err != nil {
+			handleConnectorTargetError(w, err)
+			return
+		}
+		if len(profiles) > 0 {
+			writeError(w, http.StatusBadRequest, "SSH connector targets support one credential profile in the 0.2 compatibility adapter")
+			return
+		}
 	}
 	registry, err := builtin.NewRegistry()
 	if err != nil {
@@ -518,18 +537,66 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
+	if target.ConnectorKind == sshconnector.Kind {
+		profiles, err := store.ListCredentialProfiles(r.Context(), targetID)
+		if err != nil {
+			handleConnectorTargetError(w, err)
+			return
+		}
+		if len(profiles) <= 1 {
+			writeError(w, http.StatusBadRequest, "SSH connector targets require one credential profile; delete the connector target instead")
+			return
+		}
+	}
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, targetID, profileID, "connector credential profile was deleted; ask the AI to send a fresh request")
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if target.ConnectorKind == sshconnector.Kind {
+		if _, err := s.restartServerConsoleSession(r.Context(), runtime, profile.ID, "SSH credential profile was deleted before command completed"); err != nil {
+			writeInternalError(w)
+			return
+		}
+	}
 	if err := store.DeleteCredentialProfile(r.Context(), targetID, profileID); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.deleted", map[string]any{
-		"target_id":      target.ID,
-		"profile_id":     profile.ID,
-		"connector_kind": target.ConnectorKind,
-		"kind":           profile.Kind,
-		"label":          profile.Label,
+		"target_id":                target.ID,
+		"profile_id":               profile.ID,
+		"connector_kind":           target.ConnectorKind,
+		"kind":                     profile.Kind,
+		"label":                    profile.Label,
+		"stale_connector_requests": staleRequests,
 	})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx context.Context, runtime *databaseRuntime, targetID int64, profileID int64, reason string) (int64, error) {
+	if runtime == nil || runtime.database == nil || targetID < 1 {
+		return 0, nil
+	}
+	store := connectortargets.NewStore(runtime.database)
+	result, err := store.StaleActionRequestsForTarget(ctx, connectortargets.StaleActionRequestsForTargetInput{
+		TargetID:  targetID,
+		ProfileID: profileID,
+		Error:     s.redactForPersistence(ctx, runtime, reason),
+	})
+	if err != nil {
+		return 0, err
+	}
+	if len(result.IDs) == 0 {
+		return 0, nil
+	}
+	historyStore := history.NewStore(runtime.database)
+	for _, id := range result.IDs {
+		if err := historyStore.SyncConnectorActionRequest(ctx, id); err != nil {
+			return 0, err
+		}
+	}
+	return result.Affected, nil
 }
 
 func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {
@@ -617,7 +684,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		OK:            result.Status == connectors.TestOK,
 		Status:        string(result.Status),
 		Message:       s.redactForPersistence(r.Context(), runtime, result.Message),
-		Details:       redactedMapValue(s.redactedConnectorValue(r.Context(), runtime, result.Details)),
+		Details:       redactedMapValue(s.redactedConnectorValue(r.Context(), runtime, result.Details, connectorSensitiveOutputFields())),
 		DurationMS:    time.Since(start).Milliseconds(),
 	})
 }
@@ -697,7 +764,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		writeError(w, http.StatusBadRequest, "operation is not supported for this connector")
 		return
 	}
-	mapping, err := sshRuntimeMappingForTarget(r.Context(), store, target.ID)
+	mapping, err := singleSSHRuntimeMappingForTarget(r.Context(), store, target.ID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
@@ -752,51 +819,70 @@ func (s connectorTargetHandlers) deleteSSHConnectorTarget(w http.ResponseWriter,
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if len(profiles) == 0 {
-		handleConnectorTargetError(w, connectortargets.ErrTargetProfileNotFound)
-		return
-	}
-	removedKey := false
+	removedKeys := int64(0)
 	if r.URL.Query().Get("remove_key") == "true" {
-		server, privateKey, err := s.serverSSHMaterial(r.Context(), profiles[0].ID)
-		if err != nil {
-			handleServerSSHMaterialError(w, err)
+		if len(profiles) == 0 {
+			writeError(w, http.StatusBadRequest, "remote SSH key cleanup requires a saved credential profile")
 			return
 		}
-		sshKeyID := int64ConfigValue(profiles[0].Public, "ssh_key_id")
-		sshKey, err := runtime.sshKeys.Get(r.Context(), sshKeyID)
+		for _, profile := range profiles {
+			server, privateKey, err := s.serverSSHMaterial(r.Context(), profile.ID)
+			if err != nil {
+				handleServerSSHMaterialError(w, err)
+				return
+			}
+			sshKeyID := int64ConfigValue(profile.Public, "ssh_key_id")
+			sshKey, err := runtime.sshKeys.Get(r.Context(), sshKeyID)
+			if err != nil {
+				writeInternalError(w)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+			result, err := execution.RunCommand(ctx, s.executionTarget(server, privateKey), removeAuthorizedKeyCommand(sshKey.PublicKey))
+			cancel()
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "remote key uninstall failed")
+				return
+			}
+			if result.ExitCode != 0 {
+				message := strings.TrimSpace(result.Stderr + result.Stdout)
+				if message == "" {
+					message = "remote key uninstall failed"
+				}
+				writeError(w, http.StatusBadGateway, message)
+				return
+			}
+			removedKeys++
+		}
+	}
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, 0, "SSH connector target was deleted; ask the AI to send a fresh request")
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	canceledCommands := int64(0)
+	for _, profile := range profiles {
+		result, err := s.restartServerConsoleSession(r.Context(), runtime, profile.ID, "SSH connector target was deleted before command completed")
 		if err != nil {
 			writeInternalError(w)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		result, err := execution.RunCommand(ctx, s.executionTarget(server, privateKey), removeAuthorizedKeyCommand(sshKey.PublicKey))
-		if err != nil {
-			writeError(w, http.StatusBadGateway, "remote key uninstall failed")
-			return
-		}
-		if result.ExitCode != 0 {
-			message := strings.TrimSpace(result.Stderr + result.Stdout)
-			if message == "" {
-				message = "remote key uninstall failed"
-			}
-			writeError(w, http.StatusBadGateway, message)
-			return
-		}
-		removedKey = true
+		canceledCommands += result.CanceledRunningRequests
 	}
 	if err := store.DeleteTarget(r.Context(), target.ID); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.deleted", map[string]any{
-		"target_id":          target.ID,
-		"connector_kind":     sshconnector.Kind,
-		"name":               target.Name,
-		"remote_key_removed": removedKey,
+		"target_id":                target.ID,
+		"connector_kind":           sshconnector.Kind,
+		"name":                     target.Name,
+		"remote_key_removed":       removedKeys > 0,
+		"remote_keys_removed":      removedKeys,
+		"stale_connector_requests": staleRequests,
+		"canceled_commands":        canceledCommands,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKey})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKeys > 0, "remote_keys_removed": removedKeys})
 }
 
 func (s connectorTargetHandlers) testSSHConnectorProfile(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, targetID int64, profileID int64) {
@@ -892,7 +978,7 @@ func (s connectorTargetHandlers) testSSHConnectorDraft(w http.ResponseWriter, r 
 	})
 }
 
-func sshRuntimeMappingForTarget(ctx context.Context, store *connectortargets.Store, targetID int64) (connectortargets.SSHRuntimeMapping, error) {
+func singleSSHRuntimeMappingForTarget(ctx context.Context, store *connectortargets.Store, targetID int64) (connectortargets.SSHRuntimeMapping, error) {
 	profiles, err := store.ListCredentialProfiles(ctx, targetID)
 	if err != nil {
 		return connectortargets.SSHRuntimeMapping{}, err
@@ -900,7 +986,14 @@ func sshRuntimeMappingForTarget(ctx context.Context, store *connectortargets.Sto
 	if len(profiles) == 0 {
 		return connectortargets.SSHRuntimeMapping{}, connectortargets.ErrTargetProfileNotFound
 	}
-	mapping, _, _, err := store.SSHRuntimeForTargetRef(ctx, connectortargets.SSHTargetRef(targetID, profiles[0].ID))
+	if len(profiles) > 1 {
+		return connectortargets.SSHRuntimeMapping{}, connectortargets.ValidationError("SSH connector targets support one credential profile in the 0.2 compatibility adapter")
+	}
+	profileID := int64(0)
+	for _, profile := range profiles {
+		profileID = profile.ID
+	}
+	mapping, _, _, err := store.SSHRuntimeForTargetRef(ctx, connectortargets.SSHTargetRef(targetID, profileID))
 	return mapping, err
 }
 

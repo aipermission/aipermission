@@ -119,10 +119,11 @@ export function HistoryPage() {
     if (filters.status) params.set("status", filters.status);
     if (filters.source) params.set("source", filters.source);
     const selectedTarget = targetItems.find((target) => target.ref === filters.targetRef);
-    if (selectedTarget?.server_id) {
-      params.set("server_id", String(selectedTarget.server_id));
-    } else if (selectedTarget?.id) {
-      params.set("target_id", String(selectedTarget.id));
+    if (selectedTarget?.target_id) {
+      params.set("target_id", String(selectedTarget.target_id));
+    }
+    if (selectedTarget?.profile_id) {
+      params.set("profile_id", String(selectedTarget.profile_id));
     }
     if (filters.labelID) params.set("label_id", filters.labelID);
     try {

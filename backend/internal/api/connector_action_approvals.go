@@ -174,9 +174,10 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	}
 	if item.TokenID == nil {
 		stale, staleErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-			ID:     item.ID,
-			Status: connectors.ResultStale,
-			Error:  "connector approval token no longer exists",
+			ID:              item.ID,
+			Status:          connectors.ResultStale,
+			Error:           "connector approval token no longer exists",
+			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
@@ -188,9 +189,10 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	token, err := runtime.tokens.Get(ctx, tokenID)
 	if err != nil {
 		stale, staleErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-			ID:     item.ID,
-			Status: connectors.ResultStale,
-			Error:  "connector approval token no longer exists; ask the AI to send a fresh request",
+			ID:              item.ID,
+			Status:          connectors.ResultStale,
+			Error:           "connector approval token no longer exists; ask the AI to send a fresh request",
+			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
@@ -206,9 +208,10 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			reason = "connector approval token expired; ask the AI to send a fresh request"
 		}
 		stale, staleErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-			ID:     item.ID,
-			Status: connectors.ResultStale,
-			Error:  reason,
+			ID:              item.ID,
+			Status:          connectors.ResultStale,
+			Error:           reason,
+			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
@@ -226,14 +229,26 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		CreatedAt:  time.Now().UTC(),
 	})
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
+		reason := "connector approval context changed; ask the AI to send a fresh request"
+		stale, staleErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+			ID:              item.ID,
+			Status:          connectors.ResultStale,
+			Error:           reason,
+			AllowedStatuses: connectorApprovalFinishStatuses(),
+		})
+		if staleErr != nil {
+			return connectortargets.ActionRequest{}, staleErr
+		}
+		_ = history.NewStore(runtime.database).SyncConnectorActionRequest(context.Background(), stale.ID)
+		return stale, fmt.Errorf("%s", reason)
 	}
 	permission, err := store.GetActionPermission(ctx, tokenID, item.TargetID, item.ProfileID, item.ActionName, time.Now().UTC())
 	if err != nil || permission.ExecutionRule != connectortargets.ActionPermissionApprovalRequired {
 		stale, staleErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-			ID:     item.ID,
-			Status: connectors.ResultStale,
-			Error:  "connector approval context changed; ask the AI to send a fresh request",
+			ID:              item.ID,
+			Status:          connectors.ResultStale,
+			Error:           "connector approval context changed; ask the AI to send a fresh request",
+			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
@@ -250,9 +265,10 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	}
 	if item.ApprovalContextHash != "" && item.ApprovalContextHash != currentHash {
 		stale, staleErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-			ID:     item.ID,
-			Status: connectors.ResultStale,
-			Error:  "connector approval context changed; ask the AI to send a fresh request",
+			ID:              item.ID,
+			Status:          connectors.ResultStale,
+			Error:           "connector approval context changed; ask the AI to send a fresh request",
+			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
@@ -275,7 +291,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	}
 	result, err := s.executePreparedConnectorAction(ctx, runtime, prepared)
 	if err != nil {
-		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultFailed, nil, "", err.Error())
+		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
 			return connectortargets.ActionRequest{}, finishErr
 		}
@@ -287,7 +303,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	}
 	if status == connectors.ResultRunning {
 		if !connectorActionSupportsRunning(prepared) {
-			finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution")
+			finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
 			if finishErr != nil {
 				return connectortargets.ActionRequest{}, finishErr
 			}
@@ -320,7 +336,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		status = connectors.ResultFailed
 		result.Error = "connector returned approval_pending after approval was already granted"
 	}
-	result = s.redactConnectorActionResult(context.Background(), runtime, result)
+	result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
 	finished, err := store.FinishActionRequest(context.Background(), connectortargets.FinishActionRequestInput{
 		ID:          item.ID,
 		Status:      status,
@@ -341,6 +357,10 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		"action_name":    item.ActionName,
 	})
 	return finished, nil
+}
+
+func connectorApprovalFinishStatuses() []connectors.ResultStatus {
+	return []connectors.ResultStatus{connectors.ResultApprovalPending, connectors.ResultRunning}
 }
 
 func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest) connectorActionApprovalItem {

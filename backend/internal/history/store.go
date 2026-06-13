@@ -104,7 +104,7 @@ func (s *Store) SyncConnectorActionRequest(ctx context.Context, id int64) error 
 			r.created_at, r.completed_at, COALESCE(r.completed_at, datetime('now'))
 		FROM connector_action_requests r
 		JOIN connector_targets t ON t.id = r.target_id
-		JOIN connector_credential_profiles p ON p.id = r.profile_id
+		JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id AND p.connector_kind = r.connector_kind
 		WHERE r.id = ?
 		ON CONFLICT(source_ref_type, source_ref_id) DO UPDATE SET
 			token_id = excluded.token_id,

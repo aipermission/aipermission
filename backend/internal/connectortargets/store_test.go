@@ -54,7 +54,14 @@ func TestStoreCreatesAndResolvesConnectorTargetProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list connector profiles: %v", err)
 	}
-	if len(profiles) != 1 || profiles[0].ID != profile.ID || profiles[0].EncryptedSecretJSON != "encrypted-secret" {
+	if len(profiles) != 1 {
+		t.Fatalf("unexpected profile list: %#v", profiles)
+	}
+	var listedProfile CredentialProfile
+	for _, item := range profiles {
+		listedProfile = item
+	}
+	if listedProfile.ID != profile.ID || listedProfile.EncryptedSecretJSON != "encrypted-secret" {
 		t.Fatalf("unexpected profile list: %#v", profiles)
 	}
 	gotProfile, err := store.GetCredentialProfile(ctx, target.ID, profile.ID)
@@ -196,6 +203,99 @@ func TestStoreReplaceAndListActionPermissions(t *testing.T) {
 	}
 }
 
+func TestStoreRejectsMismatchedTargetProfileKind(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, _ := createPostgresTargetProfile(t, ctx, store)
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := database.Exec(`
+		INSERT INTO connector_credential_profiles (
+			target_id, connector_kind, kind, label, public_json, encrypted_secret_json,
+			status, created_at, updated_at
+		)
+		VALUES (?, 'ssh', 'private_key', 'wrong-kind', '{}', 'encrypted', 'active', ?, ?)`,
+		target.ID,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert mismatched profile: %v", err)
+	}
+	mismatchedProfileID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("profile id: %v", err)
+	}
+
+	if _, err := store.GetCredentialProfile(ctx, target.ID, mismatchedProfileID); !errors.Is(err, ErrTargetProfileNotFound) {
+		t.Fatalf("mismatched profile should be hidden, got %v", err)
+	}
+	if err := store.SetActionPermission(ctx, SetActionPermissionInput{
+		TokenID:       tokenID,
+		TargetID:      target.ID,
+		ProfileID:     mismatchedProfileID,
+		ActionName:    "query_readonly",
+		ExecutionRule: ActionPermissionAlwaysRun,
+	}); !errors.Is(err, ErrTargetProfileNotFound) {
+		t.Fatalf("mismatched profile should be rejected for permissions, got %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO token_connector_action_permissions (
+			token_id, target_id, profile_id, action_name, execution_rule, created_at, updated_at
+		)
+		VALUES (?, ?, ?, 'query_readonly', 'always_run', ?, ?)`,
+		tokenID,
+		target.ID,
+		mismatchedProfileID,
+		now,
+		now,
+	); err != nil {
+		t.Fatalf("insert mismatched permission: %v", err)
+	}
+	permissions, err := store.ListActionPermissions(ctx, tokenID)
+	if err != nil {
+		t.Fatalf("list permissions: %v", err)
+	}
+	if len(permissions) != 0 {
+		t.Fatalf("mismatched permission should be hidden, got %#v", permissions)
+	}
+}
+
+func TestStoreCredentialKindChangeRequiresSecret(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	if _, err := store.UpdateCredentialProfile(ctx, UpdateCredentialProfileInput{
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		Kind:          "token",
+		Label:         "readonly",
+		Public:        map[string]any{"username": "app_readonly"},
+	}); err == nil {
+		t.Fatal("expected credential kind change without secret to fail")
+	}
+	encrypted := "encrypted-token"
+	updated, err := store.UpdateCredentialProfile(ctx, UpdateCredentialProfileInput{
+		TargetID:            target.ID,
+		ProfileID:           profile.ID,
+		ConnectorKind:       "postgres",
+		Kind:                "token",
+		Label:               "token-profile",
+		Public:              map[string]any{"username": "app_token"},
+		EncryptedSecretJSON: &encrypted,
+	})
+	if err != nil {
+		t.Fatalf("credential kind change with secret should succeed: %v", err)
+	}
+	if updated.Kind != "token" || updated.EncryptedSecretJSON != encrypted {
+		t.Fatalf("unexpected updated profile: %#v", updated)
+	}
+}
+
 func TestStoreGetsActiveActionPermission(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)
@@ -329,6 +429,152 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreFinishActionRequestDoesNotOverwriteStaleRequest(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "query_readonly",
+		Input:         map[string]any{"sql": "select 1"},
+		Status:        connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert running request: %v", err)
+	}
+	if _, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
+		TargetID:  target.ID,
+		ProfileID: profile.ID,
+		Error:     "target changed",
+	}); err != nil {
+		t.Fatalf("mark stale: %v", err)
+	}
+
+	finished, err := store.FinishActionRequest(ctx, FinishActionRequestInput{
+		ID:          request.ID,
+		Status:      connectors.ResultCompleted,
+		Output:      map[string]any{"ok": true},
+		DisplayText: "late success",
+	})
+	if err != nil {
+		t.Fatalf("late finish should return current request without failing: %v", err)
+	}
+	if finished.Status != connectors.ResultStale || finished.Error != "target changed" || finished.DisplayText != "" {
+		t.Fatalf("late finish overwrote stale request: %#v", finished)
+	}
+}
+
+func TestStoreDeleteTargetArchivesAndPreservesActionRequests(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+	if err := store.SetActionPermission(ctx, SetActionPermissionInput{
+		TokenID:       tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "query_readonly",
+		ExecutionRule: ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("set permission: %v", err)
+	}
+	request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "query_readonly",
+		Input:         map[string]any{"sql": "select 1"},
+		Status:        connectors.ResultCompleted,
+	})
+	if err != nil {
+		t.Fatalf("insert request: %v", err)
+	}
+
+	if err := store.DeleteTarget(ctx, target.ID); err != nil {
+		t.Fatalf("archive target: %v", err)
+	}
+	if _, err := store.GetTarget(ctx, target.ID); !errors.Is(err, ErrTargetNotFound) {
+		t.Fatalf("archived target should be hidden, got %v", err)
+	}
+	permissions, err := store.ListActionPermissions(ctx, tokenID)
+	if err != nil {
+		t.Fatalf("list permissions: %v", err)
+	}
+	if len(permissions) != 0 {
+		t.Fatalf("permissions for archived target should be hidden, got %#v", permissions)
+	}
+	got, err := store.GetActionRequest(ctx, request.ID)
+	if err != nil {
+		t.Fatalf("history request should remain readable: %v", err)
+	}
+	if got.TargetName != "main-db" || got.ProfileLabel != "readonly" || got.Status != connectors.ResultCompleted {
+		t.Fatalf("archived metadata was not preserved: %#v", got)
+	}
+	if _, err := store.CreateTarget(ctx, CreateTargetInput{
+		ConnectorKind: "postgres",
+		Name:          "main-db",
+		Config:        map[string]any{"host": "127.0.0.1", "port": 5432, "database": "app"},
+	}); err != nil {
+		t.Fatalf("active target name should be reusable after archive: %v", err)
+	}
+}
+
+func TestStoreDeleteCredentialProfileArchivesAndPreservesActionRequests(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+	request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "query_readonly",
+		Input:         map[string]any{"sql": "select 1"},
+		Status:        connectors.ResultCompleted,
+	})
+	if err != nil {
+		t.Fatalf("insert request: %v", err)
+	}
+
+	if err := store.DeleteCredentialProfile(ctx, target.ID, profile.ID); err != nil {
+		t.Fatalf("archive profile: %v", err)
+	}
+	profiles, err := store.ListCredentialProfiles(ctx, target.ID)
+	if err != nil {
+		t.Fatalf("list profiles: %v", err)
+	}
+	if len(profiles) != 0 {
+		t.Fatalf("archived profile should be hidden, got %#v", profiles)
+	}
+	got, err := store.GetActionRequest(ctx, request.ID)
+	if err != nil {
+		t.Fatalf("history request should remain readable: %v", err)
+	}
+	if got.ProfileLabel != "readonly" || got.TargetName != "main-db" {
+		t.Fatalf("archived profile metadata was not preserved: %#v", got)
+	}
+	if _, err := store.CreateCredentialProfile(ctx, CreateCredentialProfileInput{
+		TargetID:            target.ID,
+		ConnectorKind:       "postgres",
+		Kind:                "username_password",
+		Label:               "readonly",
+		Public:              map[string]any{"username": "app_readonly_v2"},
+		EncryptedSecretJSON: "encrypted-secret-v2",
+	}); err != nil {
+		t.Fatalf("active profile label should be reusable after archive: %v", err)
+	}
+}
+
 func TestStoreActionRequestApprovalHelpers(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)
@@ -386,6 +632,79 @@ func TestStoreActionRequestApprovalHelpers(t *testing.T) {
 	}
 	if declined.Status != connectors.ResultDeclined || declined.CompletedAt == nil || declined.Error != "not this profile" {
 		t.Fatalf("unexpected declined request: %#v", declined)
+	}
+}
+
+func TestStoreStaleActionRequestsForTarget(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	pending, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "get_tables",
+		Input:         map[string]any{},
+		Status:        connectors.ResultApprovalPending,
+	})
+	if err != nil {
+		t.Fatalf("insert pending action request: %v", err)
+	}
+	running, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "query_readonly",
+		Input:         map[string]any{"sql": "select 1"},
+		Status:        connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert running action request: %v", err)
+	}
+	completed, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "get_schemas",
+		Input:         map[string]any{},
+		Status:        connectors.ResultCompleted,
+	})
+	if err != nil {
+		t.Fatalf("insert completed action request: %v", err)
+	}
+
+	result, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
+		TargetID:  target.ID,
+		ProfileID: profile.ID,
+		Error:     "target deleted",
+	})
+	if err != nil {
+		t.Fatalf("stale action requests: %v", err)
+	}
+	if result.Affected != 2 || len(result.IDs) != 2 {
+		t.Fatalf("unexpected stale result: %#v", result)
+	}
+	for _, id := range []int64{pending.ID, running.ID} {
+		item, err := store.GetActionRequest(ctx, id)
+		if err != nil {
+			t.Fatalf("read stale request %d: %v", id, err)
+		}
+		if item.Status != connectors.ResultStale || item.Error != "target deleted" || item.CompletedAt == nil {
+			t.Fatalf("request %d was not marked stale: %#v", id, item)
+		}
+	}
+	unchanged, err := store.GetActionRequest(ctx, completed.ID)
+	if err != nil {
+		t.Fatalf("read completed request: %v", err)
+	}
+	if unchanged.Status != connectors.ResultCompleted || unchanged.Error != "" || unchanged.CompletedAt != nil {
+		t.Fatalf("completed request should remain unchanged: %#v", unchanged)
 	}
 }
 

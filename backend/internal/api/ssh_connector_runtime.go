@@ -63,7 +63,7 @@ func (sshRuntimeAdapter) FinishRunning(server *Server, runtime *databaseRuntime,
 	defer cancel()
 	serverID, resolveErr := sshConnectorServerID(context.Background(), runtime, prepared.Action.TargetRef)
 	if resolveErr != nil {
-		_, _ = server.finishConnectorActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error())
+		_, _ = server.finishConnectorActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.ActionDefinition.OutputHint)
 		return
 	}
 	result, err := runtime.consoleSessions.WaitActive(ctx, serverID)
@@ -91,7 +91,7 @@ func (sshRuntimeAdapter) FinishRunning(server *Server, runtime *databaseRuntime,
 	if status == "" {
 		return
 	}
-	_, _ = server.finishConnectorActionRequest(context.Background(), runtime, requestID, status, output, displayText, errorText)
+	_, _ = server.finishConnectorActionRequest(context.Background(), runtime, requestID, status, output, displayText, errorText, prepared.ActionDefinition.OutputHint)
 }
 
 type sshConnectorRuntimeExecutor struct {

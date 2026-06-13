@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	historypkg "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -216,6 +218,132 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	}
 }
 
+func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(database, secretVault)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	targetView, profileView, err := store.ResolveConnectorActionTarget(context.Background(), connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID))
+	if err != nil {
+		t.Fatalf("resolve target/profile: %v", err)
+	}
+	rawInput := map[string]any{
+		"sql":          "select 'password=super-secret' as value",
+		"access_token": "raw-access-token",
+		"nested":       map[string]any{"authorization": "Bearer raw-bearer-token"},
+	}
+	prepared := actions.PreparedRequest{
+		Target:  targetView,
+		Profile: profileView,
+		ActionDefinition: connectors.ActionDefinition{
+			Name: postgresconnector.ActionQueryReadonly,
+			OutputHint: connectors.OutputHint{
+				SensitiveFields: []string{"access_token"},
+			},
+		},
+		Action: connectors.PreparedAction{
+			ConnectorKind: postgresconnector.Kind,
+			TargetRef:     targetView.Ref,
+			ProfileID:     profile.ID,
+			ActionName:    postgresconnector.ActionQueryReadonly,
+			Payload:       rawInput,
+		},
+		Requested: actions.PrepareRequest{
+			Source:     commandRequestSourceMCP,
+			TargetRef:  targetView.Ref,
+			ActionName: postgresconnector.ActionQueryReadonly,
+			Input:      rawInput,
+			Reason:     "Bearer raw-reason-token password=reason-secret",
+		},
+	}
+
+	request, err := server.insertConnectorActionRequest(context.Background(), runtime, tokenID, prepared, connectortargets.ActionPermission{}, connectors.ResultApprovalPending, "")
+	if err != nil {
+		t.Fatalf("insert connector action request: %v", err)
+	}
+	var inputJSON string
+	var reason string
+	var encryptedPayload string
+	if err := database.QueryRow(`
+		SELECT input_json, reason, encrypted_payload_json
+		FROM connector_action_requests
+		WHERE id = ?`,
+		request.ID,
+	).Scan(&inputJSON, &reason, &encryptedPayload); err != nil {
+		t.Fatalf("read connector action request: %v", err)
+	}
+	for _, secret := range []string{"super-secret", "raw-access-token", "raw-bearer-token", "raw-reason-token", "reason-secret"} {
+		if strings.Contains(inputJSON, secret) || strings.Contains(reason, secret) {
+			t.Fatalf("persisted connector request leaked %q: input=%s reason=%s", secret, inputJSON, reason)
+		}
+	}
+	if !strings.Contains(inputJSON, `"access_token":"[REDACTED]"`) || !strings.Contains(inputJSON, `"authorization":"[REDACTED]"`) || !strings.Contains(inputJSON, `password=[REDACTED]`) {
+		t.Fatalf("input was not redacted as expected: %s", inputJSON)
+	}
+	var historyInputJSON string
+	if err := database.QueryRow(`
+		SELECT input_json
+		FROM history_entries
+		WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`,
+		request.ID,
+	).Scan(&historyInputJSON); err != nil {
+		t.Fatalf("read connector history input: %v", err)
+	}
+	if historyInputJSON != inputJSON {
+		t.Fatalf("history input drifted from redacted request input: history=%s request=%s", historyInputJSON, inputJSON)
+	}
+	mcpResponse := connectorActionRequestToMCPResponse(request)
+	approvalResponse := connectorActionApprovalItemFromRequest(request)
+	if mcpResponse.Input["access_token"] != "[REDACTED]" || approvalResponse.Input["access_token"] != "[REDACTED]" {
+		t.Fatalf("response input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
+	}
+	var decryptedPayload map[string]any
+	if err := secretVault.DecryptJSON(encryptedPayload, &decryptedPayload); err != nil {
+		t.Fatalf("decrypt execution payload: %v", err)
+	}
+	if decryptedPayload["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload["sql"].(string), "super-secret") {
+		t.Fatalf("encrypted execution payload should preserve raw input: %#v", decryptedPayload)
+	}
+}
+
+func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(database, secretVault)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	request, err := store.InsertActionRequest(context.Background(), connectortargets.InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: postgresconnector.Kind,
+		ActionName:    postgresconnector.ActionQueryReadonly,
+		Input:         map[string]any{"sql": "select 1"},
+		Status:        connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert running request: %v", err)
+	}
+	redacted := server.redactConnectorActionResult(context.Background(), runtime, connectors.ActionResult{
+		Status:      connectors.ResultRunning,
+		Output:      map[string]any{"rows": []any{map[string]any{"session_token": "raw-token", "name": "safe"}}},
+		DisplayText: "Bearer raw-bearer-token",
+		Error:       "password=super-secret",
+	}, connectors.OutputHint{SensitiveFields: []string{"session_token"}})
+	response := connectorActionToMCPResponse(request, redacted)
+	payload := fmt.Sprint(response.Output, response.DisplayText, response.Error)
+	for _, secret := range []string{"raw-token", "raw-bearer-token", "super-secret"} {
+		if strings.Contains(payload, secret) {
+			t.Fatalf("running response leaked %q: %#v", secret, response)
+		}
+	}
+}
+
 func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
@@ -243,9 +371,19 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 		runtime,
 		request.ID,
 		connectors.ResultFailed,
-		nil,
+		map[string]any{
+			"rows": []any{
+				map[string]any{
+					"customer_secret": "visible-only-if-buggy",
+					"token":           "token-value",
+					"access_token":    "access-token-value",
+					"name":            "safe",
+				},
+			},
+		},
 		"",
 		"connect failed password=super-secret Bearer abcdefghijklmnopqrstuvwxyz",
+		connectors.OutputHint{SensitiveFields: []string{"customer_secret"}},
 	)
 	if err != nil {
 		t.Fatalf("finish action request: %v", err)
@@ -274,6 +412,21 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	}
 	if response.Error != finished.Error {
 		t.Fatalf("mcp response error drifted from finished request: response=%q finished=%q", response.Error, finished.Error)
+	}
+	var outputJSON string
+	if err := database.QueryRow(`
+		SELECT output_json
+		FROM connector_action_requests
+		WHERE id = ?`,
+		request.ID,
+	).Scan(&outputJSON); err != nil {
+		t.Fatalf("read connector action output: %v", err)
+	}
+	if strings.Contains(outputJSON, "visible-only-if-buggy") || strings.Contains(outputJSON, "token-value") || strings.Contains(outputJSON, "access-token-value") {
+		t.Fatalf("structured connector output leaked sensitive field values: %s", outputJSON)
+	}
+	if !strings.Contains(outputJSON, `"customer_secret":"[REDACTED]"`) || !strings.Contains(outputJSON, `"token":"[REDACTED]"`) || !strings.Contains(outputJSON, `"access_token":"[REDACTED]"`) || !strings.Contains(outputJSON, `"name":"safe"`) {
+		t.Fatalf("structured connector output was not field-redacted as expected: %s", outputJSON)
 	}
 }
 
@@ -368,6 +521,68 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 	}
 	if stale.Status != connectors.ResultStale {
 		t.Fatalf("status = %q", stale.Status)
+	}
+}
+
+func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	badAction := "missing_action"
+	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    badAction,
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
+	}
+	request, err := store.InsertActionRequest(context.Background(), connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        postgresconnector.Kind,
+		ActionName:           badAction,
+		Source:               commandRequestSourceMCP,
+		Input:                map[string]any{},
+		EncryptedPayloadJSON: "{}",
+		Status:               connectors.ResultApprovalPending,
+		ApprovalContextHash:  "old-context",
+	})
+	if err != nil {
+		t.Fatalf("insert pending connector request: %v", err)
+	}
+	if err := historypkg.NewStore(fixture.db).SyncConnectorActionRequest(context.Background(), request.ID); err != nil {
+		t.Fatalf("sync pending connector request: %v", err)
+	}
+
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(request.ID, 10)+"/run", "", runApprovalRequest{})
+	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
+		t.Fatalf("expected prepare drift conflict, got %d %s", runResponse.Code, runResponse.Body.String())
+	}
+	stale, err := store.GetActionRequest(context.Background(), request.ID)
+	if err != nil {
+		t.Fatalf("get stale connector request: %v", err)
+	}
+	if stale.Status != connectors.ResultStale || !strings.Contains(stale.Error, "fresh request") {
+		t.Fatalf("request should be stale with fresh-request error: %#v", stale)
+	}
+	var historyStatus string
+	if err := fixture.db.QueryRow(`
+		SELECT status
+		FROM history_entries
+		WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`,
+		request.ID,
+	).Scan(&historyStatus); err != nil {
+		t.Fatalf("read synced history: %v", err)
+	}
+	if historyStatus != string(connectors.ResultStale) {
+		t.Fatalf("history status = %q", historyStatus)
 	}
 }
 

@@ -198,6 +198,7 @@ var unifiedHistoryStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_activity_created ON history_entries(activity_type, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_status_created ON history_entries(status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_target_created ON history_entries(target_id, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_history_entries_profile_created ON history_entries(profile_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_server_created ON history_entries(server_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_source_created ON history_entries(source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entry_labels_label ON history_entry_labels(label_id);`,
@@ -239,13 +240,15 @@ var unifiedHistoryStatements = []string{
 	)
 	SELECT
 		'connector_action_request', r.id, r.connector_kind, 'action', r.token_id, r.target_id,
-		r.profile_id, t.name, p.label, 'mcp', r.status, r.action_name, r.action_name,
+		r.profile_id, t.name, p.label, COALESCE(NULLIF(r.source, ''), 'mcp'),
+		CASE WHEN r.status = 'approval_pending' THEN 'pending_approval' ELSE r.status END,
+		r.action_name, r.action_name,
 		r.reason, r.input_json, r.display_text, r.output_json, r.error,
 		CASE WHEN r.status = 'approval_pending' THEN 1 ELSE 0 END,
 		r.created_at, r.completed_at, COALESCE(r.completed_at, r.created_at)
 	FROM connector_action_requests r
 	JOIN connector_targets t ON t.id = r.target_id
-	JOIN connector_credential_profiles p ON p.id = r.profile_id;`,
+	JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id AND p.connector_kind = r.connector_kind;`,
 	`INSERT OR IGNORE INTO history_entries (
 		source_ref_type, source_ref_id, connector_kind, activity_type, server_id, target_id,
 		profile_id, target_name, profile_label, source, status, action_name, title, summary,
@@ -530,7 +533,7 @@ var approvalContextStatements = []string{
 
 var serverSSHAdvancedSettingsStatements = []string{}
 
-var connectorPersistenceStatements = []string{
+var connectorPersistenceTableStatements = []string{
 	`CREATE TABLE IF NOT EXISTS connector_targets (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		connector_kind TEXT NOT NULL,
@@ -538,8 +541,7 @@ var connectorPersistenceStatements = []string{
 		config_json TEXT NOT NULL DEFAULT '{}',
 		status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
 		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		UNIQUE(connector_kind, name)
+		updated_at TEXT NOT NULL
 	);`,
 	`CREATE TABLE IF NOT EXISTS connector_credential_profiles (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -550,11 +552,11 @@ var connectorPersistenceStatements = []string{
 		public_json TEXT NOT NULL DEFAULT '{}',
 		encrypted_secret_json TEXT NOT NULL DEFAULT '',
 		risk_label TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL,
-		UNIQUE(target_id, label),
 		UNIQUE(id, target_id),
-		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE CASCADE
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE RESTRICT
 	);`,
 	`CREATE TABLE IF NOT EXISTS token_connector_action_permissions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -568,8 +570,8 @@ var connectorPersistenceStatements = []string{
 		updated_at TEXT NOT NULL,
 		UNIQUE(token_id, target_id, profile_id, action_name),
 		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
-		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE CASCADE,
-		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE CASCADE
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE RESTRICT,
+		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE RESTRICT
 	);`,
 	`CREATE TABLE IF NOT EXISTS connector_action_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -591,11 +593,17 @@ var connectorPersistenceStatements = []string{
 		created_at TEXT NOT NULL,
 		completed_at TEXT,
 		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL,
-		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE CASCADE,
-		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE CASCADE
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE RESTRICT,
+		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE RESTRICT
 	);`,
+}
+
+var connectorPersistenceIndexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_connector_targets_kind_name ON connector_targets(connector_kind, name);`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_targets_active_kind_name ON connector_targets(connector_kind, name) WHERE status = 'active';`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_credential_profiles_target ON connector_credential_profiles(target_id);`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_credential_profiles_active_label ON connector_credential_profiles(target_id, label) WHERE status = 'active';`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_credential_profiles_ssh_one_active ON connector_credential_profiles(target_id) WHERE connector_kind = 'ssh' AND status = 'active';`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_token ON token_connector_action_permissions(token_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_lookup ON token_connector_action_permissions(token_id, target_id, profile_id, action_name);`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_expires_at ON token_connector_action_permissions(expires_at);`,
@@ -604,6 +612,8 @@ var connectorPersistenceStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_kind_action_created ON connector_action_requests(connector_kind, action_name, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_approval_context_hash ON connector_action_requests(approval_context_hash);`,
 }
+
+var connectorPersistenceStatements = sqlStatements(connectorPersistenceTableStatements, connectorPersistenceIndexStatements)
 
 var connectorAuditHardeningStatements = []string{
 	`ALTER TABLE connector_action_requests ADD COLUMN source TEXT NOT NULL DEFAULT 'mcp';`,
@@ -674,13 +684,13 @@ var migrations = []migration{
 	},
 	{
 		version:     12,
-		description: "unified history entries",
-		statements:  unifiedHistoryStatements,
+		description: "connector audit and action source metadata",
+		statements:  connectorAuditHardeningStatements,
 	},
 	{
 		version:     13,
-		description: "connector audit and action source metadata",
-		statements:  connectorAuditHardeningStatements,
+		description: "unified history entries",
+		statements:  unifiedHistoryStatements,
 	},
 }
 
@@ -716,13 +726,42 @@ func migrate(database *sql.DB) error {
 }
 
 func ensureCurrentSchema(database *sql.DB) error {
-	for _, statement := range sqlStatements(historyLabelStatements, fileTransferStatements, connectorPersistenceStatements, unifiedHistoryStatements) {
+	for _, statement := range sqlStatements(historyLabelStatements, fileTransferStatements, connectorPersistenceTableStatements) {
 		if _, err := database.Exec(statement); err != nil {
 			return fmt.Errorf("ensure current schema: %w", err)
 		}
 	}
+	if err := ensureConnectorLifecycleSchema(database); err != nil {
+		return fmt.Errorf("ensure connector lifecycle schema: %w", err)
+	}
+	for _, statement := range connectorPersistenceIndexStatements {
+		if _, err := database.Exec(statement); err != nil {
+			return fmt.Errorf("ensure connector persistence indexes: %w", err)
+		}
+	}
 	if err := ensureConnectorAuditHardeningSchema(database); err != nil {
 		return fmt.Errorf("ensure connector audit schema: %w", err)
+	}
+	for _, statement := range unifiedHistoryStatements {
+		if _, err := database.Exec(statement); err != nil {
+			return fmt.Errorf("ensure unified history schema: %w", err)
+		}
+	}
+	return nil
+}
+
+func ensureConnectorLifecycleSchema(database *sql.DB) error {
+	if err := ensureColumn(database, "connector_credential_profiles", "status", "status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived'))"); err != nil {
+		return err
+	}
+	for _, statement := range []string{
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_targets_active_kind_name ON connector_targets(connector_kind, name) WHERE status = 'active';`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_credential_profiles_active_label ON connector_credential_profiles(target_id, label) WHERE status = 'active';`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_credential_profiles_ssh_one_active ON connector_credential_profiles(target_id) WHERE connector_kind = 'ssh' AND status = 'active';`,
+	} {
+		if _, err := database.Exec(statement); err != nil {
+			return err
+		}
 	}
 	return nil
 }

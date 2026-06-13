@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -790,6 +791,38 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	}
 	dockerHistoryID := unifiedDockerPage.Items[0].ID
 	store := connectortargets.NewStore(fixture.db)
+	sshConnectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             server.TargetID,
+		ProfileID:            server.ProfileID,
+		ConnectorKind:        "ssh",
+		ActionName:           "exec",
+		Input:                map[string]any{"command": "whoami"},
+		EncryptedPayloadJSON: "encrypted-payload",
+		Status:               connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert ssh connector action request: %v", err)
+	}
+	if _, err := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+		ID:          sshConnectorRequest.ID,
+		Status:      connectors.ResultCompleted,
+		Output:      map[string]any{"stdout": "root\n"},
+		DisplayText: "root\n",
+	}); err != nil {
+		t.Fatalf("finish ssh connector action request: %v", err)
+	}
+	if err := historypkg.NewStore(fixture.db).SyncConnectorActionRequest(ctx, sshConnectorRequest.ID); err != nil {
+		t.Fatalf("sync ssh connector action to history: %v", err)
+	}
+	sshTargetHistoryResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?connector_kind=ssh&target_id="+strconv.FormatInt(server.TargetID, 10)+"&limit=10", "", nil)
+	if sshTargetHistoryResponse.Code != http.StatusOK {
+		t.Fatalf("ssh target unified history filter failed: %d %s", sshTargetHistoryResponse.Code, sshTargetHistoryResponse.Body.String())
+	}
+	sshTargetHistoryPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, sshTargetHistoryResponse.Body.Bytes())
+	if sshTargetHistoryPage.Total != 2 {
+		t.Fatalf("ssh target filter should include legacy command and connector action rows, got %#v", sshTargetHistoryPage)
+	}
 	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
 	connectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
@@ -823,6 +856,54 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	connectorJSONSearchPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, connectorJSONSearchResponse.Body.Bytes())
 	if connectorJSONSearchPage.Total != 1 || len(connectorJSONSearchPage.Items) != 1 || connectorJSONSearchPage.Items[0].SourceRefID != connectorRequest.ID {
 		t.Fatalf("unexpected unified connector json search page: %#v", connectorJSONSearchPage)
+	}
+	encryptedOtherSecret, err := fixture.server.activeRuntime().vault.EncryptJSON(map[string]any{"password": "other-secret"})
+	if err != nil {
+		t.Fatalf("encrypt second profile secret: %v", err)
+	}
+	secondPGProfile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
+		TargetID:            pgTarget.ID,
+		ConnectorKind:       "postgres",
+		Kind:                "username_password",
+		Label:               "analytics",
+		Public:              map[string]any{"username": "analytics_readonly"},
+		EncryptedSecretJSON: encryptedOtherSecret,
+	})
+	if err != nil {
+		t.Fatalf("create second postgres profile: %v", err)
+	}
+	secondConnectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             pgTarget.ID,
+		ProfileID:            secondPGProfile.ID,
+		ConnectorKind:        "postgres",
+		ActionName:           "get_tables",
+		Input:                map[string]any{"schema": "public"},
+		EncryptedPayloadJSON: "encrypted-payload-2",
+		Status:               connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert second connector request: %v", err)
+	}
+	if _, err := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+		ID:     secondConnectorRequest.ID,
+		Status: connectors.ResultCompleted,
+		Output: map[string]any{
+			"tables": []any{"analytics_events"},
+		},
+	}); err != nil {
+		t.Fatalf("finish second connector request: %v", err)
+	}
+	if err := historypkg.NewStore(fixture.db).SyncConnectorActionRequest(ctx, secondConnectorRequest.ID); err != nil {
+		t.Fatalf("sync second connector request to history: %v", err)
+	}
+	profileFilterResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?connector_kind=postgres&target_id="+strconv.FormatInt(pgTarget.ID, 10)+"&profile_id="+strconv.FormatInt(pgProfile.ID, 10)+"&limit=10", "", nil)
+	if profileFilterResponse.Code != http.StatusOK {
+		t.Fatalf("postgres profile history filter failed: %d %s", profileFilterResponse.Code, profileFilterResponse.Body.String())
+	}
+	profileFilterPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, profileFilterResponse.Body.Bytes())
+	if profileFilterPage.Total != 1 || len(profileFilterPage.Items) != 1 || profileFilterPage.Items[0].SourceRefID != connectorRequest.ID {
+		t.Fatalf("postgres profile filter should isolate one profile, got %#v", profileFilterPage)
 	}
 	labelResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/history-labels", "", createHistoryLabelRequest{Name: "issue-440"})
 	if labelResponse.Code != http.StatusCreated {
@@ -954,6 +1035,175 @@ func TestDockerContainerRefValidationAndShellQuote(t *testing.T) {
 	}
 	if normalizeDockerLogsTail(42) != 42 || normalizeDockerLogsTail(6000) != 5000 {
 		t.Fatalf("docker log tail should preserve valid values and cap large values")
+	}
+}
+
+func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	server := fixture.createKeyAndServer(t, "delete-me")
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := fixture.db.Exec(`
+		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at)
+		VALUES (?, 'delete session', 'connected', '', 120, 32, ?, ?)`,
+		server.ID,
+		now,
+		now,
+	); err != nil {
+		t.Fatalf("insert console session: %v", err)
+	}
+	if _, err := fixture.db.Exec(`
+		INSERT INTO command_requests (token_id, server_id, source, command, reason, status, created_at)
+		VALUES (?, ?, 'mcp', 'sleep 100', 'delete target cleanup', 'running', ?)`,
+		token.ID,
+		server.ID,
+		now,
+	); err != nil {
+		t.Fatalf("insert running command request: %v", err)
+	}
+	store := connectortargets.NewStore(fixture.db)
+	actionRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             server.TargetID,
+		ProfileID:            server.ProfileID,
+		ConnectorKind:        "ssh",
+		ActionName:           "exec",
+		Input:                map[string]any{"command": "sleep 100"},
+		EncryptedPayloadJSON: "encrypted-payload",
+		Status:               connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert connector action request: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/connector-targets/"+strconv.FormatInt(server.TargetID, 10), "", nil)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"ok":true`) {
+		t.Fatalf("delete connector target failed: %d %s", response.Code, response.Body.String())
+	}
+	var commandStatus string
+	if err := fixture.db.QueryRow(`SELECT status FROM command_requests WHERE server_id = ?`, server.ID).Scan(&commandStatus); err != nil {
+		t.Fatalf("read command status: %v", err)
+	}
+	if commandStatus != "error" {
+		t.Fatalf("running command should be marked error after target delete, got %q", commandStatus)
+	}
+	var sessionStatus string
+	if err := fixture.db.QueryRow(`SELECT status FROM console_sessions WHERE server_id = ?`, server.ID).Scan(&sessionStatus); err != nil {
+		t.Fatalf("read session status: %v", err)
+	}
+	if sessionStatus != "closed" {
+		t.Fatalf("console session should be closed after target delete, got %q", sessionStatus)
+	}
+	var historyStatus string
+	if err := fixture.db.QueryRow(`
+		SELECT status
+		FROM history_entries
+		WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`,
+		actionRequest.ID,
+	).Scan(&historyStatus); err != nil {
+		t.Fatalf("read stale action history: %v", err)
+	}
+	if historyStatus != string(connectors.ResultStale) {
+		t.Fatalf("history status = %q", historyStatus)
+	}
+}
+
+func TestTargetsListHidesArchivedAndMismatchedProfiles(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	store := connectortargets.NewStore(fixture.db)
+	secretVault := fixture.server.activeRuntime().vault
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+
+	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/targets", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"target_id":`+strconv.FormatInt(target.ID, 10)) {
+		t.Fatalf("active profile should be listed: %d %s", response.Code, response.Body.String())
+	}
+	if err := store.DeleteCredentialProfile(ctx, target.ID, profile.ID); err != nil {
+		t.Fatalf("archive profile: %v", err)
+	}
+	archivedResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/targets", "", nil)
+	if archivedResponse.Code != http.StatusOK {
+		t.Fatalf("list targets after archive failed: %d %s", archivedResponse.Code, archivedResponse.Body.String())
+	}
+	if strings.Contains(archivedResponse.Body.String(), `"target_id":`+strconv.FormatInt(target.ID, 10)) {
+		t.Fatalf("archived profile leaked through /api/targets: %s", archivedResponse.Body.String())
+	}
+
+	mismatchTarget, err := store.CreateTarget(ctx, connectortargets.CreateTargetInput{
+		ConnectorKind: "postgres",
+		Name:          "mismatch-db",
+		Config:        map[string]any{"host": "127.0.0.1", "port": 5432, "database": "app"},
+	})
+	if err != nil {
+		t.Fatalf("create mismatch target: %v", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := fixture.db.Exec(`
+		INSERT INTO connector_credential_profiles (
+			target_id, connector_kind, kind, label, public_json, encrypted_secret_json,
+			status, created_at, updated_at
+		)
+		VALUES (?, 'ssh', 'private_key', 'wrong-kind', '{}', 'encrypted', 'active', ?, ?)`,
+		mismatchTarget.ID,
+		now,
+		now,
+	); err != nil {
+		t.Fatalf("insert mismatched profile: %v", err)
+	}
+	mismatchResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/targets", "", nil)
+	if mismatchResponse.Code != http.StatusOK {
+		t.Fatalf("list targets with mismatch failed: %d %s", mismatchResponse.Code, mismatchResponse.Body.String())
+	}
+	if strings.Contains(mismatchResponse.Body.String(), `"target_id":`+strconv.FormatInt(mismatchTarget.ID, 10)) {
+		t.Fatalf("mismatched profile leaked through /api/targets: %s", mismatchResponse.Body.String())
+	}
+}
+
+func TestSSHConnectorTargetDeleteAllowsZeroProfileRollback(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	target, err := connectortargets.NewStore(fixture.db).CreateTarget(context.Background(), connectortargets.CreateTargetInput{
+		ConnectorKind: "ssh",
+		Name:          "orphan-ssh",
+		Config:        map[string]any{"host": "127.0.0.1", "port": 22},
+	})
+	if err != nil {
+		t.Fatalf("create orphan ssh target: %v", err)
+	}
+	response := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", nil)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"ok":true`) {
+		t.Fatalf("zero-profile ssh target delete failed: %d %s", response.Code, response.Body.String())
+	}
+	if _, err := connectortargets.NewStore(fixture.db).GetTarget(context.Background(), target.ID); !errors.Is(err, connectortargets.ErrTargetNotFound) {
+		t.Fatalf("zero-profile ssh target should be archived, got %v", err)
+	}
+}
+
+func TestSSHConnectorTargetRejectsSecondProfile(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	server := fixture.createKeyAndServer(t, "single-profile")
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(server.TargetID, 10)+"/profiles", "", createConnectorCredentialProfileRequest{
+		Kind:  "private_key",
+		Label: "backup-root",
+		Public: map[string]any{
+			"username":   "root",
+			"ssh_key_id": server.SSHKeyID,
+		},
+	})
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "one credential profile") {
+		t.Fatalf("second SSH profile should be rejected, got %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestSSHConnectorTargetRejectsDeletingLastProfile(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	server := fixture.createKeyAndServer(t, "last-profile")
+	response := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/connector-targets/"+strconv.FormatInt(server.TargetID, 10)+"/profiles/"+strconv.FormatInt(server.ProfileID, 10), "", nil)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "delete the connector target instead") {
+		t.Fatalf("last SSH profile delete should be rejected, got %d %s", response.Code, response.Body.String())
 	}
 }
 

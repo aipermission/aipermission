@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
@@ -131,7 +132,7 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	}
 	result, err := s.executePreparedConnectorAction(ctx, runtime, prepared)
 	if err != nil {
-		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error())
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
 			return connectorActionCallResult{}, finishErr
 		}
@@ -143,7 +144,7 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	}
 	if status == connectors.ResultRunning {
 		if !connectorActionSupportsRunning(prepared) {
-			finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution")
+			finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
 			if finishErr != nil {
 				return connectorActionCallResult{}, finishErr
 			}
@@ -160,6 +161,7 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 		if result.Handles.FollowupTool == "" {
 			result.Handles.FollowupTool = "get_connector_action_request"
 		}
+		result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
 		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared)
 		return connectorActionCallResult{Request: request, Permission: permission, Result: result}, nil
 	}
@@ -167,7 +169,7 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 		status = connectors.ResultFailed
 		result.Error = "connector returned approval_pending after execution was already allowed"
 	}
-	result = s.redactConnectorActionResult(context.Background(), runtime, result)
+	result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
 	finished, err := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
 		ID:          request.ID,
 		Status:      status,
@@ -213,9 +215,9 @@ func (s *Server) insertConnectorActionRequest(
 		ConnectorKind:        prepared.Target.ConnectorKind,
 		ActionName:           prepared.Action.ActionName,
 		Source:               prepared.Requested.Source,
-		Input:                prepared.Requested.Input,
+		Input:                s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input),
 		EncryptedPayloadJSON: payload,
-		Reason:               prepared.Requested.Reason,
+		Reason:               s.redactForPersistence(ctx, runtime, prepared.Requested.Reason),
 		Status:               status,
 		ApprovalContext:      approvalContext,
 		ApprovalContextHash:  approvalHash,
@@ -227,7 +229,10 @@ func (s *Server) insertConnectorActionRequest(
 		return connectortargets.ActionRequest{}, err
 	}
 	if errorText != "" {
-		return s.finishConnectorActionRequest(ctx, runtime, request.ID, status, nil, "", errorText)
+		if status == connectors.ResultBlocked {
+			return s.finishConnectorActionRequestWithAllowed(ctx, runtime, request.ID, status, nil, "", errorText, []connectors.ResultStatus{connectors.ResultBlocked}, prepared.ActionDefinition.OutputHint)
+		}
+		return s.finishConnectorActionRequest(ctx, runtime, request.ID, status, nil, "", errorText, prepared.ActionDefinition.OutputHint)
 	}
 	return request, nil
 }
@@ -273,18 +278,23 @@ func connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {
 	return adapter != nil && adapter.SupportsRunning(prepared)
 }
 
-func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string) (connectortargets.ActionRequest, error) {
+func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
+	return s.finishConnectorActionRequestWithAllowed(ctx, runtime, requestID, status, output, displayText, errorText, nil, hints...)
+}
+
+func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, allowedStatuses []connectors.ResultStatus, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
 	redacted := s.redactConnectorActionResult(ctx, runtime, connectors.ActionResult{
 		Output:      output,
 		DisplayText: displayText,
 		Error:       errorText,
-	})
+	}, hints...)
 	finished, err := connectortargets.NewStore(runtime.database).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-		ID:          requestID,
-		Status:      status,
-		Output:      redacted.Output,
-		DisplayText: redacted.DisplayText,
-		Error:       redacted.Error,
+		ID:              requestID,
+		Status:          status,
+		Output:          redacted.Output,
+		DisplayText:     redacted.DisplayText,
+		Error:           redacted.Error,
+		AllowedStatuses: allowedStatuses,
 	})
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
@@ -292,14 +302,14 @@ func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *data
 	return finished, history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, finished.ID)
 }
 
-func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any) any {
+func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool) any {
 	switch typed := value.(type) {
 	case string:
 		return s.redactForPersistence(ctx, runtime, typed)
 	case []any:
 		out := make([]any, 0, len(typed))
 		for _, item := range typed {
-			out = append(out, s.redactedConnectorValue(ctx, runtime, item))
+			out = append(out, s.redactedConnectorValue(ctx, runtime, item, sensitiveFields))
 		}
 		return out
 	case []string:
@@ -311,7 +321,11 @@ func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRu
 	case map[string]any:
 		out := make(map[string]any, len(typed))
 		for key, item := range typed {
-			out[key] = s.redactedConnectorValue(ctx, runtime, item)
+			if connectorOutputFieldSensitive(key, sensitiveFields) {
+				out[key] = "[REDACTED]"
+				continue
+			}
+			out[key] = s.redactedConnectorValue(ctx, runtime, item, sensitiveFields)
 		}
 		return out
 	default:
@@ -319,11 +333,67 @@ func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRu
 	}
 }
 
-func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult) connectors.ActionResult {
+func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) connectors.ActionResult {
+	sensitiveFields := connectorSensitiveOutputFields(hints...)
 	result.DisplayText = s.redactForPersistence(ctx, runtime, result.DisplayText)
 	result.Error = s.redactForPersistence(ctx, runtime, result.Error)
-	result.Output = s.redactedConnectorValue(ctx, runtime, result.Output)
+	result.Output = s.redactedConnectorValue(ctx, runtime, result.Output, sensitiveFields)
 	return result
+}
+
+func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databaseRuntime, input map[string]any) map[string]any {
+	if input == nil {
+		return map[string]any{}
+	}
+	redacted, ok := s.redactedConnectorValue(ctx, runtime, input, connectorSensitiveOutputFields()).(map[string]any)
+	if !ok || redacted == nil {
+		return map[string]any{}
+	}
+	return redacted
+}
+
+func connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {
+	fields := map[string]bool{
+		"api_key":       true,
+		"apikey":        true,
+		"authorization": true,
+		"credential":    true,
+		"password":      true,
+		"private_key":   true,
+		"secret":        true,
+		"token":         true,
+	}
+	for _, hint := range hints {
+		for _, field := range hint.SensitiveFields {
+			normalized := normalizeConnectorOutputField(field)
+			if normalized != "" {
+				fields[normalized] = true
+			}
+		}
+	}
+	return fields
+}
+
+func connectorOutputFieldSensitive(key string, sensitiveFields map[string]bool) bool {
+	normalized := normalizeConnectorOutputField(key)
+	if normalized == "" {
+		return false
+	}
+	if sensitiveFields[normalized] {
+		return true
+	}
+	for field := range sensitiveFields {
+		if strings.HasSuffix(normalized, "."+field) || strings.HasSuffix(normalized, "_"+field) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeConnectorOutputField(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	value = strings.ReplaceAll(value, "-", "_")
+	return value
 }
 
 func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Token, permission connectortargets.ActionPermission, capturedAt string) (string, string, error) {

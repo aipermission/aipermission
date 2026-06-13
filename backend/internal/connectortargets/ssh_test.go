@@ -113,6 +113,29 @@ func TestStoreSSHRuntimeForConsoleIDUsesCredentialProfile(t *testing.T) {
 	}
 }
 
+func TestStoreRejectsSecondSSHCredentialProfile(t *testing.T) {
+	database := openTargetTestDB(t)
+	ctx := context.Background()
+	keyID := insertTargetTestSSHKey(t, database, "main")
+	store := NewStore(database)
+	target, _ := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
+
+	_, err := store.CreateCredentialProfile(ctx, CreateCredentialProfileInput{
+		TargetID:            target.ID,
+		ConnectorKind:       sshconnector.Kind,
+		Kind:                "private_key",
+		Label:               "readonly",
+		EncryptedSecretJSON: "{}",
+		Public: map[string]any{
+			"username":   "readonly",
+			"ssh_key_id": keyID,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected second SSH credential profile to be rejected")
+	}
+}
+
 func openTargetTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	database, err := appdb.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "correct horse battery staple")

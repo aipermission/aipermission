@@ -15,6 +15,7 @@ type historyEntryFilter struct {
 	Source        string
 	ServerID      int64
 	TargetID      int64
+	ProfileID     int64
 	LabelID       int64
 	Query         string
 	Limit         int
@@ -90,6 +91,13 @@ func (s historyEntryHandlers) listHistoryEntries(w http.ResponseWriter, r *http.
 			return
 		}
 		filter.TargetID = id
+	}
+	if rawProfileID := strings.TrimSpace(r.URL.Query().Get("profile_id")); rawProfileID != "" {
+		id, ok := parseInt64Query(w, rawProfileID, "profile_id")
+		if !ok {
+			return
+		}
+		filter.ProfileID = id
 	}
 	if rawLabelID := strings.TrimSpace(r.URL.Query().Get("label_id")); rawLabelID != "" {
 		id, ok := parseInt64Query(w, rawLabelID, "label_id")
@@ -210,7 +218,8 @@ func historyEntryWhere(filter historyEntryFilter) (string, []any) {
 		"(? = '' OR he.status = ?)",
 		"(? = '' OR he.source = ?)",
 		"(? = 0 OR he.server_id = ?)",
-		"(? = 0 OR he.target_id = ?)",
+		"(? = 0 OR he.target_id = ? OR he.server_id IN (SELECT id FROM connector_credential_profiles WHERE connector_kind = 'ssh' AND target_id = ?))",
+		"(? = 0 OR he.profile_id = ? OR he.server_id = ?)",
 	}
 	args := []any{
 		filter.ConnectorKind, filter.ConnectorKind,
@@ -218,7 +227,8 @@ func historyEntryWhere(filter historyEntryFilter) (string, []any) {
 		filter.Status, filter.Status,
 		filter.Source, filter.Source,
 		filter.ServerID, filter.ServerID,
-		filter.TargetID, filter.TargetID,
+		filter.TargetID, filter.TargetID, filter.TargetID,
+		filter.ProfileID, filter.ProfileID, filter.ProfileID,
 	}
 	if filter.LabelID != 0 {
 		where = append(where, `he.id IN (SELECT history_entry_id FROM history_entry_labels WHERE label_id = ?)`)

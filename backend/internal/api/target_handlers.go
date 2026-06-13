@@ -37,7 +37,7 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 			t.created_at, t.updated_at
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
-		WHERE t.status = 'active'
+		WHERE t.status = 'active' AND p.status = 'active' AND p.connector_kind = t.connector_kind
 		ORDER BY t.connector_kind, t.name, p.label, p.id`)
 	if err != nil {
 		writeInternalError(w)
