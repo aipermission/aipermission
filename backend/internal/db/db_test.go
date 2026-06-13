@@ -142,152 +142,33 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	}
 }
 
-func TestOpenEncryptedRepairsMissingHistoryLabelSchema(t *testing.T) {
+func TestOpenEncryptedRejectsPre02PreviewSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secure.db")
-	database, err := OpenEncrypted(path, "correct-password")
+	database, err := openEncrypted(path, "correct-password", false)
 	if err != nil {
 		t.Fatalf("open encrypted db: %v", err)
 	}
-	if _, err := database.Exec(`DROP TABLE history_labels`); err != nil {
-		t.Fatalf("drop history_labels: %v", err)
-	}
-	if err := database.Close(); err != nil {
-		t.Fatalf("close db: %v", err)
-	}
-
-	reopened, err := OpenEncrypted(path, "correct-password")
-	if err != nil {
-		t.Fatalf("reopen encrypted db: %v", err)
-	}
-	defer reopened.Close()
-	if !tableExists(t, reopened, "history_labels") {
-		t.Fatalf("history_labels table should be repaired")
-	}
-}
-
-func TestOpenEncryptedRepairsMissingFileTransferSchema(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secure.db")
-	database, err := OpenEncrypted(path, "correct-password")
-	if err != nil {
-		t.Fatalf("open encrypted db: %v", err)
-	}
-	if _, err := database.Exec(`DROP TABLE file_transfers`); err != nil {
-		t.Fatalf("drop file_transfers: %v", err)
-	}
-	if err := database.Close(); err != nil {
-		t.Fatalf("close db: %v", err)
-	}
-
-	reopened, err := OpenEncrypted(path, "correct-password")
-	if err != nil {
-		t.Fatalf("reopen encrypted db: %v", err)
-	}
-	defer reopened.Close()
-	if !tableExists(t, reopened, "file_transfers") {
-		t.Fatalf("file_transfers table should be repaired")
-	}
-}
-
-func TestOpenEncryptedRepairsMissingConnectorPersistenceSchema(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secure.db")
-	database, err := OpenEncrypted(path, "correct-password")
-	if err != nil {
-		t.Fatalf("open encrypted db: %v", err)
-	}
-	for _, table := range []string{
-		"connector_action_requests",
-		"token_connector_action_permissions",
-		"connector_credential_profiles",
-		"connector_targets",
-	} {
-		if _, err := database.Exec(`DROP TABLE ` + table); err != nil {
-			t.Fatalf("drop %s: %v", table, err)
-		}
-	}
-	if err := database.Close(); err != nil {
-		t.Fatalf("close db: %v", err)
-	}
-
-	reopened, err := OpenEncrypted(path, "correct-password")
-	if err != nil {
-		t.Fatalf("reopen encrypted db: %v", err)
-	}
-	defer reopened.Close()
-	if !tableExists(t, reopened, "connector_targets") {
-		t.Fatalf("connector_targets table should be repaired")
-	}
-	if !tableExists(t, reopened, "connector_credential_profiles") {
-		t.Fatalf("connector_credential_profiles table should be repaired")
-	}
-	if !tableExists(t, reopened, "token_connector_action_permissions") {
-		t.Fatalf("token_connector_action_permissions table should be repaired")
-	}
-	if !tableExists(t, reopened, "connector_action_requests") {
-		t.Fatalf("connector_action_requests table should be repaired")
-	}
-}
-
-func TestOpenEncryptedRepairsConnectorAuditHardeningColumns(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secure.db")
-	database, err := OpenEncrypted(path, "correct-password")
-	if err != nil {
-		t.Fatalf("open encrypted db: %v", err)
-	}
-	if _, err := database.Exec(`DROP TABLE connector_action_requests`); err != nil {
-		t.Fatalf("drop connector_action_requests: %v", err)
-	}
-	if _, err := database.Exec(`CREATE TABLE connector_action_requests (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		token_id INTEGER,
-		target_id INTEGER NOT NULL,
-		profile_id INTEGER NOT NULL,
-		connector_kind TEXT NOT NULL,
-		action_name TEXT NOT NULL,
-		input_json TEXT NOT NULL DEFAULT '{}',
-		encrypted_payload_json TEXT NOT NULL DEFAULT '',
-		reason TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL,
-		output_json TEXT NOT NULL DEFAULT '{}',
-		display_text TEXT NOT NULL DEFAULT '',
-		error TEXT NOT NULL DEFAULT '',
-		approval_context TEXT NOT NULL DEFAULT '',
-		approval_context_hash TEXT NOT NULL DEFAULT '',
-		approval_context_drift TEXT NOT NULL DEFAULT '',
-		created_at TEXT NOT NULL,
-		completed_at TEXT
+	if _, err := database.Exec(`CREATE TABLE schema_migrations (
+		version INTEGER PRIMARY KEY,
+		description TEXT NOT NULL,
+		applied_at TEXT NOT NULL
 	)`); err != nil {
-		t.Fatalf("create older connector_action_requests: %v", err)
+		t.Fatalf("create schema_migrations: %v", err)
 	}
-	if _, err := database.Exec(`DROP TABLE audit_logs`); err != nil {
-		t.Fatalf("drop audit_logs: %v", err)
-	}
-	if _, err := database.Exec(`CREATE TABLE audit_logs (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		actor_type TEXT NOT NULL,
-		token_id INTEGER,
-		server_id INTEGER,
-		action TEXT NOT NULL,
-		payload_json TEXT NOT NULL DEFAULT '{}',
-		created_at TEXT NOT NULL
-	)`); err != nil {
-		t.Fatalf("create older audit_logs: %v", err)
+	if _, err := database.Exec(`INSERT INTO schema_migrations (version, description, applied_at) VALUES (1, 'initial schema', datetime('now'))`); err != nil {
+		t.Fatalf("insert pre-0.2 preview migration: %v", err)
 	}
 	if err := database.Close(); err != nil {
 		t.Fatalf("close db: %v", err)
 	}
 
 	reopened, err := OpenEncrypted(path, "correct-password")
-	if err != nil {
-		t.Fatalf("reopen encrypted db: %v", err)
+	if err == nil {
+		_ = reopened.Close()
+		t.Fatalf("expected pre-0.2 preview database to be rejected")
 	}
-	defer reopened.Close()
-	if !columnExists(t, reopened, "connector_action_requests", "source") {
-		t.Fatalf("connector_action_requests.source column should be repaired")
-	}
-	for _, column := range []string{"connector_kind", "target_id", "profile_id", "action_request_id"} {
-		if !columnExists(t, reopened, "audit_logs", column) {
-			t.Fatalf("audit_logs.%s column should be repaired", column)
-		}
+	if !strings.Contains(err.Error(), "pre-0.2 preview schema") {
+		t.Fatalf("expected pre-0.2 error, got %v", err)
 	}
 }
 
