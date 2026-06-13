@@ -179,6 +179,9 @@ func validateSchemaDefinition(schema Schema, usage string, allowSecrets bool) er
 		if allowSecrets && (field.Type == FieldSecret || field.Type == FieldMultilineSecret) && !field.Secret {
 			return fmt.Errorf("%s schema field %q uses a secret field type and must set secret=true", usage, field.Name)
 		}
+		if allowSecrets && IsSecretField(field) && field.Default != nil {
+			return fmt.Errorf("%s schema field %q is secret and must not declare a default value", usage, field.Name)
+		}
 	}
 	return nil
 }

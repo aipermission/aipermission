@@ -103,6 +103,18 @@ func TestRegistryRejectsInvalidConnectorContract(t *testing.T) {
 			},
 		},
 		{
+			name: "credential secret default",
+			connector: fakeConnector{
+				kind: "api",
+				credentialSchemas: []CredentialSchema{{
+					Kind: "api_key",
+					Schema: Schema{Fields: []Field{
+						{Name: "token", Type: FieldSecret, Secret: true, Default: "leaked-token"},
+					}},
+				}},
+			},
+		},
+		{
 			name: "duplicate credential kind",
 			connector: fakeConnector{
 				kind: "api",

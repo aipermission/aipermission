@@ -36,6 +36,18 @@ func TestValidateCredentialSchemaDefinitionRejectsSecretTypeWithoutSecretFlag(t 
 	}
 }
 
+func TestValidateCredentialSchemaDefinitionRejectsSecretDefaults(t *testing.T) {
+	err := ValidateCredentialSchemaDefinition(CredentialSchema{
+		Kind: "api_key",
+		Schema: Schema{Fields: []Field{
+			{Name: "token", Type: FieldSecret, Secret: true, Required: true, Default: "leaked-token"},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "must not declare a default") {
+		t.Fatalf("expected secret default schema error, got %v", err)
+	}
+}
+
 func TestValidateCredentialSchemaValuesTreatsSecretTypesAsSecret(t *testing.T) {
 	schema := Schema{Fields: []Field{
 		{Name: "username", Type: FieldString, Required: true},
