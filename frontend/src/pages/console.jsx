@@ -14,16 +14,13 @@ import { useConnectorPermissions } from "../lib/use-connector-permissions";
 import { CountBadge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Notice } from "../components/ui/notice";
-import { ApprovalDialog } from "../components/console/approval-dialog";
-import { BulkCommandDialog } from "../components/console/bulk-command-dialog";
 import { ConnectorActionApprovalDialog } from "../components/console/connector-action-approval-dialog";
 import { ConnectorActivityDialog } from "../components/console/connector-activity-dialog";
-import { FileTransferDialog } from "../components/console/file-transfer-dialog";
 import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
 import { PtyConsole } from "../components/console/pty-console";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
-import { emptySession, isUnreadMessage, latestSessionForServer } from "../components/console/helpers";
+import { emptySession, isUnreadMessage, latestSessionForRuntimeProfile } from "../components/console/helpers";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 import { ConnectorIcon } from "../connectors/templates/common";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
@@ -33,12 +30,11 @@ export function ConsolePage() {
     liveConsoleTargets,
     targets,
     tokens,
-    approvals,
     connectorActionApprovals,
     messages,
+    loadConsoleSessions,
     loadTokens,
     loadTargets,
-    loadApprovals,
     loadConnectorActionApprovals,
     loadMessages,
     markMessagesRead,
@@ -50,21 +46,13 @@ export function ConsolePage() {
     restartConsoleSession,
     sendConsoleInput,
     resizeConsoleSession,
-    runApproval,
-    declineApproval,
     runConnectorActionApproval,
     declineConnectorActionApproval,
     mcpRuntime,
     theme,
   } = useGateway();
-  const servers = liveConsoleTargets;
   const [searchParams, setSearchParams] = useSearchParams();
   const { connectorPermissionState, loadAllConnectorPermissions, loadConnectorActions, replaceTokenConnectorPermissions } = useConnectorPermissions(tokens.data);
-  const [activeApprovalID, setActiveApprovalID] = useState(null);
-  const [activeApprovalSnapshot, setActiveApprovalSnapshot] = useState(null);
-  const [dismissedApprovalIDs, setDismissedApprovalIDs] = useState({});
-  const [approvalNote, setApprovalNote] = useState("");
-  const [approvalAction, setApprovalAction] = useState({ state: "idle", error: null });
   const [activeConnectorApprovalID, setActiveConnectorApprovalID] = useState(null);
   const [activeConnectorApprovalSnapshot, setActiveConnectorApprovalSnapshot] = useState(null);
   const [dismissedConnectorApprovalIDs, setDismissedConnectorApprovalIDs] = useState({});
@@ -74,29 +62,24 @@ export function ConsolePage() {
   const [messagesState, setMessagesState] = useState({ state: "idle", data: [], error: null });
   const [messageText, setMessageText] = useState("");
   const [messageTokenID, setMessageTokenID] = useState("");
-  const [serversCompact, setServersCompact] = useState(false);
+  const [targetsCompact, setTargetsCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
   const [targetSearch, setTargetSearch] = useState("");
-  const [fileTransferOpen, setFileTransferOpen] = useState(false);
-  const [bulkCommandOpen, setBulkCommandOpen] = useState(false);
   const [connectorActivityOpen, setConnectorActivityOpen] = useState(false);
   const [restartAction, setRestartAction] = useState({ state: "idle", error: null });
   const [now, setNow] = useState(Date.now());
   const [structuredSessionsByTarget, setStructuredSessionsByTarget] = useState({});
 
   const selectedTargetRef = searchParams.get("target");
-  const serverQueryTargetID = searchParams.get("server");
   const sessions = consoleSessions.data || [];
   const targetItems = targets?.data || [];
-  const rawPendingApprovals = approvals.data.filter((approval) => approval.status === "pending_approval");
   const rawUnreadMessages = messages.data.filter(isUnreadMessage);
   const pendingConnectorApprovals = (connectorActionApprovals?.data || []).filter((approval) => approval.status === "approval_pending");
   const defaultTargetRef = useMemo(
-    () => defaultConsoleTargetRef(targetItems, rawPendingApprovals, rawUnreadMessages, pendingConnectorApprovals),
+    () => defaultConsoleTargetRef(targetItems, rawUnreadMessages, pendingConnectorApprovals),
     [
-      targetItems.map((target) => `${target.ref}:${target.server_id || ""}`).join(","),
-      rawPendingApprovals.map((approval) => `${approval.id}:${approval.server_id}`).join(","),
-      rawUnreadMessages.map((message) => `${message.id}:${message.server_id}`).join(","),
+      targetItems.map((target) => `${target.ref}:${target.runtime_profile_id || ""}`).join(","),
+      rawUnreadMessages.map((message) => `${message.id}:${message.runtime_profile_id}`).join(","),
       pendingConnectorApprovals.map((approval) => `${approval.id}:${approval.target_ref}`).join(","),
     ]
   );
@@ -106,33 +89,26 @@ export function ConsolePage() {
       const exact = targetItems.find((target) => target.ref === selectedTargetRef);
       if (exact) return exact;
     }
-    if (serverQueryTargetID) {
-      const serverBackedTarget = targetItems.find((target) => String(target.server_id || "") === serverQueryTargetID);
-      if (serverBackedTarget) return serverBackedTarget;
-    }
     return targetItems.find((target) => target.ref === defaultTargetRef) || targetItems[0];
-  }, [targetItems, selectedTargetRef, serverQueryTargetID, defaultTargetRef]);
-  const selectedServerID = targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.server_id || "") : "";
+  }, [targetItems, selectedTargetRef, defaultTargetRef]);
+  const selectedRuntimeProfileID = targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.runtime_profile_id || "") : "";
   const selectedConnectorTemplate = selectedTarget ? getConnectorTemplate(selectedTarget.connector_kind) : null;
   const selectedTargetUsesLiveConsole = targetUsesLiveConsole(selectedTarget);
   const SelectedConnectorConsoleTemplate = selectedConnectorTemplate?.Console || null;
   const SelectedConnectorToolbarActions = selectedConnectorTemplate?.ToolbarActions || null;
   const selectedStructuredSession = selectedTarget && !selectedTargetUsesLiveConsole ? structuredSessionsByTarget[selectedTarget.ref] || null : null;
   const {
-    selectedServer,
+    selectedRuntimeTarget,
     selectedSession,
     selectedSessionLive,
-    pendingApprovals,
     unreadMessages,
-    selectedPendingApprovals,
     selectedUnreadMessages,
   } = useConsolePageState({
-    servers,
-    approvals,
+    liveConsoleTargets,
     messages,
     sessions,
-    selectedServerID,
-    allowServerFallback: false,
+    selectedRuntimeProfileID,
+    allowTargetFallback: false,
   });
   const selectedTargetProfiles = useMemo(() => profilesForConnectorTarget(targetItems, selectedTarget), [targetItems, selectedTarget?.connector_kind, selectedTarget?.target_id]);
   const selectedTokenOptions = useMemo(() => {
@@ -143,8 +119,6 @@ export function ConsolePage() {
       return effectiveConnectorTargetProfilePermissions(connectorPermissionState.data[token.id] || [], selectedTarget, profileID, now).length > 0;
     });
   }, [tokens.data, connectorPermissionState.data, selectedTarget, selectedTargetProfiles, now]);
-  const activePendingApproval = activeApprovalID ? pendingApprovals.find((approval) => Number(approval.id) === Number(activeApprovalID)) : null;
-  const activeApproval = activePendingApproval || (activeApprovalSnapshot && Number(activeApprovalSnapshot.id) === Number(activeApprovalID) ? activeApprovalSnapshot : null);
   const selectedPendingConnectorApprovals = selectedTarget ? pendingConnectorApprovals.filter((approval) => approval.target_ref === selectedTarget.ref) : [];
   const activePendingConnectorApproval = activeConnectorApprovalID ? pendingConnectorApprovals.find((approval) => Number(approval.id) === Number(activeConnectorApprovalID)) : null;
   const activeConnectorApproval = activePendingConnectorApproval || (activeConnectorApprovalSnapshot && Number(activeConnectorApprovalSnapshot.id) === Number(activeConnectorApprovalID) ? activeConnectorApprovalSnapshot : null);
@@ -165,13 +139,10 @@ export function ConsolePage() {
     .filter((permission) => permission?.expires_at)
     .map((permission) => permissionLifetimeLabel(permission, now));
   const showAlwaysRunWarning = Boolean(mcpRuntime?.data?.enabled && selectedTarget && alwaysRunTokenPermissions.length > 0);
-  const selectedRunningRequests = selectedServer
-    ? approvals.data.filter((approval) => approval.status === "running" && Number(approval.server_id) === Number(selectedServer.id))
-    : [];
   const selectedRunningConnectorRequests = selectedTargetUsesLiveConsole && selectedTarget
     ? connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === selectedTarget.ref)
     : [];
-  const selectedRunningRequest = selectedRunningRequests[0] || selectedRunningConnectorRequests[0] || null;
+  const selectedRunningRequest = selectedRunningConnectorRequests[0] || null;
   const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0);
   const filteredTargets = useMemo(() => {
     const query = targetSearch.trim().toLowerCase();
@@ -214,33 +185,15 @@ export function ConsolePage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedServer) return;
+    if (!selectedRuntimeTarget) return;
     if (selectedSessionLive) {
       attachConsoleSession(selectedSession.id);
     }
-  }, [selectedServer?.id, selectedSession.id, selectedSession.status]);
+  }, [selectedRuntimeTarget?.id, selectedSession.id, selectedSession.status]);
 
   useEffect(() => {
     setRestartAction({ state: "idle", error: null });
-  }, [selectedServer?.id, selectedRunningRequest?.id]);
-
-  useEffect(() => {
-    if (activeApprovalID && !pendingApprovals.some((approval) => Number(approval.id) === Number(activeApprovalID)) && !["error", "failed", "running", "stale"].includes(approvalAction.state)) {
-      setActiveApprovalID(null);
-      setActiveApprovalSnapshot(null);
-      setApprovalNote("");
-      setApprovalAction({ state: "idle", error: null });
-      return;
-    }
-    if (activeApprovalID || selectedPendingApprovals.length === 0) return;
-    const next = selectedPendingApprovals.find((approval) => !dismissedApprovalIDs[approval.id]);
-    if (next) {
-      setActiveApprovalID(next.id);
-      setActiveApprovalSnapshot(next);
-      setApprovalNote("");
-      setApprovalAction({ state: "idle", error: null });
-    }
-  }, [activeApprovalID, selectedPendingApprovals.map((approval) => approval.id).join(","), dismissedApprovalIDs, pendingApprovals.length, approvalAction.state]);
+  }, [selectedRuntimeTarget?.id, selectedRunningRequest?.id]);
 
   useEffect(() => {
     if (activeConnectorApprovalID && !pendingConnectorApprovals.some((approval) => Number(approval.id) === Number(activeConnectorApprovalID)) && !["error", "failed", "running", "stale"].includes(connectorApprovalAction.state)) {
@@ -264,13 +217,6 @@ export function ConsolePage() {
     setSearchParams({ target: targetRef });
   }
 
-  function openApproval(approval) {
-    setActiveApprovalID(approval.id);
-    setActiveApprovalSnapshot(approval);
-    setApprovalNote(approval.user_note || "");
-    setApprovalAction({ state: "idle", error: null });
-  }
-
   function openConnectorApproval(approval) {
     setActiveConnectorApprovalID(approval.id);
     setActiveConnectorApprovalSnapshot(approval);
@@ -279,10 +225,10 @@ export function ConsolePage() {
   }
 
   async function loadServerMessages() {
-    if (!selectedServer) return;
+    if (!selectedRuntimeTarget) return;
     setMessagesState((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const data = await apiGet(`/api/messages?server_id=${selectedServer.id}`);
+      const data = await apiGet(`/api/messages?runtime_profile_id=${selectedRuntimeTarget.id}`);
       setMessagesState({ state: "ready", data, error: null });
     } catch (error) {
       setMessagesState({ state: "error", data: [], error: error.message });
@@ -300,19 +246,19 @@ export function ConsolePage() {
 
   function closeMessages() {
     setMessagesOpen(false);
-    if (selectedServer && selectedUnreadMessages.length > 0) {
-      void markMessagesRead(selectedServer.id);
+    if (selectedRuntimeTarget && selectedUnreadMessages.length > 0) {
+      void markMessagesRead(selectedRuntimeTarget.id);
     }
   }
 
   async function sendUserMessage(event) {
     event.preventDefault();
-    if (!selectedServer || !messageText.trim() || !messageTokenID) return;
+    if (!selectedRuntimeTarget || !messageText.trim() || !messageTokenID) return;
     setMessagesState((current) => ({ ...current, state: "sending", error: null }));
     try {
       await apiPost("/api/messages", {
         token_id: Number(messageTokenID),
-        server_id: selectedServer.id,
+        runtime_profile_id: selectedRuntimeTarget.id,
         session_id: selectedSessionLive ? selectedSession.id : null,
         direction: "user_to_ai",
         message: messageText,
@@ -322,16 +268,6 @@ export function ConsolePage() {
     } catch (error) {
       setMessagesState((current) => ({ ...current, state: "error", error: error.message }));
     }
-  }
-
-  function closeApprovalDialog() {
-    if (activeApprovalID) {
-      setDismissedApprovalIDs((current) => ({ ...current, [activeApprovalID]: true }));
-    }
-    setActiveApprovalID(null);
-    setActiveApprovalSnapshot(null);
-    setApprovalNote("");
-    setApprovalAction({ state: "idle", error: null });
   }
 
   function closeConnectorApprovalDialog() {
@@ -344,57 +280,12 @@ export function ConsolePage() {
     setConnectorApprovalAction({ state: "idle", error: null });
   }
 
-  async function approveActiveRequest() {
-    if (!activeApproval) return;
-    const approval = activeApproval;
-    setApprovalAction({ state: "running", error: null });
-    try {
-      const item = await runApproval(approval.id, approvalNote);
-      if (item?.status === "error" || item?.status === "failed") {
-        setActiveApprovalSnapshot({ ...approval, ...item });
-        setApprovalAction({ state: "failed", error: item.error || "Approval run failed before the command could complete." });
-        return;
-      }
-      setDismissedApprovalIDs((current) => {
-        const next = { ...current };
-        delete next[approval.id];
-        return next;
-      });
-      setActiveApprovalID(null);
-      setActiveApprovalSnapshot(null);
-      setApprovalNote("");
-      setApprovalAction({ state: "idle", error: null });
-    } catch (error) {
-      setActiveApprovalSnapshot(approval);
-      setApprovalAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: error.message });
-    }
-  }
-
-  async function declineActiveRequest() {
-    if (!activeApproval) return;
-    setApprovalAction({ state: "declining", error: null });
-    try {
-      await declineApproval(activeApproval.id, approvalNote);
-      setDismissedApprovalIDs((current) => {
-        const next = { ...current };
-        delete next[activeApproval.id];
-        return next;
-      });
-      setActiveApprovalID(null);
-      setActiveApprovalSnapshot(null);
-      setApprovalNote("");
-      setApprovalAction({ state: "idle", error: null });
-    } catch (error) {
-      setApprovalAction({ state: "error", error: error.message });
-    }
-  }
-
   async function approveActiveConnectorRequest() {
     if (!activeConnectorApproval) return;
     const approval = activeConnectorApproval;
     setConnectorApprovalAction({ state: "running", error: null });
     try {
-      const item = await runConnectorActionApproval(approval.id);
+      const item = await runConnectorActionApproval(approval.id, connectorApprovalNote);
       if (item?.status === "error" || item?.status === "failed" || item?.status === "stale") {
         setActiveConnectorApprovalSnapshot({ ...approval, ...item });
         setConnectorApprovalAction({ state: item.status === "stale" ? "stale" : "failed", error: item.error || "Connector action failed." });
@@ -440,10 +331,10 @@ export function ConsolePage() {
   }
 
   async function restartSelectedConsoleSession() {
-    if (!selectedServer) return;
+    if (!selectedRuntimeTarget) return;
     setRestartAction({ state: "running", error: null });
     try {
-      await restartConsoleSession(selectedServer.id);
+      await restartConsoleSession(selectedRuntimeTarget.id);
       setRestartAction({ state: "idle", error: null });
     } catch (error) {
       setRestartAction({ state: "error", error: error.message });
@@ -464,13 +355,13 @@ export function ConsolePage() {
     <section
       className="grid h-[calc(100vh-40px)] min-h-[640px] gap-4"
       style={{
-        gridTemplateColumns: `${serversCompact ? "56px" : "360px"} minmax(0, 1fr) ${tokensCompact ? "56px" : "360px"}`,
+        gridTemplateColumns: `${targetsCompact ? "56px" : "360px"} minmax(0, 1fr) ${tokensCompact ? "56px" : "360px"}`,
       }}
     >
       <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <div className={`border-b border-stone-200 ${serversCompact ? "grid gap-2 p-2" : "flex items-center justify-between gap-3 px-4 py-3"}`}>
-          {serversCompact ? (
-            <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Expand connectors" onClick={() => setServersCompact(false)}>
+        <div className={`border-b border-stone-200 ${targetsCompact ? "grid gap-2 p-2" : "flex items-center justify-between gap-3 px-4 py-3"}`}>
+          {targetsCompact ? (
+            <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Expand connectors" onClick={() => setTargetsCompact(false)}>
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
           ) : (
@@ -480,14 +371,14 @@ export function ConsolePage() {
                 Connectors
                 <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">{targetItems.length}</span>
               </h3>
-              <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse connectors" onClick={() => setServersCompact(true)}>
+              <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse connectors" onClick={() => setTargetsCompact(true)}>
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </>
           )}
         </div>
-        <div className={`grid content-start gap-1 overflow-auto ${serversCompact ? "p-2" : "p-2"}`}>
-          {!serversCompact ? (
+        <div className={`grid content-start gap-1 overflow-auto ${targetsCompact ? "p-2" : "p-2"}`}>
+          {!targetsCompact ? (
             <input
               className="mb-2 h-9 rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-emerald-500"
               placeholder="Search connectors"
@@ -499,21 +390,19 @@ export function ConsolePage() {
             <TargetListItem
               key={target.ref}
               target={target}
-              servers={servers}
+              liveConsoleTargets={liveConsoleTargets}
               sessions={sessions}
               selectedTarget={selectedTarget}
-              serversCompact={serversCompact}
-              pendingApprovals={pendingApprovals}
+              targetsCompact={targetsCompact}
               pendingConnectorApprovals={pendingConnectorApprovals}
-              approvals={approvals}
               connectorActionApprovals={connectorActionApprovals}
               unreadMessages={unreadMessages}
               onSelect={selectTarget}
             />
           ))}
-          {targets.state === "ready" && targetItems.length === 0 && !serversCompact ? <Notice>No targets yet.</Notice> : null}
-          {targets.state === "ready" && targetItems.length > 0 && filteredTargets.length === 0 && !serversCompact ? <Notice>No connectors match that search.</Notice> : null}
-          {targets.state === "error" && !serversCompact ? <Notice tone="bad">{targets.error}</Notice> : null}
+          {targets.state === "ready" && targetItems.length === 0 && !targetsCompact ? <Notice>No targets yet.</Notice> : null}
+          {targets.state === "ready" && targetItems.length > 0 && filteredTargets.length === 0 && !targetsCompact ? <Notice>No connectors match that search.</Notice> : null}
+          {targets.state === "error" && !targetsCompact ? <Notice tone="bad">{targets.error}</Notice> : null}
         </div>
       </aside>
 
@@ -532,12 +421,8 @@ export function ConsolePage() {
               status={selectedTargetStatus({
                 target: selectedTarget,
                 session: selectedSession,
-                pendingCount: selectedPendingApprovals.length + selectedPendingConnectorApprovals.length,
-                runningCount:
-                  (selectedTargetUsesLiveConsole
-                    ? approvals.data.filter((approval) => approval.status === "running" && selectedServer && Number(approval.server_id) === Number(selectedServer.id)).length
-                    : 0) +
-                  connectorActionApprovals.data.filter((approval) => approval.status === "running" && selectedTarget && approval.target_ref === selectedTarget.ref).length,
+                pendingCount: selectedPendingConnectorApprovals.length,
+                runningCount: connectorActionApprovals.data.filter((approval) => approval.status === "running" && selectedTarget && approval.target_ref === selectedTarget.ref).length,
               })}
             />
             <div className="min-w-0">
@@ -547,24 +432,12 @@ export function ConsolePage() {
               </h3>
               {selectedTarget ? (
                 <p className={`truncate text-xs ${theme === "light" ? "text-stone-500" : "text-stone-400"}`}>
-                  {targetSubtitle(selectedTarget, selectedServer)}
+                  {targetSubtitle(selectedTarget, selectedRuntimeTarget)}
                 </p>
               ) : null}
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
-            {selectedPendingApprovals.length > 0 ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-9 border border-red-500/70 bg-red-950/30 px-3 text-red-100 hover:bg-red-900/40"
-                onClick={() => openApproval(selectedPendingApprovals[0])}
-                title="Pending approvals"
-              >
-                <AlertTriangle className="h-3.5 w-3.5" />
-                {selectedPendingApprovals.length}
-              </Button>
-            ) : null}
             {selectedPendingConnectorApprovals.length > 0 ? (
               <Button
                 type="button"
@@ -581,15 +454,14 @@ export function ConsolePage() {
               <SelectedConnectorToolbarActions
                 theme={theme}
                 selectedTarget={selectedTarget}
-                selectedServer={selectedServer}
+                selectedRuntimeTarget={selectedRuntimeTarget}
                 selectedSession={selectedSession}
                 selectedSessionLive={selectedSessionLive}
                 selectedUnreadMessages={selectedUnreadMessages}
-                servers={servers.data}
+                liveConsoleTargets={liveConsoleTargets.data}
                 onOpenMessages={() => openMessages()}
-                onOpenBulk={() => setBulkCommandOpen(true)}
-                onOpenFiles={() => setFileTransferOpen(true)}
-                onNewSession={() => selectedServer && void newConsoleSession(selectedServer)}
+                onRefreshSessions={loadConsoleSessions}
+                onNewSession={() => selectedRuntimeTarget && void newConsoleSession(selectedRuntimeTarget)}
                 onEndSession={() => selectedSession.id && void closeConsoleSession(selectedSession.id)}
                 onInterrupt={() => selectedSession.id && cancelConsoleCommand(selectedSession.id)}
                 structuredSession={selectedStructuredSession}
@@ -627,20 +499,20 @@ export function ConsolePage() {
               session={selectedStructuredSession}
               onOpenActivity={() => setConnectorActivityOpen(true)}
             >
-              {selectedTargetUsesLiveConsole && selectedServer && selectedSessionLive ? (
+              {selectedTargetUsesLiveConsole && selectedRuntimeTarget && selectedSessionLive ? (
                 <PtyConsole
-                  key={selectedSession.id || selectedServer.id}
-                  server={selectedServer}
+                  key={selectedSession.id || selectedRuntimeTarget.id}
+                  server={selectedRuntimeTarget}
                   session={selectedSession}
                   onInput={(data) => selectedSession.id && sendConsoleInput(selectedSession.id, data)}
                   onResize={(cols, rows) => selectedSession.id && resizeConsoleSession(selectedSession.id, cols, rows)}
                   theme={theme}
                 />
-              ) : selectedTargetUsesLiveConsole && selectedServer ? (
+              ) : selectedTargetUsesLiveConsole && selectedRuntimeTarget ? (
                 <NoLiveSession
-                  server={selectedServer}
+                  server={selectedRuntimeTarget}
                   lastSession={selectedSession.id ? selectedSession : null}
-                  onNewSession={() => void newConsoleSession(selectedServer)}
+                  onNewSession={() => void newConsoleSession(selectedRuntimeTarget)}
                   theme={theme}
                 />
               ) : selectedTargetUsesLiveConsole ? (
@@ -675,15 +547,6 @@ export function ConsolePage() {
         }}
       />
 
-      <ApprovalDialog
-        approval={activeApproval}
-        note={approvalNote}
-        action={approvalAction}
-        onNoteChange={setApprovalNote}
-        onRun={approveActiveRequest}
-        onDecline={declineActiveRequest}
-        onClose={closeApprovalDialog}
-      />
       <ConnectorActionApprovalDialog
         approval={activeConnectorApproval}
         note={connectorApprovalNote}
@@ -699,21 +562,9 @@ export function ConsolePage() {
         onRefresh={loadConnectorActionApprovals}
         onClose={() => setConnectorActivityOpen(false)}
       />
-      <FileTransferDialog
-        open={fileTransferOpen}
-        server={selectedServer}
-        onClose={() => setFileTransferOpen(false)}
-      />
-      <BulkCommandDialog
-        open={bulkCommandOpen}
-        targets={servers.data}
-        selectedTarget={selectedServer}
-        onClose={() => setBulkCommandOpen(false)}
-        onRefresh={loadApprovals}
-      />
       <MessagesDialog
         open={messagesOpen}
-        server={selectedServer}
+        server={selectedRuntimeTarget}
         tokens={selectedTokenOptions}
         tokenID={messageTokenID}
         state={messagesState}
@@ -730,26 +581,24 @@ export function ConsolePage() {
 
 function TargetListItem({
   target,
-  servers,
+  liveConsoleTargets,
   sessions,
   selectedTarget,
-  serversCompact,
-  pendingApprovals,
+  targetsCompact,
   pendingConnectorApprovals,
-  approvals,
   connectorActionApprovals,
   unreadMessages,
   onSelect,
 }) {
-  const serverID = targetUsesLiveConsole(target) ? target.server_id : null;
-  const server = serverID ? servers.data.find((item) => Number(item.id) === Number(serverID)) : null;
-  const session = serverID ? latestSessionForServer(sessions, serverID) || emptySession : emptySession;
+  const runtimeProfileID = targetUsesLiveConsole(target) ? target.runtime_profile_id : null;
+  const runtimeTarget = runtimeProfileID ? liveConsoleTargets.data.find((item) => Number(item.id) === Number(runtimeProfileID)) : null;
+  const session = runtimeProfileID ? latestSessionForRuntimeProfile(sessions, runtimeProfileID) || emptySession : emptySession;
   const active = selectedTarget && selectedTarget.ref === target.ref;
   const connectorPendingCount = pendingConnectorApprovals.filter((approval) => approval.target_ref === target.ref).length;
   const connectorRunningCount = connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === target.ref).length;
-  const pendingCount = (serverID ? pendingApprovals.filter((approval) => Number(approval.server_id) === Number(serverID)).length : 0) + connectorPendingCount;
-  const runningCount = (serverID ? approvals.data.filter((approval) => approval.status === "running" && Number(approval.server_id) === Number(serverID)).length : 0) + connectorRunningCount;
-  const unreadCount = serverID ? unreadMessages.filter((message) => Number(message.server_id) === Number(serverID)).length : 0;
+  const pendingCount = connectorPendingCount;
+  const runningCount = connectorRunningCount;
+  const unreadCount = runtimeProfileID ? unreadMessages.filter((message) => Number(message.runtime_profile_id) === Number(runtimeProfileID)).length : 0;
   const attentionCount = pendingCount + unreadCount;
   const status = selectedTargetStatus({ target, session, pendingCount, runningCount });
   const kindLabel = target.connector_kind;
@@ -759,13 +608,13 @@ function TargetListItem({
   return (
     <button
       type="button"
-      title={`${targetDisplayName(target)} ${targetSubtitle(target, server)}`}
-      className={`${serversCompact ? "grid h-10 w-10 place-items-center px-0 py-0" : "grid gap-1.5 px-3 py-2 text-left"} rounded-md transition ${
+      title={`${targetDisplayName(target)} ${targetSubtitle(target, runtimeTarget)}`}
+      className={`${targetsCompact ? "grid h-10 w-10 place-items-center px-0 py-0" : "grid gap-1.5 px-3 py-2 text-left"} rounded-md transition ${
         active ? "bg-emerald-950 text-white" : "text-stone-700 hover:bg-stone-100"
       }`}
       onClick={() => onSelect(target.ref)}
     >
-      {serversCompact ? (
+      {targetsCompact ? (
         <span className="relative grid h-full w-full place-items-center">
           <ConnectorIcon kind={target.connector_kind} className="h-4 w-4" />
           {attentionCount > 0 ? <CountBadge className="absolute -right-1 -top-1">{attentionCount}</CountBadge> : null}
@@ -783,7 +632,7 @@ function TargetListItem({
               <ConsoleStatusDot status={status} className={active && status === "offline" ? "text-red-200" : ""} />
             </span>
           </span>
-          <span className={`truncate text-xs ${active ? "text-emerald-100" : "text-stone-500"}`}>{targetSubtitle(target, server)}</span>
+          <span className={`truncate text-xs ${active ? "text-emerald-100" : "text-stone-500"}`}>{targetSubtitle(target, runtimeTarget)}</span>
           <span className="flex min-w-0 gap-1.5">
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass}`}>{kindLabel}</span>
             <span className={`truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{profileLabel}</span>
@@ -870,18 +719,13 @@ function newStructuredConsoleSession() {
   return { active: true, startedAt: new Date().toISOString() };
 }
 
-function defaultConsoleTargetRef(targets, pendingApprovals, unreadMessages, pendingConnectorApprovals) {
+function defaultConsoleTargetRef(targets, unreadMessages, pendingConnectorApprovals) {
   if (!targets.length) return "";
-  const pendingConsole = pendingApprovals.find((approval) => targets.some((target) => target.server_id && Number(target.server_id) === Number(approval.server_id)));
-  if (pendingConsole) {
-    const target = targets.find((item) => item.server_id && Number(item.server_id) === Number(pendingConsole.server_id));
-    if (target) return target.ref;
-  }
   const pendingConnector = pendingConnectorApprovals.find((approval) => targets.some((target) => target.ref === approval.target_ref));
   if (pendingConnector) return pendingConnector.target_ref;
-  const unread = unreadMessages.find((message) => targets.some((target) => target.server_id && Number(target.server_id) === Number(message.server_id)));
+  const unread = unreadMessages.find((message) => targets.some((target) => target.runtime_profile_id && Number(target.runtime_profile_id) === Number(message.runtime_profile_id)));
   if (unread) {
-    const target = targets.find((item) => item.server_id && Number(item.server_id) === Number(unread.server_id));
+    const target = targets.find((item) => item.runtime_profile_id && Number(item.runtime_profile_id) === Number(unread.runtime_profile_id));
     if (target) return target.ref;
   }
   return targets[0].ref;
@@ -893,10 +737,10 @@ function targetDisplayName(target) {
   return model?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "Target";
 }
 
-function targetSubtitle(target, server) {
+function targetSubtitle(target, runtimeTarget) {
   if (!target) return "";
   const model = getConnectorModel(target.connector_kind);
-  return model?.targetSubtitle?.({ target, server }) || `${target.connector_kind} profile ${target.profile_label || "default"}`;
+  return model?.targetSubtitle?.({ target, runtimeTarget }) || `${target.connector_kind} profile ${target.profile_label || "default"}`;
 }
 
 function targetProfileLabel(target) {
@@ -914,10 +758,10 @@ function targetUsesLiveConsole(target) {
 function selectedTargetStatus({ target, session, pendingCount = 0, runningCount = 0 }) {
   if (pendingCount > 0 || runningCount > 0) return "busy";
   if (target?.connector_kind && !targetUsesLiveConsole(target)) return "idle";
-  return selectedServerStatus({ session, pendingCount, runningCount });
+  return selectedRuntimeTargetStatus({ session, pendingCount, runningCount });
 }
 
-function selectedServerStatus({ session, pendingCount = 0, runningCount = 0 }) {
+function selectedRuntimeTargetStatus({ session, pendingCount = 0, runningCount = 0 }) {
   if (pendingCount > 0 || runningCount > 0) return "busy";
   if (session?.status === "connected" || session?.status === "connecting") return "idle";
   return "offline";

@@ -25,7 +25,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent className="grid gap-3">
             <LifecycleStep number="1" to="/credentials" icon={KeyRound} title="Create a credential" text="Generate or import a connector credential. aipermission keeps private material local and encrypted." />
-            <LifecycleStep number="2" to="/connectors" icon={Cable} title="Add a connector" text="Create an SSH or database target, attach a credential profile, then test it through the connector pipeline." />
+            <LifecycleStep number="2" to="/connectors" icon={Cable} title="Add a connector" text="Create a connector target, attach a credential profile, then test it through the connector pipeline." />
             <LifecycleStep number="3" to="/tokens" icon={TicketCheck} title="Create a token and install MCP" text="Create one token per AI client or session, then use Install to copy the provider-specific init command." />
             <LifecycleStep number="4" to="/console" icon={TerminalSquare} title="Grant connector permission" text="Open Console, select a target and token, then choose disabled, prompt, or always." />
             <LifecycleStep number="5" to="/mcp-setup" icon={PlugZap} title="Use it with your AI" text="Tell the AI which MCP server name to use, such as aipermission-default." />
@@ -55,8 +55,8 @@ export function DashboardPage() {
               <p className="mt-1 truncate font-mono text-xs text-stone-700">{mcpApiUrl}</p>
             </div>
             <div className="flex items-center justify-between rounded-md border border-stone-200 p-3">
-              <span>SSH bootstrap</span>
-              <Badge tone="good">authorized_keys</Badge>
+              <span>Credential setup</span>
+              <Badge tone="good">local vault</Badge>
             </div>
             <div className="flex items-center justify-between rounded-md border border-stone-200 p-3">
               <span>MCP package</span>

@@ -40,6 +40,9 @@ test.beforeEach(async ({ page }) => {
   await page.route("http://localhost:8080/api/connector-targets", async (route) => {
     await route.fulfill({ json: { items: [targetSummary()] } });
   });
+  await page.route("http://localhost:8080/api/connector-targets/inventory", async (route) => {
+    await route.fulfill({ json: { items: [targetInventory()] } });
+  });
   await page.route("http://localhost:8080/api/connector-targets/1", async (route) => {
     await route.fulfill({ json: targetDetail() });
   });
@@ -55,8 +58,8 @@ test.beforeEach(async ({ page }) => {
   await page.route("http://localhost:8080/api/console/sessions", async (route) => {
     await route.fulfill({ json: [] });
   });
-  await page.route("http://localhost:8080/api/approvals", async (route) => {
-    await route.fulfill({ json: [{ id: 7, server_id: 1, server_name: "worker-1", command: "docker ps", reason: "inspect", status: "pending_approval", created_at: "2026-05-31T00:00:00Z" }] });
+  await page.route("http://localhost:8080/api/connector-action-approvals", async (route) => {
+    await route.fulfill({ json: [] });
   });
   await page.route("http://localhost:8080/api/messages", async (route) => {
     await route.fulfill({ json: [] });
@@ -196,6 +199,24 @@ function targetDetail() {
         kind: "private_key",
         label: "main",
         public: { username: "root", ssh_key_id: 1 },
+      },
+    ],
+  };
+}
+
+function targetInventory() {
+  return {
+    ...targetSummary(),
+    profiles: [
+      {
+        id: 1,
+        target_id: 1,
+        ref: "ssh:1:1",
+        connector_kind: "ssh",
+        kind: "private_key",
+        label: "main",
+        public: { username: "root", ssh_key_id: 1 },
+        actions: [sshExecAction()],
       },
     ],
   };

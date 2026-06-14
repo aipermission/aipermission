@@ -1,10 +1,12 @@
-import postgresMetadata from "./postgres/metadata.json";
-import sshMetadata from "./ssh/metadata.json";
+const metadataModules = import.meta.glob("./*/metadata.json", { eager: true, import: "default" });
 
-export const connectorTemplateMetadata = Object.freeze({
-  ssh: Object.freeze(sshMetadata),
-  postgres: Object.freeze(postgresMetadata),
-});
+export const connectorTemplateMetadata = Object.freeze(
+  Object.fromEntries(
+    Object.entries(metadataModules)
+      .map(([path, metadata]) => [connectorKindFromPath(path), Object.freeze(metadata)])
+      .sort(([left], [right]) => left.localeCompare(right))
+  )
+);
 
 export const supportedConnectorKinds = Object.freeze(Object.keys(connectorTemplateMetadata));
 
@@ -22,6 +24,14 @@ export function connectorSummary(kind) {
 
 export function connectorBadgeTone(kind) {
   return getConnectorMetadata(kind)?.badge_tone || "neutral";
+}
+
+function connectorKindFromPath(path) {
+  const match = String(path).match(/^\.\/([^/]+)\/metadata\.json$/);
+  if (!match) {
+    throw new Error(`Invalid connector metadata path: ${path}`);
+  }
+  return match[1];
 }
 
 function humanizeConnectorKind(kind) {

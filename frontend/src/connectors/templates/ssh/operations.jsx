@@ -10,7 +10,7 @@ import { apiPost } from "../../../lib/api";
 import { InstallCommandPanel } from "../common";
 import * as model from "./model";
 
-export function SSHConnectorOperationsTemplate({ value, credentials, onChange, onHostKeyActionComplete }) {
+export function SSHConnectorOperationsTemplate({ value, credentials, onChange, onOperationComplete }) {
   const operation = value?.connector_kind === "ssh" ? value : { open: false };
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
         await readDockerLogs(action.target, action.container, undefined, action.profile);
       } else {
         const result = await model.resumeHostKeyAction(action);
-        await onHostKeyActionComplete?.(result, action);
+        await onOperationComplete?.(result, { connector_kind: action.kind, ...action });
         close();
       }
     } catch (error) {

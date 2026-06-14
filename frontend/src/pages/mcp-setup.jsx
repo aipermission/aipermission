@@ -129,7 +129,7 @@ export function MCPSetupPage() {
       <Card>
         <CardHeader>
           <CardTitle>How it works</CardTitle>
-          <CardDescription>The MCP server is a tiny stdio bridge. It never receives SSH private keys.</CardDescription>
+          <CardDescription>The MCP server is a tiny stdio bridge. It never receives connector credentials.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm text-stone-600">
           <Step number="1" title="Create a token" text="Each AI client or agent should get its own token." />

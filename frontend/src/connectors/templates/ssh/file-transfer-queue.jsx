@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
-import { cn } from "../../lib/utils";
-import { Button } from "../ui/button";
-import { formatBytes, formatETA, pendingBatchItemIDs, transferProgress } from "./file-transfer-utils";
+import { cn } from "../../../lib/utils";
+import { Button } from "../../../components/ui/button";
+import { formatBytes, formatETA, pendingBatchItemIDs, transferProgress } from "../../../lib/file-transfer-utils";
 
 export function QueueSummary({ batch, queue, mode, progress }) {
   const totalSize = batch ? batch.size_bytes : queue.reduce((sum, item) => sum + Number(item.size || 0), 0);

@@ -19,7 +19,6 @@ export function Shell({ theme, setTheme }) {
   const [credentials, setCredentials] = useState({ state: "loading", data: [], error: null });
   const [tokens, setTokens] = useState({ state: "loading", data: [], error: null });
   const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
-  const [approvals, setApprovals] = useState({ state: "loading", data: [], error: null });
   const [connectorActionApprovals, setConnectorActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [messages, setMessages] = useState({ state: "loading", data: [], error: null });
   const [fileTransferBatches, setFileTransferBatches] = useState({ state: "loading", data: [], error: null });
@@ -101,15 +100,6 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  async function loadApprovals() {
-    try {
-      const data = await apiGet("/api/approvals");
-      setApprovals({ state: "ready", data, error: null });
-    } catch (error) {
-      setApprovals({ state: "error", data: [], error: error.message });
-    }
-  }
-
   async function loadConnectorActionApprovals() {
     try {
       const data = await apiGet("/api/connector-action-approvals");
@@ -158,7 +148,7 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function refreshAll() {
-    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadTargets(), loadCredentials(), loadTokens(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadTargets(), loadCredentials(), loadTokens(), loadConsoleSessions(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
   }
 
   useEffect(() => {
@@ -172,7 +162,7 @@ export function Shell({ theme, setTheme }) {
         return;
       }
       if (location.pathname === "/console") {
-        await Promise.all([loadStatus(), loadDatabaseStatus(), loadTargets(), loadConsoleSessions(), loadApprovals(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+        await Promise.all([loadStatus(), loadDatabaseStatus(), loadTargets(), loadConsoleSessions(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
       } else {
         await refreshAll();
       }
@@ -249,7 +239,7 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function ensureConsoleSession(server) {
-    const current = latestSessionForServer(consoleSessions.data, server.id);
+    const current = latestSessionForRuntimeProfile(consoleSessions.data, server.id);
     if (current) {
       if (isLiveConsoleSession(current)) attachConsoleSession(current.id);
       return current;
@@ -259,7 +249,7 @@ export function Shell({ theme, setTheme }) {
 
   async function newConsoleSession(server) {
     const session = await apiPost("/api/console/sessions", {
-      server_id: server.id,
+      runtime_profile_id: server.id,
       name: `${server.name} shell`,
       close_existing: true,
     });
@@ -358,8 +348,8 @@ export function Shell({ theme, setTheme }) {
     patchConsoleSession(sessionID, () => ({ status: "closed" }));
   }
 
-  async function restartConsoleSession(serverID) {
-    const affectedSessions = consoleSessions.data.filter((session) => Number(session.server_id) === Number(serverID));
+  async function restartConsoleRuntimeProfile(runtimeProfileID) {
+    const affectedSessions = consoleSessions.data.filter((session) => Number(session.runtime_profile_id) === Number(runtimeProfileID));
     affectedSessions.forEach((session) => {
       const connection = consoleConnectionsRef.current[session.id];
       if (connection) {
@@ -367,31 +357,14 @@ export function Shell({ theme, setTheme }) {
         delete consoleConnectionsRef.current[session.id];
       }
     });
-    const result = await apiPost(`/api/console/targets/${serverID}/restart`, {});
-    await Promise.all([loadConsoleSessions(), loadApprovals()]);
+    const result = await apiPost(`/api/console/targets/${runtimeProfileID}/restart`, {});
+    await loadConsoleSessions();
     return result;
   }
 
-  async function runApproval(requestID, userNote = "") {
+  async function runConnectorActionApproval(requestID, userNote = "") {
     try {
-      const item = await apiPost(`/api/approvals/${requestID}/run`, { user_note: userNote });
-      await Promise.all([loadApprovals(), loadConsoleSessions()]);
-      return item;
-    } catch (error) {
-      await loadApprovals();
-      throw error;
-    }
-  }
-
-  async function declineApproval(requestID, userNote = "") {
-    const item = await apiPost(`/api/approvals/${requestID}/decline`, { user_note: userNote });
-    await loadApprovals();
-    return item;
-  }
-
-  async function runConnectorActionApproval(requestID) {
-    try {
-      const item = await apiPost(`/api/connector-action-approvals/${requestID}/run`, {});
+      const item = await apiPost(`/api/connector-action-approvals/${requestID}/run`, { user_note: userNote });
       await loadConnectorActionApprovals();
       return item;
     } catch (error) {
@@ -406,8 +379,8 @@ export function Shell({ theme, setTheme }) {
     return item;
   }
 
-  async function markMessagesRead(serverID) {
-    const result = await apiPost("/api/messages/read", { server_id: Number(serverID) });
+  async function markRuntimeProfileMessagesRead(runtimeProfileID) {
+    const result = await apiPost("/api/messages/read", { runtime_profile_id: Number(runtimeProfileID) });
     await loadMessages();
     return result;
   }
@@ -495,10 +468,9 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  const pendingApprovalCount = approvals.data.filter((approval) => approval.status === "pending_approval").length;
   const pendingConnectorActionApprovalCount = connectorActionApprovals.data.filter((approval) => approval.status === "approval_pending").length;
   const unreadMessageCount = messages.data.filter(isUnreadMessage).length;
-  const consoleAttentionCount = pendingApprovalCount + pendingConnectorActionApprovalCount + unreadMessageCount;
+  const consoleAttentionCount = pendingConnectorActionApprovalCount + unreadMessageCount;
   const activeTransferCount = fileTransferBatches.data.filter(isActiveTransferBatch).length;
 
   return (
@@ -571,7 +543,6 @@ export function Shell({ theme, setTheme }) {
               targets,
               credentials,
               tokens,
-              approvals,
               connectorActionApprovals,
               messages,
               mcpRuntime,
@@ -579,10 +550,9 @@ export function Shell({ theme, setTheme }) {
               loadTargets,
               loadCredentials,
               loadTokens,
-              loadApprovals,
               loadConnectorActionApprovals,
               loadMessages,
-              markMessagesRead,
+              markRuntimeProfileMessagesRead,
               setMCPRuntimeEnabled,
               refreshAll,
               gatewayState,
@@ -593,11 +563,9 @@ export function Shell({ theme, setTheme }) {
               attachConsoleSession,
               closeConsoleSession,
               cancelConsoleCommand,
-              restartConsoleSession,
+              restartConsoleRuntimeProfile,
               sendConsoleInput,
               resizeConsoleSession,
-              runApproval,
-              declineApproval,
               runConnectorActionApproval,
               declineConnectorActionApproval,
               theme,
@@ -635,15 +603,15 @@ function isLiveConsoleSession(session) {
   return session?.status === "connecting" || session?.status === "connected";
 }
 
-function latestSessionForServer(sessions, serverID) {
-  return sessions.find((session) => Number(session.server_id) === Number(serverID)) || null;
+function latestSessionForRuntimeProfile(sessions, runtimeProfileID) {
+  return sessions.find((session) => Number(session.runtime_profile_id) === Number(runtimeProfileID)) || null;
 }
 
 function liveConsoleRuntimeTargets(targets) {
   return (targets || [])
     .filter((target) => {
       const model = getConnectorModel(target.connector_kind);
-      return Boolean(model?.usesLiveConsole?.({ target }) && target.server_id && model?.liveConsoleRuntimeTarget);
+      return Boolean(model?.usesLiveConsole?.({ target }) && target.runtime_profile_id && model?.liveConsoleRuntimeTarget);
     })
     .map((target) => {
       const model = getConnectorModel(target.connector_kind);

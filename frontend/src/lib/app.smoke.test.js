@@ -14,7 +14,6 @@ const nginxSource = readFileSync(join(currentDir, "..", "..", "nginx.conf"), "ut
 const sidebarSource = readFileSync(join(currentDir, "..", "components", "app-sidebar.jsx"), "utf8");
 const unlockSource = readFileSync(join(currentDir, "..", "pages", "unlock.jsx"), "utf8");
 const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
-const approvalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "approval-dialog.jsx"), "utf8");
 const connectorApprovalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "connector-action-approval-dialog.jsx"), "utf8");
 const connectorActivityDialogSource = readFileSync(join(currentDir, "..", "components", "console", "connector-activity-dialog.jsx"), "utf8");
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
@@ -24,10 +23,10 @@ const auditLogsSource = readFileSync(join(currentDir, "..", "pages", "audit-logs
 const consolePageSource = readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8");
 const connectorsSource = readFileSync(join(currentDir, "..", "pages", "connectors.jsx"), "utf8");
 const credentialsSource = readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8");
-const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-dialog.jsx"), "utf8");
-const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-browser-dialog.jsx"), "utf8");
-const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "components", "console", "file-transfer-confirm-dialogs.jsx"), "utf8");
-const bulkCommandDialogSource = readFileSync(join(currentDir, "..", "components", "console", "bulk-command-dialog.jsx"), "utf8");
+const fileTransferDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-dialog.jsx"), "utf8");
+const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-browser-dialog.jsx"), "utf8");
+const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-confirm-dialogs.jsx"), "utf8");
+const bulkCommandDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "bulk-command-dialog.jsx"), "utf8");
 const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
 const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "token-permission-panel.jsx"), "utf8");
 const connectorTokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "connector-token-permission-panel.jsx"), "utf8");
@@ -42,6 +41,7 @@ const sshCredentialFormTemplateSource = readFileSync(join(currentDir, "..", "con
 const sshCredentialRowActionsTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "credential-row-actions.jsx"), "utf8");
 const sshConnectorListItemTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "list-item.jsx"), "utf8");
 const sshConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "console.jsx"), "utf8");
+const sshConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "index.jsx"), "utf8");
 const sshConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "metadata.json"), "utf8");
 const sshConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "model.js"), "utf8");
 const sshConnectorOperationsSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "operations.jsx"), "utf8");
@@ -49,6 +49,7 @@ const postgresConnectorFormTemplateSource = readFileSync(join(currentDir, "..", 
 const postgresCredentialFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "credential-form.jsx"), "utf8");
 const postgresConnectorListItemTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "list-item.jsx"), "utf8");
 const postgresConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "console.jsx"), "utf8");
+const postgresConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "index.jsx"), "utf8");
 const postgresConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"), "utf8");
 const postgresConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "model.js"), "utf8");
 
@@ -77,22 +78,20 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(connectorsSource, /model\.save/);
   assert.match(connectorsSource, /model\.deleteTarget/);
   assert.match(connectorsSource, /model\.test/);
-  assert.match(connectorTemplateRegistrySource, /ssh:\s*Object\.freeze/);
-  assert.match(connectorTemplateRegistrySource, /postgres:\s*Object\.freeze/);
-  assert.match(connectorTemplateRegistrySource, /metadata: getConnectorMetadata\("ssh"\)/);
-  assert.match(connectorTemplateRegistrySource, /metadata: getConnectorMetadata\("postgres"\)/);
-  assert.match(connectorTemplateRegistrySource, /model: SSHConnectorModel/);
-  assert.match(connectorTemplateRegistrySource, /model: PostgresConnectorModel/);
+  assert.match(connectorTemplateRegistrySource, /import\.meta\.glob\("\.\/\*\/index\.jsx"/);
+  assert.match(connectorTemplateCatalogSource, /import\.meta\.glob\("\.\/\*\/metadata\.json"/);
+  assert.doesNotMatch(connectorTemplateRegistrySource, /ssh:\s*Object\.freeze|postgres:\s*Object\.freeze/);
   assert.match(connectorTemplateCatalogSource, /supportedConnectorKinds/);
+  assert.match(connectorTemplateRegistrySource, /templateModules/);
+  assert.match(connectorTemplateRegistrySource, /connectorKindFromPath/);
+  assert.match(sshConnectorIndexSource, /CredentialForm/);
+  assert.match(sshConnectorIndexSource, /ToolbarActions/);
+  assert.match(postgresConnectorIndexSource, /CredentialForm/);
+  assert.match(postgresConnectorIndexSource, /ToolbarActions/);
   assert.match(sshConnectorMetadataSource, /"label": "SSH"/);
   assert.match(sshConnectorMetadataSource, /"icon": "server"/);
   assert.match(postgresConnectorMetadataSource, /"label": "Postgres"/);
   assert.match(postgresConnectorMetadataSource, /"icon": "database"/);
-  assert.match(connectorTemplateRegistrySource, /CredentialForm/);
-  assert.match(connectorTemplateRegistrySource, /CredentialRowActions/);
-  assert.match(connectorTemplateRegistrySource, /RowActions/);
-  assert.match(connectorTemplateRegistrySource, /ToolbarActions/);
-  assert.match(connectorTemplateRegistrySource, /Operations/);
   assert.match(connectorTemplateRegistrySource, /ConnectorTemplateNotFound/);
   assert.match(sshConnectorFormTemplateSource, /SSHConnectorFormTemplate/);
   assert.match(sshConnectorListItemTemplateSource, /SSHConnectorRowActionsTemplate/);
@@ -114,9 +113,9 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(postgresConnectorModelSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}`/);
   assert.match(postgresConnectorModelSource, /\/profiles\/\$\{selectedProfile\.id\}\/test/);
   assert.match(postgresConnectorModelSource, /deleteDialog/);
-  assert.match(connectorTargetProfileSaveSource, /apiPost\("\/api\/connector-targets"/);
-  assert.match(connectorTargetProfileSaveSource, /apiPut\(`\/api\/connector-targets\/\$\{targetID\}`/);
-  assert.match(connectorTargetProfileSaveSource, /apiDelete\(`\/api\/connector-targets\/\$\{target\.id\}`/);
+  assert.match(connectorTargetProfileSaveSource, /apiPost\("\/api\/connector-targets\/with-profile"/);
+  assert.match(connectorTargetProfileSaveSource, /apiPut\(`\/api\/connector-targets\/\$\{targetID\}\/with-profile\/\$\{profileID\}`/);
+  assert.doesNotMatch(connectorTargetProfileSaveSource, /apiDelete/);
   assert.match(sshConnectorModelSource, /function targetEndpoint/);
   assert.match(postgresConnectorModelSource, /function targetEndpoint/);
   assert.match(connectorsSource, /model\?\.targetEndpoint/);
@@ -136,7 +135,7 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(connectorsSource, /\/api\/connector-targets/);
   assert.doesNotMatch(connectorsSource, /connection_mode:\s*"direct"/);
   assert.doesNotMatch(connectorsSource, /apiPut\(`\/api\/connector-targets\/\$\{target\.id\}`/);
-  assert.doesNotMatch(connectorsSource, /apiPut\(`\/api\/servers\/\$\{serverID\}`/);
+  assert.doesNotMatch(connectorsSource, /apiPut\(`\/api\/servers\/\$\{runtimeProfileID\}`/);
   assert.doesNotMatch(connectorsSource, /\/api\/servers\//);
   assert.doesNotMatch(connectorsSource, /\/api\/ssh-host-keys/);
   assert.doesNotMatch(connectorsSource, /\/profiles\/\$\{profile\.id\}\/test/);
@@ -156,10 +155,8 @@ test("Connector template folders are registered in catalog and registry", () => 
     .sort();
   assert.deepEqual(kinds, ["postgres", "ssh"]);
   for (const kind of kinds) {
-    const escaped = escapeRegExp(kind);
-    assert.match(connectorTemplateCatalogSource, new RegExp(`${escaped}:\\s*Object\\.freeze`));
-    assert.match(connectorTemplateRegistrySource, new RegExp(`${escaped}:\\s*Object\\.freeze`));
-    assert.match(connectorTemplateRegistrySource, new RegExp(`getConnectorMetadata\\("${escaped}"\\)`));
+    const indexSource = readFileSync(join(connectorTemplatesDir, kind, "index.jsx"), "utf8");
+    assert.match(indexSource, /export default Object\.freeze/);
   }
 });
 
@@ -237,28 +234,23 @@ test("Token page exposes connector action permissions", () => {
   assert.match(connectorsSource, /import \{ supportedConnectorKinds \}/);
   assert.match(connectorPermissionDialogSource, /\/api\/tokens\/\$\{tokenID\}\/connector-permissions/);
   assert.match(connectorPermissionDialogSource, /\/api\/connectors"/);
-  assert.match(connectorPermissionDialogSource, /\/api\/connector-targets\/\$\{target\.id\}\/profiles\/\$\{profile\.id\}\/actions/);
+  assert.match(connectorPermissionDialogSource, /\/api\/connector-targets\/inventory/);
+  assert.match(connectorPermissionDialogSource, /profile\.actions/);
   assert.match(connectorPermissionDialogSource, /approval_required/);
   assert.match(connectorPermissionDialogSource, /always_run/);
   assert.match(connectorPermissionDialogSource, /Save connector permissions/);
 });
 
-test("Approval dialog warns before persisting command context", () => {
-  assert.match(approvalDialogSource, /shell command body/);
-  assert.match(approvalDialogSource, /may be persisted/);
-  assert.match(approvalDialogSource, /redaction is best-effort/i);
-  assert.match(approvalDialogSource, /sent \{requestAge\}/);
-  assert.match(approvalDialogSource, /action\.state === "stale"/);
-  assert.match(approvalDialogSource, /action\.state === "failed"/);
-  assert.match(approvalDialogSource, /OK/);
-  assert.match(consolePageSource, /activeApprovalSnapshot/);
-  assert.match(consolePageSource, /isStaleApprovalError/);
-  assert.match(consolePageSource, /item\?\.status === "error"/);
-});
-
 test("Console exposes connector action approvals", () => {
   assert.match(shellSource, /\/api\/targets/);
   assert.match(shellSource, /\/api\/connector-action-approvals/);
+  assert.doesNotMatch(shellSource, /\/api\/approvals/);
+  assert.doesNotMatch(consolePageSource, /components\/console\/approval-dialog|<ApprovalDialog\b|activeApprovalSnapshot/);
+  assert.equal(consolePageSource.includes("run" + "Approval"), false);
+  assert.equal(consolePageSource.includes("decline" + "Approval"), false);
+  assert.doesNotMatch(consolePageSource, /\/api\/approvals/);
+  assert.doesNotMatch(bulkCommandDialogSource, /\/api\/approvals/);
+  assert.match(bulkCommandDialogSource, /\/api\/console\/command-requests\/\$\{item\.request_id\}/);
   assert.match(consolePageSource, /ConnectorActionApprovalDialog/);
   assert.match(consolePageSource, /ConnectorActivityDialog/);
   assert.match(consolePageSource, /SelectedConnectorConsoleTemplate/);
@@ -278,7 +270,7 @@ test("Console exposes connector action approvals", () => {
   assert.match(connectorTokenPermissionPanelSource, /connectorPermissionState/);
   assert.match(connectorTokenPermissionPanelSource, /loadConnectorActions\?\.\(\{ \.\.\.selectedTarget, profile_id: profile\.profile_id/);
   assert.match(connectorTokenPermissionPanelSource, /connectorActionCacheKey\(selectedTarget, profile\.profile_id\)/);
-  assert.match(connectorPermissionDialogSource, /\/api\/connector-targets\/\$\{target\.id\}\/profiles\/\$\{profile\.id\}\/actions/);
+  assert.match(connectorPermissionDialogSource, /\/api\/connector-targets\/inventory/);
   assert.match(connectorTokenPermissionPanelSource, /ProfileLifetimeControls/);
   assert.match(sshConnectorConsoleTemplateSource, /SSHConnectorToolbarActionsTemplate/);
   assert.match(consolePageSource, /pendingConnectorApprovals/);
@@ -376,8 +368,8 @@ test("Console and History expose SSH file transfer flows", () => {
 });
 
 test("Console exposes stuck command recovery controls", () => {
-  assert.match(shellSource, /restartConsoleSession/);
-  assert.match(shellSource, /\/api\/console\/targets\/\$\{serverID\}\/restart/);
+  assert.match(shellSource, /restartConsoleRuntimeProfile/);
+  assert.match(shellSource, /\/api\/console\/targets\/\$\{runtimeProfileID\}\/restart/);
   assert.match(consolePageSource, /ConsoleRecoveryPanel/);
   assert.match(consolePageSource, /AI command running/);
   assert.match(consolePageSource, /Manual command running/);
@@ -387,10 +379,11 @@ test("Console exposes stuck command recovery controls", () => {
 });
 
 test("Console exposes bulk command execution controls", () => {
-  assert.match(consolePageSource, /BulkCommandDialog/);
-  assert.match(consolePageSource, /Bulk/);
+  assert.doesNotMatch(consolePageSource, /BulkCommandDialog/);
+  assert.match(sshConnectorConsoleTemplateSource, /BulkCommandDialog/);
+  assert.match(sshConnectorConsoleTemplateSource, /Bulk/);
   assert.match(bulkCommandDialogSource, /\/api\/console\/bulk-exec/);
-  assert.match(bulkCommandDialogSource, /RUN ON \$\{selectedIDs\.length\} SERVERS/);
+  assert.match(bulkCommandDialogSource, /RUN ON \$\{selectedIDs\.length\} TARGETS/);
   assert.match(bulkCommandDialogSource, /Run selected/);
 });
 

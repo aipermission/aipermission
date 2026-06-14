@@ -166,8 +166,8 @@ export function ConnectorsPage() {
       setState({ state: "idle", error: null, message: drawer.mode === "edit" ? "Connector updated." : "Connector created." });
       await refreshConnectors();
     } catch (error) {
-      const action = model.hostKeyActionFromError?.(error, { mode: drawer.mode, form, target: drawer.target });
-      if (action && openConnectorChallenge(error, action)) {
+      const operation = model.operationFromError?.(error, { mode: drawer.mode, form, target: drawer.target });
+      if (openConnectorOperation(operation)) {
         setState({ state: "idle", error: null, message: "" });
         return;
       }
@@ -193,13 +193,13 @@ export function ConnectorsPage() {
     }
   }
 
-  function openConnectorChallenge(error, action) {
-    if (!error.data?.host_key || !action?.kind) return false;
-    setConnectorOperation({ open: true, connector_kind: action.kind, type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
+  function openConnectorOperation(operation) {
+    if (!operation?.open || !operation?.connector_kind) return false;
+    setConnectorOperation(operation);
     return true;
   }
 
-  async function completeHostKeyAction(result, action) {
+  async function completeConnectorOperation(result, operation) {
     if (result?.testKey) {
       setTests((current) => ({
         ...current,
@@ -207,8 +207,9 @@ export function ConnectorsPage() {
       }));
       return;
     }
-    setDrawer({ open: false, mode: "create", kind: action.kind, target: null });
-    setForm(emptyConnectorForm(action.kind, { firstCredentialID }));
+    const kind = operation?.connector_kind || operation?.kind || form.connector_kind;
+    setDrawer({ open: false, mode: "create", kind, target: null });
+    setForm(emptyConnectorForm(kind, { firstCredentialID }));
     setState({ state: "idle", error: null, message: result?.message || "Connector updated." });
     await refreshConnectors();
   }
@@ -229,8 +230,8 @@ export function ConnectorsPage() {
       const result = await model.test({ target, profile });
       setTests((current) => ({ ...current, [testKey]: { state: result.ok ? "ok" : "error", error: result.error, data: result.data } }));
     } catch (error) {
-      const action = model.hostKeyActionFromError?.(error, { operation: "test", target, profile, testKey });
-      if (action && openConnectorChallenge(error, action)) {
+      const operation = model.operationFromError?.(error, { operation: "test", target, profile, testKey });
+      if (openConnectorOperation(operation)) {
         setTests((current) => ({ ...current, [testKey]: { state: "idle", error: null, data: null } }));
         return;
       }
@@ -332,7 +333,7 @@ export function ConnectorsPage() {
             value={connectorOperation}
             credentials={credentials.data}
             onChange={setConnectorOperation}
-            onHostKeyActionComplete={completeHostKeyAction}
+            onOperationComplete={completeConnectorOperation}
           />
         ) : null;
       })}

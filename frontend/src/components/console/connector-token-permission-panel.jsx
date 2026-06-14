@@ -327,7 +327,7 @@ export function ConnectorTokenPermissionPanel({
             const selectedCount = selectedCountByToken[token.id] || 0;
             const profile = selectedConnectorProfile(token.id, selectedTarget, targetProfiles, profileByToken);
             const unreadCount = targetSupportsMessages(selectedTarget)
-              ? unreadMessages.filter((message) => Number(message.server_id) === Number(profile?.server_id || selectedTarget.server_id) && Number(message.token_id) === Number(token.id)).length
+              ? unreadMessages.filter((message) => Number(message.runtime_profile_id) === Number(profile?.runtime_profile_id || selectedTarget.runtime_profile_id) && Number(message.token_id) === Number(token.id)).length
               : 0;
             return (
               <section className={`grid gap-3 rounded-lg border p-3 transition ${selectedCount > 0 ? "border-emerald-200 bg-emerald-50" : "border-stone-200 bg-white"}`} key={token.id}>
@@ -360,7 +360,7 @@ export function ConnectorTokenPermissionPanel({
 }
 
 function targetSupportsMessages(target) {
-  if (!target?.server_id) return false;
+  if (!target?.runtime_profile_id) return false;
   const model = getConnectorModel(target.connector_kind);
   return Boolean(model?.usesLiveConsole?.({ target }));
 }

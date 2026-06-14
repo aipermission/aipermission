@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Pause, Play, RefreshCcw, Upload, XCircle } from "lucide-react";
-import { formatBytes, formatETA, transferProgress } from "./console/file-transfer-utils";
+import { formatBytes, formatETA, transferProgress } from "../lib/file-transfer-utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Drawer } from "./ui/drawer";
@@ -101,7 +101,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
           <div className="flex flex-wrap items-center gap-2">
             <Icon className="h-4 w-4 text-stone-500" />
             <p className="truncate text-sm font-semibold text-stone-950">
-              {batch.server_name || `Server #${batch.server_id}`} - {batch.direction}
+              {batch.target_name || `Runtime profile #${batch.runtime_profile_id}`} - {batch.direction}
             </p>
             <Badge tone={statusTone(batch.status)}>{batch.status}</Badge>
             <Badge tone={batch.source === "mcp" ? "warn" : "neutral"}>{batch.source}</Badge>

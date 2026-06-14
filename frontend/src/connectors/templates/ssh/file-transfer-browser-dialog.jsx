@@ -1,10 +1,10 @@
 import { File, Folder, RefreshCcw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
-import { Field, Input } from "../ui/form";
-import { Notice } from "../ui/notice";
-import { formatBytes, formatShortDate } from "./file-transfer-utils";
+import { Button } from "../../../components/ui/button";
+import { Dialog } from "../../../components/ui/dialog";
+import { Field, Input } from "../../../components/ui/form";
+import { Notice } from "../../../components/ui/notice";
+import { formatBytes, formatShortDate } from "../../../lib/file-transfer-utils";
 
 export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, onUseDirectory, onAddFiles, queuedPaths }) {
   const [selectedFiles, setSelectedFiles] = useState({});
@@ -45,7 +45,7 @@ export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, on
     <Dialog
       open={browser.open}
       title={browser.purpose === "upload" ? "Choose remote folder" : "Add remote files"}
-      description="Browse the selected server over SFTP."
+      description="Browse the selected target over SFTP."
       onClose={onClose}
       size="xl"
       className="max-h-[calc(100vh-80px)]"

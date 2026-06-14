@@ -145,7 +145,7 @@ export function SecurityPage() {
       <Card>
         <CardHeader>
           <CardTitle>MCP exposure</CardTitle>
-          <CardDescription>Choose how much SSH endpoint inventory metadata MCP clients can see.</CardDescription>
+          <CardDescription>Choose how much connector endpoint inventory metadata MCP clients can see.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <label className="flex items-start gap-3 rounded-md border border-stone-200 bg-stone-50 p-4">
@@ -158,20 +158,20 @@ export function SecurityPage() {
                 updateSecuritySettings(
                   { expose_mcp_server_metadata: event.target.checked },
                   event.target.checked
-                    ? "MCP connector targets now include SSH host, port, and username metadata."
-                    : "MCP connector targets now return minimal SSH metadata.",
+                    ? "MCP connector targets now include endpoint metadata."
+                    : "MCP connector targets now return minimal endpoint metadata.",
                 )
               }
             />
             <span className="grid gap-1 text-sm">
               <span className="font-semibold text-stone-900">Expose endpoint metadata to MCP</span>
               <span className="text-stone-500">
-                Off is safer: AI clients see connector target/profile/action permission context only. Turn this on only when the agent needs SSH host, port, or username context.
+                Off is safer: AI clients see connector target/profile/action permission context only. Turn this on only when the agent needs connector endpoint context.
               </span>
             </span>
           </label>
           {!security.data?.expose_mcp_server_metadata ? (
-            <Notice>MCP connector targets hide SSH host, port, and username by default.</Notice>
+            <Notice>MCP connector targets hide endpoint inventory details by default.</Notice>
           ) : (
             <Notice tone="warn">Endpoint metadata is visible to any MCP client using an allowed token.</Notice>
           )}

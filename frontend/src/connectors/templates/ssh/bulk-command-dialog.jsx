@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, RefreshCcw, TerminalSquare } from "lucide-react";
-import { apiGet, apiPost } from "../../lib/api";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
-import { Notice } from "../ui/notice";
-import { TerminalBlock } from "../ui/terminal-block";
+import { apiGet, apiPost } from "../../../lib/api";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Dialog } from "../../../components/ui/dialog";
+import { Notice } from "../../../components/ui/notice";
+import { TerminalBlock } from "../../../components/ui/terminal-block";
 
 const terminalStatuses = new Set(["completed", "failed", "error", "declined", "stale", "untracked"]);
 
@@ -27,7 +27,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     () => targets.filter((target) => selected[target.id]).map((target) => Number(target.id)),
     [targets, selected]
   );
-  const confirmationText = selectedIDs.length > 0 ? `RUN ON ${selectedIDs.length} SERVERS` : "RUN ON 0 SERVERS";
+  const confirmationText = selectedIDs.length > 0 ? `RUN ON ${selectedIDs.length} TARGETS` : "RUN ON 0 TARGETS";
   const canRun = selectedIDs.length > 0 && command.trim() && confirmation === confirmationText && runState.state !== "starting";
   const hasActiveItems = runState.items.some((item) => !terminalStatuses.has(item.status));
 
@@ -54,8 +54,8 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     return () => window.clearInterval(timer);
   }, [open, hasActiveItems, runState.items.map((item) => `${item.request_id}:${item.status}`).join(",")]);
 
-  function toggleTarget(serverID) {
-    setSelected((current) => ({ ...current, [serverID]: !current[serverID] }));
+  function toggleTarget(runtimeProfileID) {
+    setSelected((current) => ({ ...current, [runtimeProfileID]: !current[runtimeProfileID] }));
     setConfirmation("");
   }
 
@@ -106,7 +106,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
       const details = await Promise.all(
         runState.items.map(async (item) => {
           try {
-            const detail = await apiGet(`/api/approvals/${item.request_id}`);
+            const detail = await apiGet(`/api/console/command-requests/${item.request_id}`);
             return { ...item, ...detail, request_id: item.request_id };
           } catch (error) {
             return { ...item, status: "error", error: error.message };
@@ -253,7 +253,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
               </div>
             ) : (
               <div className="grid min-h-0 place-items-center rounded-md border border-dashed border-stone-300 bg-stone-50 p-6 text-center text-sm text-stone-500">
-                Choose targets, enter a command, and run it to see per-server status and output.
+                Choose targets, enter a command, and run it to see per-target status and output.
               </div>
             )}
           </section>
@@ -273,7 +273,7 @@ function BulkCommandResultRow({ item, selected, onSelect }) {
       onClick={onSelect}
     >
       <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.server_name}</span>
+        <span className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.target_name}</span>
         <Badge tone={statusTone(item.status)} className="shrink-0 px-2 py-0.5 text-[11px]">
           {statusLabel(item.status)}
         </Badge>
@@ -299,7 +299,7 @@ function BulkCommandResultDetail({ item }) {
     <article className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 rounded-md border border-stone-200 p-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.server_name}</p>
+          <p className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.target_name}</p>
           <p className="text-xs text-stone-500">Request #{item.request_id}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

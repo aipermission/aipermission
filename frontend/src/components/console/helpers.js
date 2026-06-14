@@ -12,6 +12,6 @@ export function isLiveConsoleSession(session) {
   return session?.status === "connecting" || session?.status === "connected";
 }
 
-export function latestSessionForServer(sessions, serverID) {
-  return sessions.find((session) => Number(session.server_id) === Number(serverID)) || null;
+export function latestSessionForRuntimeProfile(sessions, runtimeProfileID) {
+  return sessions.find((session) => Number(session.runtime_profile_id) === Number(runtimeProfileID)) || null;
 }

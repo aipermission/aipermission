@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
-import { Notice } from "../ui/notice";
+import { Button } from "../../../components/ui/button";
+import { Dialog } from "../../../components/ui/dialog";
+import { Notice } from "../../../components/ui/notice";
 
 export function ClearDownloadDialog({ open, onCancel, onContinue, onSave }) {
   return (

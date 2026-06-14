@@ -1,6 +1,9 @@
 import { Files, ListChecks, MessageSquare, RefreshCcw, Square, XCircle } from "lucide-react";
+import { useState } from "react";
 import { CountBadge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { BulkCommandDialog } from "./bulk-command-dialog";
+import { FileTransferDialog } from "./file-transfer-dialog";
 
 export function SSHConnectorConsoleTemplate({ children }) {
   return children;
@@ -8,18 +11,19 @@ export function SSHConnectorConsoleTemplate({ children }) {
 
 export function SSHConnectorToolbarActionsTemplate({
   theme,
-  selectedServer,
+  selectedRuntimeTarget,
   selectedSession,
   selectedSessionLive,
   selectedUnreadMessages = [],
   onOpenMessages,
-  onOpenBulk,
-  onOpenFiles,
+  onRefreshSessions,
   onNewSession,
   onEndSession,
   onInterrupt,
-  servers = [],
+  liveConsoleTargets = [],
 }) {
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(false);
   const buttonClass = `h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`;
 
   return (
@@ -35,7 +39,7 @@ export function SSHConnectorToolbarActionsTemplate({
               : "border-stone-600 text-stone-100 hover:bg-stone-700"
         }`}
         onClick={() => onOpenMessages?.()}
-        disabled={!selectedServer}
+        disabled={!selectedRuntimeTarget}
       >
         <MessageSquare className="h-3.5 w-3.5" />
         Messages
@@ -45,8 +49,8 @@ export function SSHConnectorToolbarActionsTemplate({
         type="button"
         variant="ghost"
         className={buttonClass}
-        onClick={onOpenBulk}
-        disabled={servers.length === 0}
+        onClick={() => setBulkOpen(true)}
+        disabled={liveConsoleTargets.length === 0}
         title="Run one SSH command across selected SSH connectors"
       >
         <ListChecks className="h-3.5 w-3.5" />
@@ -56,14 +60,14 @@ export function SSHConnectorToolbarActionsTemplate({
         type="button"
         variant="ghost"
         className={buttonClass}
-        onClick={onOpenFiles}
-        disabled={!selectedServer}
+        onClick={() => setFilesOpen(true)}
+        disabled={!selectedRuntimeTarget}
         title="Upload or download files over SSH"
       >
         <Files className="h-3.5 w-3.5" />
         Files
       </Button>
-      <Button type="button" variant="ghost" className={buttonClass} onClick={onNewSession} disabled={!selectedServer}>
+      <Button type="button" variant="ghost" className={buttonClass} onClick={onNewSession} disabled={!selectedRuntimeTarget}>
         <RefreshCcw className="h-3.5 w-3.5" />
         New Session
       </Button>
@@ -89,6 +93,14 @@ export function SSHConnectorToolbarActionsTemplate({
         <Square className="h-3.5 w-3.5" />
         Interrupt
       </Button>
+      <FileTransferDialog open={filesOpen} server={selectedRuntimeTarget} onClose={() => setFilesOpen(false)} />
+      <BulkCommandDialog
+        open={bulkOpen}
+        targets={liveConsoleTargets}
+        selectedTarget={selectedRuntimeTarget}
+        onClose={() => setBulkOpen(false)}
+        onRefresh={onRefreshSessions}
+      />
     </>
   );
 }

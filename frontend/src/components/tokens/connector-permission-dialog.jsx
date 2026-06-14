@@ -40,17 +40,12 @@ export function ConnectorPermissionDialog({ token, onClose }) {
     try {
       const [catalog, targetList, permissions] = await Promise.all([
         apiGet("/api/connectors"),
-        apiGet("/api/connector-targets"),
+        apiGet("/api/connector-targets/inventory"),
         apiGet(`/api/tokens/${tokenID}/connector-permissions`),
       ]);
-      const targets = await Promise.all((targetList.items || []).map((target) => apiGet(`/api/connector-targets/${target.id}`)));
-      const actionEntries = await Promise.all(
-        targets.flatMap((target) =>
-          (target.profiles || []).map(async (profile) => {
-            const result = await apiGet(`/api/connector-targets/${target.id}/profiles/${profile.id}/actions`);
-            return [profileActionKey(target.id, profile.id), result.items || []];
-          })
-        )
+      const targets = targetList.items || [];
+      const actionEntries = targets.flatMap((target) =>
+        (target.profiles || []).map((profile) => [profileActionKey(target.id, profile.id), profile.actions || []])
       );
       const actionsByProfile = Object.fromEntries(actionEntries);
       const permissionItems = permissions.items || [];

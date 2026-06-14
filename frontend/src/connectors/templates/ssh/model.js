@@ -206,10 +206,10 @@ export function targetDisplayName({ target }) {
   return target?.target_name || target?.name || "SSH target";
 }
 
-export function targetSubtitle({ target, server }) {
-  const username = target?.public?.username || server?.username || "ssh";
-  const host = target?.config?.host || server?.host || "host";
-  const port = target?.config?.port || server?.port || 22;
+export function targetSubtitle({ target, runtimeTarget }) {
+  const username = target?.public?.username || runtimeTarget?.username || "ssh";
+  const host = target?.config?.host || runtimeTarget?.host || "host";
+  const port = target?.config?.port || runtimeTarget?.port || 22;
   return `${username}@${host}:${port}`;
 }
 
@@ -224,7 +224,7 @@ export function usesLiveConsole() {
 export function liveConsoleRuntimeTarget({ target }) {
   const profile = target.public || {};
   return {
-    id: target.server_id,
+    id: target.runtime_profile_id,
     name: targetDisplayName({ target }),
     host: target.config?.host || "",
     port: target.config?.port || 0,
@@ -279,6 +279,20 @@ export function hostKeyActionFromError(error, { mode, form, target, profile, tes
   };
 }
 
+export function operationFromError(error, context) {
+  const action = hostKeyActionFromError(error, context);
+  if (!action) return null;
+  return {
+    open: true,
+    connector_kind: action.kind,
+    type: "host-key",
+    hostKey: error.data.host_key,
+    action,
+    state: "idle",
+    error: null,
+  };
+}
+
 export async function resumeHostKeyAction(action) {
   if (action.type === "create") {
     await createFromPayload({ payload: action.payload, setupLater: Boolean(action.setupLater) });
@@ -303,7 +317,8 @@ async function createFromPayload({ payload, setupLater }) {
     const testResult = await apiPost("/api/connector-targets/test", {
       connector_kind: "ssh",
       name: payload.name,
-      config: connectorConfigFromPayload(payload),
+      config: targetConfigFromPayload(payload),
+      profile: profilePublicFromPayload(payload),
     });
     if (!testResult.ok) {
       throw new Error(testResult.stderr || testResult.stdout || "SSH connection test failed. Paste the install command on the server first, or choose setup later.");
@@ -328,7 +343,8 @@ async function saveFromPayload({ targetID, payload, setupLater, previousTarget }
     const testResult = await apiPost("/api/connector-targets/test", {
       connector_kind: "ssh",
       name: payload.name,
-      config: connectorConfigFromPayload(payload),
+      config: targetConfigFromPayload(payload),
+      profile: profilePublicFromPayload(payload),
     });
     if (!testResult.ok) {
       throw new Error(testResult.stderr || testResult.stdout || "SSH connection test failed. Paste the install command on the target first, or choose setup later.");
@@ -373,18 +389,6 @@ function payloadFromForm(form) {
     description: form.description,
     startup_input_after_connect: form.startup_input_after_connect,
     force_shell_command: form.force_shell_command,
-  };
-}
-
-function connectorConfigFromPayload(payload) {
-  return {
-    host: payload.host,
-    port: payload.port,
-    username: payload.username,
-    ssh_key_id: payload.ssh_key_id,
-    description: payload.description,
-    startup_input_after_connect: payload.startup_input_after_connect,
-    force_shell_command: payload.force_shell_command,
   };
 }
 

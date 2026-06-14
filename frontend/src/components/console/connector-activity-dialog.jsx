@@ -17,7 +17,7 @@ export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose })
     <Dialog
       open={open}
       title="Connector activity"
-      description="Recent structured connector requests, including always-run requests that do not appear in the SSH terminal."
+      description="Recent structured connector requests, including always-run requests that do not appear in a live terminal."
       onClose={onClose}
       size="wide"
       className="h-[calc(100vh-100px)] !w-[85vw] !min-w-[1024px] !max-w-[1440px] grid-rows-[auto_minmax(0,1fr)]"

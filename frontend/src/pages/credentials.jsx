@@ -115,7 +115,7 @@ export function CredentialsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">Credentials</h3>
-          <p className="text-sm text-stone-500">Create connector credential profiles for SSH, Postgres, and future connectors.</p>
+          <p className="text-sm text-stone-500">Create connector credential profiles for built-in and future connectors.</p>
         </div>
         <div className="relative">
           <Button type="button" onClick={() => setAddMenuOpen((current) => !current)}>

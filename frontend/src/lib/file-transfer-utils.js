@@ -87,6 +87,6 @@ export function formatShortDate(value) {
   return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function downloadPathStorageKey(serverID) {
-  return `aipermission-file-transfer-download-path:${serverID}`;
+function downloadPathStorageKey(runtimeProfileID) {
+  return `aipermission-file-transfer-download-path:${runtimeProfileID}`;
 }

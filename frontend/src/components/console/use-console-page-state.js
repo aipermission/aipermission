@@ -1,40 +1,33 @@
 import { useMemo } from "react";
-import { emptySession, isLiveConsoleSession, isUnreadMessage, latestSessionForServer } from "./helpers";
+import { emptySession, isLiveConsoleSession, isUnreadMessage, latestSessionForRuntimeProfile } from "./helpers";
 
-export function useConsolePageState({ servers, approvals, messages, sessions, selectedServerID, allowServerFallback = true }) {
-  const selectedServer = useMemo(() => {
-    if (!servers.data.length) return null;
-    if (!selectedServerID) return allowServerFallback ? servers.data[0] : null;
-    return servers.data.find((server) => String(server.id) === selectedServerID) || (allowServerFallback ? servers.data[0] : null);
-  }, [servers.data, selectedServerID, allowServerFallback]);
+export function useConsolePageState({ liveConsoleTargets, messages, sessions, selectedRuntimeProfileID, allowTargetFallback = true }) {
+  const selectedRuntimeTarget = useMemo(() => {
+    if (!liveConsoleTargets.data.length) return null;
+    if (!selectedRuntimeProfileID) return allowTargetFallback ? liveConsoleTargets.data[0] : null;
+    return liveConsoleTargets.data.find((target) => String(target.id) === selectedRuntimeProfileID) || (allowTargetFallback ? liveConsoleTargets.data[0] : null);
+  }, [liveConsoleTargets.data, selectedRuntimeProfileID, allowTargetFallback]);
 
-  const selectedSession = selectedServer ? latestSessionForServer(sessions, selectedServer.id) || emptySession : emptySession;
+  const selectedSession = selectedRuntimeTarget ? latestSessionForRuntimeProfile(sessions, selectedRuntimeTarget.id) || emptySession : emptySession;
   const selectedSessionLive = isLiveConsoleSession(selectedSession);
-  const pendingApprovals = approvals.data.filter((approval) => approval.status === "pending_approval");
   const unreadMessages = messages.data.filter(isUnreadMessage);
-  const selectedPendingApprovals = selectedServer ? pendingApprovals.filter((approval) => Number(approval.server_id) === Number(selectedServer.id)) : [];
-  const selectedUnreadMessages = selectedServer ? unreadMessages.filter((message) => Number(message.server_id) === Number(selectedServer.id)) : [];
+  const selectedUnreadMessages = selectedRuntimeTarget ? unreadMessages.filter((message) => Number(message.runtime_profile_id) === Number(selectedRuntimeTarget.id)) : [];
 
-  const defaultServerID = useMemo(() => {
-    if (!servers.data.length) return "";
-    const pending = pendingApprovals.find((approval) => servers.data.some((server) => Number(server.id) === Number(approval.server_id)));
-    if (pending) return String(pending.server_id);
-    const unread = unreadMessages.find((message) => servers.data.some((server) => Number(server.id) === Number(message.server_id)));
-    return String(unread ? unread.server_id : servers.data[0].id);
+  const defaultRuntimeProfileID = useMemo(() => {
+    if (!liveConsoleTargets.data.length) return "";
+    const unread = unreadMessages.find((message) => liveConsoleTargets.data.some((target) => Number(target.id) === Number(message.runtime_profile_id)));
+    return String(unread ? unread.runtime_profile_id : liveConsoleTargets.data[0].id);
   }, [
-    servers.data,
-    pendingApprovals.map((approval) => `${approval.id}:${approval.server_id}`).join(","),
-    unreadMessages.map((message) => `${message.id}:${message.server_id}`).join(","),
+    liveConsoleTargets.data,
+    unreadMessages.map((message) => `${message.id}:${message.runtime_profile_id}`).join(","),
   ]);
 
   return {
-    selectedServer,
+    selectedRuntimeTarget,
     selectedSession,
     selectedSessionLive,
-    pendingApprovals,
     unreadMessages,
-    selectedPendingApprovals,
     selectedUnreadMessages,
-    defaultServerID,
+    defaultRuntimeProfileID,
   };
 }

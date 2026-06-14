@@ -7,11 +7,11 @@ import {
   Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiDownload, apiGet, apiPost, apiPostForm } from "../../lib/api";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
-import { Field, Input } from "../ui/form";
-import { Notice } from "../ui/notice";
+import { apiDownload, apiGet, apiPost, apiPostForm } from "../../../lib/api";
+import { Button } from "../../../components/ui/button";
+import { Dialog } from "../../../components/ui/dialog";
+import { Field, Input } from "../../../components/ui/form";
+import { Notice } from "../../../components/ui/notice";
 import { RemoteBrowserDialog } from "./file-transfer-browser-dialog";
 import { ClearDownloadDialog, OverwriteConfirmDialog, UnsavedDownloadCloseDialog } from "./file-transfer-confirm-dialogs";
 import { QueueList, QueueSummary } from "./file-transfer-queue";
@@ -26,7 +26,7 @@ import {
   rememberedDownloadPath,
   suggestedArchiveName,
   transferProgress,
-} from "./file-transfer-utils";
+} from "../../../lib/file-transfer-utils";
 
 const emptyBatchState = { state: "idle", item: null, error: null };
 const emptyBrowserState = { open: false, purpose: "upload", path: "/", state: "idle", data: null, error: null };
@@ -236,7 +236,7 @@ export function FileTransferDialog({ open, server, onClose }) {
 
   async function startUploadBatch(options = {}) {
     const formData = new FormData();
-    formData.append("server_id", String(server.id));
+    formData.append("runtime_profile_id", String(server.id));
     formData.append("remote_dir", remoteDir);
     formData.append("overwrite", options.overwrite ? "true" : "false");
     uploadQueue.forEach((item) => formData.append("files", item.file, item.name));
@@ -265,7 +265,7 @@ export function FileTransferDialog({ open, server, onClose }) {
     setBatch({ state: "starting", item: null, error: null });
     try {
       const item = await apiPost("/api/file-transfers/download-batch", {
-        server_id: Number(server.id),
+        runtime_profile_id: Number(server.id),
         remote_paths: downloadQueue.map((item) => item.path),
         archive_name: downloadQueue.length > 1 ? suggestedArchiveName() : "",
       });
@@ -357,7 +357,7 @@ export function FileTransferDialog({ open, server, onClose }) {
     setBrowser((current) => ({ ...current, purpose, path: nextPath, state: "loading", error: null }));
     try {
       const data = await apiPost("/api/file-transfers/browse", {
-        server_id: Number(server.id),
+        runtime_profile_id: Number(server.id),
         path: nextPath,
       });
       if (purpose === "download") {
@@ -391,7 +391,7 @@ export function FileTransferDialog({ open, server, onClose }) {
       <Dialog
         open={open}
         title={server ? `${server.name} file transfers` : "File transfers"}
-        description="Queue uploads and downloads over the selected server's SSH connection."
+        description="Queue uploads and downloads over the selected target's SSH connection."
         onClose={requestClose}
         size="wide"
         className="xl:max-w-[70vw]"
@@ -419,9 +419,9 @@ export function FileTransferDialog({ open, server, onClose }) {
 
             <div className="rounded-md border border-stone-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Target</p>
-              <p className="mt-2 truncate text-sm font-semibold text-stone-900">{server?.name || "No server selected"}</p>
+              <p className="mt-2 truncate text-sm font-semibold text-stone-900">{server?.name || "No target selected"}</p>
               <p className="truncate font-mono text-xs text-stone-500">
-                {server ? `${server.username}@${server.host}:${server.port}` : "Open Console and select a server first."}
+                {server ? `${server.username}@${server.host}:${server.port}` : "Open Console and select a target first."}
               </p>
             </div>
 

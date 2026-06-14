@@ -8,12 +8,11 @@ import { Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { PaginationBar } from "../components/ui/pagination-bar";
 import { TerminalBlock } from "../components/ui/terminal-block";
-import { formatBytes } from "../components/console/file-transfer-utils";
+import { formatBytes } from "../lib/file-transfer-utils";
 import { connectorBadgeTone, connectorKindLabel } from "../connectors/templates/common";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
 import { apiDelete, apiDownload, apiGet, apiPost } from "../lib/api";
-import { useGateway } from "../lib/gateway-context";
 
 const statusOptions = [
   { value: "", label: "All statuses" },
@@ -38,7 +37,6 @@ const sourceOptions = [
 ];
 
 export function HistoryPage() {
-  const { targets } = useGateway();
   const [filters, setFilters] = useState({
     query: "",
     connectorKind: "",
@@ -57,13 +55,15 @@ export function HistoryPage() {
     error: null,
   });
   const [labels, setLabels] = useState({ state: "idle", data: [], error: null });
+  const [targets, setTargets] = useState({ state: "idle", data: [], error: null });
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     void loadLabels();
+    void loadHistoryTargets();
   }, []);
 
-  const targetItems = targets?.data || [];
+  const targetItems = targets.data || [];
   const targetSignature = targetItems.map((target) => target.ref).join(",");
   const connectorKindOptions = useMemo(
     () => [{ value: "", label: "All connectors" }, ...supportedConnectorKinds.map((kind) => ({ value: kind, label: connectorKindLabel(kind) }))],
@@ -103,6 +103,16 @@ export function HistoryPage() {
       setLabels({ state: "ready", data: data || [], error: null });
     } catch (error) {
       setLabels({ state: "error", data: [], error: error.message });
+    }
+  }
+
+  async function loadHistoryTargets() {
+    setTargets((current) => ({ ...current, state: "loading", error: null }));
+    try {
+      const data = await apiGet("/api/history/targets");
+      setTargets({ state: "ready", data: data.items || [], error: null });
+    } catch (error) {
+      setTargets({ state: "error", data: [], error: error.message });
     }
   }
 
@@ -188,7 +198,15 @@ export function HistoryPage() {
           <h3 className="text-lg font-semibold">History</h3>
           <p className="text-sm text-stone-500">Review every gateway activity through one connector-aware stream.</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => loadHistory(state.offset)} disabled={state.state === "loading"}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            void loadHistoryTargets();
+            void loadHistory(state.offset);
+          }}
+          disabled={state.state === "loading"}
+        >
           <RefreshCcw className="h-4 w-4" />
           Refresh
         </Button>

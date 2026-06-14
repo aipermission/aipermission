@@ -46,7 +46,7 @@ export function AuditLogsPage() {
     });
     state.data.forEach((item) => {
       if (item.target_id) options.set(String(item.target_id), item.target_name || `target ${item.target_id}`);
-      if (!item.target_id && item.server_id) options.set(`server:${item.server_id}`, item.server_name || `server ${item.server_id}`);
+      if (!item.target_id && item.runtime_profile_id) options.set(`runtime:${item.runtime_profile_id}`, item.target_name || `server ${item.runtime_profile_id}`);
     });
     return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1]));
   }, [targets.data, state.data]);
@@ -81,8 +81,8 @@ export function AuditLogsPage() {
     if (filters.query.trim()) params.set("q", filters.query.trim());
     if (filters.actor) params.set("actor", filters.actor);
     if (filters.connectorKind) params.set("connector_kind", filters.connectorKind);
-    if (filters.targetID && !filters.targetID.startsWith("server:")) params.set("target_id", filters.targetID);
-    if (filters.targetID?.startsWith("server:")) params.set("server_id", filters.targetID.slice("server:".length));
+    if (filters.targetID && !filters.targetID.startsWith("runtime:")) params.set("target_id", filters.targetID);
+    if (filters.targetID?.startsWith("runtime:")) params.set("runtime_profile_id", filters.targetID.slice("runtime:".length));
     try {
       const data = await apiGet(`/api/audit-logs?${params.toString()}`);
       setState({
@@ -277,7 +277,7 @@ function AuditDialog({ item, onClose }) {
             <ActorBadge actor={item.actor_type} />
             {item.connector_kind ? <Badge tone="neutral">{item.connector_kind}</Badge> : null}
             {auditTargetLabel(item) !== "-" ? <Badge>{auditTargetLabel(item)}</Badge> : null}
-            {item.server_name ? <Badge>{item.server_name}</Badge> : null}
+            {item.target_name ? <Badge>{item.target_name}</Badge> : null}
             {item.token_name ? <Badge>{item.token_name}</Badge> : null}
           </div>
         </div>
@@ -323,7 +323,7 @@ function payloadPreview(value) {
 }
 
 function auditTargetLabel(item) {
-  return item.target_name || item.server_name || (item.target_id ? `target ${item.target_id}` : "-");
+  return item.target_name || item.target_name || (item.target_id ? `target ${item.target_id}` : "-");
 }
 
 function prettyPayload(value) {

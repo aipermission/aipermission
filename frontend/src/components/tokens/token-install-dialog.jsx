@@ -20,9 +20,9 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
   const provider = state.provider || "manual";
   const manualConfig = provider === "manual";
   const customConfig = provider === "custom";
-  const serverName = token ? installServerName(token.name) : "aipermission-default";
-  const command = token ? installCommand(provider, serverName, token.token) : "";
-  const manualJSON = token ? manualConfigJSON(serverName, token.token) : "";
+  const targetName = token ? installTargetName(token.name) : "aipermission-default";
+  const command = token ? installCommand(provider, targetName, token.token) : "";
+  const manualJSON = token ? manualConfigJSON(targetName, token.token) : "";
   const copyValue = manualConfig ? manualJSON : command;
   const providerLabel = installProviders.find((item) => item.id === provider)?.label || "Manual";
 
@@ -57,7 +57,7 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
               <div>
                 <p className="text-sm font-semibold text-stone-900">{providerLabel} setup</p>
                 <p className="text-xs text-stone-500">
-                  MCP server name: <span className="font-mono">{serverName}</span>
+                  MCP server name: <span className="font-mono">{targetName}</span>
                 </p>
               </div>
               <CopyButton value={copyValue} variant="outline" />
@@ -71,7 +71,7 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
               : customConfig
                 ? "Custom prints portable config instead of writing provider files. Keep the generated config private."
                 : "The init command asks for the token with a hidden prompt. After installing, tell the AI to use the "}
-            {!manualConfig && !customConfig ? <span className="font-mono">{serverName}</span> : null}
+            {!manualConfig && !customConfig ? <span className="font-mono">{targetName}</span> : null}
             {!manualConfig && !customConfig ? " MCP server for this task." : null}
           </Notice>
         </>
@@ -81,7 +81,7 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
     </Dialog>
   );
 }
-function installServerName(value) {
+function installTargetName(value) {
   const slug = String(value || "default")
     .trim()
     .toLowerCase()
