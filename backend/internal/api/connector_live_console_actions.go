@@ -4,11 +4,12 @@ import (
 	"context"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (r *databaseRuntime) prepareLiveConsoleConnectorAction(ctx context.Context, profileID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
-	targetRef, err := liveConsoleTargetRef(ctx, r, profileID)
+func (r *databaseRuntime) prepareLiveConsoleConnectorAction(ctx context.Context, runtimeID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, r, runtimeID)
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
@@ -16,7 +17,7 @@ func (r *databaseRuntime) prepareLiveConsoleConnectorAction(ctx context.Context,
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
-	adapter, ok := connectorAPIAdapterFor(target.ConnectorKind).(connectorLiveConsoleAdapter)
+	adapter, ok := connectorAPIAdapterFor(target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
 	if !ok || adapter.LiveConsoleActionName() == "" {
 		return actions.PreparedRequest{}, connectortargets.ErrInvalidTargetRef
 	}
@@ -25,17 +26,16 @@ func (r *databaseRuntime) prepareLiveConsoleConnectorAction(ctx context.Context,
 	return r.prepareConnectorAction(ctx, request)
 }
 
-func liveConsoleTargetRef(ctx context.Context, runtime *databaseRuntime, profileID int64) (string, error) {
-	var connectorKind string
-	var targetID int64
-	err := runtime.database.QueryRowContext(ctx, `
-		SELECT connector_kind, target_id
-		FROM connector_credential_profiles
-		WHERE id = ? AND status = 'active'`,
-		profileID,
-	).Scan(&connectorKind, &targetID)
-	if err != nil {
-		return "", err
+func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (string, error) {
+	for _, info := range runtime.connectorRegistry().List() {
+		adapter := connectorLiveConsoleTargetAdapterFor(info.Kind)
+		if adapter == nil {
+			continue
+		}
+		ref, err := adapter.LiveConsoleTargetRef(ctx, runtime, runtimeID)
+		if err == nil && ref != "" {
+			return ref, nil
+		}
 	}
-	return connectortargets.ConnectorTargetRef(connectorKind, targetID, profileID), nil
+	return "", connectortargets.ErrInvalidTargetRef
 }

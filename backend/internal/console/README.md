@@ -1,11 +1,11 @@
 # Console Package
 
-`internal/console` owns persistent SSH console sessions.
+`internal/console` owns persistent live connector console sessions.
 
 Responsibilities:
 
-- create, list, attach, resize, close, and close-by-server console sessions
-- keep live SSH shell sessions separate from HTTP handlers
+- create, list, attach, resize, close, and close-by-runtime-profile console sessions
+- keep live connector sessions separate from HTTP handlers
 - multiplex websocket clients attached to one PTY session
 - enforce local hardening limits for websocket clients, input size, and high-frequency input/resize messages
 - execute AI commands through the persistent shell

@@ -26,13 +26,13 @@ func (s *Store) SyncCommandRequest(ctx context.Context, id int64) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO history_entries (
-			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, server_id,
+			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_profile_id,
 			target_id, profile_id, target_name, profile_label, source, status, action_name,
 			title, summary, input_text, output_text, error, exit_code, approval_required,
 			user_note, created_at, started_at, completed_at, updated_at
 		)
 		SELECT
-			?, cr.id, 'ssh', 'command', cr.token_id, cr.server_id,
+			?, cr.id, COALESCE(cp.connector_kind, ''), 'command', cr.token_id, cr.runtime_profile_id,
 			ct.id, cp.id, COALESCE(ct.name, ''), COALESCE(cp.label, ''), cr.source, cr.status, 'exec',
 			CASE
 				WHEN length(cr.command) > 120 THEN substr(cr.command, 1, 117) || '...'
@@ -53,12 +53,12 @@ func (s *Store) SyncCommandRequest(ctx context.Context, id int64) error {
 			cr.completed_at,
 			COALESCE(cr.completed_at, datetime('now'))
 		FROM command_requests cr
-		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.runtime_profile_id
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE cr.id = ?
 		ON CONFLICT(source_ref_type, source_ref_id) DO UPDATE SET
 			token_id = excluded.token_id,
-			server_id = excluded.server_id,
+			runtime_profile_id = excluded.runtime_profile_id,
 			target_id = excluded.target_id,
 			profile_id = excluded.profile_id,
 			target_name = excluded.target_name,
@@ -92,14 +92,16 @@ func (s *Store) SyncConnectorActionRequest(ctx context.Context, id int64) error 
 		INSERT INTO history_entries (
 			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, target_id,
 			profile_id, target_name, profile_label, source, status, action_name, title, summary,
-			input_json, output_text, output_json, error, approval_required, created_at,
+			preview_json, input_json, output_text, output_json, error, approval_required, created_at,
 			completed_at, updated_at
 		)
 		SELECT
 			?, r.id, r.connector_kind, 'action', r.token_id, r.target_id,
 			r.profile_id, t.name, p.label, COALESCE(NULLIF(r.source, ''), 'mcp'),
 			CASE WHEN r.status = 'approval_pending' THEN 'pending_approval' ELSE r.status END,
-			r.action_name, r.action_name, r.reason, r.input_json, r.display_text, r.output_json, r.error,
+			r.action_name, COALESCE(NULLIF(r.title, ''), r.action_name),
+			COALESCE(NULLIF(r.summary, ''), r.reason), r.preview_json,
+			r.input_json, r.display_text, r.output_json, r.error,
 			CASE WHEN r.status = 'approval_pending' THEN 1 ELSE 0 END,
 			r.created_at, r.completed_at, COALESCE(r.completed_at, datetime('now'))
 		FROM connector_action_requests r
@@ -116,6 +118,7 @@ func (s *Store) SyncConnectorActionRequest(ctx context.Context, id int64) error 
 			action_name = excluded.action_name,
 			title = excluded.title,
 			summary = excluded.summary,
+			preview_json = excluded.preview_json,
 			input_json = excluded.input_json,
 			output_text = excluded.output_text,
 			output_json = excluded.output_json,
@@ -138,14 +141,14 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO history_entries (
-			source_ref_type, source_ref_id, connector_kind, activity_type, server_id, target_id,
+			source_ref_type, source_ref_id, connector_kind, activity_type, runtime_profile_id, target_id,
 			profile_id, target_name, profile_label, source, status, action_name, title, summary,
 			input_text, input_json, output_text, error, progress_current, progress_total,
 			bytes_done, bytes_total, approval_required, created_at, started_at, completed_at,
 			updated_at
 		)
 		SELECT
-			?, ft.id, 'ssh', 'file_transfer', ft.server_id, ct.id, cp.id,
+			?, ft.id, COALESCE(cp.connector_kind, ''), 'file_transfer', ft.runtime_profile_id, ct.id, cp.id,
 			COALESCE(ct.name, ''), COALESCE(cp.label, ''), ft.source, ft.status, ft.direction,
 			ft.direction || ': ' || ft.file_name,
 			ft.remote_path,
@@ -166,11 +169,11 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 			ft.completed_at,
 			ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.id = ?
 		ON CONFLICT(source_ref_type, source_ref_id) DO UPDATE SET
-			server_id = excluded.server_id,
+			runtime_profile_id = excluded.runtime_profile_id,
 			target_id = excluded.target_id,
 			profile_id = excluded.profile_id,
 			target_name = excluded.target_name,

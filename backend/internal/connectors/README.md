@@ -109,7 +109,7 @@ shared action runner, design a reusable adapter contract first instead of
 adding connector-specific command tables, file-transfer tables, draft-test route
 branches, or operation branches to generic handlers.
 
-Live-console runtime payloads expose a field named `server_id` because existing
+Live-console runtime payloads expose a field named `runtime_profile_id` because existing
 console routes use that payload name. In the connector model that value is a
 connector-profile runtime id supplied by the live-console adapter, not a
 generic target id and not an invitation to create connector-specific mirrors.

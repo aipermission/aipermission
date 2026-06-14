@@ -18,6 +18,7 @@ type createConnectorTargetRequest struct {
 	ConnectorKind string         `json:"connector_kind"`
 	Name          string         `json:"name"`
 	Config        map[string]any `json:"config,omitempty"`
+	Profile       map[string]any `json:"profile,omitempty"`
 }
 
 type createConnectorCredentialProfileRequest struct {
@@ -39,6 +40,16 @@ type updateConnectorCredentialProfileRequest struct {
 	Public    map[string]any `json:"public,omitempty"`
 	Secret    map[string]any `json:"secret,omitempty"`
 	RiskLabel string         `json:"risk_label,omitempty"`
+}
+
+type createConnectorTargetWithProfileRequest struct {
+	Target  createConnectorTargetRequest            `json:"target"`
+	Profile createConnectorCredentialProfileRequest `json:"profile"`
+}
+
+type updateConnectorTargetWithProfileRequest struct {
+	Target  updateConnectorTargetRequest            `json:"target"`
+	Profile updateConnectorCredentialProfileRequest `json:"profile"`
 }
 
 type connectorTargetTestResponse struct {
@@ -71,20 +82,121 @@ type connectorTargetResponse struct {
 }
 
 type profileSummary struct {
-	ID            int64          `json:"id"`
-	TargetID      int64          `json:"target_id"`
-	Ref           string         `json:"ref"`
-	ConnectorKind string         `json:"connector_kind"`
-	Kind          string         `json:"kind"`
-	Label         string         `json:"label"`
-	Public        map[string]any `json:"public,omitempty"`
-	RiskLabel     string         `json:"risk_label,omitempty"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	ID            int64                         `json:"id"`
+	TargetID      int64                         `json:"target_id"`
+	Ref           string                        `json:"ref"`
+	ConnectorKind string                        `json:"connector_kind"`
+	Kind          string                        `json:"kind"`
+	Label         string                        `json:"label"`
+	Public        map[string]any                `json:"public,omitempty"`
+	RiskLabel     string                        `json:"risk_label,omitempty"`
+	Actions       []connectors.ActionDefinition `json:"actions,omitempty"`
+	CreatedAt     string                        `json:"created_at"`
+	UpdatedAt     string                        `json:"updated_at"`
 }
 
 func validateConnectorTargetSchema(connector connectors.Connector) error {
 	return connectors.ValidateNonSecretSchema(connector.TargetSchema(), connector.Kind()+" target")
+}
+
+type preparedConnectorCredentialProfileInput struct {
+	Kind                string
+	Label               string
+	Public              map[string]any
+	EncryptedSecretJSON string
+	EncryptedSecretPtr  *string
+	RiskLabel           string
+}
+
+type connectorCredentialProfilePayload struct {
+	Kind      string
+	Label     string
+	Public    map[string]any
+	Secret    map[string]any
+	RiskLabel string
+}
+
+func createProfileAdapterRequest(request createConnectorCredentialProfileRequest) connectorCredentialProfilePayload {
+	return connectorCredentialProfilePayload{
+		Kind:      request.Kind,
+		Label:     request.Label,
+		Public:    request.Public,
+		Secret:    request.Secret,
+		RiskLabel: request.RiskLabel,
+	}
+}
+
+func updateProfileAdapterRequest(request updateConnectorCredentialProfileRequest) connectorCredentialProfilePayload {
+	return connectorCredentialProfilePayload{
+		Kind:      request.Kind,
+		Label:     request.Label,
+		Public:    request.Public,
+		Secret:    request.Secret,
+		RiskLabel: request.RiskLabel,
+	}
+}
+
+func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
+	w http.ResponseWriter,
+	r *http.Request,
+	runtime *databaseRuntime,
+	connector connectors.Connector,
+	request connectorCredentialProfilePayload,
+	secretRequired bool,
+) (preparedConnectorCredentialProfileInput, bool) {
+	kind := strings.TrimSpace(request.Kind)
+	if !credentialKindSupported(connector, kind) {
+		writeError(w, http.StatusBadRequest, "unsupported credential kind")
+		return preparedConnectorCredentialProfileInput{}, false
+	}
+	schema, ok := credentialSchemaForKind(connector, kind)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "unsupported credential kind")
+		return preparedConnectorCredentialProfileInput{}, false
+	}
+	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, request.Public, request.Secret, secretRequired); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return preparedConnectorCredentialProfileInput{}, false
+	}
+	public, err := s.canonicalCredentialPublic(r.Context(), runtime, connector.Kind(), kind, request.Public)
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return preparedConnectorCredentialProfileInput{}, false
+	}
+	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, request.Secret, secretRequired); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return preparedConnectorCredentialProfileInput{}, false
+	}
+	prepared := preparedConnectorCredentialProfileInput{
+		Kind:      kind,
+		Label:     request.Label,
+		Public:    public,
+		RiskLabel: request.RiskLabel,
+	}
+	if secretRequired {
+		secret := request.Secret
+		if secret == nil {
+			secret = map[string]any{}
+		}
+		encrypted, err := runtime.vault.EncryptJSON(secret)
+		if err != nil {
+			writeInternalError(w)
+			return preparedConnectorCredentialProfileInput{}, false
+		}
+		prepared.EncryptedSecretJSON = encrypted
+		prepared.EncryptedSecretPtr = &prepared.EncryptedSecretJSON
+		return prepared, true
+	}
+	if request.Secret != nil {
+		encrypted, err := runtime.vault.EncryptJSON(request.Secret)
+		if err != nil {
+			writeInternalError(w)
+			return preparedConnectorCredentialProfileInput{}, false
+		}
+		prepared.EncryptedSecretJSON = encrypted
+		prepared.EncryptedSecretPtr = &prepared.EncryptedSecretJSON
+	}
+	return prepared, true
 }
 
 func (s connectorTargetHandlers) listConnectorTargets(w http.ResponseWriter, r *http.Request) {
@@ -102,6 +214,60 @@ func (s connectorTargetHandlers) listConnectorTargets(w http.ResponseWriter, r *
 	items := make([]connectorTargetResponse, 0, len(targets))
 	for _, target := range targets {
 		items = append(items, connectorTargetToResponse(target, nil))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s connectorTargetHandlers) listConnectorTargetInventory(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	store := connectortargets.NewStore(runtime.database)
+	targets, err := store.ListTargets(r.Context(), connectortargets.ListTargetsFilter{ConnectorKind: kind})
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	registry := runtime.connectorRegistry()
+	items := make([]connectorTargetResponse, 0, len(targets))
+	for _, target := range targets {
+		connector, ok := registry.Get(target.ConnectorKind)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "unsupported connector kind")
+			return
+		}
+		profiles, err := store.ListCredentialProfiles(r.Context(), target.ID)
+		if err != nil {
+			handleConnectorTargetError(w, err)
+			return
+		}
+		summaries := make([]profileSummary, 0, len(profiles))
+		for _, profile := range profiles {
+			targetView := connectors.TargetView{
+				Ref:           connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID),
+				ConnectorKind: target.ConnectorKind,
+				Name:          target.Name,
+				Config:        target.Config,
+			}
+			profileView := connectortargets.CredentialProfileView(profile)
+			actions, err := connector.GetActionList(r.Context(), targetView, profileView)
+			if err != nil {
+				writeInternalError(w)
+				return
+			}
+			if err := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); err != nil {
+				writeInternalError(w)
+				return
+			}
+			summary := profileToSummary(profile)
+			summary.Actions = actions
+			summaries = append(summaries, summary)
+		}
+		response := connectorTargetToResponse(target, nil)
+		response.Profiles = summaries
+		items = append(items, response)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
@@ -126,10 +292,12 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := connectors.ValidateSchemaValues(connector.TargetSchema(), request.Config); err != nil {
+	config, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Config)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	request.Config = config
 	target, err := connectortargets.NewStore(runtime.database).CreateTarget(r.Context(), connectortargets.CreateTargetInput{
 		ConnectorKind: strings.TrimSpace(request.ConnectorKind),
 		Name:          request.Name,
@@ -145,6 +313,90 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		"name":           target.Name,
 	})
 	writeJSON(w, http.StatusCreated, connectorTargetToResponse(target, nil))
+}
+
+func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	var request createConnectorTargetWithProfileRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	registry := runtime.connectorRegistry()
+	connector, ok := registry.Get(strings.TrimSpace(request.Target.ConnectorKind))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "unsupported connector kind")
+		return
+	}
+	if err := validateConnectorTargetSchema(connector); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	targetConfig, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Target.Config)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	request.Target.Config = targetConfig
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request.Profile), true)
+	if !ok {
+		return
+	}
+	tx, err := runtime.database.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	defer tx.Rollback()
+	store := connectortargets.NewTxStore(tx)
+	target, err := store.CreateTarget(r.Context(), connectortargets.CreateTargetInput{
+		ConnectorKind: strings.TrimSpace(request.Target.ConnectorKind),
+		Name:          request.Target.Name,
+		Config:        request.Target.Config,
+	})
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
+		if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, store, target); err != nil {
+			handleConnectorTargetError(w, err)
+			return
+		}
+	}
+	profile, err := store.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
+		TargetID:            target.ID,
+		ConnectorKind:       target.ConnectorKind,
+		Kind:                preparedProfile.Kind,
+		Label:               preparedProfile.Label,
+		Public:              preparedProfile.Public,
+		EncryptedSecretJSON: preparedProfile.EncryptedSecretJSON,
+		RiskLabel:           preparedProfile.RiskLabel,
+	})
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeInternalError(w)
+		return
+	}
+	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.created", map[string]any{
+		"target_id":      target.ID,
+		"connector_kind": target.ConnectorKind,
+		"name":           target.Name,
+	})
+	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.created", map[string]any{
+		"target_id":      target.ID,
+		"profile_id":     profile.ID,
+		"connector_kind": target.ConnectorKind,
+		"kind":           profile.Kind,
+		"label":          profile.Label,
+	})
+	writeJSON(w, http.StatusCreated, connectorTargetToResponse(target, []connectortargets.CredentialProfile{profile}))
 }
 
 func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter, r *http.Request) {
@@ -167,12 +419,14 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if adapter := connectorDraftTesterFor(request.ConnectorKind); adapter != nil {
-		adapter.TestDraft(s, w, r, runtime, request)
+	config, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Config)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := connectors.ValidateSchemaValues(connector.TargetSchema(), request.Config); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	request.Config = config
+	if adapter := connectorDraftTesterFor(request.ConnectorKind); adapter != nil {
+		adapter.TestDraft(s, w, r, runtime, request)
 		return
 	}
 	writeError(w, http.StatusBadRequest, "draft test is not supported for this connector")
@@ -231,10 +485,12 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := connectors.ValidateSchemaValues(connector.TargetSchema(), request.Config); err != nil {
+	config, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Config)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	request.Config = config
 	target, err := store.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
 		ID:     id,
 		Name:   request.Name,
@@ -255,6 +511,99 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		"name":           target.Name,
 	})
 	writeJSON(w, http.StatusOK, connectorTargetToResponse(target, profiles))
+}
+
+func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	profileID, ok := parsePathInt64(w, r, "profile_id", "profile_id")
+	if !ok {
+		return
+	}
+	var request updateConnectorTargetWithProfileRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	store := connectortargets.NewStore(runtime.database)
+	existing, err := store.GetTarget(r.Context(), id)
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	registry := runtime.connectorRegistry()
+	connector, ok := registry.Get(existing.ConnectorKind)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "unsupported connector kind")
+		return
+	}
+	if err := validateConnectorTargetSchema(connector); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	targetConfig, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Target.Config)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	request.Target.Config = targetConfig
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request.Profile), request.Profile.Secret != nil)
+	if !ok {
+		return
+	}
+	tx, err := runtime.database.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	defer tx.Rollback()
+	txStore := connectortargets.NewTxStore(tx)
+	target, err := txStore.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
+		ID:     id,
+		Name:   request.Target.Name,
+		Config: request.Target.Config,
+	})
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	profile, err := txStore.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
+		TargetID:            target.ID,
+		ProfileID:           profileID,
+		ConnectorKind:       target.ConnectorKind,
+		Kind:                preparedProfile.Kind,
+		Label:               preparedProfile.Label,
+		Public:              preparedProfile.Public,
+		EncryptedSecretJSON: preparedProfile.EncryptedSecretPtr,
+		RiskLabel:           preparedProfile.RiskLabel,
+	})
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeInternalError(w)
+		return
+	}
+	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.updated", map[string]any{
+		"target_id":      target.ID,
+		"connector_kind": target.ConnectorKind,
+		"name":           target.Name,
+	})
+	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.updated", map[string]any{
+		"target_id":      target.ID,
+		"profile_id":     profile.ID,
+		"connector_kind": target.ConnectorKind,
+		"kind":           profile.Kind,
+		"label":          profile.Label,
+	})
+	writeJSON(w, http.StatusOK, connectorTargetToResponse(target, []connectortargets.CredentialProfile{profile}))
 }
 
 func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r *http.Request) {
@@ -348,45 +697,18 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	if !credentialKindSupported(connector, strings.TrimSpace(request.Kind)) {
-		writeError(w, http.StatusBadRequest, "unsupported credential kind")
-		return
-	}
-	schema, ok := credentialSchemaForKind(connector, strings.TrimSpace(request.Kind))
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request), true)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "unsupported credential kind")
-		return
-	}
-	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, request.Public, request.Secret, true); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	public, err := s.canonicalCredentialPublic(r.Context(), runtime, target.ConnectorKind, strings.TrimSpace(request.Kind), request.Public)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, request.Secret, true); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	secret := request.Secret
-	if secret == nil {
-		secret = map[string]any{}
-	}
-	encryptedSecret, err := runtime.vault.EncryptJSON(secret)
-	if err != nil {
-		writeInternalError(w)
 		return
 	}
 	profile, err := store.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
 		TargetID:            target.ID,
 		ConnectorKind:       target.ConnectorKind,
-		Kind:                strings.TrimSpace(request.Kind),
-		Label:               request.Label,
-		Public:              public,
-		EncryptedSecretJSON: encryptedSecret,
-		RiskLabel:           request.RiskLabel,
+		Kind:                preparedProfile.Kind,
+		Label:               preparedProfile.Label,
+		Public:              preparedProfile.Public,
+		EncryptedSecretJSON: preparedProfile.EncryptedSecretJSON,
+		RiskLabel:           preparedProfile.RiskLabel,
 	})
 	if err != nil {
 		handleConnectorTargetError(w, err)
@@ -432,46 +754,19 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	if !credentialKindSupported(connector, strings.TrimSpace(request.Kind)) {
-		writeError(w, http.StatusBadRequest, "unsupported credential kind")
-		return
-	}
-	schema, ok := credentialSchemaForKind(connector, strings.TrimSpace(request.Kind))
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request), request.Secret != nil)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "unsupported credential kind")
 		return
-	}
-	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, request.Public, request.Secret, request.Secret != nil); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	public, err := s.canonicalCredentialPublic(r.Context(), runtime, target.ConnectorKind, strings.TrimSpace(request.Kind), request.Public)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, request.Secret, request.Secret != nil); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	var encryptedSecret *string
-	if request.Secret != nil {
-		encrypted, err := runtime.vault.EncryptJSON(request.Secret)
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		encryptedSecret = &encrypted
 	}
 	profile, err := store.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
 		TargetID:            target.ID,
 		ProfileID:           profileID,
 		ConnectorKind:       target.ConnectorKind,
-		Kind:                strings.TrimSpace(request.Kind),
-		Label:               request.Label,
-		Public:              public,
-		EncryptedSecretJSON: encryptedSecret,
-		RiskLabel:           request.RiskLabel,
+		Kind:                preparedProfile.Kind,
+		Label:               preparedProfile.Label,
+		Public:              preparedProfile.Public,
+		EncryptedSecretJSON: preparedProfile.EncryptedSecretPtr,
+		RiskLabel:           preparedProfile.RiskLabel,
 	})
 	if err != nil {
 		handleConnectorTargetError(w, err)

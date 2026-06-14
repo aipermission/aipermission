@@ -15,10 +15,10 @@ func TestStoreSyncsCanonicalHistoryEntries(t *testing.T) {
 	sshTargetID, sshProfileID := insertTargetProfile(t, database, "ssh", "test-vps", "private_key", "main")
 	postgresTargetID, postgresProfileID := insertTargetProfile(t, database, "postgres", "orders-db", "username_password", "readonly")
 	_ = sshTargetID
-	serverID := sshProfileID
+	runtimeProfileID := sshProfileID
 	store := NewStore(database)
 
-	commandID := insertCommandRequest(t, database, tokenID, serverID)
+	commandID := insertCommandRequest(t, database, tokenID, runtimeProfileID)
 	if err := store.SyncCommandRequest(context.Background(), commandID); err != nil {
 		t.Fatalf("sync command request: %v", err)
 	}
@@ -29,6 +29,7 @@ func TestStoreSyncsCanonicalHistoryEntries(t *testing.T) {
 		t.Fatalf("sync connector action request: %v", err)
 	}
 	assertHistoryEntry(t, database, SourceConnectorActionRequest, actionID, "postgres", "action", "mcp", "completed", "orders-db", "readonly")
+	assertConnectorActionHistoryMetadata(t, database, actionID)
 
 	uiActionID := insertConnectorActionRequest(t, database, tokenID, postgresTargetID, postgresProfileID)
 	if _, err := database.Exec(`UPDATE connector_action_requests SET source = 'ui' WHERE id = ?`, uiActionID); err != nil {
@@ -39,7 +40,7 @@ func TestStoreSyncsCanonicalHistoryEntries(t *testing.T) {
 	}
 	assertHistoryEntry(t, database, SourceConnectorActionRequest, uiActionID, "postgres", "action", "ui", "completed", "orders-db", "readonly")
 
-	transferID := insertFileTransfer(t, database, serverID)
+	transferID := insertFileTransfer(t, database, runtimeProfileID)
 	if err := store.SyncFileTransfer(context.Background(), transferID); err != nil {
 		t.Fatalf("sync file transfer: %v", err)
 	}
@@ -48,9 +49,9 @@ func TestStoreSyncsCanonicalHistoryEntries(t *testing.T) {
 
 func TestStoreDeleteSourceRefRemovesCanonicalHistoryEntry(t *testing.T) {
 	database := openTestDB(t)
-	_, serverID := insertTargetProfile(t, database, "ssh", "test-vps", "private_key", "main")
+	_, runtimeProfileID := insertTargetProfile(t, database, "ssh", "test-vps", "private_key", "main")
 	store := NewStore(database)
-	transferID := insertFileTransfer(t, database, serverID)
+	transferID := insertFileTransfer(t, database, runtimeProfileID)
 	if err := store.SyncFileTransfer(context.Background(), transferID); err != nil {
 		t.Fatalf("sync file transfer: %v", err)
 	}
@@ -128,15 +129,15 @@ func insertTargetProfile(t *testing.T, database *sql.DB, connectorKind string, t
 	return targetID, profileID
 }
 
-func insertCommandRequest(t *testing.T, database *sql.DB, tokenID int64, serverID int64) int64 {
+func insertCommandRequest(t *testing.T, database *sql.DB, tokenID int64, runtimeProfileID int64) int64 {
 	t.Helper()
 	result, err := database.Exec(`
 		INSERT INTO command_requests (
-			token_id, server_id, command, reason, status, stdout, exit_code, source, created_at, completed_at
+			token_id, runtime_profile_id, command, reason, status, stdout, exit_code, source, created_at, completed_at
 		)
 		VALUES (?, ?, 'hostname', 'smoke', 'completed', 'test-vps', 0, 'mcp', datetime('now'), datetime('now'))`,
 		tokenID,
-		serverID,
+		runtimeProfileID,
 	)
 	if err != nil {
 		t.Fatalf("insert command request: %v", err)
@@ -152,10 +153,13 @@ func insertConnectorActionRequest(t *testing.T, database *sql.DB, tokenID int64,
 	t.Helper()
 	result, err := database.Exec(`
 		INSERT INTO connector_action_requests (
-			token_id, target_id, profile_id, connector_kind, action_name, status, reason,
-			input_json, output_json, display_text, created_at, completed_at
+			token_id, target_id, profile_id, connector_kind, action_name, title, summary,
+			preview_json, status, reason, input_json, output_json, display_text,
+			created_at, completed_at
 		)
-		VALUES (?, ?, ?, 'postgres', 'get_tables', 'completed', 'list tables', '{}', '{"tables":[]}', 'no tables', datetime('now'), datetime('now'))`,
+		VALUES (?, ?, ?, 'postgres', 'get_tables', 'List Postgres tables', 'List visible public tables',
+			'{"schema":"public"}', 'completed', 'list tables', '{}', '{"tables":[]}', 'no tables',
+			datetime('now'), datetime('now'))`,
 		tokenID,
 		targetID,
 		profileID,
@@ -170,15 +174,34 @@ func insertConnectorActionRequest(t *testing.T, database *sql.DB, tokenID int64,
 	return id
 }
 
-func insertFileTransfer(t *testing.T, database *sql.DB, serverID int64) int64 {
+func assertConnectorActionHistoryMetadata(t *testing.T, database *sql.DB, sourceRefID int64) {
+	t.Helper()
+	var title string
+	var summary string
+	var previewJSON string
+	if err := database.QueryRow(`
+		SELECT title, summary, preview_json
+		FROM history_entries
+		WHERE source_ref_type = ? AND source_ref_id = ?`,
+		SourceConnectorActionRequest,
+		sourceRefID,
+	).Scan(&title, &summary, &previewJSON); err != nil {
+		t.Fatalf("read connector action metadata: %v", err)
+	}
+	if title != "List Postgres tables" || summary != "List visible public tables" || previewJSON != `{"schema":"public"}` {
+		t.Fatalf("connector action metadata mismatch: title=%q summary=%q preview=%q", title, summary, previewJSON)
+	}
+}
+
+func insertFileTransfer(t *testing.T, database *sql.DB, runtimeProfileID int64) int64 {
 	t.Helper()
 	result, err := database.Exec(`
 		INSERT INTO file_transfers (
-			server_id, direction, source, status, remote_path, file_name, size_bytes,
+			runtime_profile_id, direction, source, status, remote_path, file_name, size_bytes,
 			transferred_bytes, created_at, started_at, completed_at, updated_at
 		)
 		VALUES (?, 'download', 'ui', 'completed', '/home/report.txt', 'report.txt', 42, 42, datetime('now'), datetime('now'), datetime('now'), datetime('now'))`,
-		serverID,
+		runtimeProfileID,
 	)
 	if err != nil {
 		t.Fatalf("insert file transfer: %v", err)

@@ -33,7 +33,17 @@ const (
 )
 
 type Store struct {
-	db *sql.DB
+	db storeDB
+}
+
+type storeDB interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type transactionStarter interface {
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 }
 
 type ValidationError string
@@ -44,6 +54,10 @@ func (e ValidationError) Error() string {
 
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
+}
+
+func NewTxStore(tx *sql.Tx) *Store {
+	return &Store{db: tx}
 }
 
 type Target struct {
@@ -165,7 +179,11 @@ func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
 	if id < 1 {
 		return ErrTargetNotFound
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	starter, ok := s.db.(transactionStarter)
+	if !ok {
+		return fmt.Errorf("connector target store cannot start transactions")
+	}
+	tx, err := starter.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin connector target archive: %w", err)
 	}
@@ -198,6 +216,13 @@ func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
 		now,
 		id,
 		TargetStatusActive,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM token_connector_action_permissions
+		WHERE target_id = ?`,
+		id,
 	); err != nil {
 		return err
 	}
@@ -483,7 +508,16 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 	if targetID < 1 || profileID < 1 {
 		return ErrTargetProfileNotFound
 	}
-	result, err := s.db.ExecContext(ctx, `
+	starter, ok := s.db.(transactionStarter)
+	if !ok {
+		return fmt.Errorf("connector target store cannot start transactions")
+	}
+	tx, err := starter.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin connector profile archive: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
 		UPDATE connector_credential_profiles
 		SET status = ?, updated_at = ?
 		WHERE id = ? AND target_id = ? AND status = ?`,
@@ -503,7 +537,15 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 	if affected == 0 {
 		return ErrTargetProfileNotFound
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM token_connector_action_permissions
+		WHERE target_id = ? AND profile_id = ?`,
+		targetID,
+		profileID,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ListCredentialProfiles(ctx context.Context, targetID int64) ([]CredentialProfile, error) {
@@ -603,6 +645,9 @@ type ActionRequest struct {
 	ProfileLabel         string
 	ConnectorKind        string
 	ActionName           string
+	Title                string
+	Summary              string
+	Preview              map[string]any
 	Source               string
 	Input                map[string]any
 	EncryptedPayloadJSON string
@@ -624,6 +669,9 @@ type InsertActionRequestInput struct {
 	ProfileID            int64
 	ConnectorKind        string
 	ActionName           string
+	Title                string
+	Summary              string
+	Preview              map[string]any
 	Source               string
 	Input                map[string]any
 	EncryptedPayloadJSON string
@@ -747,7 +795,11 @@ func (s *Store) ReplaceActionPermissions(ctx context.Context, tokenID int64, inp
 	if err := s.validateActionPermissions(ctx, tokenID, inputs); err != nil {
 		return nil, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	starter, ok := s.db.(transactionStarter)
+	if !ok {
+		return nil, fmt.Errorf("connector target store cannot start transactions")
+	}
+	tx, err := starter.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin connector permission update: %w", err)
 	}
@@ -841,14 +893,19 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 	if err != nil {
 		return ActionRequest{}, ValidationError("action input must be a JSON object")
 	}
+	previewJSON, err := jsonObjectString(input.Preview)
+	if err != nil {
+		return ActionRequest{}, ValidationError("action preview must be a JSON object")
+	}
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO connector_action_requests (
-			token_id, target_id, profile_id, connector_kind, action_name, source, input_json,
+			token_id, target_id, profile_id, connector_kind, action_name, title, summary,
+			preview_json, source, input_json,
 			encrypted_payload_json, reason, status, approval_context,
 			approval_context_hash, created_at
 		)
-		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
 		WHERE
@@ -860,6 +917,9 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 				AND p.status = 'active'`,
 		nullableInt64(input.TokenID),
 		input.ActionName,
+		strings.TrimSpace(input.Title),
+		strings.TrimSpace(input.Summary),
+		previewJSON,
 		actionRequestSource(input.Source),
 		inputJSON,
 		strings.TrimSpace(input.EncryptedPayloadJSON),
@@ -1402,7 +1462,8 @@ func actionRequestSelectSQL() string {
 		SELECT
 			r.id, r.token_id, COALESCE(tok.name, ''),
 			r.target_id, t.name, r.profile_id, p.label,
-			r.connector_kind, r.action_name, r.source, r.input_json, r.encrypted_payload_json,
+			r.connector_kind, r.action_name, r.title, r.summary, r.preview_json,
+			r.source, r.input_json, r.encrypted_payload_json,
 			r.reason, r.status, r.output_json, r.display_text, r.error,
 			r.approval_context, r.approval_context_hash, r.approval_context_drift,
 			r.created_at, r.completed_at
@@ -1416,6 +1477,7 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 	var request ActionRequest
 	var tokenID sql.NullInt64
 	var inputJSON string
+	var previewJSON string
 	var outputJSON string
 	var completedAt sql.NullString
 	if err := row.Scan(
@@ -1428,6 +1490,9 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 		&request.ProfileLabel,
 		&request.ConnectorKind,
 		&request.ActionName,
+		&request.Title,
+		&request.Summary,
+		&previewJSON,
 		&request.Source,
 		&inputJSON,
 		&request.EncryptedPayloadJSON,
@@ -1452,6 +1517,11 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 		return ActionRequest{}, fmt.Errorf("decode connector action input: %w", err)
 	}
 	request.Input = input
+	preview, err := parseJSONObject(previewJSON)
+	if err != nil {
+		return ActionRequest{}, fmt.Errorf("decode connector action preview: %w", err)
+	}
+	request.Preview = preview
 	output, err := parseJSONValue(outputJSON)
 	if err != nil {
 		return ActionRequest{}, fmt.Errorf("decode connector action output: %w", err)

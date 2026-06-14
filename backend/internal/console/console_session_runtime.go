@@ -7,120 +7,66 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/execution"
 	"github.com/gorilla/websocket"
-	"golang.org/x/crypto/ssh"
 )
 
 func (s *managedConsoleSession) run() {
 	defer s.manager.remove(s.id)
 
-	server, privateKey, err := s.manager.getMaterial(s.ctx, s.serverID)
-	if err != nil {
-		s.fail(fmt.Sprintf("resolve ssh material: %v", err))
+	if s.manager.openRuntime == nil {
+		s.fail("console transport is not configured")
 		return
 	}
-
-	signer, err := ssh.ParsePrivateKey([]byte(privateKey.PrivateKey))
+	runtime, err := s.manager.openRuntime(s.ctx, s.runtimeProfileID, s.rows, s.cols)
 	if err != nil {
-		s.fail(fmt.Sprintf("parse private key: %v", err))
-		return
-	}
-
-	hostKeyCallback, err := execution.HostKeyCallback(s.manager.knownHosts)
-	if err != nil {
-		s.fail(fmt.Sprintf("load known_hosts: %v", err))
-		return
-	}
-
-	config := &ssh.ClientConfig{
-		User:            server.Username,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: hostKeyCallback,
-		Timeout:         12 * time.Second,
-	}
-
-	address := net.JoinHostPort(server.Host, fmt.Sprintf("%d", server.Port))
-	sshClient, err := ssh.Dial("tcp", address, config)
-	if err != nil {
-		s.fail(fmt.Sprintf("ssh dial: %v", err))
+		s.fail(err.Error())
 		return
 	}
 	s.mu.Lock()
-	s.sshClient = sshClient
+	s.runtime = runtime
 	s.mu.Unlock()
-	defer sshClient.Close()
+	defer runtime.close()
 
-	sshSession, err := sshClient.NewSession()
-	if err != nil {
-		s.fail(fmt.Sprintf("new ssh session: %v", err))
-		return
-	}
-	s.mu.Lock()
-	s.sshSession = sshSession
-	s.mu.Unlock()
-	defer sshSession.Close()
-
-	stdin, err := sshSession.StdinPipe()
-	if err != nil {
-		s.fail(fmt.Sprintf("stdin pipe: %v", err))
+	stdin := runtime.Stdin
+	if stdin == nil {
+		s.fail("console transport did not provide stdin")
 		return
 	}
 	s.mu.Lock()
 	s.stdin = stdin
 	s.mu.Unlock()
 
-	stdout, err := sshSession.StdoutPipe()
-	if err != nil {
-		s.fail(fmt.Sprintf("stdout pipe: %v", err))
+	if runtime.Stdout == nil {
+		s.fail("console transport did not provide stdout")
 		return
 	}
-	stderr, err := sshSession.StderrPipe()
-	if err != nil {
-		s.fail(fmt.Sprintf("stderr pipe: %v", err))
-		return
-	}
-
-	modes := ssh.TerminalModes{
-		ssh.ECHO:          1,
-		ssh.TTY_OP_ISPEED: 14400,
-		ssh.TTY_OP_OSPEED: 14400,
-	}
-	if err := sshSession.RequestPty("xterm-256color", s.rows, s.cols, modes); err != nil {
-		s.fail(fmt.Sprintf("request pty: %v", err))
-		return
-	}
-	if server.ForceShellCommand != "" {
-		if err := sshSession.Start(server.ForceShellCommand); err != nil {
-			s.fail(fmt.Sprintf("start forced shell command: %v", err))
-			return
-		}
-	} else if err := sshSession.Shell(); err != nil {
-		s.fail(fmt.Sprintf("start shell: %v", err))
+	if runtime.Wait == nil {
+		s.fail("console transport did not provide wait")
 		return
 	}
 
 	s.setStatus("connected", "")
 	s.broadcast(ptyServerMessage{Type: "ready", Status: "connected", SessionID: s.id})
 
-	if server.StartupInputAfterConnect != "" {
-		if _, err := io.WriteString(stdin, server.StartupInputAfterConnect); err != nil {
+	if runtime.StartupInputAfterConnect != "" {
+		if _, err := io.WriteString(stdin, runtime.StartupInputAfterConnect); err != nil {
 			s.fail(fmt.Sprintf("write startup input: %v", err))
 			return
 		}
 	}
 
-	go s.pipe(stdout)
-	go s.pipe(stderr)
+	go s.pipe(runtime.Stdout)
+	if runtime.Stderr != nil {
+		go s.pipe(runtime.Stderr)
+	}
 
 	waitDone := make(chan error, 1)
 	go func() {
-		waitDone <- sshSession.Wait()
+		waitDone <- runtime.Wait()
 	}()
 
 	select {
@@ -192,10 +138,10 @@ func (s *managedConsoleSession) resize(cols int, rows int) {
 	s.mu.Lock()
 	s.cols = cols
 	s.rows = rows
-	sshSession := s.sshSession
+	runtime := s.runtime
 	s.mu.Unlock()
-	if sshSession != nil {
-		_ = sshSession.WindowChange(rows, cols)
+	if runtime != nil && runtime.Resize != nil {
+		_ = runtime.Resize(cols, rows)
 	}
 	if _, err := s.manager.db.Exec(`UPDATE console_sessions SET cols = ?, rows = ?, updated_at = ? WHERE id = ?`, cols, rows, time.Now().UTC().Format(time.RFC3339), s.id); err != nil {
 		logConsolePersistError("resize", s.id, err)
@@ -205,15 +151,18 @@ func (s *managedConsoleSession) resize(cols int, rows int) {
 func (s *managedConsoleSession) close() {
 	s.cancel()
 	s.mu.Lock()
-	sshSession := s.sshSession
-	sshClient := s.sshClient
+	runtime := s.runtime
 	s.mu.Unlock()
-	if sshSession != nil {
-		_ = sshSession.Close()
+	if runtime != nil {
+		_ = runtime.close()
 	}
-	if sshClient != nil {
-		_ = sshClient.Close()
+}
+
+func (session *RuntimeSession) close() error {
+	if session == nil || session.Close == nil {
+		return nil
 	}
+	return session.Close()
 }
 
 func (s *managedConsoleSession) fail(message string) {

@@ -1,7 +1,9 @@
 package connectors
 
 import (
+	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 )
@@ -19,7 +21,7 @@ func NewRegistry() *Registry {
 }
 
 // Register adds one connector. Connector kinds are stable lowercase
-// identifiers such as "ssh", "postgres", or "http_recipe".
+// identifiers such as "postgres", "redis", or "http_recipe".
 func (r *Registry) Register(connector Connector) error {
 	if connector == nil {
 		return fmt.Errorf("connector is nil")
@@ -92,6 +94,30 @@ func ValidateConnectorContract(connector Connector) error {
 		if err := ValidateCredentialSchemaDefinition(schema); err != nil {
 			return fmt.Errorf("connector %q: %w", kind, err)
 		}
+	}
+	baselineTarget := TargetView{ConnectorKind: kind}
+	baselineProfile := CredentialProfileView{ConnectorKind: kind}
+	actions, err := connector.GetActionList(context.Background(), baselineTarget, baselineProfile)
+	if err != nil {
+		return fmt.Errorf("connector %q actions: %w", kind, err)
+	}
+	if err := ValidateActionDefinitions(actions, kind+" actions"); err != nil {
+		return fmt.Errorf("connector %q: %w", kind, err)
+	}
+	exemplarProfile := baselineProfile
+	if len(connector.CredentialSchemas()) > 0 {
+		exemplarProfile.Kind = connector.CredentialSchemas()[0].Kind
+	}
+	exemplarActions, err := connector.GetActionList(context.Background(), TargetView{
+		ConnectorKind: kind,
+		Name:          "__contract_check__",
+		Config:        map[string]any{},
+	}, exemplarProfile)
+	if err != nil {
+		return fmt.Errorf("connector %q exemplar actions: %w", kind, err)
+	}
+	if !reflect.DeepEqual(actions, exemplarActions) {
+		return fmt.Errorf("connector %q action list must be stable for the connector kind", kind)
 	}
 	return nil
 }

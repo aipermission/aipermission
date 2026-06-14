@@ -5,10 +5,12 @@ import "context"
 // Connector is the required contract for connector-shaped targets.
 //
 // GetHelp, GetActionList, and PrepareAction must be side-effect-free and should
-// not need raw secret access. GetActionList should be static for a
-// target/profile and must not depend on network reachability because permission
-// reads and MCP discovery call it on read paths. ExecuteAction receives
-// RuntimeContext only after core permission and approval rules allow execution.
+// not need raw secret access. GetActionList is the permission catalog: it must
+// return stable action definitions for the connector kind, and it must not hide
+// actions based on network reachability or mutable target/profile state because
+// permission reads, approval drift checks, and MCP discovery call it on read
+// paths. ExecuteAction receives RuntimeContext only after core permission and
+// approval rules allow execution.
 //
 // Normal structured connectors should return terminal ActionResult statuses
 // from ExecuteAction. Returning ResultRunning is reserved for gateway-owned
@@ -55,9 +57,10 @@ type RuntimeContext struct {
 	Secrets SecretAccessor
 	Events  EventSink
 	// Services is an explicit escape hatch for gateway-owned runtime adapters
-	// such as SSH PTY/SFTP. Normal structured connectors should use Target,
-	// Profile, Secrets, and their own client code instead of depending on
-	// gateway internals.
+	// that need live transports, file transfer, or other long-lived gateway
+	// resources. Normal structured connectors should use Target, Profile,
+	// Secrets, and their own client code instead of depending on gateway
+	// internals.
 	Services map[string]any
 }
 

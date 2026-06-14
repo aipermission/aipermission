@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 )
 
 func (s credentialHandlers) listCredentials(w http.ResponseWriter, r *http.Request) {
@@ -76,9 +78,9 @@ func (s credentialHandlers) deleteCredential(w http.ResponseWriter, r *http.Requ
 	adapter.DeleteCredentialResource(s, w, r, runtime)
 }
 
-func credentialResourceAdapter(w http.ResponseWriter, r *http.Request) (connectorCredentialResourceAdapter, bool) {
-	adapter, ok := connectorAPIAdapterFor(r.PathValue("kind")).(connectorCredentialResourceAdapter)
-	if !ok {
+func credentialResourceAdapter(w http.ResponseWriter, r *http.Request) (connectorapi.CredentialResourceAdapter, bool) {
+	adapter := connectorCredentialResourceAdapterFor(r.PathValue("kind"))
+	if adapter == nil {
 		writeError(w, http.StatusNotFound, "connector credential resources are not supported")
 		return nil, false
 	}

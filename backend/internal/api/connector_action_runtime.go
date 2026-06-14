@@ -18,7 +18,7 @@ import (
 const (
 	connectorActionToolName          = "connector.call_action"
 	connectorActionApprovalHint      = "Wait 3 seconds, then poll this connector action request until it is completed, failed, declined, stale, or blocked."
-	connectorActionRunningHint       = "Wait 3 seconds, then call get_connector_action_request again. For SSH exec actions, inspect live output with the read_console connector action before sending another long-running command to the same target. If the action appears stuck, use the restart_console_session connector action for that target."
+	connectorActionRunningHint       = "Wait 3 seconds, then call get_connector_action_request again. Use the connector-specific read or recovery actions when the connector exposes them."
 	connectorActionMissingPermission = "This token is not allowed to run this connector action for the selected target/profile"
 )
 
@@ -223,6 +223,9 @@ func (s *Server) insertConnectorActionRequest(
 		ProfileID:            prepared.Profile.ID,
 		ConnectorKind:        prepared.Target.ConnectorKind,
 		ActionName:           prepared.Action.ActionName,
+		Title:                s.redactForPersistence(ctx, runtime, prepared.Action.Title),
+		Summary:              s.redactForPersistence(ctx, runtime, prepared.Action.Summary),
+		Preview:              s.redactConnectorActionPreview(ctx, runtime, prepared.Action.Preview, prepared.ActionDefinition.OutputHint),
 		Source:               prepared.Requested.Source,
 		Input:                s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input),
 		EncryptedPayloadJSON: payload,
@@ -351,6 +354,17 @@ func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databa
 		return map[string]any{}
 	}
 	redacted, ok := s.redactedConnectorValue(ctx, runtime, input, connectorSensitiveOutputFields()).(map[string]any)
+	if !ok || redacted == nil {
+		return map[string]any{}
+	}
+	return redacted
+}
+
+func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *databaseRuntime, preview map[string]any, hints ...connectors.OutputHint) map[string]any {
+	if preview == nil {
+		return map[string]any{}
+	}
+	redacted, ok := s.redactedConnectorValue(ctx, runtime, preview, connectorSensitiveOutputFields(hints...)).(map[string]any)
 	if !ok || redacted == nil {
 		return map[string]any{}
 	}

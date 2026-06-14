@@ -32,7 +32,7 @@ func TestMessagesValidateListConsumeAndMarkRead(t *testing.T) {
 		t.Fatalf("expected unknown token to fail, got %v", err)
 	}
 
-	first, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, ServerID: &server.ID, Message: " first token=secret-value "})
+	first, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, RuntimeProfileID: &server.ID, Message: " first token=secret-value "})
 	if err != nil {
 		t.Fatalf("insert first message: %v", err)
 	}
@@ -40,14 +40,14 @@ func TestMessagesValidateListConsumeAndMarkRead(t *testing.T) {
 		t.Fatalf("message should be redacted before storage and response: %q", first.Message)
 	}
 	otherServer := fixture.createKeyAndServer(t, "worker-2")
-	missingServerID := otherServer.ID + 999
-	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, ServerID: &missingServerID, Message: "missing server"}); err == nil || !strings.Contains(err.Error(), "server_id") {
+	missingRuntimeProfileID := otherServer.ID + 999
+	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, RuntimeProfileID: &missingRuntimeProfileID, Message: "missing server"}); err == nil || !strings.Contains(err.Error(), "runtime_profile_id") {
 		t.Fatalf("expected unknown server to fail, got %v", err)
 	}
-	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, ServerID: &otherServer.ID, Message: "other server"}); err != nil {
+	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, RuntimeProfileID: &otherServer.ID, Message: "other server"}); err != nil {
 		t.Fatalf("insert other server message: %v", err)
 	}
-	second, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, ServerID: &server.ID, Direction: "ai_to_user", Message: "second"})
+	second, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, RuntimeProfileID: &server.ID, Direction: "ai_to_user", Message: "second"})
 	if err != nil {
 		t.Fatalf("insert second message: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestMessagesValidateListConsumeAndMarkRead(t *testing.T) {
 		t.Fatalf("expected other server note to stay scoped, got %#v", note)
 	}
 
-	response := performJSON(fixture.server.Handler(), "POST", "/api/messages/read", "", markMessagesReadRequest{ServerID: server.ID})
+	response := performJSON(fixture.server.Handler(), "POST", "/api/messages/read", "", markMessagesReadRequest{RuntimeProfileID: server.ID})
 	if response.Code != 200 {
 		t.Fatalf("mark read failed: %d %s", response.Code, response.Body.String())
 	}
@@ -112,19 +112,19 @@ func TestMessagesPreferMatchingSessionScope(t *testing.T) {
 	sessionOne := insertMessageTestSession(t, fixture.db, server.ID, "session-one")
 	sessionTwo := insertMessageTestSession(t, fixture.db, server.ID, "session-two")
 	otherServer := fixture.createKeyAndServer(t, "worker-2")
-	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, ServerID: &otherServer.ID, SessionID: &sessionOne, Message: "wrong server"}); err == nil || !strings.Contains(err.Error(), "session_id") {
+	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, RuntimeProfileID: &otherServer.ID, SessionID: &sessionOne, Message: "wrong server"}); err == nil || !strings.Contains(err.Error(), "session_id") {
 		t.Fatalf("expected mismatched session/server to fail, got %v", err)
 	}
-	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, ServerID: &server.ID, SessionID: &sessionOne, Message: "session one"}); err != nil {
+	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, RuntimeProfileID: &server.ID, SessionID: &sessionOne, Message: "session one"}); err != nil {
 		t.Fatalf("insert session one message: %v", err)
 	}
-	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, ServerID: &server.ID, Message: "server scoped"}); err != nil {
+	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, RuntimeProfileID: &server.ID, Message: "server scoped"}); err != nil {
 		t.Fatalf("insert server scoped message: %v", err)
 	}
 	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, Message: "generic"}); err != nil {
 		t.Fatalf("insert generic message: %v", err)
 	}
-	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, ServerID: &server.ID, SessionID: &sessionTwo, Message: "session two"}); err != nil {
+	if _, err := fixture.server.insertMessage(ctx, runtime, createMessageRequest{TokenID: token.ID, RuntimeProfileID: &server.ID, SessionID: &sessionTwo, Message: "session two"}); err != nil {
 		t.Fatalf("insert session two message: %v", err)
 	}
 
@@ -160,12 +160,12 @@ func TestMessagesPreferMatchingSessionScope(t *testing.T) {
 
 func insertMessageTestSession(t *testing.T, database interface {
 	Exec(query string, args ...any) (sql.Result, error)
-}, serverID int64, name string) int64 {
+}, runtimeProfileID int64, name string) int64 {
 	t.Helper()
 	result, err := database.Exec(`
-		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, transcript, cols, rows, created_at, updated_at)
 		VALUES (?, ?, 'connected', '', 120, 32, datetime('now'), datetime('now'))`,
-		serverID,
+		runtimeProfileID,
 		name,
 	)
 	if err != nil {

@@ -13,15 +13,15 @@ func (s consoleHandlers) listConsoleSessions(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	serverID := int64(0)
-	if raw := strings.TrimSpace(r.URL.Query().Get("server_id")); raw != "" {
-		parsed, ok := parseInt64Query(w, raw, "server_id")
+	runtimeProfileID := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("runtime_profile_id")); raw != "" {
+		parsed, ok := parseInt64Query(w, raw, "runtime_profile_id")
 		if !ok {
 			return
 		}
-		serverID = parsed
+		runtimeProfileID = parsed
 	}
-	items, err := runtime.consoleSessions.List(r.Context(), serverID)
+	items, err := runtime.consoleSessions.List(r.Context(), runtimeProfileID)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -47,7 +47,7 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, item.ServerID, "console.session.created", map[string]any{
+	s.writeAudit(r.Context(), runtime, "user", nil, item.RuntimeProfileID, "console.session.created", map[string]any{
 		"session_id":     item.ID,
 		"name":           item.Name,
 		"close_existing": request.CloseExisting,
@@ -93,8 +93,8 @@ func (s consoleHandlers) inputConsoleSession(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	if serverID, err := consoleSessionServerID(r.Context(), runtime, id); err == nil {
-		s.writeAudit(r.Context(), runtime, "user", nil, serverID, "console.session.input", map[string]any{
+	if runtimeProfileID, err := consoleSessionRuntimeProfileID(r.Context(), runtime, id); err == nil {
+		s.writeAudit(r.Context(), runtime, "user", nil, runtimeProfileID, "console.session.input", map[string]any{
 			"session_id": id,
 			"bytes":      len(request.Data),
 		})
@@ -119,8 +119,8 @@ func (s consoleHandlers) closeConsoleSession(w http.ResponseWriter, r *http.Requ
 		writeInternalError(w)
 		return
 	}
-	if serverID, err := consoleSessionServerID(r.Context(), runtime, id); err == nil {
-		s.writeAudit(r.Context(), runtime, "user", nil, serverID, "console.session.closed", map[string]any{
+	if runtimeProfileID, err := consoleSessionRuntimeProfileID(r.Context(), runtime, id); err == nil {
+		s.writeAudit(r.Context(), runtime, "user", nil, runtimeProfileID, "console.session.closed", map[string]any{
 			"session_id": id,
 		})
 	}

@@ -18,6 +18,14 @@ type connectorActionApprovalHandlers struct {
 	*Server
 }
 
+type declineConnectorActionApprovalRequest struct {
+	UserNote string `json:"user_note"`
+}
+
+type runConnectorActionApprovalRequest struct {
+	UserNote string `json:"user_note"`
+}
+
 type connectorActionApprovalItem struct {
 	ID                  int64          `json:"id"`
 	TokenID             *int64         `json:"token_id,omitempty"`
@@ -29,6 +37,9 @@ type connectorActionApprovalItem struct {
 	ProfileLabel        string         `json:"profile_label"`
 	ConnectorKind       string         `json:"connector_kind"`
 	ActionName          string         `json:"action_name"`
+	Title               string         `json:"title,omitempty"`
+	Summary             string         `json:"summary,omitempty"`
+	Preview             map[string]any `json:"preview,omitempty"`
 	Input               map[string]any `json:"input,omitempty"`
 	Reason              string         `json:"reason,omitempty"`
 	Status              string         `json:"status"`
@@ -97,7 +108,19 @@ func (s connectorActionApprovalHandlers) runConnectorActionApproval(w http.Respo
 		writeError(w, http.StatusConflict, "MCP execution is stopped; start MCP from the web UI before running connector approvals")
 		return
 	}
-	item, err := s.runPendingConnectorAction(r.Context(), runtime, id)
+	var request runConnectorActionApprovalRequest
+	if r.ContentLength != 0 {
+		if err := decodeJSON(w, r, &request); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json body")
+			return
+		}
+	}
+	request.UserNote = strings.TrimSpace(request.UserNote)
+	if err := validateTextLimit("user_note", request.UserNote, maxMessageBytes); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := s.runPendingConnectorAction(r.Context(), runtime, id, request.UserNote)
 	if errors.Is(err, connectortargets.ErrActionRequestNotFound) {
 		writeError(w, http.StatusNotFound, "connector action request not found")
 		return
@@ -122,7 +145,7 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 	if !ok {
 		return
 	}
-	var request declineApprovalRequest
+	var request declineConnectorActionApprovalRequest
 	if err := decodeJSON(w, r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
@@ -163,7 +186,7 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 	writeJSON(w, http.StatusOK, connectorActionApprovalItemFromRequest(item))
 }
 
-func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64) (connectortargets.ActionRequest, error) {
+func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (connectortargets.ActionRequest, error) {
 	store := connectortargets.NewStore(runtime.database)
 	item, err := store.GetActionRequest(ctx, id)
 	if err != nil {
@@ -283,6 +306,15 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	if rawPayload != nil {
 		prepared.Action.Payload = rawPayload
 	}
+	if userNote != "" {
+		if _, err := s.insertMessage(ctx, runtime, createMessageRequest{
+			TokenID:   tokenID,
+			Direction: "user_to_ai",
+			Message:   "Operator approved the connector action with note: " + userNote,
+		}); err != nil {
+			return connectortargets.ActionRequest{}, err
+		}
+	}
 	if _, err := store.MarkActionRequestRunning(ctx, item.ID); err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -355,6 +387,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		"target_ref":     targetRef,
 		"connector_kind": item.ConnectorKind,
 		"action_name":    item.ActionName,
+		"note":           userNote != "",
 	})
 	return finished, nil
 }
@@ -405,6 +438,9 @@ func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest)
 		ProfileLabel:        item.ProfileLabel,
 		ConnectorKind:       item.ConnectorKind,
 		ActionName:          item.ActionName,
+		Title:               item.Title,
+		Summary:             item.Summary,
+		Preview:             item.Preview,
 		Input:               item.Input,
 		Reason:              item.Reason,
 		Status:              string(item.Status),

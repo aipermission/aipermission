@@ -2,6 +2,7 @@ package connectors
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -11,6 +12,8 @@ type fakeConnector struct {
 	version           string
 	targetSchema      Schema
 	credentialSchemas []CredentialSchema
+	actionDefinitions []ActionDefinition
+	dynamicActions    bool
 }
 
 func (f fakeConnector) Kind() string                          { return f.kind }
@@ -21,7 +24,13 @@ func (f fakeConnector) CredentialSchemas() []CredentialSchema { return f.credent
 func (f fakeConnector) GetHelp(context.Context, TargetView) (ConnectorHelp, error) {
 	return ConnectorHelp{ConnectorID: f.kind, Connector: f.label}, nil
 }
-func (f fakeConnector) GetActionList(context.Context, TargetView, CredentialProfileView) ([]ActionDefinition, error) {
+func (f fakeConnector) GetActionList(_ context.Context, target TargetView, _ CredentialProfileView) ([]ActionDefinition, error) {
+	if f.dynamicActions && target.Name != "" {
+		return []ActionDefinition{{Name: "example_dynamic", Risk: RiskRead}}, nil
+	}
+	if f.actionDefinitions != nil {
+		return f.actionDefinitions, nil
+	}
 	return []ActionDefinition{{Name: "example", Risk: RiskRead}}, nil
 }
 func (f fakeConnector) PrepareAction(context.Context, ActionRequest) (PreparedAction, error) {
@@ -124,6 +133,26 @@ func TestRegistryRejectsInvalidConnectorContract(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "invalid action definition",
+			connector: fakeConnector{
+				kind:              "api",
+				actionDefinitions: []ActionDefinition{{Name: "Bad-Action", Risk: RiskRead}},
+			},
+		},
+		{
+			name: "secret action input",
+			connector: fakeConnector{
+				kind: "api",
+				actionDefinitions: []ActionDefinition{{
+					Name: "call",
+					Risk: RiskRead,
+					InputSchema: Schema{Fields: []Field{
+						{Name: "token", Type: FieldSecret, Secret: true},
+					}},
+				}},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -132,6 +161,23 @@ func TestRegistryRejectsInvalidConnectorContract(t *testing.T) {
 				t.Fatal("expected invalid connector contract error")
 			}
 		})
+	}
+}
+
+func TestRegistryRejectsTargetDependentActionCatalog(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(fakeConnector{
+		kind:           "api",
+		dynamicActions: true,
+		credentialSchemas: []CredentialSchema{{
+			Kind: "api_key",
+			Schema: Schema{Fields: []Field{
+				{Name: "token", Type: FieldSecret, Secret: true, Required: true},
+			}},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "action list must be stable") {
+		t.Fatalf("expected action stability error, got %v", err)
 	}
 }
 

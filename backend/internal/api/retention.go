@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"strconv"
 	"time"
@@ -175,7 +176,7 @@ func applyRetentionSettings(ctx context.Context, runtime *databaseRuntime, setti
 func purgeRetentionTarget(ctx context.Context, runtime *databaseRuntime, target string, days int) (int64, error) {
 	switch target {
 	case "history":
-		return execRetentionDelete(ctx, runtime, `DELETE FROM command_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`, days)
+		return purgeHistoryRetention(ctx, runtime, days)
 	case "audit":
 		return execRetentionDelete(ctx, runtime, `DELETE FROM audit_logs WHERE julianday(created_at) < julianday('now', ?)`, days)
 	case "console":
@@ -187,8 +188,42 @@ func purgeRetentionTarget(ctx context.Context, runtime *databaseRuntime, target 
 	}
 }
 
+func purgeHistoryRetention(ctx context.Context, runtime *databaseRuntime, days int) (int64, error) {
+	tx, err := runtime.database.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	cutoff := "-" + strconv.Itoa(days) + " days"
+	total := int64(0)
+	for _, statement := range []string{
+		`DELETE FROM command_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
+		`DELETE FROM connector_action_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
+		`DELETE FROM file_transfers WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
+		`DELETE FROM file_transfer_batches WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
+		`DELETE FROM history_entries WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
+	} {
+		deleted, err := execRetentionDeleteWithCutoff(ctx, tx, statement, cutoff)
+		if err != nil {
+			return 0, err
+		}
+		total += deleted
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 func execRetentionDelete(ctx context.Context, runtime *databaseRuntime, statement string, days int) (int64, error) {
-	result, err := runtime.database.ExecContext(ctx, statement, "-"+strconv.Itoa(days)+" days")
+	return execRetentionDeleteWithCutoff(ctx, runtime.database, statement, "-"+strconv.Itoa(days)+" days")
+}
+
+func execRetentionDeleteWithCutoff(ctx context.Context, executor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, statement string, cutoff string) (int64, error) {
+	result, err := executor.ExecContext(ctx, statement, cutoff)
 	if err != nil {
 		return 0, err
 	}

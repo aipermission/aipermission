@@ -2,16 +2,18 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 
-	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 const (
-	bulkConsoleCommandMaxServers  = 25
+	bulkConsoleCommandMaxTargets  = 25
 	bulkConsoleCommandParallelism = 3
 	bulkConsoleCommandReason      = "bulk console command"
 )
@@ -69,11 +71,11 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	targets := make([]console.Target, 0, len(targetIDs))
+	targets := make([]bulkConsoleTarget, 0, len(targetIDs))
 	for _, targetID := range targetIDs {
-		target, _, err := s.serverSSHMaterialFromRuntime(r.Context(), runtime, targetID)
+		target, err := s.bulkConsoleTarget(r.Context(), runtime, targetID)
 		if err != nil {
-			handleServerSSHMaterialError(w, err)
+			handleConnectorTargetRuntimeError(w, err)
 			return
 		}
 		targets = append(targets, target)
@@ -82,11 +84,11 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 	items := make([]bulkConsoleCommandResponseItem, 0, len(targets))
 	for _, target := range targets {
 		requestID, err := s.insertCommandRequestWithOptions(r.Context(), runtime, commandRequestInsert{
-			ServerID: target.ID,
-			Source:   commandRequestSourceManual,
-			Command:  request.Command,
-			Reason:   request.Reason,
-			Status:   "running",
+			RuntimeProfileID: target.ID,
+			Source:           commandRequestSourceManual,
+			Command:          request.Command,
+			Reason:           request.Reason,
+			Status:           "running",
 		})
 		if err != nil {
 			writeInternalError(w)
@@ -113,12 +115,58 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 	})
 }
 
+type bulkConsoleTarget struct {
+	ID   int64
+	Name string
+}
+
+func (s consoleHandlers) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (bulkConsoleTarget, error) {
+	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
+	if err != nil {
+		return bulkConsoleTarget{}, err
+	}
+	target, profile, err := connectortargets.NewStore(runtime.database).ResolveConnectorActionTarget(ctx, targetRef)
+	if err != nil {
+		return bulkConsoleTarget{}, err
+	}
+	name := target.Name
+	if adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
+		metadata := adapter.LiveConsoleTargetMetadata(connectors.TargetView{
+			ID:            target.ID,
+			ConnectorKind: target.ConnectorKind,
+			Name:          target.Name,
+			Config:        target.Config,
+		}, connectors.CredentialProfileView{
+			ID:            profile.ID,
+			TargetID:      profile.TargetID,
+			ConnectorKind: profile.ConnectorKind,
+			Kind:          profile.Kind,
+			Label:         profile.Label,
+			Public:        profile.Public,
+		})
+		if label, _ := metadata["label"].(string); strings.TrimSpace(label) != "" {
+			name = strings.TrimSpace(label)
+		}
+	}
+	return bulkConsoleTarget{ID: runtimeID, Name: name}, nil
+}
+
+func handleConnectorTargetRuntimeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, connectortargets.ErrTargetProfileNotFound) ||
+		errors.Is(err, connectortargets.ErrTargetNotFound) ||
+		errors.Is(err, connectortargets.ErrInvalidTargetRef) {
+		writeError(w, http.StatusNotFound, "connector target profile not found")
+		return
+	}
+	writeInternalError(w)
+}
+
 func normalizeBulkConsoleTargetIDs(values []int64) ([]int64, error) {
 	if len(values) == 0 {
 		return nil, fmt.Errorf("target_ids is required")
 	}
-	if len(values) > bulkConsoleCommandMaxServers {
-		return nil, fmt.Errorf("target_ids must contain %d targets or fewer", bulkConsoleCommandMaxServers)
+	if len(values) > bulkConsoleCommandMaxTargets {
+		return nil, fmt.Errorf("target_ids must contain %d targets or fewer", bulkConsoleCommandMaxTargets)
 	}
 	seen := map[int64]bool{}
 	result := make([]int64, 0, len(values))
@@ -136,7 +184,7 @@ func normalizeBulkConsoleTargetIDs(values []int64) ([]int64, error) {
 }
 
 func bulkConsoleConfirmation(count int) string {
-	return fmt.Sprintf("RUN ON %d SERVERS", count)
+	return fmt.Sprintf("RUN ON %d TARGETS", count)
 }
 
 func bulkConsoleRequestIDs(items []bulkConsoleCommandResponseItem) []int64 {
@@ -165,18 +213,19 @@ func (s *Server) runBulkConsoleCommands(runtime *databaseRuntime, command string
 	}()
 }
 
-func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64, serverID int64, command string) {
+func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64, runtimeProfileID int64, command string) {
 	ctx, cancel := context.WithTimeout(context.Background(), mcpInitialExecTimeout)
 	defer cancel()
 
-	result, err := runtime.consoleSessions.Exec(ctx, serverID, command)
+	result, err := runtime.consoleSessions.Exec(ctx, runtimeProfileID, command)
 	if err != nil {
-		_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, sshCommandFailureMessage(err))
+		adapter := s.bulkConsoleErrorPresenter(context.Background(), runtime, runtimeProfileID)
+		_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, connectorErrorMessage(adapter, "command execution failed", err))
 		return
 	}
 	if result.Running {
 		_ = s.setCommandRequestSession(context.Background(), runtime, requestID, result.SessionID)
-		s.finishActiveCommandRequest(runtime, requestID, serverID)
+		s.finishActiveCommandRequest(runtime, requestID, runtimeProfileID)
 		return
 	}
 	status := "completed"
@@ -184,4 +233,16 @@ func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64
 		status = "failed"
 	}
 	_ = s.finishCommandRequest(context.Background(), runtime, requestID, status, result.SessionID, result.Output, "", result.ExitCode, "")
+}
+
+func (s *Server) bulkConsoleErrorPresenter(ctx context.Context, runtime *databaseRuntime, runtimeID int64) any {
+	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
+	if err != nil {
+		return nil
+	}
+	target, _, err := connectortargets.NewStore(runtime.database).ResolveConnectorActionTarget(ctx, targetRef)
+	if err != nil {
+		return nil
+	}
+	return connectorAPIAdapterFor(target.ConnectorKind)
 }

@@ -17,9 +17,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/config"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -61,7 +61,6 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 	if err != nil {
 		t.Fatalf("new vault: %v", err)
 	}
-	sshKeyStore := sshkeys.NewStore(database, secretVault)
 	tokenStore := tokens.NewStore(database)
 	srv := NewServer(config.Config{
 		Host:           "127.0.0.1",
@@ -69,7 +68,8 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
-	}, database, secretVault, sshKeyStore, tokenStore)
+	}, database, secretVault, tokenStore, WithConnectorRegistry(testConnectorRegistry(t)))
+	sshKeyStore := testSSHKeyStore(t, srv.activeRuntime())
 	srv.activeRuntime().setMCPStarted(true)
 	authorizeTestUISession(srv)
 	t.Cleanup(func() {
@@ -77,6 +77,15 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 		_ = database.Close()
 	})
 	return apiTestFixture{server: srv, db: database, tokens: tokenStore, sshKeys: sshKeyStore}
+}
+
+func testSSHKeyStore(t *testing.T, runtime *databaseRuntime) *sshkeys.Store {
+	t.Helper()
+	store, ok := runtime.ConnectorResource("ssh", "keys").(*sshkeys.Store)
+	if !ok || store == nil {
+		t.Fatalf("ssh key resource store is not available")
+	}
+	return store
 }
 
 func (f apiTestFixture) createKeyAndServer(t *testing.T, name string) testSSHConnectorProfile {
@@ -128,7 +137,7 @@ func createTestSSHConnectorProfile(t *testing.T, database *sql.DB, sshKeyStore *
 		Port:      22,
 		Username:  "root",
 		SSHKeyID:  key.ID,
-		TargetRef: connectortargets.SSHTargetRef(target.ID, profile.ID),
+		TargetRef: connectortargets.TargetProfileRef("ssh", target.ID, profile.ID),
 	}
 }
 
@@ -352,9 +361,9 @@ func TestOldMCPSSHWrapperRoutesAreNotRegistered(t *testing.T) {
 		body   any
 	}{
 		{method: http.MethodGet, path: "/api/mcp/servers"},
-		{method: http.MethodPost, path: "/api/mcp/exec", body: map[string]any{"server_id": 1, "command": "date"}},
+		{method: http.MethodPost, path: "/api/mcp/exec", body: map[string]any{"runtime_profile_id": 1, "command": "date"}},
 		{method: http.MethodGet, path: "/api/mcp/requests"},
-		{method: http.MethodGet, path: "/api/mcp/console?server_id=1"},
+		{method: http.MethodGet, path: "/api/mcp/console?runtime_profile_id=1"},
 		{method: http.MethodGet, path: "/api/mcp/file-transfers"},
 	} {
 		response := performJSON(fixture.server.Handler(), tc.method, tc.path, token.TokenValue, tc.body)

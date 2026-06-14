@@ -13,7 +13,6 @@ import (
 	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/gorilla/websocket"
 )
 
@@ -58,14 +57,14 @@ func TestConsoleTranscriptLimitKeepsTail(t *testing.T) {
 func TestConsoleSessionManagerActiveForServerUsesNewestLiveSession(t *testing.T) {
 	manager := &Manager{
 		sessions: map[int64]*managedConsoleSession{
-			1: {id: 1, serverID: 10, status: "connected"},
-			2: {id: 2, serverID: 10, status: "closed"},
-			3: {id: 3, serverID: 10, status: "connected"},
-			4: {id: 4, serverID: 11, status: "connected"},
+			1: {id: 1, runtimeProfileID: 10, status: "connected"},
+			2: {id: 2, runtimeProfileID: 10, status: "closed"},
+			3: {id: 3, runtimeProfileID: 10, status: "connected"},
+			4: {id: 4, runtimeProfileID: 11, status: "connected"},
 		},
 	}
 
-	selected := manager.activeForServer(10)
+	selected := manager.activeForRuntimeProfile(10)
 	if selected == nil || selected.id != 3 {
 		t.Fatalf("expected newest live session 3, got %#v", selected)
 	}
@@ -77,7 +76,7 @@ func TestConsoleSessionManagerEnforcesActiveSessionLimit(t *testing.T) {
 		manager.sessions[int64(i+1)] = &managedConsoleSession{id: int64(i + 1), status: "connected"}
 	}
 
-	if _, err := manager.Create(context.Background(), CreateRequest{ServerID: 1}); !errors.Is(err, ErrSessionLimit) {
+	if _, err := manager.Create(context.Background(), CreateRequest{RuntimeProfileID: 1}); !errors.Is(err, ErrSessionLimit) {
 		t.Fatalf("expected session limit error, got %v", err)
 	}
 }
@@ -1163,7 +1162,7 @@ func TestConsoleSessionManagerCreateValidationAndCloseInactive(t *testing.T) {
 		t.Fatalf("open test database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	manager := NewManager(database, nil, "", nil)
+	manager := NewManager(database, nil, nil)
 
 	if _, err := manager.Create(context.Background(), CreateRequest{}); err == nil {
 		t.Fatalf("expected missing server id to fail")
@@ -1179,14 +1178,14 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 		t.Fatalf("open test database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	serverID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 23)
-	manager := NewManager(database, func(context.Context, int64) (Target, sshkeys.PrivateKey, error) {
-		return Target{}, sshkeys.PrivateKey{}, errors.New("ssh dial: dial tcp 127.0.0.1:23: connect: connection refused")
-	}, "", nil)
+	runtimeProfileID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 23)
+	manager := NewManager(database, func(context.Context, int64, int, int) (*RuntimeSession, error) {
+		return nil, errors.New("transport dial: dial tcp 127.0.0.1:23: connect: connection refused")
+	}, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	sessionID, err := manager.EnsureReady(ctx, serverID)
+	sessionID, err := manager.EnsureReady(ctx, runtimeProfileID)
 	if err == nil || !strings.Contains(err.Error(), "connection refused") {
 		t.Fatalf("expected connection error, session=%d err=%v", sessionID, err)
 	}
@@ -1199,18 +1198,18 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 	}
 }
 
-func TestConsoleSessionManagerListGetAndCloseServer(t *testing.T) {
+func TestConsoleSessionManagerListGetAndCloseRuntimeProfile(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	serverID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
+	runtimeProfileID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
-		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, transcript, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 'hello', 120, 32, ?, ?)`,
-		serverID,
+		runtimeProfileID,
 		now,
 		now,
 	)
@@ -1222,12 +1221,12 @@ func TestConsoleSessionManagerListGetAndCloseServer(t *testing.T) {
 		t.Fatalf("read session id: %v", err)
 	}
 
-	manager := NewManager(database, nil, "", nil)
-	items, err := manager.List(context.Background(), serverID)
+	manager := NewManager(database, nil, nil)
+	items, err := manager.List(context.Background(), runtimeProfileID)
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
-	if len(items) != 1 || items[0].ID != sessionID || items[0].ServerName != "worker-1" || items[0].Transcript != "hello" {
+	if len(items) != 1 || items[0].ID != sessionID || items[0].TargetName != "worker-1" || items[0].Transcript != "hello" {
 		t.Fatalf("unexpected session list: %#v", items)
 	}
 	item, err := manager.Get(context.Background(), sessionID)
@@ -1237,7 +1236,7 @@ func TestConsoleSessionManagerListGetAndCloseServer(t *testing.T) {
 	if item.ID != sessionID || item.Status != "connected" {
 		t.Fatalf("unexpected session: %#v", item)
 	}
-	if err := manager.CloseServer(context.Background(), serverID); err != nil {
+	if err := manager.CloseRuntimeProfile(context.Background(), runtimeProfileID); err != nil {
 		t.Fatalf("close server sessions: %v", err)
 	}
 	item, err = manager.Get(context.Background(), sessionID)
@@ -1256,11 +1255,11 @@ func TestConsoleTranscriptPersistsAppendOnlyChunksAndBoundedSnapshot(t *testing.
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	serverID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
+	runtimeProfileID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
-		INSERT INTO console_sessions (server_id, name, status, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 120, 32, ?, ?)`,
-		serverID,
+		runtimeProfileID,
 		now,
 		now,
 	)
@@ -1272,7 +1271,7 @@ func TestConsoleTranscriptPersistsAppendOnlyChunksAndBoundedSnapshot(t *testing.
 		t.Fatalf("read session id: %v", err)
 	}
 
-	manager := NewManager(database, nil, "", nil)
+	manager := NewManager(database, nil, nil)
 	output := strings.Repeat("a", maxConsoleSnapshotLength+10) + strings.Repeat("b", maxConsoleChunkLength+5)
 	session := &managedConsoleSession{
 		id:      sessionID,
@@ -1373,11 +1372,11 @@ func newManualHistoryTestSession(t *testing.T) (*sql.DB, *Manager, *managedConso
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	serverID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
+	runtimeProfileID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
-		INSERT INTO console_sessions (server_id, name, status, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 120, 32, ?, ?)`,
-		serverID,
+		runtimeProfileID,
 		now,
 		now,
 	)
@@ -1388,13 +1387,13 @@ func newManualHistoryTestSession(t *testing.T) (*sql.DB, *Manager, *managedConso
 	if err != nil {
 		t.Fatalf("read session id: %v", err)
 	}
-	manager := NewManager(database, nil, "", nil)
+	manager := NewManager(database, nil, nil)
 	session := &managedConsoleSession{
-		id:       sessionID,
-		serverID: serverID,
-		manager:  manager,
-		status:   "connected",
-		clients:  map[*websocket.Conn]*sync.Mutex{},
+		id:               sessionID,
+		runtimeProfileID: runtimeProfileID,
+		manager:          manager,
+		status:           "connected",
+		clients:          map[*websocket.Conn]*sync.Mutex{},
 	}
 	return database, manager, session
 }
@@ -1479,9 +1478,9 @@ func insertStaleManualRunningRow(t *testing.T, database *sql.DB, session *manage
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := database.Exec(`
-		INSERT INTO command_requests (server_id, source, command, reason, status, tracking_reason, session_id, created_at)
+		INSERT INTO command_requests (runtime_profile_id, source, command, reason, status, tracking_reason, session_id, created_at)
 		VALUES (?, 'manual', ?, 'manual console command', 'running', 'manual_output_not_tracked', ?, ?)`,
-		session.serverID,
+		session.runtimeProfileID,
 		command,
 		session.id,
 		now,

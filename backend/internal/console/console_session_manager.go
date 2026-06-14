@@ -10,33 +10,31 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/gorilla/websocket"
 )
 
-func NewManager(db *sql.DB, getMaterial func(context.Context, int64) (Target, sshkeys.PrivateKey, error), knownHosts string, redact func(string) string) *Manager {
+func NewManager(db *sql.DB, openRuntime RuntimeOpener, redact func(string) string) *Manager {
 	if redact == nil {
 		redact = func(value string) string { return value }
 	}
 	return &Manager{
 		db:          db,
-		getMaterial: getMaterial,
-		knownHosts:  knownHosts,
+		openRuntime: openRuntime,
 		redact:      redact,
 		sessions:    map[int64]*managedConsoleSession{},
 	}
 }
 
-func (m *Manager) List(ctx context.Context, serverID int64) ([]Record, error) {
+func (m *Manager) List(ctx context.Context, runtimeProfileID int64) ([]Record, error) {
 	query := `
-		SELECT cs.id, cs.server_id, COALESCE(t.name, ''), cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
+		SELECT cs.id, cs.runtime_profile_id, COALESCE(t.name, ''), cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
 		FROM console_sessions cs
-		LEFT JOIN connector_credential_profiles p ON p.id = cs.server_id
+		LEFT JOIN connector_credential_profiles p ON p.id = cs.runtime_profile_id
 		LEFT JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = p.connector_kind
-		WHERE (? = 0 OR cs.server_id = ?)
+		WHERE (? = 0 OR cs.runtime_profile_id = ?)
 			ORDER BY CASE WHEN cs.status IN ('connecting', 'connected') THEN 0 ELSE 1 END, cs.updated_at DESC, cs.created_at DESC, cs.id DESC
 			LIMIT 100`
-	rows, err := m.db.QueryContext(ctx, query, serverID, serverID)
+	rows, err := m.db.QueryContext(ctx, query, runtimeProfileID, runtimeProfileID)
 	if err != nil {
 		return nil, fmt.Errorf("list console sessions: %w", err)
 	}
@@ -57,8 +55,8 @@ func (m *Manager) List(ctx context.Context, serverID int64) ([]Record, error) {
 }
 
 func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, error) {
-	if request.ServerID < 1 {
-		return Record{}, fmt.Errorf("server_id is required")
+	if request.RuntimeProfileID < 1 {
+		return Record{}, fmt.Errorf("runtime_profile_id is required")
 	}
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Name == "" {
@@ -71,7 +69,7 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 		request.Rows = 32
 	}
 	if request.CloseExisting {
-		_ = m.CloseServer(ctx, request.ServerID)
+		_ = m.CloseRuntimeProfile(ctx, request.RuntimeProfileID)
 	}
 	if !request.CloseExisting && m.activeSessionCount() >= maxActiveConsoleSessions {
 		return Record{}, ErrSessionLimit
@@ -79,9 +77,9 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := m.db.ExecContext(ctx, `
-		INSERT INTO console_sessions (server_id, name, status, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, cols, rows, created_at, updated_at)
 		VALUES (?, ?, 'connecting', ?, ?, ?, ?)`,
-		request.ServerID,
+		request.RuntimeProfileID,
 		request.Name,
 		request.Cols,
 		request.Rows,
@@ -98,16 +96,16 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 
 	sessionCtx, cancel := context.WithCancel(context.Background())
 	managed := &managedConsoleSession{
-		id:       id,
-		serverID: request.ServerID,
-		name:     request.Name,
-		cols:     request.Cols,
-		rows:     request.Rows,
-		manager:  m,
-		ctx:      sessionCtx,
-		cancel:   cancel,
-		status:   "connecting",
-		clients:  map[*websocket.Conn]*sync.Mutex{},
+		id:               id,
+		runtimeProfileID: request.RuntimeProfileID,
+		name:             request.Name,
+		cols:             request.Cols,
+		rows:             request.Rows,
+		manager:          m,
+		ctx:              sessionCtx,
+		cancel:           cancel,
+		status:           "connecting",
+		clients:          map[*websocket.Conn]*sync.Mutex{},
 	}
 
 	m.mu.Lock()
@@ -120,9 +118,9 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 
 func (m *Manager) Get(ctx context.Context, id int64) (Record, error) {
 	row := m.db.QueryRowContext(ctx, `
-		SELECT cs.id, cs.server_id, COALESCE(t.name, ''), cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
+		SELECT cs.id, cs.runtime_profile_id, COALESCE(t.name, ''), cs.name, cs.status, cs.transcript, cs.error, cs.cols, cs.rows, cs.created_at, cs.updated_at, cs.closed_at
 		FROM console_sessions cs
-		LEFT JOIN connector_credential_profiles p ON p.id = cs.server_id
+		LEFT JOIN connector_credential_profiles p ON p.id = cs.runtime_profile_id
 		LEFT JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = p.connector_kind
 		WHERE cs.id = ?`, id)
 	record, err := scanConsoleSession(row)
@@ -200,14 +198,14 @@ func (m *Manager) Input(ctx context.Context, id int64, data string) error {
 	return nil
 }
 
-func (m *Manager) Exec(ctx context.Context, serverID int64, command string) (ExecResult, error) {
-	session := m.activeForServer(serverID)
+func (m *Manager) Exec(ctx context.Context, runtimeProfileID int64, command string) (ExecResult, error) {
+	session := m.activeForRuntimeProfile(runtimeProfileID)
 	if session == nil {
 		record, err := m.Create(ctx, CreateRequest{
-			ServerID: serverID,
-			Name:     fmt.Sprintf("server-%d ai session", serverID),
-			Cols:     120,
-			Rows:     32,
+			RuntimeProfileID: runtimeProfileID,
+			Name:             fmt.Sprintf("runtime-%d ai session", runtimeProfileID),
+			Cols:             120,
+			Rows:             32,
 		})
 		if err != nil {
 			return ExecResult{}, err
@@ -220,14 +218,14 @@ func (m *Manager) Exec(ctx context.Context, serverID int64, command string) (Exe
 	return session.execCommand(ctx, command)
 }
 
-func (m *Manager) EnsureReady(ctx context.Context, serverID int64) (int64, error) {
-	session := m.activeForServer(serverID)
+func (m *Manager) EnsureReady(ctx context.Context, runtimeProfileID int64) (int64, error) {
+	session := m.activeForRuntimeProfile(runtimeProfileID)
 	if session == nil {
 		record, err := m.Create(ctx, CreateRequest{
-			ServerID: serverID,
-			Name:     fmt.Sprintf("server-%d ai session", serverID),
-			Cols:     120,
-			Rows:     32,
+			RuntimeProfileID: runtimeProfileID,
+			Name:             fmt.Sprintf("runtime-%d ai session", runtimeProfileID),
+			Cols:             120,
+			Rows:             32,
 		})
 		if err != nil {
 			return 0, err
@@ -243,16 +241,16 @@ func (m *Manager) EnsureReady(ctx context.Context, serverID int64) (int64, error
 	return session.id, nil
 }
 
-func (m *Manager) WaitActive(ctx context.Context, serverID int64) (ExecResult, error) {
-	session := m.activeForServer(serverID)
+func (m *Manager) WaitActive(ctx context.Context, runtimeProfileID int64) (ExecResult, error) {
+	session := m.activeForRuntimeProfile(runtimeProfileID)
 	if session == nil {
 		return ExecResult{}, fmt.Errorf("console session is not active")
 	}
 	return session.waitActiveCommand(ctx)
 }
 
-func (m *Manager) InterruptActive(ctx context.Context, serverID int64) error {
-	session := m.activeForServer(serverID)
+func (m *Manager) InterruptActive(ctx context.Context, runtimeProfileID int64) error {
+	session := m.activeForRuntimeProfile(runtimeProfileID)
 	if session == nil {
 		return nil
 	}
@@ -278,11 +276,11 @@ func (m *Manager) Close(ctx context.Context, id int64) error {
 	return err
 }
 
-func (m *Manager) CloseServer(ctx context.Context, serverID int64) error {
+func (m *Manager) CloseRuntimeProfile(ctx context.Context, runtimeProfileID int64) error {
 	m.mu.Lock()
 	sessions := []*managedConsoleSession{}
 	for _, session := range m.sessions {
-		if session.serverID == serverID {
+		if session.runtimeProfileID == runtimeProfileID {
 			sessions = append(sessions, session)
 		}
 	}
@@ -291,7 +289,7 @@ func (m *Manager) CloseServer(ctx context.Context, serverID int64) error {
 		session.close()
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := m.db.ExecContext(ctx, `UPDATE console_sessions SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ? WHERE server_id = ? AND status IN ('connecting', 'connected')`, now, now, serverID)
+	_, err := m.db.ExecContext(ctx, `UPDATE console_sessions SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ? WHERE runtime_profile_id = ? AND status IN ('connecting', 'connected')`, now, now, runtimeProfileID)
 	return err
 }
 
@@ -392,12 +390,12 @@ func (m *Manager) active(id int64) *managedConsoleSession {
 	return m.sessions[id]
 }
 
-func (m *Manager) activeForServer(serverID int64) *managedConsoleSession {
+func (m *Manager) activeForRuntimeProfile(runtimeProfileID int64) *managedConsoleSession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var selected *managedConsoleSession
 	for _, session := range m.sessions {
-		if session.serverID == serverID {
+		if session.runtimeProfileID == runtimeProfileID {
 			status, _ := session.snapshot()
 			if status == "connecting" || status == "connected" {
 				if selected == nil || session.id > selected.id {
@@ -415,17 +413,17 @@ func (m *Manager) remove(id int64) {
 	delete(m.sessions, id)
 }
 
-func (m *Manager) SeedActiveCommandForTest(id int64, serverID int64, command string, output string) {
+func (m *Manager) SeedActiveCommandForTest(id int64, runtimeProfileID int64, command string, output string) {
 	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sessions[id] = &managedConsoleSession{
-		id:            id,
-		serverID:      serverID,
-		ctx:           sessionCtx,
-		cancel:        sessionCancel,
-		status:        "connected",
-		rawTranscript: output,
+		id:               id,
+		runtimeProfileID: runtimeProfileID,
+		ctx:              sessionCtx,
+		cancel:           sessionCancel,
+		status:           "connected",
+		rawTranscript:    output,
 		activeExec: &consoleSessionActiveExec{
 			Command:     command,
 			Marker:      "__AIPERMISSION_EXIT_ACTIVE__",

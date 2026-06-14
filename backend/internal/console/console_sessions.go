@@ -8,9 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/gorilla/websocket"
-	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -47,36 +45,26 @@ func (e InactiveError) Error() string {
 }
 
 type Record struct {
-	ID         int64   `json:"id"`
-	ServerID   int64   `json:"server_id"`
-	ServerName string  `json:"server_name"`
-	Name       string  `json:"name"`
-	Status     string  `json:"status"`
-	Transcript string  `json:"transcript"`
-	Error      string  `json:"error"`
-	Cols       int     `json:"cols"`
-	Rows       int     `json:"rows"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
-	ClosedAt   *string `json:"closed_at"`
-}
-
-type Target struct {
-	ID                       int64
-	Name                     string
-	Host                     string
-	Port                     int
-	Username                 string
-	StartupInputAfterConnect string
-	ForceShellCommand        string
+	ID               int64   `json:"id"`
+	RuntimeProfileID int64   `json:"runtime_profile_id"`
+	TargetName       string  `json:"target_name"`
+	Name             string  `json:"name"`
+	Status           string  `json:"status"`
+	Transcript       string  `json:"transcript"`
+	Error            string  `json:"error"`
+	Cols             int     `json:"cols"`
+	Rows             int     `json:"rows"`
+	CreatedAt        string  `json:"created_at"`
+	UpdatedAt        string  `json:"updated_at"`
+	ClosedAt         *string `json:"closed_at"`
 }
 
 type CreateRequest struct {
-	ServerID      int64  `json:"server_id"`
-	Name          string `json:"name"`
-	CloseExisting bool   `json:"close_existing"`
-	Cols          int    `json:"cols"`
-	Rows          int    `json:"rows"`
+	RuntimeProfileID int64  `json:"runtime_profile_id"`
+	Name             string `json:"name"`
+	CloseExisting    bool   `json:"close_existing"`
+	Cols             int    `json:"cols"`
+	Rows             int    `json:"rows"`
 }
 
 type InputRequest struct {
@@ -90,6 +78,18 @@ type ExecResult struct {
 	ExitCode   int
 	Running    bool
 	DurationMS int64
+}
+
+type RuntimeOpener func(context.Context, int64, int, int) (*RuntimeSession, error)
+
+type RuntimeSession struct {
+	Stdin                    io.WriteCloser
+	Stdout                   io.Reader
+	Stderr                   io.Reader
+	Wait                     func() error
+	Resize                   func(cols int, rows int) error
+	Close                    func() error
+	StartupInputAfterConnect string
 }
 
 type consoleSessionActiveExec struct {
@@ -116,8 +116,7 @@ type consoleSessionManualPause struct {
 
 type Manager struct {
 	db          *sql.DB
-	getMaterial func(context.Context, int64) (Target, sshkeys.PrivateKey, error)
-	knownHosts  string
+	openRuntime RuntimeOpener
 	redact      func(string) string
 
 	mu       sync.Mutex
@@ -132,12 +131,12 @@ func (m *Manager) redactText(value string) string {
 }
 
 type managedConsoleSession struct {
-	id       int64
-	serverID int64
-	name     string
-	cols     int
-	rows     int
-	manager  *Manager
+	id               int64
+	runtimeProfileID int64
+	name             string
+	cols             int
+	rows             int
+	manager          *Manager
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -150,8 +149,7 @@ type managedConsoleSession struct {
 	pendingOutput string
 	errText       string
 	stdin         io.WriteCloser
-	sshClient     *ssh.Client
-	sshSession    *ssh.Session
+	runtime       *RuntimeSession
 	clients       map[*websocket.Conn]*sync.Mutex
 	activeExec    *consoleSessionActiveExec
 	manualInput   manualInputCapture

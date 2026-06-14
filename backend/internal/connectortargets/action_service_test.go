@@ -16,7 +16,7 @@ func TestActionServicePreparesSSHExec(t *testing.T) {
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	store := NewStore(database)
 	target, profile := createTargetTestSSHProfile(t, context.Background(), store, keyID, "core-1", "admin", "10.0.0.10", 2222)
-	targetRef := SSHTargetRef(target.ID, profile.ID)
+	targetRef := TargetProfileRef("ssh", target.ID, profile.ID)
 	registry, err := builtin.NewRegistry()
 	if err != nil {
 		t.Fatalf("builtin registry: %v", err)
@@ -57,7 +57,7 @@ func TestActionServicePreparesSSHReadConsole(t *testing.T) {
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	store := NewStore(database)
 	target, profile := createTargetTestSSHProfile(t, context.Background(), store, keyID, "core-1", "admin", "10.0.0.10", 2222)
-	targetRef := SSHTargetRef(target.ID, profile.ID)
+	targetRef := TargetProfileRef("ssh", target.ID, profile.ID)
 	registry, err := builtin.NewRegistry()
 	if err != nil {
 		t.Fatalf("builtin registry: %v", err)

@@ -8,11 +8,9 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -24,7 +22,6 @@ type Server struct {
 	workspaces     map[string]*databaseRuntime
 	database       *sql.DB
 	vault          *vault.Vault
-	sshKeys        *sshkeys.Store
 	tokens         *tokens.Store
 	registry       *connectors.Registry
 	mux            *http.ServeMux
@@ -36,34 +33,60 @@ type Server struct {
 }
 
 type databaseRuntime struct {
-	id               string
-	path             string
-	gatewaySecret    string
-	database         *sql.DB
-	vault            *vault.Vault
-	sshKeys          *sshkeys.Store
-	tokens           *tokens.Store
-	registry         *connectors.Registry
-	fileTransfers    *filetransfer.Store
-	consoleSessions  *console.Manager
-	transferMu       sync.Mutex
-	transferCancels  map[int64]context.CancelFunc
-	batchCancels     map[int64]context.CancelFunc
-	transferControls map[int64]*transferControl
-	batchControls    map[int64]*transferControl
-	securityMu       sync.RWMutex
-	securitySettings securitySettingsResponse
-	securityLoaded   bool
-	redactionMu      sync.RWMutex
-	redactionRules   []compiledRedactionRule
-	redactionLoaded  bool
-	mcpMu            sync.RWMutex
-	mcpStarted       bool
+	id                 string
+	path               string
+	gatewaySecret      string
+	database           *sql.DB
+	vault              *vault.Vault
+	tokens             *tokens.Store
+	registry           *connectors.Registry
+	connectorResources map[string]any
+	fileTransfers      *filetransfer.Store
+	consoleSessions    *console.Manager
+	transferMu         sync.Mutex
+	transferCancels    map[int64]context.CancelFunc
+	batchCancels       map[int64]context.CancelFunc
+	transferControls   map[int64]*transferControl
+	batchControls      map[int64]*transferControl
+	securityMu         sync.RWMutex
+	securitySettings   securitySettingsResponse
+	securityLoaded     bool
+	redactionMu        sync.RWMutex
+	redactionRules     []compiledRedactionRule
+	redactionLoaded    bool
+	mcpMu              sync.RWMutex
+	mcpStarted         bool
 }
 
-func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, sshKeyStore *sshkeys.Store, tokenStore *tokens.Store) *Server {
+type serverOptions struct {
+	registry *connectors.Registry
+}
+
+type ServerOption func(*serverOptions)
+
+func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
+	return func(options *serverOptions) {
+		options.registry = registry
+	}
+}
+
+func resolveServerOptions(options []ServerOption) serverOptions {
+	resolved := serverOptions{registry: connectors.NewRegistry()}
+	for _, option := range options {
+		if option != nil {
+			option(&resolved)
+		}
+	}
+	if resolved.registry == nil {
+		resolved.registry = connectors.NewRegistry()
+	}
+	return resolved
+}
+
+func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) *Server {
 	activeID := dbpkg.DefaultDatabaseID(cfg.DataPath)
-	registry := mustBuiltinConnectorRegistry()
+	resolved := resolveServerOptions(options)
+	registry := resolved.registry
 	server := &Server{
 		config:         cfg,
 		activeDataPath: cfg.DataPath,
@@ -71,7 +94,6 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, ss
 		workspaces:     map[string]*databaseRuntime{},
 		database:       database,
 		vault:          secretVault,
-		sshKeys:        sshKeyStore,
 		tokens:         tokenStore,
 		registry:       registry,
 		mux:            http.NewServeMux(),
@@ -79,33 +101,34 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, ss
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 	runtime := &databaseRuntime{
-		id:               activeID,
-		path:             cfg.DataPath,
-		gatewaySecret:    cfg.GatewaySecret,
-		database:         database,
-		vault:            secretVault,
-		sshKeys:          sshKeyStore,
-		tokens:           tokenStore,
-		registry:         registry,
-		fileTransfers:    filetransfer.NewStore(database),
-		transferCancels:  map[int64]context.CancelFunc{},
-		batchCancels:     map[int64]context.CancelFunc{},
-		transferControls: map[int64]*transferControl{},
-		batchControls:    map[int64]*transferControl{},
+		id:                 activeID,
+		path:               cfg.DataPath,
+		gatewaySecret:      cfg.GatewaySecret,
+		database:           database,
+		vault:              secretVault,
+		tokens:             tokenStore,
+		registry:           registry,
+		connectorResources: connectorRuntimeResources(registry, database, secretVault),
+		fileTransfers:      filetransfer.NewStore(database),
+		transferCancels:    map[int64]context.CancelFunc{},
+		batchCancels:       map[int64]context.CancelFunc{},
+		transferControls:   map[int64]*transferControl{},
+		batchControls:      map[int64]*transferControl{},
 	}
-	runtime.consoleSessions = console.NewManager(database, server.serverSSHMaterialForRuntime(runtime), server.knownHostsPath(), server.runtimeRedactor(runtime))
+	runtime.consoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
 	server.workspaces[activeID] = runtime
 	server.routes()
 	return server
 }
 
-func NewLockedServer(cfg config.Config) *Server {
+func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
+	resolved := resolveServerOptions(options)
 	server := &Server{
 		config:         cfg,
 		activeDataPath: cfg.DataPath,
 		activeDatabase: dbpkg.DefaultDatabaseID(cfg.DataPath),
 		workspaces:     map[string]*databaseRuntime{},
-		registry:       mustBuiltinConnectorRegistry(),
+		registry:       resolved.registry,
 		mux:            http.NewServeMux(),
 		authLimiter:    newAuthRateLimiter(),
 		uiSessions:     map[string]uiSessionRecord{},
@@ -114,24 +137,16 @@ func NewLockedServer(cfg config.Config) *Server {
 	return server
 }
 
-func mustBuiltinConnectorRegistry() *connectors.Registry {
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		panic(err)
-	}
-	return registry
-}
-
 func (s *Server) connectorRegistry() *connectors.Registry {
 	if s != nil && s.registry != nil {
 		return s.registry
 	}
-	return mustBuiltinConnectorRegistry()
+	return connectors.NewRegistry()
 }
 
 func (runtime *databaseRuntime) connectorRegistry() *connectors.Registry {
 	if runtime != nil && runtime.registry != nil {
 		return runtime.registry
 	}
-	return mustBuiltinConnectorRegistry()
+	return connectors.NewRegistry()
 }

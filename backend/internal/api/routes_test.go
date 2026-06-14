@@ -16,11 +16,11 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -76,7 +76,7 @@ func TestManagementRoutesCoverCredentialsTokensAndConnectorTargets(t *testing.T)
 	if keyUpdateResponse.Code != http.StatusOK || !strings.Contains(keyUpdateResponse.Body.String(), `"name":"main-renamed"`) || !strings.Contains(keyUpdateResponse.Body.String(), "aipermission-main-renamed") {
 		t.Fatalf("update key failed: %d %s", keyUpdateResponse.Code, keyUpdateResponse.Body.String())
 	}
-	sshConfigResponse := performJSON(handler, http.MethodPost, "/api/ssh-config/parse", "", parseSSHConfigRequest{Content: `
+	sshConfigResponse := performJSON(handler, http.MethodPost, "/api/ssh-config/parse", "", map[string]any{"content": `
 Host worker-from-config
   HostName 10.0.0.42
   User ubuntu
@@ -227,7 +227,7 @@ func TestUnifiedTargetListIncludesSSHAndConnectorProfiles(t *testing.T) {
 	for _, want := range []string{
 		`"connector_kind":"ssh"`,
 		`"target_name":"core-1"`,
-		`"server_id":` + strconv.FormatInt(sshServer.ID, 10),
+		`"runtime_profile_id":` + strconv.FormatInt(sshServer.ID, 10),
 		`"ref":"postgres:` + strconv.FormatInt(pgTarget.ID, 10) + `:` + strconv.FormatInt(pgProfile.ID, 10) + `"`,
 		`"profile_label":"readonly"`,
 	} {
@@ -430,6 +430,102 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	}
 }
 
+func TestConnectorTargetWithProfileRoutesAreAtomic(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+
+	createWithProfile := performJSON(handler, http.MethodPost, "/api/connector-targets/with-profile", "", createConnectorTargetWithProfileRequest{
+		Target: createConnectorTargetRequest{
+			ConnectorKind: "postgres",
+			Name:          "atomic-db",
+			Config: map[string]any{
+				"connection_mode": "direct",
+				"host":            "127.0.0.1",
+				"port":            5432,
+				"database":        "app",
+				"ssl_mode":        "prefer",
+			},
+		},
+		Profile: createConnectorCredentialProfileRequest{
+			Kind:  "username_password",
+			Label: "readonly",
+			Public: map[string]any{
+				"username": "app_readonly",
+			},
+			Secret: map[string]any{
+				"password": "secret-password",
+			},
+			RiskLabel: "read-only",
+		},
+	})
+	if createWithProfile.Code != http.StatusCreated {
+		t.Fatalf("create target with profile failed: %d %s", createWithProfile.Code, createWithProfile.Body.String())
+	}
+	target := decodeRouteResponse[connectorTargetResponse](t, createWithProfile.Body.Bytes())
+	if target.ID < 1 || len(target.Profiles) != 1 || target.Profiles[0].Label != "readonly" {
+		t.Fatalf("unexpected atomic create response: %#v", target)
+	}
+
+	failedCreate := performJSON(handler, http.MethodPost, "/api/connector-targets/with-profile", "", createConnectorTargetWithProfileRequest{
+		Target: createConnectorTargetRequest{
+			ConnectorKind: "postgres",
+			Name:          "should-rollback",
+			Config: map[string]any{
+				"connection_mode": "direct",
+				"host":            "127.0.0.1",
+				"port":            5432,
+				"database":        "app",
+				"ssl_mode":        "prefer",
+			},
+		},
+		Profile: createConnectorCredentialProfileRequest{
+			Kind:  "unsupported",
+			Label: "bad",
+		},
+	})
+	if failedCreate.Code != http.StatusBadRequest {
+		t.Fatalf("invalid profile should reject atomic create, got %d %s", failedCreate.Code, failedCreate.Body.String())
+	}
+	var rolledBackTargets int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM connector_targets WHERE name = 'should-rollback'`).Scan(&rolledBackTargets); err != nil {
+		t.Fatalf("count rolled back targets: %v", err)
+	}
+	if rolledBackTargets != 0 {
+		t.Fatalf("atomic create left a target without a profile")
+	}
+
+	failedUpdate := performJSON(handler, http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/with-profile/999999", "", updateConnectorTargetWithProfileRequest{
+		Target: updateConnectorTargetRequest{
+			Name: "should-not-stick",
+			Config: map[string]any{
+				"connection_mode": "direct",
+				"host":            "127.0.0.1",
+				"port":            5433,
+				"database":        "app2",
+				"ssl_mode":        "require",
+			},
+		},
+		Profile: updateConnectorCredentialProfileRequest{
+			Kind:  "username_password",
+			Label: "missing-profile",
+			Public: map[string]any{
+				"username": "app_reader",
+			},
+		},
+	})
+	if failedUpdate.Code != http.StatusNotFound {
+		t.Fatalf("missing profile should reject atomic update, got %d %s", failedUpdate.Code, failedUpdate.Body.String())
+	}
+	var targetName string
+	var targetConfig string
+	if err := fixture.db.QueryRow(`SELECT name, config_json FROM connector_targets WHERE id = ?`, target.ID).Scan(&targetName, &targetConfig); err != nil {
+		t.Fatalf("read target after failed update: %v", err)
+	}
+	if targetName != "atomic-db" || !strings.Contains(targetConfig, `"database":"app"`) || strings.Contains(targetConfig, "app2") {
+		t.Fatalf("failed atomic update changed target: name=%q config=%s", targetName, targetConfig)
+	}
+}
+
 func TestSSHConnectorProfileRoutesCanonicalizeKeyMetadata(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
@@ -613,7 +709,7 @@ func fixtureConfigForLockedTest(t *testing.T) config.Config {
 	}
 }
 
-func TestApprovalAndMCPRequestRoutes(t *testing.T) {
+func TestConsoleCommandRequestDetail(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
 	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
@@ -622,33 +718,21 @@ func TestApprovalAndMCPRequestRoutes(t *testing.T) {
 	}
 	server := fixture.createKeyAndServer(t, "worker-1")
 	runtime := fixture.server.activeRuntime()
-	requestID := insertRouteCommandRequest(t, fixture.db, token.ID, server.ID, "pending_approval")
-
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?status=pending_approval&server_id="+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), pendingApprovalAssistantHint) {
-		t.Fatalf("list approvals failed: %d %s", response.Code, response.Body.String())
-	}
+	requestID := insertRouteCommandRequest(t, fixture.db, token.ID, server.ID, "running")
 	manualID := insertManualRouteCommandRequest(t, fixture.db, server.ID, "nano /etc/hosts ...", "interactive_editor")
-	historyManualResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?paginated=true&source=manual", "", nil)
-	if historyManualResponse.Code != http.StatusOK || !strings.Contains(historyManualResponse.Body.String(), `"source":"manual"`) || !strings.Contains(historyManualResponse.Body.String(), `"tracking_reason":"interactive_editor"`) {
-		t.Fatalf("manual history source filter failed: %d %s", historyManualResponse.Code, historyManualResponse.Body.String())
+	detailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/console/command-requests/"+strconv.FormatInt(manualID, 10), "", nil)
+	if detailResponse.Code != http.StatusOK || !strings.Contains(detailResponse.Body.String(), `"source":"manual"`) || !strings.Contains(detailResponse.Body.String(), `"tracking_reason":"interactive_editor"`) {
+		t.Fatalf("manual command request detail failed: %d %s", detailResponse.Code, detailResponse.Body.String())
 	}
 	if manualID < 1 {
 		t.Fatalf("expected manual request id")
 	}
-
-	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(requestID, 10)+"/decline", "", declineApprovalRequest{UserNote: "use another path"})
-	if declineResponse.Code != http.StatusOK || !strings.Contains(declineResponse.Body.String(), `"declined"`) {
-		t.Fatalf("decline approval failed: %d %s", declineResponse.Code, declineResponse.Body.String())
-	}
 	record, err := fixture.server.getCommandRequest(ctx, runtime, requestID, token.ID, commandRequestSourceMCP)
 	if err != nil {
-		t.Fatalf("get declined command request: %v", err)
+		t.Fatalf("get command request: %v", err)
 	}
-	if record.UserNote == nil || *record.UserNote != "use another path" {
-		t.Fatalf("decline note not stored: %#v", record)
-	}
-	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", runApprovalRequest{}); response.Code != http.StatusConflict {
-		t.Fatalf("running declined request should conflict, got %d", response.Code)
+	if record.Status != "running" || record.AssistantHint != runningCommandRequestAssistantHint {
+		t.Fatalf("running command request should keep polling hint: %#v", record)
 	}
 }
 
@@ -671,7 +755,7 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 		Command:   "hostname",
 		Reason:    "bulk smoke",
 	})
-	if missingConfirmation.Code != http.StatusBadRequest || !strings.Contains(missingConfirmation.Body.String(), "RUN ON 2 SERVERS") {
+	if missingConfirmation.Code != http.StatusBadRequest || !strings.Contains(missingConfirmation.Body.String(), "RUN ON 2 TARGETS") {
 		t.Fatalf("bulk command should require exact confirmation, got %d %s", missingConfirmation.Code, missingConfirmation.Body.String())
 	}
 
@@ -679,17 +763,17 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 		TargetIDs:    []int64{serverOne.ID, serverOne.ID},
 		Command:      "hostname",
 		Reason:       "bulk smoke",
-		Confirmation: "RUN ON 2 SERVERS",
+		Confirmation: "RUN ON 2 TARGETS",
 	})
 	if duplicateServer.Code != http.StatusBadRequest || !strings.Contains(duplicateServer.Body.String(), "duplicates") {
-		t.Fatalf("bulk command should reject duplicate servers, got %d %s", duplicateServer.Code, duplicateServer.Body.String())
+		t.Fatalf("bulk command should reject duplicate targets, got %d %s", duplicateServer.Code, duplicateServer.Body.String())
 	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
 		TargetIDs:    []int64{serverOne.ID, serverTwo.ID},
 		Command:      "hostname",
 		Reason:       "bulk smoke",
-		Confirmation: "RUN ON 2 SERVERS",
+		Confirmation: "RUN ON 2 TARGETS",
 	})
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("bulk command failed: %d %s", response.Code, response.Body.String())
@@ -735,7 +819,7 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	server := fixture.createKeyAndServer(t, "worker-1")
 	now := time.Now().UTC().Format(time.RFC3339)
 	dockerResult, err := fixture.db.Exec(`
-		INSERT INTO command_requests (token_id, server_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
+		INSERT INTO command_requests (token_id, runtime_profile_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
 		VALUES (?, ?, 'docker ps', 'inspect docker containers', 'completed', 'docker output body', '', 0, ?, ?)`,
 		token.ID,
 		server.ID,
@@ -753,7 +837,7 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 		t.Fatalf("sync docker request to history: %v", err)
 	}
 	if _, err := fixture.db.Exec(`
-		INSERT INTO command_requests (token_id, server_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
+		INSERT INTO command_requests (token_id, runtime_profile_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
 		VALUES (?, ?, 'uptime', 'inspect uptime', 'completed', 'uptime output body', '', 0, ?, ?)`,
 		token.ID,
 		server.ID,
@@ -762,22 +846,22 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert uptime request: %v", err)
 	}
-	historyResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals?paginated=true&q=docker&limit=1", "", nil)
+	historyResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?q=docker&limit=1", "", nil)
 	if historyResponse.Code != http.StatusOK {
 		t.Fatalf("history search failed: %d %s", historyResponse.Code, historyResponse.Body.String())
 	}
-	historyPage := decodeRouteResponse[pageResponse[commandRequestRecord]](t, historyResponse.Body.Bytes())
-	if historyPage.Total != 1 || len(historyPage.Items) != 1 || historyPage.Items[0].ID != dockerID {
+	historyPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, historyResponse.Body.Bytes())
+	if historyPage.Total != 1 || len(historyPage.Items) != 1 || historyPage.Items[0].SourceRefID != dockerID {
 		t.Fatalf("unexpected history page: %#v", historyPage)
 	}
-	if historyPage.Items[0].Stdout != "" {
-		t.Fatalf("history list should not include full stdout: %#v", historyPage.Items[0])
+	if historyPage.Items[0].OutputText != "" {
+		t.Fatalf("history list should not include full output: %#v", historyPage.Items[0])
 	}
-	punctuationSearchResponse := performJSON(fixture.server.Handler(), http.MethodGet, `/api/approvals?paginated=true&q=docker%3A%28%22&limit=1`, "", nil)
+	punctuationSearchResponse := performJSON(fixture.server.Handler(), http.MethodGet, `/api/history?q=docker%3A%28%22&limit=1`, "", nil)
 	if punctuationSearchResponse.Code != http.StatusOK {
 		t.Fatalf("history punctuation search should be sanitized: %d %s", punctuationSearchResponse.Code, punctuationSearchResponse.Body.String())
 	}
-	historyDetailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/approvals/"+strconv.FormatInt(dockerID, 10), "", nil)
+	historyDetailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/console/command-requests/"+strconv.FormatInt(dockerID, 10), "", nil)
 	if historyDetailResponse.Code != http.StatusOK || !strings.Contains(historyDetailResponse.Body.String(), "docker output body") {
 		t.Fatalf("history detail should include output: %d %s", historyDetailResponse.Code, historyDetailResponse.Body.String())
 	}
@@ -997,47 +1081,6 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	}
 }
 
-func TestParseDockerPSOutput(t *testing.T) {
-	output := `{"ID":"abc123","Image":"nginx:alpine","Command":"nginx -g daemon off;","CreatedAt":"2026-06-03 10:00:00 +0000 UTC","Names":"web","Status":"Up 2 minutes","State":"running","Ports":"0.0.0.0:8080->80/tcp","RunningFor":"2 minutes ago","Size":"1.2MB","Labels":"com.example=true","Mounts":"/data","Networks":"bridge"}`
-	containers, available := parseDockerPSOutput(output)
-	if !available {
-		t.Fatalf("docker should be available")
-	}
-	if len(containers) != 1 {
-		t.Fatalf("expected one container, got %#v", containers)
-	}
-	if containers[0].Name != "web" || containers[0].Image != "nginx:alpine" || containers[0].Command == "" || containers[0].Ports == "" || containers[0].Networks != "bridge" {
-		t.Fatalf("unexpected container parse: %#v", containers[0])
-	}
-
-	containers, available = parseDockerPSOutput("__AIPERMISSION_DOCKER_UNAVAILABLE__")
-	if available || len(containers) != 0 {
-		t.Fatalf("docker unavailable marker should produce unavailable empty response")
-	}
-}
-
-func TestDockerContainerRefValidationAndShellQuote(t *testing.T) {
-	for _, value := range []string{"web", "abc123", "compose_service_1"} {
-		if err := validateDockerContainerRef(value); err != nil {
-			t.Fatalf("valid container ref failed: %s: %v", value, err)
-		}
-	}
-	for _, value := range []string{"", "bad\nname", strings.Repeat("a", 129)} {
-		if err := validateDockerContainerRef(value); err == nil {
-			t.Fatalf("invalid container ref should fail: %q", value)
-		}
-	}
-	if got := shellQuote("name'withquote"); got != `'name'\''withquote'` {
-		t.Fatalf("unexpected shell quote: %s", got)
-	}
-	if normalizeDockerLogsTail(0) != 300 || normalizeDockerLogsTail(-5) != 300 {
-		t.Fatalf("empty docker log tail should default to 300")
-	}
-	if normalizeDockerLogsTail(42) != 42 || normalizeDockerLogsTail(6000) != 5000 {
-		t.Fatalf("docker log tail should preserve valid values and cap large values")
-	}
-}
-
 func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
@@ -1048,7 +1091,7 @@ func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
 	server := fixture.createKeyAndServer(t, "delete-me")
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := fixture.db.Exec(`
-		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, transcript, cols, rows, created_at, updated_at)
 		VALUES (?, 'delete session', 'connected', '', 120, 32, ?, ?)`,
 		server.ID,
 		now,
@@ -1057,7 +1100,7 @@ func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
 		t.Fatalf("insert console session: %v", err)
 	}
 	if _, err := fixture.db.Exec(`
-		INSERT INTO command_requests (token_id, server_id, source, command, reason, status, created_at)
+		INSERT INTO command_requests (token_id, runtime_profile_id, source, command, reason, status, created_at)
 		VALUES (?, ?, 'mcp', 'sleep 100', 'delete target cleanup', 'running', ?)`,
 		token.ID,
 		server.ID,
@@ -1085,14 +1128,14 @@ func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
 		t.Fatalf("delete connector target failed: %d %s", response.Code, response.Body.String())
 	}
 	var commandStatus string
-	if err := fixture.db.QueryRow(`SELECT status FROM command_requests WHERE server_id = ?`, server.ID).Scan(&commandStatus); err != nil {
+	if err := fixture.db.QueryRow(`SELECT status FROM command_requests WHERE runtime_profile_id = ?`, server.ID).Scan(&commandStatus); err != nil {
 		t.Fatalf("read command status: %v", err)
 	}
 	if commandStatus != "error" {
 		t.Fatalf("running command should be marked error after target delete, got %q", commandStatus)
 	}
 	var sessionStatus string
-	if err := fixture.db.QueryRow(`SELECT status FROM console_sessions WHERE server_id = ?`, server.ID).Scan(&sessionStatus); err != nil {
+	if err := fixture.db.QueryRow(`SELECT status FROM console_sessions WHERE runtime_profile_id = ?`, server.ID).Scan(&sessionStatus); err != nil {
 		t.Fatalf("read session status: %v", err)
 	}
 	if sessionStatus != "closed" {
@@ -1232,7 +1275,7 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 	server := fixture.createKeyAndServer(t, "worker-1")
 	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339)
 	if _, err := fixture.db.Exec(`
-		INSERT INTO command_requests (token_id, server_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
+		INSERT INTO command_requests (token_id, runtime_profile_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
 		VALUES (?, ?, 'old command', 'old', 'completed', '', '', 0, ?, ?)`,
 		token.ID,
 		server.ID,
@@ -1241,8 +1284,30 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert old command request: %v", err)
 	}
+	connectorStore := connectortargets.NewStore(fixture.db)
+	connectorRequest, err := connectorStore.InsertActionRequest(context.Background(), connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             server.TargetID,
+		ProfileID:            server.ProfileID,
+		ConnectorKind:        "ssh",
+		ActionName:           "read_console",
+		Source:               "mcp",
+		Input:                map[string]any{"tail_bytes": 100},
+		EncryptedPayloadJSON: "encrypted",
+		Reason:               "old connector action",
+		Status:               connectors.ResultCompleted,
+	})
+	if err != nil {
+		t.Fatalf("insert old connector request: %v", err)
+	}
+	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET created_at = ?, completed_at = ? WHERE id = ?`, old, old, connectorRequest.ID); err != nil {
+		t.Fatalf("age connector request: %v", err)
+	}
+	if err := historypkg.NewStore(fixture.db).SyncConnectorActionRequest(context.Background(), connectorRequest.ID); err != nil {
+		t.Fatalf("sync old connector history: %v", err)
+	}
 	if _, err := fixture.db.Exec(`
-		INSERT INTO audit_logs (actor_type, token_id, server_id, action, payload_json, created_at)
+		INSERT INTO audit_logs (actor_type, token_id, runtime_profile_id, action, payload_json, created_at)
 		VALUES ('user', ?, ?, 'old.audit', '{}', ?)`,
 		token.ID,
 		server.ID,
@@ -1251,7 +1316,7 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 		t.Fatalf("insert old audit log: %v", err)
 	}
 	if _, err := fixture.db.Exec(`
-		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at, closed_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, transcript, cols, rows, created_at, updated_at, closed_at)
 		VALUES (?, 'old console', 'closed', 'old transcript', 120, 32, ?, ?, ?)`,
 		server.ID,
 		old,
@@ -1261,7 +1326,7 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 		t.Fatalf("insert old console session: %v", err)
 	}
 	if _, err := fixture.db.Exec(`
-		INSERT INTO message_queue (token_id, server_id, direction, message, consumed_at, created_at)
+		INSERT INTO message_queue (token_id, runtime_profile_id, direction, message, consumed_at, created_at)
 		VALUES (?, ?, 'user_to_ai', 'old message', ?, ?)`,
 		token.ID,
 		server.ID,
@@ -1284,6 +1349,8 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 		t.Fatalf("retention response missing saved value: %s", updateResponse.Body.String())
 	}
 	assertTableCount(t, fixture.db, "command_requests", 0)
+	assertTableCount(t, fixture.db, "connector_action_requests", 0)
+	assertTableCount(t, fixture.db, "history_entries", 0)
 	assertTableCount(t, fixture.db, "console_sessions", 0)
 	assertTableCount(t, fixture.db, "message_queue", 0)
 	assertTableCount(t, fixture.db, "audit_logs", 1)
@@ -1303,7 +1370,7 @@ func TestRetentionDisabledKeepsOldRecordsAndManualPurgeDeletes(t *testing.T) {
 	server := fixture.createKeyAndServer(t, "worker-1")
 	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339)
 	if _, err := fixture.db.Exec(`
-		INSERT INTO command_requests (token_id, server_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
+		INSERT INTO command_requests (token_id, runtime_profile_id, command, reason, status, stdout, stderr, exit_code, created_at, completed_at)
 		VALUES (?, ?, 'old command', 'old', 'completed', '', '', 0, ?, ?)`,
 		token.ID,
 		server.ID,
@@ -1313,7 +1380,7 @@ func TestRetentionDisabledKeepsOldRecordsAndManualPurgeDeletes(t *testing.T) {
 		t.Fatalf("insert old command request: %v", err)
 	}
 	if _, err := fixture.db.Exec(`
-		INSERT INTO audit_logs (actor_type, token_id, server_id, action, payload_json, created_at)
+		INSERT INTO audit_logs (actor_type, token_id, runtime_profile_id, action, payload_json, created_at)
 		VALUES ('user', ?, ?, 'old.audit', '{}', ?)`,
 		token.ID,
 		server.ID,
@@ -1353,12 +1420,12 @@ func TestFileTransferRoutes(t *testing.T) {
 		t.Fatalf("write download file: %v", err)
 	}
 	record, err := runtime.fileTransfers.Create(context.Background(), filetransfer.CreateRequest{
-		ServerID:   server.ID,
-		Direction:  filetransfer.DirectionDownload,
-		Source:     filetransfer.SourceUI,
-		RemotePath: "/var/log/app.log",
-		FileName:   "app.log",
-		TempPath:   tempPath,
+		RuntimeProfileID: server.ID,
+		Direction:        filetransfer.DirectionDownload,
+		Source:           filetransfer.SourceUI,
+		RemotePath:       "/var/log/app.log",
+		FileName:         "app.log",
+		TempPath:         tempPath,
 	})
 	if err != nil {
 		t.Fatalf("create file transfer: %v", err)
@@ -1386,10 +1453,10 @@ func TestFileTransferRoutes(t *testing.T) {
 	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfers?direction=copy", "", nil); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid direction should fail, got %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{ServerID: server.ID, RemotePath: "relative.txt"}); response.Code != http.StatusBadRequest {
+	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{RuntimeProfileID: server.ID, RemotePath: "relative.txt"}); response.Code != http.StatusBadRequest {
 		t.Fatalf("relative download path should fail, got %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{ServerID: server.ID, Path: "relative"}); response.Code != http.StatusBadRequest {
+	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{RuntimeProfileID: server.ID, Path: "relative"}); response.Code != http.StatusBadRequest {
 		t.Fatalf("relative browse path should fail, got %d %s", response.Code, response.Body.String())
 	}
 	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/upload", "", nil); response.Code != http.StatusBadRequest {
@@ -1397,13 +1464,13 @@ func TestFileTransferRoutes(t *testing.T) {
 	}
 
 	cancelRecord, err := runtime.fileTransfers.Create(context.Background(), filetransfer.CreateRequest{
-		ServerID:   server.ID,
-		Direction:  filetransfer.DirectionUpload,
-		Source:     filetransfer.SourceUI,
-		LocalPath:  "movie.mp4",
-		RemotePath: "/root/movie.mp4",
-		FileName:   "movie.mp4",
-		TempPath:   tempPath,
+		RuntimeProfileID: server.ID,
+		Direction:        filetransfer.DirectionUpload,
+		Source:           filetransfer.SourceUI,
+		LocalPath:        "movie.mp4",
+		RemotePath:       "/root/movie.mp4",
+		FileName:         "movie.mp4",
+		TempPath:         tempPath,
 	})
 	if err != nil {
 		t.Fatalf("create cancel transfer: %v", err)
@@ -1417,9 +1484,9 @@ func TestFileTransferRoutes(t *testing.T) {
 	}
 
 	batch, err := runtime.fileTransfers.CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
-		ServerID:  server.ID,
-		Direction: filetransfer.DirectionUpload,
-		Source:    filetransfer.SourceUI,
+		RuntimeProfileID: server.ID,
+		Direction:        filetransfer.DirectionUpload,
+		Source:           filetransfer.SourceUI,
 		Items: []filetransfer.CreateRequest{
 			{LocalPath: "a.txt", RemotePath: "/tmp/a.txt", FileName: "a.txt", TempPath: tempPath},
 			{LocalPath: "b.txt", RemotePath: "/tmp/b.txt", FileName: "b.txt", TempPath: tempPath},
@@ -1434,7 +1501,7 @@ func TestFileTransferRoutes(t *testing.T) {
 	if ok, err := runtime.fileTransfers.PauseBatch(context.Background(), batch.ID); err != nil || !ok {
 		t.Fatalf("pause batch: ok=%v err=%v", ok, err)
 	}
-	batchListResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfer-batches?server_id="+strconv.FormatInt(server.ID, 10), "", nil)
+	batchListResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfer-batches?runtime_profile_id="+strconv.FormatInt(server.ID, 10), "", nil)
 	if batchListResponse.Code != http.StatusOK {
 		t.Fatalf("list file transfer batches failed: %d %s", batchListResponse.Code, batchListResponse.Body.String())
 	}
@@ -1471,14 +1538,14 @@ func assertTableCount(t *testing.T, database *sql.DB, table string, expected int
 	}
 }
 
-func insertRouteCommandRequest(t *testing.T, database *sql.DB, tokenID int64, serverID int64, status string) int64 {
+func insertRouteCommandRequest(t *testing.T, database *sql.DB, tokenID int64, runtimeProfileID int64, status string) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := database.Exec(`
-		INSERT INTO command_requests (token_id, server_id, command, reason, status, stdout, stderr, created_at)
+		INSERT INTO command_requests (token_id, runtime_profile_id, command, reason, status, stdout, stderr, created_at)
 		VALUES (?, ?, 'ls', 'test reason', ?, '', '', ?)`,
 		tokenID,
-		serverID,
+		runtimeProfileID,
 		status,
 		now,
 	)
@@ -1492,13 +1559,13 @@ func insertRouteCommandRequest(t *testing.T, database *sql.DB, tokenID int64, se
 	return id
 }
 
-func insertManualRouteCommandRequest(t *testing.T, database *sql.DB, serverID int64, command string, reason string) int64 {
+func insertManualRouteCommandRequest(t *testing.T, database *sql.DB, runtimeProfileID int64, command string, reason string) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := database.Exec(`
-		INSERT INTO command_requests (server_id, source, command, reason, status, tracking_reason, stdout, stderr, created_at, completed_at)
+		INSERT INTO command_requests (runtime_profile_id, source, command, reason, status, tracking_reason, stdout, stderr, created_at, completed_at)
 		VALUES (?, 'manual', ?, 'manual command not tracked', 'untracked', ?, '', '', ?, ?)`,
-		serverID,
+		runtimeProfileID,
 		command,
 		reason,
 		now,
@@ -1522,16 +1589,16 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	}
 	server := fixture.createKeyAndServer(t, "worker-1")
 
-	createMessageResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/messages", "", createMessageRequest{TokenID: token.ID, ServerID: &server.ID, Message: "hello agent"})
+	createMessageResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/messages", "", createMessageRequest{TokenID: token.ID, RuntimeProfileID: &server.ID, Message: "hello agent"})
 	if createMessageResponse.Code != http.StatusCreated {
 		t.Fatalf("create message failed: %d %s", createMessageResponse.Code, createMessageResponse.Body.String())
 	}
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/messages?direction=user_to_ai&server_id="+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "hello agent") {
+	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/messages?direction=user_to_ai&runtime_profile_id="+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "hello agent") {
 		t.Fatalf("list messages failed: %d %s", response.Code, response.Body.String())
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := fixture.db.Exec(`
-		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at, closed_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, transcript, cols, rows, created_at, updated_at, closed_at)
 		VALUES (?, 'manual', 'closed', 'hello transcript', 120, 32, ?, ?, ?)`,
 		server.ID,
 		now,
@@ -1545,7 +1612,7 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session id: %v", err)
 	}
-	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/console/sessions?server_id="+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "hello transcript") {
+	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/console/sessions?runtime_profile_id="+strconv.FormatInt(server.ID, 10), "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "hello transcript") {
 		t.Fatalf("list console sessions failed: %d %s", response.Code, response.Body.String())
 	}
 	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/console/sessions/"+strconv.FormatInt(sessionID, 10), "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "manual") {
@@ -1555,7 +1622,7 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 		t.Fatalf("input to inactive session should conflict, got %d", response.Code)
 	}
 	runningResult, err := fixture.db.Exec(`
-		INSERT INTO command_requests (server_id, source, command, reason, status, session_id, created_at)
+		INSERT INTO command_requests (runtime_profile_id, source, command, reason, status, session_id, created_at)
 		VALUES (?, 'mcp', 'sleep 60', 'test close cleanup', 'running', ?, ?)`,
 		server.ID,
 		sessionID,
@@ -1582,7 +1649,7 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 
 	restartServer := fixture.createKeyAndServer(t, "worker-restart")
 	restartSessionResult, err := fixture.db.Exec(`
-		INSERT INTO console_sessions (server_id, name, status, transcript, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_profile_id, name, status, transcript, cols, rows, created_at, updated_at)
 		VALUES (?, 'stuck', 'connected', 'stuck transcript', 120, 32, ?, ?)`,
 		restartServer.ID,
 		now,
@@ -1596,7 +1663,7 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 		t.Fatalf("restart session id: %v", err)
 	}
 	restartRequestResult, err := fixture.db.Exec(`
-		INSERT INTO command_requests (server_id, source, command, reason, status, session_id, created_at)
+		INSERT INTO command_requests (runtime_profile_id, source, command, reason, status, session_id, created_at)
 		VALUES (?, 'mcp', 'kubectl get nodes', 'stuck request', 'running', ?, ?)`,
 		restartServer.ID,
 		restartSessionID,

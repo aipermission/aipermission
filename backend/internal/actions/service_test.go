@@ -194,7 +194,7 @@ func TestServicePrepareRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-func TestServicePrepareRejectsSecretActionInputSchema(t *testing.T) {
+func TestRegistryRejectsSecretActionInputSchemaBeforePrepare(t *testing.T) {
 	registry := connectors.NewRegistry()
 	connector := &prepareConnector{
 		kind: "api",
@@ -208,28 +208,12 @@ func TestServicePrepareRejectsSecretActionInputSchema(t *testing.T) {
 			},
 		},
 	}
-	if err := registry.Register(connector); err != nil {
-		t.Fatalf("register connector: %v", err)
-	}
-	service := NewService(registry, &fakeResolver{
-		target: connectors.TargetView{Ref: "api:1:1", ConnectorKind: "api", Name: "API"},
-		profile: connectors.CredentialProfileView{
-			ID:    1,
-			Kind:  "api_key",
-			Label: "main",
-		},
-	})
-
-	_, err := service.Prepare(context.Background(), PrepareRequest{
-		TargetRef:  "api:1:1",
-		ActionName: "call_action",
-		Input:      map[string]any{"api_key": "secret"},
-	})
+	err := registry.Register(connector)
 	if err == nil || !strings.Contains(err.Error(), "store secrets in credential profiles") {
-		t.Fatalf("expected secret action input schema rejection, got %v", err)
+		t.Fatalf("expected secret action input schema rejection at registration, got %v", err)
 	}
 	if connector.seen.ActionName != "" {
-		t.Fatalf("connector PrepareAction should not run after schema rejection: %#v", connector.seen)
+		t.Fatalf("connector PrepareAction should not run during registration rejection: %#v", connector.seen)
 	}
 }
 

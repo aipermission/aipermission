@@ -1,6 +1,7 @@
 package connectors
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -21,6 +22,26 @@ func TestValidateNonSecretSchemaAllowsPublicTargetFields(t *testing.T) {
 		{Name: "port", Type: FieldNumber, Required: true},
 	}}, "target"); err != nil {
 		t.Fatalf("expected public target schema to pass, got %v", err)
+	}
+}
+
+func TestNormalizeSchemaValuesCanonicalizesNumericStrings(t *testing.T) {
+	normalized, err := NormalizeSchemaValues(Schema{Fields: []Field{
+		{Name: "host", Type: FieldString, Required: true},
+		{Name: "port", Type: FieldNumber, Required: true},
+	}}, map[string]any{
+		"host": "localhost",
+		"port": "5432",
+	})
+	if err != nil {
+		t.Fatalf("normalize schema values: %v", err)
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		t.Fatalf("marshal normalized values: %v", err)
+	}
+	if string(payload) != `{"host":"localhost","port":5432}` {
+		t.Fatalf("normalized payload = %s", payload)
 	}
 }
 

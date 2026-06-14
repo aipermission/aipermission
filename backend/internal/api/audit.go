@@ -14,20 +14,19 @@ import (
 )
 
 type auditLogRecord struct {
-	ID              int64  `json:"id"`
-	ActorType       string `json:"actor_type"`
-	TokenID         *int64 `json:"token_id,omitempty"`
-	TokenName       string `json:"token_name,omitempty"`
-	ServerID        *int64 `json:"server_id,omitempty"`
-	ServerName      string `json:"server_name,omitempty"`
-	ConnectorKind   string `json:"connector_kind,omitempty"`
-	TargetID        *int64 `json:"target_id,omitempty"`
-	TargetName      string `json:"target_name,omitempty"`
-	ProfileID       *int64 `json:"profile_id,omitempty"`
-	ActionRequestID *int64 `json:"action_request_id,omitempty"`
-	Action          string `json:"action"`
-	PayloadJSON     string `json:"payload_json"`
-	CreatedAt       string `json:"created_at"`
+	ID               int64  `json:"id"`
+	ActorType        string `json:"actor_type"`
+	TokenID          *int64 `json:"token_id,omitempty"`
+	TokenName        string `json:"token_name,omitempty"`
+	RuntimeProfileID *int64 `json:"runtime_profile_id,omitempty"`
+	ConnectorKind    string `json:"connector_kind,omitempty"`
+	TargetID         *int64 `json:"target_id,omitempty"`
+	TargetName       string `json:"target_name,omitempty"`
+	ProfileID        *int64 `json:"profile_id,omitempty"`
+	ActionRequestID  *int64 `json:"action_request_id,omitempty"`
+	Action           string `json:"action"`
+	PayloadJSON      string `json:"payload_json"`
+	CreatedAt        string `json:"created_at"`
 }
 
 func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
@@ -41,17 +40,17 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
-	where := []string{"(? = '' OR a.actor_type = ?)", "(? = 0 OR a.server_id = ?)"}
+	where := []string{"(? = '' OR a.actor_type = ?)", "(? = 0 OR a.runtime_profile_id = ?)"}
 	args := []any{actor, actor}
-	var serverID int64
-	if rawServerID := strings.TrimSpace(r.URL.Query().Get("server_id")); rawServerID != "" {
-		id, ok := parseInt64Query(w, rawServerID, "server_id")
+	var runtimeProfileID int64
+	if rawRuntimeProfileID := strings.TrimSpace(r.URL.Query().Get("runtime_profile_id")); rawRuntimeProfileID != "" {
+		id, ok := parseInt64Query(w, rawRuntimeProfileID, "runtime_profile_id")
 		if !ok {
 			return
 		}
-		serverID = id
+		runtimeProfileID = id
 	}
-	args = append(args, serverID, serverID)
+	args = append(args, runtimeProfileID, runtimeProfileID)
 	connectorKind := strings.TrimSpace(r.URL.Query().Get("connector_kind"))
 	if connectorKind != "" {
 		where = append(where, "a.connector_kind = ?")
@@ -83,7 +82,7 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		SELECT COUNT(*)
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.server_id
+		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.runtime_profile_id
 		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
 		LEFT JOIN connector_targets ct ON ct.id = a.target_id
 		WHERE `+whereSQL,
@@ -95,12 +94,12 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	queryArgs := append(append([]any{}, args...), page.Limit, page.Offset)
 	rows, err := runtime.database.QueryContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.server_id, COALESCE(profile_ct.name, ''),
+		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.runtime_profile_id, COALESCE(profile_ct.name, ''),
 			a.connector_kind, a.target_id, COALESCE(ct.name, ''), a.profile_id, a.action_request_id,
 			a.action, substr(a.payload_json, 1, 500), a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.server_id
+		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.runtime_profile_id
 		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
 		LEFT JOIN connector_targets ct ON ct.id = a.target_id
 		WHERE `+whereSQL+`
@@ -140,12 +139,12 @@ func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row := runtime.database.QueryRowContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.server_id, COALESCE(profile_ct.name, ''),
+		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.runtime_profile_id, COALESCE(profile_ct.name, ''),
 			a.connector_kind, a.target_id, COALESCE(ct.name, ''), a.profile_id, a.action_request_id,
 			a.action, a.payload_json, a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.server_id
+		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = a.runtime_profile_id
 		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
 		LEFT JOIN connector_targets ct ON ct.id = a.target_id
 		WHERE a.id = ?`,
@@ -168,7 +167,7 @@ func scanAuditLog(scanner interface {
 }) (auditLogRecord, error) {
 	var item auditLogRecord
 	var tokenID sql.NullInt64
-	var serverID sql.NullInt64
+	var runtimeProfileID sql.NullInt64
 	var targetID sql.NullInt64
 	var profileID sql.NullInt64
 	var actionRequestID sql.NullInt64
@@ -177,8 +176,8 @@ func scanAuditLog(scanner interface {
 		&item.ActorType,
 		&tokenID,
 		&item.TokenName,
-		&serverID,
-		&item.ServerName,
+		&runtimeProfileID,
+		&item.TargetName,
 		&item.ConnectorKind,
 		&targetID,
 		&item.TargetName,
@@ -193,8 +192,8 @@ func scanAuditLog(scanner interface {
 	if tokenID.Valid {
 		item.TokenID = &tokenID.Int64
 	}
-	if serverID.Valid {
-		item.ServerID = &serverID.Int64
+	if runtimeProfileID.Valid {
+		item.RuntimeProfileID = &runtimeProfileID.Int64
 	}
 	if targetID.Valid {
 		item.TargetID = &targetID.Int64
@@ -208,7 +207,7 @@ func scanAuditLog(scanner interface {
 	return item, nil
 }
 
-func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, serverID int64, action string, payload any) {
+func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, runtimeProfileID int64, action string, payload any) {
 	if runtime == nil || runtime.database == nil {
 		return
 	}
@@ -221,13 +220,13 @@ func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actor
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = runtime.database.ExecContext(ctx, `
 		INSERT INTO audit_logs (
-			actor_type, token_id, server_id, connector_kind, target_id, profile_id,
+			actor_type, token_id, runtime_profile_id, connector_kind, target_id, profile_id,
 			action_request_id, action, payload_json, created_at
 		)
 		VALUES (?, ?, NULLIF(?, 0), ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?)`,
 		actorType,
 		nullableInt64(tokenID),
-		serverID,
+		runtimeProfileID,
 		connectorKind,
 		targetID,
 		profileID,

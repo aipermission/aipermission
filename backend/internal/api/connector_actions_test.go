@@ -15,10 +15,10 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -27,7 +27,7 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
 	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, openAPITestVault(t)), "core-1")
 	targetRef := profile.TargetRef
-	runtime := &databaseRuntime{database: database}
+	runtime := &databaseRuntime{database: database, registry: testConnectorRegistry(t)}
 
 	prepared, err := runtime.prepareConnectorAction(context.Background(), actions.PrepareRequest{
 		Source:     "mcp",
@@ -162,7 +162,7 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
-	runtime := connectorActionTestRuntime(database, secretVault)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -190,7 +190,7 @@ func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
 func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
-	runtime := connectorActionTestRuntime(database, secretVault)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -230,7 +230,7 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
-	runtime := connectorActionTestRuntime(database, secretVault)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -327,7 +327,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
-	runtime := connectorActionTestRuntime(database, secretVault)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -362,7 +362,7 @@ func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
 func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
-	runtime := connectorActionTestRuntime(database, secretVault)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -488,7 +488,7 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list connector approvals failed: %d %s", listResponse.Code, listResponse.Body.String())
 	}
-	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/decline", "", declineApprovalRequest{UserNote: "not now"})
+	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/decline", "", declineConnectorActionApprovalRequest{UserNote: "not now"})
 	if declineResponse.Code != http.StatusOK || !strings.Contains(declineResponse.Body.String(), `"status":"declined"`) {
 		t.Fatalf("decline connector approval failed: %d %s", declineResponse.Code, declineResponse.Body.String())
 	}
@@ -530,7 +530,7 @@ func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testi
 		t.Fatalf("display input should be redacted: %#v", result.Request.Input)
 	}
 
-	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runApprovalRequest{})
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
 	if runResponse.Code != http.StatusOK {
 		t.Fatalf("approval run should not fail stale because display input was redacted: %d %s", runResponse.Code, runResponse.Body.String())
 	}
@@ -540,6 +540,55 @@ func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testi
 	}
 	if finished.Status == connectors.ResultStale {
 		t.Fatalf("request should not become stale from redacted display input: %#v", finished)
+	}
+}
+
+func TestConnectorActionApprovalRunDeliversUserNote(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(context.Background(), tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    postgresconnector.ActionQueryReadonly,
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
+	}
+	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
+		Source:     commandRequestSourceMCP,
+		TokenID:    token.ID,
+		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		ActionName: postgresconnector.ActionQueryReadonly,
+		Input:      map[string]any{"sql": "select 1"},
+		Reason:     "smoke",
+	})
+	if err != nil {
+		t.Fatalf("call connector action: %v", err)
+	}
+
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{UserNote: "only inspect metadata"})
+	if runResponse.Code != http.StatusOK {
+		t.Fatalf("approval run failed: %d %s", runResponse.Code, runResponse.Body.String())
+	}
+	var queued string
+	if err := fixture.db.QueryRow(`
+		SELECT message
+		FROM message_queue
+		WHERE token_id = ? AND direction = 'user_to_ai'
+		ORDER BY id DESC
+		LIMIT 1`,
+		token.ID,
+	).Scan(&queued); err != nil {
+		t.Fatalf("read queued approval note: %v", err)
+	}
+	if !strings.Contains(queued, "only inspect metadata") {
+		t.Fatalf("queued note = %q", queued)
 	}
 }
 
@@ -581,7 +630,7 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 		t.Fatalf("block connector permission: %v", err)
 	}
 
-	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runApprovalRequest{})
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
 	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
 		t.Fatalf("expected stale conflict, got %d %s", runResponse.Code, runResponse.Body.String())
 	}
@@ -638,7 +687,7 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 		t.Fatalf("sync pending connector request: %v", err)
 	}
 
-	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(request.ID, 10)+"/run", "", runApprovalRequest{})
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
 	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
 		t.Fatalf("expected prepare drift conflict, got %d %s", runResponse.Code, runResponse.Body.String())
 	}
@@ -708,7 +757,7 @@ func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 			}
 
 			mutate(t, fixture, token)
-			runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runApprovalRequest{})
+			runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
 			if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
 				t.Fatalf("expected stale conflict, got %d %s", runResponse.Code, runResponse.Body.String())
 			}
@@ -735,11 +784,13 @@ func openAPITestDB(t *testing.T) *sql.DB {
 	return database
 }
 
-func connectorActionTestRuntime(database *sql.DB, secretVault *vault.Vault) *databaseRuntime {
+func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vault.Vault) *databaseRuntime {
+	t.Helper()
 	return &databaseRuntime{
 		database: database,
 		vault:    secretVault,
 		tokens:   tokens.NewStore(database),
+		registry: testConnectorRegistry(t),
 	}
 }
 

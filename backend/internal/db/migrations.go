@@ -14,15 +14,18 @@ type migration struct {
 }
 
 var coreTableStatements = []string{
-	`CREATE TABLE IF NOT EXISTS ssh_keys (
+	`CREATE TABLE IF NOT EXISTS connector_credential_resources (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE,
-		key_type TEXT NOT NULL CHECK (key_type IN ('ed25519', 'rsa', 'ecdsa')),
-		public_key TEXT NOT NULL,
-		encrypted_private_key TEXT NOT NULL,
-		fingerprint TEXT NOT NULL,
+		connector_kind TEXT NOT NULL,
+		resource_kind TEXT NOT NULL,
+		name TEXT NOT NULL,
+		resource_type TEXT NOT NULL,
+		public_data TEXT NOT NULL DEFAULT '',
+		encrypted_secret TEXT NOT NULL DEFAULT '',
+		fingerprint TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
+		updated_at TEXT NOT NULL,
+		UNIQUE(connector_kind, resource_kind, name)
 	);`,
 	`CREATE TABLE IF NOT EXISTS settings (
 		key TEXT PRIMARY KEY,
@@ -87,7 +90,7 @@ var coreTableStatements = []string{
 	`CREATE TABLE IF NOT EXISTS command_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		token_id INTEGER,
-		server_id INTEGER NOT NULL,
+		runtime_profile_id INTEGER NOT NULL,
 		source TEXT NOT NULL DEFAULT 'mcp',
 		command TEXT NOT NULL,
 		encrypted_command TEXT NOT NULL DEFAULT '',
@@ -101,16 +104,13 @@ var coreTableStatements = []string{
 		error TEXT NOT NULL DEFAULT '',
 		tracking_reason TEXT NOT NULL DEFAULT '',
 		output_truncated INTEGER NOT NULL DEFAULT 0,
-		approval_context TEXT NOT NULL DEFAULT '',
-		approval_context_hash TEXT NOT NULL DEFAULT '',
-		approval_context_drift TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL,
 		completed_at TEXT,
 		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL
 	);`,
 	`CREATE TABLE IF NOT EXISTS console_sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		server_id INTEGER NOT NULL,
+		runtime_profile_id INTEGER NOT NULL,
 		name TEXT NOT NULL,
 		status TEXT NOT NULL,
 		transcript TEXT NOT NULL DEFAULT '',
@@ -133,7 +133,7 @@ var coreTableStatements = []string{
 	`CREATE TABLE IF NOT EXISTS message_queue (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		token_id INTEGER NOT NULL,
-		server_id INTEGER,
+		runtime_profile_id INTEGER,
 		session_id INTEGER,
 		direction TEXT NOT NULL DEFAULT 'user_to_ai',
 		message TEXT NOT NULL,
@@ -149,6 +149,9 @@ var coreTableStatements = []string{
 		profile_id INTEGER NOT NULL,
 		connector_kind TEXT NOT NULL,
 		action_name TEXT NOT NULL,
+		title TEXT NOT NULL DEFAULT '',
+		summary TEXT NOT NULL DEFAULT '',
+		preview_json TEXT NOT NULL DEFAULT '{}',
 		source TEXT NOT NULL DEFAULT 'mcp',
 		input_json TEXT NOT NULL DEFAULT '{}',
 		encrypted_payload_json TEXT NOT NULL DEFAULT '',
@@ -170,7 +173,7 @@ var coreTableStatements = []string{
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		actor_type TEXT NOT NULL,
 		token_id INTEGER,
-		server_id INTEGER,
+		runtime_profile_id INTEGER,
 		connector_kind TEXT NOT NULL DEFAULT '',
 		target_id INTEGER,
 		profile_id INTEGER,
@@ -200,7 +203,7 @@ var coreTableStatements = []string{
 var fileTransferTableStatements = []string{
 	`CREATE TABLE IF NOT EXISTS file_transfer_batches (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		server_id INTEGER NOT NULL,
+		runtime_profile_id INTEGER NOT NULL,
 		direction TEXT NOT NULL CHECK (direction IN ('upload', 'download')),
 		source TEXT NOT NULL DEFAULT 'ui' CHECK (source IN ('ui', 'mcp')),
 		status TEXT NOT NULL CHECK (status IN ('pending', 'pending_approval', 'running', 'paused', 'completed', 'failed', 'canceled')),
@@ -226,7 +229,7 @@ var fileTransferTableStatements = []string{
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		batch_id INTEGER,
 		queue_index INTEGER NOT NULL DEFAULT 0,
-		server_id INTEGER NOT NULL,
+		runtime_profile_id INTEGER NOT NULL,
 		direction TEXT NOT NULL CHECK (direction IN ('upload', 'download')),
 		source TEXT NOT NULL DEFAULT 'ui' CHECK (source IN ('ui', 'mcp')),
 		status TEXT NOT NULL CHECK (status IN ('pending', 'pending_approval', 'running', 'paused', 'completed', 'failed', 'canceled')),
@@ -256,7 +259,7 @@ var historyTableStatements = []string{
 		connector_kind TEXT NOT NULL,
 		activity_type TEXT NOT NULL,
 		token_id INTEGER,
-		server_id INTEGER,
+		runtime_profile_id INTEGER,
 		target_id INTEGER,
 		profile_id INTEGER,
 		target_name TEXT NOT NULL DEFAULT '',
@@ -266,6 +269,7 @@ var historyTableStatements = []string{
 		action_name TEXT NOT NULL DEFAULT '',
 		title TEXT NOT NULL DEFAULT '',
 		summary TEXT NOT NULL DEFAULT '',
+		preview_json TEXT NOT NULL DEFAULT '{}',
 		input_text TEXT NOT NULL DEFAULT '',
 		input_json TEXT NOT NULL DEFAULT '{}',
 		output_text TEXT NOT NULL DEFAULT '',
@@ -298,7 +302,7 @@ var historyTableStatements = []string{
 }
 
 var indexStatements = []string{
-	`CREATE INDEX IF NOT EXISTS idx_ssh_keys_name ON ssh_keys(name);`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_credential_resources_kind_name ON connector_credential_resources(connector_kind, resource_kind, name);`,
 	`CREATE INDEX IF NOT EXISTS idx_api_tokens_name ON api_tokens(name);`,
 	`CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);`,
 	`CREATE INDEX IF NOT EXISTS idx_api_tokens_expires_at ON api_tokens(expires_at);`,
@@ -312,17 +316,16 @@ var indexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_status ON command_requests(status);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_token_status_created ON command_requests(token_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_created_at ON command_requests(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_command_requests_server_status_created ON command_requests(server_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_command_requests_runtime_profile_status_created ON command_requests(runtime_profile_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_source_created ON command_requests(source, created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_command_requests_server_source_created ON command_requests(server_id, source, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_command_requests_runtime_profile_source_created ON command_requests(runtime_profile_id, source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_token_source_status_created ON command_requests(token_id, source, status, created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_command_requests_approval_context_hash ON command_requests(approval_context_hash);`,
-	`CREATE INDEX IF NOT EXISTS idx_console_sessions_server ON console_sessions(server_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_console_sessions_runtime_profile ON console_sessions(runtime_profile_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_console_sessions_status ON console_sessions(status);`,
 	`CREATE INDEX IF NOT EXISTS idx_console_session_chunks_session_seq ON console_session_chunks(session_id, seq);`,
 	`CREATE INDEX IF NOT EXISTS idx_message_queue_token ON message_queue(token_id);`,
-	`CREATE INDEX IF NOT EXISTS idx_message_queue_server ON message_queue(server_id);`,
-	`CREATE INDEX IF NOT EXISTS idx_message_queue_token_direction_consumed_server ON message_queue(token_id, direction, consumed_at, server_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_message_queue_runtime_profile ON message_queue(runtime_profile_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_message_queue_token_direction_consumed_runtime_profile ON message_queue(token_id, direction, consumed_at, runtime_profile_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_token_status_created ON connector_action_requests(token_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_target_status_created ON connector_action_requests(target_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_kind_action_created ON connector_action_requests(connector_kind, action_name, created_at);`,
@@ -330,14 +333,14 @@ var indexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_source_created ON connector_action_requests(source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_type, created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_audit_logs_server_created ON audit_logs(server_id, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_logs_runtime_profile_created ON audit_logs(runtime_profile_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_connector_created ON audit_logs(connector_kind, target_id, profile_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_action_request ON audit_logs(action_request_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_redaction_rules_enabled ON redaction_rules(enabled);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfer_batches_created ON file_transfer_batches(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_file_transfer_batches_server_status_created ON file_transfer_batches(server_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfer_batches_runtime_profile_status_created ON file_transfer_batches(runtime_profile_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_created ON file_transfers(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_file_transfers_server_status_created ON file_transfers(server_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_runtime_profile_status_created ON file_transfers(runtime_profile_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_direction_created ON file_transfers(direction, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_status_created ON file_transfers(status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_batch_queue ON file_transfers(batch_id, queue_index, id);`,
@@ -348,7 +351,7 @@ var indexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_status_created ON history_entries(status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_target_created ON history_entries(target_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_profile_created ON history_entries(profile_id, created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_history_entries_server_created ON history_entries(server_id, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_history_entries_runtime_profile_created ON history_entries(runtime_profile_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_source_created ON history_entries(source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entry_labels_label ON history_entry_labels(label_id);`,
 }
@@ -388,13 +391,13 @@ var searchIndexStatements = []string{
 
 var historyProjectionStatements = []string{
 	`INSERT OR IGNORE INTO history_entries (
-		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, server_id,
+		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_profile_id,
 		target_id, profile_id, target_name, profile_label, source, status, action_name,
 		title, summary, input_text, output_text, error, exit_code, approval_required,
 		user_note, created_at, started_at, completed_at, updated_at
 	)
 	SELECT
-		'command_request', cr.id, 'ssh', 'command', cr.token_id, cr.server_id,
+		'command_request', cr.id, COALESCE(cp.connector_kind, ''), 'command', cr.token_id, cr.runtime_profile_id,
 		ct.id, cp.id, COALESCE(ct.name, ''), COALESCE(cp.label, ''), cr.source, cr.status, 'exec',
 		CASE
 			WHEN length(cr.command) > 120 THEN substr(cr.command, 1, 117) || '...'
@@ -415,34 +418,34 @@ var historyProjectionStatements = []string{
 		cr.completed_at,
 		COALESCE(cr.completed_at, cr.created_at)
 	FROM command_requests cr
-	LEFT JOIN connector_credential_profiles cp ON cp.id = cr.server_id
+	LEFT JOIN connector_credential_profiles cp ON cp.id = cr.runtime_profile_id
 	LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind;`,
 	`INSERT OR IGNORE INTO history_entries (
 		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, target_id,
 		profile_id, target_name, profile_label, source, status, action_name, title, summary,
-		input_json, output_text, output_json, error, approval_required, created_at,
+		preview_json, input_json, output_text, output_json, error, approval_required, created_at,
 		completed_at, updated_at
 	)
 	SELECT
 		'connector_action_request', r.id, r.connector_kind, 'action', r.token_id, r.target_id,
 		r.profile_id, t.name, p.label, COALESCE(NULLIF(r.source, ''), 'mcp'),
 		CASE WHEN r.status = 'approval_pending' THEN 'pending_approval' ELSE r.status END,
-		r.action_name, r.action_name,
-		r.reason, r.input_json, r.display_text, r.output_json, r.error,
+		r.action_name, COALESCE(NULLIF(r.title, ''), r.action_name),
+		COALESCE(NULLIF(r.summary, ''), r.reason), r.preview_json, r.input_json, r.display_text, r.output_json, r.error,
 		CASE WHEN r.status = 'approval_pending' THEN 1 ELSE 0 END,
 		r.created_at, r.completed_at, COALESCE(r.completed_at, r.created_at)
 	FROM connector_action_requests r
 	JOIN connector_targets t ON t.id = r.target_id
 	JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id AND p.connector_kind = r.connector_kind;`,
 	`INSERT OR IGNORE INTO history_entries (
-		source_ref_type, source_ref_id, connector_kind, activity_type, server_id, target_id,
+		source_ref_type, source_ref_id, connector_kind, activity_type, runtime_profile_id, target_id,
 		profile_id, target_name, profile_label, source, status, action_name, title, summary,
 		input_text, input_json, output_text, error, progress_current, progress_total,
 		bytes_done, bytes_total, approval_required, created_at, started_at, completed_at,
 		updated_at
 	)
 	SELECT
-		'file_transfer', ft.id, 'ssh', 'file_transfer', ft.server_id, ct.id, cp.id,
+		'file_transfer', ft.id, COALESCE(cp.connector_kind, ''), 'file_transfer', ft.runtime_profile_id, ct.id, cp.id,
 		COALESCE(ct.name, ''), COALESCE(cp.label, ''), ft.source, ft.status, ft.direction,
 		ft.direction || ': ' || ft.file_name,
 		ft.remote_path,
@@ -463,7 +466,7 @@ var historyProjectionStatements = []string{
 		ft.completed_at,
 		ft.updated_at
 	FROM file_transfers ft
-	LEFT JOIN connector_credential_profiles cp ON cp.id = ft.server_id
+	LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id
 	LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind;`,
 }
 
@@ -533,8 +536,12 @@ func rejectUnsupportedPreviewSchema(database *sql.DB) error {
 		return fmt.Errorf("read schema migration count: %w", err)
 	}
 	if migrationCount == 0 {
-		if schemaTableExists(database, "servers") || schemaTableExists(database, "token_server_permissions") {
-			return fmt.Errorf("database uses a pre-0.2 preview schema; create a fresh 0.2 database or migrate with a one-time import tool")
+		hasExistingSchema, err := hasPreexistingApplicationSchema(database)
+		if err != nil {
+			return err
+		}
+		if hasExistingSchema {
+			return fmt.Errorf("database uses an unsupported pre-0.2 or non-baseline schema; create a fresh 0.2 database or migrate with a one-time import tool")
 		}
 		return nil
 	}
@@ -548,7 +555,7 @@ func rejectUnsupportedPreviewSchema(database *sql.DB) error {
 		return fmt.Errorf("read connector-native baseline migration: %w", err)
 	}
 	if baselineDescription != connectorNativeBaselineDescription {
-		return fmt.Errorf("database uses a pre-0.2 preview schema; create a fresh 0.2 database or migrate with a one-time import tool")
+		return fmt.Errorf("database uses an unsupported pre-0.2 or non-baseline schema; create a fresh 0.2 database or migrate with a one-time import tool")
 	}
 
 	var maxVersion int
@@ -561,10 +568,19 @@ func rejectUnsupportedPreviewSchema(database *sql.DB) error {
 	return nil
 }
 
-func schemaTableExists(database *sql.DB, name string) bool {
+func hasPreexistingApplicationSchema(database *sql.DB) (bool, error) {
 	var count int
-	err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&count)
-	return err == nil && count > 0
+	err := database.QueryRow(`
+		SELECT COUNT(*)
+		FROM sqlite_master
+		WHERE type = 'table'
+			AND name NOT IN ('schema_migrations')
+			AND name NOT LIKE 'sqlite_%'
+	`).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("inspect existing schema: %w", err)
+	}
+	return count > 0, nil
 }
 
 func runSchemaMigrations(database *sql.DB) error {

@@ -26,7 +26,7 @@ func newLockedAPITestServer(t *testing.T) *Server {
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
-	})
+	}, WithConnectorRegistry(testConnectorRegistry(t)))
 }
 
 func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
@@ -447,7 +447,7 @@ func TestLockPromotesRemainingUnlockedWorkspaceForMCP(t *testing.T) {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
 	runtime := server.activeRuntime()
-	target := createTestSSHConnectorProfile(t, runtime.database, runtime.sshKeys, "worker-1")
+	target := createTestSSHConnectorProfile(t, runtime.database, testSSHKeyStore(t, runtime), "worker-1")
 	token, err := runtime.tokens.Create(t.Context(), tokens.CreateRequest{Name: "agent"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)
@@ -553,7 +553,7 @@ func TestLockMarksRunningCommandRequestsAsError(t *testing.T) {
 	}
 
 	runtime := server.activeRuntime()
-	target := createTestSSHConnectorProfile(t, runtime.database, runtime.sshKeys, "worker-1")
+	target := createTestSSHConnectorProfile(t, runtime.database, testSSHKeyStore(t, runtime), "worker-1")
 	token, err := runtime.tokens.Create(t.Context(), tokens.CreateRequest{Name: "agent"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)

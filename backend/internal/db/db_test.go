@@ -67,14 +67,10 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !columnExists(t, database, "command_requests", "output_truncated") {
 		t.Fatalf("command_requests.output_truncated column was not created")
 	}
-	if !columnExists(t, database, "command_requests", "approval_context") {
-		t.Fatalf("command_requests.approval_context column was not created")
-	}
-	if !columnExists(t, database, "command_requests", "approval_context_hash") {
-		t.Fatalf("command_requests.approval_context_hash column was not created")
-	}
-	if !columnExists(t, database, "command_requests", "approval_context_drift") {
-		t.Fatalf("command_requests.approval_context_drift column was not created")
+	for _, column := range []string{"approval_context", "approval_context_hash", "approval_context_drift"} {
+		if columnExists(t, database, "command_requests", column) {
+			t.Fatalf("command_requests.%s should not exist in connector-native baseline", column)
+		}
 	}
 	if !columnExists(t, database, "file_transfer_batches", "approval_note") {
 		t.Fatalf("file_transfer_batches.approval_note column was not created")
@@ -107,6 +103,14 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !columnExists(t, database, "connector_action_requests", "source") {
 		t.Fatalf("connector_action_requests.source column was not created")
 	}
+	for _, column := range []string{"title", "summary", "preview_json"} {
+		if !columnExists(t, database, "connector_action_requests", column) {
+			t.Fatalf("connector_action_requests.%s column was not created", column)
+		}
+	}
+	if !columnExists(t, database, "history_entries", "preview_json") {
+		t.Fatalf("history_entries.preview_json column was not created")
+	}
 	for _, column := range []string{"connector_kind", "target_id", "profile_id", "action_request_id"} {
 		if !columnExists(t, database, "audit_logs", column) {
 			t.Fatalf("audit_logs.%s column was not created", column)
@@ -118,11 +122,6 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	}
 	if strings.Contains(connectorTriggerSQL, "upload_files") {
 		t.Fatalf("ssh permission mirror trigger should not create unsupported upload_files action:\n%s", connectorTriggerSQL)
-	}
-	for _, retiredTable := range []string{"servers", "token_server_permissions", "ssh_connector_profile_runtimes"} {
-		if tableExists(t, database, retiredTable) {
-			t.Fatalf("retired table %s should not be created in the connector-native schema", retiredTable)
-		}
 	}
 	var foreignKeys int
 	if err := database.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
@@ -167,7 +166,7 @@ func TestOpenEncryptedRejectsPre02PreviewSchema(t *testing.T) {
 		_ = reopened.Close()
 		t.Fatalf("expected pre-0.2 preview database to be rejected")
 	}
-	if !strings.Contains(err.Error(), "pre-0.2 preview schema") {
+	if !strings.Contains(err.Error(), "pre-0.2") {
 		t.Fatalf("expected pre-0.2 error, got %v", err)
 	}
 }
@@ -349,7 +348,7 @@ func TestFTS4SearchIndexesTrackHistoryAndAuditRows(t *testing.T) {
 
 	_, profileID := insertConnectorTargetAndProfile(t, database)
 	result, err := database.Exec(`
-		INSERT INTO command_requests (server_id, command, reason, status, stdout, stderr, created_at)
+		INSERT INTO command_requests (runtime_profile_id, command, reason, status, stdout, stderr, created_at)
 		VALUES (?, 'docker ps', 'inspect containers', 'completed', 'nginx container output', '', datetime('now'))`,
 		profileID,
 	)
@@ -369,7 +368,7 @@ func TestFTS4SearchIndexesTrackHistoryAndAuditRows(t *testing.T) {
 	assertFTSMatchCount(t, database, "command_requests_fts", "nginx", 0)
 
 	if _, err := database.Exec(`
-		INSERT INTO audit_logs (actor_type, server_id, action, payload_json, created_at)
+		INSERT INTO audit_logs (actor_type, runtime_profile_id, action, payload_json, created_at)
 		VALUES ('user', 1, 'docker.audit', '{"detail":"image scan finished"}', datetime('now'))`,
 	); err != nil {
 		t.Fatalf("insert audit log: %v", err)

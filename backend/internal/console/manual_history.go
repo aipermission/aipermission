@@ -399,7 +399,7 @@ func classifyManualCommandReason(command string) string {
 		}
 	case "top", "htop", "btop", "less", "more", "man", "watch":
 		return "interactive_tui"
-	case "ssh", "sftp", "ftp", "telnet", "mosh", "tmux", "screen":
+	case "ftp", "telnet", "mosh", "tmux", "screen":
 		return "nested_shell"
 	case "tail":
 		if containsField(fields[1:], "-f") || containsField(fields[1:], "--follow") {
@@ -503,9 +503,9 @@ func (s *managedConsoleSession) insertManualCommand(command manualCommandRecord)
 	}
 	trackingReason := s.manager.redactText(command.TrackingReason)
 	result, err := s.manager.db.ExecContext(context.Background(), `
-		INSERT INTO command_requests (server_id, source, command, encrypted_command, reason, status, tracking_reason, stdout, stderr, session_id, created_at, completed_at)
+		INSERT INTO command_requests (runtime_profile_id, source, command, encrypted_command, reason, status, tracking_reason, stdout, stderr, session_id, created_at, completed_at)
 		VALUES (?, 'manual', ?, '', ?, ?, ?, '', '', ?, ?, ?)`,
-		s.serverID,
+		s.runtimeProfileID,
 		storedCommand,
 		storedReason,
 		status,

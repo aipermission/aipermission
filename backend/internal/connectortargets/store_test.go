@@ -379,6 +379,9 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 		ProfileID:            profile.ID,
 		ConnectorKind:        "postgres",
 		ActionName:           "query_readonly",
+		Title:                "Run Postgres read-only query",
+		Summary:              "Run a bounded read-only SQL query",
+		Preview:              map[string]any{"sql": "select 1", "max_rows": 10},
 		Input:                map[string]any{"sql": "select 1", "max_rows": 10},
 		EncryptedPayloadJSON: "encrypted-payload",
 		Reason:               "smoke",
@@ -403,6 +406,9 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	}
 	if request.Input["sql"] != "select 1" || request.EncryptedPayloadJSON != "encrypted-payload" {
 		t.Fatalf("unexpected request payload fields: %#v", request)
+	}
+	if request.Title != "Run Postgres read-only query" || request.Summary != "Run a bounded read-only SQL query" || request.Preview["sql"] != "select 1" {
+		t.Fatalf("unexpected request display metadata: %#v", request)
 	}
 	if output, ok := request.Output.(map[string]any); !ok || len(output) != 0 {
 		t.Fatalf("new request output should be empty object, got %#v", request.Output)
@@ -511,6 +517,7 @@ func TestStoreDeleteTargetArchivesAndPreservesActionRequests(t *testing.T) {
 	if len(permissions) != 0 {
 		t.Fatalf("permissions for archived target should be hidden, got %#v", permissions)
 	}
+	assertPermissionRows(t, database, target.ID, profile.ID, 0)
 	got, err := store.GetActionRequest(ctx, request.ID)
 	if err != nil {
 		t.Fatalf("history request should remain readable: %v", err)
@@ -533,6 +540,15 @@ func TestStoreDeleteCredentialProfileArchivesAndPreservesActionRequests(t *testi
 	ctx := context.Background()
 	tokenID := insertConnectorTestToken(t, database)
 	target, profile := createPostgresTargetProfile(t, ctx, store)
+	if err := store.SetActionPermission(ctx, SetActionPermissionInput{
+		TokenID:       tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "query_readonly",
+		ExecutionRule: ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("set permission: %v", err)
+	}
 	request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
 		TokenID:       &tokenID,
 		TargetID:      target.ID,
@@ -556,6 +572,7 @@ func TestStoreDeleteCredentialProfileArchivesAndPreservesActionRequests(t *testi
 	if len(profiles) != 0 {
 		t.Fatalf("archived profile should be hidden, got %#v", profiles)
 	}
+	assertPermissionRows(t, database, target.ID, profile.ID, 0)
 	got, err := store.GetActionRequest(ctx, request.ID)
 	if err != nil {
 		t.Fatalf("history request should remain readable: %v", err)
@@ -572,6 +589,23 @@ func TestStoreDeleteCredentialProfileArchivesAndPreservesActionRequests(t *testi
 		EncryptedSecretJSON: "encrypted-secret-v2",
 	}); err != nil {
 		t.Fatalf("active profile label should be reusable after archive: %v", err)
+	}
+}
+
+func assertPermissionRows(t *testing.T, database *sql.DB, targetID int64, profileID int64, want int) {
+	t.Helper()
+	var count int
+	if err := database.QueryRow(`
+		SELECT COUNT(*)
+		FROM token_connector_action_permissions
+		WHERE target_id = ? AND profile_id = ?`,
+		targetID,
+		profileID,
+	).Scan(&count); err != nil {
+		t.Fatalf("count permission rows: %v", err)
+	}
+	if count != want {
+		t.Fatalf("permission row count = %d, want %d", count, want)
 	}
 }
 

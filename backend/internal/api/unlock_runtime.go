@@ -11,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -103,19 +102,19 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		return nil, err
 	}
 	runtime := &databaseRuntime{
-		id:               id,
-		path:             path,
-		gatewaySecret:    gatewaySecret,
-		database:         database,
-		vault:            secretVault,
-		sshKeys:          sshkeys.NewStore(database, secretVault),
-		tokens:           tokens.NewStore(database, secretVault),
-		registry:         s.connectorRegistry(),
-		fileTransfers:    filetransfer.NewStore(database),
-		transferCancels:  map[int64]context.CancelFunc{},
-		batchCancels:     map[int64]context.CancelFunc{},
-		transferControls: map[int64]*transferControl{},
-		batchControls:    map[int64]*transferControl{},
+		id:                 id,
+		path:               path,
+		gatewaySecret:      gatewaySecret,
+		database:           database,
+		vault:              secretVault,
+		tokens:             tokens.NewStore(database, secretVault),
+		registry:           s.connectorRegistry(),
+		connectorResources: connectorRuntimeResources(s.connectorRegistry(), database, secretVault),
+		fileTransfers:      filetransfer.NewStore(database),
+		transferCancels:    map[int64]context.CancelFunc{},
+		batchCancels:       map[int64]context.CancelFunc{},
+		transferControls:   map[int64]*transferControl{},
+		batchControls:      map[int64]*transferControl{},
 	}
 	settings, err := readSecuritySettingsFromDB(context.Background(), runtime)
 	if err != nil {
@@ -125,7 +124,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 	runtime.mcpStarted = settings.MCPStartEnabled
 	runtime.securitySettings = settings
 	runtime.securityLoaded = true
-	runtime.consoleSessions = console.NewManager(database, s.serverSSHMaterialForRuntime(runtime), s.knownHostsPath(), s.runtimeRedactor(runtime))
+	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	return runtime, nil
 }
 
@@ -201,7 +200,6 @@ func (s *Server) closeActiveRuntimeLocked(promote bool) {
 	}
 	s.database = nil
 	s.vault = nil
-	s.sshKeys = nil
 	s.tokens = nil
 	if promote {
 		for _, runtime := range s.workspaces {
@@ -229,7 +227,6 @@ func (s *Server) closeAllUnlockedResources() {
 	s.workspaces = map[string]*databaseRuntime{}
 	s.database = nil
 	s.vault = nil
-	s.sshKeys = nil
 	s.tokens = nil
 }
 
@@ -243,7 +240,6 @@ func (s *Server) closeRuntimeByIDLocked(id string) {
 	if s.activeDatabase == id {
 		s.database = nil
 		s.vault = nil
-		s.sshKeys = nil
 		s.tokens = nil
 	}
 }
@@ -278,7 +274,6 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 	if runtime == nil {
 		s.database = nil
 		s.vault = nil
-		s.sshKeys = nil
 		s.tokens = nil
 		return
 	}
@@ -289,7 +284,6 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 	}
 	s.database = runtime.database
 	s.vault = runtime.vault
-	s.sshKeys = runtime.sshKeys
 	s.tokens = runtime.tokens
 }
 

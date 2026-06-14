@@ -1,112 +1,102 @@
 package api
 
 import (
-	"context"
-	"net/http"
-	"strings"
-
-	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-type connectorRuntimeAdapter interface {
-	RuntimeServices(server *Server, runtime *databaseRuntime) map[string]any
-	SupportsRunning(prepared actions.PreparedRequest) bool
-	FinishRunning(server *Server, runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest)
-	RunningHint(request connectortargets.ActionRequest) string
+func connectorAPIAdapterFor(kind string) connectorapi.Adapter {
+	return connectorapi.For(kind)
 }
 
-type connectorLiveConsoleAdapter interface {
-	LiveConsoleActionName() string
-}
-
-type connectorDraftTester interface {
-	TestDraft(handler connectorTargetHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, request createConnectorTargetRequest)
-}
-
-type connectorTargetDeleter interface {
-	DeleteTarget(handler connectorTargetHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectortargets.Target)
-}
-
-type connectorCredentialProfileLifecycleAdapter interface {
-	BeforeCreateCredentialProfile(ctx context.Context, runtime *databaseRuntime, store *connectortargets.Store, target connectortargets.Target) error
-	BeforeDeleteCredentialProfile(ctx context.Context, handler connectorTargetHandlers, runtime *databaseRuntime, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error
-}
-
-type connectorCredentialProfileTester interface {
-	TestCredentialProfile(handler connectorTargetHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectors.TargetView, profile connectors.CredentialProfileView)
-}
-
-type connectorTargetOperationRunner interface {
-	RunTargetOperation(handler connectorTargetHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectortargets.Target, operation string)
-}
-
-type connectorCredentialCanonicalizer interface {
-	CanonicalCredentialPublic(ctx context.Context, handler connectorTargetHandlers, runtime *databaseRuntime, credentialKind string, public map[string]any) (map[string]any, error)
-}
-
-type connectorLiveConsoleTargetAdapter interface {
-	LiveConsoleProfileID(profileID int64) int64
-	LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any
-}
-
-type connectorCredentialResourceAdapter interface {
-	ListCredentialResources(handler credentialHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime)
-	CreateCredentialResource(handler credentialHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime)
-	ImportCredentialResource(handler credentialHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime)
-	GetCredentialResource(handler credentialHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime)
-	UpdateCredentialResource(handler credentialHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime)
-	DeleteCredentialResource(handler credentialHandlers, w http.ResponseWriter, r *http.Request, runtime *databaseRuntime)
-}
-
-type connectorAPIAdapter interface{}
-
-var connectorAPIAdapters = map[string]connectorAPIAdapter{
-	sshconnector.Kind: sshRuntimeAdapter{},
-}
-
-func connectorAPIAdapterFor(kind string) connectorAPIAdapter {
-	return connectorAPIAdapters[strings.TrimSpace(kind)]
-}
-
-func connectorRuntimeAdapterFor(kind string) connectorRuntimeAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorRuntimeAdapter)
+func connectorRuntimeAdapterFor(kind string) connectorapi.RuntimeAdapter {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.RuntimeAdapter)
 	return adapter
 }
 
-func connectorDraftTesterFor(kind string) connectorDraftTester {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorDraftTester)
+func connectorRuntimeServices(kind string, server *Server, runtime *databaseRuntime) map[string]any {
+	adapter := connectorRuntimeAdapterFor(kind)
+	if adapter == nil {
+		return nil
+	}
+	return adapter.RuntimeServices(server, runtime)
+}
+
+func registerConnectorAdapterRoutes(mux any, server *Server) {
+	for _, info := range server.connectorRegistry().List() {
+		adapter, _ := connectorAPIAdapterFor(info.Kind).(connectorapi.RouteRegistrar)
+		if adapter != nil {
+			adapter.RegisterRoutes(mux, server)
+		}
+	}
+}
+
+func connectorRuntimeResources(registrySource *connectors.Registry, database any, vault any) map[string]any {
+	resources := map[string]any{}
+	if registrySource == nil {
+		return resources
+	}
+	for _, info := range registrySource.List() {
+		provider, _ := connectorAPIAdapterFor(info.Kind).(connectorapi.RuntimeResourceProvider)
+		if provider == nil {
+			continue
+		}
+		for name, value := range provider.RuntimeResources(database, vault) {
+			if name == "" || value == nil {
+				continue
+			}
+			resources[info.Kind+"/"+name] = value
+		}
+	}
+	return resources
+}
+
+func connectorDraftTesterFor(kind string) connectorapi.DraftTester {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.DraftTester)
 	return adapter
 }
 
-func connectorTargetDeleterFor(kind string) connectorTargetDeleter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorTargetDeleter)
+func connectorTargetDeleterFor(kind string) connectorapi.TargetDeleter {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.TargetDeleter)
 	return adapter
 }
 
-func connectorCredentialProfileLifecycleAdapterFor(kind string) connectorCredentialProfileLifecycleAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorCredentialProfileLifecycleAdapter)
+func connectorCredentialProfileLifecycleAdapterFor(kind string) connectorapi.CredentialProfileLifecycleAdapter {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CredentialProfileLifecycleAdapter)
 	return adapter
 }
 
-func connectorCredentialProfileTesterFor(kind string) connectorCredentialProfileTester {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorCredentialProfileTester)
+func connectorCredentialProfileTesterFor(kind string) connectorapi.CredentialProfileTester {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CredentialProfileTester)
 	return adapter
 }
 
-func connectorTargetOperationRunnerFor(kind string) connectorTargetOperationRunner {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorTargetOperationRunner)
+func connectorTargetOperationRunnerFor(kind string) connectorapi.TargetOperationRunner {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.TargetOperationRunner)
 	return adapter
 }
 
-func connectorCredentialCanonicalizerFor(kind string) connectorCredentialCanonicalizer {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorCredentialCanonicalizer)
+func connectorCredentialCanonicalizerFor(kind string) connectorapi.CredentialCanonicalizer {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CredentialCanonicalizer)
 	return adapter
 }
 
-func connectorLiveConsoleTargetAdapterFor(kind string) connectorLiveConsoleTargetAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorLiveConsoleTargetAdapter)
+func connectorLiveConsoleTargetAdapterFor(kind string) connectorapi.LiveConsoleTargetAdapter {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.LiveConsoleTargetAdapter)
+	return adapter
+}
+
+func connectorLiveConsoleTransportAdapterFor(kind string) connectorapi.LiveConsoleTransportAdapter {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.LiveConsoleTransportAdapter)
+	return adapter
+}
+
+func connectorFileTransferAdapterFor(kind string) connectorapi.FileTransferAdapter {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.FileTransferAdapter)
+	return adapter
+}
+
+func connectorCredentialResourceAdapterFor(kind string) connectorapi.CredentialResourceAdapter {
+	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CredentialResourceAdapter)
 	return adapter
 }

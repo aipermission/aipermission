@@ -70,34 +70,44 @@ type OutputHint struct {
 // deep semantic validation, while core enforces required fields, unknown fields,
 // primitive types, and select options.
 func ValidateSchemaValues(schema Schema, values map[string]any) error {
+	_, err := NormalizeSchemaValues(schema, values)
+	return err
+}
+
+// NormalizeSchemaValues validates and returns a canonical copy of connector
+// values. It keeps JSON persistence and approval-context hashes stable when
+// equivalent clients send primitive values in different representations.
+func NormalizeSchemaValues(schema Schema, values map[string]any) (map[string]any, error) {
 	if values == nil {
 		values = map[string]any{}
 	}
 	fields := map[string]Field{}
 	for _, field := range schema.Fields {
 		if strings.TrimSpace(field.Name) == "" {
-			return fmt.Errorf("connector schema contains a field without a name")
+			return nil, fmt.Errorf("connector schema contains a field without a name")
 		}
 		fields[field.Name] = field
 	}
 	for name := range values {
 		if _, ok := fields[name]; !ok {
-			return fmt.Errorf("unsupported field %q", name)
+			return nil, fmt.Errorf("unsupported field %q", name)
 		}
 	}
+	normalized := map[string]any{}
 	for _, field := range schema.Fields {
 		value, ok := values[field.Name]
 		if (!ok || emptySchemaValue(value)) && field.Required && field.Default == nil {
-			return fmt.Errorf("%s is required", field.Name)
+			return nil, fmt.Errorf("%s is required", field.Name)
 		}
 		if !ok || emptySchemaValue(value) {
 			continue
 		}
 		if err := validateFieldValue(field, value); err != nil {
-			return err
+			return nil, err
 		}
+		normalized[field.Name] = normalizeFieldValue(field, value)
 	}
-	return nil
+	return normalized, nil
 }
 
 func SchemaContainsSecret(schema Schema) bool {
@@ -295,6 +305,17 @@ func validateFieldValue(field Field, value any) error {
 	return nil
 }
 
+func normalizeFieldValue(field Field, value any) any {
+	if field.Type != FieldNumber {
+		return value
+	}
+	number, ok := normalizeNumberValue(value)
+	if !ok {
+		return value
+	}
+	return number
+}
+
 func emptySchemaValue(value any) bool {
 	if value == nil {
 		return true
@@ -304,19 +325,46 @@ func emptySchemaValue(value any) bool {
 }
 
 func schemaNumber(value any) bool {
+	_, ok := normalizeNumberValue(value)
+	return ok
+}
+
+func normalizeNumberValue(value any) (float64, bool) {
 	switch typed := value.(type) {
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-		return true
+	case int:
+		return float64(typed), true
+	case int8:
+		return float64(typed), true
+	case int16:
+		return float64(typed), true
+	case int32:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case uint:
+		return float64(typed), true
+	case uint8:
+		return float64(typed), true
+	case uint16:
+		return float64(typed), true
+	case uint32:
+		return float64(typed), true
+	case uint64:
+		return float64(typed), true
+	case float32:
+		return float64(typed), true
+	case float64:
+		return typed, true
 	case json.Number:
-		_, err := typed.Float64()
-		return err == nil
+		parsed, err := typed.Float64()
+		return parsed, err == nil
 	case string:
 		if strings.TrimSpace(typed) == "" {
-			return false
+			return 0, false
 		}
-		_, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
-		return err == nil
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return parsed, err == nil
 	default:
-		return false
+		return 0, false
 	}
 }

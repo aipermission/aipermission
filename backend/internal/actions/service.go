@@ -18,7 +18,7 @@ var (
 // selected credential profile used for a connector action.
 //
 // Refs include the connector kind, target id, and credential profile id, for
-// example "ssh:12:3" or "postgres:7:11".
+// example "postgres:7:11" or "redis:12:3".
 type TargetResolver interface {
 	ResolveActionTarget(ctx context.Context, targetRef string) (ResolvedTarget, error)
 }
@@ -93,9 +93,11 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 	if connectors.SchemaContainsSecret(actionDefinition.InputSchema) {
 		return PreparedRequest{}, fmt.Errorf("connector action input schema %q includes secret fields; store secrets in credential profiles instead", request.ActionName)
 	}
-	if err := connectors.ValidateSchemaValues(actionDefinition.InputSchema, request.Input); err != nil {
+	input, err := connectors.NormalizeSchemaValues(actionDefinition.InputSchema, request.Input)
+	if err != nil {
 		return PreparedRequest{}, err
 	}
+	request.Input = input
 
 	createdAt := request.CreatedAt
 	if createdAt.IsZero() {

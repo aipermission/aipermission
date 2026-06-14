@@ -13,22 +13,22 @@ import (
 )
 
 type commandRequestInsert struct {
-	TokenID  *int64
-	ServerID int64
-	Source   string
-	Command  string
-	Reason   string
-	Status   string
+	TokenID          *int64
+	RuntimeProfileID int64
+	Source           string
+	Command          string
+	Reason           string
+	Status           string
 }
 
-func (s *Server) insertCommandRequest(ctx context.Context, runtime *databaseRuntime, tokenID int64, serverID int64, command string, reason string, status string) (int64, error) {
+func (s *Server) insertCommandRequest(ctx context.Context, runtime *databaseRuntime, tokenID int64, runtimeProfileID int64, command string, reason string, status string) (int64, error) {
 	return s.insertCommandRequestWithOptions(ctx, runtime, commandRequestInsert{
-		TokenID:  &tokenID,
-		ServerID: serverID,
-		Source:   commandRequestSourceMCP,
-		Command:  command,
-		Reason:   reason,
-		Status:   status,
+		TokenID:          &tokenID,
+		RuntimeProfileID: runtimeProfileID,
+		Source:           commandRequestSourceMCP,
+		Command:          command,
+		Reason:           reason,
+		Status:           status,
 	})
 }
 
@@ -44,17 +44,15 @@ func (s *Server) insertCommandRequestWithOptions(ctx context.Context, runtime *d
 	storedCommand := s.redactForPersistence(ctx, runtime, request.Command)
 	storedReason := s.redactForPersistence(ctx, runtime, request.Reason)
 	result, err := runtime.database.ExecContext(ctx, `
-		INSERT INTO command_requests (token_id, server_id, source, command, encrypted_command, reason, status, approval_context, approval_context_hash, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO command_requests (token_id, runtime_profile_id, source, command, encrypted_command, reason, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableInt64(request.TokenID),
-		request.ServerID,
+		request.RuntimeProfileID,
 		request.Source,
 		storedCommand,
 		encryptedCommand,
 		storedReason,
 		request.Status,
-		"",
-		"",
 		now,
 	)
 	if err != nil {
@@ -68,14 +66,6 @@ func (s *Server) insertCommandRequestWithOptions(ctx context.Context, runtime *d
 		return 0, err
 	}
 	return id, nil
-}
-
-func (s *Server) commandRequestApprovalContextHash(ctx context.Context, runtime *databaseRuntime, id int64) string {
-	var value string
-	if err := runtime.database.QueryRowContext(ctx, `SELECT approval_context_hash FROM command_requests WHERE id = ?`, id).Scan(&value); err != nil {
-		return ""
-	}
-	return value
 }
 
 func (s *Server) commandRequestExecutionCommand(ctx context.Context, runtime *databaseRuntime, id int64) (string, error) {
@@ -103,13 +93,13 @@ func (s *Server) commandRequestExecutionCommand(ctx context.Context, runtime *da
 	return command, nil
 }
 
-func (s *Server) finishActiveCommandRequest(runtime *databaseRuntime, requestID int64, serverID int64) {
+func (s *Server) finishActiveCommandRequest(runtime *databaseRuntime, requestID int64, runtimeProfileID int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), mcpBackgroundCommandTimeout)
 	defer cancel()
-	result, err := runtime.consoleSessions.WaitActive(ctx, serverID)
+	result, err := runtime.consoleSessions.WaitActive(ctx, runtimeProfileID)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			_ = runtime.consoleSessions.InterruptActive(context.Background(), serverID)
+			_ = runtime.consoleSessions.InterruptActive(context.Background(), runtimeProfileID)
 			_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, "command timed out while running in background")
 			return
 		}
@@ -244,11 +234,11 @@ func (s *Server) cancelRunningCommandRequestsForSession(ctx context.Context, run
 	return s.syncCommandRequestIDs(ctx, runtime, ids)
 }
 
-func (s *Server) cancelRunningCommandRequestsForServer(ctx context.Context, runtime *databaseRuntime, serverID int64, errorText string) (int64, error) {
-	if runtime == nil || runtime.database == nil || serverID < 1 {
+func (s *Server) cancelRunningCommandRequestsForServer(ctx context.Context, runtime *databaseRuntime, runtimeProfileID int64, errorText string) (int64, error) {
+	if runtime == nil || runtime.database == nil || runtimeProfileID < 1 {
 		return 0, nil
 	}
-	ids, err := s.commandRequestIDs(ctx, runtime, `status = 'running' AND server_id = ?`, serverID)
+	ids, err := s.commandRequestIDs(ctx, runtime, `status = 'running' AND runtime_profile_id = ?`, runtimeProfileID)
 	if err != nil {
 		return 0, err
 	}
@@ -257,10 +247,10 @@ func (s *Server) cancelRunningCommandRequestsForServer(ctx context.Context, runt
 	result, err := runtime.database.ExecContext(ctx, `
 		UPDATE command_requests
 		SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
-		WHERE status = 'running' AND server_id = ?`,
+		WHERE status = 'running' AND runtime_profile_id = ?`,
 		errorText,
 		now,
-		serverID,
+		runtimeProfileID,
 	)
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "database is closed") {
 		return 0, nil

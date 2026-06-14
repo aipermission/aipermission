@@ -14,8 +14,8 @@ func scanConsoleSession(scanner interface {
 	var closedAt sql.NullString
 	if err := scanner.Scan(
 		&item.ID,
-		&item.ServerID,
-		&item.ServerName,
+		&item.RuntimeProfileID,
+		&item.TargetName,
 		&item.Name,
 		&item.Status,
 		&item.Transcript,

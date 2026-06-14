@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -45,21 +43,6 @@ func parseInt64Query(w http.ResponseWriter, value string, name string) (int64, b
 	return id, true
 }
 
-func handleSSHKeyError(w http.ResponseWriter, err error) {
-	handleDomainError(w, err, httpDomainError{
-		NotFound:        sshkeys.ErrNotFound,
-		NotFoundMessage: "ssh key not found",
-		FailureMessage:  "ssh key operation failed",
-		Validation: func(err error) (string, bool) {
-			var validation sshkeys.ValidationError
-			if errors.As(err, &validation) {
-				return validation.Error(), true
-			}
-			return "", false
-		},
-	})
-}
-
 func handleTokenError(w http.ResponseWriter, err error) {
 	handleDomainError(w, err, httpDomainError{
 		NotFound:        tokens.ErrNotFound,
@@ -91,17 +74,6 @@ func handleDomainError(w http.ResponseWriter, err error, domain httpDomainError)
 		return
 	}
 	writeInternalError(w)
-}
-
-func handleServerSSHMaterialError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, connectortargets.ErrTargetProfileNotFound), errors.Is(err, connectortargets.ErrTargetNotFound):
-		writeError(w, http.StatusNotFound, "connector target profile not found")
-	case errors.Is(err, sshkeys.ErrNotFound):
-		handleSSHKeyError(w, err)
-	default:
-		writeInternalError(w)
-	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

@@ -9,16 +9,17 @@
 - workspace lock/unlock orchestration
 - thin calls into domain packages
 
-Do not put long-running runtime loops in this package. If code owns sockets, PTYs, SSH session lifecycle, or background goroutines, prefer a focused package such as `internal/console`.
+Do not put long-running runtime loops in this package. If code owns sockets, PTYs, connector session lifecycle, or background goroutines, prefer the relevant connector/runtime package and keep API handlers thin.
 
 Current contributor map:
 
 - `routes.go`: route surface, handler group wiring, and health/status handlers
 - `http_boundary.go`, `http_security.go`, `ui_session.go`: local browser trust boundary
 - `unlock*.go`, `databases.go`: encrypted database and workspace lifecycle
-- `mcp*.go`: MCP auth, execution, request persistence, and response shaping
+- `mcp*.go`: MCP auth, connector tool endpoints, and response shaping
+- `command_request*.go`: live-console command tracking and detail queries for UI-origin console flows
 - `*_handlers.go`: REST handlers for one resource family
-- `messages.go`, `approvals.go`, `audit.go`, `retention.go`: cross-cutting user workflow APIs
+- `messages.go`, `connector_action_approvals.go`, `audit.go`, `retention.go`: cross-cutting user workflow APIs
 
 When adding behavior, start with a small file named after the workflow. If the behavior grows beyond HTTP handling, introduce or reuse a domain package and keep the handler thin.
 
