@@ -346,7 +346,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 }
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
-	executor, ok := runtime.Service(RuntimeServiceName).(RuntimeExecutor)
+	executor, ok := runtime.Capability(RuntimeServiceName).(RuntimeExecutor)
 	if !ok || executor == nil {
 		return connectors.ActionResult{}, ErrRuntimeUnavailable
 	}

@@ -57,14 +57,14 @@ func TestConsoleTranscriptLimitKeepsTail(t *testing.T) {
 func TestConsoleSessionManagerActiveForServerUsesNewestLiveSession(t *testing.T) {
 	manager := &Manager{
 		sessions: map[int64]*managedConsoleSession{
-			1: {id: 1, runtimeProfileID: 10, status: "connected"},
-			2: {id: 2, runtimeProfileID: 10, status: "closed"},
-			3: {id: 3, runtimeProfileID: 10, status: "connected"},
-			4: {id: 4, runtimeProfileID: 11, status: "connected"},
+			1: {id: 1, runtimeID: 10, status: "connected"},
+			2: {id: 2, runtimeID: 10, status: "closed"},
+			3: {id: 3, runtimeID: 10, status: "connected"},
+			4: {id: 4, runtimeID: 11, status: "connected"},
 		},
 	}
 
-	selected := manager.activeForRuntimeProfile(10)
+	selected := manager.activeForRuntime(10)
 	if selected == nil || selected.id != 3 {
 		t.Fatalf("expected newest live session 3, got %#v", selected)
 	}
@@ -76,7 +76,7 @@ func TestConsoleSessionManagerEnforcesActiveSessionLimit(t *testing.T) {
 		manager.sessions[int64(i+1)] = &managedConsoleSession{id: int64(i + 1), status: "connected"}
 	}
 
-	if _, err := manager.Create(context.Background(), CreateRequest{RuntimeProfileID: 1}); !errors.Is(err, ErrSessionLimit) {
+	if _, err := manager.Create(context.Background(), CreateRequest{RuntimeID: 1}); !errors.Is(err, ErrSessionLimit) {
 		t.Fatalf("expected session limit error, got %v", err)
 	}
 }
@@ -1178,14 +1178,14 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 		t.Fatalf("open test database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	runtimeProfileID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 23)
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 23)
 	manager := NewManager(database, func(context.Context, int64, int, int) (*RuntimeSession, error) {
 		return nil, errors.New("transport dial: dial tcp 127.0.0.1:23: connect: connection refused")
 	}, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	sessionID, err := manager.EnsureReady(ctx, runtimeProfileID)
+	sessionID, err := manager.EnsureReady(ctx, runtimeID)
 	if err == nil || !strings.Contains(err.Error(), "connection refused") {
 		t.Fatalf("expected connection error, session=%d err=%v", sessionID, err)
 	}
@@ -1198,18 +1198,18 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 	}
 }
 
-func TestConsoleSessionManagerListGetAndCloseRuntimeProfile(t *testing.T) {
+func TestConsoleSessionManagerListGetAndCloseRuntime(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	runtimeProfileID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
-		INSERT INTO console_sessions (runtime_profile_id, name, status, transcript, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_id, name, status, transcript, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 'hello', 120, 32, ?, ?)`,
-		runtimeProfileID,
+		runtimeID,
 		now,
 		now,
 	)
@@ -1222,7 +1222,7 @@ func TestConsoleSessionManagerListGetAndCloseRuntimeProfile(t *testing.T) {
 	}
 
 	manager := NewManager(database, nil, nil)
-	items, err := manager.List(context.Background(), runtimeProfileID)
+	items, err := manager.List(context.Background(), runtimeID)
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
@@ -1236,7 +1236,7 @@ func TestConsoleSessionManagerListGetAndCloseRuntimeProfile(t *testing.T) {
 	if item.ID != sessionID || item.Status != "connected" {
 		t.Fatalf("unexpected session: %#v", item)
 	}
-	if err := manager.CloseRuntimeProfile(context.Background(), runtimeProfileID); err != nil {
+	if err := manager.CloseRuntime(context.Background(), runtimeID); err != nil {
 		t.Fatalf("close server sessions: %v", err)
 	}
 	item, err = manager.Get(context.Background(), sessionID)
@@ -1255,11 +1255,11 @@ func TestConsoleTranscriptPersistsAppendOnlyChunksAndBoundedSnapshot(t *testing.
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	runtimeProfileID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
-		INSERT INTO console_sessions (runtime_profile_id, name, status, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_id, name, status, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 120, 32, ?, ?)`,
-		runtimeProfileID,
+		runtimeID,
 		now,
 		now,
 	)
@@ -1361,7 +1361,24 @@ func insertConsoleTestSSHProfile(t *testing.T, database *sql.DB, name string, ho
 	if err != nil {
 		t.Fatalf("read profile id: %v", err)
 	}
-	return profileID
+	surfaceResult, err := database.Exec(`
+		INSERT INTO connector_runtime_surfaces (
+			connector_kind, target_id, profile_id, capability_kind, label, created_at, updated_at
+		)
+		VALUES ('ssh', ?, ?, 'live_console', 'root terminal', ?, ?)`,
+		targetID,
+		profileID,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert runtime surface: %v", err)
+	}
+	runtimeID, err := surfaceResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("read runtime surface id: %v", err)
+	}
+	return runtimeID
 }
 
 func newManualHistoryTestSession(t *testing.T) (*sql.DB, *Manager, *managedConsoleSession) {
@@ -1372,11 +1389,11 @@ func newManualHistoryTestSession(t *testing.T) (*sql.DB, *Manager, *managedConso
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Now().UTC().Format(time.RFC3339)
-	runtimeProfileID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 22)
 	sessionResult, err := database.Exec(`
-		INSERT INTO console_sessions (runtime_profile_id, name, status, cols, rows, created_at, updated_at)
+		INSERT INTO console_sessions (runtime_id, name, status, cols, rows, created_at, updated_at)
 		VALUES (?, 'manual', 'connected', 120, 32, ?, ?)`,
-		runtimeProfileID,
+		runtimeID,
 		now,
 		now,
 	)
@@ -1389,11 +1406,11 @@ func newManualHistoryTestSession(t *testing.T) (*sql.DB, *Manager, *managedConso
 	}
 	manager := NewManager(database, nil, nil)
 	session := &managedConsoleSession{
-		id:               sessionID,
-		runtimeProfileID: runtimeProfileID,
-		manager:          manager,
-		status:           "connected",
-		clients:          map[*websocket.Conn]*sync.Mutex{},
+		id:        sessionID,
+		runtimeID: runtimeID,
+		manager:   manager,
+		status:    "connected",
+		clients:   map[*websocket.Conn]*sync.Mutex{},
 	}
 	return database, manager, session
 }
@@ -1478,9 +1495,9 @@ func insertStaleManualRunningRow(t *testing.T, database *sql.DB, session *manage
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := database.Exec(`
-		INSERT INTO command_requests (runtime_profile_id, source, command, reason, status, tracking_reason, session_id, created_at)
+		INSERT INTO command_requests (runtime_id, source, command, reason, status, tracking_reason, session_id, created_at)
 		VALUES (?, 'manual', ?, 'manual console command', 'running', 'manual_output_not_tracked', ?, ?)`,
-		session.runtimeProfileID,
+		session.runtimeID,
 		command,
 		session.id,
 		now,

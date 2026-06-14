@@ -26,13 +26,13 @@ func (s *Store) SyncCommandRequest(ctx context.Context, id int64) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO history_entries (
-			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_profile_id,
+			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_id,
 			target_id, profile_id, target_name, profile_label, source, status, action_name,
 			title, summary, input_text, output_text, error, exit_code, approval_required,
 			user_note, created_at, started_at, completed_at, updated_at
 		)
 		SELECT
-			?, cr.id, COALESCE(cp.connector_kind, ''), 'command', cr.token_id, cr.runtime_profile_id,
+			?, cr.id, COALESCE(rs.connector_kind, ''), 'command', cr.token_id, cr.runtime_id,
 			ct.id, cp.id, COALESCE(ct.name, ''), COALESCE(cp.label, ''), cr.source, cr.status, 'exec',
 			CASE
 				WHEN length(cr.command) > 120 THEN substr(cr.command, 1, 117) || '...'
@@ -53,12 +53,13 @@ func (s *Store) SyncCommandRequest(ctx context.Context, id int64) error {
 			cr.completed_at,
 			COALESCE(cr.completed_at, datetime('now'))
 		FROM command_requests cr
-		LEFT JOIN connector_credential_profiles cp ON cp.id = cr.runtime_profile_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = cr.runtime_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE cr.id = ?
 		ON CONFLICT(source_ref_type, source_ref_id) DO UPDATE SET
 			token_id = excluded.token_id,
-			runtime_profile_id = excluded.runtime_profile_id,
+			runtime_id = excluded.runtime_id,
 			target_id = excluded.target_id,
 			profile_id = excluded.profile_id,
 			target_name = excluded.target_name,
@@ -141,14 +142,14 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO history_entries (
-			source_ref_type, source_ref_id, connector_kind, activity_type, runtime_profile_id, target_id,
+			source_ref_type, source_ref_id, connector_kind, activity_type, runtime_id, target_id,
 			profile_id, target_name, profile_label, source, status, action_name, title, summary,
 			input_text, input_json, output_text, error, progress_current, progress_total,
 			bytes_done, bytes_total, approval_required, created_at, started_at, completed_at,
 			updated_at
 		)
 		SELECT
-			?, ft.id, COALESCE(cp.connector_kind, ''), 'file_transfer', ft.runtime_profile_id, ct.id, cp.id,
+			?, ft.id, COALESCE(rs.connector_kind, ''), 'file_transfer', ft.runtime_id, ct.id, cp.id,
 			COALESCE(ct.name, ''), COALESCE(cp.label, ''), ft.source, ft.status, ft.direction,
 			ft.direction || ': ' || ft.file_name,
 			ft.remote_path,
@@ -169,11 +170,12 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 			ft.completed_at,
 			ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.id = ?
 		ON CONFLICT(source_ref_type, source_ref_id) DO UPDATE SET
-			runtime_profile_id = excluded.runtime_profile_id,
+			runtime_id = excluded.runtime_id,
 			target_id = excluded.target_id,
 			profile_id = excluded.profile_id,
 			target_name = excluded.target_name,

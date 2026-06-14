@@ -16,13 +16,13 @@ const (
 )
 
 type commandRequestFilter struct {
-	TokenID          int64
-	Source           string
-	Status           string
-	RuntimeProfileID int64
-	Query            string
-	Limit            int
-	Offset           int
+	TokenID   int64
+	Source    string
+	Status    string
+	RuntimeID int64
+	Query     string
+	Limit     int
+	Offset    int
 }
 
 func requireAffected(result sql.Result) error {
@@ -37,13 +37,14 @@ func requireAffected(result sql.Result) error {
 }
 
 func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRuntime, filter commandRequestFilter) ([]commandRequestRecord, error) {
-	where := []string{"(? = '' OR cr.source = ?)", "(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.runtime_profile_id = ?)", "(? = '' OR cr.status = ?)"}
-	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.RuntimeProfileID, filter.RuntimeProfileID, filter.Status, filter.Status}
+	where := []string{"(? = '' OR cr.source = ?)", "(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.runtime_id = ?)", "(? = '' OR cr.status = ?)"}
+	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.RuntimeID, filter.RuntimeID, filter.Status, filter.Status}
 	query := `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.runtime_profile_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.runtime_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-			LEFT JOIN connector_credential_profiles cp ON cp.id = cr.runtime_profile_id
+			LEFT JOIN connector_runtime_surfaces rs ON rs.id = cr.runtime_id
+			LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE ` + strings.Join(where, " AND ") + `
@@ -70,8 +71,8 @@ func (s *Server) listCommandRequests(ctx context.Context, runtime *databaseRunti
 }
 
 func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *databaseRuntime, filter commandRequestFilter) ([]commandRequestRecord, int, error) {
-	where := []string{"(? = '' OR cr.source = ?)", "(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.runtime_profile_id = ?)", "(? = '' OR cr.status = ?)"}
-	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.RuntimeProfileID, filter.RuntimeProfileID, filter.Status, filter.Status}
+	where := []string{"(? = '' OR cr.source = ?)", "(? = 0 OR cr.token_id = ?)", "(? = 0 OR cr.runtime_id = ?)", "(? = '' OR cr.status = ?)"}
+	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.RuntimeID, filter.RuntimeID, filter.Status, filter.Status}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
 		if ftsQuery := buildFTSQuery(filter.Query); ftsQuery != "" {
@@ -87,7 +88,8 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 	if err := runtime.database.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM command_requests cr
-			LEFT JOIN connector_credential_profiles cp ON cp.id = cr.runtime_profile_id
+			LEFT JOIN connector_runtime_surfaces rs ON rs.id = cr.runtime_id
+			LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE `+whereSQL,
@@ -98,10 +100,11 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 
 	queryArgs := append(append([]any{}, args...), filter.Limit, filter.Offset)
 	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.runtime_profile_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.runtime_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, '' AS stdout, '' AS stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-			LEFT JOIN connector_credential_profiles cp ON cp.id = cr.runtime_profile_id
+			LEFT JOIN connector_runtime_surfaces rs ON rs.id = cr.runtime_id
+			LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE `+whereSQL+`
@@ -130,10 +133,11 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 
 func (s *Server) getCommandRequest(ctx context.Context, runtime *databaseRuntime, id int64, tokenID int64, source string) (commandRequestRecord, error) {
 	row := runtime.database.QueryRowContext(ctx, `
-		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.runtime_profile_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
+		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.runtime_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,
 		       cr.tracking_reason, cr.output_truncated, cr.stdout, cr.stderr, cr.exit_code, cr.session_id, cr.user_note, cr.error, cr.created_at, cr.completed_at
 		FROM command_requests cr
-			LEFT JOIN connector_credential_profiles cp ON cp.id = cr.runtime_profile_id
+			LEFT JOIN connector_runtime_surfaces rs ON rs.id = cr.runtime_id
+			LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		LEFT JOIN api_tokens tok ON tok.id = cr.token_id
 		WHERE cr.id = ? AND (? = '' OR cr.source = ?) AND (? = 0 OR cr.token_id = ?)`,
@@ -164,7 +168,7 @@ func scanCommandRequest(scanner interface {
 		&item.ID,
 		&tokenID,
 		&item.TokenName,
-		&item.RuntimeProfileID,
+		&item.RuntimeID,
 		&item.TargetName,
 		&item.Source,
 		&item.Command,

@@ -45,26 +45,26 @@ func (e InactiveError) Error() string {
 }
 
 type Record struct {
-	ID               int64   `json:"id"`
-	RuntimeProfileID int64   `json:"runtime_profile_id"`
-	TargetName       string  `json:"target_name"`
-	Name             string  `json:"name"`
-	Status           string  `json:"status"`
-	Transcript       string  `json:"transcript"`
-	Error            string  `json:"error"`
-	Cols             int     `json:"cols"`
-	Rows             int     `json:"rows"`
-	CreatedAt        string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
-	ClosedAt         *string `json:"closed_at"`
+	ID         int64   `json:"id"`
+	RuntimeID  int64   `json:"runtime_id"`
+	TargetName string  `json:"target_name"`
+	Name       string  `json:"name"`
+	Status     string  `json:"status"`
+	Transcript string  `json:"transcript"`
+	Error      string  `json:"error"`
+	Cols       int     `json:"cols"`
+	Rows       int     `json:"rows"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+	ClosedAt   *string `json:"closed_at"`
 }
 
 type CreateRequest struct {
-	RuntimeProfileID int64  `json:"runtime_profile_id"`
-	Name             string `json:"name"`
-	CloseExisting    bool   `json:"close_existing"`
-	Cols             int    `json:"cols"`
-	Rows             int    `json:"rows"`
+	RuntimeID     int64  `json:"runtime_id"`
+	Name          string `json:"name"`
+	CloseExisting bool   `json:"close_existing"`
+	Cols          int    `json:"cols"`
+	Rows          int    `json:"rows"`
 }
 
 type InputRequest struct {
@@ -131,12 +131,12 @@ func (m *Manager) redactText(value string) string {
 }
 
 type managedConsoleSession struct {
-	id               int64
-	runtimeProfileID int64
-	name             string
-	cols             int
-	rows             int
-	manager          *Manager
+	id        int64
+	runtimeID int64
+	name      string
+	cols      int
+	rows      int
+	manager   *Manager
 
 	ctx    context.Context
 	cancel context.CancelFunc

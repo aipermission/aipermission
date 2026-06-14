@@ -714,9 +714,10 @@ func TestStoreStaleActionRequestsForTarget(t *testing.T) {
 	}
 
 	result, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
-		TargetID:  target.ID,
-		ProfileID: profile.ID,
-		Error:     "target deleted",
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		Error:         "target deleted",
+		ApprovalDrift: "profile",
 	})
 	if err != nil {
 		t.Fatalf("stale action requests: %v", err)
@@ -729,7 +730,7 @@ func TestStoreStaleActionRequestsForTarget(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read stale request %d: %v", id, err)
 		}
-		if item.Status != connectors.ResultStale || item.Error != "target deleted" || item.CompletedAt == nil {
+		if item.Status != connectors.ResultStale || item.Error != "target deleted" || item.ApprovalContextDrift != "profile" || item.CompletedAt == nil {
 			t.Fatalf("request %d was not marked stale: %#v", id, item)
 		}
 	}

@@ -200,6 +200,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			ID:              item.ID,
 			Status:          connectors.ResultStale,
 			Error:           "connector approval token no longer exists",
+			ApprovalDrift:   "token",
 			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
@@ -215,6 +216,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			ID:              item.ID,
 			Status:          connectors.ResultStale,
 			Error:           "connector approval token no longer exists; ask the AI to send a fresh request",
+			ApprovalDrift:   "token",
 			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
@@ -234,6 +236,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			ID:              item.ID,
 			Status:          connectors.ResultStale,
 			Error:           reason,
+			ApprovalDrift:   "token",
 			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
@@ -261,6 +264,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			ID:              item.ID,
 			Status:          connectors.ResultStale,
 			Error:           reason,
+			ApprovalDrift:   "target_or_action",
 			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
@@ -275,6 +279,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			ID:              item.ID,
 			Status:          connectors.ResultStale,
 			Error:           "connector approval context changed; ask the AI to send a fresh request",
+			ApprovalDrift:   "permission",
 			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {
@@ -286,15 +291,17 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		}
 		return stale, fmt.Errorf("connector approval context changed; ask the AI to send a fresh request")
 	}
-	_, currentHash, err := connectorApprovalContext(prepared, token, permission, time.Now().UTC().Format(time.RFC3339))
+	currentContext, currentHash, err := connectorApprovalContext(prepared, token, permission, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
 	if item.ApprovalContextHash != "" && item.ApprovalContextHash != currentHash {
+		drift := connectorApprovalDriftReason(item.ApprovalContext, currentContext)
 		stale, staleErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
 			ID:              item.ID,
 			Status:          connectors.ResultStale,
 			Error:           "connector approval context changed; ask the AI to send a fresh request",
+			ApprovalDrift:   drift,
 			AllowedStatuses: connectorApprovalFinishStatuses(),
 		})
 		if staleErr != nil {

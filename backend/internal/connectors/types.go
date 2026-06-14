@@ -114,6 +114,11 @@ type ActionHandles struct {
 
 // ActionResult is the connector execution result after core has allowed the
 // action to run.
+//
+// Metadata is returned to direct in-process callers, but the 0.2 persistence
+// and MCP contracts store/return Output, DisplayText, and Error. Running
+// actions expose follow-up through request ids and assistant hints. Put
+// operator- or AI-visible structured data in Output.
 type ActionResult struct {
 	Status      ResultStatus   `json:"status"`
 	Output      any            `json:"output,omitempty"`

@@ -94,16 +94,29 @@ func TestResolverReturnsNotFoundForMissingOrInvalidTarget(t *testing.T) {
 	}
 }
 
-func TestStoreTargetProfileByProfileIDUsesCredentialProfile(t *testing.T) {
+func TestStoreTargetProfileByRuntimeIDUsesRuntimeSurface(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	store := NewStore(database)
 	target, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
-
-	gotTarget, gotProfile, err := store.TargetProfileByProfileID(ctx, profile.ID)
+	surface, err := store.EnsureRuntimeSurface(ctx, EnsureRuntimeSurfaceInput{
+		ConnectorKind:  sshconnector.Kind,
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		CapabilityKind: RuntimeCapabilityLiveConsole,
+		Label:          profile.Label,
+	})
 	if err != nil {
-		t.Fatalf("target profile by profile id: %v", err)
+		t.Fatalf("ensure runtime surface: %v", err)
+	}
+
+	gotTarget, gotProfile, gotSurface, err := store.TargetProfileByRuntimeID(ctx, surface.ID)
+	if err != nil {
+		t.Fatalf("target profile by runtime id: %v", err)
+	}
+	if gotSurface.ID != surface.ID || gotSurface.ProfileID != profile.ID {
+		t.Fatalf("unexpected runtime surface: %#v", gotSurface)
 	}
 	if gotTarget.ID != target.ID || gotProfile.ID != profile.ID || gotProfile.TargetID != target.ID {
 		t.Fatalf("unexpected target/profile: target=%#v profile=%#v", gotTarget, gotProfile)
@@ -113,20 +126,30 @@ func TestStoreTargetProfileByProfileIDUsesCredentialProfile(t *testing.T) {
 	}
 }
 
-func TestStoreTargetProfileByProfileIDRejectsArchivedProfile(t *testing.T) {
+func TestStoreTargetProfileByRuntimeIDRejectsArchivedProfile(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	store := NewStore(database)
 	target, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
+	surface, err := store.EnsureRuntimeSurface(ctx, EnsureRuntimeSurfaceInput{
+		ConnectorKind:  sshconnector.Kind,
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		CapabilityKind: RuntimeCapabilityLiveConsole,
+		Label:          profile.Label,
+	})
+	if err != nil {
+		t.Fatalf("ensure runtime surface: %v", err)
+	}
 
 	if err := store.DeleteCredentialProfile(ctx, target.ID, profile.ID); err != nil {
 		t.Fatalf("delete credential profile: %v", err)
 	}
 
-	_, _, err := store.TargetProfileByProfileID(ctx, profile.ID)
-	if !errors.Is(err, ErrTargetProfileNotFound) {
-		t.Fatalf("archived profile should not resolve target profile, got %v", err)
+	_, _, _, err = store.TargetProfileByRuntimeID(ctx, surface.ID)
+	if !errors.Is(err, ErrRuntimeSurfaceNotFound) {
+		t.Fatalf("archived profile should not resolve runtime surface, got %v", err)
 	}
 }
 

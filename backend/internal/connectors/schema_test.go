@@ -45,6 +45,26 @@ func TestNormalizeSchemaValuesCanonicalizesNumericStrings(t *testing.T) {
 	}
 }
 
+func TestNormalizeSchemaValuesAppliesDefaults(t *testing.T) {
+	normalized, err := NormalizeSchemaValues(Schema{Fields: []Field{
+		{Name: "host", Type: FieldString, Required: true},
+		{Name: "port", Type: FieldNumber, Required: true, Default: 5432},
+		{Name: "ssl_mode", Type: FieldSelect, Default: "require", Options: []FieldOption{{Value: "require", Label: "Require"}, {Value: "prefer", Label: "Prefer"}}},
+	}}, map[string]any{
+		"host": "localhost",
+	})
+	if err != nil {
+		t.Fatalf("normalize schema values: %v", err)
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		t.Fatalf("marshal normalized values: %v", err)
+	}
+	if string(payload) != `{"host":"localhost","port":5432,"ssl_mode":"require"}` {
+		t.Fatalf("normalized payload = %s", payload)
+	}
+}
+
 func TestValidateCredentialSchemaDefinitionRejectsSecretTypeWithoutSecretFlag(t *testing.T) {
 	err := ValidateCredentialSchemaDefinition(CredentialSchema{
 		Kind: "api_key",

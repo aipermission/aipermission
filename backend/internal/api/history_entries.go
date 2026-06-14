@@ -12,17 +12,17 @@ import (
 )
 
 type historyEntryFilter struct {
-	ConnectorKind    string
-	ActivityType     string
-	Status           string
-	Source           string
-	RuntimeProfileID int64
-	TargetID         int64
-	ProfileID        int64
-	LabelID          int64
-	Query            string
-	Limit            int
-	Offset           int
+	ConnectorKind string
+	ActivityType  string
+	Status        string
+	Source        string
+	RuntimeID     int64
+	TargetID      int64
+	ProfileID     int64
+	LabelID       int64
+	Query         string
+	Limit         int
+	Offset        int
 }
 
 type historyEntryRecord struct {
@@ -33,7 +33,7 @@ type historyEntryRecord struct {
 	ActivityType     string               `json:"activity_type"`
 	TokenID          *int64               `json:"token_id,omitempty"`
 	TokenName        string               `json:"token_name,omitempty"`
-	RuntimeProfileID *int64               `json:"runtime_profile_id,omitempty"`
+	RuntimeID        *int64               `json:"runtime_id,omitempty"`
 	TargetID         *int64               `json:"target_id,omitempty"`
 	ProfileID        *int64               `json:"profile_id,omitempty"`
 	TargetName       string               `json:"target_name"`
@@ -64,14 +64,14 @@ type historyEntryRecord struct {
 }
 
 type historyTargetFacetRecord struct {
-	Ref              string `json:"ref"`
-	ConnectorKind    string `json:"connector_kind"`
-	RuntimeProfileID *int64 `json:"runtime_profile_id,omitempty"`
-	TargetID         *int64 `json:"target_id,omitempty"`
-	ProfileID        *int64 `json:"profile_id,omitempty"`
-	TargetName       string `json:"target_name"`
-	ProfileLabel     string `json:"profile_label,omitempty"`
-	LastSeenAt       string `json:"last_seen_at"`
+	Ref           string `json:"ref"`
+	ConnectorKind string `json:"connector_kind"`
+	RuntimeID     *int64 `json:"runtime_id,omitempty"`
+	TargetID      *int64 `json:"target_id,omitempty"`
+	ProfileID     *int64 `json:"profile_id,omitempty"`
+	TargetName    string `json:"target_name"`
+	ProfileLabel  string `json:"profile_label,omitempty"`
+	LastSeenAt    string `json:"last_seen_at"`
 }
 
 func (s historyEntryHandlers) listHistoryTargetFacets(w http.ResponseWriter, r *http.Request) {
@@ -106,12 +106,12 @@ func (s historyEntryHandlers) listHistoryEntries(w http.ResponseWriter, r *http.
 		Limit:         page.Limit,
 		Offset:        page.Offset,
 	}
-	if rawRuntimeProfileID := strings.TrimSpace(r.URL.Query().Get("runtime_profile_id")); rawRuntimeProfileID != "" {
-		id, ok := parseInt64Query(w, rawRuntimeProfileID, "runtime_profile_id")
+	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
+		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
 		if !ok {
 			return
 		}
-		filter.RuntimeProfileID = id
+		filter.RuntimeID = id
 	}
 	if rawTargetID := strings.TrimSpace(r.URL.Query().Get("target_id")); rawTargetID != "" {
 		id, ok := parseInt64Query(w, rawTargetID, "target_id")
@@ -167,15 +167,15 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 	rows, err := runtime.database.QueryContext(ctx, `
 		SELECT
 			he.connector_kind,
-			he.runtime_profile_id,
+			he.runtime_id,
 			he.target_id,
 			he.profile_id,
 			COALESCE(NULLIF(he.target_name, ''), 'Unknown connector') AS target_name,
 			COALESCE(he.profile_label, '') AS profile_label,
 			MAX(he.created_at) AS last_seen_at
 		FROM history_entries he
-		WHERE he.target_id IS NOT NULL OR he.runtime_profile_id IS NOT NULL
-		GROUP BY he.connector_kind, he.runtime_profile_id, he.target_id, he.profile_id, he.target_name, he.profile_label
+		WHERE he.target_id IS NOT NULL OR he.runtime_id IS NOT NULL
+		GROUP BY he.connector_kind, he.runtime_id, he.target_id, he.profile_id, he.target_name, he.profile_label
 		ORDER BY lower(target_name), lower(profile_label), he.connector_kind`,
 	)
 	if err != nil {
@@ -185,12 +185,12 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 	items := []historyTargetFacetRecord{}
 	for rows.Next() {
 		var item historyTargetFacetRecord
-		var runtimeProfileID sql.NullInt64
+		var runtimeID sql.NullInt64
 		var targetID sql.NullInt64
 		var profileID sql.NullInt64
 		if err := rows.Scan(
 			&item.ConnectorKind,
-			&runtimeProfileID,
+			&runtimeID,
 			&targetID,
 			&profileID,
 			&item.TargetName,
@@ -199,9 +199,9 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 		); err != nil {
 			return nil, err
 		}
-		if runtimeProfileID.Valid {
-			value := runtimeProfileID.Int64
-			item.RuntimeProfileID = &value
+		if runtimeID.Valid {
+			value := runtimeID.Int64
+			item.RuntimeID = &value
 		}
 		if targetID.Valid {
 			value := targetID.Int64
@@ -213,8 +213,8 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 		}
 		if targetID.Valid && profileID.Valid {
 			item.Ref = connectortargets.ConnectorTargetRef(item.ConnectorKind, targetID.Int64, profileID.Int64)
-		} else if runtimeProfileID.Valid {
-			item.Ref = item.ConnectorKind + ":server:" + strconv.FormatInt(runtimeProfileID.Int64, 10)
+		} else if runtimeID.Valid {
+			item.Ref = "runtime:" + strconv.FormatInt(runtimeID.Int64, 10)
 		}
 		items = append(items, item)
 	}
@@ -237,7 +237,7 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 	queryArgs := append(append([]any{}, args...), filter.Limit, filter.Offset)
 	rows, err := runtime.database.QueryContext(ctx, `
 		SELECT he.id, he.source_ref_type, he.source_ref_id, he.connector_kind, he.activity_type,
-		       he.token_id, COALESCE(tok.name, ''), he.runtime_profile_id, he.target_id, he.profile_id,
+		       he.token_id, COALESCE(tok.name, ''), he.runtime_id, he.target_id, he.profile_id,
 		       he.target_name, he.profile_label, he.source, he.status, he.action_name,
 		       he.title, he.summary, he.preview_json, he.input_text, he.input_json, '' AS output_text,
 		       '{}' AS output_json, he.error, he.exit_code, he.progress_current,
@@ -274,7 +274,7 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 func (s *Server) getHistoryEntryRecord(ctx context.Context, runtime *databaseRuntime, id int64) (historyEntryRecord, error) {
 	row := runtime.database.QueryRowContext(ctx, `
 		SELECT he.id, he.source_ref_type, he.source_ref_id, he.connector_kind, he.activity_type,
-		       he.token_id, COALESCE(tok.name, ''), he.runtime_profile_id, he.target_id, he.profile_id,
+		       he.token_id, COALESCE(tok.name, ''), he.runtime_id, he.target_id, he.profile_id,
 		       he.target_name, he.profile_label, he.source, he.status, he.action_name,
 		       he.title, he.summary, he.preview_json, he.input_text, he.input_json, he.output_text,
 		       he.output_json, he.error, he.exit_code, he.progress_current,
@@ -303,16 +303,16 @@ func historyEntryWhere(filter historyEntryFilter) (string, []any) {
 		"(? = '' OR he.activity_type = ?)",
 		"(? = '' OR he.status = ?)",
 		"(? = '' OR he.source = ?)",
-		"(? = 0 OR he.runtime_profile_id = ?)",
-		"(? = 0 OR he.target_id = ? OR he.runtime_profile_id IN (SELECT id FROM connector_credential_profiles WHERE target_id = ?))",
-		"(? = 0 OR he.profile_id = ? OR he.runtime_profile_id = ?)",
+		"(? = 0 OR he.runtime_id = ?)",
+		"(? = 0 OR he.target_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE target_id = ? AND status = 'active'))",
+		"(? = 0 OR he.profile_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE profile_id = ? AND status = 'active'))",
 	}
 	args := []any{
 		filter.ConnectorKind, filter.ConnectorKind,
 		filter.ActivityType, filter.ActivityType,
 		filter.Status, filter.Status,
 		filter.Source, filter.Source,
-		filter.RuntimeProfileID, filter.RuntimeProfileID,
+		filter.RuntimeID, filter.RuntimeID,
 		filter.TargetID, filter.TargetID, filter.TargetID,
 		filter.ProfileID, filter.ProfileID, filter.ProfileID,
 	}
@@ -333,7 +333,7 @@ func scanHistoryEntry(scanner interface {
 }) (historyEntryRecord, error) {
 	var item historyEntryRecord
 	var tokenID sql.NullInt64
-	var runtimeProfileID sql.NullInt64
+	var runtimeID sql.NullInt64
 	var targetID sql.NullInt64
 	var profileID sql.NullInt64
 	var exitCode sql.NullInt64
@@ -348,7 +348,7 @@ func scanHistoryEntry(scanner interface {
 		&item.ActivityType,
 		&tokenID,
 		&item.TokenName,
-		&runtimeProfileID,
+		&runtimeID,
 		&targetID,
 		&profileID,
 		&item.TargetName,
@@ -383,10 +383,9 @@ func scanHistoryEntry(scanner interface {
 		value := tokenID.Int64
 		item.TokenID = &value
 	}
-	if runtimeProfileID.Valid {
-		value := runtimeProfileID.Int64
-		item.RuntimeProfileID = &value
-		item.RuntimeProfileID = &value
+	if runtimeID.Valid {
+		value := runtimeID.Int64
+		item.RuntimeID = &value
 	}
 	if targetID.Valid {
 		value := targetID.Int64

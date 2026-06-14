@@ -15,10 +15,10 @@ func TestStoreSyncsCanonicalHistoryEntries(t *testing.T) {
 	sshTargetID, sshProfileID := insertTargetProfile(t, database, "ssh", "test-vps", "private_key", "main")
 	postgresTargetID, postgresProfileID := insertTargetProfile(t, database, "postgres", "orders-db", "username_password", "readonly")
 	_ = sshTargetID
-	runtimeProfileID := sshProfileID
+	runtimeID := insertRuntimeSurface(t, database, "ssh", sshTargetID, sshProfileID, "live_console")
 	store := NewStore(database)
 
-	commandID := insertCommandRequest(t, database, tokenID, runtimeProfileID)
+	commandID := insertCommandRequest(t, database, tokenID, runtimeID)
 	if err := store.SyncCommandRequest(context.Background(), commandID); err != nil {
 		t.Fatalf("sync command request: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestStoreSyncsCanonicalHistoryEntries(t *testing.T) {
 	}
 	assertHistoryEntry(t, database, SourceConnectorActionRequest, uiActionID, "postgres", "action", "ui", "completed", "orders-db", "readonly")
 
-	transferID := insertFileTransfer(t, database, runtimeProfileID)
+	transferID := insertFileTransfer(t, database, runtimeID)
 	if err := store.SyncFileTransfer(context.Background(), transferID); err != nil {
 		t.Fatalf("sync file transfer: %v", err)
 	}
@@ -49,9 +49,10 @@ func TestStoreSyncsCanonicalHistoryEntries(t *testing.T) {
 
 func TestStoreDeleteSourceRefRemovesCanonicalHistoryEntry(t *testing.T) {
 	database := openTestDB(t)
-	_, runtimeProfileID := insertTargetProfile(t, database, "ssh", "test-vps", "private_key", "main")
+	targetID, profileID := insertTargetProfile(t, database, "ssh", "test-vps", "private_key", "main")
+	runtimeID := insertRuntimeSurface(t, database, "ssh", targetID, profileID, "live_console")
 	store := NewStore(database)
-	transferID := insertFileTransfer(t, database, runtimeProfileID)
+	transferID := insertFileTransfer(t, database, runtimeID)
 	if err := store.SyncFileTransfer(context.Background(), transferID); err != nil {
 		t.Fatalf("sync file transfer: %v", err)
 	}
@@ -129,15 +130,38 @@ func insertTargetProfile(t *testing.T, database *sql.DB, connectorKind string, t
 	return targetID, profileID
 }
 
-func insertCommandRequest(t *testing.T, database *sql.DB, tokenID int64, runtimeProfileID int64) int64 {
+func insertRuntimeSurface(t *testing.T, database *sql.DB, connectorKind string, targetID int64, profileID int64, capabilityKind string) int64 {
+	t.Helper()
+	result, err := database.Exec(`
+		INSERT INTO connector_runtime_surfaces (
+			connector_kind, target_id, profile_id, capability_kind, label, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		connectorKind,
+		targetID,
+		profileID,
+		capabilityKind,
+		capabilityKind,
+	)
+	if err != nil {
+		t.Fatalf("insert runtime surface: %v", err)
+	}
+	runtimeID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("runtime surface id: %v", err)
+	}
+	return runtimeID
+}
+
+func insertCommandRequest(t *testing.T, database *sql.DB, tokenID int64, runtimeID int64) int64 {
 	t.Helper()
 	result, err := database.Exec(`
 		INSERT INTO command_requests (
-			token_id, runtime_profile_id, command, reason, status, stdout, exit_code, source, created_at, completed_at
+			token_id, runtime_id, command, reason, status, stdout, exit_code, source, created_at, completed_at
 		)
 		VALUES (?, ?, 'hostname', 'smoke', 'completed', 'test-vps', 0, 'mcp', datetime('now'), datetime('now'))`,
 		tokenID,
-		runtimeProfileID,
+		runtimeID,
 	)
 	if err != nil {
 		t.Fatalf("insert command request: %v", err)
@@ -193,15 +217,15 @@ func assertConnectorActionHistoryMetadata(t *testing.T, database *sql.DB, source
 	}
 }
 
-func insertFileTransfer(t *testing.T, database *sql.DB, runtimeProfileID int64) int64 {
+func insertFileTransfer(t *testing.T, database *sql.DB, runtimeID int64) int64 {
 	t.Helper()
 	result, err := database.Exec(`
 		INSERT INTO file_transfers (
-			runtime_profile_id, direction, source, status, remote_path, file_name, size_bytes,
+			runtime_id, direction, source, status, remote_path, file_name, size_bytes,
 			transferred_bytes, created_at, started_at, completed_at, updated_at
 		)
 		VALUES (?, 'download', 'ui', 'completed', '/home/report.txt', 'report.txt', 42, 42, datetime('now'), datetime('now'), datetime('now'), datetime('now'))`,
-		runtimeProfileID,
+		runtimeID,
 	)
 	if err != nil {
 		t.Fatalf("insert file transfer: %v", err)

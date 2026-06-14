@@ -625,22 +625,24 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		adapter.DeleteTarget(s, w, r, runtime, target)
 		return
 	}
-	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, id, 0, "connector target was deleted; ask the AI to send a fresh request")
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
 	if err := store.DeleteTarget(r.Context(), id); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.deleted", map[string]any{
-		"target_id":                target.ID,
-		"connector_kind":           target.ConnectorKind,
-		"name":                     target.Name,
-		"stale_connector_requests": staleRequests,
-	})
+	if _, err := s.ConnectorFinalizeDeletedTarget(r.Context(), runtime, target, "connector target was deleted; ask the AI to send a fresh request", nil); err != nil {
+		writeInternalError(w)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s connectorTargetHandlers) finalizeDeletedConnectorTarget(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectortargets.Target, staleReason string, payload map[string]any) bool {
+	_, err := s.ConnectorFinalizeDeletedTarget(r.Context(), runtime, target, staleReason, payload)
+	if err != nil {
+		writeInternalError(w)
+		return false
+	}
+	return true
 }
 
 func (s connectorTargetHandlers) listConnectorCredentialProfiles(w http.ResponseWriter, r *http.Request) {
@@ -812,13 +814,13 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 			return
 		}
 	}
+	if err := store.DeleteCredentialProfile(r.Context(), targetID, profileID); err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
 	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, targetID, profileID, "connector credential profile was deleted; ask the AI to send a fresh request")
 	if err != nil {
 		writeInternalError(w)
-		return
-	}
-	if err := store.DeleteCredentialProfile(r.Context(), targetID, profileID); err != nil {
-		handleConnectorTargetError(w, err)
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.deleted", map[string]any{
@@ -838,9 +840,10 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 	}
 	store := connectortargets.NewStore(runtime.database)
 	result, err := store.StaleActionRequestsForTarget(ctx, connectortargets.StaleActionRequestsForTargetInput{
-		TargetID:  targetID,
-		ProfileID: profileID,
-		Error:     s.redactForPersistence(ctx, runtime, reason),
+		TargetID:      targetID,
+		ProfileID:     profileID,
+		Error:         s.redactForPersistence(ctx, runtime, reason),
+		ApprovalDrift: connectorLifecycleApprovalDrift(profileID),
 	})
 	if err != nil {
 		return 0, err
@@ -855,6 +858,13 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 		}
 	}
 	return result.Affected, nil
+}
+
+func connectorLifecycleApprovalDrift(profileID int64) string {
+	if profileID > 0 {
+		return "profile"
+	}
+	return "target"
 }
 
 func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {
@@ -912,11 +922,11 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 	defer cancel()
 	start := time.Now()
 	result, err := testable.TestConnection(ctx, connectors.RuntimeContext{
-		Target:   target,
-		Profile:  profile,
-		Secrets:  connectorSecretAccessor{values: secrets},
-		Services: connectorRuntimeServices(target.ConnectorKind, s.Server, runtime),
-		Events:   noopConnectorEventSink{},
+		Target:       target,
+		Profile:      profile,
+		Secrets:      connectorSecretAccessor{values: secrets},
+		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
+		Events:       noopConnectorEventSink{},
 	})
 	if err != nil {
 		writeJSON(w, http.StatusOK, connectorTargetTestResponse{

@@ -38,7 +38,7 @@ type Record struct {
 	ID               int64  `json:"id"`
 	BatchID          int64  `json:"batch_id"`
 	QueueIndex       int    `json:"queue_index"`
-	RuntimeProfileID int64  `json:"runtime_profile_id"`
+	RuntimeID        int64  `json:"runtime_id"`
 	TargetName       string `json:"target_name"`
 	Direction        string `json:"direction"`
 	Source           string `json:"source"`
@@ -63,7 +63,7 @@ type Record struct {
 type CreateRequest struct {
 	BatchID          int64
 	QueueIndex       int
-	RuntimeProfileID int64
+	RuntimeID        int64
 	Direction        string
 	Source           string
 	LocalPath        string
@@ -76,7 +76,7 @@ type CreateRequest struct {
 
 type BatchRecord struct {
 	ID               int64    `json:"id"`
-	RuntimeProfileID int64    `json:"runtime_profile_id"`
+	RuntimeID        int64    `json:"runtime_id"`
 	TargetName       string   `json:"target_name"`
 	Direction        string   `json:"direction"`
 	Source           string   `json:"source"`
@@ -103,14 +103,14 @@ type BatchRecord struct {
 }
 
 type CreateBatchRequest struct {
-	RuntimeProfileID int64
-	Direction        string
-	Source           string
-	Status           string
-	ApprovalNote     string
-	Overwrite        bool
-	ArchiveName      string
-	Items            []CreateRequest
+	RuntimeID    int64
+	Direction    string
+	Source       string
+	Status       string
+	ApprovalNote string
+	Overwrite    bool
+	ArchiveName  string
+	Items        []CreateRequest
 }
 
 type BatchApprovalRequest struct {
@@ -119,23 +119,23 @@ type BatchApprovalRequest struct {
 }
 
 type ListFilter struct {
-	Direction        string
-	Status           string
-	RuntimeProfileID int64
-	TargetIDs        []int64
-	Query            string
-	Limit            int
-	Offset           int
+	Direction string
+	Status    string
+	RuntimeID int64
+	TargetIDs []int64
+	Query     string
+	Limit     int
+	Offset    int
 }
 
 type BatchListFilter struct {
-	Direction        string
-	Status           string
-	RuntimeProfileID int64
-	TargetIDs        []int64
-	Query            string
-	Limit            int
-	Offset           int
+	Direction string
+	Status    string
+	RuntimeID int64
+	TargetIDs []int64
+	Query     string
+	Limit     int
+	Offset    int
 }
 
 type Store struct {
@@ -184,13 +184,13 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (Record, erro
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO file_transfers (
-			batch_id, queue_index, runtime_profile_id, direction, source, status, local_path, remote_path, file_name,
+			batch_id, queue_index, runtime_id, direction, source, status, local_path, remote_path, file_name,
 			size_bytes, transferred_bytes, temp_path, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableBatchID(normalized.BatchID),
 		normalized.QueueIndex,
-		normalized.RuntimeProfileID,
+		normalized.RuntimeID,
 		normalized.Direction,
 		normalized.Source,
 		StatusPending,
@@ -223,12 +223,13 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (Record, erro
 func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 	var item Record
 	err := s.db.QueryRowContext(ctx, `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_profile_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
 			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
 			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.id = ?`,
 		id,
@@ -236,7 +237,7 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 		&item.ID,
 		&item.BatchID,
 		&item.QueueIndex,
-		&item.RuntimeProfileID,
+		&item.RuntimeID,
 		&item.TargetName,
 		&item.Direction,
 		&item.Source,
@@ -268,19 +269,20 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, error) {
 	filter = normalizeListFilter(filter)
 	where, args := listWhere(filter)
-	countQuery := `SELECT COUNT(*) FROM file_transfers ft LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where
+	countQuery := `SELECT COUNT(*) FROM file_transfers ft LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count file transfers: %w", err)
 	}
 
 	query := `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_profile_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
 			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
 			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where + `
 		ORDER BY ft.created_at DESC, ft.id DESC
 		LIMIT ? OFFSET ?`
@@ -300,7 +302,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 			&item.ID,
 			&batchID,
 			&queueIndex,
-			&item.RuntimeProfileID,
+			&item.RuntimeID,
 			&item.TargetName,
 			&item.Direction,
 			&item.Source,
@@ -335,20 +337,21 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]BatchRecord, int, error) {
 	filter = normalizeBatchListFilter(filter)
 	where, args := batchListWhere(filter)
-	countQuery := `SELECT COUNT(*) FROM file_transfer_batches b LEFT JOIN connector_credential_profiles cp ON cp.id = b.runtime_profile_id LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where
+	countQuery := `SELECT COUNT(*) FROM file_transfer_batches b LEFT JOIN connector_runtime_surfaces rs ON rs.id = b.runtime_id LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count file transfer batches: %w", err)
 	}
 
 	query := `
-		SELECT b.id, b.runtime_profile_id, COALESCE(ct.name, ''), b.direction, b.source, b.status,
+		SELECT b.id, b.runtime_id, COALESCE(ct.name, ''), b.direction, b.source, b.status,
 			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, b.total_items, b.completed_items, b.failed_items,
 			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
 			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
 		FROM file_transfer_batches b
-		LEFT JOIN connector_credential_profiles cp ON cp.id = b.runtime_profile_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = b.runtime_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where + `
 		ORDER BY b.created_at DESC, b.id DESC
 		LIMIT ? OFFSET ?`
@@ -365,7 +368,7 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 		var overwrite int
 		if err := rows.Scan(
 			&item.ID,
-			&item.RuntimeProfileID,
+			&item.RuntimeID,
 			&item.TargetName,
 			&item.Direction,
 			&item.Source,
@@ -417,11 +420,11 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO file_transfer_batches (
-			runtime_profile_id, direction, source, status, archive_name, approval_note, overwrite, total_items,
+			runtime_id, direction, source, status, archive_name, approval_note, overwrite, total_items,
 			size_bytes, eta_seconds, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		normalized.RuntimeProfileID,
+		normalized.RuntimeID,
 		normalized.Direction,
 		normalized.Source,
 		normalized.Status,
@@ -444,14 +447,14 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 	for i, item := range normalized.Items {
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO file_transfers (
-				batch_id, queue_index, runtime_profile_id, direction, source, status, local_path,
+				batch_id, queue_index, runtime_id, direction, source, status, local_path,
 				remote_path, file_name, size_bytes, transferred_bytes, temp_path, eta_seconds,
 				created_at, updated_at
 			)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			batchID,
 			i,
-			item.RuntimeProfileID,
+			item.RuntimeID,
 			item.Direction,
 			item.Source,
 			normalized.Status,
@@ -486,19 +489,20 @@ func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 	var item BatchRecord
 	var overwrite int
 	err := s.db.QueryRowContext(ctx, `
-		SELECT b.id, b.runtime_profile_id, COALESCE(ct.name, ''), b.direction, b.source, b.status,
+		SELECT b.id, b.runtime_id, COALESCE(ct.name, ''), b.direction, b.source, b.status,
 			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, b.total_items, b.completed_items, b.failed_items,
 			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
 			b.eta_seconds, b.error, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
 		FROM file_transfer_batches b
-		LEFT JOIN connector_credential_profiles cp ON cp.id = b.runtime_profile_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = b.runtime_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE b.id = ?`,
 		id,
 	).Scan(
 		&item.ID,
-		&item.RuntimeProfileID,
+		&item.RuntimeID,
 		&item.TargetName,
 		&item.Direction,
 		&item.Source,
@@ -538,13 +542,14 @@ func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 
 func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_profile_id, COALESCE(ct.name, ''),
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''),
 			ft.direction, ft.source, ft.status, ft.local_path, ft.remote_path, ft.file_name,
 			ft.size_bytes, ft.transferred_bytes, ft.bytes_per_second, ft.eta_seconds,
 			ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.batch_id = ?
 		ORDER BY ft.queue_index ASC, ft.id ASC`,
@@ -561,7 +566,7 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 			&item.ID,
 			&item.BatchID,
 			&item.QueueIndex,
-			&item.RuntimeProfileID,
+			&item.RuntimeID,
 			&item.TargetName,
 			&item.Direction,
 			&item.Source,
@@ -593,13 +598,14 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 
 func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_profile_id, COALESCE(ct.name, ''),
+		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''),
 			ft.direction, ft.source, ft.status, ft.local_path, ft.remote_path, ft.file_name,
 			ft.size_bytes, ft.transferred_bytes, ft.bytes_per_second, ft.eta_seconds,
 			ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
-		LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
+		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.batch_id = ? AND ft.status = ?
 		ORDER BY ft.queue_index ASC, ft.id ASC
@@ -612,7 +618,7 @@ func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record
 		&item.ID,
 		&item.BatchID,
 		&item.QueueIndex,
-		&item.RuntimeProfileID,
+		&item.RuntimeID,
 		&item.TargetName,
 		&item.Direction,
 		&item.Source,
@@ -1442,12 +1448,12 @@ func listWhere(filter ListFilter) (string, []any) {
 		clauses = append(clauses, "ft.status = ?")
 		args = append(args, filter.Status)
 	}
-	if filter.RuntimeProfileID > 0 {
-		clauses = append(clauses, "ft.runtime_profile_id = ?")
-		args = append(args, filter.RuntimeProfileID)
+	if filter.RuntimeID > 0 {
+		clauses = append(clauses, "ft.runtime_id = ?")
+		args = append(args, filter.RuntimeID)
 	}
 	if len(filter.TargetIDs) > 0 {
-		clauses = append(clauses, "ft.runtime_profile_id IN ("+placeholders(len(filter.TargetIDs))+")")
+		clauses = append(clauses, "rs.target_id IN ("+placeholders(len(filter.TargetIDs))+")")
 		for _, id := range filter.TargetIDs {
 			args = append(args, id)
 		}
@@ -1474,12 +1480,12 @@ func batchListWhere(filter BatchListFilter) (string, []any) {
 		clauses = append(clauses, "b.status = ?")
 		args = append(args, filter.Status)
 	}
-	if filter.RuntimeProfileID > 0 {
-		clauses = append(clauses, "b.runtime_profile_id = ?")
-		args = append(args, filter.RuntimeProfileID)
+	if filter.RuntimeID > 0 {
+		clauses = append(clauses, "b.runtime_id = ?")
+		args = append(args, filter.RuntimeID)
 	}
 	if len(filter.TargetIDs) > 0 {
-		clauses = append(clauses, "b.runtime_profile_id IN ("+placeholders(len(filter.TargetIDs))+")")
+		clauses = append(clauses, "rs.target_id IN ("+placeholders(len(filter.TargetIDs))+")")
 		for _, id := range filter.TargetIDs {
 			args = append(args, id)
 		}
@@ -1516,8 +1522,8 @@ func normalizeCreateRequest(request CreateRequest) (CreateRequest, error) {
 	if request.Source == "" {
 		request.Source = SourceUI
 	}
-	if request.RuntimeProfileID < 1 {
-		return request, fmt.Errorf("runtime_profile_id is required")
+	if request.RuntimeID < 1 {
+		return request, fmt.Errorf("runtime_id is required")
 	}
 	if request.Direction != DirectionUpload && request.Direction != DirectionDownload {
 		return request, fmt.Errorf("direction must be upload or download")
@@ -1561,8 +1567,8 @@ func normalizeBatchCreateRequest(request CreateBatchRequest) (CreateBatchRequest
 	if request.Status == "" {
 		request.Status = StatusPending
 	}
-	if request.RuntimeProfileID < 1 {
-		return request, fmt.Errorf("runtime_profile_id is required")
+	if request.RuntimeID < 1 {
+		return request, fmt.Errorf("runtime_id is required")
 	}
 	if request.Direction != DirectionUpload && request.Direction != DirectionDownload {
 		return request, fmt.Errorf("direction must be upload or download")
@@ -1588,7 +1594,7 @@ func normalizeBatchCreateRequest(request CreateBatchRequest) (CreateBatchRequest
 	for i := range request.Items {
 		request.Items[i].BatchID = 0
 		request.Items[i].QueueIndex = i
-		request.Items[i].RuntimeProfileID = request.RuntimeProfileID
+		request.Items[i].RuntimeID = request.RuntimeID
 		request.Items[i].Direction = request.Direction
 		request.Items[i].Source = request.Source
 		normalized, err := normalizeCreateRequest(request.Items[i])

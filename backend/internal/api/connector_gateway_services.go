@@ -69,7 +69,7 @@ func (s *Server) ConnectorActiveRuntimeAvailable(w http.ResponseWriter) bool {
 
 // ConnectorRestartConsoleSession closes a persistent live session and cancels
 // its running connector requests.
-func (s *Server) ConnectorRestartConsoleSession(ctx context.Context, runtime any, runtimeID int64, runningRequestError string) (connectorapi.ConsoleRestartResult, error) {
+func (s *Server) ConnectorRestartConsoleSession(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64, runningRequestError string) (connectorapi.ConsoleRestartResult, error) {
 	dbRuntime, ok := runtime.(*databaseRuntime)
 	if !ok || dbRuntime == nil {
 		return connectorapi.ConsoleRestartResult{}, errInvalidConnectorRuntime
@@ -86,7 +86,7 @@ func (s *Server) ConnectorRestartConsoleSession(ctx context.Context, runtime any
 
 // ConnectorFinishActionRequest lets a runtime adapter finish an asynchronous
 // connector request after background execution completes.
-func (s *Server) ConnectorFinishActionRequest(ctx context.Context, runtime any, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
+func (s *Server) ConnectorFinishActionRequest(ctx context.Context, runtime connectorapi.GatewayRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
 	dbRuntime, ok := runtime.(*databaseRuntime)
 	if !ok || dbRuntime == nil {
 		return connectortargets.ActionRequest{}, errInvalidConnectorRuntime
@@ -96,7 +96,7 @@ func (s *Server) ConnectorFinishActionRequest(ctx context.Context, runtime any, 
 
 // ConnectorStaleActionRequestsForTarget stales pending action requests for a
 // target/profile after connector-owned target lifecycle changes.
-func (s connectorTargetHandlers) ConnectorStaleActionRequestsForTarget(ctx context.Context, runtime any, targetID int64, profileID int64, reason string) (int64, error) {
+func (s connectorTargetHandlers) ConnectorStaleActionRequestsForTarget(ctx context.Context, runtime connectorapi.GatewayRuntime, targetID int64, profileID int64, reason string) (int64, error) {
 	dbRuntime, ok := runtime.(*databaseRuntime)
 	if !ok || dbRuntime == nil {
 		return 0, errInvalidConnectorRuntime
@@ -105,7 +105,7 @@ func (s connectorTargetHandlers) ConnectorStaleActionRequestsForTarget(ctx conte
 }
 
 // ConnectorWriteAudit writes a connector lifecycle audit event.
-func (s connectorTargetHandlers) ConnectorWriteAudit(ctx context.Context, runtime any, actorType string, tokenID *int64, runtimeID int64, action string, payload any) {
+func (s connectorTargetHandlers) ConnectorWriteAudit(ctx context.Context, runtime connectorapi.GatewayRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any) {
 	dbRuntime, ok := runtime.(*databaseRuntime)
 	if !ok || dbRuntime == nil {
 		return
@@ -113,21 +113,48 @@ func (s connectorTargetHandlers) ConnectorWriteAudit(ctx context.Context, runtim
 	s.writeAudit(ctx, dbRuntime, actorType, tokenID, runtimeID, action, payload)
 }
 
+// ConnectorFinalizeDeletedTarget applies the shared post-delete lifecycle:
+// pending connector action requests are marked stale and the common delete
+// audit event is written. Connector adapters may add connector-specific payload
+// fields, but they should not duplicate this cleanup themselves.
+func (s connectorTargetHandlers) ConnectorFinalizeDeletedTarget(ctx context.Context, runtime connectorapi.GatewayRuntime, target connectortargets.Target, staleReason string, payload map[string]any) (int64, error) {
+	dbRuntime, ok := runtime.(*databaseRuntime)
+	if !ok || dbRuntime == nil {
+		return 0, errInvalidConnectorRuntime
+	}
+	if staleReason == "" {
+		staleReason = "connector target was deleted; ask the AI to send a fresh request"
+	}
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(ctx, dbRuntime, target.ID, 0, staleReason)
+	if err != nil {
+		return 0, err
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["target_id"] = target.ID
+	payload["connector_kind"] = target.ConnectorKind
+	payload["name"] = target.Name
+	payload["stale_connector_requests"] = staleRequests
+	s.writeAudit(ctx, dbRuntime, "user", nil, 0, "connector.target.deleted", payload)
+	return staleRequests, nil
+}
+
 // ConnectorServer returns the underlying gateway server for adapter calls that
 // need shared gateway services.
-func (s connectorTargetHandlers) ConnectorServer() any {
+func (s connectorTargetHandlers) ConnectorServer() connectorapi.GatewayServer {
 	return s.Server
 }
 
 // ConnectorServer returns the underlying gateway server for credential
 // resource adapters.
-func (s credentialHandlers) ConnectorServer() any {
+func (s credentialHandlers) ConnectorServer() connectorapi.GatewayServer {
 	return s.Server
 }
 
 // ConnectorCreateDownloadBatch creates a file-transfer batch for connector
 // adapters that expose remote downloads.
-func (s *Server) ConnectorCreateDownloadBatch(ctx context.Context, runtime any, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error) {
+func (s *Server) ConnectorCreateDownloadBatch(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error) {
 	dbRuntime, ok := runtime.(*databaseRuntime)
 	if !ok || dbRuntime == nil {
 		return filetransfer.BatchRecord{}, errInvalidConnectorRuntime
@@ -136,7 +163,7 @@ func (s *Server) ConnectorCreateDownloadBatch(ctx context.Context, runtime any, 
 }
 
 // ConnectorRunTransferBatch starts a previously-created transfer batch.
-func (s *Server) ConnectorRunTransferBatch(runtime any, batchID int64, overwrite bool) {
+func (s *Server) ConnectorRunTransferBatch(runtime connectorapi.GatewayRuntime, batchID int64, overwrite bool) {
 	dbRuntime, ok := runtime.(*databaseRuntime)
 	if !ok || dbRuntime == nil {
 		return

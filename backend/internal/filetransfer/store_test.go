@@ -15,19 +15,19 @@ func TestStoreCreatesListsAndUpdatesFileTransfers(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	defer database.Close()
-	runtimeProfileID := insertTestServer(t, database)
+	runtimeID := insertTestServer(t, database)
 	store := NewStore(database)
 	ctx := context.Background()
 
 	created, err := store.Create(ctx, CreateRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        DirectionUpload,
-		Source:           SourceUI,
-		LocalPath:        "deploy.tar.gz",
-		RemotePath:       "/tmp/deploy.tar.gz",
-		FileName:         "deploy.tar.gz",
-		SizeBytes:        2048,
-		TempPath:         "/tmp/aipermission/staged",
+		RuntimeID:  runtimeID,
+		Direction:  DirectionUpload,
+		Source:     SourceUI,
+		LocalPath:  "deploy.tar.gz",
+		RemotePath: "/tmp/deploy.tar.gz",
+		FileName:   "deploy.tar.gz",
+		SizeBytes:  2048,
+		TempPath:   "/tmp/aipermission/staged",
 	})
 	if err != nil {
 		t.Fatalf("create file transfer: %v", err)
@@ -75,14 +75,14 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	defer database.Close()
-	runtimeProfileID := insertTestServer(t, database)
+	runtimeID := insertTestServer(t, database)
 	store := NewStore(database)
 	ctx := context.Background()
 
 	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        DirectionUpload,
-		Source:           SourceUI,
+		RuntimeID: runtimeID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
 		Items: []CreateRequest{
 			{LocalPath: "a.txt", RemotePath: "/tmp/a.txt", FileName: "a.txt", SizeBytes: 100, TempPath: "/tmp/a"},
 			{LocalPath: "b.txt", RemotePath: "/tmp/b.txt", FileName: "b.txt", SizeBytes: 200, TempPath: "/tmp/b"},
@@ -154,14 +154,14 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 		t.Fatalf("unexpected completed batch: %#v", completed)
 	}
 
-	batches, total, err := store.ListBatches(ctx, BatchListFilter{Direction: DirectionUpload, TargetIDs: []int64{runtimeProfileID}, Query: "worker"})
+	batches, total, err := store.ListBatches(ctx, BatchListFilter{Direction: DirectionUpload, TargetIDs: []int64{runtimeID}, Query: "worker"})
 	if err != nil {
 		t.Fatalf("list batches: %v", err)
 	}
 	if total != 1 || len(batches) != 1 || batches[0].ID != batch.ID {
 		t.Fatalf("unexpected batch list: total=%d items=%#v", total, batches)
 	}
-	batches, total, err = store.ListBatches(ctx, BatchListFilter{TargetIDs: []int64{runtimeProfileID + 1000}})
+	batches, total, err = store.ListBatches(ctx, BatchListFilter{TargetIDs: []int64{runtimeID + 1000}})
 	if err != nil {
 		t.Fatalf("list filtered batches: %v", err)
 	}
@@ -176,16 +176,16 @@ func TestStoreApprovesPendingTransferBatchItems(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	defer database.Close()
-	runtimeProfileID := insertTestServer(t, database)
+	runtimeID := insertTestServer(t, database)
 	store := NewStore(database)
 	ctx := context.Background()
 
 	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        DirectionDownload,
-		Source:           SourceMCP,
-		Status:           StatusPendingApproval,
-		ApprovalNote:     "initial",
+		RuntimeID:    runtimeID,
+		Direction:    DirectionDownload,
+		Source:       SourceMCP,
+		Status:       StatusPendingApproval,
+		ApprovalNote: "initial",
 		Items: []CreateRequest{
 			{RemotePath: "/tmp/a.log", FileName: "a.log", SizeBytes: 100, TempPath: "/tmp/a"},
 			{RemotePath: "/tmp/b.log", FileName: "b.log", SizeBytes: 200, TempPath: "/tmp/b"},
@@ -242,14 +242,14 @@ func TestStoreUpdatesPausedBatchQueue(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	defer database.Close()
-	runtimeProfileID := insertTestServer(t, database)
+	runtimeID := insertTestServer(t, database)
 	store := NewStore(database)
 	ctx := context.Background()
 
 	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        DirectionUpload,
-		Source:           SourceUI,
+		RuntimeID: runtimeID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
 		Items: []CreateRequest{
 			{LocalPath: "a.txt", RemotePath: "/tmp/a.txt", FileName: "a.txt", SizeBytes: 100, TempPath: "/tmp/a"},
 			{LocalPath: "b.txt", RemotePath: "/tmp/b.txt", FileName: "b.txt", SizeBytes: 200, TempPath: "/tmp/b"},
@@ -309,17 +309,17 @@ func TestStoreFailsActiveTransfers(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 	defer database.Close()
-	runtimeProfileID := insertTestServer(t, database)
+	runtimeID := insertTestServer(t, database)
 	store := NewStore(database)
 	ctx := context.Background()
 
 	standalone, err := store.Create(ctx, CreateRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        DirectionDownload,
-		Source:           SourceUI,
-		RemotePath:       "/tmp/a.txt",
-		FileName:         "a.txt",
-		TempPath:         "/tmp/a",
+		RuntimeID:  runtimeID,
+		Direction:  DirectionDownload,
+		Source:     SourceUI,
+		RemotePath: "/tmp/a.txt",
+		FileName:   "a.txt",
+		TempPath:   "/tmp/a",
 	})
 	if err != nil {
 		t.Fatalf("create standalone transfer: %v", err)
@@ -328,9 +328,9 @@ func TestStoreFailsActiveTransfers(t *testing.T) {
 		t.Fatalf("mark standalone running: ok=%v err=%v", ok, err)
 	}
 	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        DirectionUpload,
-		Source:           SourceUI,
+		RuntimeID: runtimeID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
 		Items: []CreateRequest{
 			{LocalPath: "b.txt", RemotePath: "/tmp/b.txt", FileName: "b.txt", SizeBytes: 200, TempPath: "/tmp/b"},
 		},
@@ -373,12 +373,12 @@ func TestStoreValidatesFileTransfers(t *testing.T) {
 	store := NewStore(database)
 
 	if _, err := store.Create(context.Background(), CreateRequest{Direction: DirectionUpload, RemotePath: "/tmp/file"}); err == nil {
-		t.Fatalf("missing runtime_profile_id should fail")
+		t.Fatalf("missing runtime_id should fail")
 	}
-	if _, err := store.Create(context.Background(), CreateRequest{RuntimeProfileID: 1, Direction: "copy", RemotePath: "/tmp/file"}); err == nil {
+	if _, err := store.Create(context.Background(), CreateRequest{RuntimeID: 1, Direction: "copy", RemotePath: "/tmp/file"}); err == nil {
 		t.Fatalf("invalid direction should fail")
 	}
-	if _, err := store.Create(context.Background(), CreateRequest{RuntimeProfileID: 1, Direction: DirectionDownload, RemotePath: "bad\npath"}); err == nil {
+	if _, err := store.Create(context.Background(), CreateRequest{RuntimeID: 1, Direction: DirectionDownload, RemotePath: "bad\npath"}); err == nil {
 		t.Fatalf("control characters should fail")
 	}
 }
@@ -412,5 +412,20 @@ func insertTestServer(t *testing.T, database *sql.DB) int64 {
 	if err != nil {
 		t.Fatalf("profile id: %v", err)
 	}
-	return profileID
+	surfaceResult, err := database.Exec(
+		`INSERT INTO connector_runtime_surfaces (
+			connector_kind, target_id, profile_id, capability_kind, label, created_at, updated_at
+		)
+		VALUES ('ssh', ?, ?, 'live_console', 'root terminal', datetime('now'), datetime('now'))`,
+		targetID,
+		profileID,
+	)
+	if err != nil {
+		t.Fatalf("insert runtime surface: %v", err)
+	}
+	runtimeID, err := surfaceResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("runtime surface id: %v", err)
+	}
+	return runtimeID
 }

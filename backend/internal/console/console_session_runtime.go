@@ -21,7 +21,7 @@ func (s *managedConsoleSession) run() {
 		s.fail("console transport is not configured")
 		return
 	}
-	runtime, err := s.manager.openRuntime(s.ctx, s.runtimeProfileID, s.rows, s.cols)
+	runtime, err := s.manager.openRuntime(s.ctx, s.runtimeID, s.rows, s.cols)
 	if err != nil {
 		s.fail(err.Error())
 		return

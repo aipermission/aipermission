@@ -128,8 +128,18 @@ func createTestSSHConnectorProfile(t *testing.T, database *sql.DB, sshKeyStore *
 	if err != nil {
 		t.Fatalf("create connector profile: %v", err)
 	}
+	surface, err := store.EnsureRuntimeSurface(context.Background(), connectortargets.EnsureRuntimeSurfaceInput{
+		ConnectorKind:  "ssh",
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		CapabilityKind: connectortargets.RuntimeCapabilityLiveConsole,
+		Label:          profile.Label,
+	})
+	if err != nil {
+		t.Fatalf("create connector runtime surface: %v", err)
+	}
 	return testSSHConnectorProfile{
-		ID:        profile.ID,
+		ID:        surface.ID,
 		TargetID:  target.ID,
 		ProfileID: profile.ID,
 		Name:      name,
@@ -361,9 +371,9 @@ func TestOldMCPSSHWrapperRoutesAreNotRegistered(t *testing.T) {
 		body   any
 	}{
 		{method: http.MethodGet, path: "/api/mcp/servers"},
-		{method: http.MethodPost, path: "/api/mcp/exec", body: map[string]any{"runtime_profile_id": 1, "command": "date"}},
+		{method: http.MethodPost, path: "/api/mcp/exec", body: map[string]any{"runtime_id": 1, "command": "date"}},
 		{method: http.MethodGet, path: "/api/mcp/requests"},
-		{method: http.MethodGet, path: "/api/mcp/console?runtime_profile_id=1"},
+		{method: http.MethodGet, path: "/api/mcp/console?runtime_id=1"},
 		{method: http.MethodGet, path: "/api/mcp/file-transfers"},
 	} {
 		response := performJSON(fixture.server.Handler(), tc.method, tc.path, token.TokenValue, tc.body)

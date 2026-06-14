@@ -42,10 +42,27 @@ type SecretAccessor interface {
 	GetSecret(ctx context.Context, name string) (string, error)
 }
 
-// EventSink lets long-running connectors emit progress without writing
-// history/audit directly.
+// EventSink is reserved for future connector progress events.
+//
+// In the 0.2 connector baseline, the gateway provides a no-op sink. Connectors
+// must not rely on emitted events being persisted or streamed yet; return
+// terminal ActionResult values or use a reviewed runtime adapter for running
+// actions.
 type EventSink interface {
 	Emit(ctx context.Context, event ActionEvent) error
+}
+
+// RuntimeCapability is implemented by connector-owned live/runtime services
+// that are injected only for reviewed gateway adapters. Structured connectors
+// should normally not need a runtime capability.
+type RuntimeCapability interface {
+	ConnectorRuntimeCapability() string
+}
+
+// RuntimeCapabilityResolver resolves reviewed connector-owned capabilities
+// without exposing the gateway runtime or an untyped service map.
+type RuntimeCapabilityResolver interface {
+	RuntimeCapability(name string) RuntimeCapability
 }
 
 // RuntimeContext is available only to execution/test paths. It intentionally
@@ -56,19 +73,18 @@ type RuntimeContext struct {
 
 	Secrets SecretAccessor
 	Events  EventSink
-	// Services is an explicit escape hatch for gateway-owned runtime adapters
-	// that need live transports, file transfer, or other long-lived gateway
-	// resources. Normal structured connectors should use Target, Profile,
-	// Secrets, and their own client code instead of depending on gateway
-	// internals.
-	Services map[string]any
+	// Capabilities is reserved for gateway-owned runtime adapters that need
+	// live transports, file transfer, or other long-lived resources. Normal
+	// structured connectors should use Target, Profile, Secrets, and their own
+	// client code instead of depending on gateway internals.
+	Capabilities RuntimeCapabilityResolver
 }
 
-func (c RuntimeContext) Service(name string) any {
-	if c.Services == nil {
+func (c RuntimeContext) Capability(name string) RuntimeCapability {
+	if c.Capabilities == nil {
 		return nil
 	}
-	return c.Services[name]
+	return c.Capabilities.RuntimeCapability(name)
 }
 
 // ActionEvent is a structured, redaction-ready progress event.

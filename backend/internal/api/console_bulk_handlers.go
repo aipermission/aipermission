@@ -84,11 +84,11 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 	items := make([]bulkConsoleCommandResponseItem, 0, len(targets))
 	for _, target := range targets {
 		requestID, err := s.insertCommandRequestWithOptions(r.Context(), runtime, commandRequestInsert{
-			RuntimeProfileID: target.ID,
-			Source:           commandRequestSourceManual,
-			Command:          request.Command,
-			Reason:           request.Reason,
-			Status:           "running",
+			RuntimeID: target.ID,
+			Source:    commandRequestSourceManual,
+			Command:   request.Command,
+			Reason:    request.Reason,
+			Status:    "running",
 		})
 		if err != nil {
 			writeInternalError(w)
@@ -213,19 +213,19 @@ func (s *Server) runBulkConsoleCommands(runtime *databaseRuntime, command string
 	}()
 }
 
-func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64, runtimeProfileID int64, command string) {
+func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64, runtimeID int64, command string) {
 	ctx, cancel := context.WithTimeout(context.Background(), mcpInitialExecTimeout)
 	defer cancel()
 
-	result, err := runtime.consoleSessions.Exec(ctx, runtimeProfileID, command)
+	result, err := runtime.consoleSessions.Exec(ctx, runtimeID, command)
 	if err != nil {
-		adapter := s.bulkConsoleErrorPresenter(context.Background(), runtime, runtimeProfileID)
+		adapter := s.bulkConsoleErrorPresenter(context.Background(), runtime, runtimeID)
 		_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, connectorErrorMessage(adapter, "command execution failed", err))
 		return
 	}
 	if result.Running {
 		_ = s.setCommandRequestSession(context.Background(), runtime, requestID, result.SessionID)
-		s.finishActiveCommandRequest(runtime, requestID, runtimeProfileID)
+		s.finishActiveCommandRequest(runtime, requestID, runtimeID)
 		return
 	}
 	status := "completed"

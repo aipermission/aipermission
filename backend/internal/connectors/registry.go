@@ -104,20 +104,111 @@ func ValidateConnectorContract(connector Connector) error {
 	if err := ValidateActionDefinitions(actions, kind+" actions"); err != nil {
 		return fmt.Errorf("connector %q: %w", kind, err)
 	}
-	exemplarProfile := baselineProfile
-	if len(connector.CredentialSchemas()) > 0 {
-		exemplarProfile.Kind = connector.CredentialSchemas()[0].Kind
+	baselineActions := canonicalActionDefinitions(actions)
+	profileKinds := []string{""}
+	for _, schema := range connector.CredentialSchemas() {
+		profileKinds = append(profileKinds, schema.Kind)
 	}
-	exemplarActions, err := connector.GetActionList(context.Background(), TargetView{
-		ConnectorKind: kind,
-		Name:          "__contract_check__",
-		Config:        map[string]any{},
-	}, exemplarProfile)
-	if err != nil {
-		return fmt.Errorf("connector %q exemplar actions: %w", kind, err)
+	exemplarTargets := []TargetView{
+		baselineTarget,
+		{
+			ConnectorKind: kind,
+			Name:          "__contract_check__",
+			Config:        map[string]any{"__contract_variant": "target"},
+		},
 	}
-	if !reflect.DeepEqual(actions, exemplarActions) {
-		return fmt.Errorf("connector %q action list must be stable for the connector kind", kind)
+	for _, target := range exemplarTargets {
+		for _, profileKind := range profileKinds {
+			exemplarProfile := CredentialProfileView{
+				ConnectorKind: kind,
+				Kind:          profileKind,
+				Label:         "__contract_check__",
+				Public:        map[string]any{"__contract_variant": profileKind},
+			}
+			exemplarActions, err := connector.GetActionList(context.Background(), target, exemplarProfile)
+			if err != nil {
+				return fmt.Errorf("connector %q exemplar actions: %w", kind, err)
+			}
+			if err := ValidateActionDefinitions(exemplarActions, kind+" actions"); err != nil {
+				return fmt.Errorf("connector %q: %w", kind, err)
+			}
+			if !equalActionDefinitions(baselineActions, canonicalActionDefinitions(exemplarActions)) {
+				return fmt.Errorf("connector %q action list must be stable for the connector kind", kind)
+			}
+		}
 	}
 	return nil
+}
+
+func canonicalActionDefinitions(actions []ActionDefinition) []ActionDefinition {
+	canonical := append([]ActionDefinition(nil), actions...)
+	sort.SliceStable(canonical, func(i, j int) bool {
+		return canonical[i].Name < canonical[j].Name
+	})
+	return canonical
+}
+
+func equalActionDefinitions(left []ActionDefinition, right []ActionDefinition) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if !equalActionDefinition(left[index], right[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalActionDefinition(left ActionDefinition, right ActionDefinition) bool {
+	if left.Name != right.Name ||
+		left.Label != right.Label ||
+		left.Description != right.Description ||
+		left.Category != right.Category ||
+		left.Risk != right.Risk ||
+		left.OutputHint.Format != right.OutputHint.Format ||
+		left.OutputHint.MaxRows != right.OutputHint.MaxRows ||
+		left.OutputHint.MaxBytes != right.OutputHint.MaxBytes {
+		return false
+	}
+	if len(left.OutputHint.SensitiveFields) != len(right.OutputHint.SensitiveFields) {
+		return false
+	}
+	for index := range left.OutputHint.SensitiveFields {
+		if left.OutputHint.SensitiveFields[index] != right.OutputHint.SensitiveFields[index] {
+			return false
+		}
+	}
+	return equalSchemas(left.InputSchema, right.InputSchema)
+}
+
+func equalSchemas(left Schema, right Schema) bool {
+	if len(left.Fields) != len(right.Fields) {
+		return false
+	}
+	for index := range left.Fields {
+		if !equalFields(left.Fields[index], right.Fields[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFields(left Field, right Field) bool {
+	if left.Name != right.Name ||
+		left.Label != right.Label ||
+		left.Type != right.Type ||
+		left.Required != right.Required ||
+		left.Secret != right.Secret ||
+		left.Description != right.Description ||
+		!reflect.DeepEqual(left.Default, right.Default) ||
+		len(left.Options) != len(right.Options) {
+		return false
+	}
+	for index := range left.Options {
+		if left.Options[index] != right.Options[index] {
+			return false
+		}
+	}
+	return true
 }

@@ -10,28 +10,28 @@ import (
 )
 
 type messageRecord struct {
-	ID               int64   `json:"id"`
-	TokenID          int64   `json:"token_id"`
-	TokenName        string  `json:"token_name,omitempty"`
-	RuntimeProfileID *int64  `json:"runtime_profile_id,omitempty"`
-	TargetName       string  `json:"target_name,omitempty"`
-	SessionID        *int64  `json:"session_id,omitempty"`
-	Direction        string  `json:"direction"`
-	Message          string  `json:"message"`
-	ConsumedAt       *string `json:"consumed_at,omitempty"`
-	CreatedAt        string  `json:"created_at"`
+	ID         int64   `json:"id"`
+	TokenID    int64   `json:"token_id"`
+	TokenName  string  `json:"token_name,omitempty"`
+	RuntimeID  *int64  `json:"runtime_id,omitempty"`
+	TargetName string  `json:"target_name,omitempty"`
+	SessionID  *int64  `json:"session_id,omitempty"`
+	Direction  string  `json:"direction"`
+	Message    string  `json:"message"`
+	ConsumedAt *string `json:"consumed_at,omitempty"`
+	CreatedAt  string  `json:"created_at"`
 }
 
 type createMessageRequest struct {
-	TokenID          int64  `json:"token_id"`
-	RuntimeProfileID *int64 `json:"runtime_profile_id"`
-	SessionID        *int64 `json:"session_id"`
-	Direction        string `json:"direction"`
-	Message          string `json:"message"`
+	TokenID   int64  `json:"token_id"`
+	RuntimeID *int64 `json:"runtime_id"`
+	SessionID *int64 `json:"session_id"`
+	Direction string `json:"direction"`
+	Message   string `json:"message"`
 }
 
 type markMessagesReadRequest struct {
-	RuntimeProfileID int64 `json:"runtime_profile_id"`
+	RuntimeID int64 `json:"runtime_id"`
 }
 
 func (s messageHandlers) listMessages(w http.ResponseWriter, r *http.Request) {
@@ -40,12 +40,12 @@ func (s messageHandlers) listMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := messageFilter{Direction: strings.TrimSpace(r.URL.Query().Get("direction"))}
-	if rawRuntimeProfileID := strings.TrimSpace(r.URL.Query().Get("runtime_profile_id")); rawRuntimeProfileID != "" {
-		id, ok := parseInt64Query(w, rawRuntimeProfileID, "runtime_profile_id")
+	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
+		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
 		if !ok {
 			return
 		}
-		filter.RuntimeProfileID = id
+		filter.RuntimeID = id
 	}
 	items, err := s.listMessageRecords(r.Context(), runtime, filter)
 	if err != nil {
@@ -83,17 +83,17 @@ func (s messageHandlers) markMessagesRead(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if request.RuntimeProfileID < 1 {
-		writeError(w, http.StatusBadRequest, "runtime_profile_id is required")
+	if request.RuntimeID < 1 {
+		writeError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := runtime.database.ExecContext(r.Context(), `
 		UPDATE message_queue
 		SET consumed_at = ?
-		WHERE direction = 'ai_to_user' AND consumed_at IS NULL AND runtime_profile_id = ?`,
+		WHERE direction = 'ai_to_user' AND consumed_at IS NULL AND runtime_id = ?`,
 		now,
-		request.RuntimeProfileID,
+		request.RuntimeID,
 	)
 	if err != nil {
 		writeInternalError(w)
@@ -104,9 +104,9 @@ func (s messageHandlers) markMessagesRead(w http.ResponseWriter, r *http.Request
 }
 
 type messageFilter struct {
-	TokenID          int64
-	RuntimeProfileID int64
-	Direction        string
+	TokenID   int64
+	RuntimeID int64
+	Direction string
 }
 
 func (s *Server) insertMessage(ctx context.Context, runtime *databaseRuntime, request createMessageRequest) (messageRecord, error) {
@@ -134,10 +134,10 @@ func (s *Server) insertMessage(ctx context.Context, runtime *databaseRuntime, re
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := runtime.database.ExecContext(ctx, `
-		INSERT INTO message_queue (token_id, runtime_profile_id, session_id, direction, message, created_at)
+		INSERT INTO message_queue (token_id, runtime_id, session_id, direction, message, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		request.TokenID,
-		nullableInt64(request.RuntimeProfileID),
+		nullableInt64(request.RuntimeID),
 		nullableInt64(request.SessionID),
 		request.Direction,
 		request.Message,
@@ -164,29 +164,29 @@ func validateMessageScope(ctx context.Context, runtime *databaseRuntime, request
 	}
 
 	if request.SessionID != nil {
-		var sessionRuntimeProfileID int64
-		err := runtime.database.QueryRowContext(ctx, `SELECT runtime_profile_id FROM console_sessions WHERE id = ?`, *request.SessionID).Scan(&sessionRuntimeProfileID)
+		var sessionRuntimeID int64
+		err := runtime.database.QueryRowContext(ctx, `SELECT runtime_id FROM console_sessions WHERE id = ?`, *request.SessionID).Scan(&sessionRuntimeID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("session_id does not exist")
 		}
 		if err != nil {
 			return err
 		}
-		if request.RuntimeProfileID != nil && *request.RuntimeProfileID != sessionRuntimeProfileID {
-			return errors.New("session_id does not belong to runtime_profile_id")
+		if request.RuntimeID != nil && *request.RuntimeID != sessionRuntimeID {
+			return errors.New("session_id does not belong to runtime_id")
 		}
-		request.RuntimeProfileID = &sessionRuntimeProfileID
+		request.RuntimeID = &sessionRuntimeID
 	}
 
-	if request.RuntimeProfileID != nil {
-		if _, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, *request.RuntimeProfileID); err != nil {
-			return errors.New("runtime_profile_id does not exist")
+	if request.RuntimeID != nil {
+		if _, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, *request.RuntimeID); err != nil {
+			return errors.New("runtime_id does not exist")
 		}
 	}
 	return nil
 }
 
-func (s *Server) consumeNextUserMessage(ctx context.Context, runtime *databaseRuntime, tokenID int64, runtimeProfileID int64, sessionID int64) (*string, error) {
+func (s *Server) consumeNextUserMessage(ctx context.Context, runtime *databaseRuntime, tokenID int64, runtimeID int64, sessionID int64) (*string, error) {
 	tx, err := runtime.database.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -197,25 +197,25 @@ func (s *Server) consumeNextUserMessage(ctx context.Context, runtime *databaseRu
 			SELECT id, message
 			FROM message_queue
 			WHERE token_id = ? AND direction = 'user_to_ai' AND consumed_at IS NULL
-				AND ((? > 0 AND runtime_profile_id = ?) OR runtime_profile_id IS NULL)
+				AND ((? > 0 AND runtime_id = ?) OR runtime_id IS NULL)
 				AND ((? > 0 AND session_id = ?) OR session_id IS NULL)
 			ORDER BY
 				CASE
 					WHEN ? > 0 AND session_id = ? THEN 0
-					WHEN runtime_profile_id = ? THEN 1
+					WHEN runtime_id = ? THEN 1
 					ELSE 2
 				END,
 				created_at ASC,
 				id ASC
 			LIMIT 1`,
 		tokenID,
-		runtimeProfileID,
-		runtimeProfileID,
+		runtimeID,
+		runtimeID,
 		sessionID,
 		sessionID,
 		sessionID,
 		sessionID,
-		runtimeProfileID,
+		runtimeID,
 	)
 	var id int64
 	var message string
@@ -244,35 +244,35 @@ func (s *Server) consumeNextUserMessage(ctx context.Context, runtime *databaseRu
 	return &message, nil
 }
 
-func (s *Server) nextUserMessage(ctx context.Context, runtime *databaseRuntime, tokenID int64, runtimeProfileID int64, sessionID int64) (messageRecord, error) {
+func (s *Server) nextUserMessage(ctx context.Context, runtime *databaseRuntime, tokenID int64, runtimeID int64, sessionID int64) (messageRecord, error) {
 	row := runtime.database.QueryRowContext(ctx, messageSelectSQL()+`
 			WHERE mq.token_id = ? AND mq.direction = 'user_to_ai' AND mq.consumed_at IS NULL
-				AND ((? > 0 AND mq.runtime_profile_id = ?) OR mq.runtime_profile_id IS NULL)
+				AND ((? > 0 AND mq.runtime_id = ?) OR mq.runtime_id IS NULL)
 				AND ((? > 0 AND mq.session_id = ?) OR mq.session_id IS NULL)
 			ORDER BY
 				CASE
 					WHEN ? > 0 AND mq.session_id = ? THEN 0
-					WHEN mq.runtime_profile_id = ? THEN 1
+					WHEN mq.runtime_id = ? THEN 1
 					ELSE 2
 				END,
 				mq.created_at ASC
 			LIMIT 1`,
 		tokenID,
-		runtimeProfileID,
-		runtimeProfileID,
+		runtimeID,
+		runtimeID,
 		sessionID,
 		sessionID,
 		sessionID,
 		sessionID,
-		runtimeProfileID,
+		runtimeID,
 	)
 	return scanMessage(row)
 }
 
-func consoleSessionRuntimeProfileID(ctx context.Context, runtime *databaseRuntime, sessionID int64) (int64, error) {
-	var runtimeProfileID int64
-	err := runtime.database.QueryRowContext(ctx, `SELECT runtime_profile_id FROM console_sessions WHERE id = ?`, sessionID).Scan(&runtimeProfileID)
-	return runtimeProfileID, err
+func consoleSessionRuntimeID(ctx context.Context, runtime *databaseRuntime, sessionID int64) (int64, error) {
+	var runtimeID int64
+	err := runtime.database.QueryRowContext(ctx, `SELECT runtime_id FROM console_sessions WHERE id = ?`, sessionID).Scan(&runtimeID)
+	return runtimeID, err
 }
 
 func (s *Server) getMessageRecord(ctx context.Context, runtime *databaseRuntime, id int64) (messageRecord, error) {
@@ -281,8 +281,8 @@ func (s *Server) getMessageRecord(ctx context.Context, runtime *databaseRuntime,
 }
 
 func (s *Server) listMessageRecords(ctx context.Context, runtime *databaseRuntime, filter messageFilter) ([]messageRecord, error) {
-	where := []string{"(? = 0 OR mq.token_id = ?)", "(? = 0 OR mq.runtime_profile_id = ?)", "(? = '' OR mq.direction = ?)"}
-	args := []any{filter.TokenID, filter.TokenID, filter.RuntimeProfileID, filter.RuntimeProfileID, filter.Direction, filter.Direction}
+	where := []string{"(? = 0 OR mq.token_id = ?)", "(? = 0 OR mq.runtime_id = ?)", "(? = '' OR mq.direction = ?)"}
+	args := []any{filter.TokenID, filter.TokenID, filter.RuntimeID, filter.RuntimeID, filter.Direction, filter.Direction}
 	rows, err := runtime.database.QueryContext(ctx, messageSelectSQL()+`
 		WHERE `+strings.Join(where, " AND ")+`
 		ORDER BY mq.created_at DESC
@@ -306,11 +306,12 @@ func (s *Server) listMessageRecords(ctx context.Context, runtime *databaseRuntim
 
 func messageSelectSQL() string {
 	return `
-			SELECT mq.id, mq.token_id, COALESCE(tok.name, ''), mq.runtime_profile_id, COALESCE(ct.name, ''), mq.session_id,
+			SELECT mq.id, mq.token_id, COALESCE(tok.name, ''), mq.runtime_id, COALESCE(ct.name, ''), mq.session_id,
 			       mq.direction, mq.message, mq.consumed_at, mq.created_at
 			FROM message_queue mq
 			JOIN api_tokens tok ON tok.id = mq.token_id
-			LEFT JOIN connector_credential_profiles cp ON cp.id = mq.runtime_profile_id
+			LEFT JOIN connector_runtime_surfaces rs ON rs.id = mq.runtime_id
+			LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 			LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind`
 }
 
@@ -318,14 +319,14 @@ func scanMessage(scanner interface {
 	Scan(dest ...any) error
 }) (messageRecord, error) {
 	var item messageRecord
-	var runtimeProfileID sql.NullInt64
+	var runtimeID sql.NullInt64
 	var sessionID sql.NullInt64
 	var consumedAt sql.NullString
 	err := scanner.Scan(
 		&item.ID,
 		&item.TokenID,
 		&item.TokenName,
-		&runtimeProfileID,
+		&runtimeID,
 		&item.TargetName,
 		&sessionID,
 		&item.Direction,
@@ -336,9 +337,9 @@ func scanMessage(scanner interface {
 	if err != nil {
 		return messageRecord{}, err
 	}
-	if runtimeProfileID.Valid {
-		value := runtimeProfileID.Int64
-		item.RuntimeProfileID = &value
+	if runtimeID.Valid {
+		value := runtimeID.Int64
+		item.RuntimeID = &value
 	}
 	if sessionID.Valid {
 		value := sessionID.Int64

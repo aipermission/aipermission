@@ -19,7 +19,7 @@ type commandRequestRecord struct {
 	ID                int64                  `json:"id"`
 	TokenID           *int64                 `json:"token_id,omitempty"`
 	TokenName         string                 `json:"token_name,omitempty"`
-	RuntimeProfileID  int64                  `json:"runtime_profile_id"`
+	RuntimeID         int64                  `json:"runtime_id"`
 	TargetName        string                 `json:"target_name"`
 	Source            string                 `json:"source"`
 	Command           string                 `json:"command"`

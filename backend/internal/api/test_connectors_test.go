@@ -5,7 +5,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
-	_ "github.com/aipermission/aipermission/backend/internal/connectors/builtin/adapters"
 )
 
 func testConnectorRegistry(t *testing.T) *connectors.Registry {

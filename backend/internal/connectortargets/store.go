@@ -220,6 +220,17 @@ func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
+		UPDATE connector_runtime_surfaces
+		SET status = ?, updated_at = ?
+		WHERE target_id = ? AND status = ?`,
+		TargetStatusArchived,
+		now,
+		id,
+		TargetStatusActive,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM token_connector_action_permissions
 		WHERE target_id = ?`,
 		id,
@@ -538,6 +549,18 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 		return ErrTargetProfileNotFound
 	}
 	if _, err := tx.ExecContext(ctx, `
+		UPDATE connector_runtime_surfaces
+		SET status = ?, updated_at = ?
+		WHERE target_id = ? AND profile_id = ? AND status = ?`,
+		TargetStatusArchived,
+		nowString(),
+		targetID,
+		profileID,
+		TargetStatusActive,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM token_connector_action_permissions
 		WHERE target_id = ? AND profile_id = ?`,
 		targetID,
@@ -687,13 +710,15 @@ type FinishActionRequestInput struct {
 	Output          any
 	DisplayText     string
 	Error           string
+	ApprovalDrift   string
 	AllowedStatuses []connectors.ResultStatus
 }
 
 type StaleActionRequestsForTargetInput struct {
-	TargetID  int64
-	ProfileID int64
-	Error     string
+	TargetID      int64
+	ProfileID     int64
+	Error         string
+	ApprovalDrift string
 }
 
 type StaleActionRequestsForTargetResult struct {
@@ -974,6 +999,7 @@ func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionReque
 		outputJSON,
 		strings.TrimSpace(input.DisplayText),
 		strings.TrimSpace(input.Error),
+		strings.TrimSpace(input.ApprovalDrift),
 		now,
 		input.ID,
 	}
@@ -982,7 +1008,7 @@ func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionReque
 	}
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE connector_action_requests
-		SET status = ?, output_json = ?, display_text = ?, error = ?, completed_at = ?
+		SET status = ?, output_json = ?, display_text = ?, error = ?, approval_context_drift = ?, completed_at = ?
 		WHERE id = ? AND status IN (`+statusPlaceholders+`)`,
 		args...,
 	)
@@ -1034,11 +1060,11 @@ func (s *Store) StaleActionRequestsForTarget(ctx context.Context, input StaleAct
 	if len(ids) == 0 {
 		return StaleActionRequestsForTargetResult{}, nil
 	}
-	updateArgs := []any{string(connectors.ResultStale), strings.TrimSpace(input.Error), nowString()}
+	updateArgs := []any{string(connectors.ResultStale), strings.TrimSpace(input.Error), strings.TrimSpace(input.ApprovalDrift), nowString()}
 	updateArgs = append(updateArgs, args...)
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE connector_action_requests
-		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?)
+		SET status = ?, error = ?, approval_context_drift = ?, completed_at = COALESCE(completed_at, ?)
 		WHERE `+where,
 		updateArgs...,
 	)
@@ -1319,6 +1345,7 @@ var (
 	ErrInvalidTargetRef         = errors.New("invalid connector target ref")
 	ErrTargetNotFound           = errors.New("connector target not found")
 	ErrTargetProfileNotFound    = errors.New("connector target profile not found")
+	ErrRuntimeSurfaceNotFound   = errors.New("connector runtime surface not found")
 	ErrActionPermissionNotFound = errors.New("connector action permission not found")
 	ErrActionRequestNotFound    = errors.New("connector action request not found")
 	ErrActionRequestNotPending  = errors.New("connector action request is not pending")

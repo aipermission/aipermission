@@ -1,8 +1,12 @@
 package api
 
 import (
+	"database/sql"
+	"net/http"
+
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 func connectorAPIAdapterFor(kind string) connectorapi.Adapter {
@@ -14,15 +18,25 @@ func connectorRuntimeAdapterFor(kind string) connectorapi.RuntimeAdapter {
 	return adapter
 }
 
-func connectorRuntimeServices(kind string, server *Server, runtime *databaseRuntime) map[string]any {
+type connectorRuntimeCapabilities map[string]connectors.RuntimeCapability
+
+func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectors.RuntimeCapability {
+	return c[name]
+}
+
+func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *databaseRuntime) connectors.RuntimeCapabilityResolver {
 	adapter := connectorRuntimeAdapterFor(kind)
 	if adapter == nil {
 		return nil
 	}
-	return adapter.RuntimeServices(server, runtime)
+	capabilities := connectorRuntimeCapabilities(adapter.RuntimeCapabilities(server, runtime))
+	if len(capabilities) == 0 {
+		return nil
+	}
+	return capabilities
 }
 
-func registerConnectorAdapterRoutes(mux any, server *Server) {
+func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	for _, info := range server.connectorRegistry().List() {
 		adapter, _ := connectorAPIAdapterFor(info.Kind).(connectorapi.RouteRegistrar)
 		if adapter != nil {
@@ -31,7 +45,7 @@ func registerConnectorAdapterRoutes(mux any, server *Server) {
 	}
 }
 
-func connectorRuntimeResources(registrySource *connectors.Registry, database any, vault any) map[string]any {
+func connectorRuntimeResources(registrySource *connectors.Registry, database *sql.DB, secretVault *vault.Vault) map[string]any {
 	resources := map[string]any{}
 	if registrySource == nil {
 		return resources
@@ -41,7 +55,7 @@ func connectorRuntimeResources(registrySource *connectors.Registry, database any
 		if provider == nil {
 			continue
 		}
-		for name, value := range provider.RuntimeResources(database, vault) {
+		for name, value := range provider.RuntimeResources(database, secretVault) {
 			if name == "" || value == nil {
 				continue
 			}

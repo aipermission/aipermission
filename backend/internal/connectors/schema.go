@@ -100,7 +100,10 @@ func NormalizeSchemaValues(schema Schema, values map[string]any) (map[string]any
 			return nil, fmt.Errorf("%s is required", field.Name)
 		}
 		if !ok || emptySchemaValue(value) {
-			continue
+			if field.Default == nil {
+				continue
+			}
+			value = field.Default
 		}
 		if err := validateFieldValue(field, value); err != nil {
 			return nil, err

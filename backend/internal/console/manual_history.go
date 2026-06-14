@@ -503,9 +503,9 @@ func (s *managedConsoleSession) insertManualCommand(command manualCommandRecord)
 	}
 	trackingReason := s.manager.redactText(command.TrackingReason)
 	result, err := s.manager.db.ExecContext(context.Background(), `
-		INSERT INTO command_requests (runtime_profile_id, source, command, encrypted_command, reason, status, tracking_reason, stdout, stderr, session_id, created_at, completed_at)
+		INSERT INTO command_requests (runtime_id, source, command, encrypted_command, reason, status, tracking_reason, stdout, stderr, session_id, created_at, completed_at)
 		VALUES (?, 'manual', ?, '', ?, ?, ?, '', '', ?, ?, ?)`,
-		s.runtimeProfileID,
+		s.runtimeID,
 		storedCommand,
 		storedReason,
 		status,

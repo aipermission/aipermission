@@ -346,11 +346,12 @@ func TestFTS4SearchIndexesTrackHistoryAndAuditRows(t *testing.T) {
 		t.Fatalf("audit_logs_fts table was not created")
 	}
 
-	_, profileID := insertConnectorTargetAndProfile(t, database)
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	runtimeID := insertConnectorRuntimeSurface(t, database, "postgres", targetID, profileID, "structured_activity")
 	result, err := database.Exec(`
-		INSERT INTO command_requests (runtime_profile_id, command, reason, status, stdout, stderr, created_at)
+		INSERT INTO command_requests (runtime_id, command, reason, status, stdout, stderr, created_at)
 		VALUES (?, 'docker ps', 'inspect containers', 'completed', 'nginx container output', '', datetime('now'))`,
-		profileID,
+		runtimeID,
 	)
 	if err != nil {
 		t.Fatalf("insert command request: %v", err)
@@ -368,8 +369,9 @@ func TestFTS4SearchIndexesTrackHistoryAndAuditRows(t *testing.T) {
 	assertFTSMatchCount(t, database, "command_requests_fts", "nginx", 0)
 
 	if _, err := database.Exec(`
-		INSERT INTO audit_logs (actor_type, runtime_profile_id, action, payload_json, created_at)
-		VALUES ('user', 1, 'docker.audit', '{"detail":"image scan finished"}', datetime('now'))`,
+		INSERT INTO audit_logs (actor_type, runtime_id, action, payload_json, created_at)
+		VALUES ('user', ?, 'docker.audit', '{"detail":"image scan finished"}', datetime('now'))`,
+		runtimeID,
 	); err != nil {
 		t.Fatalf("insert audit log: %v", err)
 	}
@@ -496,6 +498,29 @@ func insertConnectorTargetAndProfile(t *testing.T, database *sql.DB) (int64, int
 		t.Fatalf("profile id: %v", err)
 	}
 	return targetID, profileID
+}
+
+func insertConnectorRuntimeSurface(t *testing.T, database *sql.DB, connectorKind string, targetID int64, profileID int64, capabilityKind string) int64 {
+	t.Helper()
+	result, err := database.Exec(`
+		INSERT INTO connector_runtime_surfaces (
+			connector_kind, target_id, profile_id, capability_kind, label, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		connectorKind,
+		targetID,
+		profileID,
+		capabilityKind,
+		capabilityKind,
+	)
+	if err != nil {
+		t.Fatalf("insert connector runtime surface: %v", err)
+	}
+	runtimeID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("runtime surface id: %v", err)
+	}
+	return runtimeID
 }
 
 func tableExists(t *testing.T, database *sql.DB, table string) bool {

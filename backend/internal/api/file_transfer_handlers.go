@@ -31,14 +31,14 @@ const (
 )
 
 type startDownloadRequest struct {
-	RuntimeProfileID int64  `json:"runtime_profile_id"`
-	RemotePath       string `json:"remote_path"`
+	RuntimeID  int64  `json:"runtime_id"`
+	RemotePath string `json:"remote_path"`
 }
 
 type startDownloadBatchRequest struct {
-	RuntimeProfileID int64    `json:"runtime_profile_id"`
-	RemotePaths      []string `json:"remote_paths"`
-	ArchiveName      string   `json:"archive_name"`
+	RuntimeID   int64    `json:"runtime_id"`
+	RemotePaths []string `json:"remote_paths"`
+	ArchiveName string   `json:"archive_name"`
 }
 
 type updateFileTransferBatchQueueRequest struct {
@@ -55,8 +55,8 @@ type declineFileTransferBatchRequest struct {
 }
 
 type browseRemoteFilesRequest struct {
-	RuntimeProfileID int64  `json:"runtime_profile_id"`
-	Path             string `json:"path"`
+	RuntimeID int64  `json:"runtime_id"`
+	Path      string `json:"path"`
 }
 
 type browseRemoteFilesResponse struct {
@@ -139,12 +139,12 @@ func (s fileTransferHandlers) listFileTransfers(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
-	if rawRuntimeProfileID := strings.TrimSpace(r.URL.Query().Get("runtime_profile_id")); rawRuntimeProfileID != "" {
-		id, ok := parseInt64Query(w, rawRuntimeProfileID, "runtime_profile_id")
+	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
+		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
 		if !ok {
 			return
 		}
-		filter.RuntimeProfileID = id
+		filter.RuntimeID = id
 	}
 
 	items, total, err := runtime.fileTransfers.List(r.Context(), filter)
@@ -186,8 +186,8 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if request.RuntimeProfileID < 1 {
-		writeError(w, http.StatusBadRequest, "runtime_profile_id is required")
+	if request.RuntimeID < 1 {
+		writeError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
 	remotePath, err := normalizeRemoteDirectoryPath(request.Path)
@@ -197,12 +197,12 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	adapter, err := s.fileTransferAdapter(ctx, runtime, request.RuntimeProfileID)
+	adapter, err := s.fileTransferAdapter(ctx, runtime, request.RuntimeID)
 	if err != nil {
 		handleConnectorTargetRuntimeError(w, err)
 		return
 	}
-	entries, err := adapter.BrowseRemoteFiles(ctx, s.Server, runtime, request.RuntimeProfileID, remotePath)
+	entries, err := adapter.BrowseRemoteFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath)
 	if err != nil {
 		if writeConnectorError(w, adapter, err) {
 			return
@@ -251,7 +251,7 @@ func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.
 	}
 	if changed {
 		s.removeTransferTemp(runtime, id)
-		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeProfileID, "file_transfer.canceled", map[string]any{
+		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.canceled", map[string]any{
 			"transfer_id": id,
 			"direction":   item.Direction,
 			"remote_path": item.RemotePath,
@@ -290,12 +290,12 @@ func (s fileTransferHandlers) listFileTransferBatches(w http.ResponseWriter, r *
 		writeError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
-	if rawRuntimeProfileID := strings.TrimSpace(r.URL.Query().Get("runtime_profile_id")); rawRuntimeProfileID != "" {
-		id, ok := parseInt64Query(w, rawRuntimeProfileID, "runtime_profile_id")
+	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
+		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
 		if !ok {
 			return
 		}
-		filter.RuntimeProfileID = id
+		filter.RuntimeID = id
 	}
 	items, total, err := runtime.fileTransfers.ListBatches(r.Context(), filter)
 	if err != nil {
@@ -523,7 +523,7 @@ func (s fileTransferHandlers) approveFileTransferBatch(w http.ResponseWriter, r 
 			_ = os.Remove(item.TempPath)
 		}
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, batch.RuntimeProfileID, "file_transfer.batch.approved", map[string]any{
+	s.writeAudit(r.Context(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.approved", map[string]any{
 		"batch_id":       id,
 		"approved_items": len(request.ItemIDs),
 		"rejected_items": len(rejected),
@@ -567,7 +567,7 @@ func (s fileTransferHandlers) declineFileTransferBatch(w http.ResponseWriter, r 
 			_ = os.Remove(item.TempPath)
 		}
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, batch.RuntimeProfileID, "file_transfer.batch.declined", map[string]any{
+	s.writeAudit(r.Context(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.declined", map[string]any{
 		"batch_id": id,
 		"items":    len(rejected),
 		"note":     strings.TrimSpace(request.Note),
@@ -644,7 +644,7 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 	if r.MultipartForm != nil {
 		defer r.MultipartForm.RemoveAll()
 	}
-	runtimeProfileID, ok := parseFormInt64(w, r, "runtime_profile_id")
+	runtimeID, ok := parseFormInt64(w, r, "runtime_id")
 	if !ok {
 		return
 	}
@@ -666,26 +666,26 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if ok := s.checkUploadOverwrite(w, r, runtime, runtimeProfileID, remotePath, overwrite, tempPath); !ok {
+	if ok := s.checkUploadOverwrite(w, r, runtime, runtimeID, remotePath, overwrite, tempPath); !ok {
 		return
 	}
 	fileName := safeFileName(header.Filename)
 	record, err := runtime.fileTransfers.Create(r.Context(), filetransfer.CreateRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        filetransfer.DirectionUpload,
-		Source:           filetransfer.SourceUI,
-		LocalPath:        fileName,
-		RemotePath:       remotePath,
-		FileName:         fileName,
-		SizeBytes:        size,
-		TempPath:         tempPath,
+		RuntimeID:  runtimeID,
+		Direction:  filetransfer.DirectionUpload,
+		Source:     filetransfer.SourceUI,
+		LocalPath:  fileName,
+		RemotePath: remotePath,
+		FileName:   fileName,
+		SizeBytes:  size,
+		TempPath:   tempPath,
 	})
 	if err != nil {
 		_ = os.Remove(tempPath)
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, runtimeProfileID, "file_transfer.upload.started", map[string]any{
+	s.writeAudit(r.Context(), runtime, "user", nil, runtimeID, "file_transfer.upload.started", map[string]any{
 		"transfer_id": record.ID,
 		"remote_path": remotePath,
 		"file_name":   fileName,
@@ -701,11 +701,11 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	batch, runtimeProfileID, overwrite, ok := s.createUploadBatchFromMultipart(w, r, runtime, filetransfer.SourceUI, nil, nil, nil)
+	batch, runtimeID, overwrite, ok := s.createUploadBatchFromMultipart(w, r, runtime, filetransfer.SourceUI, nil, nil, nil)
 	if !ok {
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, runtimeProfileID, "file_transfer.batch.upload.started", map[string]any{
+	s.writeAudit(r.Context(), runtime, "user", nil, runtimeID, "file_transfer.batch.upload.started", map[string]any{
 		"batch_id":   batch.ID,
 		"items":      len(batch.Items),
 		"size_bytes": batch.SizeBytes,
@@ -715,7 +715,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusAccepted, batch)
 }
 
-func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, source string, status *string, authorize func(runtimeProfileID int64) bool, prepare func(runtimeProfileID int64, remoteDir string, fileNames []string, overwrite bool) bool) (filetransfer.BatchRecord, int64, bool, bool) {
+func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, source string, status *string, authorize func(runtimeID int64) bool, prepare func(runtimeID int64, remoteDir string, fileNames []string, overwrite bool) bool) (filetransfer.BatchRecord, int64, bool, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferUploadBytes)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart upload")
@@ -724,11 +724,11 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 	if r.MultipartForm != nil {
 		defer r.MultipartForm.RemoveAll()
 	}
-	runtimeProfileID, ok := parseFormInt64(w, r, "runtime_profile_id")
+	runtimeID, ok := parseFormInt64(w, r, "runtime_id")
 	if !ok {
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
-	if authorize != nil && !authorize(runtimeProfileID) {
+	if authorize != nil && !authorize(runtimeID) {
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	initialStatus := filetransfer.StatusPending
@@ -767,7 +767,7 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 		fileNames = append(fileNames, fileName)
 		remotePaths = append(remotePaths, remotePath)
 	}
-	if prepare != nil && !prepare(runtimeProfileID, remoteDir, fileNames, overwrite) {
+	if prepare != nil && !prepare(runtimeID, remoteDir, fileNames, overwrite) {
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	requests := make([]filetransfer.CreateRequest, 0, len(headers))
@@ -796,7 +796,7 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 		})
 	}
 	if initialStatus != filetransfer.StatusPendingApproval {
-		conflicts, ok := s.checkUploadBatchOverwrite(w, r, runtime, runtimeProfileID, requests, overwrite, tempPaths)
+		conflicts, ok := s.checkUploadBatchOverwrite(w, r, runtime, runtimeID, requests, overwrite, tempPaths)
 		if !ok {
 			if len(conflicts) > 0 {
 				writeJSON(w, http.StatusConflict, remoteFileConflictsResponse{
@@ -809,19 +809,19 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 		}
 	}
 	batch, err := runtime.fileTransfers.CreateBatch(r.Context(), filetransfer.CreateBatchRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        filetransfer.DirectionUpload,
-		Source:           source,
-		Status:           initialStatus,
-		Overwrite:        overwrite,
-		Items:            requests,
+		RuntimeID: runtimeID,
+		Direction: filetransfer.DirectionUpload,
+		Source:    source,
+		Status:    initialStatus,
+		Overwrite: overwrite,
+		Items:     requests,
 	})
 	if err != nil {
 		cleanupTempPaths(tempPaths)
 		writeInternalError(w)
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
-	return batch, runtimeProfileID, overwrite, true
+	return batch, runtimeID, overwrite, true
 }
 
 func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Request) {
@@ -839,8 +839,8 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if request.RuntimeProfileID < 1 {
-		writeError(w, http.StatusBadRequest, "runtime_profile_id is required")
+	if request.RuntimeID < 1 {
+		writeError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
 	tempPath, err := s.reserveDownloadTempFile()
@@ -850,19 +850,19 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 	}
 	fileName := safeFileName(path.Base(remotePath))
 	record, err := runtime.fileTransfers.Create(r.Context(), filetransfer.CreateRequest{
-		RuntimeProfileID: request.RuntimeProfileID,
-		Direction:        filetransfer.DirectionDownload,
-		Source:           filetransfer.SourceUI,
-		RemotePath:       remotePath,
-		FileName:         fileName,
-		TempPath:         tempPath,
+		RuntimeID:  request.RuntimeID,
+		Direction:  filetransfer.DirectionDownload,
+		Source:     filetransfer.SourceUI,
+		RemotePath: remotePath,
+		FileName:   fileName,
+		TempPath:   tempPath,
 	})
 	if err != nil {
 		_ = os.Remove(tempPath)
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, request.RuntimeProfileID, "file_transfer.download.started", map[string]any{
+	s.writeAudit(r.Context(), runtime, "user", nil, request.RuntimeID, "file_transfer.download.started", map[string]any{
 		"transfer_id": record.ID,
 		"remote_path": remotePath,
 		"file_name":   fileName,
@@ -883,7 +883,7 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	batch, err := s.createDownloadBatch(ctx, runtime, request.RuntimeProfileID, request.RemotePaths, request.ArchiveName, filetransfer.SourceUI, filetransfer.StatusPending)
+	batch, err := s.createDownloadBatch(ctx, runtime, request.RuntimeID, request.RemotePaths, request.ArchiveName, filetransfer.SourceUI, filetransfer.StatusPending)
 	if err != nil {
 		if s.writeFileTransferStartError(w, err) {
 			return
@@ -891,7 +891,7 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, request.RuntimeProfileID, "file_transfer.batch.download.started", map[string]any{
+	s.writeAudit(r.Context(), runtime, "user", nil, request.RuntimeID, "file_transfer.batch.download.started", map[string]any{
 		"batch_id":   batch.ID,
 		"items":      len(batch.Items),
 		"size_bytes": batch.SizeBytes,
@@ -900,9 +900,9 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusAccepted, batch)
 }
 
-func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *databaseRuntime, runtimeProfileID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error) {
-	if runtimeProfileID < 1 {
-		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "runtime_profile_id is required")
+func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *databaseRuntime, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error) {
+	if runtimeID < 1 {
+		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "runtime_id is required")
 	}
 	if len(remotePaths) == 0 {
 		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "remote_paths is required")
@@ -914,7 +914,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 	validateRemoteBeforeApproval := status != filetransfer.StatusPendingApproval
 	if validateRemoteBeforeApproval {
 		var err error
-		adapter, err = s.fileTransferAdapter(ctx, runtime, runtimeProfileID)
+		adapter, err = s.fileTransferAdapter(ctx, runtime, runtimeID)
 		if err != nil {
 			return filetransfer.BatchRecord{}, err
 		}
@@ -936,7 +936,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 		seenRemotePaths[remotePath] = true
 		var size int64
 		if validateRemoteBeforeApproval {
-			status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeProfileID, remotePath)
+			status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeID, remotePath)
 			if err != nil {
 				cleanupTempPaths(tempPaths)
 				return filetransfer.BatchRecord{}, newFileTransferConnectorError(adapter, err)
@@ -974,12 +974,12 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 		cleanArchiveName = fmt.Sprintf("aipermission-download-%s.zip", time.Now().UTC().Format("20060102-150405"))
 	}
 	batch, err := runtime.fileTransfers.CreateBatch(ctx, filetransfer.CreateBatchRequest{
-		RuntimeProfileID: runtimeProfileID,
-		Direction:        filetransfer.DirectionDownload,
-		Source:           source,
-		Status:           status,
-		ArchiveName:      cleanArchiveName,
-		Items:            items,
+		RuntimeID:   runtimeID,
+		Direction:   filetransfer.DirectionDownload,
+		Source:      source,
+		Status:      status,
+		ArchiveName: cleanArchiveName,
+		Items:       items,
 	})
 	if err != nil {
 		cleanupTempPaths(tempPaths)
@@ -1070,12 +1070,12 @@ func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int
 		log.Printf("read file upload failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	adapter, err := s.fileTransferAdapter(ctx, runtime, item.RuntimeProfileID)
+	adapter, err := s.fileTransferAdapter(ctx, runtime, item.RuntimeID)
 	if err != nil {
 		s.failFileTransfer(runtime, transferID, err)
 		return
 	}
-	result, err := adapter.UploadFile(ctx, s.Server, runtime, item.RuntimeProfileID, item.TempPath, item.RemotePath, overwrite, connectorapi.TransferOptions{
+	result, err := adapter.UploadFile(ctx, s.Server, runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, connectorapi.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID),
 	})
 	if err != nil {
@@ -1093,7 +1093,7 @@ func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int
 	if !completed {
 		return
 	}
-	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeProfileID, "file_transfer.upload.completed", map[string]any{
+	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.upload.completed", map[string]any{
 		"transfer_id":     transferID,
 		"remote_path":     item.RemotePath,
 		"bytes":           result.Bytes,
@@ -1120,12 +1120,12 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 		log.Printf("read file download failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	adapter, err := s.fileTransferAdapter(ctx, runtime, item.RuntimeProfileID)
+	adapter, err := s.fileTransferAdapter(ctx, runtime, item.RuntimeID)
 	if err != nil {
 		s.failFileTransfer(runtime, transferID, err)
 		return
 	}
-	result, err := adapter.DownloadFile(ctx, s.Server, runtime, item.RuntimeProfileID, item.RemotePath, item.TempPath, connectorapi.TransferOptions{
+	result, err := adapter.DownloadFile(ctx, s.Server, runtime, item.RuntimeID, item.RemotePath, item.TempPath, connectorapi.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID),
 	})
 	if err != nil {
@@ -1145,7 +1145,7 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 		return
 	}
 	s.scheduleTransferTempCleanup(item.TempPath)
-	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeProfileID, "file_transfer.download.completed", map[string]any{
+	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.download.completed", map[string]any{
 		"transfer_id":     transferID,
 		"remote_path":     item.RemotePath,
 		"bytes":           result.Bytes,
@@ -1224,7 +1224,7 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 	if ok, err := runtime.fileTransfers.CompleteBatch(context.Background(), batchID); err != nil {
 		log.Printf("complete file transfer batch failed batch=%d error=%v", batchID, err)
 	} else if ok {
-		s.writeAudit(context.Background(), runtime, "user", nil, batch.RuntimeProfileID, "file_transfer.batch.completed", map[string]any{
+		s.writeAudit(context.Background(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.completed", map[string]any{
 			"batch_id":        batchID,
 			"direction":       batch.Direction,
 			"items":           len(batch.Items),
@@ -1256,7 +1256,7 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 		log.Printf("read file transfer failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	adapter, err := s.fileTransferAdapter(itemCtx, runtime, item.RuntimeProfileID)
+	adapter, err := s.fileTransferAdapter(itemCtx, runtime, item.RuntimeID)
 	if err != nil {
 		s.failFileTransfer(runtime, transferID, err)
 		return
@@ -1268,9 +1268,9 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 	var result connectorapi.TransferResult
 	if item.Direction == filetransfer.DirectionUpload {
 		defer s.removeTransferTemp(runtime, transferID)
-		result, err = adapter.UploadFile(itemCtx, s.Server, runtime, item.RuntimeProfileID, item.TempPath, item.RemotePath, overwrite, options)
+		result, err = adapter.UploadFile(itemCtx, s.Server, runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, options)
 	} else {
-		result, err = adapter.DownloadFile(itemCtx, s.Server, runtime, item.RuntimeProfileID, item.RemotePath, item.TempPath, options)
+		result, err = adapter.DownloadFile(itemCtx, s.Server, runtime, item.RuntimeID, item.RemotePath, item.TempPath, options)
 	}
 	if err != nil {
 		if itemCtx.Err() != nil || errors.Is(err, context.Canceled) {
@@ -1293,7 +1293,7 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 	if item.Direction == filetransfer.DirectionDownload && item.BatchID == 0 {
 		s.scheduleTransferTempCleanup(item.TempPath)
 	}
-	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeProfileID, "file_transfer.completed", map[string]any{
+	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.completed", map[string]any{
 		"transfer_id":     transferID,
 		"batch_id":        item.BatchID,
 		"direction":       item.Direction,
@@ -1326,16 +1326,16 @@ func (s fileTransferHandlers) transferProgress(runtime *databaseRuntime, transfe
 	}
 }
 
-func (s fileTransferHandlers) checkUploadOverwrite(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, runtimeProfileID int64, remotePath string, overwrite bool, tempPath string) bool {
+func (s fileTransferHandlers) checkUploadOverwrite(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, runtimeID int64, remotePath string, overwrite bool, tempPath string) bool {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	adapter, err := s.fileTransferAdapter(ctx, runtime, runtimeProfileID)
+	adapter, err := s.fileTransferAdapter(ctx, runtime, runtimeID)
 	if err != nil {
 		_ = os.Remove(tempPath)
 		handleConnectorTargetRuntimeError(w, err)
 		return false
 	}
-	status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeProfileID, remotePath)
+	status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeID, remotePath)
 	if err != nil {
 		_ = os.Remove(tempPath)
 		if writeConnectorError(w, adapter, err) {
@@ -1372,10 +1372,10 @@ func (s fileTransferHandlers) checkUploadOverwrite(w http.ResponseWriter, r *htt
 	return true
 }
 
-func (s fileTransferHandlers) checkUploadBatchOverwrite(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, runtimeProfileID int64, requests []filetransfer.CreateRequest, overwrite bool, tempPaths []string) ([]remoteFileConflict, bool) {
+func (s fileTransferHandlers) checkUploadBatchOverwrite(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, runtimeID int64, requests []filetransfer.CreateRequest, overwrite bool, tempPaths []string) ([]remoteFileConflict, bool) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	adapter, err := s.fileTransferAdapter(ctx, runtime, runtimeProfileID)
+	adapter, err := s.fileTransferAdapter(ctx, runtime, runtimeID)
 	if err != nil {
 		cleanupTempPaths(tempPaths)
 		handleConnectorTargetRuntimeError(w, err)
@@ -1383,7 +1383,7 @@ func (s fileTransferHandlers) checkUploadBatchOverwrite(w http.ResponseWriter, r
 	}
 	var conflicts []remoteFileConflict
 	for _, item := range requests {
-		status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeProfileID, item.RemotePath)
+		status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeID, item.RemotePath)
 		if err != nil {
 			cleanupTempPaths(tempPaths)
 			if writeConnectorError(w, adapter, err) {
@@ -1430,7 +1430,7 @@ func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transfe
 	}
 	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
 	if readErr == nil {
-		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeProfileID, "file_transfer.failed", map[string]any{
+		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.failed", map[string]any{
 			"transfer_id": transferID,
 			"direction":   item.Direction,
 			"remote_path": item.RemotePath,
@@ -1450,7 +1450,7 @@ func (s fileTransferHandlers) cancelFileTransferRecord(runtime *databaseRuntime,
 	}
 	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
 	if readErr == nil {
-		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeProfileID, "file_transfer.canceled", map[string]any{
+		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.canceled", map[string]any{
 			"transfer_id": transferID,
 			"direction":   item.Direction,
 			"remote_path": item.RemotePath,

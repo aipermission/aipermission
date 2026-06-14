@@ -24,6 +24,9 @@ func TestConnectorMetadataAndSchemas(t *testing.T) {
 	if fieldOptionsContain(targetSchema, "connection_mode", "over_ssh") {
 		t.Fatalf("target schema must not advertise unsupported over_ssh mode: %#v", targetSchema.Fields)
 	}
+	if defaultFieldValue(targetSchema, "ssl_mode") != "require" {
+		t.Fatalf("postgres ssl_mode should default to require, got %#v", defaultFieldValue(targetSchema, "ssl_mode"))
+	}
 
 	credentialSchemas := connector.CredentialSchemas()
 	if len(credentialSchemas) != 1 || credentialSchemas[0].Kind != "username_password" {
@@ -303,6 +306,15 @@ func fieldOptionsContain(schema connectors.Schema, name string, value string) bo
 		}
 	}
 	return false
+}
+
+func defaultFieldValue(schema connectors.Schema, name string) any {
+	for _, field := range schema.Fields {
+		if field.Name == name {
+			return field.Default
+		}
+	}
+	return nil
 }
 
 type fakeSecrets map[string]string

@@ -55,13 +55,13 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	}
 }
 
-func TestConnectorRuntimeServicesAreKindScoped(t *testing.T) {
-	if services := connectorRuntimeServices(postgresconnector.Kind, &Server{}, &databaseRuntime{}); len(services) != 0 {
-		t.Fatalf("postgres should not receive ssh runtime services: %#v", services)
+func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
+	if capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, &Server{}, &databaseRuntime{}); capabilities != nil {
+		t.Fatalf("postgres should not receive ssh runtime capabilities: %#v", capabilities)
 	}
-	services := connectorRuntimeServices(sshconnector.Kind, &Server{}, &databaseRuntime{})
-	if services == nil || services[sshconnector.RuntimeServiceName] == nil {
-		t.Fatalf("ssh runtime service missing: %#v", services)
+	capabilities := connectorRuntimeCapabilitiesFor(sshconnector.Kind, &Server{}, &databaseRuntime{})
+	if capabilities == nil || capabilities.RuntimeCapability(sshconnector.RuntimeServiceName) == nil {
+		t.Fatalf("ssh runtime capability missing: %#v", capabilities)
 	}
 }
 
@@ -641,6 +641,9 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 	if stale.Status != connectors.ResultStale {
 		t.Fatalf("status = %q", stale.Status)
 	}
+	if stale.ApprovalContextDrift != "permission" {
+		t.Fatalf("approval drift = %q", stale.ApprovalContextDrift)
+	}
 }
 
 func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
@@ -697,6 +700,9 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 	}
 	if stale.Status != connectors.ResultStale || !strings.Contains(stale.Error, "fresh request") {
 		t.Fatalf("request should be stale with fresh-request error: %#v", stale)
+	}
+	if stale.ApprovalContextDrift != "target_or_action" {
+		t.Fatalf("approval drift = %q", stale.ApprovalContextDrift)
 	}
 	var historyStatus string
 	if err := fixture.db.QueryRow(`

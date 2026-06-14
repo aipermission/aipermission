@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -265,11 +266,11 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 		}
 	}
 	return connector.ExecuteAction(ctx, connectors.RuntimeContext{
-		Target:   prepared.Target,
-		Profile:  prepared.Profile,
-		Secrets:  connectorSecretAccessor{values: secrets},
-		Events:   noopConnectorEventSink{},
-		Services: connectorRuntimeServices(prepared.Target.ConnectorKind, s, runtime),
+		Target:       prepared.Target,
+		Profile:      prepared.Profile,
+		Secrets:      connectorSecretAccessor{values: secrets},
+		Events:       noopConnectorEventSink{},
+		Capabilities: connectorRuntimeCapabilitiesFor(prepared.Target.ConnectorKind, s, runtime),
 	}, prepared.Action)
 }
 
@@ -512,4 +513,38 @@ func hashGenericApprovalContext(snapshot map[string]any) (string, error) {
 		return "", err
 	}
 	return sha256Hex(string(payload)), nil
+}
+
+func connectorApprovalDriftReason(previousContext string, currentContext string) string {
+	var previous map[string]any
+	var current map[string]any
+	if err := json.Unmarshal([]byte(previousContext), &previous); err != nil {
+		return "unknown"
+	}
+	if err := json.Unmarshal([]byte(currentContext), &current); err != nil {
+		return "unknown"
+	}
+	for _, area := range []string{"connector", "token", "permission", "target", "profile"} {
+		if !reflect.DeepEqual(previous[area], current[area]) {
+			return area
+		}
+	}
+	if !reflect.DeepEqual(approvalActionValue(previous, "definition_hash"), approvalActionValue(current, "definition_hash")) {
+		return "action_definition"
+	}
+	if !reflect.DeepEqual(approvalActionValue(previous, "payload_hash"), approvalActionValue(current, "payload_hash")) {
+		return "payload"
+	}
+	if !reflect.DeepEqual(previous["action"], current["action"]) {
+		return "action"
+	}
+	return "unknown"
+}
+
+func approvalActionValue(snapshot map[string]any, key string) any {
+	action, _ := snapshot["action"].(map[string]any)
+	if action == nil {
+		return nil
+	}
+	return action[key]
 }

@@ -72,6 +72,20 @@ var coreTableStatements = []string{
 		UNIQUE(id, target_id),
 		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE RESTRICT
 	);`,
+	`CREATE TABLE IF NOT EXISTS connector_runtime_surfaces (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		connector_kind TEXT NOT NULL,
+		target_id INTEGER NOT NULL,
+		profile_id INTEGER NOT NULL,
+		capability_kind TEXT NOT NULL,
+		label TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(connector_kind, target_id, profile_id, capability_kind),
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE RESTRICT,
+		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE RESTRICT
+	);`,
 	`CREATE TABLE IF NOT EXISTS token_connector_action_permissions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		token_id INTEGER NOT NULL,
@@ -90,7 +104,7 @@ var coreTableStatements = []string{
 	`CREATE TABLE IF NOT EXISTS command_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		token_id INTEGER,
-		runtime_profile_id INTEGER NOT NULL,
+		runtime_id INTEGER NOT NULL,
 		source TEXT NOT NULL DEFAULT 'mcp',
 		command TEXT NOT NULL,
 		encrypted_command TEXT NOT NULL DEFAULT '',
@@ -100,27 +114,29 @@ var coreTableStatements = []string{
 		stderr TEXT NOT NULL DEFAULT '',
 		exit_code INTEGER,
 		session_id INTEGER,
-		user_note TEXT,
-		error TEXT NOT NULL DEFAULT '',
-		tracking_reason TEXT NOT NULL DEFAULT '',
-		output_truncated INTEGER NOT NULL DEFAULT 0,
-		created_at TEXT NOT NULL,
-		completed_at TEXT,
-		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL
-	);`,
+			user_note TEXT,
+			error TEXT NOT NULL DEFAULT '',
+			tracking_reason TEXT NOT NULL DEFAULT '',
+			output_truncated INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			completed_at TEXT,
+			FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL,
+			FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE RESTRICT
+		);`,
 	`CREATE TABLE IF NOT EXISTS console_sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		runtime_profile_id INTEGER NOT NULL,
+		runtime_id INTEGER NOT NULL,
 		name TEXT NOT NULL,
 		status TEXT NOT NULL,
-		transcript TEXT NOT NULL DEFAULT '',
-		error TEXT NOT NULL DEFAULT '',
-		cols INTEGER NOT NULL DEFAULT 120,
-		rows INTEGER NOT NULL DEFAULT 32,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		closed_at TEXT
-	);`,
+			transcript TEXT NOT NULL DEFAULT '',
+			error TEXT NOT NULL DEFAULT '',
+			cols INTEGER NOT NULL DEFAULT 120,
+			rows INTEGER NOT NULL DEFAULT 32,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			closed_at TEXT,
+			FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE RESTRICT
+		);`,
 	`CREATE TABLE IF NOT EXISTS console_session_chunks (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		session_id INTEGER NOT NULL,
@@ -133,15 +149,16 @@ var coreTableStatements = []string{
 	`CREATE TABLE IF NOT EXISTS message_queue (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		token_id INTEGER NOT NULL,
-		runtime_profile_id INTEGER,
-		session_id INTEGER,
-		direction TEXT NOT NULL DEFAULT 'user_to_ai',
-		message TEXT NOT NULL,
-		consumed_at TEXT,
-		created_at TEXT NOT NULL,
-		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
-		FOREIGN KEY(session_id) REFERENCES console_sessions(id) ON DELETE SET NULL
-	);`,
+		runtime_id INTEGER,
+			session_id INTEGER,
+			direction TEXT NOT NULL DEFAULT 'user_to_ai',
+			message TEXT NOT NULL,
+			consumed_at TEXT,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
+			FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE SET NULL,
+			FOREIGN KEY(session_id) REFERENCES console_sessions(id) ON DELETE SET NULL
+		);`,
 	`CREATE TABLE IF NOT EXISTS connector_action_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		token_id INTEGER,
@@ -173,24 +190,25 @@ var coreTableStatements = []string{
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		actor_type TEXT NOT NULL,
 		token_id INTEGER,
-		runtime_profile_id INTEGER,
+		runtime_id INTEGER,
 		connector_kind TEXT NOT NULL DEFAULT '',
 		target_id INTEGER,
 		profile_id INTEGER,
-		action_request_id INTEGER,
-		action TEXT NOT NULL,
-		payload_json TEXT NOT NULL DEFAULT '{}',
-		created_at TEXT NOT NULL,
-		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL
-	);`,
+			action_request_id INTEGER,
+			action TEXT NOT NULL,
+			payload_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL,
+			FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL,
+			FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE SET NULL
+		);`,
 	`CREATE TABLE IF NOT EXISTS redaction_rules (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE,
-		pattern TEXT NOT NULL,
-		enabled INTEGER NOT NULL DEFAULT 1,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	);`,
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			pattern TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
 	`CREATE TABLE IF NOT EXISTS history_labels (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -203,7 +221,7 @@ var coreTableStatements = []string{
 var fileTransferTableStatements = []string{
 	`CREATE TABLE IF NOT EXISTS file_transfer_batches (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		runtime_profile_id INTEGER NOT NULL,
+		runtime_id INTEGER NOT NULL,
 		direction TEXT NOT NULL CHECK (direction IN ('upload', 'download')),
 		source TEXT NOT NULL DEFAULT 'ui' CHECK (source IN ('ui', 'mcp')),
 		status TEXT NOT NULL CHECK (status IN ('pending', 'pending_approval', 'running', 'paused', 'completed', 'failed', 'canceled')),
@@ -216,20 +234,21 @@ var fileTransferTableStatements = []string{
 		failed_items INTEGER NOT NULL DEFAULT 0,
 		canceled_items INTEGER NOT NULL DEFAULT 0,
 		size_bytes INTEGER NOT NULL DEFAULT 0,
-		transferred_bytes INTEGER NOT NULL DEFAULT 0,
-		bytes_per_second INTEGER NOT NULL DEFAULT 0,
-		eta_seconds INTEGER NOT NULL DEFAULT -1,
-		error TEXT NOT NULL DEFAULT '',
-		created_at TEXT NOT NULL,
-		started_at TEXT,
-		completed_at TEXT,
-		updated_at TEXT NOT NULL
-	);`,
+			transferred_bytes INTEGER NOT NULL DEFAULT 0,
+			bytes_per_second INTEGER NOT NULL DEFAULT 0,
+			eta_seconds INTEGER NOT NULL DEFAULT -1,
+			error TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			started_at TEXT,
+			completed_at TEXT,
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE RESTRICT
+		);`,
 	`CREATE TABLE IF NOT EXISTS file_transfers (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		batch_id INTEGER,
 		queue_index INTEGER NOT NULL DEFAULT 0,
-		runtime_profile_id INTEGER NOT NULL,
+		runtime_id INTEGER NOT NULL,
 		direction TEXT NOT NULL CHECK (direction IN ('upload', 'download')),
 		source TEXT NOT NULL DEFAULT 'ui' CHECK (source IN ('ui', 'mcp')),
 		status TEXT NOT NULL CHECK (status IN ('pending', 'pending_approval', 'running', 'paused', 'completed', 'failed', 'canceled')),
@@ -242,13 +261,14 @@ var fileTransferTableStatements = []string{
 		eta_seconds INTEGER NOT NULL DEFAULT -1,
 		checksum_sha256 TEXT NOT NULL DEFAULT '',
 		temp_path TEXT NOT NULL DEFAULT '',
-		error TEXT NOT NULL DEFAULT '',
-		created_at TEXT NOT NULL,
-		started_at TEXT,
-		completed_at TEXT,
-		updated_at TEXT NOT NULL,
-		FOREIGN KEY(batch_id) REFERENCES file_transfer_batches(id) ON DELETE SET NULL
-	);`,
+			error TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			started_at TEXT,
+			completed_at TEXT,
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY(batch_id) REFERENCES file_transfer_batches(id) ON DELETE SET NULL,
+			FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE RESTRICT
+		);`,
 }
 
 var historyTableStatements = []string{
@@ -259,7 +279,7 @@ var historyTableStatements = []string{
 		connector_kind TEXT NOT NULL,
 		activity_type TEXT NOT NULL,
 		token_id INTEGER,
-		runtime_profile_id INTEGER,
+		runtime_id INTEGER,
 		target_id INTEGER,
 		profile_id INTEGER,
 		target_name TEXT NOT NULL DEFAULT '',
@@ -281,16 +301,17 @@ var historyTableStatements = []string{
 		bytes_done INTEGER NOT NULL DEFAULT 0,
 		bytes_total INTEGER NOT NULL DEFAULT 0,
 		approval_required INTEGER NOT NULL DEFAULT 0,
-		user_note TEXT NOT NULL DEFAULT '',
-		created_at TEXT NOT NULL,
-		started_at TEXT,
-		completed_at TEXT,
-		updated_at TEXT NOT NULL,
-		UNIQUE(source_ref_type, source_ref_id),
-		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL,
-		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE SET NULL,
-		FOREIGN KEY(profile_id) REFERENCES connector_credential_profiles(id) ON DELETE SET NULL
-	);`,
+			user_note TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			started_at TEXT,
+			completed_at TEXT,
+			updated_at TEXT NOT NULL,
+			UNIQUE(source_ref_type, source_ref_id),
+			FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL,
+			FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE SET NULL,
+			FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE SET NULL,
+			FOREIGN KEY(profile_id) REFERENCES connector_credential_profiles(id) ON DELETE SET NULL
+		);`,
 	`CREATE TABLE IF NOT EXISTS history_entry_labels (
 		history_entry_id INTEGER NOT NULL,
 		label_id INTEGER NOT NULL,
@@ -310,22 +331,25 @@ var indexStatements = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_targets_active_kind_name ON connector_targets(connector_kind, name) WHERE status = 'active';`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_credential_profiles_target ON connector_credential_profiles(target_id);`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_credential_profiles_active_label ON connector_credential_profiles(target_id, label) WHERE status = 'active';`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_runtime_surfaces_profile ON connector_runtime_surfaces(profile_id, status);`,
+	`CREATE INDEX IF NOT EXISTS idx_connector_runtime_surfaces_target ON connector_runtime_surfaces(target_id, status);`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_connector_runtime_surfaces_active ON connector_runtime_surfaces(connector_kind, target_id, profile_id, capability_kind) WHERE status = 'active';`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_token ON token_connector_action_permissions(token_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_lookup ON token_connector_action_permissions(token_id, target_id, profile_id, action_name);`,
 	`CREATE INDEX IF NOT EXISTS idx_token_connector_action_permissions_expires_at ON token_connector_action_permissions(expires_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_status ON command_requests(status);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_token_status_created ON command_requests(token_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_created_at ON command_requests(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_command_requests_runtime_profile_status_created ON command_requests(runtime_profile_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_command_requests_runtime_status_created ON command_requests(runtime_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_source_created ON command_requests(source, created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_command_requests_runtime_profile_source_created ON command_requests(runtime_profile_id, source, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_command_requests_runtime_source_created ON command_requests(runtime_id, source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_token_source_status_created ON command_requests(token_id, source, status, created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_console_sessions_runtime_profile ON console_sessions(runtime_profile_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_console_sessions_runtime ON console_sessions(runtime_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_console_sessions_status ON console_sessions(status);`,
 	`CREATE INDEX IF NOT EXISTS idx_console_session_chunks_session_seq ON console_session_chunks(session_id, seq);`,
 	`CREATE INDEX IF NOT EXISTS idx_message_queue_token ON message_queue(token_id);`,
-	`CREATE INDEX IF NOT EXISTS idx_message_queue_runtime_profile ON message_queue(runtime_profile_id);`,
-	`CREATE INDEX IF NOT EXISTS idx_message_queue_token_direction_consumed_runtime_profile ON message_queue(token_id, direction, consumed_at, runtime_profile_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_message_queue_runtime ON message_queue(runtime_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_message_queue_token_direction_consumed_runtime ON message_queue(token_id, direction, consumed_at, runtime_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_token_status_created ON connector_action_requests(token_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_target_status_created ON connector_action_requests(target_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_kind_action_created ON connector_action_requests(connector_kind, action_name, created_at);`,
@@ -333,14 +357,14 @@ var indexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_source_created ON connector_action_requests(source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_type, created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_audit_logs_runtime_profile_created ON audit_logs(runtime_profile_id, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_audit_logs_runtime_created ON audit_logs(runtime_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_connector_created ON audit_logs(connector_kind, target_id, profile_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_logs_action_request ON audit_logs(action_request_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_redaction_rules_enabled ON redaction_rules(enabled);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfer_batches_created ON file_transfer_batches(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_file_transfer_batches_runtime_profile_status_created ON file_transfer_batches(runtime_profile_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfer_batches_runtime_status_created ON file_transfer_batches(runtime_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_created ON file_transfers(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_file_transfers_runtime_profile_status_created ON file_transfers(runtime_profile_id, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_file_transfers_runtime_status_created ON file_transfers(runtime_id, status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_direction_created ON file_transfers(direction, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_status_created ON file_transfers(status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_file_transfers_batch_queue ON file_transfers(batch_id, queue_index, id);`,
@@ -351,7 +375,7 @@ var indexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_status_created ON history_entries(status, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_target_created ON history_entries(target_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_profile_created ON history_entries(profile_id, created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_history_entries_runtime_profile_created ON history_entries(runtime_profile_id, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_history_entries_runtime_created ON history_entries(runtime_id, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entries_source_created ON history_entries(source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_history_entry_labels_label ON history_entry_labels(label_id);`,
 }
@@ -391,13 +415,13 @@ var searchIndexStatements = []string{
 
 var historyProjectionStatements = []string{
 	`INSERT OR IGNORE INTO history_entries (
-		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_profile_id,
+		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_id,
 		target_id, profile_id, target_name, profile_label, source, status, action_name,
 		title, summary, input_text, output_text, error, exit_code, approval_required,
 		user_note, created_at, started_at, completed_at, updated_at
 	)
 	SELECT
-		'command_request', cr.id, COALESCE(cp.connector_kind, ''), 'command', cr.token_id, cr.runtime_profile_id,
+		'command_request', cr.id, COALESCE(rs.connector_kind, ''), 'command', cr.token_id, cr.runtime_id,
 		ct.id, cp.id, COALESCE(ct.name, ''), COALESCE(cp.label, ''), cr.source, cr.status, 'exec',
 		CASE
 			WHEN length(cr.command) > 120 THEN substr(cr.command, 1, 117) || '...'
@@ -418,7 +442,8 @@ var historyProjectionStatements = []string{
 		cr.completed_at,
 		COALESCE(cr.completed_at, cr.created_at)
 	FROM command_requests cr
-	LEFT JOIN connector_credential_profiles cp ON cp.id = cr.runtime_profile_id
+	LEFT JOIN connector_runtime_surfaces rs ON rs.id = cr.runtime_id
+	LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 	LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind;`,
 	`INSERT OR IGNORE INTO history_entries (
 		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, target_id,
@@ -438,14 +463,14 @@ var historyProjectionStatements = []string{
 	JOIN connector_targets t ON t.id = r.target_id
 	JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id AND p.connector_kind = r.connector_kind;`,
 	`INSERT OR IGNORE INTO history_entries (
-		source_ref_type, source_ref_id, connector_kind, activity_type, runtime_profile_id, target_id,
+		source_ref_type, source_ref_id, connector_kind, activity_type, runtime_id, target_id,
 		profile_id, target_name, profile_label, source, status, action_name, title, summary,
 		input_text, input_json, output_text, error, progress_current, progress_total,
 		bytes_done, bytes_total, approval_required, created_at, started_at, completed_at,
 		updated_at
 	)
 	SELECT
-		'file_transfer', ft.id, COALESCE(cp.connector_kind, ''), 'file_transfer', ft.runtime_profile_id, ct.id, cp.id,
+		'file_transfer', ft.id, COALESCE(rs.connector_kind, ''), 'file_transfer', ft.runtime_id, ct.id, cp.id,
 		COALESCE(ct.name, ''), COALESCE(cp.label, ''), ft.source, ft.status, ft.direction,
 		ft.direction || ': ' || ft.file_name,
 		ft.remote_path,
@@ -466,7 +491,8 @@ var historyProjectionStatements = []string{
 		ft.completed_at,
 		ft.updated_at
 	FROM file_transfers ft
-	LEFT JOIN connector_credential_profiles cp ON cp.id = ft.runtime_profile_id
+	LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
+	LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 	LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind;`,
 }
 

@@ -7,7 +7,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 )
 
@@ -17,10 +16,7 @@ func TestActionServicePreparesSSHExec(t *testing.T) {
 	store := NewStore(database)
 	target, profile := createTargetTestSSHProfile(t, context.Background(), store, keyID, "core-1", "admin", "10.0.0.10", 2222)
 	targetRef := TargetProfileRef("ssh", target.ID, profile.ID)
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		t.Fatalf("builtin registry: %v", err)
-	}
+	registry := newTargetTestRegistry(t)
 	service := actions.NewService(registry, NewResolver(database))
 
 	prepared, err := service.Prepare(context.Background(), actions.PrepareRequest{
@@ -58,10 +54,7 @@ func TestActionServicePreparesSSHReadConsole(t *testing.T) {
 	store := NewStore(database)
 	target, profile := createTargetTestSSHProfile(t, context.Background(), store, keyID, "core-1", "admin", "10.0.0.10", 2222)
 	targetRef := TargetProfileRef("ssh", target.ID, profile.ID)
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		t.Fatalf("builtin registry: %v", err)
-	}
+	registry := newTargetTestRegistry(t)
 	service := actions.NewService(registry, NewResolver(database))
 
 	prepared, err := service.Prepare(context.Background(), actions.PrepareRequest{
@@ -83,4 +76,13 @@ func TestActionServicePreparesSSHReadConsole(t *testing.T) {
 	if prepared.Action.Payload["tail_bytes"] != 4096 {
 		t.Fatalf("payload = %#v", prepared.Action.Payload)
 	}
+}
+
+func newTargetTestRegistry(t *testing.T) *connectors.Registry {
+	t.Helper()
+	registry := connectors.NewRegistry()
+	if err := registry.Register(sshconnector.New()); err != nil {
+		t.Fatalf("register ssh connector: %v", err)
+	}
+	return registry
 }

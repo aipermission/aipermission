@@ -6,6 +6,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	_ "github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter"
 )
 
 // RegisterAll adds all built-in connectors to the provided registry.

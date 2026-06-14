@@ -8,7 +8,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/api"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
-	_ "github.com/aipermission/aipermission/backend/internal/connectors/builtin/adapters"
 )
 
 func main() {

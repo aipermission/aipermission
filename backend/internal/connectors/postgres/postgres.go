@@ -105,13 +105,13 @@ func (Connector) TargetSchema() connectors.Schema {
 			Name:        "ssl_mode",
 			Label:       "SSL mode",
 			Type:        connectors.FieldSelect,
-			Default:     "prefer",
-			Description: "Postgres SSL mode for direct connections.",
+			Default:     "require",
+			Description: "Postgres SSL mode for direct connections. Use prefer or disable only when you intentionally accept weaker transport protection.",
 			Options: []connectors.FieldOption{
-				{Value: "disable", Label: "Disable"},
-				{Value: "prefer", Label: "Prefer"},
 				{Value: "require", Label: "Require"},
 				{Value: "verify_full", Label: "Verify full"},
+				{Value: "prefer", Label: "Prefer"},
+				{Value: "disable", Label: "Disable"},
 			},
 		},
 	}}
@@ -706,7 +706,7 @@ func sslMode(config map[string]any) string {
 		}
 		return mode
 	default:
-		return "prefer"
+		return "require"
 	}
 }
 

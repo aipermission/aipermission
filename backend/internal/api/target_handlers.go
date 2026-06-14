@@ -5,24 +5,23 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 type targetProfileItem struct {
-	Ref              string         `json:"ref"`
-	ConnectorKind    string         `json:"connector_kind"`
-	TargetID         int64          `json:"target_id"`
-	TargetName       string         `json:"target_name"`
-	ProfileID        int64          `json:"profile_id"`
-	ProfileKind      string         `json:"profile_kind"`
-	ProfileLabel     string         `json:"profile_label"`
-	RuntimeProfileID int64          `json:"runtime_profile_id,omitempty"`
-	Config           map[string]any `json:"config,omitempty"`
-	Public           map[string]any `json:"public,omitempty"`
-	Status           string         `json:"status"`
-	CreatedAt        string         `json:"created_at"`
-	UpdatedAt        string         `json:"updated_at"`
+	Ref           string         `json:"ref"`
+	ConnectorKind string         `json:"connector_kind"`
+	TargetID      int64          `json:"target_id"`
+	TargetName    string         `json:"target_name"`
+	ProfileID     int64          `json:"profile_id"`
+	ProfileKind   string         `json:"profile_kind"`
+	ProfileLabel  string         `json:"profile_label"`
+	RuntimeID     int64          `json:"runtime_id,omitempty"`
+	Config        map[string]any `json:"config,omitempty"`
+	Public        map[string]any `json:"public,omitempty"`
+	Status        string         `json:"status"`
+	CreatedAt     string         `json:"created_at"`
+	UpdatedAt     string         `json:"updated_at"`
 }
 
 func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +42,6 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
-	defer rows.Close()
 
 	items := []targetProfileItem{}
 	for rows.Next() {
@@ -79,29 +77,37 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		}
 		item.Config = config
 		item.Public = public
-		if adapter := connectorLiveConsoleTargetAdapterFor(item.ConnectorKind); adapter != nil {
-			item.RuntimeProfileID = adapter.LiveConsoleRuntimeID(
-				connectors.TargetView{
-					ID:            item.TargetID,
-					ConnectorKind: item.ConnectorKind,
-					Name:          item.TargetName,
-					Config:        item.Config,
-				},
-				connectors.CredentialProfileView{
-					ID:            item.ProfileID,
-					TargetID:      item.TargetID,
-					ConnectorKind: item.ConnectorKind,
-					Kind:          item.ProfileKind,
-					Label:         item.ProfileLabel,
-					Public:        item.Public,
-				},
-			)
-		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
 		writeInternalError(w)
 		return
+	}
+	if err := rows.Close(); err != nil {
+		writeInternalError(w)
+		return
+	}
+
+	store := connectortargets.NewStore(runtime.database)
+	for index := range items {
+		item := &items[index]
+		adapter := connectorLiveConsoleTargetAdapterFor(item.ConnectorKind)
+		if adapter == nil {
+			continue
+		}
+		surface, err := store.EnsureRuntimeSurface(r.Context(), connectortargets.EnsureRuntimeSurfaceInput{
+			ConnectorKind:  item.ConnectorKind,
+			TargetID:       item.TargetID,
+			ProfileID:      item.ProfileID,
+			CapabilityKind: adapter.LiveConsoleCapabilityKind(),
+			Label:          item.ProfileLabel,
+		})
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		item.RuntimeID = surface.ID
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }

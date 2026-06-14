@@ -14,6 +14,8 @@ type fakeConnector struct {
 	credentialSchemas []CredentialSchema
 	actionDefinitions []ActionDefinition
 	dynamicActions    bool
+	profileActions    bool
+	reverseActions    bool
 }
 
 func (f fakeConnector) Kind() string                          { return f.kind }
@@ -24,11 +26,21 @@ func (f fakeConnector) CredentialSchemas() []CredentialSchema { return f.credent
 func (f fakeConnector) GetHelp(context.Context, TargetView) (ConnectorHelp, error) {
 	return ConnectorHelp{ConnectorID: f.kind, Connector: f.label}, nil
 }
-func (f fakeConnector) GetActionList(_ context.Context, target TargetView, _ CredentialProfileView) ([]ActionDefinition, error) {
+func (f fakeConnector) GetActionList(_ context.Context, target TargetView, profile CredentialProfileView) ([]ActionDefinition, error) {
 	if f.dynamicActions && target.Name != "" {
 		return []ActionDefinition{{Name: "example_dynamic", Risk: RiskRead}}, nil
 	}
+	if f.profileActions && profile.Kind == "oauth" {
+		return []ActionDefinition{{Name: "oauth_only", Risk: RiskRead}}, nil
+	}
 	if f.actionDefinitions != nil {
+		if f.reverseActions && target.Name != "" {
+			reversed := append([]ActionDefinition(nil), f.actionDefinitions...)
+			for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
+				reversed[i], reversed[j] = reversed[j], reversed[i]
+			}
+			return reversed, nil
+		}
 		return f.actionDefinitions, nil
 	}
 	return []ActionDefinition{{Name: "example", Risk: RiskRead}}, nil
@@ -178,6 +190,52 @@ func TestRegistryRejectsTargetDependentActionCatalog(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "action list must be stable") {
 		t.Fatalf("expected action stability error, got %v", err)
+	}
+}
+
+func TestRegistryRejectsCredentialKindDependentActionCatalog(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(fakeConnector{
+		kind:           "api",
+		profileActions: true,
+		credentialSchemas: []CredentialSchema{
+			{
+				Kind: "api_key",
+				Schema: Schema{Fields: []Field{
+					{Name: "token", Type: FieldSecret, Secret: true, Required: true},
+				}},
+			},
+			{
+				Kind: "oauth",
+				Schema: Schema{Fields: []Field{
+					{Name: "token", Type: FieldSecret, Secret: true, Required: true},
+				}},
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "action list must be stable") {
+		t.Fatalf("expected action stability error, got %v", err)
+	}
+}
+
+func TestRegistryAcceptsStableActionCatalogWithDifferentOrder(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.Register(fakeConnector{
+		kind:           "api",
+		reverseActions: true,
+		actionDefinitions: []ActionDefinition{
+			{Name: "alpha", Risk: RiskRead},
+			{Name: "beta", Risk: RiskRead},
+		},
+		credentialSchemas: []CredentialSchema{{
+			Kind: "api_key",
+			Schema: Schema{Fields: []Field{
+				{Name: "token", Type: FieldSecret, Secret: true, Required: true},
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("expected stable action catalog to register: %v", err)
 	}
 }
 

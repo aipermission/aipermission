@@ -44,45 +44,19 @@ func init() {
 	connectorapi.Register(sshconnector.Kind, adapter{})
 }
 
-func (a adapter) RegisterRoutes(mux any, server any) {
-	httpMux, ok := mux.(*http.ServeMux)
-	if !ok || httpMux == nil {
+func (a adapter) RegisterRoutes(mux connectorapi.RouteMux, server connectorapi.GatewayServer) {
+	if mux == nil {
 		return
 	}
-	httpMux.HandleFunc("POST /api/ssh-host-keys/approve", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/ssh-host-keys/approve", func(w http.ResponseWriter, r *http.Request) {
 		a.approveHostKey(server, w, r)
 	})
-	httpMux.HandleFunc("GET /api/ssh-config/discover", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/ssh-config/discover", func(w http.ResponseWriter, r *http.Request) {
 		a.discoverConfig(server, w, r)
 	})
-	httpMux.HandleFunc("POST /api/ssh-config/parse", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/ssh-config/parse", func(w http.ResponseWriter, r *http.Request) {
 		a.parseConfig(server, w, r)
 	})
-}
-
-type runtimeView interface {
-	ConnectorDatabase() *sql.DB
-	ConnectorResource(kind string, name string) any
-	ConnectorConsoleSessions() *console.Manager
-}
-
-type serverView interface {
-	ConnectorActiveRuntimeAvailable(http.ResponseWriter) bool
-	ConnectorTrustStorePath() string
-	ConnectorRestartConsoleSession(context.Context, any, int64, string) (connectorapi.ConsoleRestartResult, error)
-	ConnectorFinishActionRequest(context.Context, any, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectortargets.ActionRequest, error)
-	ConnectorCreateDownloadBatch(context.Context, any, int64, []string, string, string, string) (filetransfer.BatchRecord, error)
-	ConnectorRunTransferBatch(any, int64, bool)
-}
-
-type targetHandlerView interface {
-	ConnectorServer() any
-	ConnectorStaleActionRequestsForTarget(context.Context, any, int64, int64, string) (int64, error)
-	ConnectorWriteAudit(context.Context, any, string, *int64, int64, string, any)
-}
-
-type credentialHandlerView interface {
-	ConnectorServer() any
 }
 
 type sshTargetMaterial struct {
@@ -95,7 +69,7 @@ type sshTargetMaterial struct {
 	ForceShellCommand        string
 }
 
-func (adapter) approveHostKey(server any, w http.ResponseWriter, r *http.Request) {
+func (adapter) approveHostKey(server connectorapi.GatewayServer, w http.ResponseWriter, r *http.Request) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		writeInternalError(w)
@@ -149,7 +123,7 @@ func (adapter) approveHostKey(server any, w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (adapter) discoverConfig(server any, w http.ResponseWriter, _ *http.Request) {
+func (adapter) discoverConfig(server connectorapi.GatewayServer, w http.ResponseWriter, _ *http.Request) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		writeInternalError(w)
@@ -166,7 +140,7 @@ func (adapter) discoverConfig(server any, w http.ResponseWriter, _ *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"items": entries})
 }
 
-func (adapter) parseConfig(server any, w http.ResponseWriter, r *http.Request) {
+func (adapter) parseConfig(server connectorapi.GatewayServer, w http.ResponseWriter, r *http.Request) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		writeInternalError(w)
@@ -199,17 +173,17 @@ type targetOperationRequest struct {
 }
 
 type dockerCheckResponse struct {
-	RuntimeProfileID int64                  `json:"runtime_profile_id"`
-	TargetName       string                 `json:"target_name"`
-	Available        bool                   `json:"available"`
-	OK               bool                   `json:"ok"`
-	Command          string                 `json:"command"`
-	Containers       []dockerContainerState `json:"containers"`
-	Stdout           string                 `json:"stdout"`
-	Stderr           string                 `json:"stderr"`
-	ExitCode         int                    `json:"exit_code"`
-	DurationMS       int64                  `json:"duration_ms"`
-	CheckedAt        string                 `json:"checked_at"`
+	RuntimeID  int64                  `json:"runtime_id"`
+	TargetName string                 `json:"target_name"`
+	Available  bool                   `json:"available"`
+	OK         bool                   `json:"ok"`
+	Command    string                 `json:"command"`
+	Containers []dockerContainerState `json:"containers"`
+	Stdout     string                 `json:"stdout"`
+	Stderr     string                 `json:"stderr"`
+	ExitCode   int                    `json:"exit_code"`
+	DurationMS int64                  `json:"duration_ms"`
+	CheckedAt  string                 `json:"checked_at"`
 }
 
 type dockerContainerState struct {
@@ -245,16 +219,16 @@ type dockerPSLine struct {
 }
 
 type dockerLogsResponse struct {
-	RuntimeProfileID int64  `json:"runtime_profile_id"`
-	TargetName       string `json:"target_name"`
-	ContainerRef     string `json:"container_ref"`
-	OK               bool   `json:"ok"`
-	Command          string `json:"command"`
-	Stdout           string `json:"stdout"`
-	Stderr           string `json:"stderr"`
-	ExitCode         int    `json:"exit_code"`
-	DurationMS       int64  `json:"duration_ms"`
-	CheckedAt        string `json:"checked_at"`
+	RuntimeID    int64  `json:"runtime_id"`
+	TargetName   string `json:"target_name"`
+	ContainerRef string `json:"container_ref"`
+	OK           bool   `json:"ok"`
+	Command      string `json:"command"`
+	Stdout       string `json:"stdout"`
+	Stderr       string `json:"stderr"`
+	ExitCode     int    `json:"exit_code"`
+	DurationMS   int64  `json:"duration_ms"`
+	CheckedAt    string `json:"checked_at"`
 }
 
 type targetTestResponse struct {
@@ -309,32 +283,29 @@ type parseConfigRequest struct {
 	Content string `json:"content"`
 }
 
-func (adapter) RuntimeServices(server any, runtime any) map[string]any {
-	return map[string]any{
+func (adapter) RuntimeCapabilities(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime) map[string]connectors.RuntimeCapability {
+	return map[string]connectors.RuntimeCapability{
 		sshconnector.RuntimeServiceName: runtimeExecutor{server: server, runtime: runtime},
 	}
 }
 
-func (adapter) RuntimeResources(database any, vault any) map[string]any {
-	dbValue, ok := database.(*sql.DB)
-	if !ok || dbValue == nil {
+func (adapter) RuntimeResources(database *sql.DB, secretVault *vaultpkg.Vault) map[string]any {
+	if database == nil {
 		return nil
 	}
-	vaultValue, ok := vault.(*vaultpkg.Vault)
-	if !ok || vaultValue == nil {
+	if secretVault == nil {
 		return nil
 	}
 	return map[string]any{
-		"keys": sshkeys.NewStore(dbValue, vaultValue),
+		"keys": sshkeys.NewStore(database, secretVault),
 	}
 }
 
-func (adapter) WriteConnectorError(w any, err error) bool {
-	httpWriter, ok := w.(http.ResponseWriter)
-	if !ok || httpWriter == nil {
+func (adapter) WriteConnectorError(w http.ResponseWriter, err error) bool {
+	if w == nil {
 		return false
 	}
-	return writeUnknownHostKeyError(httpWriter, err)
+	return writeUnknownHostKeyError(w, err)
 }
 
 func (adapter) ConnectorErrorMessage(prefix string, err error) string {
@@ -350,7 +321,7 @@ func (adapter) LiveConsoleActionName() string {
 	return sshconnector.ActionExec
 }
 
-func (adapter) OpenLiveConsole(ctx context.Context, server any, runtime any, runtimeID int64, rows int, cols int) (*console.RuntimeSession, error) {
+func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, rows int, cols int) (*console.RuntimeSession, error) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		return nil, err
@@ -450,21 +421,20 @@ func (adapter) RunningHint(request connectortargets.ActionRequest) string {
 	return ""
 }
 
-func (adapter) FinishRunning(server any, runtime any, requestID int64, prepared actions.PreparedRequest) {
-	gateway, ok := server.(serverView)
-	if !ok {
+func (adapter) FinishRunning(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, requestID int64, prepared actions.PreparedRequest) {
+	if server == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), backgroundCommandTimeout)
 	defer cancel()
 	runtimeID, resolveErr := runtimeIDForTargetRef(context.Background(), runtime, prepared.Action.TargetRef)
 	if resolveErr != nil {
-		_, _ = gateway.ConnectorFinishActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.ActionDefinition.OutputHint)
+		_, _ = server.ConnectorFinishActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.ActionDefinition.OutputHint)
 		return
 	}
 	sessions, err := consoleSessions(runtime)
 	if err != nil {
-		_, _ = gateway.ConnectorFinishActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		_, _ = server.ConnectorFinishActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		return
 	}
 	result, err := sessions.WaitActive(ctx, runtimeID)
@@ -492,12 +462,16 @@ func (adapter) FinishRunning(server any, runtime any, requestID int64, prepared 
 	if status == "" {
 		return
 	}
-	_, _ = gateway.ConnectorFinishActionRequest(context.Background(), runtime, requestID, status, output, displayText, errorText, prepared.ActionDefinition.OutputHint)
+	_, _ = server.ConnectorFinishActionRequest(context.Background(), runtime, requestID, status, output, displayText, errorText, prepared.ActionDefinition.OutputHint)
 }
 
 type runtimeExecutor struct {
-	server  any
-	runtime any
+	server  connectorapi.GatewayServer
+	runtime connectorapi.GatewayRuntime
+}
+
+func (runtimeExecutor) ConnectorRuntimeCapability() string {
+	return sshconnector.RuntimeServiceName
 }
 
 func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, _ connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
@@ -552,8 +526,8 @@ func (e runtimeExecutor) executeCommand(runtimeID int64, action connectors.Prepa
 		Output:      output,
 		DisplayText: output["stdout"].(string),
 		Metadata: map[string]any{
-			"runtime_profile_id": runtimeID,
-			"duration_ms":        result.DurationMS,
+			"runtime_id":  runtimeID,
+			"duration_ms": result.DurationMS,
 		},
 		Handles: connectors.ActionHandles{
 			SessionID: result.SessionID,
@@ -586,8 +560,8 @@ func (e runtimeExecutor) readConsole(ctx context.Context, runtimeID int64, actio
 		return connectors.ActionResult{
 			Status: connectors.ResultCompleted,
 			Output: map[string]any{
-				"runtime_profile_id": runtimeID,
-				"status":             "none",
+				"runtime_id": runtimeID,
+				"status":     "none",
 			},
 		}, nil
 	}
@@ -597,12 +571,12 @@ func (e runtimeExecutor) readConsole(ctx context.Context, runtimeID int64, actio
 		Status:      connectors.ResultCompleted,
 		DisplayText: transcript,
 		Output: map[string]any{
-			"runtime_profile_id": runtimeID,
-			"session_id":         session.ID,
-			"status":             session.Status,
-			"transcript":         transcript,
-			"error":              session.Error,
-			"tail_bytes":         tail,
+			"runtime_id": runtimeID,
+			"session_id": session.ID,
+			"status":     session.Status,
+			"transcript": transcript,
+			"error":      session.Error,
+			"tail_bytes": tail,
 		},
 		Handles: connectors.ActionHandles{SessionID: session.ID},
 	}, nil
@@ -620,7 +594,7 @@ func (e runtimeExecutor) restartConsole(ctx context.Context, runtimeID int64) (c
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
-			"runtime_profile_id":        runtimeID,
+			"runtime_id":                runtimeID,
 			"closed_session_ids":        result.ClosedSessionIDs,
 			"canceled_running_requests": result.CanceledRunningRequests,
 		},
@@ -653,10 +627,10 @@ func (e runtimeExecutor) browseRemoteFiles(ctx context.Context, runtimeID int64,
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
-			"runtime_profile_id": runtimeID,
-			"path":               remotePath,
-			"parent":             browseParent(remotePath),
-			"entries":            entries,
+			"runtime_id": runtimeID,
+			"path":       remotePath,
+			"parent":     browseParent(remotePath),
+			"entries":    entries,
 		},
 	}, nil
 }
@@ -681,10 +655,10 @@ func (e runtimeExecutor) startFileDownload(ctx context.Context, runtimeID int64,
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
-			"runtime_profile_id": runtimeID,
-			"batch_id":           batch.ID,
-			"status":             batch.Status,
-			"items":              len(batch.Items),
+			"runtime_id": runtimeID,
+			"batch_id":   batch.ID,
+			"status":     batch.Status,
+			"items":      len(batch.Items),
 		},
 		DisplayText: "SSH download queue started.",
 		Handles: connectors.ActionHandles{
@@ -693,7 +667,7 @@ func (e runtimeExecutor) startFileDownload(ctx context.Context, runtimeID int64,
 	}, nil
 }
 
-func (adapter) BrowseRemoteFiles(ctx context.Context, server any, runtime any, runtimeID int64, remotePath string) ([]connectorapi.RemoteFileEntry, error) {
+func (adapter) BrowseRemoteFiles(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, remotePath string) ([]connectorapi.RemoteFileEntry, error) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		return nil, err
@@ -709,7 +683,7 @@ func (adapter) BrowseRemoteFiles(ctx context.Context, server any, runtime any, r
 	return remoteFileEntries(entries), nil
 }
 
-func (adapter) StatRemotePath(ctx context.Context, server any, runtime any, runtimeID int64, remotePath string) (connectorapi.RemotePathStatus, error) {
+func (adapter) StatRemotePath(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, remotePath string) (connectorapi.RemotePathStatus, error) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		return connectorapi.RemotePathStatus{}, err
@@ -725,7 +699,7 @@ func (adapter) StatRemotePath(ctx context.Context, server any, runtime any, runt
 	return connectorapi.RemotePathStatus{Exists: status.Exists, Type: status.Type, Size: status.Size}, nil
 }
 
-func (adapter) UploadFile(ctx context.Context, server any, runtime any, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (adapter) UploadFile(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		return connectorapi.TransferResult{}, err
@@ -741,7 +715,7 @@ func (adapter) UploadFile(ctx context.Context, server any, runtime any, runtimeI
 	return connectorTransferResult(result), nil
 }
 
-func (adapter) DownloadFile(ctx context.Context, server any, runtime any, runtimeID int64, remotePath string, localPath string, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (adapter) DownloadFile(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, remotePath string, localPath string, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		return connectorapi.TransferResult{}, err
@@ -757,71 +731,77 @@ func (adapter) DownloadFile(ctx context.Context, server any, runtime any, runtim
 	return connectorTransferResult(result), nil
 }
 
-func (adapter) BeforeCreateCredentialProfile(context.Context, any, *connectortargets.Store, connectortargets.Target) error {
+func (adapter) BeforeCreateCredentialProfile(context.Context, connectorapi.GatewayRuntime, *connectortargets.Store, connectortargets.Target) error {
 	return nil
 }
 
-func (adapter) BeforeDeleteCredentialProfile(ctx any, handler any, runtime any, _ *connectortargets.Store, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func (adapter) BeforeDeleteCredentialProfile(ctx context.Context, handler connectorapi.TargetLifecycleGateway, runtime connectorapi.GatewayRuntime, _ *connectortargets.Store, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
 	gateway, err := serverFromHandler(handler)
 	if err != nil {
 		return err
 	}
-	contextValue, _ := ctx.(context.Context)
-	if contextValue == nil {
-		contextValue = context.Background()
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	_, err = gateway.ConnectorRestartConsoleSession(contextValue, runtime, profile.ID, "SSH credential profile was deleted before command completed")
-	return err
+	runtimeIDs, err := existingLiveConsoleRuntimeIDsForProfile(ctx, runtime, profile.TargetID, profile.ID)
+	if err != nil {
+		return err
+	}
+	for _, runtimeID := range runtimeIDs {
+		if _, err := gateway.ConnectorRestartConsoleSession(ctx, runtime, runtimeID, "SSH credential profile was deleted before command completed"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (adapter) DeleteTarget(handler any, w any, r any, runtime any, target connectortargets.Target) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
-		return
-	}
-	targetHandler, ok := handler.(targetHandlerView)
-	if !ok {
-		writeInternalError(httpWriter)
+func (adapter) DeleteTarget(handler connectorapi.TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime, target connectortargets.Target) {
+	if w == nil || r == nil {
 		return
 	}
 	gateway, err := serverFromHandler(handler)
 	if err != nil {
-		writeError(httpWriter, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	database, err := databaseFrom(runtime)
 	if err != nil {
-		writeError(httpWriter, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	store := connectortargets.NewStore(database)
-	profiles, err := store.ListCredentialProfiles(request.Context(), target.ID)
+	profiles, err := store.ListCredentialProfiles(r.Context(), target.ID)
 	if err != nil {
-		handleTargetError(httpWriter, err)
+		handleTargetError(w, err)
 		return
 	}
 	removedKeys := int64(0)
-	if request.URL.Query().Get("remove_key") == "true" {
+	if r.URL.Query().Get("remove_key") == "true" {
 		if len(profiles) == 0 {
-			writeError(httpWriter, http.StatusBadRequest, "remote SSH key cleanup requires a saved credential profile")
+			writeError(w, http.StatusBadRequest, "remote SSH key cleanup requires a saved credential profile")
 			return
 		}
 		cleanupSeen := map[string]bool{}
 		for _, profile := range profiles {
-			remoteTarget, privateKey, err := targetMaterial(request.Context(), runtime, profile.ID)
+			runtimeID, err := ensureLiveConsoleRuntimeIDForProfile(r.Context(), runtime, target.ID, profile.ID, profile.Label)
 			if err != nil {
-				handleMaterialError(httpWriter, err)
+				handleTargetError(w, err)
+				return
+			}
+			remoteTarget, privateKey, err := targetMaterial(r.Context(), runtime, runtimeID)
+			if err != nil {
+				handleMaterialError(w, err)
 				return
 			}
 			keyStore, err := keyStore(runtime)
 			if err != nil {
-				writeInternalError(httpWriter)
+				writeInternalError(w)
 				return
 			}
 			sshKeyID := int64ConfigValue(profile.Public, "ssh_key_id")
-			key, err := keyStore.Get(request.Context(), sshKeyID)
+			key, err := keyStore.Get(r.Context(), sshKeyID)
 			if err != nil {
-				handleKeyError(httpWriter, err)
+				handleKeyError(w, err)
 				return
 			}
 			cleanupKey := remoteTarget.Username + "\x00" + publicKeyBlob(key.PublicKey)
@@ -829,11 +809,11 @@ func (adapter) DeleteTarget(handler any, w any, r any, runtime any, target conne
 				continue
 			}
 			cleanupSeen[cleanupKey] = true
-			ctx, cancel := context.WithTimeout(request.Context(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			result, err := execution.RunCommand(ctx, executionTarget(gateway, remoteTarget, privateKey), removeAuthorizedKeyCommand(key.PublicKey))
 			cancel()
 			if err != nil {
-				writeError(httpWriter, http.StatusBadGateway, "remote key uninstall failed")
+				writeError(w, http.StatusBadGateway, "remote key uninstall failed")
 				return
 			}
 			if result.ExitCode != 0 {
@@ -844,67 +824,72 @@ func (adapter) DeleteTarget(handler any, w any, r any, runtime any, target conne
 				if remoteKeyAlreadyAbsent(message) {
 					continue
 				}
-				writeError(httpWriter, http.StatusBadGateway, message)
+				writeError(w, http.StatusBadGateway, message)
 				return
 			}
 			removedKeys++
 		}
 	}
-	staleRequests, err := targetHandler.ConnectorStaleActionRequestsForTarget(request.Context(), runtime, target.ID, 0, "SSH connector target was deleted; ask the AI to send a fresh request")
-	if err != nil {
-		writeInternalError(httpWriter)
-		return
-	}
 	canceledCommands := int64(0)
 	for _, profile := range profiles {
-		result, err := gateway.ConnectorRestartConsoleSession(request.Context(), runtime, profile.ID, "SSH connector target was deleted before command completed")
+		runtimeIDs, err := existingLiveConsoleRuntimeIDsForProfile(r.Context(), runtime, target.ID, profile.ID)
 		if err != nil {
-			writeInternalError(httpWriter)
+			writeInternalError(w)
 			return
 		}
-		canceledCommands += result.CanceledRunningRequests
+		for _, runtimeID := range runtimeIDs {
+			result, err := gateway.ConnectorRestartConsoleSession(r.Context(), runtime, runtimeID, "SSH connector target was deleted before command completed")
+			if err != nil {
+				writeInternalError(w)
+				return
+			}
+			canceledCommands += result.CanceledRunningRequests
+		}
 	}
-	if err := store.DeleteTarget(request.Context(), target.ID); err != nil {
-		handleTargetError(httpWriter, err)
+	if err := store.DeleteTarget(r.Context(), target.ID); err != nil {
+		handleTargetError(w, err)
 		return
 	}
-	targetHandler.ConnectorWriteAudit(request.Context(), runtime, "user", nil, 0, "connector.target.deleted", map[string]any{
-		"target_id":                target.ID,
-		"connector_kind":           target.ConnectorKind,
-		"name":                     target.Name,
-		"remote_key_removed":       removedKeys > 0,
-		"remote_keys_removed":      removedKeys,
-		"stale_connector_requests": staleRequests,
-		"canceled_commands":        canceledCommands,
-	})
-	writeJSON(httpWriter, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKeys > 0, "remote_keys_removed": removedKeys})
+	if _, err := handler.ConnectorFinalizeDeletedTarget(r.Context(), runtime, target, "SSH connector target was deleted; ask the AI to send a fresh request", map[string]any{
+		"remote_key_removed":  removedKeys > 0,
+		"remote_keys_removed": removedKeys,
+		"canceled_commands":   canceledCommands,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKeys > 0, "remote_keys_removed": removedKeys})
 }
 
-func (adapter) TestCredentialProfile(handler any, w any, r any, runtime any, target connectors.TargetView, profile connectors.CredentialProfileView) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) TestCredentialProfile(handler connectorapi.TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime, target connectors.TargetView, profile connectors.CredentialProfileView) {
+	if w == nil || r == nil {
 		return
 	}
 	gateway, err := serverFromHandler(handler)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
 	const command = `printf 'aipermission-ok\n'; uname -a`
-	ctx, cancel := context.WithTimeout(request.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	start := time.Now()
-	remoteTarget, privateKey, err := targetMaterial(ctx, runtime, profile.ID)
+	runtimeID, err := ensureLiveConsoleRuntimeIDForProfile(ctx, runtime, target.ID, profile.ID, profile.Label)
 	if err != nil {
-		handleMaterialError(httpWriter, err)
+		handleTargetError(w, err)
+		return
+	}
+	remoteTarget, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	if err != nil {
+		handleMaterialError(w, err)
 		return
 	}
 	result, err := execution.RunCommand(ctx, executionTarget(gateway, remoteTarget, privateKey), command)
 	if err != nil {
-		if writeUnknownHostKeyError(httpWriter, err) {
+		if writeUnknownHostKeyError(w, err) {
 			return
 		}
-		writeJSON(httpWriter, http.StatusOK, targetTestResponse{
+		writeJSON(w, http.StatusOK, targetTestResponse{
 			TargetID:      target.ID,
 			ProfileID:     profile.ID,
 			ConnectorKind: target.ConnectorKind,
@@ -915,7 +900,7 @@ func (adapter) TestCredentialProfile(handler any, w any, r any, runtime any, tar
 		})
 		return
 	}
-	writeJSON(httpWriter, http.StatusOK, targetTestResponse{
+	writeJSON(w, http.StatusOK, targetTestResponse{
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
 		ConnectorKind: target.ConnectorKind,
@@ -932,38 +917,37 @@ func (adapter) TestCredentialProfile(handler any, w any, r any, runtime any, tar
 	})
 }
 
-func (adapter) TestDraft(handler any, w any, r any, runtime any, requestValue any) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) TestDraft(handler connectorapi.TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime, requestValue any) {
+	if w == nil || r == nil {
 		return
 	}
 	gateway, err := serverFromHandler(handler)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
 	draft, err := decodeDraftRequest(requestValue)
 	if err != nil {
-		writeError(httpWriter, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	payload, err := connectorPayload(request.Context(), runtime, draft.Name, draft.Config, draft.Profile)
+	payload, err := connectorPayload(r.Context(), runtime, draft.Name, draft.Config, draft.Profile)
 	if err != nil {
-		handleTargetError(httpWriter, err)
+		handleTargetError(w, err)
 		return
 	}
 	keyStore, err := keyStore(runtime)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
-	privateKey, err := keyStore.GetPrivateKey(request.Context(), int64ConfigValue(payload.ProfilePublic, "ssh_key_id"))
+	privateKey, err := keyStore.GetPrivateKey(r.Context(), int64ConfigValue(payload.ProfilePublic, "ssh_key_id"))
 	if err != nil {
-		handleKeyError(httpWriter, err)
+		handleKeyError(w, err)
 		return
 	}
 	const command = `printf 'aipermission-ok\n'; uname -a`
-	ctx, cancel := context.WithTimeout(request.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	start := time.Now()
 	result, err := execution.RunCommand(ctx, execution.Target{
@@ -974,10 +958,10 @@ func (adapter) TestDraft(handler any, w any, r any, runtime any, requestValue an
 		KnownHostsPath: gateway.ConnectorTrustStorePath(),
 	}, command)
 	if err != nil {
-		if writeUnknownHostKeyError(httpWriter, err) {
+		if writeUnknownHostKeyError(w, err) {
 			return
 		}
-		writeJSON(httpWriter, http.StatusOK, targetTestResponse{
+		writeJSON(w, http.StatusOK, targetTestResponse{
 			ConnectorKind: sshconnector.Kind,
 			OK:            false,
 			Status:        "connection_failed",
@@ -986,7 +970,7 @@ func (adapter) TestDraft(handler any, w any, r any, runtime any, requestValue an
 		})
 		return
 	}
-	writeJSON(httpWriter, http.StatusOK, targetTestResponse{
+	writeJSON(w, http.StatusOK, targetTestResponse{
 		ConnectorKind: sshconnector.Kind,
 		OK:            result.ExitCode == 0,
 		Status:        "ok",
@@ -1001,100 +985,93 @@ func (adapter) TestDraft(handler any, w any, r any, runtime any, requestValue an
 	})
 }
 
-func (adapter) RunTargetOperation(handler any, w any, r any, runtime any, target connectortargets.Target, operation string) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) RunTargetOperation(handler connectorapi.TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime, target connectortargets.Target, operation string) {
+	if w == nil || r == nil {
 		return
 	}
 	gateway, err := serverFromHandler(handler)
 	if err != nil {
-		writeInternalError(httpWriter)
-		return
-	}
-	targetHandler, ok := handler.(targetHandlerView)
-	if !ok {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
 	var input targetOperationRequest
-	if err := decodeJSON(request, &input); err != nil {
-		writeError(httpWriter, http.StatusBadRequest, "invalid json body")
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
 	database, err := databaseFrom(runtime)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
 	store := connectortargets.NewStore(database)
-	profileID, err := operationProfileID(request.Context(), store, target.ID, input.ProfileID)
+	profileID, err := operationProfileID(r.Context(), store, target.ID, input.ProfileID)
 	if err != nil {
-		handleTargetError(httpWriter, err)
+		handleTargetError(w, err)
 		return
 	}
 	targetRef := connectortargets.TargetProfileRef(sshconnector.Kind, target.ID, profileID)
-	runtimeID, err := runtimeIDForTargetRef(request.Context(), runtime, targetRef)
+	runtimeID, err := runtimeIDForTargetRef(r.Context(), runtime, targetRef)
 	if err != nil {
-		handleTargetError(httpWriter, err)
+		handleTargetError(w, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(request.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	remoteTarget, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
 	if err != nil {
-		handleMaterialError(httpWriter, err)
+		handleMaterialError(w, err)
 		return
 	}
 	switch operation {
 	case "docker-check":
 		response, err := dockerCheckForTarget(ctx, gateway, remoteTarget, privateKey)
 		if err != nil {
-			if writeUnknownHostKeyError(httpWriter, err) {
+			if writeUnknownHostKeyError(w, err) {
 				return
 			}
-			writeError(httpWriter, http.StatusBadGateway, commandFailureMessage(err))
+			writeError(w, http.StatusBadGateway, commandFailureMessage(err))
 			return
 		}
-		targetHandler.ConnectorWriteAudit(request.Context(), runtime, "user", nil, remoteTarget.ID, "server.docker_check", map[string]any{
+		handler.ConnectorWriteAudit(r.Context(), runtime, "user", nil, remoteTarget.ID, "server.docker_check", map[string]any{
 			"available":  response.Available,
 			"exit_code":  response.ExitCode,
 			"containers": len(response.Containers),
 		})
-		writeJSON(httpWriter, http.StatusOK, response)
+		writeJSON(w, http.StatusOK, response)
 	case "docker-logs":
 		containerRef := strings.TrimSpace(input.ContainerRef)
 		if err := validateDockerContainerRef(containerRef); err != nil {
-			writeError(httpWriter, http.StatusBadRequest, err.Error())
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		response, err := dockerLogsForTarget(ctx, gateway, remoteTarget, privateKey, containerRef, input.Tail)
 		if err != nil {
-			if writeUnknownHostKeyError(httpWriter, err) {
+			if writeUnknownHostKeyError(w, err) {
 				return
 			}
-			writeError(httpWriter, http.StatusBadGateway, commandFailureMessage(err))
+			writeError(w, http.StatusBadGateway, commandFailureMessage(err))
 			return
 		}
-		targetHandler.ConnectorWriteAudit(request.Context(), runtime, "user", nil, remoteTarget.ID, "server.docker_logs", map[string]any{
+		handler.ConnectorWriteAudit(r.Context(), runtime, "user", nil, remoteTarget.ID, "server.docker_logs", map[string]any{
 			"container_ref": containerRef,
 			"exit_code":     response.ExitCode,
 			"tail":          normalizeDockerLogsTail(input.Tail),
 		})
-		writeJSON(httpWriter, http.StatusOK, response)
+		writeJSON(w, http.StatusOK, response)
 	default:
-		writeError(httpWriter, http.StatusBadRequest, "unsupported connector operation")
+		writeError(w, http.StatusBadRequest, "unsupported connector operation")
 	}
 }
 
-func (adapter) CanonicalCredentialPublic(ctx any, _ any, runtime any, credentialKind string, public map[string]any) (map[string]any, error) {
-	contextValue, _ := ctx.(context.Context)
-	if contextValue == nil {
-		contextValue = context.Background()
+func (adapter) CanonicalCredentialPublic(ctx context.Context, _ connectorapi.TargetLifecycleGateway, runtime connectorapi.GatewayRuntime, credentialKind string, public map[string]any) (map[string]any, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return canonicalCredentialPublic(contextValue, runtime, credentialKind, public)
+	return canonicalCredentialPublic(ctx, runtime, credentialKind, public)
 }
 
-func dockerCheckForTarget(ctx context.Context, gateway serverView, target sshTargetMaterial, privateKey sshkeys.PrivateKey) (dockerCheckResponse, error) {
+func dockerCheckForTarget(ctx context.Context, gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey) (dockerCheckResponse, error) {
 	const command = `if ! command -v docker >/dev/null 2>&1; then
   printf '__AIPERMISSION_DOCKER_UNAVAILABLE__\n'
   exit 0
@@ -1106,21 +1083,21 @@ docker ps --format '{{json .}}'`
 	}
 	containers, available := parseDockerPSOutput(result.Stdout)
 	return dockerCheckResponse{
-		RuntimeProfileID: target.ID,
-		TargetName:       target.Name,
-		Available:        available,
-		OK:               available && result.ExitCode == 0,
-		Command:          command,
-		Containers:       containers,
-		Stdout:           result.Stdout,
-		Stderr:           result.Stderr,
-		ExitCode:         result.ExitCode,
-		DurationMS:       result.DurationMS,
-		CheckedAt:        time.Now().UTC().Format(time.RFC3339),
+		RuntimeID:  target.ID,
+		TargetName: target.Name,
+		Available:  available,
+		OK:         available && result.ExitCode == 0,
+		Command:    command,
+		Containers: containers,
+		Stdout:     result.Stdout,
+		Stderr:     result.Stderr,
+		ExitCode:   result.ExitCode,
+		DurationMS: result.DurationMS,
+		CheckedAt:  time.Now().UTC().Format(time.RFC3339),
 	}, nil
 }
 
-func dockerLogsForTarget(ctx context.Context, gateway serverView, target sshTargetMaterial, privateKey sshkeys.PrivateKey, containerRef string, tailValue int) (dockerLogsResponse, error) {
+func dockerLogsForTarget(ctx context.Context, gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey, containerRef string, tailValue int) (dockerLogsResponse, error) {
 	tail := normalizeDockerLogsTail(tailValue)
 	command := fmt.Sprintf(`if ! command -v docker >/dev/null 2>&1; then
   printf 'docker command is not available\n' >&2
@@ -1132,24 +1109,24 @@ docker logs --tail %s --timestamps %s`, strconv.Itoa(tail), shellQuote(container
 		return dockerLogsResponse{}, err
 	}
 	return dockerLogsResponse{
-		RuntimeProfileID: target.ID,
-		TargetName:       target.Name,
-		ContainerRef:     containerRef,
-		OK:               result.ExitCode == 0,
-		Command:          command,
-		Stdout:           result.Stdout,
-		Stderr:           result.Stderr,
-		ExitCode:         result.ExitCode,
-		DurationMS:       result.DurationMS,
-		CheckedAt:        time.Now().UTC().Format(time.RFC3339),
+		RuntimeID:    target.ID,
+		TargetName:   target.Name,
+		ContainerRef: containerRef,
+		OK:           result.ExitCode == 0,
+		Command:      command,
+		Stdout:       result.Stdout,
+		Stderr:       result.Stderr,
+		ExitCode:     result.ExitCode,
+		DurationMS:   result.DurationMS,
+		CheckedAt:    time.Now().UTC().Format(time.RFC3339),
 	}, nil
 }
 
-func (adapter) LiveConsoleRuntimeID(_ connectors.TargetView, profile connectors.CredentialProfileView) int64 {
-	return profile.ID
+func (adapter) LiveConsoleCapabilityKind() string {
+	return connectortargets.RuntimeCapabilityLiveConsole
 }
 
-func (adapter) LiveConsoleTargetRef(ctx any, runtime any, runtimeID int64) (string, error) {
+func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (string, error) {
 	contextValue, _ := ctx.(context.Context)
 	if contextValue == nil {
 		contextValue = context.Background()
@@ -1158,14 +1135,17 @@ func (adapter) LiveConsoleTargetRef(ctx any, runtime any, runtimeID int64) (stri
 	if err != nil {
 		return "", err
 	}
-	target, profile, err := connectortargets.NewStore(database).TargetProfileByProfileID(contextValue, runtimeID)
+	target, profile, surface, err := connectortargets.NewStore(database).TargetProfileByRuntimeID(contextValue, runtimeID)
 	if err != nil {
 		return "", err
+	}
+	if surface.ConnectorKind != sshconnector.Kind || surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole {
+		return "", connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	return connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID), nil
 }
 
-func (adapter) ResolveLiveConsoleMaterial(ctx any, runtime any, runtimeID int64) (any, any, error) {
+func (adapter) ResolveLiveConsoleMaterial(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (any, any, error) {
 	contextValue, _ := ctx.(context.Context)
 	if contextValue == nil {
 		contextValue = context.Background()
@@ -1194,138 +1174,132 @@ func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile c
 	return metadata
 }
 
-func (adapter) ListCredentialResources(_ any, w any, r any, runtime any) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) ListCredentialResources(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+	if w == nil || r == nil {
 		return
 	}
 	keyStore, err := keyStore(runtime)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
-	items, err := keyStore.List(request.Context())
+	items, err := keyStore.List(r.Context())
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
-	writeJSON(httpWriter, http.StatusOK, items)
+	writeJSON(w, http.StatusOK, items)
 }
 
-func (adapter) CreateCredentialResource(_ any, w any, r any, runtime any) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) CreateCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+	if w == nil || r == nil {
 		return
 	}
 	var input sshkeys.CreateRequest
-	if err := decodeJSON(request, &input); err != nil {
-		writeError(httpWriter, http.StatusBadRequest, "invalid json body")
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
 	keyStore, err := keyStore(runtime)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
-	item, err := keyStore.Create(request.Context(), input)
+	item, err := keyStore.Create(r.Context(), input)
 	if err != nil {
-		handleKeyError(httpWriter, err)
+		handleKeyError(w, err)
 		return
 	}
-	writeJSON(httpWriter, http.StatusCreated, item)
+	writeJSON(w, http.StatusCreated, item)
 }
 
-func (adapter) ImportCredentialResource(_ any, w any, r any, runtime any) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) ImportCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+	if w == nil || r == nil {
 		return
 	}
 	var input sshkeys.ImportRequest
-	if err := decodeJSON(request, &input); err != nil {
-		writeError(httpWriter, http.StatusBadRequest, "invalid json body")
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
 	keyStore, err := keyStore(runtime)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
-	item, err := keyStore.Import(request.Context(), input)
+	item, err := keyStore.Import(r.Context(), input)
 	if err != nil {
-		handleKeyError(httpWriter, err)
+		handleKeyError(w, err)
 		return
 	}
-	writeJSON(httpWriter, http.StatusCreated, item)
+	writeJSON(w, http.StatusCreated, item)
 }
 
-func (adapter) GetCredentialResource(_ any, w any, r any, runtime any) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) GetCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+	if w == nil || r == nil {
 		return
 	}
-	id, ok := parsePathID(httpWriter, request)
+	id, ok := parsePathID(w, r)
 	if !ok {
 		return
 	}
 	keyStore, err := keyStore(runtime)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
-	item, err := keyStore.Get(request.Context(), id)
+	item, err := keyStore.Get(r.Context(), id)
 	if err != nil {
-		handleKeyError(httpWriter, err)
+		handleKeyError(w, err)
 		return
 	}
-	writeJSON(httpWriter, http.StatusOK, item)
+	writeJSON(w, http.StatusOK, item)
 }
 
-func (adapter) UpdateCredentialResource(_ any, w any, r any, runtime any) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) UpdateCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+	if w == nil || r == nil {
 		return
 	}
-	id, ok := parsePathID(httpWriter, request)
+	id, ok := parsePathID(w, r)
 	if !ok {
 		return
 	}
 	var input sshkeys.UpdateRequest
-	if err := decodeJSON(request, &input); err != nil {
-		writeError(httpWriter, http.StatusBadRequest, "invalid json body")
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
 	keyStore, err := keyStore(runtime)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
-	item, err := keyStore.Update(request.Context(), id, input)
+	item, err := keyStore.Update(r.Context(), id, input)
 	if err != nil {
-		handleKeyError(httpWriter, err)
+		handleKeyError(w, err)
 		return
 	}
-	writeJSON(httpWriter, http.StatusOK, item)
+	writeJSON(w, http.StatusOK, item)
 }
 
-func (adapter) DeleteCredentialResource(_ any, w any, r any, runtime any) {
-	httpWriter, request, ok := httpArgs(w, r)
-	if !ok {
+func (adapter) DeleteCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+	if w == nil || r == nil {
 		return
 	}
-	id, ok := parsePathID(httpWriter, request)
+	id, ok := parsePathID(w, r)
 	if !ok {
 		return
 	}
 	keyStore, err := keyStore(runtime)
 	if err != nil {
-		writeInternalError(httpWriter)
+		writeInternalError(w)
 		return
 	}
-	if err := keyStore.Delete(request.Context(), id); err != nil {
-		handleKeyError(httpWriter, err)
+	if err := keyStore.Delete(r.Context(), id); err != nil {
+		handleKeyError(w, err)
 		return
 	}
-	httpWriter.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type connectorPayloadValue struct {
@@ -1335,7 +1309,7 @@ type connectorPayloadValue struct {
 	ProfilePublic map[string]any
 }
 
-func connectorPayload(ctx context.Context, runtime any, name string, config map[string]any, profile map[string]any) (connectorPayloadValue, error) {
+func connectorPayload(ctx context.Context, runtime connectorapi.GatewayRuntime, name string, config map[string]any, profile map[string]any) (connectorPayloadValue, error) {
 	if config == nil {
 		config = map[string]any{}
 	}
@@ -1372,7 +1346,7 @@ func connectorPayload(ctx context.Context, runtime any, name string, config map[
 	}, nil
 }
 
-func canonicalCredentialPublic(ctx context.Context, runtime any, credentialKind string, public map[string]any) (map[string]any, error) {
+func canonicalCredentialPublic(ctx context.Context, runtime connectorapi.GatewayRuntime, credentialKind string, public map[string]any) (map[string]any, error) {
 	if strings.TrimSpace(credentialKind) != "private_key" {
 		return nil, connectortargets.ValidationError("unsupported SSH credential kind")
 	}
@@ -1426,29 +1400,83 @@ func targetConfigFromConnectorConfig(config map[string]any) (map[string]any, err
 	}, nil
 }
 
-func runtimeIDForTargetRef(ctx context.Context, runtime any, targetRef string) (int64, error) {
+func runtimeIDForTargetRef(ctx context.Context, runtime connectorapi.GatewayRuntime, targetRef string) (int64, error) {
 	database, err := databaseFrom(runtime)
 	if err != nil {
 		return 0, err
 	}
-	_, profileID, ok := connectortargets.ParseTargetProfileRef(sshconnector.Kind, targetRef)
+	targetID, profileID, ok := connectortargets.ParseTargetProfileRef(sshconnector.Kind, targetRef)
 	if !ok {
 		return 0, connectortargets.ErrInvalidTargetRef
 	}
-	if _, _, err := connectortargets.NewStore(database).ResolveConnectorActionTarget(ctx, targetRef); err != nil {
+	store := connectortargets.NewStore(database)
+	target, profile, err := store.ResolveConnectorActionTarget(ctx, targetRef)
+	if err != nil {
 		return 0, err
 	}
-	return profileID, nil
+	surface, err := store.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+		ConnectorKind:  sshconnector.Kind,
+		TargetID:       targetID,
+		ProfileID:      profileID,
+		CapabilityKind: connectortargets.RuntimeCapabilityLiveConsole,
+		Label:          profile.Label,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if surface.TargetID != target.ID || surface.ProfileID != profile.ID {
+		return 0, connectortargets.ErrRuntimeSurfaceNotFound
+	}
+	return surface.ID, nil
 }
 
-func targetMaterial(ctx context.Context, runtime any, runtimeID int64) (sshTargetMaterial, sshkeys.PrivateKey, error) {
+func ensureLiveConsoleRuntimeIDForProfile(ctx context.Context, runtime connectorapi.GatewayRuntime, targetID int64, profileID int64, label string) (int64, error) {
+	database, err := databaseFrom(runtime)
+	if err != nil {
+		return 0, err
+	}
+	surface, err := connectortargets.NewStore(database).EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+		ConnectorKind:  sshconnector.Kind,
+		TargetID:       targetID,
+		ProfileID:      profileID,
+		CapabilityKind: connectortargets.RuntimeCapabilityLiveConsole,
+		Label:          label,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return surface.ID, nil
+}
+
+func existingLiveConsoleRuntimeIDsForProfile(ctx context.Context, runtime connectorapi.GatewayRuntime, targetID int64, profileID int64) ([]int64, error) {
+	database, err := databaseFrom(runtime)
+	if err != nil {
+		return nil, err
+	}
+	surfaces, err := connectortargets.NewStore(database).ListRuntimeSurfacesForProfile(ctx, targetID, profileID, connectortargets.RuntimeCapabilityLiveConsole)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(surfaces))
+	for _, surface := range surfaces {
+		if surface.ConnectorKind == sshconnector.Kind {
+			ids = append(ids, surface.ID)
+		}
+	}
+	return ids, nil
+}
+
+func targetMaterial(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (sshTargetMaterial, sshkeys.PrivateKey, error) {
 	database, err := databaseFrom(runtime)
 	if err != nil {
 		return sshTargetMaterial{}, sshkeys.PrivateKey{}, err
 	}
-	target, profile, err := connectortargets.NewStore(database).TargetProfileByProfileID(ctx, runtimeID)
+	target, profile, surface, err := connectortargets.NewStore(database).TargetProfileByRuntimeID(ctx, runtimeID)
 	if err != nil {
 		return sshTargetMaterial{}, sshkeys.PrivateKey{}, err
+	}
+	if surface.ConnectorKind != sshconnector.Kind || surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole {
+		return sshTargetMaterial{}, sshkeys.PrivateKey{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	host := strings.TrimSpace(stringConfigValue(target.Config, "host"))
 	port := int(int64ConfigValue(target.Config, "port"))
@@ -1479,35 +1507,32 @@ func targetMaterial(ctx context.Context, runtime any, runtimeID int64) (sshTarge
 	}, privateKey, nil
 }
 
-func databaseFrom(runtime any) (*sql.DB, error) {
-	view, ok := runtime.(runtimeView)
-	if !ok || view.ConnectorDatabase() == nil {
+func databaseFrom(runtime connectorapi.GatewayRuntime) (*sql.DB, error) {
+	if runtime == nil || runtime.ConnectorDatabase() == nil {
 		return nil, fmt.Errorf("database runtime is not available")
 	}
-	return view.ConnectorDatabase(), nil
+	return runtime.ConnectorDatabase(), nil
 }
 
-func keyStore(runtime any) (*sshkeys.Store, error) {
-	view, ok := runtime.(runtimeView)
-	if !ok {
+func keyStore(runtime connectorapi.GatewayRuntime) (*sshkeys.Store, error) {
+	if runtime == nil {
 		return nil, fmt.Errorf("ssh key store is not available")
 	}
-	store, ok := view.ConnectorResource(sshconnector.Kind, "keys").(*sshkeys.Store)
+	store, ok := runtime.ConnectorResource(sshconnector.Kind, "keys").(*sshkeys.Store)
 	if !ok || store == nil {
 		return nil, fmt.Errorf("ssh key store is not available")
 	}
 	return store, nil
 }
 
-func consoleSessions(runtime any) (*console.Manager, error) {
-	view, ok := runtime.(runtimeView)
-	if !ok || view.ConnectorConsoleSessions() == nil {
+func consoleSessions(runtime connectorapi.GatewayRuntime) (*console.Manager, error) {
+	if runtime == nil || runtime.ConnectorConsoleSessions() == nil {
 		return nil, fmt.Errorf("ssh console runtime is not available")
 	}
-	return view.ConnectorConsoleSessions(), nil
+	return runtime.ConnectorConsoleSessions(), nil
 }
 
-func executionTarget(gateway serverView, target sshTargetMaterial, privateKey sshkeys.PrivateKey) execution.Target {
+func executionTarget(gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey) execution.Target {
 	return execution.Target{
 		Host:           target.Host,
 		Port:           target.Port,
@@ -1551,33 +1576,18 @@ func remoteFileEntries(entries []execution.RemoteFileEntry) []connectorapi.Remot
 	return items
 }
 
-func serverFrom(value any) (serverView, error) {
-	gateway, ok := value.(serverView)
-	if !ok || gateway == nil {
+func serverFrom(value connectorapi.GatewayServer) (connectorapi.GatewayServer, error) {
+	if value == nil {
 		return nil, fmt.Errorf("gateway services are not available")
 	}
-	return gateway, nil
+	return value, nil
 }
 
-func serverFromHandler(value any) (serverView, error) {
-	handler, ok := value.(interface{ ConnectorServer() any })
-	if !ok {
+func serverFromHandler(value connectorapi.TargetLifecycleGateway) (connectorapi.GatewayServer, error) {
+	if value == nil {
 		return nil, fmt.Errorf("gateway handler services are not available")
 	}
-	return serverFrom(handler.ConnectorServer())
-}
-
-func httpArgs(w any, r any) (http.ResponseWriter, *http.Request, bool) {
-	writer, ok := w.(http.ResponseWriter)
-	if !ok || writer == nil {
-		return nil, nil, false
-	}
-	request, ok := r.(*http.Request)
-	if !ok || request == nil {
-		writeInternalError(writer)
-		return nil, nil, false
-	}
-	return writer, request, true
+	return serverFrom(value.ConnectorServer())
 }
 
 func decodeDraftRequest(value any) (draftTargetRequest, error) {

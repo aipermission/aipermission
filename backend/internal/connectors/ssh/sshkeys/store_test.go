@@ -320,4 +320,10 @@ func TestSSHKeyStoreValidatesAndRefusesDeleteWhenInUse(t *testing.T) {
 	if err := store.Delete(ctx, key.ID); err == nil {
 		t.Fatalf("expected delete to fail while key is in use")
 	}
+	if _, err := database.Exec(`UPDATE connector_credential_profiles SET status = 'archived', updated_at = ? WHERE target_id = ?`, now, targetID); err != nil {
+		t.Fatalf("archive connector profile: %v", err)
+	}
+	if err := store.Delete(ctx, key.ID); err != nil {
+		t.Fatalf("archived profile should not block key delete: %v", err)
+	}
 }

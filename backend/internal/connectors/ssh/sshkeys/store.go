@@ -319,7 +319,14 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 }
 
 func (s *Store) connectorProfileUsageCount(ctx context.Context, id int64) (int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT public_json FROM connector_credential_profiles WHERE connector_kind = 'ssh'`)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT p.public_json
+		FROM connector_credential_profiles p
+		JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = p.connector_kind
+		WHERE p.connector_kind = 'ssh'
+			AND p.status = 'active'
+			AND t.status = 'active'
+			AND p.public_json LIKE '%"ssh_key_id"%'`)
 	if err != nil {
 		return 0, err
 	}
