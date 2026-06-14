@@ -1,7 +1,7 @@
 import { RefreshCcw, TerminalSquare } from "lucide-react";
 import { Button } from "../ui/button";
 
-export function NoLiveSession({ server, lastSession, onNewSession, theme = "dark" }) {
+export function NoLiveSession({ target, lastSession, onNewSession, theme = "dark" }) {
   const closedAt = lastSession?.closed_at || lastSession?.updated_at || lastSession?.created_at;
   const light = theme === "light";
   return (
@@ -14,8 +14,8 @@ export function NoLiveSession({ server, lastSession, onNewSession, theme = "dark
           <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>No active shell session</h3>
           <p className={`text-sm leading-6 ${light ? "text-stone-600" : "text-stone-400"}`}>
             {lastSession
-              ? `The last ${server.name} session is ${lastSession.status || "closed"} and cannot accept input anymore.`
-              : `Start a shell session before sending commands to ${server.name}.`}
+              ? `The last ${target.name} session is ${lastSession.status || "closed"} and cannot accept input anymore.`
+              : `Start a shell session before sending commands to ${target.name}.`}
           </p>
           {closedAt ? <p className="text-xs text-stone-500">Last session: {formatSessionTime(closedAt)}</p> : null}
         </div>

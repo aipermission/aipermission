@@ -30,12 +30,15 @@ const bulkCommandDialogSource = readFileSync(join(currentDir, "..", "connectors"
 const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
 const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "token-permission-panel.jsx"), "utf8");
 const connectorTokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "connector-token-permission-panel.jsx"), "utf8");
-const permissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "permission-dialog.jsx"), "utf8");
 const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"), "utf8");
 const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "connectors", "templates", "common.jsx"), "utf8");
 const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "connectors", "templates", "target-profile-save.js"), "utf8");
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
 const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "catalog.js"), "utf8");
+const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
 const sshConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "form.jsx"), "utf8");
 const sshCredentialFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "credential-form.jsx"), "utf8");
 const sshCredentialRowActionsTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "credential-row-actions.jsx"), "utf8");
@@ -132,10 +135,12 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(connectorsSource, /title="Edit connector"/);
   assert.match(connectorsSource, /title="Delete connector"/);
   assert.match(connectorsSource, /\/api\/connectors\/\$\{item\.kind\}/);
-  assert.match(connectorsSource, /\/api\/connector-targets/);
+  assert.match(connectorsSource, /\/api\/connector-targets\/inventory/);
+  assert.match(credentialsSource, /\/api\/connector-targets\/inventory/);
+  assert.doesNotMatch(`${connectorsSource}\n${credentialsSource}`, /apiGet\(`\/api\/connector-targets\/\$\{target\.id\}`/);
   assert.doesNotMatch(connectorsSource, /connection_mode:\s*"direct"/);
   assert.doesNotMatch(connectorsSource, /apiPut\(`\/api\/connector-targets\/\$\{target\.id\}`/);
-  assert.doesNotMatch(connectorsSource, /apiPut\(`\/api\/servers\/\$\{runtimeProfileID\}`/);
+  assert.doesNotMatch(connectorsSource, /apiPut\(`\/api\/servers\/\$\{runtimeID\}`/);
   assert.doesNotMatch(connectorsSource, /\/api\/servers\//);
   assert.doesNotMatch(connectorsSource, /\/api\/ssh-host-keys/);
   assert.doesNotMatch(connectorsSource, /\/profiles\/\$\{profile\.id\}\/test/);
@@ -149,14 +154,13 @@ test("Connectors page wires generic connector templates", () => {
 });
 
 test("Connector template folders are registered in catalog and registry", () => {
-  const kinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-  assert.deepEqual(kinds, ["postgres", "ssh"]);
-  for (const kind of kinds) {
+  assert.ok(connectorTemplateKinds.includes("postgres"));
+  assert.ok(connectorTemplateKinds.includes("ssh"));
+  for (const kind of connectorTemplateKinds) {
     const indexSource = readFileSync(join(connectorTemplatesDir, kind, "index.jsx"), "utf8");
+    const metadataSource = readFileSync(join(connectorTemplatesDir, kind, "metadata.json"), "utf8");
     assert.match(indexSource, /export default Object\.freeze/);
+    assert.match(metadataSource, /"version"/);
   }
 });
 
@@ -223,10 +227,7 @@ test("Token permission controls expose temporary grant lifetimes", () => {
   assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("1h"\)/);
   assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("4h"\)/);
   assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("1d"\)/);
-  assert.match(permissionDialogSource, /Lifetime/);
-  assert.match(permissionDialogSource, /1 hour/);
-  assert.match(permissionDialogSource, /4 hours/);
-  assert.match(permissionDialogSource, /1 day/);
+  assert.doesNotMatch(appSource + connectorsSource + credentialsSource + consolePageSource, /PermissionDialog/);
 });
 
 test("Token page exposes connector action permissions", () => {
@@ -322,6 +323,7 @@ test("History page exposes label filtering and item label endpoints", () => {
   assert.match(historySource, /All connectors/);
   assert.match(historySource, /targetRef/);
   assert.match(historySource, /target_id/);
+  assert.match(historySource, /runtime_id/);
   assert.match(historySource, /label_id/);
   assert.match(historySource, /source/);
   assert.match(historySource, /connector_kind/);
@@ -368,8 +370,8 @@ test("Console and History expose SSH file transfer flows", () => {
 });
 
 test("Console exposes stuck command recovery controls", () => {
-  assert.match(shellSource, /restartConsoleRuntimeProfile/);
-  assert.match(shellSource, /\/api\/console\/targets\/\$\{runtimeProfileID\}\/restart/);
+  assert.match(shellSource, /restartConsoleRuntime/);
+  assert.match(shellSource, /\/api\/console\/targets\/\$\{runtimeID\}\/restart/);
   assert.match(consolePageSource, /ConsoleRecoveryPanel/);
   assert.match(consolePageSource, /AI command running/);
   assert.match(consolePageSource, /Manual command running/);

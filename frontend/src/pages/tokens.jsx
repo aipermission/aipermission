@@ -308,7 +308,11 @@ export function TokensPage() {
         </form>
       </Drawer>
 
-      <ConnectorPermissionDialog token={connectorPermissionDialog} onClose={() => setConnectorPermissionDialog(null)} />
+      <ConnectorPermissionDialog
+        token={connectorPermissionDialog}
+        onClose={() => setConnectorPermissionDialog(null)}
+        onSaved={() => loadAllConnectorPermissions(tokens.data)}
+      />
       <TokenInstallDialog
         state={installDialog}
         onChange={setInstallDialog}

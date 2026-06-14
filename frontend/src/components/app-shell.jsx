@@ -16,7 +16,7 @@ export function Shell({ theme, setTheme }) {
   }
   const [status, setStatus] = useState({ state: "loading", data: null, error: null });
   const [targets, setTargets] = useState({ state: "loading", data: [], error: null });
-  const [credentials, setCredentials] = useState({ state: "loading", data: [], error: null });
+  const [credentials, setCredentials] = useState({ state: "loading", data: [], error: null, errors: [] });
   const [tokens, setTokens] = useState({ state: "loading", data: [], error: null });
   const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
   const [connectorActionApprovals, setConnectorActionApprovals] = useState({ state: "loading", data: [], error: null });
@@ -63,17 +63,17 @@ export function Shell({ theme, setTheme }) {
         supportedConnectorKinds.map(async (kind) => {
           const model = getConnectorModel(kind);
           if (!model?.loadCredentialResources) return [];
-          return model.loadCredentialResources();
+          const items = await model.loadCredentialResources();
+          return normalizeCredentialResources(kind, items);
         })
       );
       const data = results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
-      const rejected = results.find((result) => result.status === "rejected");
-      setCredentials({ state: "ready", data, error: null });
-      if (rejected) {
-        console.warn("Some connector credential resources failed to load", rejected.reason);
-      }
+      const errors = results
+        .map((result, index) => (result.status === "rejected" ? `${supportedConnectorKinds[index]}: ${result.reason?.message || result.reason}` : ""))
+        .filter(Boolean);
+      setCredentials({ state: "ready", data, error: null, errors });
     } catch (error) {
-      setCredentials({ state: "error", data: [], error: error.message });
+      setCredentials({ state: "error", data: [], error: error.message, errors: [] });
     }
   }
 
@@ -239,7 +239,7 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function ensureConsoleSession(server) {
-    const current = latestSessionForRuntimeProfile(consoleSessions.data, server.id);
+    const current = latestSessionForRuntime(consoleSessions.data, server.id);
     if (current) {
       if (isLiveConsoleSession(current)) attachConsoleSession(current.id);
       return current;
@@ -249,7 +249,7 @@ export function Shell({ theme, setTheme }) {
 
   async function newConsoleSession(server) {
     const session = await apiPost("/api/console/sessions", {
-      runtime_profile_id: server.id,
+      runtime_id: server.id,
       name: `${server.name} shell`,
       close_existing: true,
     });
@@ -348,8 +348,8 @@ export function Shell({ theme, setTheme }) {
     patchConsoleSession(sessionID, () => ({ status: "closed" }));
   }
 
-  async function restartConsoleRuntimeProfile(runtimeProfileID) {
-    const affectedSessions = consoleSessions.data.filter((session) => Number(session.runtime_profile_id) === Number(runtimeProfileID));
+  async function restartConsoleRuntime(runtimeID) {
+    const affectedSessions = consoleSessions.data.filter((session) => Number(session.runtime_id) === Number(runtimeID));
     affectedSessions.forEach((session) => {
       const connection = consoleConnectionsRef.current[session.id];
       if (connection) {
@@ -357,7 +357,7 @@ export function Shell({ theme, setTheme }) {
         delete consoleConnectionsRef.current[session.id];
       }
     });
-    const result = await apiPost(`/api/console/targets/${runtimeProfileID}/restart`, {});
+    const result = await apiPost(`/api/console/targets/${runtimeID}/restart`, {});
     await loadConsoleSessions();
     return result;
   }
@@ -379,8 +379,8 @@ export function Shell({ theme, setTheme }) {
     return item;
   }
 
-  async function markRuntimeProfileMessagesRead(runtimeProfileID) {
-    const result = await apiPost("/api/messages/read", { runtime_profile_id: Number(runtimeProfileID) });
+  async function markRuntimeMessagesRead(runtimeID) {
+    const result = await apiPost("/api/messages/read", { runtime_id: Number(runtimeID) });
     await loadMessages();
     return result;
   }
@@ -552,7 +552,7 @@ export function Shell({ theme, setTheme }) {
               loadTokens,
               loadConnectorActionApprovals,
               loadMessages,
-              markRuntimeProfileMessagesRead,
+              markRuntimeMessagesRead,
               setMCPRuntimeEnabled,
               refreshAll,
               gatewayState,
@@ -563,7 +563,7 @@ export function Shell({ theme, setTheme }) {
               attachConsoleSession,
               closeConsoleSession,
               cancelConsoleCommand,
-              restartConsoleRuntimeProfile,
+              restartConsoleRuntime,
               sendConsoleInput,
               resizeConsoleSession,
               runConnectorActionApproval,
@@ -576,6 +576,18 @@ export function Shell({ theme, setTheme }) {
       </section>
     </main>
   );
+}
+
+function normalizeCredentialResources(connectorKind, items) {
+  return (items || []).map((item) => {
+    const resourceKind = item.resource_kind || item.kind || "credential";
+    return {
+      ...item,
+      connector_kind: item.connector_kind || connectorKind,
+      resource_kind: resourceKind,
+      resource_ref: item.resource_ref || `${connectorKind}:${resourceKind}:${item.id || item.name || "unknown"}`,
+    };
+  });
 }
 
 function isUnreadMessage(message) {
@@ -603,15 +615,15 @@ function isLiveConsoleSession(session) {
   return session?.status === "connecting" || session?.status === "connected";
 }
 
-function latestSessionForRuntimeProfile(sessions, runtimeProfileID) {
-  return sessions.find((session) => Number(session.runtime_profile_id) === Number(runtimeProfileID)) || null;
+function latestSessionForRuntime(sessions, runtimeID) {
+  return sessions.find((session) => Number(session.runtime_id) === Number(runtimeID)) || null;
 }
 
 function liveConsoleRuntimeTargets(targets) {
   return (targets || [])
     .filter((target) => {
       const model = getConnectorModel(target.connector_kind);
-      return Boolean(model?.usesLiveConsole?.({ target }) && target.runtime_profile_id && model?.liveConsoleRuntimeTarget);
+      return Boolean(model?.usesLiveConsole?.({ target }) && target.runtime_id && model?.liveConsoleRuntimeTarget);
     })
     .map((target) => {
       const model = getConnectorModel(target.connector_kind);

@@ -10,7 +10,6 @@ import { PaginationBar } from "../components/ui/pagination-bar";
 import { TerminalBlock } from "../components/ui/terminal-block";
 import { formatBytes } from "../lib/file-transfer-utils";
 import { connectorBadgeTone, connectorKindLabel } from "../connectors/templates/common";
-import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
 import { apiDelete, apiDownload, apiGet, apiPost } from "../lib/api";
 
@@ -65,10 +64,10 @@ export function HistoryPage() {
 
   const targetItems = targets.data || [];
   const targetSignature = targetItems.map((target) => target.ref).join(",");
-  const connectorKindOptions = useMemo(
-    () => [{ value: "", label: "All connectors" }, ...supportedConnectorKinds.map((kind) => ({ value: kind, label: connectorKindLabel(kind) }))],
-    []
-  );
+  const connectorKindOptions = useMemo(() => {
+    const kinds = Array.from(new Set(targetItems.map((target) => target.connector_kind).filter(Boolean))).sort();
+    return [{ value: "", label: "All connectors" }, ...kinds.map((kind) => ({ value: kind, label: connectorKindLabel(kind) }))];
+  }, [targetSignature]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -134,6 +133,9 @@ export function HistoryPage() {
     }
     if (selectedTarget?.profile_id) {
       params.set("profile_id", String(selectedTarget.profile_id));
+    }
+    if (selectedTarget?.runtime_id && !selectedTarget?.target_id && !selectedTarget?.profile_id) {
+      params.set("runtime_id", String(selectedTarget.runtime_id));
     }
     if (filters.labelID) params.set("label_id", filters.labelID);
     try {

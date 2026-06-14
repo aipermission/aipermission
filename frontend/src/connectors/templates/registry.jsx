@@ -1,7 +1,34 @@
 import { Notice } from "../../components/ui/notice";
-import { connectorTemplateMetadata, getConnectorMetadata } from "./catalog";
+import { allowedConnectorIcons, connectorTemplateMetadata, getConnectorMetadata } from "./catalog";
 
 const templateModules = import.meta.glob("./*/index.jsx", { eager: true });
+
+const requiredModelFunctions = Object.freeze([
+  "activeCredential",
+  "canDelete",
+  "canEdit",
+  "credentialFormProps",
+  "credentialHint",
+  "credentialRows",
+  "credentialStateFromRow",
+  "deleteCredential",
+  "deleteDialog",
+  "deleteTarget",
+  "emptyCredentialState",
+  "emptyForm",
+  "formFromTarget",
+  "save",
+  "saveCredential",
+  "submitDisabled",
+  "submitLabel",
+  "syncForm",
+  "targetDisplayName",
+  "targetEndpoint",
+  "targetProfileLabel",
+  "targetSubtitle",
+  "test",
+  "usesLiveConsole",
+]);
 
 export const connectorTemplates = Object.freeze(
   Object.fromEntries(
@@ -52,11 +79,40 @@ function assertConnectorTemplateRegistration() {
     throw new Error(`Connector template catalog/registry mismatch. catalog=${catalogKinds.join(",")} registry=${registryKinds.join(",")}`);
   }
   for (const kind of registryKinds) {
-    if (!connectorTemplates[kind]?.metadata) {
-      throw new Error(`Connector template ${kind} is missing metadata`);
+    assertConnectorTemplate(kind, connectorTemplates[kind]);
+  }
+}
+
+function assertConnectorTemplate(kind, template) {
+  if (!template?.metadata) {
+    throw new Error(`Connector template ${kind} is missing metadata`);
+  }
+  if (template.metadata.kind !== kind) {
+    throw new Error(`Connector template ${kind} metadata kind must be ${kind}`);
+  }
+  for (const field of ["label", "summary", "version"]) {
+    if (!String(template.metadata[field] || "").trim()) {
+      throw new Error(`Connector template ${kind} metadata is missing ${field}`);
+    }
+  }
+  if (!allowedConnectorIcons.includes(template.metadata.icon || "")) {
+    throw new Error(`Connector template ${kind} metadata icon must be one of: ${allowedConnectorIcons.join(", ")}`);
+  }
+  for (const slot of ["Console", "CredentialForm", "Form", "RowActions"]) {
+    if (typeof template[slot] !== "function") {
+      throw new Error(`Connector template ${kind} is missing ${slot} slot`);
+    }
+  }
+  if (!template.model || typeof template.model !== "object") {
+    throw new Error(`Connector template ${kind} is missing model exports`);
+  }
+  for (const fn of requiredModelFunctions) {
+    if (typeof template.model[fn] !== "function") {
+      throw new Error(`Connector template ${kind} model is missing ${fn}()`);
     }
   }
 }
+
 
 function connectorKindFromPath(path) {
   const match = String(path).match(/^\.\/([^/]+)\/index\.jsx$/);

@@ -1,5 +1,7 @@
 const metadataModules = import.meta.glob("./*/metadata.json", { eager: true, import: "default" });
 
+export const allowedConnectorIcons = Object.freeze(["database", "key", "server"]);
+
 export const connectorTemplateMetadata = Object.freeze(
   Object.fromEntries(
     Object.entries(metadataModules)

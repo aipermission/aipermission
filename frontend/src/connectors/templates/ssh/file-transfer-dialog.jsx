@@ -236,7 +236,7 @@ export function FileTransferDialog({ open, server, onClose }) {
 
   async function startUploadBatch(options = {}) {
     const formData = new FormData();
-    formData.append("runtime_profile_id", String(server.id));
+    formData.append("runtime_id", String(server.id));
     formData.append("remote_dir", remoteDir);
     formData.append("overwrite", options.overwrite ? "true" : "false");
     uploadQueue.forEach((item) => formData.append("files", item.file, item.name));
@@ -265,7 +265,7 @@ export function FileTransferDialog({ open, server, onClose }) {
     setBatch({ state: "starting", item: null, error: null });
     try {
       const item = await apiPost("/api/file-transfers/download-batch", {
-        runtime_profile_id: Number(server.id),
+        runtime_id: Number(server.id),
         remote_paths: downloadQueue.map((item) => item.path),
         archive_name: downloadQueue.length > 1 ? suggestedArchiveName() : "",
       });
@@ -357,7 +357,7 @@ export function FileTransferDialog({ open, server, onClose }) {
     setBrowser((current) => ({ ...current, purpose, path: nextPath, state: "loading", error: null }));
     try {
       const data = await apiPost("/api/file-transfers/browse", {
-        runtime_profile_id: Number(server.id),
+        runtime_id: Number(server.id),
         path: nextPath,
       });
       if (purpose === "download") {

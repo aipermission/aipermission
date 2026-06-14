@@ -80,7 +80,12 @@ export function emptyCredentialState() {
 
 export async function loadCredentialResources() {
   const data = await apiGet("/api/connectors/ssh/credentials");
-  return data.items || data || [];
+  return (data.items || data || []).map((item) => ({
+    ...item,
+    connector_kind: "ssh",
+    resource_kind: "ssh_key",
+    resource_ref: `ssh:ssh_key:${item.id}`,
+  }));
 }
 
 export function credentialStateFromRow({ row }) {
@@ -158,6 +163,7 @@ export function credentialRows({ credentials, targets = [] }) {
     return {
       row_id: `ssh-key:${key.id}`,
       connector_kind: "ssh",
+      resource_kind: key.resource_kind || "ssh_key",
       connector_label: "SSH",
       credential: key,
       id: key.id,
@@ -213,8 +219,8 @@ export function targetSubtitle({ target, runtimeTarget }) {
   return `${username}@${host}:${port}`;
 }
 
-export function targetProfileLabel() {
-  return "terminal";
+export function targetProfileLabel({ target } = {}) {
+  return target?.profile_label || target?.public?.username || "terminal";
 }
 
 export function usesLiveConsole() {
@@ -224,7 +230,7 @@ export function usesLiveConsole() {
 export function liveConsoleRuntimeTarget({ target }) {
   const profile = target.public || {};
   return {
-    id: target.runtime_profile_id,
+    id: target.runtime_id,
     name: targetDisplayName({ target }),
     host: target.config?.host || "",
     port: target.config?.port || 0,

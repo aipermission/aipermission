@@ -101,7 +101,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
           <div className="flex flex-wrap items-center gap-2">
             <Icon className="h-4 w-4 text-stone-500" />
             <p className="truncate text-sm font-semibold text-stone-950">
-              {batch.target_name || `Runtime profile #${batch.runtime_profile_id}`} - {batch.direction}
+              {batch.target_name || `Target profile #${batch.runtime_id}`} - {batch.direction}
             </p>
             <Badge tone={statusTone(batch.status)}>{batch.status}</Badge>
             <Badge tone={batch.source === "mcp" ? "warn" : "neutral"}>{batch.source}</Badge>

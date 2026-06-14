@@ -6,6 +6,12 @@ import { connectorBadgeTone, connectorKindLabel, connectorSummary, connectorTemp
 
 export { connectorBadgeTone, connectorKindLabel, connectorSummary } from "./catalog";
 
+const connectorIcons = Object.freeze({
+  database: Database,
+  key: KeyRound,
+  server: Server,
+});
+
 export function ConnectorKindCell({ target, catalog }) {
   return (
     <td className="px-4 py-4">
@@ -64,10 +70,8 @@ export function InstallCommandPanel({ command, title, description }) {
 }
 
 export function ConnectorIcon({ kind, className = "" }) {
-  const icon = connectorIconName(kind);
-  if (icon === "server") return <Server className={className} />;
-  if (icon === "database") return <Database className={className} />;
-  return <KeyRound className={className} />;
+  const Icon = connectorIcons[connectorIconName(kind)] || KeyRound;
+  return <Icon className={className} />;
 }
 
 export function catalogLabel(catalog, kind) {

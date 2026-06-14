@@ -54,7 +54,10 @@ export function matchesConnectorTargetProfileAction(permission, target, profileI
 }
 
 export function connectorTargetProfileLifetime(permissions, target, profileID) {
-  const active = currentConnectorTargetProfilePermissions(permissions, target, profileID).filter((permission) => effectiveRule(permission));
+  const active = currentConnectorTargetProfilePermissions(permissions, target, profileID).filter((permission) => {
+    const rule = effectiveRule(permission);
+    return rule && rule !== "blocked";
+  });
   if (active.length === 0) return null;
   const expiring = active.find((permission) => permission.expires_at);
   return expiring || active[0];

@@ -8,7 +8,7 @@ import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 
 const emptyLoad = { state: "idle", catalog: [], targets: [], actionsByProfile: {}, permissions: [], error: null };
 
-export function ConnectorPermissionDialog({ token, onClose }) {
+export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   const [load, setLoad] = useState(emptyLoad);
   const [draft, setDraft] = useState({});
   const [save, setSave] = useState({ state: "idle", error: null });
@@ -71,7 +71,7 @@ export function ConnectorPermissionDialog({ token, onClose }) {
   function setRule(key, rule) {
     setDraft((current) => ({
       ...current,
-      [key]: rule ? { execution_rule: rule, expires_at: current[key]?.expires_at || "" } : { execution_rule: "", expires_at: "" },
+      [key]: rule ? { execution_rule: rule, expires_at: rule === "blocked" ? "" : current[key]?.expires_at || "" } : { execution_rule: "", expires_at: "" },
     }));
   }
 
@@ -88,7 +88,7 @@ export function ConnectorPermissionDialog({ token, onClose }) {
           profile_id: permission.profile_id,
           action_name: permission.action_name,
           execution_rule: permission.execution_rule,
-          expires_at: permission.expires_at || undefined,
+          expires_at: permission.execution_rule === "blocked" ? undefined : permission.expires_at || undefined,
         }));
       const connectorPermissions = rows
         .map((row) => {
@@ -99,12 +99,13 @@ export function ConnectorPermissionDialog({ token, onClose }) {
             profile_id: row.profile.id,
             action_name: row.action.name,
             execution_rule: permission.execution_rule,
-            expires_at: permission.expires_at || undefined,
+            expires_at: permission.execution_rule === "blocked" ? undefined : permission.expires_at || undefined,
           };
         })
         .filter(Boolean);
       const result = await apiPut(`/api/tokens/${token.id}/connector-permissions`, { permissions: [...preserved, ...connectorPermissions] });
       setLoad((current) => ({ ...current, permissions: result.items || [] }));
+      await onSaved?.();
       setSave({ state: "ready", error: null });
     } catch (error) {
       setSave({ state: "error", error: error.message });
@@ -153,9 +154,12 @@ export function ConnectorPermissionDialog({ token, onClose }) {
                       <span className="truncate font-mono text-xs text-stone-700">{row.action.name}</span>
                       <span className="line-clamp-2 text-xs text-stone-500">{row.action.description}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1 self-start">
+                    <div className="grid grid-cols-4 gap-1 self-start">
                       <ConnectorRuleButton active={!rule} onClick={() => setRule(row.key, "")}>
                         Disabled
+                      </ConnectorRuleButton>
+                      <ConnectorRuleButton active={rule === "blocked"} onClick={() => setRule(row.key, "blocked")}>
+                        Blocked
                       </ConnectorRuleButton>
                       <ConnectorRuleButton active={rule === "approval_required"} onClick={() => setRule(row.key, "approval_required")}>
                         Prompt

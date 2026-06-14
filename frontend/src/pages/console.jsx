@@ -20,7 +20,7 @@ import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
 import { PtyConsole } from "../components/console/pty-console";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
-import { emptySession, isUnreadMessage, latestSessionForRuntimeProfile } from "../components/console/helpers";
+import { emptySession, isUnreadMessage, latestSessionForRuntime } from "../components/console/helpers";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 import { ConnectorIcon } from "../connectors/templates/common";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
@@ -78,8 +78,8 @@ export function ConsolePage() {
   const defaultTargetRef = useMemo(
     () => defaultConsoleTargetRef(targetItems, rawUnreadMessages, pendingConnectorApprovals),
     [
-      targetItems.map((target) => `${target.ref}:${target.runtime_profile_id || ""}`).join(","),
-      rawUnreadMessages.map((message) => `${message.id}:${message.runtime_profile_id}`).join(","),
+      targetItems.map((target) => `${target.ref}:${target.runtime_id || ""}`).join(","),
+      rawUnreadMessages.map((message) => `${message.id}:${message.runtime_id}`).join(","),
       pendingConnectorApprovals.map((approval) => `${approval.id}:${approval.target_ref}`).join(","),
     ]
   );
@@ -91,7 +91,7 @@ export function ConsolePage() {
     }
     return targetItems.find((target) => target.ref === defaultTargetRef) || targetItems[0];
   }, [targetItems, selectedTargetRef, defaultTargetRef]);
-  const selectedRuntimeProfileID = targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.runtime_profile_id || "") : "";
+  const selectedRuntimeID = targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.runtime_id || "") : "";
   const selectedConnectorTemplate = selectedTarget ? getConnectorTemplate(selectedTarget.connector_kind) : null;
   const selectedTargetUsesLiveConsole = targetUsesLiveConsole(selectedTarget);
   const SelectedConnectorConsoleTemplate = selectedConnectorTemplate?.Console || null;
@@ -107,7 +107,7 @@ export function ConsolePage() {
     liveConsoleTargets,
     messages,
     sessions,
-    selectedRuntimeProfileID,
+    selectedRuntimeID,
     allowTargetFallback: false,
   });
   const selectedTargetProfiles = useMemo(() => profilesForConnectorTarget(targetItems, selectedTarget), [targetItems, selectedTarget?.connector_kind, selectedTarget?.target_id]);
@@ -228,7 +228,7 @@ export function ConsolePage() {
     if (!selectedRuntimeTarget) return;
     setMessagesState((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const data = await apiGet(`/api/messages?runtime_profile_id=${selectedRuntimeTarget.id}`);
+      const data = await apiGet(`/api/messages?runtime_id=${selectedRuntimeTarget.id}`);
       setMessagesState({ state: "ready", data, error: null });
     } catch (error) {
       setMessagesState({ state: "error", data: [], error: error.message });
@@ -258,7 +258,7 @@ export function ConsolePage() {
     try {
       await apiPost("/api/messages", {
         token_id: Number(messageTokenID),
-        runtime_profile_id: selectedRuntimeTarget.id,
+        runtime_id: selectedRuntimeTarget.id,
         session_id: selectedSessionLive ? selectedSession.id : null,
         direction: "user_to_ai",
         message: messageText,
@@ -502,7 +502,7 @@ export function ConsolePage() {
               {selectedTargetUsesLiveConsole && selectedRuntimeTarget && selectedSessionLive ? (
                 <PtyConsole
                   key={selectedSession.id || selectedRuntimeTarget.id}
-                  server={selectedRuntimeTarget}
+                  target={selectedRuntimeTarget}
                   session={selectedSession}
                   onInput={(data) => selectedSession.id && sendConsoleInput(selectedSession.id, data)}
                   onResize={(cols, rows) => selectedSession.id && resizeConsoleSession(selectedSession.id, cols, rows)}
@@ -510,7 +510,7 @@ export function ConsolePage() {
                 />
               ) : selectedTargetUsesLiveConsole && selectedRuntimeTarget ? (
                 <NoLiveSession
-                  server={selectedRuntimeTarget}
+                  target={selectedRuntimeTarget}
                   lastSession={selectedSession.id ? selectedSession : null}
                   onNewSession={() => void newConsoleSession(selectedRuntimeTarget)}
                   theme={theme}
@@ -564,7 +564,7 @@ export function ConsolePage() {
       />
       <MessagesDialog
         open={messagesOpen}
-        server={selectedRuntimeTarget}
+        target={selectedRuntimeTarget}
         tokens={selectedTokenOptions}
         tokenID={messageTokenID}
         state={messagesState}
@@ -590,15 +590,15 @@ function TargetListItem({
   unreadMessages,
   onSelect,
 }) {
-  const runtimeProfileID = targetUsesLiveConsole(target) ? target.runtime_profile_id : null;
-  const runtimeTarget = runtimeProfileID ? liveConsoleTargets.data.find((item) => Number(item.id) === Number(runtimeProfileID)) : null;
-  const session = runtimeProfileID ? latestSessionForRuntimeProfile(sessions, runtimeProfileID) || emptySession : emptySession;
+  const runtimeID = targetUsesLiveConsole(target) ? target.runtime_id : null;
+  const runtimeTarget = runtimeID ? liveConsoleTargets.data.find((item) => Number(item.id) === Number(runtimeID)) : null;
+  const session = runtimeID ? latestSessionForRuntime(sessions, runtimeID) || emptySession : emptySession;
   const active = selectedTarget && selectedTarget.ref === target.ref;
   const connectorPendingCount = pendingConnectorApprovals.filter((approval) => approval.target_ref === target.ref).length;
   const connectorRunningCount = connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === target.ref).length;
   const pendingCount = connectorPendingCount;
   const runningCount = connectorRunningCount;
-  const unreadCount = runtimeProfileID ? unreadMessages.filter((message) => Number(message.runtime_profile_id) === Number(runtimeProfileID)).length : 0;
+  const unreadCount = runtimeID ? unreadMessages.filter((message) => Number(message.runtime_id) === Number(runtimeID)).length : 0;
   const attentionCount = pendingCount + unreadCount;
   const status = selectedTargetStatus({ target, session, pendingCount, runningCount });
   const kindLabel = target.connector_kind;
@@ -723,9 +723,9 @@ function defaultConsoleTargetRef(targets, unreadMessages, pendingConnectorApprov
   if (!targets.length) return "";
   const pendingConnector = pendingConnectorApprovals.find((approval) => targets.some((target) => target.ref === approval.target_ref));
   if (pendingConnector) return pendingConnector.target_ref;
-  const unread = unreadMessages.find((message) => targets.some((target) => target.runtime_profile_id && Number(target.runtime_profile_id) === Number(message.runtime_profile_id)));
+  const unread = unreadMessages.find((message) => targets.some((target) => target.runtime_id && Number(target.runtime_id) === Number(message.runtime_id)));
   if (unread) {
-    const target = targets.find((item) => item.runtime_profile_id && Number(item.runtime_profile_id) === Number(unread.runtime_profile_id));
+    const target = targets.find((item) => item.runtime_id && Number(item.runtime_id) === Number(unread.runtime_id));
     if (target) return target.ref;
   }
   return targets[0].ref;

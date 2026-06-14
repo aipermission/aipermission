@@ -30,6 +30,12 @@ export function ConnectorsPage() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [profileSelections, setProfileSelections] = useState({});
   const [toast, setToast] = useState("");
+  const catalogWarnings = useMemo(() => connectorCatalogWarnings(catalog), [catalog]);
+  const availableConnectorKinds = useMemo(() => {
+    if (catalog.state !== "ready") return [];
+    const backendKinds = new Set(catalog.data.map((item) => item.kind));
+    return supportedConnectorKinds.filter((kind) => backendKinds.has(kind) && catalog.details[kind]);
+  }, [catalog]);
 
   const firstCredentialID = useMemo(() => (credentials.data[0] ? String(credentials.data[0].id) : ""), [credentials.data]);
   const activeConnectorModel = getConnectorModel(form.connector_kind);
@@ -40,11 +46,11 @@ export function ConnectorsPage() {
   const ActiveConnectorFormTemplate = getConnectorTemplate(form.connector_kind)?.Form || null;
   const connectorOptions = useMemo(
     () =>
-      supportedConnectorKinds.map((kind) => {
+      availableConnectorKinds.map((kind) => {
         const item = catalog.data.find((entry) => entry.kind === kind);
         return { kind, label: item?.label || connectorKindLabel(kind) };
       }),
-    [catalog.data]
+    [availableConnectorKinds, catalog.data]
   );
 
   useEffect(() => {
@@ -95,15 +101,14 @@ export function ConnectorsPage() {
   async function loadTargets() {
     setTargets((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const data = await apiGet("/api/connector-targets");
-      const items = await Promise.all((data.items || []).map((target) => apiGet(`/api/connector-targets/${target.id}`)));
-      setTargets({ state: "ready", data: items, error: null });
+      const data = await apiGet("/api/connector-targets/inventory");
+      setTargets({ state: "ready", data: data.items || [], error: null });
     } catch (error) {
       setTargets({ state: "error", data: [], error: error.message });
     }
   }
 
-  function openCreateDrawer(kind = defaultConnectorKind) {
+  function openCreateDrawer(kind = availableConnectorKinds[0] || defaultConnectorKind) {
     setState({ state: "idle", error: null, message: "" });
     setAddMenuOpen(false);
     setForm(emptyConnectorForm(kind, { firstCredentialID }));
@@ -263,6 +268,9 @@ export function ConnectorsPage() {
       </div>
 
       {catalog.state === "error" ? <Notice tone="bad">{catalog.error}</Notice> : null}
+      {catalogWarnings.map((warning) => (
+        <Notice tone="warn" key={warning}>{warning}</Notice>
+      ))}
       {targets.state === "error" ? <Notice tone="bad">{targets.error}</Notice> : null}
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
@@ -325,7 +333,7 @@ export function ConnectorsPage() {
         </form>
       </Drawer>
 
-      {supportedConnectorKinds.map((kind) => {
+      {availableConnectorKinds.map((kind) => {
         const OperationsTemplate = getConnectorTemplate(kind)?.Operations;
         return OperationsTemplate ? (
           <OperationsTemplate
@@ -511,10 +519,12 @@ function ConnectorTestState({ value }) {
 }
 
 function AddConnectorMenu({ catalog, onAdd }) {
+  const backendKinds = new Set(catalog.data.map((item) => item.kind));
+  const availableKinds = supportedConnectorKinds.filter((kind) => backendKinds.has(kind) && catalog.details[kind]);
   return (
     <div className="absolute right-0 top-12 z-40 w-[360px] overflow-hidden rounded-lg border border-stone-200 bg-white p-2 shadow-xl dark-panel">
       <div className="grid gap-1">
-        {supportedConnectorKinds.map((kind) => {
+        {availableKinds.map((kind) => {
           const detail = catalog.details[kind];
           return (
             <button
@@ -535,9 +545,28 @@ function AddConnectorMenu({ catalog, onAdd }) {
           );
         })}
         {catalog.state === "loading" ? <p className="px-3 py-2 text-sm text-stone-500">Loading connector catalog...</p> : null}
+        {catalog.state === "ready" && availableKinds.length === 0 ? (
+          <p className="px-3 py-2 text-sm text-stone-500">No connector type is available in both the backend catalog and frontend templates.</p>
+        ) : null}
       </div>
     </div>
   );
+}
+
+function connectorCatalogWarnings(catalog) {
+  if (catalog.state !== "ready") return [];
+  const backendKinds = new Set(catalog.data.map((item) => item.kind));
+  const frontendKinds = new Set(supportedConnectorKinds);
+  const backendOnly = [...backendKinds].filter((kind) => !frontendKinds.has(kind)).sort();
+  const frontendOnly = [...frontendKinds].filter((kind) => !backendKinds.has(kind)).sort();
+  const warnings = [];
+  if (backendOnly.length > 0) {
+    warnings.push(`Backend connector catalog has no matching frontend template: ${backendOnly.join(", ")}.`);
+  }
+  if (frontendOnly.length > 0) {
+    warnings.push(`Frontend connector template has no matching backend connector: ${frontendOnly.join(", ")}.`);
+  }
+  return warnings;
 }
 
 function DeleteConnectorDialog({ value, state, onDelete, onClose }) {

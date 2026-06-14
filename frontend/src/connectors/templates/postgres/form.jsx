@@ -30,10 +30,10 @@ export function PostgresConnectorFormTemplate({ form, mode = "create", onChange 
         <Field>
           SSL mode
           <Select value={form.ssl_mode} onChange={(event) => onChange("ssl_mode", event.target.value)}>
-            <option value="prefer">Prefer</option>
             <option value="require">Require</option>
-            <option value="disable">Disable</option>
             <option value="verify_full">Verify full</option>
+            <option value="prefer">Prefer</option>
+            <option value="disable">Disable</option>
           </Select>
         </Field>
       </div>

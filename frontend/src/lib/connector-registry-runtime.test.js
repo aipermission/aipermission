@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,11 @@ import { createServer } from "vite";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = join(currentDir, "..", "..");
+const connectorTemplatesDir = join(currentDir, "..", "connectors", "templates");
+const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
 
 test("connector template registry evaluates at runtime", async () => {
   const server = await createServer({
@@ -25,19 +31,19 @@ test("connector template registry evaluates at runtime", async () => {
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error));
     await page.goto(baseURL, { waitUntil: "domcontentloaded" });
-    const registryResult = await page.evaluate(async () => {
+    const registryResult = await page.evaluate(async (expectedKinds) => {
       const registry = await import("/src/connectors/templates/registry.jsx");
       return {
-        ssh: Boolean(registry.getConnectorTemplate("ssh")),
-        postgres: Boolean(registry.getConnectorTemplate("postgres")),
-        redis: registry.getConnectorTemplate("redis") === null,
+        expected: Object.fromEntries(expectedKinds.map((kind) => [kind, Boolean(registry.getConnectorTemplate(kind))])),
+        models: Object.fromEntries(expectedKinds.map((kind) => [kind, Boolean(registry.getConnectorModel(kind)?.emptyForm)])),
+        metadata: Object.fromEntries(expectedKinds.map((kind) => [kind, registry.getConnectorTemplate(kind)?.metadata?.kind])),
+        missing: registry.getConnectorTemplate("__missing_connector__") === null,
       };
-    });
-    assert.deepEqual(registryResult, {
-      ssh: true,
-      postgres: true,
-      redis: true,
-    });
+    }, connectorTemplateKinds);
+    assert.deepEqual(registryResult.expected, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, true])));
+    assert.deepEqual(registryResult.models, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, true])));
+    assert.deepEqual(registryResult.metadata, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, kind])));
+    assert.equal(registryResult.missing, true);
     assert.deepEqual(pageErrors.map((error) => error.message), []);
   } finally {
     if (browser) {

@@ -5,7 +5,7 @@ import { Drawer } from "../ui/drawer";
 import { Select, Textarea } from "../ui/form";
 import { Notice } from "../ui/notice";
 
-export function MessagesDialog({ open, server, tokens, tokenID, state, text, onTokenChange, onTextChange, onSubmit, onRefresh, onClose }) {
+export function MessagesDialog({ open, target, tokens, tokenID, state, text, onTokenChange, onTextChange, onSubmit, onRefresh, onClose }) {
   const messageListRef = useRef(null);
   const filteredMessages = (tokenID ? state.data.filter((message) => Number(message.token_id) === Number(tokenID)) : state.data)
     .slice()
@@ -19,7 +19,7 @@ export function MessagesDialog({ open, server, tokens, tokenID, state, text, onT
   return (
     <Drawer
       open={open}
-      title={server ? `${server.name} messages` : "Messages"}
+      title={target ? `${target.name} messages` : "Messages"}
       description="Send a note to the AI through the next MCP response, or read notes sent by the AI."
       onClose={onClose}
       bodyClassName="overflow-hidden"
@@ -39,7 +39,7 @@ export function MessagesDialog({ open, server, tokens, tokenID, state, text, onT
           <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Refresh messages" onClick={onRefresh}>
             <RefreshCcw className="h-4 w-4" />
           </Button>
-          {tokens.length === 0 ? <Notice className="col-span-2">No token has access to this server.</Notice> : null}
+          {tokens.length === 0 ? <Notice className="col-span-2">No token has access to this target.</Notice> : null}
         </div>
         <div ref={messageListRef} className="min-h-0 overflow-auto pr-1">
           {filteredMessages.length === 0 ? (

@@ -17,8 +17,14 @@ function emptyCredentialState(kind, options = {}) {
 
 export function CredentialsPage() {
   const { credentials, loadCredentials } = useGateway();
+  const [connectorCatalog, setConnectorCatalog] = useState({ state: "loading", data: [], error: null });
   const [connectorTargets, setConnectorTargets] = useState({ state: "loading", data: [], error: null });
-  const defaultConnectorKind = supportedConnectorKinds[0] || "";
+  const availableConnectorKinds = useMemo(() => {
+    const backendKinds = new Set((connectorCatalog.data || []).map((item) => item.kind));
+    if (backendKinds.size === 0) return [];
+    return supportedConnectorKinds.filter((kind) => backendKinds.has(kind));
+  }, [connectorCatalog.data]);
+  const defaultConnectorKind = availableConnectorKinds[0] || supportedConnectorKinds[0] || "";
   const [drawer, setDrawer] = useState({ open: false, kind: defaultConnectorKind, mode: "create", row: null });
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [credentialState, setCredentialState] = useState(() => emptyCredentialState(defaultConnectorKind));
@@ -28,11 +34,11 @@ export function CredentialsPage() {
   const activeModel = getConnectorModel(drawer.kind);
   const rows = useMemo(
     () =>
-      supportedConnectorKinds.flatMap((kind) => getConnectorModel(kind)?.credentialRows?.({
+      availableConnectorKinds.flatMap((kind) => getConnectorModel(kind)?.credentialRows?.({
         credentials: credentials.data,
         targets: connectorTargets.data,
       }) || []),
-    [credentials.data, connectorTargets.data]
+    [availableConnectorKinds, credentials.data, connectorTargets.data]
   );
   const credentialFormProps = activeModel?.credentialFormProps?.({
     targets: connectorTargets.data,
@@ -44,14 +50,27 @@ export function CredentialsPage() {
   }) || {};
 
   useEffect(() => {
+    void loadConnectorCatalog();
     void loadConnectorTargets();
   }, []);
+
+  async function loadConnectorCatalog() {
+    setConnectorCatalog((current) => ({ ...current, state: "loading", error: null }));
+    try {
+      const data = await apiGet("/api/connectors");
+      setConnectorCatalog({ state: "ready", data: data.items || [], error: null });
+      return data.items || [];
+    } catch (error) {
+      setConnectorCatalog({ state: "error", data: [], error: error.message });
+      return [];
+    }
+  }
 
   async function loadConnectorTargets() {
     setConnectorTargets((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const data = await apiGet("/api/connector-targets");
-      const items = await Promise.all((data.items || []).map((target) => apiGet(`/api/connector-targets/${target.id}`)));
+      const data = await apiGet("/api/connector-targets/inventory");
+      const items = data.items || [];
       setConnectorTargets({ state: "ready", data: items, error: null });
       return items;
     } catch (error) {
@@ -61,7 +80,7 @@ export function CredentialsPage() {
   }
 
   async function refreshCredentials() {
-    await Promise.all([loadCredentials(), loadConnectorTargets()]);
+    await Promise.all([loadCredentials(), loadConnectorCatalog(), loadConnectorTargets()]);
   }
 
   function openCredentialDrawer(kind) {
@@ -123,13 +142,17 @@ export function CredentialsPage() {
             Add credential
             <ChevronDown className="h-4 w-4" />
           </Button>
-          {addMenuOpen ? <AddCredentialMenu onAdd={openCredentialDrawer} /> : null}
+          {addMenuOpen ? <AddCredentialMenu kinds={availableConnectorKinds} onAdd={openCredentialDrawer} /> : null}
         </div>
       </div>
 
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+      {connectorCatalog.state === "error" ? <Notice tone="bad">{connectorCatalog.error}</Notice> : null}
       {credentials.state === "error" ? <Notice tone="bad">{credentials.error}</Notice> : null}
+      {(credentials.errors || []).map((error) => (
+        <Notice tone="warn" key={error}>Credential resource load warning: {error}</Notice>
+      ))}
       {connectorTargets.state === "error" ? <Notice tone="bad">{connectorTargets.error}</Notice> : null}
 
       <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
@@ -156,7 +179,7 @@ export function CredentialsPage() {
             ))}
           </tbody>
         </table>
-        {credentials.state === "loading" || connectorTargets.state === "loading" ? (
+        {credentials.state === "loading" || connectorCatalog.state === "loading" || connectorTargets.state === "loading" ? (
           <div className="p-4">
             <Notice>Loading credentials...</Notice>
           </div>
@@ -188,10 +211,13 @@ export function CredentialsPage() {
   );
 }
 
-function AddCredentialMenu({ onAdd }) {
+function AddCredentialMenu({ kinds, onAdd }) {
   return (
     <div className="absolute right-0 top-11 z-30 w-80 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl">
-      {supportedConnectorKinds.map((kind) => (
+      {kinds.length === 0 ? (
+        <div className="px-4 py-3 text-sm text-stone-500">No backend-supported connector templates are available.</div>
+      ) : null}
+      {kinds.map((kind) => (
         <button
           className="flex w-full gap-3 border-b border-stone-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-stone-50"
           key={kind}

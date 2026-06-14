@@ -54,8 +54,8 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     return () => window.clearInterval(timer);
   }, [open, hasActiveItems, runState.items.map((item) => `${item.request_id}:${item.status}`).join(",")]);
 
-  function toggleTarget(runtimeProfileID) {
-    setSelected((current) => ({ ...current, [runtimeProfileID]: !current[runtimeProfileID] }));
+  function toggleTarget(runtimeID) {
+    setSelected((current) => ({ ...current, [runtimeID]: !current[runtimeID] }));
     setConfirmation("");
   }
 

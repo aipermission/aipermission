@@ -136,7 +136,7 @@ export function ConnectorTokenPermissionPanel({
       const existing = permissionsByToken[token.id] || [];
       const actionNames = new Set(selectedActions.map((action) => action.name));
       const preserved = existing.filter((permission) => !matchesConnectorTargetProfile(permission, selectedTarget, profileID) || !actionNames.has(permission.action_name));
-      const expiresAt = connectorTargetProfileLifetime(existing, selectedTarget, profileID)?.expires_at || "";
+      const expiresAt = rule === "blocked" ? "" : connectorTargetProfileLifetime(existing, selectedTarget, profileID)?.expires_at || "";
       const next = rule
         ? [
             ...preserved,
@@ -169,6 +169,7 @@ export function ConnectorTokenPermissionPanel({
       const existing = permissionsByToken[token.id] || [];
       const next = existing.map((permission) => {
         if (!matchesConnectorTargetProfile(permission, selectedTarget, profileID)) return permission;
+        if (effectiveRule(permission) === "blocked") return { ...permission, expires_at: "" };
         return { ...permission, expires_at: expiresAt || "" };
       });
       await replaceTokenConnectorPermissions?.(token.id, next);
@@ -327,7 +328,7 @@ export function ConnectorTokenPermissionPanel({
             const selectedCount = selectedCountByToken[token.id] || 0;
             const profile = selectedConnectorProfile(token.id, selectedTarget, targetProfiles, profileByToken);
             const unreadCount = targetSupportsMessages(selectedTarget)
-              ? unreadMessages.filter((message) => Number(message.runtime_profile_id) === Number(profile?.runtime_profile_id || selectedTarget.runtime_profile_id) && Number(message.token_id) === Number(token.id)).length
+              ? unreadMessages.filter((message) => Number(message.runtime_id) === Number(profile?.runtime_id || selectedTarget.runtime_id) && Number(message.token_id) === Number(token.id)).length
               : 0;
             return (
               <section className={`grid gap-3 rounded-lg border p-3 transition ${selectedCount > 0 ? "border-emerald-200 bg-emerald-50" : "border-stone-200 bg-white"}`} key={token.id}>
@@ -360,7 +361,7 @@ export function ConnectorTokenPermissionPanel({
 }
 
 function targetSupportsMessages(target) {
-  if (!target?.runtime_profile_id) return false;
+  if (!target?.runtime_id) return false;
   const model = getConnectorModel(target.connector_kind);
   return Boolean(model?.usesLiveConsole?.({ target }));
 }
@@ -450,9 +451,12 @@ function PermissionRuleGroup({ title, description, rule, saving, disabled = fals
         </div>
         {rule === "mixed" ? <Badge tone="warn">mixed</Badge> : null}
       </div>
-      <div className="grid grid-cols-3 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         <ConnectorRuleButton active={!rule && !disabled} disabled={saving || disabled} onClick={() => onSetRule("")}>
           Disabled
+        </ConnectorRuleButton>
+        <ConnectorRuleButton active={rule === "blocked"} disabled={saving || disabled} onClick={() => onSetRule("blocked")}>
+          Blocked
         </ConnectorRuleButton>
         <ConnectorRuleButton active={rule === "approval_required"} disabled={saving || disabled} onClick={() => onSetRule("approval_required")}>
           Prompt
@@ -475,9 +479,12 @@ function ActionPermissionCard({ action, rule, saving, compactPopover, onSetRule 
         </div>
         <Badge tone={action.risk === "read" ? "good" : "warn"}>{action.risk}</Badge>
       </div>
-      <div className="grid grid-cols-3 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         <ConnectorRuleButton active={!rule} disabled={saving} onClick={() => onSetRule("")}>
           Disabled
+        </ConnectorRuleButton>
+        <ConnectorRuleButton active={rule === "blocked"} disabled={saving} onClick={() => onSetRule("blocked")}>
+          Blocked
         </ConnectorRuleButton>
         <ConnectorRuleButton active={rule === "approval_required"} disabled={saving} onClick={() => onSetRule("approval_required")}>
           Prompt

@@ -53,18 +53,21 @@ export function expiresAtFromLifetime(value, now = Date.now()) {
 export function ruleLabel(rule) {
   if (rule === "always_run") return "always run";
   if (rule === "approval_required") return "prompt";
+  if (rule === "blocked") return "blocked";
   return "disabled";
 }
 
 export function ruleDotClass(rule) {
   if (rule === "always_run") return "bg-emerald-500";
   if (rule === "approval_required") return "bg-amber-400";
+  if (rule === "blocked") return "bg-red-500";
   return "bg-red-500";
 }
 
 export function permissionCardClass(rule) {
   if (rule === "always_run") return "border-emerald-100 bg-emerald-50/45 permission-card-good";
   if (rule === "approval_required") return "border-amber-100 bg-amber-50/45 permission-card-warn";
+  if (rule === "blocked") return "border-red-100 bg-red-50/45 permission-card-bad";
   return "border-red-100 bg-red-50/35 permission-card-bad";
 }
 
