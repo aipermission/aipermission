@@ -45,6 +45,7 @@ func TestGetHelpAndActionList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("action list: %v", err)
 	}
+	connectortest.AssertActionListStable(t, connector, target, connectors.CredentialProfileView{ConnectorKind: Kind, Kind: "private_key"})
 	if len(actions) != 5 {
 		t.Fatalf("expected 5 actions, got %d", len(actions))
 	}

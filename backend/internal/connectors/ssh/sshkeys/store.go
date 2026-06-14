@@ -24,6 +24,9 @@ const (
 	TypeRSA     = "rsa"
 	TypeECDSA   = "ecdsa"
 
+	connectorKind = "ssh"
+	resourceKind  = "private_key"
+
 	maxImportedPrivateKeyBytes = 64 * 1024
 	minImportedRSABits         = 2048
 )
@@ -75,7 +78,7 @@ func NewStore(db *sql.DB, vault *vault.Vault) *Store {
 }
 
 func (s *Store) List(ctx context.Context) ([]SSHKey, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, key_type, public_key, fingerprint, created_at, updated_at FROM ssh_keys ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, resource_type, public_data, fingerprint, created_at, updated_at FROM connector_credential_resources WHERE connector_kind = ? AND resource_kind = ? ORDER BY name`, connectorKind, resourceKind)
 	if err != nil {
 		return nil, fmt.Errorf("list ssh keys: %w", err)
 	}
@@ -98,7 +101,7 @@ func (s *Store) List(ctx context.Context) ([]SSHKey, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (SSHKey, error) {
 	var item SSHKey
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, key_type, public_key, fingerprint, created_at, updated_at FROM ssh_keys WHERE id = ?`, id).
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, resource_type, public_data, fingerprint, created_at, updated_at FROM connector_credential_resources WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, id, connectorKind, resourceKind).
 		Scan(&item.ID, &item.Name, &item.KeyType, &item.PublicKey, &item.Fingerprint, &item.CreatedAt, &item.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SSHKey{}, ErrNotFound
@@ -113,7 +116,7 @@ func (s *Store) Get(ctx context.Context, id int64) (SSHKey, error) {
 func (s *Store) GetPrivateKey(ctx context.Context, id int64) (PrivateKey, error) {
 	var encrypted string
 	var item PrivateKey
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, key_type, encrypted_private_key FROM ssh_keys WHERE id = ?`, id).
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, resource_type, encrypted_secret FROM connector_credential_resources WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, id, connectorKind, resourceKind).
 		Scan(&item.ID, &item.Name, &item.KeyType, &encrypted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PrivateKey{}, ErrNotFound
@@ -156,7 +159,9 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (SSHKey, erro
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO ssh_keys (name, key_type, public_key, encrypted_private_key, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO connector_credential_resources (connector_kind, resource_kind, name, resource_type, public_data, encrypted_secret, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		connectorKind,
+		resourceKind,
 		request.Name,
 		request.KeyType,
 		publicKey,
@@ -207,7 +212,9 @@ func (s *Store) Import(ctx context.Context, request ImportRequest) (SSHKey, erro
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO ssh_keys (name, key_type, public_key, encrypted_private_key, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO connector_credential_resources (connector_kind, resource_kind, name, resource_type, public_data, encrypted_secret, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		connectorKind,
+		resourceKind,
 		request.Name,
 		keyType,
 		publicKey,
@@ -251,7 +258,7 @@ func (s *Store) Update(ctx context.Context, id int64, request UpdateRequest) (SS
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(ctx, `UPDATE ssh_keys SET name = ?, public_key = ?, updated_at = ? WHERE id = ?`, request.Name, publicKey, now, id)
+	result, err := s.db.ExecContext(ctx, `UPDATE connector_credential_resources SET name = ?, public_data = ?, updated_at = ? WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, request.Name, publicKey, now, id, connectorKind, resourceKind)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			return SSHKey{}, ValidationError("ssh key name already exists")
@@ -297,7 +304,7 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 		return ValidationError("ssh key is used by one or more SSH connector profiles")
 	}
 
-	result, err := s.db.ExecContext(ctx, `DELETE FROM ssh_keys WHERE id = ?`, id)
+	result, err := s.db.ExecContext(ctx, `DELETE FROM connector_credential_resources WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, id, connectorKind, resourceKind)
 	if err != nil {
 		return fmt.Errorf("delete ssh key: %w", err)
 	}

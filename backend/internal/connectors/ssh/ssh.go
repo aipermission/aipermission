@@ -13,7 +13,7 @@ import (
 const (
 	Kind    = "ssh"
 	Label   = "SSH"
-	Version = "0.1"
+	Version = "0.2"
 
 	ActionExec                  = "exec"
 	ActionReadConsole           = "read_console"

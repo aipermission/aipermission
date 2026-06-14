@@ -7,6 +7,8 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/api"
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
+	_ "github.com/aipermission/aipermission/backend/internal/connectors/builtin/adapters"
 )
 
 func main() {
@@ -15,7 +17,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	server := api.NewLockedServer(cfg)
+	registry, err := builtin.NewRegistry()
+	if err != nil {
+		log.Fatal(err)
+	}
+	server := api.NewLockedServer(cfg, api.WithConnectorRegistry(registry))
 	defer server.Close()
 
 	log.Printf("aipermission backend listening on %s", cfg.Address())
