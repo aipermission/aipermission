@@ -20,7 +20,7 @@ import (
 const (
 	Kind    = "postgres"
 	Label   = "Postgres"
-	Version = "0.1"
+	Version = "0.2"
 
 	ActionGetSchemas    = "get_schemas"
 	ActionGetTables     = "get_tables"
@@ -455,12 +455,6 @@ func (o queryOutput) DisplayText() string {
 
 func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn, error) {
 	username := strings.TrimSpace(publicString(runtime.Profile.Public, "username"))
-	if username == "" && runtime.Secrets != nil {
-		secretUsername, err := runtime.Secrets.GetSecret(ctx, "username")
-		if err == nil {
-			username = strings.TrimSpace(secretUsername)
-		}
-	}
 	if username == "" {
 		return nil, fmt.Errorf("%w: username", ErrMissingSecret)
 	}
@@ -791,14 +785,14 @@ func validateReadonlySQL(sql string) error {
 	if normalized == "" {
 		return fmt.Errorf("%s sql is required", ActionQueryReadonly)
 	}
-	lower := strings.ToLower(normalized)
-	if strings.Contains(lower, ";") {
+	checkSQL := readonlyValidationSQL(normalized)
+	if strings.Contains(checkSQL, ";") {
 		return fmt.Errorf("%s only accepts a single statement", ActionQueryReadonly)
 	}
-	if disallowedReadonlyTerms.MatchString(lower) {
+	if disallowedReadonlyTerms.MatchString(checkSQL) {
 		return fmt.Errorf("%s only accepts read-only SQL", ActionQueryReadonly)
 	}
-	if !hasReadonlyPrefix(lower) {
+	if !hasReadonlyPrefix(strings.TrimSpace(checkSQL)) {
 		return fmt.Errorf("%s only accepts SELECT, WITH, SHOW, or EXPLAIN SQL", ActionQueryReadonly)
 	}
 	return nil
@@ -811,6 +805,120 @@ func hasReadonlyPrefix(sql string) bool {
 		}
 	}
 	return false
+}
+
+func readonlyValidationSQL(sql string) string {
+	var out strings.Builder
+	out.Grow(len(sql))
+	for i := 0; i < len(sql); {
+		switch {
+		case strings.HasPrefix(sql[i:], "--"):
+			for i < len(sql) && sql[i] != '\n' {
+				out.WriteByte(' ')
+				i++
+			}
+		case strings.HasPrefix(sql[i:], "/*"):
+			out.WriteString("  ")
+			i += 2
+			for i < len(sql) && !strings.HasPrefix(sql[i:], "*/") {
+				if sql[i] == '\n' {
+					out.WriteByte('\n')
+				} else {
+					out.WriteByte(' ')
+				}
+				i++
+			}
+			if strings.HasPrefix(sql[i:], "*/") {
+				out.WriteString("  ")
+				i += 2
+			}
+		case sql[i] == '\'':
+			i = maskQuotedSQL(sql, i, '\'', &out)
+		case sql[i] == '"':
+			i = maskQuotedSQL(sql, i, '"', &out)
+		case sql[i] == '$':
+			if end := dollarQuoteEnd(sql, i); end > i {
+				for i < end {
+					out.WriteByte(' ')
+					i++
+				}
+			} else {
+				out.WriteByte(byteLower(sql[i]))
+				i++
+			}
+		default:
+			out.WriteByte(byteLower(sql[i]))
+			i++
+		}
+	}
+	return out.String()
+}
+
+func maskQuotedSQL(sql string, start int, quote byte, out *strings.Builder) int {
+	i := start
+	if i < len(sql) {
+		out.WriteByte(' ')
+		i++
+	}
+	for i < len(sql) {
+		if sql[i] == '\n' {
+			out.WriteByte('\n')
+		} else {
+			out.WriteByte(' ')
+		}
+		if sql[i] == quote {
+			if i+1 < len(sql) && sql[i+1] == quote {
+				i += 2
+				out.WriteByte(' ')
+				continue
+			}
+			i++
+			break
+		}
+		i++
+	}
+	return i
+}
+
+func dollarQuoteEnd(sql string, start int) int {
+	if sql[start] != '$' {
+		return -1
+	}
+	next := strings.IndexByte(sql[start+1:], '$')
+	if next < 0 {
+		return -1
+	}
+	tagEnd := start + 1 + next
+	tag := sql[start : tagEnd+1]
+	if !validDollarQuoteTag(tag) {
+		return -1
+	}
+	closing := strings.Index(sql[tagEnd+1:], tag)
+	if closing < 0 {
+		return -1
+	}
+	return tagEnd + 1 + closing + len(tag)
+}
+
+func validDollarQuoteTag(tag string) bool {
+	if len(tag) < 2 || tag[0] != '$' || tag[len(tag)-1] != '$' {
+		return false
+	}
+	body := tag[1 : len(tag)-1]
+	for i := 0; i < len(body); i++ {
+		ch := body[i]
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func byteLower(ch byte) byte {
+	if ch >= 'A' && ch <= 'Z' {
+		return ch + ('a' - 'A')
+	}
+	return ch
 }
 
 func stripLeadingSQLComments(sql string) string {

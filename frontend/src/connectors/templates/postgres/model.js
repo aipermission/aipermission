@@ -185,7 +185,7 @@ export function targetEndpoint({ target }) {
 
 export function targetDisplayName({ target }) {
   if (!target) return "Postgres target";
-  return `${target.target_name || target.name || "Postgres target"} / ${target.profile_label || "default"}`;
+  return target.target_name || target.name || "Postgres target";
 }
 
 export function targetSubtitle({ target }) {
@@ -216,12 +216,8 @@ export function deleteDialog({ target }) {
   };
 }
 
-export function hostKeyActionFromError() {
+export function operationFromError() {
   return null;
-}
-
-export async function resumeHostKeyAction() {
-  throw new Error("Postgres does not use SSH host-key approval.");
 }
 
 async function createTarget({ form }) {

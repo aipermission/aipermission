@@ -4,5 +4,5 @@
   "icon": "database",
   "badge_tone": "neutral",
   "summary": "Schema inspection and bounded read-only SQL through database credential profiles.",
-  "version": "0.1"
+  "version": "0.2"
 }

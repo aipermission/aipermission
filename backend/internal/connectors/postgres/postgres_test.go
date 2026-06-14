@@ -50,6 +50,7 @@ func TestGetHelpAndActionList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("action list: %v", err)
 	}
+	connectortest.AssertActionListStable(t, connector, target, connectors.CredentialProfileView{ConnectorKind: Kind, Kind: "username_password"})
 	if len(actions) != 4 {
 		t.Fatalf("expected 4 actions, got %d", len(actions))
 	}
@@ -156,6 +157,26 @@ func TestPrepareReadonlyQueryRejectsUnsafeSQL(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatalf("expected %q to be rejected", sql)
+		}
+	}
+}
+
+func TestPrepareReadonlyQueryIgnoresUnsafeWordsInsideNonCodeSQL(t *testing.T) {
+	for _, sql := range []string{
+		"select 'drop table users; update accounts' as message",
+		`select "drop" from "update"`,
+		"select 1 -- drop table users;\n",
+		"select /* alter table users */ 1",
+		"select $$delete from users;$$ as sample",
+		"with sample as (select 'truncate table x' as text) select * from sample",
+	} {
+		_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+			Target:     connectors.TargetView{Ref: "postgres:7:11", ConnectorKind: Kind},
+			ActionName: ActionQueryReadonly,
+			Input:      map[string]any{"sql": sql},
+		})
+		if err != nil {
+			t.Fatalf("expected %q to be accepted, got %v", sql, err)
 		}
 	}
 }
