@@ -60,7 +60,10 @@ Connector work has two classes:
 | Live console / file transfer / owned credential resources | no | adapter contract required |
 
 If a connector cannot fit the normal structured path, treat that as a design
-review signal before adding gateway-owned adapter capabilities.
+review signal before adding gateway-owned adapter capabilities. Adapter
+capabilities must be expressed through the typed `internal/connectorapi`
+interfaces so runtime-integrated connectors do not invent parallel server,
+runtime, lifecycle, or credential-resource contracts.
 
 ## Backend Boundaries
 
@@ -85,8 +88,8 @@ review signal before adding gateway-owned adapter capabilities.
 - `internal/tokens`: API token create/hash/revoke/permission storage.
 - `internal/connectors/ssh/sshkeys`: gateway-owned SSH key generation, explicit private key import, and vault-backed private key storage used by the SSH connector.
 - `internal/connectors/ssh/sshconfig`: conservative SSH config host discovery/parsing for SSH connector form prefill.
-- `internal/execution`: SSH command execution, SFTP file transfer primitives,
-  and host key verification.
+- `internal/connectors/ssh/execution`: SSH command execution, SFTP file
+  transfer primitives, and host key verification owned by the SSH connector.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
   checksum storage. File contents are not stored in SQLCipher.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.

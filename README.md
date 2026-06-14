@@ -450,15 +450,19 @@ Start here:
 ## Developing Connectors
 
 Most future connectors should be structured connectors: add a backend connector
-package, frontend templates, registration, docs, and tests. They use the shared
+package, a frontend template folder, docs, and tests. They use the shared
 target/profile/action permission, approval, history, and audit pipeline without
 adding connector-specific permission tables, MCP tool families, or route-level
-branches.
+branches. Frontend templates are folder-discovered from
+`frontend/src/connectors/templates/<kind>/`; normal connectors do not edit the
+generic template registry or catalog.
 
 Runtime-integrated connectors are different. SSH is the built-in example
 because it owns a live terminal, SFTP file transfer, host-key approval, and
 gateway-owned key resources. New runtime capabilities require a reviewed
-adapter contract before touching generic API routes.
+adapter contract before touching generic API routes. Adapter contracts live in
+`internal/connectorapi`; connectors should not create their own parallel
+server/runtime/lifecycle interfaces.
 
 See [Add A Connector](docs/development/add-a-connector.md) for the contributor
 checklist, required template files, security invariants, and the exact places a

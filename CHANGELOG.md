@@ -22,12 +22,20 @@ and this project uses semantic versioning once public releases begin.
 - Added connector approval-context snapshots that cover target/profile metadata,
   credential revisions, connector action definitions, permission state, and
   prepared payload hashes before approval execution.
+- Added typed connector adapter contracts for runtime-backed capabilities such
+  as live terminals, file transfer, credential resources, and target lifecycle
+  cleanup.
 
 ### Changed
 
 - SSH now uses the same connector target/profile/action vocabulary as
   structured connectors, while keeping its live terminal and file transfer
   adapter surfaces.
+- Frontend connector templates now validate required slots, model exports, and
+  metadata icons during tests so new connector kinds cannot silently ship
+  partial UI contracts.
+- Postgres targets now default to `ssl_mode=require`; weaker modes remain an
+  explicit local-lab choice.
 - Reset the local schema as a clean 0.2 connector-native baseline while the
   project is still pre-1.0.
 - Pre-0.2 preview databases are not migrated automatically. Create a fresh 0.2
@@ -41,6 +49,8 @@ and this project uses semantic versioning once public releases begin.
   history, and audit persistence.
 - Target schemas reject secret fields; credential profile schemas own encrypted
   secret material.
+- Stale approval requests now record a coarse drift reason such as token,
+  permission, target, profile, action definition, or payload drift.
 
 ## [0.1.14] - 2026-06-10
 

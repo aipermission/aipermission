@@ -69,6 +69,8 @@ POST   /api/ssh-host-keys/approve
 
 Connector catalog endpoints expose built-in connector metadata for the local
 UI. They do not return credential secrets and do not execute actions.
+Connector-owned credential resource endpoints, such as SSH key resources, are
+listed in [Connector Credential Resources](#connector-credential-resources).
 
 `GET /api/connectors` returns stable connector summaries:
 
@@ -78,21 +80,21 @@ UI. They do not return credential secrets and do not execute actions.
     {
       "kind": "postgres",
       "label": "Postgres",
-      "version": "0.1"
+      "version": "0.2"
     },
     {
       "kind": "ssh",
       "label": "SSH",
-      "version": "0.1"
+      "version": "0.2"
     }
   ]
 }
 ```
 
 `GET /api/connectors/{kind}` returns connector metadata, target schema,
-credential schemas, and generic AI-readable help text. Action definitions are
-target/profile-aware and are returned by
-`GET /api/connector-targets/{id}/profiles/{profile_id}/actions`.
+credential schemas, and generic AI-readable help text. The connector action
+catalog is stable for a connector kind; the target/profile actions route below
+returns that same action shape with the selected target/profile context.
 
 `GET /api/targets` returns the unified target/profile list used by the console
 and permission UI. It includes SSH targets represented as connector refs such as
@@ -120,10 +122,14 @@ Generic target create shape:
     "host": "127.0.0.1",
     "port": 5432,
     "database": "app",
-    "ssl_mode": "prefer"
+    "ssl_mode": "require"
   }
 }
 ```
+
+Postgres defaults to `ssl_mode=require`. `prefer` and `disable` are available
+for local lab databases, but they weaken transport security and should be a
+deliberate operator choice.
 
 `POST /api/connector-targets/with-profile` creates a connector target and its
 initial credential profile in one database transaction:
@@ -306,9 +312,9 @@ connector's side-effect-free connection test when the connector implements one.
 The response includes `ok`, connector-specific `status`, message, and duration.
 
 `GET /api/connector-targets/{id}/profiles/{profile_id}/actions` returns the
-action contract for that exact target/profile pair. Token permission UIs should
-prefer this route over connector catalog actions because future connectors may
-expose different actions for different profiles.
+stable action contract for the selected target/profile pair. The route is
+contextual for labels, refs, and future validation metadata; it should not make
+the action catalog depend on network state or raw credential values.
 
 Postgres `query_readonly` is defense-in-depth, not a SQL sandbox. It rejects
 obvious writes, runs inside a read-only transaction, caps rows and output bytes,
@@ -412,7 +418,7 @@ responses never include file contents, local temporary paths, archive staging
 paths, or local upload contents.
 
 `GET /api/file-transfers` returns paginated transfer history. Optional filters
-include `direction`, `status`, the SSH runtime `runtime_profile_id`, and `q`:
+include `direction`, `status`, the SSH runtime `runtime_id`, and `q`:
 
 ```txt
 GET /api/file-transfers?paginated=true&direction=download&status=completed&q=backup
@@ -423,7 +429,7 @@ local UI can select upload/download paths:
 
 ```json
 {
-  "runtime_profile_id": 3,
+  "runtime_id": 3,
   "path": "/home/deploy"
 }
 ```
@@ -431,7 +437,7 @@ local UI can select upload/download paths:
 `POST /api/file-transfers/upload` accepts `multipart/form-data`:
 
 ```txt
-runtime_profile_id=3
+runtime_id=3
 remote_path=/tmp/app.log
 overwrite=false
 file=<browser selected file>
@@ -450,7 +456,7 @@ confirmation. Existing directories or special files are rejected.
 
 ```json
 {
-  "runtime_profile_id": 3,
+  "runtime_id": 3,
   "remote_path": "/var/log/syslog"
 }
 ```
@@ -468,7 +474,7 @@ The local UI primarily uses the batch queue endpoints. `POST
 /api/file-transfers/upload-batch` accepts `multipart/form-data`:
 
 ```txt
-runtime_profile_id=3
+runtime_id=3
 remote_dir=/home/deploy
 overwrite=false
 files=<browser selected file>
@@ -487,7 +493,7 @@ the transfer starts.
 
 ```json
 {
-  "runtime_profile_id": 3,
+  "runtime_id": 3,
   "remote_paths": ["/var/log/syslog", "/var/log/auth.log"],
   "archive_name": "logs.zip"
 }
@@ -586,6 +592,11 @@ connector credential profiles are managed under
 `/api/connector-targets/{id}/profiles`; future connectors may add resource
 handlers only when their template needs connector-owned material outside a
 single target profile.
+
+Credential resources are namespaced by connector kind and resource kind in the
+frontend state, for example `ssh:ssh_key:17`. Connector-owned resource APIs
+must not return raw secret material; SSH key resources expose public key
+metadata and keep private key material encrypted in the local vault.
 
 SSH credential resource create shape:
 
@@ -900,7 +911,7 @@ MCP connector actions pass through the connector action token permission,
 approval, history, and audit pipeline. SSH UI console/manual input and
 SFTP-backed file transfers are SSH runtime adapter surfaces; they are
 normalized into unified history/audit, but local UI activity is not an MCP
-token approval request. `runtime_profile_id` on these endpoints is the SSH
+token approval request. `runtime_id` on these endpoints is the SSH
 connector-profile runtime id kept for the live-console/file-transfer API
 payloads, not a generic connector target id. Use `connector_kind` to filter by
 connector type (`ssh`, `postgres`, and future connectors). `activity_type` is a
@@ -915,7 +926,10 @@ GET /api/history?connector_kind=postgres&target_id=7&profile_id=11
 
 `GET /api/history/targets` returns target/profile facets derived from
 `history_entries`, not only currently active connector targets. Use it for
-history filters so archived targets remain discoverable in past activity.
+history filters so archived targets remain discoverable in past activity. Some
+live-console history rows may return a runtime-only facet with
+`runtime_id` and no active `target_id`/`profile_id`; pass that
+`runtime_id` back to `GET /api/history` to filter those rows.
 
 `GET /api/history/{id}` returns the detail payload for one normalized history
 entry. List responses omit large output bodies; detail responses include
@@ -926,7 +940,7 @@ request detail row for UI bulk command polling and output inspection. It is not
 an approval API. MCP approvals use connector action requests only.
 
 The History page uses paginated search. `q` searches command text, structured
-connector input/output JSON, reason, status, captured output, error, server or
+connector input/output JSON, reason, status, captured output, error,
 target/profile name, action name, and token name. Command text and output
 fields use SQLCipher-backed FTS4 indexes where available; connector JSON,
 target/profile names, action names, and token names remain regular filtered
@@ -984,9 +998,10 @@ MCP token through the message queue. The request later becomes `completed`,
 
 If the token, connector action permission, target/profile context, credential
 profile revision, connector action definition, MCP tool metadata, or prepared
-payload hash changes before Run, the backend marks the request `stale` and
-returns `409 Conflict`. The AI should submit a fresh `call_connector_action`
-request.
+payload hash changes before Run, the backend marks the request `stale`, records
+a coarse `approval_context_drift` reason such as `token`, `permission`,
+`target`, `profile`, `action_definition`, or `payload`, and returns `409
+Conflict`. The AI should submit a fresh `call_connector_action` request.
 
 Decline changes the connector action request to `declined`. The optional
 `user_note` is stored on the connector action request and returned to MCP as
@@ -1011,13 +1026,13 @@ POST /api/messages/read
 ```json
 {
   "token_id": 2,
-  "runtime_profile_id": 3,
+  "runtime_id": 3,
   "session_id": 12,
   "message": "Also inspect Docker logs on the next check."
 }
 ```
 
-User-to-AI messages are token-scoped. If `runtime_profile_id` is set, the note is consumed only by matching runtime profile responses. If `session_id` is also set, it is consumed only by MCP responses attached to that exact persistent console session. Generic notes can omit both `runtime_profile_id` and `session_id`.
+User-to-AI messages are token-scoped. If `runtime_id` is set, the note is consumed only by matching target profile runtime responses. If `session_id` is also set, it is consumed only by MCP responses attached to that exact persistent console session. Generic notes can omit both `runtime_id` and `session_id`.
 
 Unread AI-to-user messages contribute to Console sidebar and connector list badge counts for SSH targets. Opening the Messages drawer can mark matching messages as read.
 
@@ -1029,12 +1044,12 @@ GET /api/audit-logs/{id}
 ```
 
 Returns paginated audit events. Optional filters include `q`, `actor`,
-`runtime_profile_id`, `connector_kind`, and `target_id`. Audit action and payload search
+`runtime_id`, `connector_kind`, and `target_id`. Audit action and payload search
 use SQLCipher-backed FTS4 indexes; server, connector target, connector kind,
 and token names remain regular filtered fields:
 
 ```txt
-GET /api/audit-logs?limit=50&offset=0&q=docker&actor=mcp&runtime_profile_id=3
+GET /api/audit-logs?limit=50&offset=0&q=docker&actor=mcp&runtime_id=3
 ```
 
 List responses use the same pagination envelope as History and include a payload preview. `GET /api/audit-logs/{id}` returns the full payload.

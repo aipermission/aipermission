@@ -37,9 +37,15 @@ These rules are part of the connector contract:
   payload. Never put API tokens, passwords, private keys, or tenant secrets in
   action input schemas; define them as credential profile fields instead.
 - `GetHelp`, `GetActionList`, and `PrepareAction` are side-effect-free and must
-  not read raw secrets. `GetActionList` should be static for a target/profile
-  and should not open network connections; permission screens and MCP discovery
-  call it during read paths.
+  not read raw secrets. `GetActionList` is the permission catalog for the
+  connector kind: it must stay stable across target/profile public metadata and
+  must not open network connections; permission screens, approval drift checks,
+  and MCP discovery call it during read paths.
+- Dynamic API recipes must not create per-target action names in the 0.2
+  permission model. Prefer a stable action such as `call_operation` with a
+  recipe operation id in the action input. Supporting target/profile-scoped
+  action catalogs would be a shared permission-model change, not a
+  connector-local shortcut.
 - `PrepareAction` must be deterministic for the same target/profile/action
   input. Use `connectortest.AssertPrepareActionDeterministic` in connector
   tests so approval-context hashes cannot drift because of timestamps, random
@@ -67,12 +73,18 @@ generation/import, and remote authorized_keys cleanup. Generic route handlers
 must ask the adapter what the connector supports instead of branching on a
 connector kind.
 
-Some live-console runtime surfaces expose `runtime_profile_id` because existing console
-routes use that payload name. In the connector model this value is a
-connector-profile runtime id supplied by the live-console adapter, not the
-generic target id. New connectors must not add their own `runtime_profile_id` model or
-copy SSH command/file-transfer tables unless a reusable gateway runtime adapter
-has been designed first.
+Adapter methods use the typed `connectorapi.GatewayRuntime`,
+`connectorapi.GatewayServer`, `connectorapi.TargetLifecycleGateway`, and
+`connectorapi.CredentialResourceGateway` interfaces. Do not introduce
+connector-local copies of those gateway contracts; if a new capability needs a
+new gateway service, extend `internal/connectorapi` and update all adapters
+through that shared contract.
+
+Some live-console runtime surfaces expose `runtime_id` as the shared identifier
+for connector-profile runtime surfaces. In the connector model this value is
+supplied by the live-console adapter, not the generic target id. New connectors
+must not add their own `runtime_id` model or copy SSH command/file-transfer
+tables unless a reusable gateway runtime adapter has been designed first.
 
 The `Credentials` page manages connector credential profiles and
 connector-owned credential resources. SSH key material is a resource used by
@@ -113,6 +125,9 @@ A connector implementation must provide:
 Connectors must not create their own permission, approval, history, or audit
 pipeline. They return structured results; the shared gateway services persist
 request state, output, errors, and audit records.
+In the 0.2 baseline, `RuntimeContext.Events` is reserved/no-op and
+`ActionResult.Metadata` is not persisted or returned through MCP. Put
+operator- or AI-visible structured data in `ActionResult.Output`.
 
 Target schemas must be non-secret. Use target schemas for endpoint metadata
 such as host, port, database name, or API base URL. Use credential schemas for
@@ -161,23 +176,24 @@ explicit runtime adapter in `internal/api` so polling, output finalization,
 redaction, history sync, and MCP assistant hints stay centralized. Do not
 invent connector-local polling tables.
 
-`RuntimeContext.Services` is reserved for reviewed gateway-owned runtime
+`RuntimeContext.Capabilities` is reserved for reviewed gateway-owned runtime
 adapters. Normal structured connectors should not depend on arbitrary gateway
 services. If a new connector needs a capability similar to live terminals,
-file transfer, or async progress, first define a reusable adapter contract and
-document why the shared action runner is not enough.
+file transfer, or async progress, first define a reusable typed adapter
+contract and document why the shared action runner is not enough.
 
 ## Frontend Templates
 
-Add templates and register them under:
+Add templates under:
 
 ```txt
 frontend/src/connectors/templates/<kind>/
 ```
 
-The folder alone is not enough. Static registration is required in
-`registry.jsx` and `catalog.js` so the Vite bundle and route-level pages know
-which template module to render.
+The folder is discovered automatically. Do not manually edit
+`frontend/src/connectors/templates/registry.jsx` or
+`frontend/src/connectors/templates/catalog.js` for a normal connector. The Vite
+bundle discovers `index.jsx` and `metadata.json` through `import.meta.glob`.
 
 Expected files:
 
@@ -203,6 +219,9 @@ Template slots:
 | `ToolbarActions` | optional | Connector-specific Console toolbar actions, such as Files or Bulk for SSH. |
 | `Operations` | optional | Connector-specific dialogs/operations launched from list rows. |
 
+Allowed metadata icons are `database`, `key`, and `server`. Add another icon
+only when the shared template registry and docs are updated together.
+
 `model.js` is the connector UI contract. Keep these exports small and
 connector-local:
 
@@ -219,24 +238,33 @@ connector-local:
 | `deleteDialog` | yes | Copy and action buttons for target deletion. |
 | `emptyCredentialState`, `credentialStateFromRow`, `credentialFormProps`, `saveCredential`, `deleteCredential`, `credentialRows` | yes | Generic Credentials page integration. |
 | `credentialHint`, `canEdit`, `canDelete` | yes | Generic row affordances. |
-| `hostKeyActionFromError`, `resumeHostKeyAction` | yes | Return `null` / throw for non-SSH connectors; SSH uses this for host-key approval retry. |
+| `operationFromError` | optional | Convert connector-specific API errors into connector-owned retry operations. |
+| `hostKeyActionFromError`, `resumeHostKeyAction` | optional SSH-only | SSH uses these for host-key approval retry. Non-SSH connectors should not add no-op host-key stubs. |
 
 Connector templates may add optional exports for connector-owned operations,
 but generic Test/Edit/Delete and permission/history behavior must stay in the
 shared pages and stores.
 
-Register the connector in:
+The frontend registry validates required template slots and required `model.js`
+exports at runtime during tests. If a connector folder omits a required slot,
+uses an unsupported metadata icon, or has metadata whose `kind` does not match
+the folder name, `npm test` fails before the UI can silently render a partial
+connector.
+
+Register the connector backend and add frontend template files:
 
 ```txt
-frontend/src/connectors/templates/registry.jsx
-frontend/src/connectors/templates/catalog.js
 backend/internal/connectors/builtin/registry.go
+frontend/src/connectors/templates/<kind>/metadata.json
+frontend/src/connectors/templates/<kind>/index.jsx
 ```
 
-Static registration is intentional for Vite and the Go binary. Adding a
-connector should require registration files and tests, but it should not require
-new generic route handlers, permission tables, history tables, audit tables, or
-MCP tool families.
+Backend registration is explicit in the Go binary. Runtime-backed built-ins add
+their adapter side-effect import in the same built-in registry file so there is
+one visible registration point. Frontend registration is folder-based and
+auto-discovered. Adding a connector should require connector files, tests, and
+docs, but it should not require new generic route handlers, permission tables,
+history tables, audit tables, or MCP tool families.
 
 Connector versions are part of approval-context drift checks. Bump the backend
 connector `Version()` and the frontend `metadata.json` version whenever you add
@@ -269,13 +297,16 @@ Minimal Redis skeleton checklist:
 - `backend/internal/connectors/redis/redis.go`
 - `backend/internal/connectors/redis/redis_test.go`
 - backend registry entry and registry test
+- backend route tests if the built-in connector list or inventory expectations
+  are exact
 - `frontend/src/connectors/templates/redis/metadata.json`
+- `frontend/src/connectors/templates/redis/index.jsx`
 - `frontend/src/connectors/templates/redis/model.js`
 - `frontend/src/connectors/templates/redis/form.jsx`
 - `frontend/src/connectors/templates/redis/credential-form.jsx`
 - `frontend/src/connectors/templates/redis/list-item.jsx`
 - `frontend/src/connectors/templates/redis/console.jsx`
-- frontend registry/catalog entries and smoke tests
+- frontend smoke/runtime tests that assert the shipped connector folders
 - README, REST/MCP docs, and connector-specific safety notes
 
 ## Postgres Safety Boundary
@@ -314,11 +345,13 @@ Exact checklist for built-in connector registration:
 - backend implementation and focused tests under
   `backend/internal/connectors/<kind>/`
 - backend registration in `backend/internal/connectors/builtin/registry.go`
+- runtime-backed adapter import in `backend/internal/connectors/builtin/registry.go`
+  when a reviewed `connectorapi` adapter is required
 - backend registry coverage in
   `backend/internal/connectors/builtin/registry_test.go`
 - frontend templates under `frontend/src/connectors/templates/<kind>/`
-- frontend registration in `frontend/src/connectors/templates/registry.jsx`
-  and `frontend/src/connectors/templates/catalog.js`
+- frontend `metadata.json` and `index.jsx` auto-discovery through the template
+  registry and catalog loaders
 - frontend smoke coverage in `frontend/src/lib/app.smoke.test.js`
 - frontend runtime registry coverage that imports/evaluates the template
   registry module

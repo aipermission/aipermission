@@ -65,16 +65,23 @@ families.
 New connector PR checklist:
 
 - add `backend/internal/connectors/<kind>/` and register it in the built-in
-  connector registry
-- add frontend templates under `frontend/src/connectors/templates/<kind>/` and
-  register them in the template registry/catalog
+  connector registry; runtime-backed built-ins also add their adapter
+  side-effect import in that same registry file
+- add frontend templates under `frontend/src/connectors/templates/<kind>/`;
+  `metadata.json` and `index.jsx` are auto-discovered by the template registry
+  and catalog
 - keep secrets in credential profile schemas, not target or action schemas
 - use the shared target/profile/action permission model; do not add connector
   permission, approval, history, audit, or MCP tool families
 - document any intentional runtime adapter exception before using
-  `RuntimeContext.Services`
-- update smoke/tests that assert the built-in connector list and template
-  registrations
+  `RuntimeContext.Capabilities`; runtime adapters must use the shared typed
+  `internal/connectorapi` contracts instead of connector-local server/runtime
+  interfaces
+- keep frontend template metadata valid; supported icons are documented in
+  `docs/development/add-a-connector.md`, and missing required slots/model
+  exports fail `npm test`
+- update smoke/tests that assert the built-in connector list, backend registry,
+  routes, and frontend template folder evaluation
 - run `npm test --workspace frontend` so template registry modules are evaluated,
   not only string-smoked
 

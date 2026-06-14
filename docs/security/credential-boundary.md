@@ -111,7 +111,7 @@ Audit logs must not contain credential values.
 Allowed fields include:
 
 - token id or token name
-- server id
+- target/profile id
 - command text
 - status
 - exit code
