@@ -32,10 +32,19 @@ cd backend
 go test ./...
 ```
 
-Build frontend:
+Run frontend tests and build:
 
 ```bash
+npx playwright install chromium --with-deps
+npm test --workspace frontend
 npm run build --workspace frontend
+```
+
+Run Playwright when a change touches route-level UI, approval dialogs, console,
+or connector template rendering:
+
+```bash
+npm run test:e2e --workspace frontend
 ```
 
 Build MCP bridge:
@@ -66,6 +75,8 @@ New connector PR checklist:
   `RuntimeContext.Services`
 - update smoke/tests that assert the built-in connector list and template
   registrations
+- run `npm test --workspace frontend` so template registry modules are evaluated,
+  not only string-smoked
 
 Run the full local stack:
 

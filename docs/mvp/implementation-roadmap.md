@@ -26,7 +26,7 @@ Status: implemented.
 - settings table
 - vault abstraction
 
-Status: implemented. `command_requests` powers MCP execution, approval flow, and History UI. `message_queue` powers user-to-AI and AI-to-user notes. `audit_logs` stores important token, permission, settings, console, MCP, and approval events.
+Status: implemented. `connector_action_requests` powers MCP connector-action execution and approval flow. `command_requests` is retained for live-console/manual command tracking and history projection. `message_queue` powers user-to-AI and AI-to-user notes. `audit_logs` stores important token, permission, settings, console, MCP, and approval events.
 
 ## Sprint 3: Server, Token, Permission UI
 

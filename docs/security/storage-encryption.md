@@ -96,7 +96,11 @@ The user loses:
 - gateway-stored SSH private keys
 - message queue records
 
-History, audit logs, closed console sessions, and consumed messages can also be cleaned by configurable retention settings. Retention values are stored inside the encrypted database; `0` disables automatic cleanup for that category.
+Unified history, audit logs, closed console sessions, and consumed messages can
+also be cleaned by configurable retention settings. History retention covers
+connector action requests, live-console command rows, file transfer metadata,
+and the normalized history projection. Retention values are stored inside the
+encrypted database; `0` disables automatic cleanup for that category.
 
 Remote servers are not damaged. Existing public key lines may remain in remote `authorized_keys` files; the user can remove them manually or create and install a new aipermission key.
 

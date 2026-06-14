@@ -6,19 +6,21 @@ if (process.argv[2] === "init") {
   process.exit(0);
 }
 
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { jsonToolResult } from "./results.js";
 
+const packageMetadata = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const apiUrl = normalizeLocalAPIURL(process.env.AIPERMISSION_API_URL);
 const apiToken = process.env.AIPERMISSION_API_TOKEN || "";
 const apiTimeoutMs = Number.parseInt(process.env.AIPERMISSION_HTTP_TIMEOUT_MS || "60000", 10);
 
 const server = new McpServer({
   name: "aipermission",
-  version: "0.1.14",
+  version: packageMetadata.version,
 });
 
 server.tool(
@@ -34,7 +36,7 @@ server.tool(
   "get_connector_help",
   "Read AI-facing help for one connector target/profile. Use this before calling connector actions for the first time.",
   {
-    target_ref: z.string().min(1).describe("Target ref from list_connector_targets, such as ssh:12:3 or postgres:7:11."),
+    target_ref: z.string().min(1).describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
   },
   async ({ target_ref }) => {
     return jsonToolResult(() => {
@@ -48,7 +50,7 @@ server.tool(
   "get_connector_actions",
   "List actions exposed by one connector target/profile. Action execution is still checked against token permissions.",
   {
-    target_ref: z.string().min(1).describe("Target ref from list_connector_targets, such as ssh:12:3 or postgres:7:11."),
+    target_ref: z.string().min(1).describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
   },
   async ({ target_ref }) => {
     return jsonToolResult(() => {

@@ -159,9 +159,10 @@ and this project uses semantic versioning once public releases begin.
 
 ### Added
 
-- Pending MCP command approvals now store an approval-context snapshot covering
-  the token, token/server permission, server profile, SSH key fingerprint, MCP
-  tool metadata, and command payload hash.
+- Pending MCP connector-action approvals now store an approval-context snapshot
+  covering the token, target/profile/action permission, target metadata,
+  credential profile revision, connector action definition, MCP tool metadata,
+  and prepared payload hash.
 - Approval dialogs show how long ago the request was created.
 - MCP clients can restart a stuck persistent console session for a visible
   server, causing the next `exec` call to open a fresh SSH session.

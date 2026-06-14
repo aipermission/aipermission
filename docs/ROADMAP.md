@@ -154,8 +154,8 @@ tag:
 - [ ] Add directory transfer, recursive copy, remote glob handling, and
   restart-surviving resumable transfer design after bulk transfer semantics are
   dogfooded.
-- [ ] Add `approval_required` flow for file transfers after command approvals
-  and Transfer Center semantics have been dogfooded together.
+- [ ] Expand file-transfer `approval_required` UX after connector-action
+  approvals and Transfer Center semantics have been dogfooded together.
 - [ ] Add optional safety backup before import.
 - [ ] Add more Playwright browser tests for Settings, import, token permission,
   and approval workflows.

@@ -49,9 +49,12 @@ GET /api/connectors
 GET /api/connectors/{kind}
 GET /api/targets
 GET /api/connector-targets
+GET /api/connector-targets/inventory
+POST /api/connector-targets/with-profile
 POST /api/connector-targets
 POST /api/connector-targets/test
 GET /api/connector-targets/{id}
+PUT /api/connector-targets/{id}/with-profile/{profile_id}
 PUT /api/connector-targets/{id}
 DELETE /api/connector-targets/{id}
 POST /api/connector-targets/{id}/operations/{operation}
@@ -96,6 +99,11 @@ and permission UI. It includes SSH targets represented as connector refs such as
 `ssh:3:5` plus structured connector profiles such as `postgres:7:11`. Secret
 payloads are never included.
 
+`GET /api/connector-targets/inventory` returns active targets, active profiles,
+and connector action definitions in one response for permission-management UI.
+Use it when a screen needs the target/profile/action graph; use
+`GET /api/connector-targets` for lightweight target lists.
+
 Connector target responses never include decrypted credential payloads. A target
 contains non-secret connector configuration, and one or more credential profiles
 contain public credential metadata plus encrypted secret material that is only
@@ -113,6 +121,25 @@ Generic target create shape:
     "port": 5432,
     "database": "app",
     "ssl_mode": "prefer"
+  }
+}
+```
+
+`POST /api/connector-targets/with-profile` creates a connector target and its
+initial credential profile in one database transaction:
+
+```json
+{
+  "target": {
+    "connector_kind": "postgres",
+    "name": "main-db",
+    "config": { "host": "127.0.0.1", "port": 5432, "database": "app" }
+  },
+  "profile": {
+    "kind": "username_password",
+    "label": "readonly",
+    "public": { "username": "app_reader" },
+    "secret": { "password": "..." }
   }
 }
 ```
@@ -251,6 +278,10 @@ non-secret config. Connector-specific runtime behavior, such as SSH remote-key
 cleanup, host-key approval, persistent console, and SFTP-backed file transfer,
 is owned by the connector implementation.
 
+`PUT /api/connector-targets/{id}/with-profile/{profile_id}` updates the target
+and one credential profile in one database transaction. Prefer it for add/edit
+forms that present target and profile fields together.
+
 `POST /api/connector-targets/{id}/operations/{operation}` runs a connector
 template UI operation for one saved target when that connector adapter supports
 the operation. The built-in SSH adapter currently backs on-demand Docker checks
@@ -319,8 +350,8 @@ count:
 The backend validates duplicate IDs, command size, and confirmation text before
 creating history rows. Execution is limited to a small parallelism window so a
 large target selection does not fan out all SSH sessions at once. The response
-returns the command request IDs; poll `GET /api/approvals/{id}` or use the
-History page for per-target output, exit code, error, and status:
+returns the command request IDs; poll `GET /api/console/command-requests/{id}`
+or use the History page for per-target output, exit code, error, and status:
 
 ```json
 {
@@ -381,7 +412,7 @@ responses never include file contents, local temporary paths, archive staging
 paths, or local upload contents.
 
 `GET /api/file-transfers` returns paginated transfer history. Optional filters
-include `direction`, `status`, the SSH runtime `server_id`, and `q`:
+include `direction`, `status`, the SSH runtime `runtime_profile_id`, and `q`:
 
 ```txt
 GET /api/file-transfers?paginated=true&direction=download&status=completed&q=backup
@@ -392,7 +423,7 @@ local UI can select upload/download paths:
 
 ```json
 {
-  "server_id": 3,
+  "runtime_profile_id": 3,
   "path": "/home/deploy"
 }
 ```
@@ -400,7 +431,7 @@ local UI can select upload/download paths:
 `POST /api/file-transfers/upload` accepts `multipart/form-data`:
 
 ```txt
-server_id=3
+runtime_profile_id=3
 remote_path=/tmp/app.log
 overwrite=false
 file=<browser selected file>
@@ -419,7 +450,7 @@ confirmation. Existing directories or special files are rejected.
 
 ```json
 {
-  "server_id": 3,
+  "runtime_profile_id": 3,
   "remote_path": "/var/log/syslog"
 }
 ```
@@ -437,7 +468,7 @@ The local UI primarily uses the batch queue endpoints. `POST
 /api/file-transfers/upload-batch` accepts `multipart/form-data`:
 
 ```txt
-server_id=3
+runtime_profile_id=3
 remote_dir=/home/deploy
 overwrite=false
 files=<browser selected file>
@@ -456,7 +487,7 @@ the transfer starts.
 
 ```json
 {
-  "server_id": 3,
+  "runtime_profile_id": 3,
   "remote_paths": ["/var/log/syslog", "/var/log/auth.log"],
   "archive_name": "logs.zip"
 }
@@ -846,17 +877,15 @@ That route is protected by the UI session and CSRF checks, not by MCP token auth
 It controls whether new MCP connector action execution is currently Started or
 Stopped. Saved token connector permissions are preserved while stopped.
 
-## Approvals
+## History and connector approvals
 
 ```txt
 GET  /api/history
+GET  /api/history/targets
 GET  /api/history/{id}
 POST /api/history/{id}/labels
 DELETE /api/history/{id}/labels/{label_id}
-GET  /api/approvals
-GET  /api/approvals/{id}
-POST /api/approvals/{id}/run
-POST /api/approvals/{id}/decline
+GET  /api/console/command-requests/{id}
 GET  /api/connector-action-approvals
 GET  /api/connector-action-approvals/{id}
 POST /api/connector-action-approvals/{id}/run
@@ -871,7 +900,7 @@ MCP connector actions pass through the connector action token permission,
 approval, history, and audit pipeline. SSH UI console/manual input and
 SFTP-backed file transfers are SSH runtime adapter surfaces; they are
 normalized into unified history/audit, but local UI activity is not an MCP
-token approval request. `server_id` on these endpoints is the SSH
+token approval request. `runtime_profile_id` on these endpoints is the SSH
 connector-profile runtime id kept for the live-console/file-transfer API
 payloads, not a generic connector target id. Use `connector_kind` to filter by
 connector type (`ssh`, `postgres`, and future connectors). `activity_type` is a
@@ -884,14 +913,17 @@ GET /api/history?limit=50&offset=0&connector_kind=ssh&activity_type=file_transfe
 GET /api/history?connector_kind=postgres&target_id=7&profile_id=11
 ```
 
+`GET /api/history/targets` returns target/profile facets derived from
+`history_entries`, not only currently active connector targets. Use it for
+history filters so archived targets remain discoverable in past activity.
+
 `GET /api/history/{id}` returns the detail payload for one normalized history
 entry. List responses omit large output bodies; detail responses include
 `input_text`, `input_json`, `output_text`, and `output_json` when available.
 
-`GET /api/approvals` returns recent command requests. Optional filters include
-`status`, `source`, and `server_id`. `source` is `mcp` for MCP/approval command
-requests and `manual` for manually typed Console commands. Use `/api/history`
-for connector-aware labels and cross-activity filtering.
+`GET /api/console/command-requests/{id}` returns one live-console command
+request detail row for UI bulk command polling and output inspection. It is not
+an approval API. MCP approvals use connector action requests only.
 
 The History page uses paginated search. `q` searches command text, structured
 connector input/output JSON, reason, status, captured output, error, server or
@@ -918,7 +950,7 @@ The paginated response is an envelope:
 }
 ```
 
-Paginated list responses omit full stdout/stderr. `GET /api/approvals/{id}` returns the detail payload with captured output.
+Paginated list responses omit full stdout/stderr. `GET /api/history/{id}` returns the normalized detail payload. `GET /api/console/command-requests/{id}` returns the raw command request detail for Console-specific flows.
 
 History labels are user-managed tags for normalized history entries. They do not change execution, connector behavior, or audit behavior. Use `POST /api/history-labels` to create or return an existing label. New labels return `201 Created`; reused labels return `200 OK`:
 
@@ -939,24 +971,29 @@ Use `POST /api/history/{id}/labels` to attach an existing label to any normalize
 
 Deleting a label removes its history-entry relationships. The history records remain intact, and filtering by the deleted label returns no entries.
 
-Run changes a `pending_approval` request to `running` and starts execution in the backend-owned console session. It accepts an optional JSON body with `user_note`; when provided, the note is delivered to the matching MCP token through the message queue. The request later becomes `completed`, `failed`, or `error`.
+Approval-required connector actions use connector action request endpoints.
+`GET /api/connector-action-approvals?status=approval_pending` lists pending
+connector requests for the local UI.
 
-Approval-required MCP commands store an approval-context snapshot when the
-pending request is created. If the token, connector action permission,
-target/profile context, SSH key fingerprint, MCP tool metadata, or command
+Run changes an `approval_pending` connector action to `running`, validates the
+current token/target/profile/action permission and approval-context hash, then
+decrypts the stored payload and executes the connector. It accepts an optional
+JSON body with `user_note`; when provided, the note is delivered to the matching
+MCP token through the message queue. The request later becomes `completed`,
+`failed`, `error`, or `stale`.
+
+If the token, connector action permission, target/profile context, credential
+profile revision, connector action definition, MCP tool metadata, or prepared
 payload hash changes before Run, the backend marks the request `stale` and
-returns `409 Conflict`.
-The AI should submit a fresh `exec` request.
+returns `409 Conflict`. The AI should submit a fresh `call_connector_action`
+request.
 
-Decline changes the request to `declined`. The optional `user_note` is stored on the command request and returned to MCP as operator guidance.
+Decline changes the connector action request to `declined`. The optional
+`user_note` is stored on the connector action request and returned to MCP as
+operator guidance.
 
-Connector approvals use separate endpoints because they execute structured
-connector requests rather than SSH shell commands. `GET
-/api/connector-action-approvals?status=approval_pending` lists pending
-connector requests for the local UI. Run validates the current
-token/target/profile/action permission and approval-context hash before
-decrypting the stored payload and executing the connector. Connector approval
-context includes token validity, permission rule, target/profile public
+Connector approval context includes token validity, permission rule,
+target/profile public
 metadata, profile revision, encrypted secret revision, connector kind/version,
 action definition, and payload hash. If that context changed, the request
 becomes `stale` and the AI must send a fresh connector call.
@@ -974,13 +1011,13 @@ POST /api/messages/read
 ```json
 {
   "token_id": 2,
-  "server_id": 3,
+  "runtime_profile_id": 3,
   "session_id": 12,
   "message": "Also inspect Docker logs on the next check."
 }
 ```
 
-User-to-AI messages are token-scoped. If `server_id` is set, the note is consumed only by matching server responses. If `session_id` is also set, it is consumed only by MCP responses attached to that exact persistent console session. Generic notes can omit both `server_id` and `session_id`.
+User-to-AI messages are token-scoped. If `runtime_profile_id` is set, the note is consumed only by matching runtime profile responses. If `session_id` is also set, it is consumed only by MCP responses attached to that exact persistent console session. Generic notes can omit both `runtime_profile_id` and `session_id`.
 
 Unread AI-to-user messages contribute to Console sidebar and connector list badge counts for SSH targets. Opening the Messages drawer can mark matching messages as read.
 
@@ -992,12 +1029,12 @@ GET /api/audit-logs/{id}
 ```
 
 Returns paginated audit events. Optional filters include `q`, `actor`,
-`server_id`, `connector_kind`, and `target_id`. Audit action and payload search
+`runtime_profile_id`, `connector_kind`, and `target_id`. Audit action and payload search
 use SQLCipher-backed FTS4 indexes; server, connector target, connector kind,
 and token names remain regular filtered fields:
 
 ```txt
-GET /api/audit-logs?limit=50&offset=0&q=docker&actor=mcp&server_id=3
+GET /api/audit-logs?limit=50&offset=0&q=docker&actor=mcp&runtime_profile_id=3
 ```
 
 List responses use the same pagination envelope as History and include a payload preview. `GET /api/audit-logs/{id}` returns the full payload.

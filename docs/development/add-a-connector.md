@@ -67,10 +67,10 @@ generation/import, and remote authorized_keys cleanup. Generic route handlers
 must ask the adapter what the connector supports instead of branching on a
 connector kind.
 
-Some live-console runtime surfaces expose `server_id` because existing console
+Some live-console runtime surfaces expose `runtime_profile_id` because existing console
 routes use that payload name. In the connector model this value is a
 connector-profile runtime id supplied by the live-console adapter, not the
-generic target id. New connectors must not add their own `server_id` model or
+generic target id. New connectors must not add their own `runtime_profile_id` model or
 copy SSH command/file-transfer tables unless a reusable gateway runtime adapter
 has been designed first.
 
@@ -238,6 +238,12 @@ connector should require registration files and tests, but it should not require
 new generic route handlers, permission tables, history tables, audit tables, or
 MCP tool families.
 
+Connector versions are part of approval-context drift checks. Bump the backend
+connector `Version()` and the frontend `metadata.json` version whenever you add
+or rename actions, change action input/output schemas, change target/profile
+schema semantics, or materially change execution behavior. Pure copy or visual
+polish can stay on the same connector version.
+
 Route-level pages should render through the template registry. Avoid adding
 new `if kind === "redis"` branches to generic pages.
 
@@ -314,6 +320,8 @@ Exact checklist for built-in connector registration:
 - frontend registration in `frontend/src/connectors/templates/registry.jsx`
   and `frontend/src/connectors/templates/catalog.js`
 - frontend smoke coverage in `frontend/src/lib/app.smoke.test.js`
+- frontend runtime registry coverage that imports/evaluates the template
+  registry module
 - public docs updates for user-visible setup, REST, MCP, or security behavior
 
 Before review, grep for the connector kind outside its implementation and

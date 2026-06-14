@@ -129,14 +129,15 @@ Implemented:
 - UI bulk SSH command execution across selected connector targets with per-target history rows
 - MCP bridge with connector action tools for SSH, Postgres, and future local integrations
 - approval dialog with Run / Decline / note
-- approval-context snapshots that stale old pending commands after permission,
-  connector target, credential profile, SSH-key, or command-context drift
+- approval-context snapshots that stale old pending connector actions after
+  permission, connector target, credential profile, connector metadata, or
+  prepared action payload drift
 - unread message badges and AI-to-user/user-to-AI notes
 - SQLCipher FTS4-backed searchable command history and audit log pages
 - queued SSH/SFTP upload and download from the local web UI
 - remote SFTP browser for upload folders and download file selection
 - pause/resume/cancel transfer queues with live progress, speed, ETA, checksum, server, and path metadata
-- configurable local data retention for history, audit logs, console sessions, and messages
+- configurable local data retention for unified history, audit logs, console sessions, and messages
 - SQLCipher-backed full SQLite database encryption
 - first-run database password setup and unlock screen
 - local browser session cookie for the web REST API after unlock

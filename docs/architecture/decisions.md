@@ -91,8 +91,8 @@ Consequence:
 
 ## ADR-006: Pending Approvals Are Bound To Their Approval Context
 
-Decision: A pending MCP command approval is valid only for the context captured
-when it was created.
+Decision: A pending MCP connector-action approval is valid only for the context
+captured when it was created.
 
 Reason:
 

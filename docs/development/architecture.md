@@ -83,15 +83,15 @@ review signal before adding gateway-owned adapter capabilities.
 - `internal/console`: persistent SSH console sessions, PTY websocket attach, AI command execution inside a shell session, transcript display cleanup, and transcript redaction before persistence. Console persistence uses a bounded session snapshot plus append-only transcript chunks so long-running sessions do not rewrite one large transcript row on every flush.
 - `internal/db`: SQLCipher open, schema migrations, database catalog, encrypted database lifecycle.
 - `internal/tokens`: API token create/hash/revoke/permission storage.
-- `internal/sshkeys`: gateway-owned SSH key generation, explicit private key import, and vault-backed private key storage used by the SSH connector.
-- `internal/sshconfig`: conservative SSH config host discovery/parsing for SSH connector form prefill.
+- `internal/connectors/ssh/sshkeys`: gateway-owned SSH key generation, explicit private key import, and vault-backed private key storage used by the SSH connector.
+- `internal/connectors/ssh/sshconfig`: conservative SSH config host discovery/parsing for SSH connector form prefill.
 - `internal/execution`: SSH command execution, SFTP file transfer primitives,
   and host key verification.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
   checksum storage. File contents are not stored in SQLCipher.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.
 
-Large API files should be split by behavior before they become cross-domain modules. Runtime-heavy domains should move out of `internal/api` when possible; `internal/console` is the first example of that boundary. Prefer small handler/service files such as `mcp_auth.go`, `mcp_command_requests.go`, and `ssh_host_key_handlers.go`. Route handlers should usually hang off small handler groups (`mcpHandlers`, `tokenHandlers`, `consoleHandlers`) instead of adding every endpoint directly to `*Server`.
+Large API files should be split by behavior before they become cross-domain modules. Runtime-heavy domains should move out of `internal/api` when possible; `internal/console` is the first example of that boundary. Prefer small handler/service files such as `mcp_auth.go`, `command_requests.go`, `command_request_queries.go`, and connector adapter files. Route handlers should usually hang off small handler groups (`mcpHandlers`, `tokenHandlers`, `consoleHandlers`) instead of adding every endpoint directly to `*Server`.
 
 ## Frontend Boundaries
 
