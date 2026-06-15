@@ -532,6 +532,7 @@ export function ConsolePage() {
               theme={theme}
               session={selectedStructuredSession}
               onOpenActivity={() => setConnectorActivityOpen(true)}
+              onRefreshActivity={loadConnectorActionApprovals}
             >
               {selectedTargetUsesLiveConsole && selectedRuntimeTarget && selectedSessionLive ? (
                 <PtyConsole

@@ -4,13 +4,18 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { apiPost } from "../../../lib/api";
 
-export function PostgresConnectorConsoleTemplate({ target, approvals, theme, session }) {
+export function PostgresConnectorConsoleTemplate({ target, approvals, theme, session, onRefreshActivity }) {
   const [selectedID, setSelectedID] = useState(null);
+  const [sql, setSQL] = useState("");
+  const [maxRows, setMaxRows] = useState(100);
+  const [runState, setRunState] = useState({ state: "idle", error: "" });
   const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
   const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
   const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
   const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
+  const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400" : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
   const hoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
   const activeSession = session || { active: false, startedAt: "" };
   const rawItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
@@ -34,8 +39,31 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
     setSelectedID(null);
   }, [target.ref, activeSession.active, activeSession.startedAt]);
 
+  async function runQuery(event) {
+    event.preventDefault();
+    if (!activeSession.active || !sql.trim()) return;
+    setRunState({ state: "running", error: "" });
+    try {
+      const item = await apiPost("/api/connector-actions/local-run", {
+        target_ref: target.ref,
+        action_name: "query_readonly",
+        input: {
+          sql,
+          max_rows: Number(maxRows) || 100,
+        },
+        reason: "manual Postgres console query",
+      });
+      setSelectedID(item.request_id || null);
+      setSQL("");
+      setRunState({ state: "idle", error: "" });
+      await onRefreshActivity?.();
+    } catch (error) {
+      setRunState({ state: "error", error: error.message || "Query failed." });
+    }
+  }
+
   return (
-    <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
+    <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] ${panelClass}`}>
       <div className="grid min-h-0 gap-4 overflow-hidden p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <section className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass}`}>
           <div className={`border-b px-4 py-3 ${borderClass} ${subtlePanelClass}`}>
@@ -62,7 +90,7 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
                 </button>
               );
             })}
-            {items.length === 0 ? <p className={`px-4 py-5 text-sm ${mutedClass}`}>{activeSession.active ? "No requests in this session yet." : "No active structured session."}</p> : null}
+            {items.length === 0 ? <p className={`px-4 py-5 text-sm ${mutedClass}`}>{activeSession.active ? "No requests in this session yet." : "No active Postgres session."}</p> : null}
           </div>
         </section>
 
@@ -101,6 +129,39 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
           <span className="truncate">{targetEndpoint(target)}</span>
         </span>
       </div>
+      <form className={`grid gap-2 border-t p-3 ${borderClass} ${subtlePanelClass}`} onSubmit={runQuery}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold">SQL</p>
+            <p className={`truncate text-xs ${mutedClass}`}>{activeSession.active ? "Run bounded read-only SQL through this credential profile." : "No active Postgres session. Start a session before running SQL."}</p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-xs font-semibold">
+            Max rows
+            <input
+              type="number"
+              min="1"
+              max="1000"
+              className={`h-8 w-20 rounded-md border px-2 outline-none ${inputClass}`}
+              value={maxRows}
+              onChange={(event) => setMaxRows(event.target.value)}
+              disabled={!activeSession.active || runState.state === "running"}
+            />
+          </label>
+        </div>
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <textarea
+            className={`min-h-20 rounded-md border px-3 py-2 font-mono text-xs outline-none ${inputClass}`}
+            value={sql}
+            onChange={(event) => setSQL(event.target.value)}
+            placeholder="select now();"
+            disabled={!activeSession.active || runState.state === "running"}
+          />
+          <Button type="submit" className="h-full min-h-10 px-5" disabled={!activeSession.active || !sql.trim() || runState.state === "running"}>
+            {runState.state === "running" ? "Running" : "Run SQL"}
+          </Button>
+        </div>
+        {runState.error ? <Notice tone="bad">{runState.error}</Notice> : null}
+      </form>
     </div>
   );
 }
