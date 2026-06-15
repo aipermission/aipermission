@@ -196,7 +196,7 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 
 	runtime, err := s.openRuntime(targetPath, targetID, request.Password)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
+		writeDatabaseUnlockError(w, err)
 		return
 	}
 

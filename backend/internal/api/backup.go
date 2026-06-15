@@ -131,6 +131,10 @@ func (s backupHandlers) installImportedDatabase(w http.ResponseWriter, r *http.R
 	testDB, err := dbpkg.OpenEncrypted(tmpPath, databasePassword)
 	if err != nil {
 		_ = os.Remove(tmpPath)
+		if message := dbpkg.UnsupportedSchemaMessage(err); message != "" {
+			writeError(w, http.StatusConflict, message)
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid database password or database file")
 		return
 	}

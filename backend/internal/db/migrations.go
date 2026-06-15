@@ -2,10 +2,27 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 )
 
 const connectorNativeBaselineDescription = "0.2 connector-native baseline"
+
+var ErrUnsupportedSchema = errors.New("unsupported database schema")
+
+const unsupportedPre02DatabaseMessage = "database uses an unsupported pre-0.2 or non-baseline schema; create a fresh 0.2 database or migrate with the one-time import tool. To migrate a 0.1.x database, run `docker compose --profile migrate up -d --build migration`, then open http://localhost:3211."
+
+func UnsupportedSchemaMessage(err error) string {
+	if !errors.Is(err, ErrUnsupportedSchema) {
+		return ""
+	}
+	message := strings.TrimPrefix(err.Error(), ErrUnsupportedSchema.Error()+": ")
+	if message == err.Error() {
+		return "database uses an unsupported schema"
+	}
+	return message
+}
 
 type migration struct {
 	version     int
@@ -567,7 +584,7 @@ func rejectUnsupportedPreviewSchema(database *sql.DB) error {
 			return err
 		}
 		if hasExistingSchema {
-			return fmt.Errorf("database uses an unsupported pre-0.2 or non-baseline schema; create a fresh 0.2 database or migrate with a one-time import tool")
+			return fmt.Errorf("%w: %s", ErrUnsupportedSchema, unsupportedPre02DatabaseMessage)
 		}
 		return nil
 	}
@@ -575,13 +592,13 @@ func rejectUnsupportedPreviewSchema(database *sql.DB) error {
 	var baselineDescription string
 	err := database.QueryRow(`SELECT description FROM schema_migrations WHERE version = ?`, currentSchemaVersion).Scan(&baselineDescription)
 	if err == sql.ErrNoRows {
-		return fmt.Errorf("database uses an unsupported schema history; create a fresh 0.2 database or migrate with a one-time import tool")
+		return fmt.Errorf("%w: %s", ErrUnsupportedSchema, unsupportedPre02DatabaseMessage)
 	}
 	if err != nil {
 		return fmt.Errorf("read connector-native baseline migration: %w", err)
 	}
 	if baselineDescription != connectorNativeBaselineDescription {
-		return fmt.Errorf("database uses an unsupported pre-0.2 or non-baseline schema; create a fresh 0.2 database or migrate with a one-time import tool")
+		return fmt.Errorf("%w: %s", ErrUnsupportedSchema, unsupportedPre02DatabaseMessage)
 	}
 
 	var maxVersion int

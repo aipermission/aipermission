@@ -49,6 +49,14 @@ func (status unlockStatusResponse) withoutLocalPaths() unlockStatusResponse {
 	return status
 }
 
+func writeDatabaseUnlockError(w http.ResponseWriter, err error) {
+	if message := db.UnsupportedSchemaMessage(err); message != "" {
+		writeError(w, http.StatusConflict, message)
+		return
+	}
+	writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
+}
+
 func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 	var request setupUnlockRequest
 	if err := decodeJSON(w, r, &request); err != nil {
@@ -134,7 +142,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 			s.activeDatabase = targetID
 			if err := s.openUnlockedLocked(request.Password); err != nil {
 				s.authLimiter.recordFailure(limitKey)
-				writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
+				writeDatabaseUnlockError(w, err)
 				return
 			}
 			s.authLimiter.recordSuccess(limitKey)
@@ -182,7 +190,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.openUnlockedLocked(request.Password); err != nil {
 		s.authLimiter.recordFailure(limitKey)
-		writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
+		writeDatabaseUnlockError(w, err)
 		return
 	}
 	s.authLimiter.recordSuccess(limitKey)

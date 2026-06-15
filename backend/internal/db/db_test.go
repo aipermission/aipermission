@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -166,8 +167,14 @@ func TestOpenEncryptedRejectsPre02PreviewSchema(t *testing.T) {
 		_ = reopened.Close()
 		t.Fatalf("expected pre-0.2 preview database to be rejected")
 	}
+	if !errors.Is(err, ErrUnsupportedSchema) {
+		t.Fatalf("expected unsupported schema sentinel, got %v", err)
+	}
 	if !strings.Contains(err.Error(), "pre-0.2") {
 		t.Fatalf("expected pre-0.2 error, got %v", err)
+	}
+	if message := UnsupportedSchemaMessage(err); !strings.Contains(message, "pre-0.2") {
+		t.Fatalf("expected user-facing unsupported schema message, got %q", message)
 	}
 }
 
