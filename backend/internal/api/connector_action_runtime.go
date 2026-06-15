@@ -192,6 +192,81 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	return connectorActionCallResult{Request: finished, Permission: permission, Result: result}, nil
 }
 
+func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseRuntime, call connectorActionCall) (connectorActionCallResult, error) {
+	if runtime == nil || runtime.database == nil {
+		return connectorActionCallResult{}, fmt.Errorf("database runtime is not available")
+	}
+	if call.Source == "" {
+		call.Source = commandRequestSourceManual
+	}
+	prepared, err := runtime.prepareConnectorAction(ctx, actions.PrepareRequest{
+		Source:     call.Source,
+		TargetRef:  call.TargetRef,
+		ActionName: call.ActionName,
+		Input:      call.Input,
+		Reason:     call.Reason,
+		CreatedAt:  time.Now().UTC(),
+	})
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+
+	request, err := s.insertPreparedConnectorActionRequest(ctx, runtime, nil, prepared, connectors.ResultRunning, "", "", "")
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	result, err := s.executePreparedConnectorAction(ctx, runtime, prepared)
+	if err != nil {
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		if finishErr != nil {
+			return connectorActionCallResult{}, finishErr
+		}
+		return connectorActionCallResult{Request: finished, Result: connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error}}, nil
+	}
+	status := result.Status
+	if status == "" {
+		status = connectors.ResultCompleted
+	}
+	if status == connectors.ResultRunning {
+		if !connectorActionSupportsRunning(prepared) {
+			finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultError, nil, "", "connector returned running for a local action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
+			if finishErr != nil {
+				return connectorActionCallResult{}, finishErr
+			}
+			return connectorActionCallResult{
+				Request: finished,
+				Result: connectors.ActionResult{
+					Status: connectors.ResultError,
+					Error:  "connector returned running for a local action that does not support asynchronous execution",
+				},
+			}, nil
+		}
+		result.Handles.RequestID = request.ID
+		result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
+		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared)
+		return connectorActionCallResult{Request: request, Result: result}, nil
+	}
+	if status == connectors.ResultApprovalPending {
+		status = connectors.ResultFailed
+		result.Error = "connector returned approval_pending for a local operator action"
+	}
+	result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
+	finished, err := connectortargets.NewStore(runtime.database).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+		ID:          request.ID,
+		Status:      status,
+		Output:      result.Output,
+		DisplayText: result.DisplayText,
+		Error:       result.Error,
+	})
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, finished.ID); err != nil {
+		return connectorActionCallResult{}, err
+	}
+	return connectorActionCallResult{Request: finished, Result: result}, nil
+}
+
 func (s *Server) insertConnectorActionRequest(
 	ctx context.Context,
 	runtime *databaseRuntime,
@@ -201,14 +276,6 @@ func (s *Server) insertConnectorActionRequest(
 	status connectors.ResultStatus,
 	errorText string,
 ) (connectortargets.ActionRequest, error) {
-	payload, err := runtime.vault.EncryptJSON(connectorActionExecutionEnvelope{
-		Input:   prepared.Requested.Input,
-		Payload: prepared.Action.Payload,
-		Reason:  prepared.Requested.Reason,
-	})
-	if err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
 	capturedAt := time.Now().UTC().Format(time.RFC3339)
 	token, err := runtime.tokens.Get(ctx, tokenID)
 	if err != nil {
@@ -218,8 +285,29 @@ func (s *Server) insertConnectorActionRequest(
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
+	return s.insertPreparedConnectorActionRequest(ctx, runtime, &tokenID, prepared, status, errorText, approvalContext, approvalHash)
+}
+
+func (s *Server) insertPreparedConnectorActionRequest(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	tokenID *int64,
+	prepared actions.PreparedRequest,
+	status connectors.ResultStatus,
+	errorText string,
+	approvalContext string,
+	approvalHash string,
+) (connectortargets.ActionRequest, error) {
+	payload, err := runtime.vault.EncryptJSON(connectorActionExecutionEnvelope{
+		Input:   prepared.Requested.Input,
+		Payload: prepared.Action.Payload,
+		Reason:  prepared.Requested.Reason,
+	})
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
 	request, err := connectortargets.NewStore(runtime.database).InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              &tokenID,
+		TokenID:              tokenID,
 		TargetID:             prepared.Target.ID,
 		ProfileID:            prepared.Profile.ID,
 		ConnectorKind:        prepared.Target.ConnectorKind,

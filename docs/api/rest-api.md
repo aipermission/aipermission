@@ -917,6 +917,7 @@ GET  /api/connector-action-approvals
 GET  /api/connector-action-approvals/{id}
 POST /api/connector-action-approvals/{id}/run
 POST /api/connector-action-approvals/{id}/decline
+POST /api/connector-actions/local-run
 GET  /api/history-labels
 POST /api/history-labels
 DELETE /api/history-labels/{id}
@@ -939,6 +940,12 @@ the target has multiple credential profiles such as `admin` and `readonly`:
 GET /api/history?limit=50&offset=0&connector_kind=ssh&activity_type=file_transfer&status=completed&q=backup
 GET /api/history?connector_kind=postgres&target_id=7&profile_id=11
 ```
+
+`POST /api/connector-actions/local-run` is the unlocked web UI path for local
+operator connector consoles. It runs one connector action as source `manual`
+without MCP token permission checks, stores the action request in the shared
+connector history/audit pipeline, and is protected by the UI session plus CSRF.
+MCP clients must use `POST /api/mcp/connector-actions/call` instead.
 
 `GET /api/history/targets` returns target/profile facets derived from
 `history_entries`, not only currently active connector targets. Use it for

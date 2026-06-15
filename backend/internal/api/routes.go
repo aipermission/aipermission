@@ -41,6 +41,7 @@ func (s *Server) routes() {
 	historyLabels := historyLabelHandlers{s}
 	fileTransfers := fileTransferHandlers{s}
 	connectors := connectorHandlers{s}
+	connectorActions := connectorActionHandlers{s}
 	connectorTargets := connectorTargetHandlers{s}
 	targets := targetHandlers{s}
 	mcp := mcpHandlers{s}
@@ -93,6 +94,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/connector-action-approvals/{id}", connectorApprovals.getConnectorActionApproval)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.runConnectorActionApproval)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/decline", connectorApprovals.declineConnectorActionApproval)
+	s.mux.HandleFunc("POST /api/connector-actions/local-run", connectorActions.runLocalConnectorAction)
 	s.mux.HandleFunc("GET /api/history/targets", historyEntries.listHistoryTargetFacets)
 	s.mux.HandleFunc("GET /api/history", historyEntries.listHistoryEntries)
 	s.mux.HandleFunc("GET /api/history/{id}", historyEntries.getHistoryEntry)

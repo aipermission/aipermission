@@ -227,6 +227,71 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	}
 }
 
+func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	registry := connectors.NewRegistry()
+	if err := registry.Register(localActionTestConnector{}); err != nil {
+		t.Fatalf("register local test connector: %v", err)
+	}
+	runtime := &databaseRuntime{
+		database: database,
+		vault:    secretVault,
+		tokens:   tokens.NewStore(database),
+		registry: registry,
+	}
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	target, err := store.CreateTarget(context.Background(), connectortargets.CreateTargetInput{
+		ConnectorKind: localActionTestConnectorKind,
+		Name:          "local-target",
+		Config:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("create local target: %v", err)
+	}
+	profile, err := store.CreateCredentialProfile(context.Background(), connectortargets.CreateCredentialProfileInput{
+		TargetID:      target.ID,
+		ConnectorKind: localActionTestConnectorKind,
+		Kind:          "default",
+		Label:         "main",
+		Public:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("create local profile: %v", err)
+	}
+
+	result, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo",
+		Input:      map[string]any{"value": "hello"},
+		Reason:     "manual console smoke",
+	})
+	if err != nil {
+		t.Fatalf("run local connector action: %v", err)
+	}
+	if result.Request.TokenID != nil || result.Request.Source != commandRequestSourceManual || result.Request.Status != connectors.ResultCompleted {
+		t.Fatalf("unexpected local request: %#v", result.Request)
+	}
+	if result.Result.Output.(map[string]any)["echo"] != "hello" {
+		t.Fatalf("unexpected output: %#v", result.Result.Output)
+	}
+	var historyCount int
+	if err := database.QueryRow(`
+		SELECT COUNT(*)
+		FROM history_entries
+		WHERE source_ref_type = ? AND source_ref_id = ? AND source = 'manual' AND connector_kind = ?`,
+		historypkg.SourceConnectorActionRequest,
+		result.Request.ID,
+		localActionTestConnectorKind,
+	).Scan(&historyCount); err != nil {
+		t.Fatalf("read local action history: %v", err)
+	}
+	if historyCount != 1 {
+		t.Fatalf("expected one local action history row, got %d", historyCount)
+	}
+}
+
 func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
@@ -957,4 +1022,78 @@ func insertAPITestToken(t *testing.T, database *sql.DB) int64 {
 		t.Fatalf("token id: %v", err)
 	}
 	return id
+}
+
+const localActionTestConnectorKind = "localtest"
+
+type localActionTestConnector struct{}
+
+func (localActionTestConnector) Kind() string {
+	return localActionTestConnectorKind
+}
+
+func (localActionTestConnector) Label() string {
+	return "Local Test"
+}
+
+func (localActionTestConnector) Version() string {
+	return "0.1"
+}
+
+func (localActionTestConnector) TargetSchema() connectors.Schema {
+	return connectors.Schema{}
+}
+
+func (localActionTestConnector) CredentialSchemas() []connectors.CredentialSchema {
+	return []connectors.CredentialSchema{{Kind: "default", Label: "Default", Schema: connectors.Schema{}}}
+}
+
+func (localActionTestConnector) GetHelp(context.Context, connectors.TargetView) (connectors.ConnectorHelp, error) {
+	return connectors.ConnectorHelp{
+		Title:       "Local test target",
+		Summary:     "Test connector.",
+		Connector:   "Local Test",
+		ConnectorID: localActionTestConnectorKind,
+	}, nil
+}
+
+func (localActionTestConnector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
+	return []connectors.ActionDefinition{{
+		Name:        "echo",
+		Label:       "Echo",
+		Description: "Echo one value.",
+		Risk:        connectors.RiskRead,
+		InputSchema: connectors.Schema{Fields: []connectors.Field{{
+			Name:     "value",
+			Label:    "Value",
+			Type:     connectors.FieldString,
+			Required: true,
+		}}},
+	}}, nil
+}
+
+func (localActionTestConnector) PrepareAction(_ context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
+	value, _ := req.Input["value"].(string)
+	return connectors.PreparedAction{
+		ConnectorKind: localActionTestConnectorKind,
+		TargetRef:     req.Target.Ref,
+		ProfileID:     req.Profile.ID,
+		ActionName:    req.ActionName,
+		Risk:          connectors.RiskRead,
+		Title:         "Echo value",
+		Summary:       "Echo one test value",
+		Preview:       map[string]any{"value": value},
+		Payload:       map[string]any{"value": value},
+		ContextMaterial: map[string]any{
+			"value": value,
+		},
+	}, nil
+}
+
+func (localActionTestConnector) ExecuteAction(_ context.Context, _ connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	return connectors.ActionResult{
+		Status:      connectors.ResultCompleted,
+		Output:      map[string]any{"echo": action.Payload["value"]},
+		DisplayText: fmt.Sprint(action.Payload["value"]),
+	}, nil
 }
