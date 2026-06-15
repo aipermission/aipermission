@@ -65,6 +65,7 @@ type CreateRequest struct {
 	CloseExisting bool   `json:"close_existing"`
 	Cols          int    `json:"cols"`
 	Rows          int    `json:"rows"`
+	WaitForStart  bool   `json:"wait_for_start"`
 }
 
 type InputRequest struct {
@@ -138,8 +139,10 @@ type managedConsoleSession struct {
 	rows      int
 	manager   *Manager
 
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx       context.Context
+	cancel    context.CancelFunc
+	start     chan struct{}
+	startOnce sync.Once
 
 	mu            sync.Mutex
 	execMu        sync.Mutex
@@ -157,4 +160,5 @@ type managedConsoleSession struct {
 	manualPause   *consoleSessionManualPause
 	filterUntil   time.Time
 	persistTimer  *time.Timer
+	startErr      error
 }

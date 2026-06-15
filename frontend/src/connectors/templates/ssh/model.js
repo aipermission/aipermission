@@ -270,6 +270,9 @@ export function hostKeyActionFromError(error, { mode, form, target, profile, tes
   if (operation === "test") {
     return { kind: "ssh", type: "test", target, profile, testKey };
   }
+  if (operation === "new-session") {
+    return { kind: "ssh", type: "new-session", target, runtimeTarget: target };
+  }
   if (operation === "docker-check") {
     return { kind: "ssh", type: "docker-check", target, profile };
   }
@@ -314,6 +317,9 @@ export async function resumeHostKeyAction(action) {
     if (!action.target || !profile) throw new Error("SSH connector profile is not loaded.");
     const data = await apiPost(`/api/connector-targets/${action.target.id}/profiles/${profile.id}/test`, {});
     return { testKey: action.testKey, test: { ok: data.ok, error: data.stderr || null, data } };
+  }
+  if (action.type === "new-session") {
+    return { startConsoleSession: true };
   }
   throw new Error("Unsupported SSH host-key action.");
 }

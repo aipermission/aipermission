@@ -219,7 +219,7 @@ func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64
 
 	result, err := runtime.consoleSessions.Exec(ctx, runtimeID, command)
 	if err != nil {
-		adapter := s.bulkConsoleErrorPresenter(context.Background(), runtime, runtimeID)
+		adapter := s.consoleErrorPresenter(context.Background(), runtime, runtimeID)
 		_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, connectorErrorMessage(adapter, "command execution failed", err))
 		return
 	}
@@ -235,7 +235,7 @@ func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64
 	_ = s.finishCommandRequest(context.Background(), runtime, requestID, status, result.SessionID, result.Output, "", result.ExitCode, "")
 }
 
-func (s *Server) bulkConsoleErrorPresenter(ctx context.Context, runtime *databaseRuntime, runtimeID int64) any {
+func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *databaseRuntime, runtimeID int64) any {
 	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return nil

@@ -18,11 +18,13 @@ func (s *managedConsoleSession) run() {
 	defer s.manager.remove(s.id)
 
 	if s.manager.openRuntime == nil {
+		s.markStarted(fmt.Errorf("console transport is not configured"))
 		s.fail("console transport is not configured")
 		return
 	}
 	runtime, err := s.manager.openRuntime(s.ctx, s.runtimeID, s.rows, s.cols)
 	if err != nil {
+		s.markStarted(err)
 		s.fail(err.Error())
 		return
 	}
@@ -33,6 +35,7 @@ func (s *managedConsoleSession) run() {
 
 	stdin := runtime.Stdin
 	if stdin == nil {
+		s.markStarted(fmt.Errorf("console transport did not provide stdin"))
 		s.fail("console transport did not provide stdin")
 		return
 	}
@@ -41,16 +44,19 @@ func (s *managedConsoleSession) run() {
 	s.mu.Unlock()
 
 	if runtime.Stdout == nil {
+		s.markStarted(fmt.Errorf("console transport did not provide stdout"))
 		s.fail("console transport did not provide stdout")
 		return
 	}
 	if runtime.Wait == nil {
+		s.markStarted(fmt.Errorf("console transport did not provide wait"))
 		s.fail("console transport did not provide wait")
 		return
 	}
 
 	s.setStatus("connected", "")
 	s.broadcast(ptyServerMessage{Type: "ready", Status: "connected", SessionID: s.id})
+	s.markStarted(nil)
 
 	if runtime.StartupInputAfterConnect != "" {
 		if _, err := io.WriteString(stdin, runtime.StartupInputAfterConnect); err != nil {
@@ -186,6 +192,30 @@ func (s *managedConsoleSession) finish(status string, message string) {
 		logConsolePersistError("finish", s.id, err)
 	}
 	s.broadcast(ptyServerMessage{Type: "exit", Status: status, Data: persistedMessage, SessionID: s.id})
+}
+
+func (s *managedConsoleSession) markStarted(err error) {
+	s.startOnce.Do(func() {
+		s.mu.Lock()
+		s.startErr = err
+		s.mu.Unlock()
+		close(s.start)
+	})
+}
+
+func (s *managedConsoleSession) waitStart(ctx context.Context) error {
+	if s == nil || s.start == nil {
+		return nil
+	}
+	select {
+	case <-s.start:
+		s.mu.Lock()
+		err := s.startErr
+		s.mu.Unlock()
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *managedConsoleSession) setStatus(status string, message string) {

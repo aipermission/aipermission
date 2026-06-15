@@ -105,6 +105,7 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 		manager:   m,
 		ctx:       sessionCtx,
 		cancel:    cancel,
+		start:     make(chan struct{}),
 		status:    "connecting",
 		clients:   map[*websocket.Conn]*sync.Mutex{},
 	}
@@ -113,6 +114,11 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 	m.sessions[id] = managed
 	m.mu.Unlock()
 	go managed.run()
+	if request.WaitForStart {
+		if err := managed.waitStart(ctx); err != nil {
+			return Record{}, err
+		}
+	}
 
 	return m.Get(ctx, id)
 }

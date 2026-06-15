@@ -39,12 +39,17 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
+	request.WaitForStart = true
 	item, err := runtime.consoleSessions.Create(r.Context(), request)
 	if errors.Is(err, console.ErrSessionLimit) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	} else if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		adapter := s.consoleErrorPresenter(r.Context(), runtime, request.RuntimeID)
+		if writeConnectorError(w, adapter, err) {
+			return
+		}
+		writeError(w, http.StatusBadRequest, connectorErrorMessage(adapter, "console session failed", err))
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, item.RuntimeID, "console.session.created", map[string]any{

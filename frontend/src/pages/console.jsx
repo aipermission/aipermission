@@ -66,7 +66,9 @@ export function ConsolePage() {
   const [tokensCompact, setTokensCompact] = useState(false);
   const [targetSearch, setTargetSearch] = useState("");
   const [connectorActivityOpen, setConnectorActivityOpen] = useState(false);
+  const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   const [restartAction, setRestartAction] = useState({ state: "idle", error: null });
+  const [newSessionError, setNewSessionError] = useState("");
   const [now, setNow] = useState(Date.now());
   const [structuredSessionsByTarget, setStructuredSessionsByTarget] = useState({});
 
@@ -96,6 +98,7 @@ export function ConsolePage() {
   const selectedTargetUsesLiveConsole = targetUsesLiveConsole(selectedTarget);
   const SelectedConnectorConsoleTemplate = selectedConnectorTemplate?.Console || null;
   const SelectedConnectorToolbarActions = selectedConnectorTemplate?.ToolbarActions || null;
+  const ConnectorOperationTemplate = connectorOperation?.connector_kind ? getConnectorTemplate(connectorOperation.connector_kind)?.Operations || null : null;
   const selectedStructuredSession = selectedTarget && !selectedTargetUsesLiveConsole ? structuredSessionsByTarget[selectedTarget.ref] || null : null;
   const {
     selectedRuntimeTarget,
@@ -143,7 +146,7 @@ export function ConsolePage() {
     ? connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === selectedTarget.ref)
     : [];
   const selectedRunningRequest = selectedRunningConnectorRequests[0] || null;
-  const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0);
+  const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0) + (newSessionError ? 1 : 0);
   const filteredTargets = useMemo(() => {
     const query = targetSearch.trim().toLowerCase();
     return targetItems.filter((target) => {
@@ -193,6 +196,7 @@ export function ConsolePage() {
 
   useEffect(() => {
     setRestartAction({ state: "idle", error: null });
+    setNewSessionError("");
   }, [selectedRuntimeTarget?.id, selectedRunningRequest?.id]);
 
   useEffect(() => {
@@ -330,6 +334,31 @@ export function ConsolePage() {
     return message.includes("stale") || message.includes("approval context") || message.includes("fresh request");
   }
 
+  function openConnectorOperation(operation) {
+    if (!operation?.open || !operation?.connector_kind) return false;
+    setConnectorOperation(operation);
+    return true;
+  }
+
+  async function completeConnectorOperation(result, operation) {
+    if (result?.startConsoleSession && operation?.runtimeTarget) {
+      await startNewConsoleSession(operation.runtimeTarget);
+    }
+  }
+
+  async function startNewConsoleSession(runtimeTarget) {
+    if (!runtimeTarget) return;
+    setNewSessionError("");
+    try {
+      await newConsoleSession(runtimeTarget);
+    } catch (error) {
+      const model = getConnectorModel(runtimeTarget.connector_kind);
+      const operation = model?.operationFromError?.(error, { operation: "new-session", target: runtimeTarget });
+      if (openConnectorOperation(operation)) return;
+      setNewSessionError(error.message || "Console session could not be started.");
+    }
+  }
+
   async function restartSelectedConsoleSession() {
     if (!selectedRuntimeTarget) return;
     setRestartAction({ state: "running", error: null });
@@ -461,7 +490,7 @@ export function ConsolePage() {
                 liveConsoleTargets={liveConsoleTargets.data}
                 onOpenMessages={() => openMessages()}
                 onRefreshSessions={loadConsoleSessions}
-                onNewSession={() => selectedRuntimeTarget && void newConsoleSession(selectedRuntimeTarget)}
+                onNewSession={() => selectedRuntimeTarget && void startNewConsoleSession(selectedRuntimeTarget)}
                 onEndSession={() => selectedSession.id && void closeConsoleSession(selectedSession.id)}
                 onInterrupt={() => selectedSession.id && cancelConsoleCommand(selectedSession.id)}
                 structuredSession={selectedStructuredSession}
@@ -491,6 +520,11 @@ export function ConsolePage() {
               onRestart={restartSelectedConsoleSession}
             />
           ) : null}
+          {newSessionError ? (
+            <div className={`border-b px-4 py-2 ${theme === "light" ? "border-red-200 bg-red-50" : "border-red-900/60 bg-red-950/40"}`}>
+              <Notice tone="bad">{newSessionError}</Notice>
+            </div>
+          ) : null}
           {selectedTarget && SelectedConnectorConsoleTemplate ? (
             <SelectedConnectorConsoleTemplate
               target={selectedTarget}
@@ -512,7 +546,7 @@ export function ConsolePage() {
                 <NoLiveSession
                   target={selectedRuntimeTarget}
                   lastSession={selectedSession.id ? selectedSession : null}
-                  onNewSession={() => void newConsoleSession(selectedRuntimeTarget)}
+                  onNewSession={() => void startNewConsoleSession(selectedRuntimeTarget)}
                   theme={theme}
                 />
               ) : selectedTargetUsesLiveConsole ? (
@@ -575,6 +609,14 @@ export function ConsolePage() {
         onRefresh={loadServerMessages}
         onClose={closeMessages}
       />
+      {ConnectorOperationTemplate ? (
+        <ConnectorOperationTemplate
+          value={connectorOperation}
+          credentials={[]}
+          onChange={setConnectorOperation}
+          onOperationComplete={completeConnectorOperation}
+        />
+      ) : null}
     </section>
   );
 }
