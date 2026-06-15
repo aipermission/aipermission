@@ -17,6 +17,10 @@ func OpenEncrypted(path string, password string) (*sql.DB, error) {
 	return openEncrypted(path, password, true)
 }
 
+func OpenEncryptedForMigration(path string, password string) (*sql.DB, error) {
+	return openEncrypted(path, password, false)
+}
+
 func ValidateEncrypted(path string, password string) error {
 	database, err := openEncrypted(path, password, false)
 	if err != nil {

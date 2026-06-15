@@ -16,6 +16,24 @@ services:
     volumes:
       - aipermission_data:/app/data
 
+  migration:
+    profiles:
+      - migrate
+    build:
+      context: ./backend
+    container_name: aipermission-migration
+    command: ["aipermission"]
+    environment:
+      AIPERMISSION_MIGRATION_MODE: "1"
+      AIPERMISSION_MIGRATION_HOST: 0.0.0.0
+      AIPERMISSION_MIGRATION_PORT: 3211
+      AIPERMISSION_DATA_PATH: /app/data/aipermission.db
+      AIPERMISSION_GATEWAY_SECRET: ${AIPERMISSION_GATEWAY_SECRET:-}
+    ports:
+      - "127.0.0.1:3211:3211"
+    volumes:
+      - aipermission_data:/app/data
+
   frontend:
     build:
       context: ./frontend
