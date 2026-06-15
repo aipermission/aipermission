@@ -179,8 +179,8 @@ A connector receives only typed capabilities for its own kind. Do not use it as
 a general escape hatch for arbitrary gateway internals.
 
 The 0.2 connector line is a clean database baseline. Do not add runtime
-fallbacks for pre-0.2 preview schemas; if a real user needs old data, handle it
-with a separate one-time import tool.
+fallbacks for pre-0.2 preview schemas; important old data belongs in the
+separate versioned migration helper, not in gateway runtime code.
 
 ## Adding A Connector
 

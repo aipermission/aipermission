@@ -100,9 +100,8 @@ file-transfer features receive a connector-profile runtime id from the SSH
 adapter.
 
 The 0.2 connector line is a clean baseline. Do not add compatibility branches
-for pre-0.2 preview database layouts. If a real user needs to preserve
-important 0.1.x data, build a separate offline import tool rather than keeping
-runtime fallback code in the gateway.
+for pre-0.2 preview database layouts. Important old data belongs in a separate
+versioned migration helper, not in runtime fallback code in the gateway.
 
 ## Backend Contract
 

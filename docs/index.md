@@ -40,6 +40,7 @@ Start here:
 ## Setup
 
 - [Docker Runtime](setup/docker-runtime.md)
+- [Database Migration](setup/database-migration.md)
 - [MCP Client Setup](setup/mcp-client-setup.md)
 
 ## API And MCP Contracts

@@ -40,10 +40,9 @@ The 0.2 connector line is treated as a clean connector-schema boundary. It is
 allowed to make breaking local database changes while the project is still
 pre-1.0, and the implementation should avoid long-term compatibility shims that
 keep SSH outside the shared connector path. Pre-0.2 preview databases are not
-migrated automatically; users should create a fresh 0.2 database before testing
-the connector-native line. If a real user needs to preserve important 0.1.x
-data, handle it with a separate one-time import tool instead of runtime
-compatibility code.
+migrated automatically by the normal gateway; users should create a fresh 0.2
+database or use the versioned local migration helper for important 0.1.x data.
+Keep migration code separate from runtime compatibility code.
 
 Connector work has two classes:
 

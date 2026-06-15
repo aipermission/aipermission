@@ -38,10 +38,11 @@ and this project uses semantic versioning once public releases begin.
   explicit local-lab choice.
 - Reset the local schema as a clean 0.2 connector-native baseline while the
   project is still pre-1.0.
-- Pre-0.2 preview databases are not migrated automatically. Create a fresh 0.2
-  database before testing this release. If a real user needs to preserve
-  important 0.1.x data, open an issue and we can provide a separate one-time
-  import tool instead of keeping runtime compatibility code.
+- Pre-0.2 preview databases are not migrated automatically by the normal
+  gateway. Create a fresh 0.2 database, or run the local migration helper with
+  `docker compose --profile migrate up -d --build migration` and open
+  `http://localhost:3211` to migrate important 0.1.x data into a new 0.2
+  database.
 
 ### Security
 

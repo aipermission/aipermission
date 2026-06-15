@@ -18,7 +18,7 @@ export const changelogEntries = [
         title: "Changed",
         items: [
           "The local database schema is reset as a clean 0.2 connector-native baseline while the project is still pre-1.0.",
-          "Pre-0.2 preview databases are not migrated automatically. Create a fresh 0.2 database before testing this release.",
+          "Pre-0.2 preview databases are not opened directly by the normal gateway. Create a fresh 0.2 database, or use the local migration helper for important 0.1.x data.",
           "Postgres targets default to SSL require; weaker modes are an explicit local-lab choice.",
         ],
       },

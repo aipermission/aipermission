@@ -379,6 +379,45 @@ If the same token exists in more than one unlocked database, MCP authentication 
 
 The database password is only used to open or re-authenticate the local database. It is not used as an API bearer token. Web REST calls use an HttpOnly browser session cookie, while MCP calls continue to use the configured MCP API token.
 
+## Database Migration
+
+Version 0.2.0 is a connector-native database baseline. Pre-0.2 preview
+databases are not opened directly by the normal gateway, because the runtime no
+longer keeps compatibility shims for the old SSH-only schema.
+
+To migrate an important 0.1.x database into a new 0.2 database, start the
+local-only migration helper:
+
+```bash
+docker compose --profile migrate up -d --build migration
+```
+
+Then open:
+
+```txt
+http://localhost:3211
+```
+
+The helper creates a new 0.2 database and never modifies the source database. It
+migrates SSH keys, SSH targets, credential profiles, API tokens, SSH `exec`
+permissions, settings, redaction rules, and history labels. It intentionally
+does not migrate command history, audit logs, console sessions, or file transfer
+history. Do not use the source database in the normal gateway while migration is
+running.
+
+After you verify the migrated 0.2 database, the old 0.1.x source database can be
+removed from the unlock screen with **Delete old local copy**. AIPermission asks
+for the old database password before deleting the local file.
+
+After migration, stop the helper:
+
+```bash
+docker compose --profile migrate stop migration
+docker compose --profile migrate rm -f migration
+```
+
+See [Database Migration](docs/setup/database-migration.md) for details.
+
 ## Development
 
 Common checks:
@@ -473,10 +512,8 @@ Redis/API-style connector should touch.
 This project is in active RC testing. The current goal is to validate the local developer workflow with early users before the first stable release.
 
 Version 0.2.0 is a connector-native baseline. Pre-0.2 preview databases are not
-migrated automatically; create a fresh 0.2 database before testing this release.
-If a real user needs to preserve important 0.1.x data, open an issue and we can
-provide a separate one-time import tool instead of keeping runtime compatibility
-code.
+migrated automatically by the normal gateway; create a fresh 0.2 database or use
+the local one-time migration helper for important 0.1.x data.
 
 The first release will focus on:
 
