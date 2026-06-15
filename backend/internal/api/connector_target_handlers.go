@@ -246,6 +246,7 @@ func (s connectorTargetHandlers) listConnectorTargetInventory(w http.ResponseWri
 		summaries := make([]profileSummary, 0, len(profiles))
 		for _, profile := range profiles {
 			targetView := connectors.TargetView{
+				ID:            target.ID,
 				Ref:           connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID),
 				ConnectorKind: target.ConnectorKind,
 				Name:          target.Name,
@@ -380,11 +381,11 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
 		writeInternalError(w)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -495,7 +496,14 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	request.Config = config
-	target, err := store.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
+	tx, err := runtime.database.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	defer tx.Rollback()
+	txStore := connectortargets.NewTxStore(tx)
+	target, err := txStore.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
 		ID:     id,
 		Name:   request.Name,
 		Config: request.Config,
@@ -504,16 +512,20 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	profiles, err := store.ListCredentialProfiles(r.Context(), target.ID)
+	profiles, err := txStore.ListCredentialProfiles(r.Context(), target.ID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
 	for _, profile := range profiles {
-		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 			writeInternalError(w)
 			return
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeInternalError(w)
+		return
 	}
 	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, 0, "connector target was updated; ask the AI to send a fresh request", false)
 	if err != nil {
@@ -603,11 +615,11 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 		writeInternalError(w)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -713,12 +725,6 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-		if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, store, target); err != nil {
-			handleConnectorTargetError(w, err)
-			return
-		}
-	}
 	registry := runtime.connectorRegistry()
 	connector, ok := registry.Get(target.ConnectorKind)
 	if !ok {
@@ -729,7 +735,20 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 	if !ok {
 		return
 	}
-	profile, err := store.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
+	tx, err := runtime.database.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	defer tx.Rollback()
+	txStore := connectortargets.NewTxStore(tx)
+	if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
+		if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, txStore, target); err != nil {
+			handleConnectorTargetError(w, err)
+			return
+		}
+	}
+	profile, err := txStore.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
 		TargetID:            target.ID,
 		ConnectorKind:       target.ConnectorKind,
 		Kind:                preparedProfile.Kind,
@@ -742,7 +761,11 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -790,7 +813,14 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 	if !ok {
 		return
 	}
-	profile, err := store.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
+	tx, err := runtime.database.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	defer tx.Rollback()
+	txStore := connectortargets.NewTxStore(tx)
+	profile, err := txStore.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
 		TargetID:            target.ID,
 		ProfileID:           profileID,
 		ConnectorKind:       target.ConnectorKind,
@@ -804,7 +834,11 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -901,15 +935,15 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 	return result.Affected, nil
 }
 
-func (s connectorTargetHandlers) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, runtime *databaseRuntime, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-	if runtime == nil || runtime.database == nil {
+func (s connectorTargetHandlers) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+	if store == nil {
 		return nil
 	}
 	adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind)
 	if adapter == nil {
 		return nil
 	}
-	_, err := connectortargets.NewStore(runtime.database).EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+	_, err := store.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
 		ConnectorKind:  target.ConnectorKind,
 		TargetID:       target.ID,
 		ProfileID:      profile.ID,

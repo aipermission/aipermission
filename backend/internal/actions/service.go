@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -163,5 +164,45 @@ func validatePreparedAction(prepared connectors.PreparedAction, resolved Resolve
 	if prepared.Risk != definition.Risk {
 		return fmt.Errorf("prepared action risk drifted from %q to %q", definition.Risk, prepared.Risk)
 	}
+	if field, ok := secretPayloadField(prepared.Payload); ok {
+		return fmt.Errorf("prepared action payload field %q must not contain secrets; store secrets in credential profiles instead", field)
+	}
 	return nil
+}
+
+func secretPayloadField(value any) (string, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			if looksLikeSecretField(key) {
+				return key, true
+			}
+			if field, ok := secretPayloadField(nested); ok {
+				return field, true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if field, ok := secretPayloadField(nested); ok {
+				return field, true
+			}
+		}
+	case []map[string]any:
+		for _, nested := range typed {
+			if field, ok := secretPayloadField(nested); ok {
+				return field, true
+			}
+		}
+	}
+	return "", false
+}
+
+func looksLikeSecretField(key string) bool {
+	normalized := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(key))
+	for _, marker := range []string{"password", "passwd", "token", "secret", "apikey", "privatekey", "authorization", "bearer", "credential"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }

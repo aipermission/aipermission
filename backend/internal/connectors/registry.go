@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 var identifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -81,6 +82,12 @@ func ValidateConnectorContract(connector Connector) error {
 	kind := connector.Kind()
 	if !ValidIdentifier(kind) {
 		return fmt.Errorf("invalid connector kind %q", kind)
+	}
+	if strings.TrimSpace(connector.Label()) == "" {
+		return fmt.Errorf("connector %q label is required", kind)
+	}
+	if strings.TrimSpace(connector.Version()) == "" {
+		return fmt.Errorf("connector %q version is required", kind)
 	}
 	if err := ValidateNonSecretSchema(connector.TargetSchema(), kind+" target"); err != nil {
 		return err

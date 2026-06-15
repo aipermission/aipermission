@@ -149,6 +149,12 @@ func ValidateActionDefinitions(actions []ActionDefinition, usage string) error {
 		if !ValidIdentifier(action.Name) {
 			return fmt.Errorf("%s contains invalid action name %q", usage, action.Name)
 		}
+		if strings.TrimSpace(action.Label) == "" {
+			return fmt.Errorf("%s action %q label is required", usage, action.Name)
+		}
+		if strings.TrimSpace(action.Description) == "" {
+			return fmt.Errorf("%s action %q description is required", usage, action.Name)
+		}
 		if seen[action.Name] {
 			return fmt.Errorf("%s contains duplicate action %q", usage, action.Name)
 		}

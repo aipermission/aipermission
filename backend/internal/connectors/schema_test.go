@@ -110,14 +110,16 @@ func TestValidateCredentialSchemaValuesTreatsSecretTypesAsSecret(t *testing.T) {
 
 func TestValidateActionDefinitionsRejectsInvalidContracts(t *testing.T) {
 	if err := ValidateActionDefinitions([]ActionDefinition{
-		{Name: "run", Risk: RiskRead},
-		{Name: "run", Risk: RiskRead},
+		{Name: "run", Label: "Run", Description: "Run once.", Risk: RiskRead},
+		{Name: "run", Label: "Run again", Description: "Run again.", Risk: RiskRead},
 	}, "test"); err == nil || !strings.Contains(err.Error(), "duplicate action") {
 		t.Fatalf("expected duplicate action error, got %v", err)
 	}
 	if err := ValidateActionDefinitions([]ActionDefinition{{
-		Name: "run",
-		Risk: RiskRead,
+		Name:        "run",
+		Label:       "Run",
+		Description: "Run once.",
+		Risk:        RiskRead,
 		InputSchema: Schema{Fields: []Field{
 			{Name: "password", Type: FieldSecret, Secret: true},
 		}},
@@ -125,9 +127,25 @@ func TestValidateActionDefinitionsRejectsInvalidContracts(t *testing.T) {
 		t.Fatalf("expected secret action input error, got %v", err)
 	}
 	if err := ValidateActionDefinitions([]ActionDefinition{{
-		Name: "run",
-		Risk: RiskLevel("mystery"),
+		Name:        "run",
+		Label:       "Run",
+		Description: "Run once.",
+		Risk:        RiskLevel("mystery"),
 	}}, "test"); err == nil || !strings.Contains(err.Error(), "unsupported risk") {
 		t.Fatalf("expected unsupported risk error, got %v", err)
+	}
+	if err := ValidateActionDefinitions([]ActionDefinition{{
+		Name:        "run",
+		Description: "Run once.",
+		Risk:        RiskRead,
+	}}, "test"); err == nil || !strings.Contains(err.Error(), "label is required") {
+		t.Fatalf("expected missing label error, got %v", err)
+	}
+	if err := ValidateActionDefinitions([]ActionDefinition{{
+		Name:  "run",
+		Label: "Run",
+		Risk:  RiskRead,
+	}}, "test"); err == nil || !strings.Contains(err.Error(), "description is required") {
+		t.Fatalf("expected missing description error, got %v", err)
 	}
 }

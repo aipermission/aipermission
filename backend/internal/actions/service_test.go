@@ -50,6 +50,7 @@ func (c *prepareConnector) GetActionList(context.Context, connectors.TargetView,
 	return []connectors.ActionDefinition{
 		{
 			Name:        "query_readonly",
+			Label:       "Query read-only",
 			Description: "Run a bounded read-only query.",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -139,6 +140,7 @@ func TestServicePrepareUsesRegisteredThirdConnector(t *testing.T) {
 		actions: []connectors.ActionDefinition{
 			{
 				Name:        "get_value",
+				Label:       "Get value",
 				Description: "Read one in-memory value.",
 				Risk:        connectors.RiskRead,
 				InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -200,8 +202,10 @@ func TestRegistryRejectsSecretActionInputSchemaBeforePrepare(t *testing.T) {
 		kind: "api",
 		actions: []connectors.ActionDefinition{
 			{
-				Name: "call_action",
-				Risk: connectors.RiskRead,
+				Name:        "call_action",
+				Label:       "Call action",
+				Description: "Call a test action.",
+				Risk:        connectors.RiskRead,
 				InputSchema: connectors.Schema{Fields: []connectors.Field{
 					{Name: "api_key", Label: "API key", Type: connectors.FieldSecret, Secret: true},
 				}},
@@ -343,5 +347,57 @@ func TestServicePrepareRejectsPreparedActionDrift(t *testing.T) {
 				t.Fatalf("expected %q error, got %v", tt.want, err)
 			}
 		})
+	}
+}
+
+func TestServicePrepareRejectsSecretLikePreparedPayloadFields(t *testing.T) {
+	registry := connectors.NewRegistry()
+	prepared := connectors.PreparedAction{
+		ConnectorKind: "api",
+		TargetRef:     "api:1:2",
+		ProfileID:     2,
+		ActionName:    "call_action",
+		Risk:          connectors.RiskRead,
+		Payload: map[string]any{
+			"request": map[string]any{
+				"api_token": "leaked",
+			},
+		},
+	}
+	connector := &prepareConnector{
+		kind: "api",
+		actions: []connectors.ActionDefinition{{
+			Name:        "call_action",
+			Label:       "Call action",
+			Description: "Call a test action.",
+			Risk:        connectors.RiskRead,
+		}},
+		prepared: &prepared,
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target: connectors.TargetView{
+			ID:            1,
+			Ref:           "api:1:2",
+			ConnectorKind: "api",
+			Name:          "Test API",
+		},
+		profile: connectors.CredentialProfileView{
+			ID:            2,
+			TargetID:      1,
+			ConnectorKind: "api",
+			Kind:          "api_key",
+			Label:         "default",
+		},
+	})
+
+	_, err := service.Prepare(context.Background(), PrepareRequest{
+		TargetRef:  "api:1:2",
+		ActionName: "call_action",
+	})
+	if err == nil || !strings.Contains(err.Error(), "store secrets in credential profiles") {
+		t.Fatalf("expected secret payload field rejection, got %v", err)
 	}
 }

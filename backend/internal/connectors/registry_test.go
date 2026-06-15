@@ -18,9 +18,25 @@ type fakeConnector struct {
 	reverseActions    bool
 }
 
-func (f fakeConnector) Kind() string                          { return f.kind }
-func (f fakeConnector) Label() string                         { return f.label }
-func (f fakeConnector) Version() string                       { return f.version }
+func (f fakeConnector) Kind() string { return f.kind }
+func (f fakeConnector) Label() string {
+	if f.label == "__empty__" {
+		return ""
+	}
+	if f.label != "" {
+		return f.label
+	}
+	return "Test connector"
+}
+func (f fakeConnector) Version() string {
+	if f.version == "__empty__" {
+		return ""
+	}
+	if f.version != "" {
+		return f.version
+	}
+	return "0.1"
+}
 func (f fakeConnector) TargetSchema() Schema                  { return f.targetSchema }
 func (f fakeConnector) CredentialSchemas() []CredentialSchema { return f.credentialSchemas }
 func (f fakeConnector) GetHelp(context.Context, TargetView) (ConnectorHelp, error) {
@@ -28,10 +44,10 @@ func (f fakeConnector) GetHelp(context.Context, TargetView) (ConnectorHelp, erro
 }
 func (f fakeConnector) GetActionList(_ context.Context, target TargetView, profile CredentialProfileView) ([]ActionDefinition, error) {
 	if f.dynamicActions && target.Name != "" {
-		return []ActionDefinition{{Name: "example_dynamic", Risk: RiskRead}}, nil
+		return []ActionDefinition{{Name: "example_dynamic", Label: "Example dynamic", Description: "Example dynamic action.", Risk: RiskRead}}, nil
 	}
 	if f.profileActions && profile.Kind == "oauth" {
-		return []ActionDefinition{{Name: "oauth_only", Risk: RiskRead}}, nil
+		return []ActionDefinition{{Name: "oauth_only", Label: "OAuth only", Description: "OAuth-only action.", Risk: RiskRead}}, nil
 	}
 	if f.actionDefinitions != nil {
 		if f.reverseActions && target.Name != "" {
@@ -43,7 +59,7 @@ func (f fakeConnector) GetActionList(_ context.Context, target TargetView, profi
 		}
 		return f.actionDefinitions, nil
 	}
-	return []ActionDefinition{{Name: "example", Risk: RiskRead}}, nil
+	return []ActionDefinition{{Name: "example", Label: "Example", Description: "Example action.", Risk: RiskRead}}, nil
 }
 func (f fakeConnector) PrepareAction(context.Context, ActionRequest) (PreparedAction, error) {
 	return PreparedAction{ConnectorKind: f.kind, ActionName: "example"}, nil
@@ -83,6 +99,12 @@ func TestRegistryRejectsInvalidConnector(t *testing.T) {
 	}
 	if err := registry.Register(fakeConnector{kind: "Bad-Kind"}); err == nil {
 		t.Fatal("expected invalid kind error")
+	}
+	if err := registry.Register(fakeConnector{kind: "api", label: "__empty__"}); err == nil || !strings.Contains(err.Error(), "label is required") {
+		t.Fatalf("expected missing label error, got %v", err)
+	}
+	if err := registry.Register(fakeConnector{kind: "api", version: "__empty__"}); err == nil || !strings.Contains(err.Error(), "version is required") {
+		t.Fatalf("expected missing version error, got %v", err)
 	}
 }
 
@@ -157,8 +179,10 @@ func TestRegistryRejectsInvalidConnectorContract(t *testing.T) {
 			connector: fakeConnector{
 				kind: "api",
 				actionDefinitions: []ActionDefinition{{
-					Name: "call",
-					Risk: RiskRead,
+					Name:        "call",
+					Label:       "Call",
+					Description: "Call a test action.",
+					Risk:        RiskRead,
 					InputSchema: Schema{Fields: []Field{
 						{Name: "token", Type: FieldSecret, Secret: true},
 					}},
@@ -224,8 +248,8 @@ func TestRegistryAcceptsStableActionCatalogWithDifferentOrder(t *testing.T) {
 		kind:           "api",
 		reverseActions: true,
 		actionDefinitions: []ActionDefinition{
-			{Name: "alpha", Risk: RiskRead},
-			{Name: "beta", Risk: RiskRead},
+			{Name: "alpha", Label: "Alpha", Description: "Alpha action.", Risk: RiskRead},
+			{Name: "beta", Label: "Beta", Description: "Beta action.", Risk: RiskRead},
 		},
 		credentialSchemas: []CredentialSchema{{
 			Kind: "api_key",

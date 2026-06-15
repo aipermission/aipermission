@@ -162,9 +162,9 @@ func activeSupportedConnectorPermissions(ctx context.Context, runtime *databaseR
 				} else {
 					actions, actionsErr := connector.GetActionList(ctx, target, profile)
 					if actionsErr != nil {
-						catalog.err = actionsErr
+						catalog.skip = true
 					} else if validateErr := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); validateErr != nil {
-						catalog.err = validateErr
+						catalog.skip = true
 					} else {
 						for _, action := range actions {
 							catalog.names[action.Name] = true
