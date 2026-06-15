@@ -223,7 +223,7 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(releaseSource, /appVersion = "0\.2\.0"/);
   assert.match(releaseSource, /Connector-native baseline/);
   assert.match(releaseSource, /SSH and Postgres now run through the same connector target/);
-  assert.match(releaseSource, /Pre-0\.2 preview databases are not migrated automatically/);
+  assert.match(releaseSource, /Pre-0\.2 preview databases are not opened directly by the normal gateway/);
 });
 
 test("Sidebar exposes explicit MCP runtime start and stop controls", () => {
