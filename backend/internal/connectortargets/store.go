@@ -715,10 +715,11 @@ type FinishActionRequestInput struct {
 }
 
 type StaleActionRequestsForTargetInput struct {
-	TargetID      int64
-	ProfileID     int64
-	Error         string
-	ApprovalDrift string
+	TargetID       int64
+	ProfileID      int64
+	Error          string
+	ApprovalDrift  string
+	IncludeRunning bool
 }
 
 type StaleActionRequestsForTargetResult struct {
@@ -1035,8 +1036,12 @@ func (s *Store) StaleActionRequestsForTarget(ctx context.Context, input StaleAct
 	if input.ProfileID < 0 {
 		return StaleActionRequestsForTargetResult{}, ErrTargetProfileNotFound
 	}
-	where := "target_id = ? AND status IN (?, ?)"
-	args := []any{input.TargetID, string(connectors.ResultApprovalPending), string(connectors.ResultRunning)}
+	where := "target_id = ? AND status IN (?)"
+	args := []any{input.TargetID, string(connectors.ResultApprovalPending)}
+	if input.IncludeRunning {
+		where = "target_id = ? AND status IN (?, ?)"
+		args = []any{input.TargetID, string(connectors.ResultApprovalPending), string(connectors.ResultRunning)}
+	}
 	if input.ProfileID > 0 {
 		where += " AND profile_id = ?"
 		args = append(args, input.ProfileID)

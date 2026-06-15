@@ -357,7 +357,7 @@ export function Shell({ theme, setTheme }) {
         delete consoleConnectionsRef.current[session.id];
       }
     });
-    const result = await apiPost(`/api/console/targets/${runtimeID}/restart`, {});
+    const result = await apiPost(`/api/console/runtime-surfaces/${runtimeID}/restart`, {});
     await loadConsoleSessions();
     return result;
   }

@@ -101,7 +101,7 @@ func (s connectorTargetHandlers) ConnectorStaleActionRequestsForTarget(ctx conte
 	if !ok || dbRuntime == nil {
 		return 0, errInvalidConnectorRuntime
 	}
-	return s.staleConnectorActionRequestsForTarget(ctx, dbRuntime, targetID, profileID, reason)
+	return s.staleConnectorActionRequestsForTarget(ctx, dbRuntime, targetID, profileID, reason, false)
 }
 
 // ConnectorWriteAudit writes a connector lifecycle audit event.
@@ -125,7 +125,7 @@ func (s connectorTargetHandlers) ConnectorFinalizeDeletedTarget(ctx context.Cont
 	if staleReason == "" {
 		staleReason = "connector target was deleted; ask the AI to send a fresh request"
 	}
-	staleRequests, err := s.staleConnectorActionRequestsForTarget(ctx, dbRuntime, target.ID, 0, staleReason)
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(ctx, dbRuntime, target.ID, 0, staleReason, true)
 	if err != nil {
 		return 0, err
 	}

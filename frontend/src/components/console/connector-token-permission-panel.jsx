@@ -11,6 +11,14 @@ import {
   selectedConnectorProfileID,
   writeStoredConnectorProfileID,
 } from "../../lib/connector-permissions";
+import {
+  connectorActionRiskDescription,
+  connectorActionRiskGroupLabel,
+  connectorActionRiskLabel,
+  connectorActionRiskOrder,
+  connectorActionRiskTone,
+  normalizeConnectorActionRisk,
+} from "../../lib/connector-action-risks";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
 import { effectiveRule, expiresAtFromLifetime, maskedToken, permissionLifetimeLabel, ruleLabel } from "../../lib/permissions";
 import { getConnectorModel } from "../../connectors/templates/registry";
@@ -477,7 +485,7 @@ function ActionPermissionCard({ action, rule, saving, compactPopover, onSetRule 
           <p className="truncate font-mono text-xs font-semibold text-stone-900">{action.name}</p>
           <p className="line-clamp-2 text-xs text-stone-500">{action.description}</p>
         </div>
-        <Badge tone={action.risk === "read" ? "good" : "warn"}>{action.risk}</Badge>
+        <Badge tone={connectorActionRiskTone(action.risk)}>{connectorActionRiskLabel(action.risk)}</Badge>
       </div>
       <div className="grid grid-cols-4 gap-1">
         <ConnectorRuleButton active={!rule} disabled={saving} onClick={() => onSetRule("")}>
@@ -523,20 +531,17 @@ function groupActions(actions) {
 }
 
 function groupActionsByRisk(actions) {
-  const readActions = actions.filter((action) => action.risk === "read");
-  const writeActions = actions.filter((action) => action.risk !== "read");
-  return [
-    {
-      key: "read",
-      name: "Read operations",
-      description: readActions.length > 0 ? `${readActions.length} read-only action${readActions.length === 1 ? "" : "s"}` : "No read actions exposed.",
-      actions: readActions,
-    },
-    {
-      key: "write",
-      name: "Write operations",
-      description: writeActions.length > 0 ? `${writeActions.length} write-capable action${writeActions.length === 1 ? "" : "s"}` : "No write actions exposed.",
-      actions: writeActions,
-    },
-  ];
+  const grouped = new Map(connectorActionRiskOrder.map((risk) => [risk, []]));
+  for (const action of actions) {
+    grouped.get(normalizeConnectorActionRisk(action.risk)).push(action);
+  }
+  return connectorActionRiskOrder.map((risk) => {
+    const groupActions = grouped.get(risk) || [];
+    return {
+      key: risk,
+      name: connectorActionRiskGroupLabel(risk),
+      description: connectorActionRiskDescription(risk, groupActions.length),
+      actions: groupActions,
+    };
+  });
 }

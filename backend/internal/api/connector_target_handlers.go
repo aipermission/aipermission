@@ -384,6 +384,10 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
+	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+		writeInternalError(w)
+		return
+	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.created", map[string]any{
 		"target_id":      target.ID,
 		"connector_kind": target.ConnectorKind,
@@ -505,10 +509,22 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
+	for _, profile := range profiles {
+		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+			writeInternalError(w)
+			return
+		}
+	}
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, 0, "connector target was updated; ask the AI to send a fresh request", false)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.updated", map[string]any{
-		"target_id":      target.ID,
-		"connector_kind": target.ConnectorKind,
-		"name":           target.Name,
+		"target_id":                target.ID,
+		"connector_kind":           target.ConnectorKind,
+		"name":                     target.Name,
+		"stale_connector_requests": staleRequests,
 	})
 	writeJSON(w, http.StatusOK, connectorTargetToResponse(target, profiles))
 }
@@ -591,10 +607,20 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
+	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+		writeInternalError(w)
+		return
+	}
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, 0, "connector target or credential profile was updated; ask the AI to send a fresh request", false)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.updated", map[string]any{
-		"target_id":      target.ID,
-		"connector_kind": target.ConnectorKind,
-		"name":           target.Name,
+		"target_id":                target.ID,
+		"connector_kind":           target.ConnectorKind,
+		"name":                     target.Name,
+		"stale_connector_requests": staleRequests,
 	})
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.updated", map[string]any{
 		"target_id":      target.ID,
@@ -716,6 +742,10 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
+	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+		writeInternalError(w)
+		return
+	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.created", map[string]any{
 		"target_id":      target.ID,
 		"profile_id":     profile.ID,
@@ -774,12 +804,22 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
+	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), runtime, target, profile); err != nil {
+		writeInternalError(w)
+		return
+	}
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, profile.ID, "connector credential profile was updated; ask the AI to send a fresh request", false)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.updated", map[string]any{
-		"target_id":      target.ID,
-		"profile_id":     profile.ID,
-		"connector_kind": target.ConnectorKind,
-		"kind":           profile.Kind,
-		"label":          profile.Label,
+		"target_id":                target.ID,
+		"profile_id":               profile.ID,
+		"connector_kind":           target.ConnectorKind,
+		"kind":                     profile.Kind,
+		"label":                    profile.Label,
+		"stale_connector_requests": staleRequests,
 	})
 	writeJSON(w, http.StatusOK, profileToSummary(profile))
 }
@@ -818,7 +858,7 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, targetID, profileID, "connector credential profile was deleted; ask the AI to send a fresh request")
+	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, targetID, profileID, "connector credential profile was deleted; ask the AI to send a fresh request", true)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -834,16 +874,17 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx context.Context, runtime *databaseRuntime, targetID int64, profileID int64, reason string) (int64, error) {
+func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx context.Context, runtime *databaseRuntime, targetID int64, profileID int64, reason string, includeRunning bool) (int64, error) {
 	if runtime == nil || runtime.database == nil || targetID < 1 {
 		return 0, nil
 	}
 	store := connectortargets.NewStore(runtime.database)
 	result, err := store.StaleActionRequestsForTarget(ctx, connectortargets.StaleActionRequestsForTargetInput{
-		TargetID:      targetID,
-		ProfileID:     profileID,
-		Error:         s.redactForPersistence(ctx, runtime, reason),
-		ApprovalDrift: connectorLifecycleApprovalDrift(profileID),
+		TargetID:       targetID,
+		ProfileID:      profileID,
+		Error:          s.redactForPersistence(ctx, runtime, reason),
+		ApprovalDrift:  connectorLifecycleApprovalDrift(profileID),
+		IncludeRunning: includeRunning,
 	})
 	if err != nil {
 		return 0, err
@@ -858,6 +899,24 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 		}
 	}
 	return result.Affected, nil
+}
+
+func (s connectorTargetHandlers) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, runtime *databaseRuntime, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+	if runtime == nil || runtime.database == nil {
+		return nil
+	}
+	adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind)
+	if adapter == nil {
+		return nil
+	}
+	_, err := connectortargets.NewStore(runtime.database).EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+		ConnectorKind:  target.ConnectorKind,
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		CapabilityKind: adapter.LiveConsoleCapabilityKind(),
+		Label:          profile.Label,
+	})
+	return err
 }
 
 func connectorLifecycleApprovalDrift(profileID int64) string {

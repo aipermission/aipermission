@@ -43,7 +43,7 @@ var (
 	ErrMissingSecret     = errors.New("postgres connector credential is missing required secret")
 	ErrInvalidConfig     = errors.New("postgres connector target config is invalid")
 
-	disallowedReadonlyTerms = regexp.MustCompile(`\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|call|do|vacuum|analyze|reindex|cluster|refresh|merge)\b`)
+	disallowedReadonlyTerms = regexp.MustCompile(`\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|call|do|vacuum|analyze|reindex|cluster|refresh|merge|into|notify|listen|unlisten|set|reset|lock|execute|prepare|deallocate|discard|comment|checkpoint|begin|start|commit|rollback|savepoint|release)\b`)
 )
 
 // Connector describes Postgres as a connector-shaped target with bounded

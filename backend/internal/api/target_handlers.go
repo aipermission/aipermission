@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -42,6 +43,7 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
+	defer rows.Close()
 
 	items := []targetProfileItem{}
 	for rows.Next() {
@@ -80,11 +82,6 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		writeInternalError(w)
-		return
-	}
-	if err := rows.Close(); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -96,13 +93,10 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		if adapter == nil {
 			continue
 		}
-		surface, err := store.EnsureRuntimeSurface(r.Context(), connectortargets.EnsureRuntimeSurfaceInput{
-			ConnectorKind:  item.ConnectorKind,
-			TargetID:       item.TargetID,
-			ProfileID:      item.ProfileID,
-			CapabilityKind: adapter.LiveConsoleCapabilityKind(),
-			Label:          item.ProfileLabel,
-		})
+		surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, adapter.LiveConsoleCapabilityKind())
+		if errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
+			continue
+		}
 		if err != nil {
 			writeInternalError(w)
 			return

@@ -85,6 +85,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/console/sessions/{id}/input", console.inputConsoleSession)
 	s.mux.HandleFunc("POST /api/console/sessions/{id}/close", console.closeConsoleSession)
 	s.mux.HandleFunc("GET /api/console/sessions/{id}/attach", console.attachConsoleSession)
+	s.mux.HandleFunc("POST /api/console/runtime-surfaces/{id}/restart", console.restartTargetConsoleSession)
 	s.mux.HandleFunc("POST /api/console/targets/{id}/restart", console.restartTargetConsoleSession)
 	s.mux.HandleFunc("GET /api/console/command-requests/{id}", console.getConsoleCommandRequest)
 	s.mux.HandleFunc("GET /api/connector-action-approvals", connectorApprovals.listConnectorActionApprovals)

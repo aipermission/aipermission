@@ -222,8 +222,9 @@ test("Token permission controls expose temporary grant lifetimes", () => {
   assert.match(connectorTokenPermissionPanelSource, /Grouped/);
   assert.match(connectorTokenPermissionPanelSource, /Advanced/);
   assert.match(connectorTokenPermissionPanelSource, /All operations/);
-  assert.match(connectorTokenPermissionPanelSource, /Read operations/);
-  assert.match(connectorTokenPermissionPanelSource, /Write operations/);
+  assert.match(connectorTokenPermissionPanelSource, /connectorActionRiskOrder/);
+  assert.match(connectorTokenPermissionPanelSource, /connectorActionRiskGroupLabel/);
+  assert.match(connectorTokenPermissionPanelSource, /connectorActionRiskDescription/);
   assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("1h"\)/);
   assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("4h"\)/);
   assert.match(connectorTokenPermissionPanelSource, /onSetTemporary\("1d"\)/);
@@ -371,7 +372,7 @@ test("Console and History expose SSH file transfer flows", () => {
 
 test("Console exposes stuck command recovery controls", () => {
   assert.match(shellSource, /restartConsoleRuntime/);
-  assert.match(shellSource, /\/api\/console\/targets\/\$\{runtimeID\}\/restart/);
+  assert.match(shellSource, /\/api\/console\/runtime-surfaces\/\$\{runtimeID\}\/restart/);
   assert.match(consolePageSource, /ConsoleRecoveryPanel/);
   assert.match(consolePageSource, /AI command running/);
   assert.match(consolePageSource, /Manual command running/);

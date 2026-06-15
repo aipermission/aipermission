@@ -718,6 +718,102 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 	}
 }
 
+func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	pendingTarget, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        postgresconnector.Kind,
+		ActionName:           postgresconnector.ActionQueryReadonly,
+		Input:                map[string]any{"sql": "select 1"},
+		EncryptedPayloadJSON: "encrypted-payload",
+		Status:               connectors.ResultApprovalPending,
+	})
+	if err != nil {
+		t.Fatalf("insert pending target request: %v", err)
+	}
+	running, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        postgresconnector.Kind,
+		ActionName:           postgresconnector.ActionQueryReadonly,
+		Input:                map[string]any{"sql": "select pg_sleep(10)"},
+		EncryptedPayloadJSON: "encrypted-payload",
+		Status:               connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert running request: %v", err)
+	}
+	updateTarget := performJSON(fixture.server.Handler(), http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", updateConnectorTargetRequest{
+		Name: "main-db-renamed",
+		Config: map[string]any{
+			"connection_mode": "direct",
+			"host":            "127.0.0.1",
+			"port":            5432,
+			"database":        "app",
+			"ssl_mode":        "prefer",
+		},
+	})
+	if updateTarget.Code != http.StatusOK {
+		t.Fatalf("update connector target failed: %d %s", updateTarget.Code, updateTarget.Body.String())
+	}
+	gotPendingTarget, err := store.GetActionRequest(ctx, pendingTarget.ID)
+	if err != nil {
+		t.Fatalf("get pending target request: %v", err)
+	}
+	if gotPendingTarget.Status != connectors.ResultStale || gotPendingTarget.ApprovalContextDrift != "target" {
+		t.Fatalf("pending target request should be stale after target update: %#v", gotPendingTarget)
+	}
+	gotRunning, err := store.GetActionRequest(ctx, running.ID)
+	if err != nil {
+		t.Fatalf("get running request: %v", err)
+	}
+	if gotRunning.Status != connectors.ResultRunning {
+		t.Fatalf("running request should not be stale from target update: %#v", gotRunning)
+	}
+
+	pendingProfile, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
+		TokenID:              &token.ID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        postgresconnector.Kind,
+		ActionName:           postgresconnector.ActionGetSchemas,
+		Input:                map[string]any{},
+		EncryptedPayloadJSON: "encrypted-payload",
+		Status:               connectors.ResultApprovalPending,
+	})
+	if err != nil {
+		t.Fatalf("insert pending profile request: %v", err)
+	}
+	updateProfile := performJSON(fixture.server.Handler(), http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles/"+strconv.FormatInt(profile.ID, 10), "", updateConnectorCredentialProfileRequest{
+		Kind:  "username_password",
+		Label: "readonly-renamed",
+		Public: map[string]any{
+			"username": "app_readonly",
+		},
+		RiskLabel: "read-only",
+	})
+	if updateProfile.Code != http.StatusOK {
+		t.Fatalf("update connector profile failed: %d %s", updateProfile.Code, updateProfile.Body.String())
+	}
+	gotPendingProfile, err := store.GetActionRequest(ctx, pendingProfile.ID)
+	if err != nil {
+		t.Fatalf("get pending profile request: %v", err)
+	}
+	if gotPendingProfile.Status != connectors.ResultStale || gotPendingProfile.ApprovalContextDrift != "profile" {
+		t.Fatalf("pending profile request should be stale after profile update: %#v", gotPendingProfile)
+	}
+}
+
 func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 	for name, mutate := range map[string]func(*testing.T, apiTestFixture, tokens.CreateResponse){
 		"revoked": func(t *testing.T, fixture apiTestFixture, token tokens.CreateResponse) {

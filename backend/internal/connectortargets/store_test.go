@@ -455,9 +455,10 @@ func TestStoreFinishActionRequestDoesNotOverwriteStaleRequest(t *testing.T) {
 		t.Fatalf("insert running request: %v", err)
 	}
 	if _, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
-		TargetID:  target.ID,
-		ProfileID: profile.ID,
-		Error:     "target changed",
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		Error:          "target changed",
+		IncludeRunning: true,
 	}); err != nil {
 		t.Fatalf("mark stale: %v", err)
 	}
@@ -714,10 +715,11 @@ func TestStoreStaleActionRequestsForTarget(t *testing.T) {
 	}
 
 	result, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
-		TargetID:      target.ID,
-		ProfileID:     profile.ID,
-		Error:         "target deleted",
-		ApprovalDrift: "profile",
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		Error:          "target deleted",
+		ApprovalDrift:  "profile",
+		IncludeRunning: true,
 	})
 	if err != nil {
 		t.Fatalf("stale action requests: %v", err)
@@ -740,6 +742,66 @@ func TestStoreStaleActionRequestsForTarget(t *testing.T) {
 	}
 	if unchanged.Status != connectors.ResultCompleted || unchanged.Error != "" || unchanged.CompletedAt != nil {
 		t.Fatalf("completed request should remain unchanged: %#v", unchanged)
+	}
+}
+
+func TestStoreStaleActionRequestsForTargetLeavesRunningByDefault(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	pending, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "get_tables",
+		Input:         map[string]any{},
+		Status:        connectors.ResultApprovalPending,
+	})
+	if err != nil {
+		t.Fatalf("insert pending action request: %v", err)
+	}
+	running, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID:       &tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "query_readonly",
+		Input:         map[string]any{"sql": "select 1"},
+		Status:        connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert running action request: %v", err)
+	}
+
+	result, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		Error:         "target updated",
+		ApprovalDrift: "profile",
+	})
+	if err != nil {
+		t.Fatalf("stale action requests: %v", err)
+	}
+	if result.Affected != 1 || len(result.IDs) != 1 || result.IDs[0] != pending.ID {
+		t.Fatalf("unexpected stale result: %#v", result)
+	}
+	gotPending, err := store.GetActionRequest(ctx, pending.ID)
+	if err != nil {
+		t.Fatalf("read pending request: %v", err)
+	}
+	if gotPending.Status != connectors.ResultStale {
+		t.Fatalf("pending request should be stale: %#v", gotPending)
+	}
+	gotRunning, err := store.GetActionRequest(ctx, running.ID)
+	if err != nil {
+		t.Fatalf("read running request: %v", err)
+	}
+	if gotRunning.Status != connectors.ResultRunning {
+		t.Fatalf("running request should remain running by default: %#v", gotRunning)
 	}
 }
 

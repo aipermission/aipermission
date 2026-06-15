@@ -5,6 +5,7 @@ import { Dialog } from "../ui/dialog";
 import { Badge } from "../ui/badge";
 import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
+import { connectorActionRiskLabel, connectorActionRiskTone } from "../../lib/connector-action-risks";
 
 const emptyLoad = { state: "idle", catalog: [], targets: [], actionsByProfile: {}, permissions: [], error: null };
 
@@ -149,7 +150,7 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
                         <span className="truncate font-semibold text-stone-950">{row.target.name}</span>
                         <Badge tone="neutral">{connectorLabel(load.catalog, row.target.connector_kind)}</Badge>
                         <Badge tone="neutral">{row.profile.label}</Badge>
-                        <Badge tone={row.action.risk === "read" ? "good" : "warn"}>{row.action.risk}</Badge>
+                        <Badge tone={connectorActionRiskTone(row.action.risk)}>{connectorActionRiskLabel(row.action.risk)}</Badge>
                       </div>
                       <span className="truncate font-mono text-xs text-stone-700">{row.action.name}</span>
                       <span className="line-clamp-2 text-xs text-stone-500">{row.action.description}</span>

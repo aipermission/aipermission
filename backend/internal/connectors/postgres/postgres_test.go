@@ -150,8 +150,12 @@ func TestPrepareReadonlyQueryRejectsUnsafeSQL(t *testing.T) {
 		"",
 		"update users set admin = true",
 		"select 1; drop table users",
+		"select * into temp exported_users from users",
 		"with deleted as (delete from users returning *) select * from deleted",
 		"listen events",
+		"notify events, 'changed'",
+		"set statement_timeout = 0",
+		"execute prepared_query",
 	} {
 		_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
 			Target:     connectors.TargetView{Ref: "postgres:7:11", ConnectorKind: Kind},

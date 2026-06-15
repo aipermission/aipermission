@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -137,6 +138,7 @@ func activeSupportedConnectorPermissions(ctx context.Context, runtime *databaseR
 	registry := runtime.connectorRegistry()
 	type actionCatalog struct {
 		names map[string]bool
+		skip  bool
 		err   error
 	}
 	catalogs := map[string]actionCatalog{}
@@ -148,11 +150,15 @@ func activeSupportedConnectorPermissions(ctx context.Context, runtime *databaseR
 			catalog = actionCatalog{names: map[string]bool{}}
 			target, profile, resolveErr := connectorTargetProfileViews(ctx, store, permission.TargetID, permission.ProfileID)
 			if resolveErr != nil {
-				catalog.err = resolveErr
+				if errors.Is(resolveErr, connectortargets.ErrTargetNotFound) || errors.Is(resolveErr, connectortargets.ErrTargetProfileNotFound) {
+					catalog.skip = true
+				} else {
+					catalog.err = resolveErr
+				}
 			} else {
 				connector, exists := registry.Get(target.ConnectorKind)
 				if !exists {
-					catalog.err = connectortargets.ValidationError("unsupported connector kind")
+					catalog.skip = true
 				} else {
 					actions, actionsErr := connector.GetActionList(ctx, target, profile)
 					if actionsErr != nil {
@@ -167,6 +173,9 @@ func activeSupportedConnectorPermissions(ctx context.Context, runtime *databaseR
 				}
 			}
 			catalogs[cacheKey] = catalog
+		}
+		if catalog.skip {
+			continue
 		}
 		if catalog.err != nil {
 			return nil, catalog.err

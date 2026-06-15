@@ -237,6 +237,76 @@ func TestUnifiedTargetListIncludesSSHAndConnectorProfiles(t *testing.T) {
 	}
 }
 
+func TestTargetsListDoesNotCreateRuntimeSurfacesOnRead(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+	ctx := context.Background()
+	key, err := fixture.sshKeys.Create(ctx, sshkeys.CreateRequest{Name: "lazy-key", KeyType: sshkeys.TypeED25519})
+	if err != nil {
+		t.Fatalf("create ssh key: %v", err)
+	}
+	store := connectortargets.NewStore(fixture.db)
+	target, err := store.CreateTarget(ctx, connectortargets.CreateTargetInput{
+		ConnectorKind: "ssh",
+		Name:          "lazy-ssh",
+		Config:        map[string]any{"host": "127.0.0.1", "port": 22},
+	})
+	if err != nil {
+		t.Fatalf("create ssh target: %v", err)
+	}
+	profile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
+		TargetID:      target.ID,
+		ConnectorKind: "ssh",
+		Kind:          "private_key",
+		Label:         "root",
+		Public:        map[string]any{"username": "root", "ssh_key_id": key.ID, "key_name": key.Name, "key_type": key.KeyType, "fingerprint": key.Fingerprint},
+	})
+	if err != nil {
+		t.Fatalf("create ssh profile: %v", err)
+	}
+
+	response := performJSON(handler, http.MethodGet, "/api/targets", "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list targets failed: %d %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"target_id":`+strconv.FormatInt(target.ID, 10)) {
+		t.Fatalf("surface-less target profile should still be listed: %s", response.Body.String())
+	}
+	listedPage := decodeRouteResponse[struct {
+		Items []targetProfileItem `json:"items"`
+	}](t, response.Body.Bytes())
+	found := false
+	for _, item := range listedPage.Items {
+		if item.TargetID == target.ID && item.ProfileID == profile.ID {
+			found = true
+			if item.RuntimeID != 0 {
+				t.Fatalf("list targets should not expose runtime surface for profile without one: %#v", item)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("surface-less target profile was not listed: %#v", listedPage.Items)
+	}
+	var count int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM connector_runtime_surfaces WHERE target_id = ? AND profile_id = ?`, target.ID, profile.ID).Scan(&count); err != nil {
+		t.Fatalf("count runtime surfaces: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("list targets created %d runtime surfaces", count)
+	}
+
+	updateResponse := performJSON(handler, http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", updateConnectorTargetRequest{
+		Name:   "lazy-ssh-renamed",
+		Config: map[string]any{"host": "127.0.0.1", "port": 22},
+	})
+	if updateResponse.Code != http.StatusOK {
+		t.Fatalf("update connector target failed: %d %s", updateResponse.Code, updateResponse.Body.String())
+	}
+	if _, err := store.GetRuntimeSurfaceByProfile(ctx, "ssh", target.ID, profile.ID, connectortargets.RuntimeCapabilityLiveConsole); err != nil {
+		t.Fatalf("target update should create runtime surface for live-console profile: %v", err)
+	}
+}
+
 func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
@@ -320,6 +390,23 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	listPermissions := performJSON(handler, http.MethodGet, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions", "", nil)
 	if listPermissions.Code != http.StatusOK || !strings.Contains(listPermissions.Body.String(), `"profile_label":"readonly"`) {
 		t.Fatalf("list connector permissions failed: %d %s", listPermissions.Code, listPermissions.Body.String())
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := fixture.db.Exec(`
+		INSERT INTO token_connector_action_permissions (
+			token_id, target_id, profile_id, action_name, execution_rule, created_at, updated_at
+		) VALUES (?, ?, ?, 'removed_action', 'always_run', ?, ?)`,
+		token.ID,
+		target.ID,
+		profile.ID,
+		now,
+		now,
+	); err != nil {
+		t.Fatalf("insert stale connector permission: %v", err)
+	}
+	listWithStalePermission := performJSON(handler, http.MethodGet, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions", "", nil)
+	if listWithStalePermission.Code != http.StatusOK || strings.Contains(listWithStalePermission.Body.String(), "removed_action") || !strings.Contains(listWithStalePermission.Body.String(), "query_readonly") {
+		t.Fatalf("stale connector permission should be filtered without hiding supported permissions: %d %s", listWithStalePermission.Code, listWithStalePermission.Body.String())
 	}
 	badPermission := performJSON(handler, http.MethodPut, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions", "", updateConnectorPermissionsRequest{
 		Permissions: []connectorPermissionInput{
@@ -523,6 +610,47 @@ func TestConnectorTargetWithProfileRoutesAreAtomic(t *testing.T) {
 	}
 	if targetName != "atomic-db" || !strings.Contains(targetConfig, `"database":"app"`) || strings.Contains(targetConfig, "app2") {
 		t.Fatalf("failed atomic update changed target: name=%q config=%s", targetName, targetConfig)
+	}
+}
+
+func TestSSHConnectorTargetWithProfileCreatesRuntimeSurface(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+	ctx := context.Background()
+	key, err := fixture.sshKeys.Create(ctx, sshkeys.CreateRequest{Name: "runtime-key", KeyType: sshkeys.TypeED25519})
+	if err != nil {
+		t.Fatalf("create ssh key: %v", err)
+	}
+
+	response := performJSON(handler, http.MethodPost, "/api/connector-targets/with-profile", "", createConnectorTargetWithProfileRequest{
+		Target: createConnectorTargetRequest{
+			ConnectorKind: "ssh",
+			Name:          "runtime-ssh",
+			Config:        map[string]any{"host": "127.0.0.1", "port": 22},
+		},
+		Profile: createConnectorCredentialProfileRequest{
+			Kind:  "private_key",
+			Label: "root",
+			Public: map[string]any{
+				"username":   "root",
+				"ssh_key_id": key.ID,
+			},
+		},
+	})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create ssh target with profile failed: %d %s", response.Code, response.Body.String())
+	}
+	target := decodeRouteResponse[connectorTargetResponse](t, response.Body.Bytes())
+	if target.ID < 1 || len(target.Profiles) != 1 {
+		t.Fatalf("unexpected ssh target response: %#v", target)
+	}
+	surface, err := connectortargets.NewStore(fixture.db).GetRuntimeSurfaceByProfile(ctx, "ssh", target.ID, target.Profiles[0].ID, connectortargets.RuntimeCapabilityLiveConsole)
+	if err != nil {
+		t.Fatalf("runtime surface was not created for ssh target profile: %v", err)
+	}
+	listResponse := performJSON(handler, http.MethodGet, "/api/targets", "", nil)
+	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), `"runtime_id":`+strconv.FormatInt(surface.ID, 10)) {
+		t.Fatalf("target list should expose precreated runtime surface: %d %s", listResponse.Code, listResponse.Body.String())
 	}
 }
 
@@ -1684,8 +1812,8 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restart request id: %v", err)
 	}
-	restartResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/targets/"+strconv.FormatInt(restartServer.ID, 10)+"/restart", "", map[string]any{})
-	if restartResponse.Code != http.StatusOK || !strings.Contains(restartResponse.Body.String(), `"status":"restarted"`) || !strings.Contains(restartResponse.Body.String(), `"target_id":`) {
+	restartResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/runtime-surfaces/"+strconv.FormatInt(restartServer.ID, 10)+"/restart", "", map[string]any{})
+	if restartResponse.Code != http.StatusOK || !strings.Contains(restartResponse.Body.String(), `"status":"restarted"`) || !strings.Contains(restartResponse.Body.String(), `"runtime_id":`) {
 		t.Fatalf("restart console session failed: %d %s", restartResponse.Code, restartResponse.Body.String())
 	}
 	var restartedSessionStatus string
