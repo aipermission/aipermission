@@ -193,18 +193,18 @@ export function ConnectorTokenPermissionPanel({
     const actions = load.actionsByTargetRef?.[connectorActionCacheKey(selectedTarget, profile.profile_id)] || [];
     const activePermissions = currentConnectorTargetProfilePermissions(permissions, selectedTarget, profile.profile_id);
     const lifetimeValue = connectorTargetProfileLifetime(permissions, selectedTarget, profile.profile_id);
+    const lifetimeEditable = activePermissions.some((permission) => effectiveRule(permission) !== "blocked");
     const categoryGroups = groupActions(actions);
     const riskGroups = groupActionsByRisk(actions);
     return (
       <div className="grid gap-2">
-        {activePermissions.length > 0 ? (
-          <ProfileLifetimeControls
-            value={lifetimeValue}
-            saving={savingKey === `${token.id}:${profile.profile_id}:lifetime`}
-            onSetPermanent={() => setProfileLifetime(token, profile.profile_id, "")}
-            onSetTemporary={(lifetime) => setProfileLifetime(token, profile.profile_id, expiresAtFromLifetime(lifetime))}
-          />
-        ) : null}
+        <ProfileLifetimeControls
+          value={lifetimeValue}
+          saving={savingKey === `${token.id}:${profile.profile_id}:lifetime`}
+          disabled={!lifetimeEditable}
+          onSetPermanent={() => setProfileLifetime(token, profile.profile_id, "")}
+          onSetTemporary={(lifetime) => setProfileLifetime(token, profile.profile_id, expiresAtFromLifetime(lifetime))}
+        />
         {actions.length > 0 ? <PermissionModeTabs value={permissionMode} onChange={setPermissionMode} /> : null}
         {permissionMode === "basic" && actions.length > 0 ? (
           <PermissionRuleGroup
@@ -375,15 +375,7 @@ function targetSupportsMessages(target) {
 }
 
 function ProfileSelect({ profiles, value, onChange }) {
-  if (profiles.length <= 1) {
-    const profile = profiles[0];
-    return profile ? (
-      <div className="flex items-center justify-between gap-2 rounded-md border border-stone-200 bg-white/70 px-2 py-1.5 text-xs">
-        <span className="font-semibold text-stone-600">Profile</span>
-        <span className="truncate font-medium text-stone-900">{profile.profile_label || "default"}</span>
-      </div>
-    ) : null;
-  }
+  if (profiles.length === 0) return null;
   return (
     <label className="grid gap-1 text-xs font-semibold text-stone-600">
       Profile
@@ -399,7 +391,8 @@ function ProfileSelect({ profiles, value, onChange }) {
   );
 }
 
-function ProfileLifetimeControls({ value, saving, onSetPermanent, onSetTemporary }) {
+function ProfileLifetimeControls({ value, saving, disabled, onSetPermanent, onSetTemporary }) {
+  const controlsDisabled = saving || disabled;
   return (
     <div className="dark-panel-subtle grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2 text-xs">
       <div className="flex items-center justify-between gap-2">
@@ -407,16 +400,16 @@ function ProfileLifetimeControls({ value, saving, onSetPermanent, onSetTemporary
         <span className="text-stone-500">{permissionLifetimeLabel(value)}</span>
       </div>
       <div className="grid grid-cols-4 gap-1">
-        <ConnectorRuleButton active={!value?.expires_at} disabled={saving} onClick={onSetPermanent}>
+        <ConnectorRuleButton active={!disabled && !value?.expires_at} disabled={controlsDisabled} onClick={onSetPermanent}>
           Keep
         </ConnectorRuleButton>
-        <ConnectorRuleButton active={false} disabled={saving} onClick={() => onSetTemporary("1h")}>
+        <ConnectorRuleButton active={false} disabled={controlsDisabled} onClick={() => onSetTemporary("1h")}>
           1h
         </ConnectorRuleButton>
-        <ConnectorRuleButton active={false} disabled={saving} onClick={() => onSetTemporary("4h")}>
+        <ConnectorRuleButton active={false} disabled={controlsDisabled} onClick={() => onSetTemporary("4h")}>
           4h
         </ConnectorRuleButton>
-        <ConnectorRuleButton active={false} disabled={saving} onClick={() => onSetTemporary("1d")}>
+        <ConnectorRuleButton active={false} disabled={controlsDisabled} onClick={() => onSetTemporary("1d")}>
           1d
         </ConnectorRuleButton>
       </div>
