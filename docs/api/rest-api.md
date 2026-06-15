@@ -317,8 +317,10 @@ contextual for labels, refs, and future validation metadata; it should not make
 the action catalog depend on network state or raw credential values.
 
 Postgres `query_readonly` is defense-in-depth, not a SQL sandbox. It rejects
-obvious writes, runs inside a read-only transaction, caps rows and output bytes,
-and applies a statement timeout, but operators should still use dedicated
+obvious writes plus session/transaction and dynamic-execution statements such as
+`SELECT INTO`, `SET`, `NOTIFY`, `PREPARE`, and `EXECUTE`. It also runs inside a
+read-only transaction, caps rows and output bytes, and applies a statement
+timeout, but operators should still use dedicated
 least-privilege database roles and prefer `approval_required` for ad-hoc
 queries over sensitive data.
 
@@ -332,6 +334,7 @@ GET  /api/console/sessions/{id}
 POST /api/console/sessions/{id}/input
 POST /api/console/sessions/{id}/close
 GET  /api/console/sessions/{id}/attach
+POST /api/console/runtime-surfaces/{id}/restart
 POST /api/console/targets/{id}/restart
 ```
 
@@ -818,6 +821,7 @@ GET    /api/console/sessions/{id}
 POST   /api/console/sessions/{id}/input
 POST   /api/console/sessions/{id}/close
 GET    /api/console/sessions/{id}/attach
+POST   /api/console/runtime-surfaces/{id}/restart
 POST   /api/console/targets/{id}/restart
 ```
 
@@ -827,11 +831,16 @@ Console websockets are locally hardened with bounded message size, client count,
 
 `close_existing=true` closes any open shell for the same server and starts a new one. The UI New Session action uses this.
 
-`POST /api/console/targets/{id}/restart` is the local UI recovery action for a
-stuck persistent console session. It closes live console sessions for that
-SSH connector target, marks running command requests for that target as `error`, writes an
-audit event, and lets the next command open a fresh SSH session. This route is
-protected by the UI session and CSRF checks.
+`POST /api/console/runtime-surfaces/{id}/restart` is the local UI recovery
+action for a stuck persistent console session. The id is the connector-profile
+runtime surface id, not a generic connector target id. It closes live console
+sessions for that runtime surface, marks running command requests for that
+runtime as `error`, writes an audit event, and lets the next command open a
+fresh connector runtime session. This route is protected by the UI session and
+CSRF checks.
+
+`POST /api/console/targets/{id}/restart` is a compatibility alias for the same
+runtime-surface recovery action.
 
 Attach WebSocket messages from the server include:
 

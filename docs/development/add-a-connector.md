@@ -234,6 +234,9 @@ connector-local:
 | `test` | yes | Run the saved target/profile connection test. |
 | `targetDisplayName` / `targetSubtitle` / `targetEndpoint` | yes | Labels used by generic target lists and console headers. |
 | `targetProfileLabel` | yes | Profile label shown in the Console token panel. |
+| `activeCredential` | yes | Pick the credential/profile shown as active for a selected target profile. |
+| `submitDisabled` / `submitLabel` | yes | Add/edit form affordances for connector-specific validation and copy. |
+| `syncForm` | yes | Reconcile connector form state when async resources, such as credential rows, load. |
 | `usesLiveConsole` | yes | `true` only for adapters that own a live terminal runtime. |
 | `deleteDialog` | yes | Copy and action buttons for target deletion. |
 | `emptyCredentialState`, `credentialStateFromRow`, `credentialFormProps`, `saveCredential`, `deleteCredential`, `credentialRows` | yes | Generic Credentials page integration. |
