@@ -87,14 +87,19 @@ export function ConnectorsPage() {
     try {
       const data = await apiGet("/api/connectors");
       const details = {};
-      await Promise.all(
+      const detailFailures = [];
+      await Promise.allSettled(
         (data.items || []).map(async (item) => {
-          details[item.kind] = await apiGet(`/api/connectors/${item.kind}`);
+          try {
+            details[item.kind] = await apiGet(`/api/connectors/${item.kind}`);
+          } catch (error) {
+            detailFailures.push({ kind: item.kind, error: error.message || "failed to load connector details" });
+          }
         })
       );
-      setCatalog({ state: "ready", data: data.items || [], details, error: null });
+      setCatalog({ state: "ready", data: data.items || [], details, detailFailures, error: null });
     } catch (error) {
-      setCatalog({ state: "error", data: [], details: {}, error: error.message });
+      setCatalog({ state: "error", data: [], details: {}, detailFailures: [], error: error.message });
     }
   }
 
@@ -565,6 +570,9 @@ function connectorCatalogWarnings(catalog) {
   }
   if (frontendOnly.length > 0) {
     warnings.push(`Frontend connector template has no matching backend connector: ${frontendOnly.join(", ")}.`);
+  }
+  for (const failure of catalog.detailFailures || []) {
+    warnings.push(`Backend connector detail failed for ${failure.kind}: ${failure.error}.`);
   }
   return warnings;
 }

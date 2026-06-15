@@ -35,6 +35,7 @@ const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "conne
 const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "connectors", "templates", "target-profile-save.js"), "utf8");
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
 const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "catalog.js"), "utf8");
+const backendConnectorRegistrySource = readFileSync(join(currentDir, "..", "..", "..", "backend", "internal", "connectors", "builtin", "registry.go"), "utf8");
 const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
@@ -58,6 +59,21 @@ const postgresConnectorModelSource = readFileSync(join(currentDir, "..", "connec
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function backendRegisteredConnectorKinds(source) {
+  const connectorImports = new Map();
+  for (const match of source.matchAll(/(\w+)\s+"github\.com\/aipermission\/aipermission\/backend\/internal\/connectors\/([^"]+)"/g)) {
+    const alias = match[1];
+    const parts = match[2].split("/");
+    connectorImports.set(alias, parts[0]);
+  }
+  const kinds = [];
+  for (const match of source.matchAll(/(\w+)\.New\(\)/g)) {
+    const kind = connectorImports.get(match[1]);
+    if (kind) kinds.push(kind);
+  }
+  return [...new Set(kinds)].sort();
 }
 
 test("App keeps the primary route surface available", () => {
@@ -156,6 +172,7 @@ test("Connectors page wires generic connector templates", () => {
 test("Connector template folders are registered in catalog and registry", () => {
   assert.ok(connectorTemplateKinds.includes("postgres"));
   assert.ok(connectorTemplateKinds.includes("ssh"));
+  assert.deepEqual(backendRegisteredConnectorKinds(backendConnectorRegistrySource), connectorTemplateKinds);
   for (const kind of connectorTemplateKinds) {
     const indexSource = readFileSync(join(connectorTemplatesDir, kind, "index.jsx"), "utf8");
     const metadataSource = readFileSync(join(connectorTemplatesDir, kind, "metadata.json"), "utf8");
