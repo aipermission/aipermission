@@ -101,6 +101,12 @@ action execution, but existing action requests remain readable so history and
 audit can prove what happened. Late async finishers must not overwrite terminal
 states such as `stale`, `canceled`, or `completed`.
 
+Every action definition must expose a stable machine name plus a non-empty label
+and description. Action input schemas and prepared execution payload keys must
+not model secrets such as `password`, `token`, `api_key`, or `private_key`.
+Secrets belong in credential profiles and are available only during approved
+execution through runtime secret access.
+
 Actions that return `running` need a runtime adapter owned by the gateway API
 layer. The adapter is responsible for polling/finalizing the action, redacting
 intermediate responses, syncing history, and providing MCP assistant hints.

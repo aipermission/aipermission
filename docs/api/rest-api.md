@@ -352,7 +352,7 @@ count:
   "target_ids": [3, 4, 7],
   "command": "apt update",
   "reason": "weekly package metadata refresh",
-  "confirmation": "RUN ON 3 SERVERS"
+  "confirmation": "RUN ON 3 TARGETS"
 }
 ```
 

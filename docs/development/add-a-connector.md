@@ -118,7 +118,8 @@ A connector implementation must provide:
 - target schema fields for connection settings
 - credential profile schema fields for secrets and identity
 - `GetHelp` content for MCP/operator guidance
-- `GetActionList` action metadata for one target/profile
+- `GetActionList` action metadata for one target/profile, including stable
+  action names plus non-empty labels and descriptions
 - `PrepareAction` validation and normalized action input
 - `ExecuteAction` transport-specific execution
 
@@ -152,6 +153,9 @@ tokens, private keys, and tenant-specific secret material in credential profile
 schemas so the gateway can encrypt and redact them consistently. `PrepareAction`
 may validate references to credential profile metadata, but raw secrets are
 available only through `RuntimeContext.Secrets` during approved execution.
+Prepared action payload keys must also avoid secret-looking field names such as
+`password`, `token`, `api_key`, or `private_key`; the action service rejects
+those payloads so connector secrets stay in credential profiles.
 For connector-specific output fields that contain sensitive material, set
 `ActionDefinition.OutputHint.SensitiveFields`. The gateway masks those field
 names in structured output before returning MCP responses or persisting
