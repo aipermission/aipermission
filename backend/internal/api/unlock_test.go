@@ -182,6 +182,72 @@ func TestUnlockRejectsMissingDatabaseAndBadIDs(t *testing.T) {
 	}
 }
 
+func TestUnlockReportsUnsupportedPre02Database(t *testing.T) {
+	server := newLockedAPITestServer(t)
+	handler := server.Handler()
+	defer server.Close()
+
+	id, path, err := dbpkg.NewDatabasePath(server.config.DataPath, "Legacy Database")
+	if err != nil {
+		t.Fatalf("database path: %v", err)
+	}
+	database, err := dbpkg.OpenEncrypted(path, "LegacyPassword123")
+	if err != nil {
+		t.Fatalf("create database: %v", err)
+	}
+	if _, err := database.Exec(`UPDATE schema_migrations SET description = 'initial schema' WHERE version = 1`); err != nil {
+		t.Fatalf("mark database as legacy: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+
+	response := performJSON(handler, http.MethodPost, "/api/unlock", "", unlockRequest{
+		DatabaseID: id,
+		Password:   "LegacyPassword123",
+	})
+	if response.Code != http.StatusConflict {
+		t.Fatalf("unsupported database should return conflict, got %d %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "unsupported pre-0.2") {
+		t.Fatalf("expected unsupported database message, got %s", response.Body.String())
+	}
+}
+
+func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
+	server := newLockedAPITestServer(t)
+	handler := server.Handler()
+	defer server.Close()
+
+	id, path, err := dbpkg.NewDatabasePath(server.config.DataPath, "Old Preview")
+	if err != nil {
+		t.Fatalf("database path: %v", err)
+	}
+	database, err := dbpkg.OpenEncryptedForMigration(path, "OldPassword123")
+	if err != nil {
+		t.Fatalf("create old database: %v", err)
+	}
+	if _, err := database.Exec(`CREATE TABLE legacy_marker (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatalf("write old database: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close old database: %v", err)
+	}
+
+	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "wrong"}); response.Code != http.StatusUnauthorized {
+		t.Fatalf("delete locked database with wrong password should fail, got %d %s", response.Code, response.Body.String())
+	}
+	if !dbpkg.Exists(path) {
+		t.Fatalf("database should remain after failed delete")
+	}
+	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "OldPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
+		t.Fatalf("delete locked database failed: %d %s", response.Code, response.Body.String())
+	}
+	if dbpkg.Exists(path) {
+		t.Fatalf("database file should be removed after locked delete")
+	}
+}
+
 func TestSwitchDatabaseRejectsMissingDatabaseWithoutCreatingIt(t *testing.T) {
 	server := newLockedAPITestServer(t)
 	handler := server.Handler()

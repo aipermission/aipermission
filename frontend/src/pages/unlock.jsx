@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { LockKeyhole, Upload } from "lucide-react";
+import { ExternalLink, LockKeyhole, Trash2, Upload } from "lucide-react";
 import { apiPost, apiPostForm } from "../lib/api";
 import { Button } from "../components/ui/button";
+import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
@@ -13,9 +14,13 @@ export function UnlockPage({ status, onUnlocked }) {
   const selectedDatabase = databases.find((database) => database.id === selectedDatabaseID) || databases[0] || null;
   const hasDatabase = Boolean(selectedDatabase);
   const selectedUnsupported = selectedDatabase?.state === "unsupported_plaintext";
+  const [migrationRequiredIDs, setMigrationRequiredIDs] = useState({});
+  const selectedMigrationRequired = Boolean(selectedDatabase && migrationRequiredIDs[selectedDatabase.id]);
   const [activeTab, setActiveTab] = useState(hasDatabase ? "unlock" : "create");
   const [createForm, setCreateForm] = useState({ database_name: "", password: "", confirm_password: "" });
   const [unlockForm, setUnlockForm] = useState({ password: "" });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, password: "", state: "idle", error: null });
+  const [toast, setToast] = useState("");
   const [importForm, setImportForm] = useState({ file: null, database_password: "" });
   const [createState, setCreateState] = useState({ state: "idle", error: null });
   const [unlockState, setUnlockState] = useState({ state: "idle", error: null });
@@ -41,6 +46,11 @@ export function UnlockPage({ status, onUnlocked }) {
   ];
   const createPasswordValid = isValidDatabasePassword(createForm.password);
 
+  function showToast(message) {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2400);
+  }
+
   async function createDatabase(event) {
     event.preventDefault();
     setCreateState({ state: "saving", error: null });
@@ -63,31 +73,66 @@ export function UnlockPage({ status, onUnlocked }) {
       await apiPost("/api/unlock", { database_id: selectedDatabase?.id, password: unlockForm.password });
       await onUnlocked();
     } catch (error) {
+      if (isMigrationRequiredError(error) && selectedDatabase?.id) {
+        setMigrationRequiredIDs((current) => ({ ...current, [selectedDatabase.id]: true }));
+      }
       setUnlockState({ state: "error", error: error.message });
     }
   }
 
-	async function importDatabase(event) {
-		event.preventDefault();
-		if (!importForm.file) {
+  function openDeleteDialog() {
+    setDeleteDialog({ open: true, password: "", state: "idle", error: null });
+  }
+
+  function closeDeleteDialog() {
+    setDeleteDialog((current) => ({ ...current, open: false }));
+  }
+
+  async function deleteLockedDatabase(event) {
+    event.preventDefault();
+    if (!selectedDatabase) return;
+    setDeleteDialog((current) => ({ ...current, state: "deleting", error: null }));
+    try {
+      await apiPost("/api/databases/delete-locked", {
+        database_id: selectedDatabase.id,
+        current_password: deleteDialog.password,
+      });
+      setDeleteDialog({ open: false, password: "", state: "idle", error: null });
+      setUnlockForm({ password: "" });
+      setMigrationRequiredIDs((current) => {
+        const next = { ...current };
+        delete next[selectedDatabase.id];
+        return next;
+      });
+      await onUnlocked();
+      showToast("Local database deleted.");
+    } catch (error) {
+      setDeleteDialog((current) => ({ ...current, state: "error", error: error.message }));
+    }
+  }
+
+  async function importDatabase(event) {
+    event.preventDefault();
+    if (!importForm.file) {
       setImportState({ state: "error", error: "Database file is required" });
       return;
-		}
-		setImportState({ state: "importing", error: null });
-		try {
-			const formData = new FormData();
-			formData.set("sqlite", importForm.file, importForm.file.name);
-			formData.set("database_password", importForm.database_password);
-			formData.set("database_name", createForm.database_name);
-			await apiPostForm("/api/backup/import", formData);
-			await onUnlocked();
-		} catch (error) {
+    }
+    setImportState({ state: "importing", error: null });
+    try {
+      const formData = new FormData();
+      formData.set("sqlite", importForm.file, importForm.file.name);
+      formData.set("database_password", importForm.database_password);
+      formData.set("database_name", createForm.database_name);
+      await apiPostForm("/api/backup/import", formData);
+      await onUnlocked();
+    } catch (error) {
       setImportState({ state: "error", error: error.message });
     }
   }
 
   return (
     <UnlockShell title={hasDatabase ? "Select database" : "Database setup"}>
+      {toast ? <Toast message={toast} /> : null}
       {databases.length > 0 ? (
         <div className="grid gap-2">
           <label className="text-sm font-semibold text-stone-800">Database</label>
@@ -109,6 +154,11 @@ export function UnlockPage({ status, onUnlocked }) {
       ) : null}
       {selectedUnsupported ? (
         <Notice tone="bad">This file is a plaintext SQLite database. AIPermission only supports SQLCipher-encrypted .aipdb databases.</Notice>
+      ) : null}
+      {selectedMigrationRequired ? (
+        <Notice tone="warn">
+          This database uses the pre-0.2 schema. Open the local migration helper, migrate it into a new 0.2 database, then delete this old local copy when you no longer need it.
+        </Notice>
       ) : null}
       <div className="grid rounded-md border border-stone-200 bg-stone-100 p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
         {tabs.map(([value, label]) => (
@@ -138,10 +188,29 @@ export function UnlockPage({ status, onUnlocked }) {
             />
           </div>
           {unlockState.state === "error" ? <Notice tone="bad">{unlockState.error}</Notice> : null}
-          <Button type="submit" disabled={unlockState.state === "unlocking" || selectedUnsupported}>
+          {selectedMigrationRequired ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button type="button" asChild>
+                <a href="http://localhost:3211" target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Open migration helper
+                </a>
+              </Button>
+              <Button type="button" variant="danger" onClick={openDeleteDialog}>
+                <Trash2 className="h-4 w-4" />
+                Delete old local copy
+              </Button>
+            </div>
+          ) : null}
+          <Button type="submit" disabled={unlockState.state === "unlocking" || selectedUnsupported || selectedMigrationRequired}>
             <LockKeyhole className="h-4 w-4" />
             {unlockState.state === "unlocking" ? "Unlocking..." : "Unlock"}
           </Button>
+          {!selectedMigrationRequired && selectedDatabase ? (
+            <button type="button" className="justify-self-center text-sm font-semibold text-red-700 hover:text-red-800" onClick={openDeleteDialog}>
+              Delete this local database
+            </button>
+          ) : null}
         </form>
       ) : null}
 
@@ -228,7 +297,57 @@ export function UnlockPage({ status, onUnlocked }) {
           </Button>
         </form>
       ) : null}
+      <Dialog
+        open={deleteDialog.open}
+        title="Delete local database"
+        description={selectedDatabase ? `Delete ${selectedDatabase.name} from this local gateway.` : ""}
+        onClose={closeDeleteDialog}
+        closeDisabled={deleteDialog.state === "deleting"}
+        closeOnOverlay={false}
+        size="md"
+      >
+        <form className="grid gap-4" onSubmit={deleteLockedDatabase}>
+          <Notice tone="bad">
+            This only removes the local database file from this gateway. If you have not migrated or backed it up, its local configuration will be lost.
+          </Notice>
+          <div className="rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
+            <span className="font-semibold text-stone-900">Database:</span> {selectedDatabase?.name || "Unknown"}
+          </div>
+          <div className="grid gap-2">
+            <label className="text-sm font-semibold text-stone-800">Database password</label>
+            <Input
+              type="password"
+              value={deleteDialog.password}
+              onChange={(event) => setDeleteDialog((current) => ({ ...current, password: event.target.value }))}
+              autoFocus
+              required
+            />
+          </div>
+          {deleteDialog.state === "error" ? <Notice tone="bad">{deleteDialog.error}</Notice> : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={closeDeleteDialog} disabled={deleteDialog.state === "deleting"}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="danger" disabled={deleteDialog.state === "deleting" || !deleteDialog.password}>
+              <Trash2 className="h-4 w-4" />
+              {deleteDialog.state === "deleting" ? "Deleting..." : "Delete permanently"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </UnlockShell>
+  );
+}
+
+function isMigrationRequiredError(error) {
+  return error?.status === 409 && /pre-0\.2|non-baseline schema|migration helper/i.test(error?.message || "");
+}
+
+function Toast({ message }) {
+  return (
+    <div role="status" aria-live="polite" className="fixed right-5 top-5 z-[80] rounded-md border border-stone-700 bg-stone-950 px-4 py-3 text-sm font-semibold text-white shadow-xl">
+      {message}
+    </div>
   );
 }
 

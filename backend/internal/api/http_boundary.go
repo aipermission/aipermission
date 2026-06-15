@@ -117,7 +117,7 @@ func looksLikeBrowserMutation(r *http.Request) bool {
 func isLifecycleMutation(path string) bool {
 	switch path {
 	case "/api/unlock/setup", "/api/unlock", "/api/lock",
-		"/api/databases/rename", "/api/databases/delete", "/api/databases/switch", "/api/databases/change-password",
+		"/api/databases/rename", "/api/databases/delete", "/api/databases/delete-locked", "/api/databases/switch", "/api/databases/change-password",
 		"/api/backup/import":
 		return true
 	default:

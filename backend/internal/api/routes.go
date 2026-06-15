@@ -76,6 +76,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/backup/import", backup.importDatabase)
 	s.mux.HandleFunc("POST /api/databases/rename", databases.renameDatabase)
 	s.mux.HandleFunc("POST /api/databases/delete", databases.deleteDatabase)
+	s.mux.HandleFunc("POST /api/databases/delete-locked", databases.deleteLockedDatabase)
 	s.mux.HandleFunc("POST /api/databases/switch", databases.switchDatabase)
 	s.mux.HandleFunc("POST /api/databases/change-password", databases.changeDatabasePassword)
 	s.mux.HandleFunc("POST /api/console/bulk-exec", console.runBulkConsoleCommand)

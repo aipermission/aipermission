@@ -17,6 +17,11 @@ type deleteDatabaseRequest struct {
 	CurrentPassword string `json:"current_password"`
 }
 
+type deleteLockedDatabaseRequest struct {
+	DatabaseID      string `json:"database_id"`
+	CurrentPassword string `json:"current_password"`
+}
+
 type switchDatabaseRequest struct {
 	DatabaseID string `json:"database_id"`
 	Password   string `json:"password"`
@@ -134,6 +139,62 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		"status":      "deleted",
 		"state":       state,
 		"database_id": s.activeDatabase,
+		"deleted_at":  time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Request) {
+	var request deleteLockedDatabaseRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	defer clearStringReferences(&request.CurrentPassword)
+	request.DatabaseID = strings.TrimSpace(request.DatabaseID)
+	if request.DatabaseID == "" {
+		writeError(w, http.StatusBadRequest, "database id is required")
+		return
+	}
+	if request.CurrentPassword == "" {
+		writeError(w, http.StatusBadRequest, "database password is required")
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	targetPath, targetID, err := s.unlockTargetPathLocked(request.DatabaseID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if runtime := s.workspaces[targetID]; runtime != nil {
+		writeError(w, http.StatusConflict, "database is currently unlocked; lock it before deleting from the unlock screen")
+		return
+	}
+	if !dbpkg.Exists(targetPath) {
+		writeError(w, http.StatusNotFound, "encrypted database is not initialized")
+		return
+	}
+	if dbpkg.LooksLikePlainSQLite(targetPath) {
+		writeError(w, http.StatusConflict, "plaintext SQLite databases are not supported; remove this file manually")
+		return
+	}
+	if err := dbpkg.ValidateEncrypted(targetPath, request.CurrentPassword); err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid database password")
+		return
+	}
+	if err := dbpkg.DeleteDatabase(targetPath); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if s.activeDatabase == targetID {
+		s.activeDataPath = s.config.DataPath
+		s.activeDatabase = dbpkg.DefaultDatabaseID(s.config.DataPath)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":      "deleted",
+		"state":       "locked",
+		"database_id": targetID,
 		"deleted_at":  time.Now().UTC().Format(time.RFC3339),
 	})
 }

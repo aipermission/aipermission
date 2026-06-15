@@ -28,6 +28,7 @@ POST /api/backup/import
 POST /api/databases/switch
 POST /api/databases/rename
 POST /api/databases/delete
+POST /api/databases/delete-locked
 POST /api/databases/change-password
 POST /api/lock
 ```
@@ -41,6 +42,12 @@ Most `/api/*` application endpoints return `423 Locked` until a database is unlo
 Database unlock is process state. Closing the browser does not lock the backend. If the browser session cookie is deleted or expires while the backend remains unlocked, `GET /api/unlock/status` returns `state: "session_required"` and the UI asks for the same database password to issue a new session cookie. Unlock status lists database IDs/names/states for the UI, but omits local filesystem paths. `Switch` can move the UI context to another already-unlocked database without stopping work in the previous workspace.
 
 If a target database is locked, `switch` requires its password. If the same API token exists in more than one unlocked database, MCP authentication returns `409 Conflict`.
+
+`POST /api/databases/delete-locked` is available from the locked unlock screen
+for local database cleanup. It requires the selected database id and that
+database password, validates the encrypted file without running schema
+migrations, and deletes only the local database file. It is intended for
+removing old pre-0.2 source databases after migration.
 
 ## Connector Catalog And Targets
 
