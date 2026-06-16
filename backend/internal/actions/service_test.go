@@ -401,3 +401,82 @@ func TestServicePrepareRejectsSecretLikePreparedPayloadFields(t *testing.T) {
 		t.Fatalf("expected secret payload field rejection, got %v", err)
 	}
 }
+
+func TestServicePrepareAllowsNonSecretCredentialReferences(t *testing.T) {
+	registry := connectors.NewRegistry()
+	prepared := connectors.PreparedAction{
+		ConnectorKind: "api",
+		TargetRef:     "api:1:2",
+		ProfileID:     2,
+		ActionName:    "call_action",
+		Risk:          connectors.RiskRead,
+		Payload: map[string]any{
+			"credential_id":   "profile-2",
+			"credential_kind": "api_key",
+			"credential_ref":  "api:1:2",
+		},
+	}
+	connector := &prepareConnector{
+		kind: "api",
+		actions: []connectors.ActionDefinition{{
+			Name:        "call_action",
+			Label:       "Call action",
+			Description: "Call a test action.",
+			Risk:        connectors.RiskRead,
+		}},
+		prepared: &prepared,
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target: connectors.TargetView{
+			ID:            1,
+			Ref:           "api:1:2",
+			ConnectorKind: "api",
+			Name:          "Test API",
+		},
+		profile: connectors.CredentialProfileView{
+			ID:            2,
+			TargetID:      1,
+			ConnectorKind: "api",
+			Kind:          "api_key",
+			Label:         "default",
+		},
+	})
+
+	if _, err := service.Prepare(context.Background(), PrepareRequest{
+		TargetRef:  "api:1:2",
+		ActionName: "call_action",
+	}); err != nil {
+		t.Fatalf("prepare should allow non-secret credential references: %v", err)
+	}
+}
+
+func TestLooksLikeSecretField(t *testing.T) {
+	tests := map[string]bool{
+		"api_key":             true,
+		"user_api_key":        true,
+		"authorization":       true,
+		"bearer":              true,
+		"credential":          true,
+		"credential_hash":     true,
+		"credential_id":       false,
+		"credential_kind":     false,
+		"credential_ref":      false,
+		"credential_value":    true,
+		"password":            true,
+		"private_key_pem":     true,
+		"profile_id":          false,
+		"refresh_token":       true,
+		"tenant_secret_value": true,
+	}
+
+	for field, want := range tests {
+		t.Run(field, func(t *testing.T) {
+			if got := looksLikeSecretField(field); got != want {
+				t.Fatalf("looksLikeSecretField(%q) = %v, want %v", field, got, want)
+			}
+		})
+	}
+}

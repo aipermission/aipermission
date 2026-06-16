@@ -198,11 +198,70 @@ func secretPayloadField(value any) (string, bool) {
 }
 
 func looksLikeSecretField(key string) bool {
-	normalized := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(key))
-	for _, marker := range []string{"password", "passwd", "token", "secret", "apikey", "privatekey", "authorization", "bearer", "credential"} {
-		if strings.Contains(normalized, marker) {
+	parts := secretFieldParts(key)
+	compact := strings.Join(parts, "")
+	if compact == "" {
+		return false
+	}
+	exactSecrets := map[string]bool{
+		"apikey":           true,
+		"authorization":    true,
+		"bearer":           true,
+		"credential":       true,
+		"credentialhash":   true,
+		"credentialsecret": true,
+		"credentialvalue":  true,
+		"password":         true,
+		"passwd":           true,
+		"privatekey":       true,
+		"secret":           true,
+		"token":            true,
+	}
+	if exactSecrets[compact] {
+		return true
+	}
+	if strings.HasSuffix(compact, "apikey") || strings.HasSuffix(compact, "privatekey") {
+		return true
+	}
+	secretParts := map[string]bool{
+		"authorization": true,
+		"bearer":        true,
+		"password":      true,
+		"passwd":        true,
+		"secret":        true,
+		"token":         true,
+	}
+	for index, part := range parts {
+		if secretParts[part] {
 			return true
+		}
+		if index+1 < len(parts) && ((part == "api" && parts[index+1] == "key") || (part == "private" && parts[index+1] == "key")) {
+			return true
+		}
+		if part == "credential" && index+1 < len(parts) {
+			switch parts[index+1] {
+			case "hash", "secret", "value":
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func secretFieldParts(key string) []string {
+	fields := strings.FieldsFunc(strings.ToLower(strings.TrimSpace(key)), func(r rune) bool {
+		switch r {
+		case '-', '_', ' ', '.', '/', ':':
+			return true
+		default:
+			return false
+		}
+	})
+	parts := fields[:0]
+	for _, field := range fields {
+		if field != "" {
+			parts = append(parts, field)
+		}
+	}
+	return parts
 }
