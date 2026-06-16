@@ -281,6 +281,39 @@ polish can stay on the same connector version.
 Route-level pages should render through the template registry. Avoid adding
 new `if kind === "redis"` branches to generic pages.
 
+## Normal Connector PR Boundary
+
+Most connector PRs should be normal structured connectors. They are welcome
+when they touch only connector-owned code plus the explicit registration,
+tests, and docs needed to ship the built-in:
+
+Expected for a normal connector:
+
+- `backend/internal/connectors/<kind>/`
+- backend registration in `backend/internal/connectors/builtin/registry.go`
+- backend registry/contract tests for the shipped connector set
+- `frontend/src/connectors/templates/<kind>/`
+- frontend template registry/smoke tests
+- README, REST/MCP, security, or connector-specific docs when behavior changes
+
+Not expected for a normal connector:
+
+- new token permission tables
+- new approval request tables
+- connector-specific history or audit tables
+- a new MCP tool family
+- route-level branches such as `if kind == "redis"` or `if kind === "redis"`
+- connector-specific command/session/file-transfer tables
+- direct imports of `internal/api` or `internal/connectorapi`
+
+If a connector cannot fit the normal structured path, stop and write a design
+note first. Runtime-integrated connectors are maintainer-reviewed exceptions
+for reusable gateway capabilities such as live terminals, SFTP transfer,
+host-key approval, or another long-running local runtime surface. Those
+capabilities must be expressed once through typed `internal/connectorapi`
+contracts and then wired through generic handlers; they must not become
+connector-local shortcuts.
+
 Schema defaults are declarative UI hints and validation aids. Connector code
 must still normalize defaults in `PrepareAction` or `ExecuteAction` before
 building payloads, opening sockets, or running transport-specific logic.
