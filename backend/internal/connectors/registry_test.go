@@ -175,6 +175,16 @@ func TestRegistryRejectsInvalidConnectorContract(t *testing.T) {
 			},
 		},
 		{
+			name: "duplicate action definition",
+			connector: fakeConnector{
+				kind: "api",
+				actionDefinitions: []ActionDefinition{
+					{Name: "call", Label: "Call", Description: "Call a test action.", Risk: RiskRead},
+					{Name: "call", Label: "Call again", Description: "Call another test action.", Risk: RiskRead},
+				},
+			},
+		},
+		{
 			name: "secret action input",
 			connector: fakeConnector{
 				kind: "api",
