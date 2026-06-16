@@ -119,9 +119,9 @@ test("renders security settings and updates MCP metadata exposure", async ({ pag
   await page.getByRole("link", { name: /Security/ }).click();
 
   await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
-  await expect(page.getByText("MCP connector targets hide SSH host, port, and username by default.")).toBeVisible();
+  await expect(page.getByText("MCP connector targets hide endpoint inventory details by default.")).toBeVisible();
   await page.getByLabel("Expose endpoint metadata to MCP").click();
-  await expect(page.getByText("MCP connector targets now include SSH host, port, and username metadata.")).toBeVisible();
+  await expect(page.getByText("MCP connector targets now include endpoint metadata.")).toBeVisible();
 });
 
 test("imports a database from the unlock screen", async ({ page }) => {
@@ -160,9 +160,11 @@ test("updates token connector permission from the Tokens page", async ({ page })
   await page.locator('aside a[href="/tokens"]').click();
 
   await page.getByRole("button", { name: "Connectors" }).click();
-  await expect(page.getByRole("dialog", { name: "agent connector permissions" })).toBeVisible();
-  await page.getByRole("button", { name: /Prompt/ }).click();
-  await page.getByRole("button", { name: "Save connector permissions" }).click();
+  const dialog = page.getByRole("dialog", { name: "agent connector permissions" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: /worker-1/ }).click();
+  await dialog.getByRole("button", { name: /Prompt/ }).click();
+  await dialog.getByRole("button", { name: "Save connector permissions" }).click();
   await expect(page.getByText("Connector permissions saved.")).toBeVisible();
 });
 
