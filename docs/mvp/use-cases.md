@@ -30,9 +30,14 @@ Example:
 The api container on core-1 is failing. Inspect logs, find the latest restart reason, and check config and network state.
 ```
 
+This uses the SSH connector. SSH is one connector kind; the same permission,
+approval, history, and audit pipeline is used for structured connectors such as
+Postgres.
+
 ## Multi-Server Triage
 
-When a system spans several VPS instances, the AI can inspect the allowed servers in one workflow.
+When a system spans several VPS instances, the AI can inspect the allowed SSH
+connector targets in one workflow.
 
 Example:
 
@@ -40,7 +45,31 @@ Example:
 Check service health on core-1, control-1, and worker-1. Determine whether the issue is application, network, or database related.
 ```
 
-The gateway does not give credentials to the AI. It only allows command execution on servers permitted by the token.
+The gateway does not give credentials to the AI. It only allows connector
+actions permitted by the token.
+
+## Database And Structured Connector Inspection
+
+When a developer needs database context, the AI can use a scoped Postgres
+credential profile instead of receiving a connection string or password.
+
+The AI can inspect:
+
+- visible schemas
+- visible tables
+- column metadata
+- bounded read-only query results
+
+Example:
+
+```txt
+Use the readonly Postgres profile to describe the public billing tables and
+summarize recent failed payment rows without changing data.
+```
+
+Future connector kinds such as Redis, queues, or API-backed integrations should
+preserve the same model: connector target, credential profile, action,
+permission, approval, history, and audit.
 
 ## Security Review
 
@@ -90,8 +119,9 @@ Example targets:
 
 These boundaries do not change:
 
-- AI does not see SSH private keys or passwords.
-- AI sees only the servers allowed by the token.
+- AI does not see SSH private keys, database passwords, API credentials, or
+  other connector secrets.
+- AI sees only the connector targets and actions allowed by the token.
 - Risky targets should use `approval_required`.
 - Credential values must not be written into responses, audit logs, or MCP context.
 - When the work is done, revoke the token or remove permissions.

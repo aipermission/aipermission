@@ -4,13 +4,16 @@ The core security rule:
 
 > Credentials never leave the local gateway.
 
-The AI assistant, MCP client, and API token never receive SSH private keys, SSH passwords, database passwords, or decrypted connection strings.
+The AI assistant, MCP client, and API token never receive SSH private keys, SSH
+passwords, database passwords, API credentials, or decrypted connection
+strings.
 
-The preferred MVP model is Dokploy-style SSH bootstrap. aipermission does not
-ask for a VPS SSH password. The gateway can generate SSH keypairs, store private
-keys in the local encrypted vault, and show the user a public key install
-command to paste on the server. Users may also explicitly import an existing
-private key into the same encrypted local vault.
+Connector targets use credential profiles. SSH profiles can reference
+gateway-generated or explicitly imported key material. Postgres profiles store
+database connection secrets. Future connectors define their own credential
+schemas, but the boundary remains the same: credentials stay in the encrypted
+local gateway and are used only during approved or permitted connector action
+execution.
 
 ## Stored Secrets
 
@@ -26,9 +29,19 @@ File transfer contents are not stored in SQLCipher. Uploads and downloads use
 private short-lived temporary files under the local data directory. The database
 stores transfer metadata, status, progress, checksum, and errors only.
 
-The database password is unrecoverable. If it is lost, the local DB cannot be opened. The user must create a new DB/key/token set and manually remove old public key lines from remote servers if needed. See [Storage Encryption](storage-encryption.md).
+The database password is unrecoverable. If it is lost, the local DB cannot be
+opened. The user must create a new database, credential profiles, and tokens.
+For SSH connector targets, old public key lines may need to be removed from
+remote `authorized_keys` files manually. See
+[Storage Encryption](storage-encryption.md).
 
 ## SSH Key Install Model
+
+The preferred SSH connector bootstrap model is Dokploy-style. aipermission does
+not ask for a VPS SSH password. The gateway can generate SSH keypairs, store
+private keys in the local encrypted vault, and show the user a public key
+install command to paste on the server. Users may also explicitly import an
+existing private key into the same encrypted local vault.
 
 The user creates or imports an SSH key in the web UI:
 
@@ -50,7 +63,11 @@ This avoids collecting server passwords. The bootstrap action happens from the u
 
 ## API Tokens
 
-An API token is not an SSH credential. It does not replace an SSH private key or database password. It is still a bearer credential for the local gateway, so anyone holding it can perform the operations allowed by that token while the relevant database is unlocked.
+An API token is not a connector credential. It does not replace an SSH private
+key, database password, API secret, or other connector-owned credential. It is
+still a bearer credential for the local gateway, so anyone holding it can
+perform the operations allowed by that token while the relevant database is
+unlocked.
 
 The MCP Started/Stopped runtime switch is an additional local safety brake.
 Stopping MCP does not revoke tokens or delete saved connector action permissions; it
@@ -74,7 +91,11 @@ Token values remain inside the SQLCipher database protected by the local unlock 
 
 The database password is used only to unlock or re-authenticate the selected local database. It is not sent as a bearer token on REST or MCP requests. If the browser session cookie is missing or expired while the backend process still has an unlocked database, the UI asks for the same database password again and issues a new local browser session.
 
-Command text and command output may be stored in encrypted local history/audit records. Users should not put secret values directly into command strings and should be careful when asking AI to print files or environment variables that may contain secrets.
+Connector action input, command text, and action output may be stored in
+encrypted local history/audit records. Users should not put secret values
+directly into connector action inputs or command strings and should be careful
+when asking AI to print files or environment variables that may contain
+secrets.
 
 Basic redaction is enabled by default for common secret patterns before history, transcripts, messages, MCP response fields, and audit payloads are persisted or returned. Redaction is best-effort and can be extended with custom regex rules in Security.
 
@@ -82,7 +103,10 @@ The gateway is designed only for a localhost trust boundary. Docker Compose publ
 
 Do not publish the Compose ports on `0.0.0.0` or a LAN address. The localhost bind is the security boundary. Docker NAT can make external clients appear as the host gateway from inside the container, which is outside the supported security model. Host-header checks are defense in depth only and do not make remote/LAN exposure safe. Remote/LAN use is unsupported.
 
-This local-only boundary is a deliberate product boundary. AIPermission is not a shared web application, not a hosted gateway, and not a DevOps platform. The supported trust model is one developer using their own local unlocked gateway to reach their own configured SSH targets.
+This local-only boundary is a deliberate product boundary. AIPermission is not
+a shared web application, not a hosted gateway, and not a DevOps platform. The
+supported trust model is one developer using their own local unlocked gateway
+to reach their own configured connector targets.
 
 ## MCP Boundary
 
@@ -112,7 +136,8 @@ Allowed fields include:
 
 - token id or token name
 - target/profile id
-- command text
+- connector action name
+- redacted connector action input or command text
 - status
 - exit code
 - short stdout/stderr preview

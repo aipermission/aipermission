@@ -7,7 +7,7 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-06-13
+## [0.2.0] - 2026-06-16
 
 ### Added
 

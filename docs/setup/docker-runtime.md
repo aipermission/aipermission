@@ -25,7 +25,10 @@ Compose publishes host ports only on `127.0.0.1` by default. This is an intentio
 
 The backend refuses to start when `AIPERMISSION_BACKEND_HOST` is `0.0.0.0` or any non-loopback address. In Docker Compose, the backend shares the frontend network namespace, binds only to `127.0.0.1`, and the frontend nginx proxies `/api` to it. Do not change Compose port bindings to `0.0.0.0` or a LAN address. The localhost bind is the security boundary; Host-header checks are defense in depth only. Remote/LAN access is unsupported.
 
-This is not meant to be bypassed with a reverse proxy or a Compose override. The gateway is not designed for remote hosting, LAN sharing, or team access. Remote machines belong in the Connectors list as SSH targets; they should not host the AIPermission web/API gateway for other clients.
+This is not meant to be bypassed with a reverse proxy or a Compose override.
+The gateway is not designed for remote hosting, LAN sharing, or team access.
+Remote systems belong in the Connectors list as connector targets; they should
+not host the AIPermission web/API gateway for other clients.
 
 If the default frontend port is occupied, it can be changed through environment variables.
 
@@ -92,7 +95,9 @@ If the same API token value exists in more than one unlocked database, MCP authe
 
 Lock closes the current database when only one database is unlocked. If multiple databases are unlocked, the UI asks whether to lock the current database or all databases.
 
-If the database password is forgotten, it cannot be recovered. The user loses local DB state and can remove old public key lines from remote servers manually if needed.
+If the database password is forgotten, it cannot be recovered. The user loses
+local DB state. For SSH connector targets, old public key lines can be removed
+from remote `authorized_keys` files manually if needed.
 
 If no database exists, the first screen shows Create Database and Import Database. If databases exist, the login screen asks for a database. Encrypted databases support Unlock Database, New Database, and Import Database.
 

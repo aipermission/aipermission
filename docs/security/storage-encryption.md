@@ -80,9 +80,9 @@ operation:
 - the backend verifies that password against the selected SQLCipher database
   before deleting the local file
 
-This is local destructive cleanup only. It does not connect to remote servers,
-remove remote `authorized_keys` lines, or revoke credentials outside the local
-database file.
+This is local destructive cleanup only. It does not connect to connector
+targets, remove remote SSH `authorized_keys` lines, or revoke credentials
+outside the local database file.
 
 ## Forgotten Password
 
@@ -102,7 +102,9 @@ connector action requests, live-console command rows, file transfer metadata,
 and the normalized history projection. Retention values are stored inside the
 encrypted database; `0` disables automatic cleanup for that category.
 
-Remote servers are not damaged. Existing public key lines may remain in remote `authorized_keys` files; the user can remove them manually or create and install a new aipermission key.
+Connector targets are not changed. For SSH targets, existing public key lines
+may remain in remote `authorized_keys` files; the user can remove them manually
+or create and install a new aipermission key.
 
 ## Backup Relationship
 

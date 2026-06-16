@@ -1,10 +1,16 @@
 # @aipermission/mcp
 
-Local-first MCP bridge for the AIPermission gateway.
+Local-first MCP bridge for the AIPermission connector gateway.
 
-AIPermission lets AI coding assistants use scoped server access through a local gateway without receiving SSH private keys or server credentials.
+AIPermission lets AI coding assistants use scoped connector actions through a
+local gateway without receiving SSH private keys, database passwords, API
+credentials, or other connector secrets.
 
-The gateway is intentionally local-only. Run it on the developer machine and keep the URL on `localhost`; remote servers are SSH targets, not places to host the gateway for LAN or internet users.
+The gateway is intentionally local-only. Run it on the developer machine and
+keep the URL on `localhost`; remote systems are connector targets, not places
+to host the gateway for LAN or internet users. SSH and Postgres are built-in
+connectors that use the same target/profile/action permission model as future
+connectors.
 
 ![AIPermission demo: AI installs Uptime Kuma through approval-based SSH access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
 

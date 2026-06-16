@@ -46,7 +46,12 @@ Unsupported gateway shapes:
 - central hosted team gateway
 - reverse-proxying the unlocked UI/API for remote users
 
-If an allowed server already has the needed CLI tools, config files, and network access, an AI agent can use those through the gateway `exec` surface. The gateway does not give operational knowledge or credentials to the AI. It runs AI-proposed commands inside local permission, approval, and audit boundaries.
+If an allowed SSH connector target already has the needed CLI tools, config
+files, and network access, an AI agent can use those through the SSH `exec`
+action. Structured connectors such as Postgres expose smaller connector-owned
+actions. The gateway does not give operational knowledge or credentials to the
+AI. It runs AI-proposed connector actions inside local permission, approval,
+and audit boundaries.
 
 When the work is done, the user can:
 

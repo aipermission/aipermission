@@ -38,10 +38,10 @@ It is built for a very specific workflow:
 
 | You keep control of | The AI gets |
 | --- | --- |
-| SSH private keys inside the local gateway | scoped MCP tools |
-| per-token target/action permissions | only approved connector targets and actions |
-| Run / Decline approval flow | command results and live console output |
-| encrypted local database and backups | no SSH passwords or private keys |
+| connector credentials inside the local gateway | scoped MCP connector tools |
+| per-token target/profile/action permissions | only approved connector targets and actions |
+| Run / Decline approval flow | action results, structured output, and SSH console output when relevant |
+| encrypted local database and backups | no SSH keys, database passwords, or API credentials |
 
 > **Local-only security boundary:** run AIPermission on your own machine and keep Docker ports bound to `127.0.0.1`. The localhost port bind is the real security boundary. The web REST API uses a local browser session cookie after database unlock, but it is not a remote multi-user auth system and must not be exposed to LAN or the public internet. Do not change Compose port bindings to `0.0.0.0`; Docker NAT can make external traffic appear local to the container, and Host-header checks are only defense in depth.
 
@@ -54,7 +54,8 @@ AIPermission is not a DevOps platform. It does not try to own Kubernetes, DNS, V
 AIPermission is intentionally designed as a local developer gateway.
 
 - The gateway runs on the developer's own machine.
-- Remote servers are only SSH targets reached from that local gateway.
+- Remote systems are connector targets reached from that local gateway.
+- SSH and Postgres are built-in connector types, not separate product modes.
 - The web UI, REST API, and MCP API are not designed to be shared on a LAN.
 - The project does not support running the gateway as a remote hosted service.
 - The project provides a local browser session after database unlock, not multi-user web auth, team RBAC, or public network hardening.
@@ -63,7 +64,7 @@ AIPermission is intentionally designed as a local developer gateway.
 - The frontend nginx layer rejects non-local Host headers before serving UI or proxying `/api`.
 - Host-header checks do not make LAN/public exposure safe. Keep the published port on `127.0.0.1`.
 
-If you need a shared remote operations platform, AIPermission is the wrong shape today. Its purpose is narrower: give a developer's AI assistant temporary, scoped, auditable command access without giving the AI SSH keys or passwords.
+If you need a shared remote operations platform, AIPermission is the wrong shape today. Its purpose is narrower: give a developer's AI assistant temporary, scoped, auditable connector action access without giving the AI SSH keys, database passwords, or API credentials.
 
 Project boundaries are documented in [Project Principles](docs/project-principles.md)
 and the [Architecture Decision Records](docs/adr/0001-local-only.md). Requests for
@@ -80,20 +81,20 @@ Without a tool like this, an AI assistant usually says:
 3. now run this other command,
 4. paste the next output.
 
-That loop is slow when you are debugging servers, containers, Kubernetes nodes, logs, memory pressure, disk usage, or suspicious system behavior.
+That loop is slow when you are debugging servers, containers, Kubernetes nodes, databases, logs, memory pressure, disk usage, or suspicious system behavior.
 
 With `aipermission`, the AI can inspect approved connector targets directly through MCP while you keep control:
 
-- SSH private keys and database credentials stay inside the local gateway.
+- SSH private keys, database credentials, and future connector secrets stay inside the local gateway.
 - The AI sees only targets and actions allowed for its token.
 - You can require approval before actions run.
-- You can watch the same persistent console live.
+- You can watch the same persistent SSH console live when the connector has a terminal surface.
 - You can send notes to the AI while it is working.
 - You can revoke the token or remove permissions when the work is done.
 
 ## Screenshots
 
-The UI is built around the live control loop: approve commands, watch the persistent console, send notes while the AI works, and audit what happened afterwards.
+The UI is built around the live control loop: approve connector actions, inspect structured activity, watch the persistent SSH console when relevant, send notes while the AI works, and audit what happened afterwards.
 
 ![AIPermission demo: AI installs Uptime Kuma through approval-based SSH access](docs/assets/demo/aipermission-demo.gif)
 
@@ -114,6 +115,14 @@ Implemented:
 - Docker Compose local runtime
 - Go backend with SQLite storage
 - React web UI
+- connector target/profile/action pipeline for SSH, Postgres, and future local
+  integrations
+- connector template architecture for target forms, credential forms, list rows,
+  console/activity surfaces, and connector-owned operations
+- built-in SSH connector with persistent shell, file transfer, remote browsing,
+  host-key approval, and command actions
+- built-in Postgres connector with schema/table inspection and bounded read-only
+  SQL actions
 - gateway-generated SSH keys (`ed25519` and `rsa`)
 - explicit existing SSH private key import into the encrypted local vault
 - SSH host import from OpenSSH config files for prefilling connector targets
@@ -143,8 +152,6 @@ Implemented:
 - local browser session cookie for the web REST API after unlock
 - encrypted database download/import (`.aipdb`)
 - first-connect SSH host fingerprint approval with later `known_hosts` verification
-- connector target/profile/action pipeline for SSH, Postgres, and future local
-  integrations
 
 Out of scope for the current MVP:
 
@@ -199,7 +206,7 @@ The Docker Compose UI port binds to `127.0.0.1` by default. The backend is not p
 
 1. Open the web UI.
 2. Create the local database password on first run, import a database file, or unlock an existing database. New database passwords must be at least 14 characters and include uppercase letters, lowercase letters, and numbers. Unlock issues a local browser session cookie for web REST calls; if the cookie is deleted or expires while the backend is still unlocked, the UI asks for the same database password again and continues.
-3. Create or import an SSH credential in `Credentials`, or create a connector-specific credential profile.
+3. Create a credential profile in `Credentials`. SSH profiles can use generated or imported keys; Postgres profiles store database credentials; future connectors define their own profile fields.
 4. Add a connector target in `Connectors` and select the credential profile.
 5. For SSH targets, copy the generated public-key install command and paste it on the remote machine when needed.
 6. Test the connector target.
@@ -331,9 +338,12 @@ More detail: [MCP client setup](docs/setup/mcp-client-setup.md)
 
 Important boundaries:
 
-- SSH private keys are generated by the local gateway or explicitly imported by
-  the user, then stored inside the encrypted local gateway.
-- AI clients authenticate with API tokens, not SSH credentials.
+- Connector credentials stay inside the encrypted local gateway. SSH private
+  keys, database passwords, API tokens for future connectors, and similar
+  secrets are never sent to the AI client.
+- SSH private keys can be generated by the local gateway or explicitly imported
+  by the user, then stored as SSH connector credential resources.
+- AI clients authenticate with API tokens, not connector credentials.
 - API tokens are shown once by default. Security can enable reusable token copy for newly created tokens; reusable values are stored with gateway vault encryption.
 - API tokens and token action permissions can use expiration timestamps for
   temporary maintenance access.
@@ -343,10 +353,10 @@ Important boundaries:
 - Connector credentials are not returned by REST or MCP responses.
 - SSH host keys require first-connect fingerprint approval and are verified on later connections.
 - The SQLite database is encrypted with SQLCipher and requires the local database password after startup.
-- The database password is not recoverable. If it is lost, the local DB, tokens, history, and gateway SSH private keys are lost.
+- The database password is not recoverable. If it is lost, the local DB, tokens, history, and gateway connector credentials are lost.
 - The database password can be changed from Settings while the current password is known.
 - The database password is escaped before SQLCipher key/rekey handling, so quotes or semicolons in the password cannot change PRAGMA SQL parsing.
-- Command text, command output, notes, console transcripts, and audit payloads may be stored in the encrypted local database. Basic redaction is enabled by default for common secret patterns, and Security can add custom regex rules that are stored inside the encrypted database. Redaction is best-effort. Approval execution keeps the raw command in an encrypted internal payload so redaction never changes the command that runs, while UI, MCP response fields, messages, and audit display fields stay redacted. Do not put secrets directly in commands, and use judgment when asking AI to inspect files or environment values.
+- Connector action input, command text, action output, notes, console transcripts, and audit payloads may be stored in the encrypted local database. Basic redaction is enabled by default for common secret patterns, and Security can add custom regex rules that are stored inside the encrypted database. Redaction is best-effort. Approval execution keeps the raw action payload in an encrypted internal payload so redaction never changes what runs, while UI, MCP response fields, messages, and audit display fields stay redacted. Do not put secrets directly in connector action inputs, commands, or prompts, and use judgment when asking AI to inspect files or environment values.
 - File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, speed, ETA, checksum, and errors only. Uploads are staged to a temporary remote file and moved into place only after completion, so canceled uploads do not leave partial target files behind. Download queues are capped at 1 GiB total remote file size. Pause/resume works for the active local gateway process; if the gateway, Docker container, or computer restarts, unfinished transfer queues should be started again. The local web UI owns full upload/download queue management. MCP uses the generic connector-action tools; today the SSH connector exposes remote browsing and remote-to-local download queue creation through `browse_remote_files` and `start_file_download`. MCP transfer responses never include file contents, gateway temporary paths, or archive staging paths.
 - Secret fields are also encrypted with the gateway vault secret inside the SQLCipher database.
 - The gateway vault secret is sensitive. Losing it prevents vault payload decryption; exposing it together with unlocked database contents compromises vault-protected payloads.
@@ -510,18 +520,20 @@ Redis/API-style connector should touch.
 
 ## Project Status
 
-This project is in active RC testing. The current goal is to validate the local developer workflow with early users before the first stable release.
+This project is pre-1.0 local developer software. The current goal is to
+validate the connector-native permission workflow with early users before a
+stable release.
 
 Version 0.2.0 is a connector-native baseline. Pre-0.2 preview databases are not
 migrated automatically by the normal gateway; create a fresh 0.2 database or use
 the local one-time migration helper for important 0.1.x data.
 
-The first release will focus on:
+The current release line focuses on:
 
 - simple local setup
-- safe SSH key model
-- reliable MCP command flow
-- approvals and live console visibility
+- safe connector credential handling
+- reliable MCP connector action flow
+- approvals, structured activity, and SSH live console visibility when relevant
 - clear documentation and honest security boundaries
 
 ## License

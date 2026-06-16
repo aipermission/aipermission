@@ -1057,7 +1057,7 @@ POST /api/messages/read
 
 User-to-AI messages are token-scoped. If `runtime_id` is set, the note is consumed only by matching target profile runtime responses. If `session_id` is also set, it is consumed only by MCP responses attached to that exact persistent console session. Generic notes can omit both `runtime_id` and `session_id`.
 
-Unread AI-to-user messages contribute to Console sidebar and connector list badge counts for SSH targets. Opening the Messages drawer can mark matching messages as read.
+Unread AI-to-user messages contribute to Console sidebar and connector list badge counts for connector targets. Opening the Messages drawer can mark matching messages as read.
 
 ## Audit
 

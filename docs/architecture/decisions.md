@@ -18,7 +18,8 @@ Decision: AIPermission is a localhost-only developer gateway.
 Reason:
 
 - The web REST API is designed for one local user after database unlock.
-- Remote servers are SSH targets, not places where the gateway is hosted for other users.
+- Remote systems are connector targets, not places where the gateway is hosted
+  for other users.
 - Docker Compose publishes only `127.0.0.1`, and the backend refuses non-loopback bind addresses.
 - LAN/public exposure would require a different auth, CSRF, session, and threat model.
 
@@ -65,9 +66,11 @@ Decision: MCP clients authenticate with API tokens, and token target/profile/act
 
 Reason:
 
-- AI clients should never receive SSH private keys or passwords.
+- AI clients should never receive connector credentials such as SSH private
+  keys, database passwords, or API secrets.
 - Different AI clients or projects can use different tokens.
-- The gateway can revoke tokens or change execution rules without changing SSH credentials.
+- The gateway can revoke tokens or change execution rules without changing
+  connector credentials.
 
 Consequence:
 

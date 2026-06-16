@@ -55,6 +55,10 @@ The profile chooses which stored credential is used. The connector action still
 runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
+Clients should discover targets and actions at runtime. Do not hardcode SSH or
+Postgres as special MCP modes; future connector kinds use the same tools and
+`target_ref` shape.
+
 ## list_connector_targets
 
 Returns target/profile refs visible to the current token.

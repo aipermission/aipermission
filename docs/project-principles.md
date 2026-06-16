@@ -8,7 +8,7 @@ part of the security model, not marketing copy.
 - Local-only
 - Single-user
 - Developer-focused
-- Connector-based, with built-in SSH
+- Connector-based, with built-in SSH and Postgres
 - Human-in-the-loop
 
 ## AIPermission Intentionally Rejects
@@ -21,14 +21,15 @@ part of the security model, not marketing copy.
 
 ## Why This Boundary Exists
 
-AIPermission gives AI agents controlled command access to real servers. That is
-powerful, so the product keeps the trust boundary small:
+AIPermission gives AI agents controlled action access to real systems through
+connector targets. That is powerful, so the product keeps the trust boundary
+small:
 
 - the gateway runs on the developer's own machine,
 - the browser UI talks to localhost,
 - MCP clients authenticate with local API tokens,
 - connector credentials stay inside the encrypted local gateway,
-- humans can require approval before commands run.
+- humans can require approval before connector actions run.
 
 Turning the gateway into a shared service would require a different product:
 remote authentication, account recovery, CSRF assumptions, tenant isolation,
@@ -45,7 +46,7 @@ be closed as `wontfix`:
 - Remote gateway hosting
 - Shared team deployments
 - LAN-accessible gateway mode
-- Cloud-managed command execution
+- Cloud-managed action execution
 
 Suggested closure note:
 
@@ -65,7 +66,7 @@ These areas can evolve without changing the core identity:
 - stronger local hardening,
 - more tests,
 - documentation and troubleshooting,
-- local command policy warnings,
+- local action policy warnings,
 - temporary token or permission expiration.
 - additional local connector types that preserve the same target/profile/action
   permission model.

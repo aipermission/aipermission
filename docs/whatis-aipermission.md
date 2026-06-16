@@ -11,7 +11,7 @@ Related central notes:
 
 `aipermission` is a local developer gateway that lets AI coding assistants
 operate on connector targets without receiving SSH private keys, SSH passwords,
-or database credentials.
+database credentials, API credentials, or other connector secrets.
 
 The current model ships with SSH and Postgres connectors. SSH provides live
 terminal/file-transfer actions; Postgres provides structured metadata and
@@ -26,7 +26,7 @@ The product is intentionally not positioned as a full DevOps platform.
 
 AIPermission is designed to run on the developer's own machine.
 
-Remote servers and databases are connector targets reached from the local
+Remote systems and databases are connector targets reached from the local
 gateway. They are not places where the gateway is meant to be hosted for other
 users. The supported shape is:
 
@@ -87,8 +87,9 @@ for a database.
 
 This model also works well with AI client instructions or skills. For example,
 a developer can define a workflow like "check a new VPS before adding it to the
-cluster", "inspect container health across allowed SSH targets", or "describe a
-readonly Postgres schema." aipermission provides the execution layer without
+cluster", "inspect container health across allowed SSH targets", "describe a
+readonly Postgres schema", or later "call this internal API operation through a
+stored credential profile." aipermission provides the execution layer without
 exposing credentials.
 
 ## Typical Flow
@@ -250,7 +251,7 @@ get_connector_action_request(request_id)
 SSH, Postgres, and future integrations are exposed as connector actions instead
 of separate product-specific MCP tools.
 
-## Command Flow
+## Connector Action Flow
 
 Example MCP call:
 
@@ -270,8 +271,8 @@ Gateway steps:
 3. Check whether the token can run that connector action.
 4. Load the required secret payload inside the gateway.
 5. Check the token action execution rule.
-5. Run directly, create pending approval, or block.
-6. Return a result or a follow-up request id.
+6. Run directly, create pending approval, or block.
+7. Return a result or a follow-up request id.
 
 If the SSH target is named `core-1`, the AI may see:
 
@@ -284,7 +285,8 @@ If the SSH target is named `core-1`, the AI may see:
 }
 ```
 
-The SSH credential for `core-1` never leaves the gateway.
+The SSH credential for `core-1` never leaves the gateway. The same rule applies
+to Postgres passwords and future connector secrets.
 
 If the global MCP switch is stopped, new MCP command execution is blocked even
 when the token still has saved connector action permissions.

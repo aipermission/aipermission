@@ -1,10 +1,11 @@
 # Roadmap
 
-AIPermission has published its first public release candidate. The local-only
-SSH/MCP MVP is usable today; the next releases focus on dogfooding polish,
-small safety improvements, clearer contributor paths, and the connector
-architecture that lets SSH, Postgres, API, Redis, and future integrations share
-one permission pipeline.
+AIPermission has published its first public release candidate and is moving
+into the connector-native 0.2 line. The local-only permission gateway is usable
+today with built-in SSH and Postgres connectors; the next releases focus on
+dogfooding polish, small safety improvements, clearer contributor paths, and
+additional connector kinds such as API, Redis, and queues that share one
+permission pipeline.
 
 Related notes:
 
@@ -52,7 +53,7 @@ AIPermission is intentionally:
 - Local-only.
 - Single-user.
 - Developer-focused.
-- Connector-based, with built-in SSH.
+- Connector-based, with built-in SSH and Postgres.
 - Human-in-the-loop.
 
 These requests conflict with the project principles and should normally be
@@ -166,7 +167,7 @@ tag:
 
 ## 0.2 Connector Architecture
 
-The 0.2 line moves AIPermission from an SSH-only mental model toward connector
+The 0.2 line moves AIPermission from an SSH-first mental model to connector
 targets:
 
 ```txt
@@ -189,6 +190,9 @@ Goals:
 - Treat the 0.2 connector line as a clean pre-1.0 schema boundary. Avoid
   permanent compatibility code that keeps SSH outside the shared
   connector path.
+- Make future connectors feel like first-class citizens: adding Redis, API, or
+  another integration should mean adding a connector package/template, not
+  adding another product-specific pipeline.
 
 Non-goals:
 

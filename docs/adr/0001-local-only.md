@@ -4,17 +4,18 @@ Status: accepted
 
 ## Context
 
-AIPermission lets AI agents run commands on developer-owned servers. That
-capability should not be exposed as a shared web service without a much larger
-security model.
+AIPermission lets AI agents run connector actions on developer-owned systems.
+That capability should not be exposed as a shared web service without a much
+larger security model.
 
 ## Decision
 
 AIPermission is a localhost-only developer gateway.
 
-The gateway runs on the developer's own machine. Remote servers are SSH targets,
-not places where the gateway is hosted for other users. Docker Compose publishes
-only `127.0.0.1`, and the backend refuses non-loopback bind addresses.
+The gateway runs on the developer's own machine. Remote systems are connector
+targets, not places where the gateway is hosted for other users. Docker Compose
+publishes only `127.0.0.1`, and the backend refuses non-loopback bind
+addresses.
 
 ## Consequences
 
