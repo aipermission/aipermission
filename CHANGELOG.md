@@ -7,6 +7,20 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-16
+
+### Changed
+
+- Refreshed backend and frontend Docker base image digests through Dependabot.
+- Refreshed the frontend npm dependency group through Dependabot.
+- Updated the MCP package metadata to 0.2.1.
+
+### Security
+
+- Updated `golang.org/x/crypto` to 0.53.0.
+- Hardened SSH connector integer config parsing with native-int bounds checks to
+  close CodeQL narrowing-conversion findings.
+
 ## [0.2.0] - 2026-06-16
 
 ### Added

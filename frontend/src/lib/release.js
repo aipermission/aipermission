@@ -1,6 +1,26 @@
-export const appVersion = "0.2.0";
+export const appVersion = "0.2.1";
 
 export const changelogEntries = [
+  {
+    version: "0.2.1",
+    label: "Maintenance hardening",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "Refreshed backend and frontend base image digests and dependency groups through Dependabot maintenance updates.",
+          "Updated the MCP package metadata to 0.2.1 for the maintenance release.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Updated golang.org/x/crypto to 0.53.0.",
+          "Hardened SSH connector integer config parsing with native-int bounds checks.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.0",
     label: "Connector-native baseline",
