@@ -14,10 +14,13 @@ and this project uses semantic versioning once public releases begin.
 - Refreshed backend and frontend Docker base image digests through Dependabot.
 - Refreshed the frontend npm dependency group through Dependabot.
 - Updated the MCP package metadata to 0.2.1.
+- Kept `monaco-editor` on the audit-clean 0.53 line until the newer line clears
+  its transitive `dompurify` advisory.
 
 ### Security
 
 - Updated `golang.org/x/crypto` to 0.53.0.
+- Updated MCP transitive `hono` resolution to a non-vulnerable version.
 - Hardened SSH connector integer config parsing with native-int bounds checks to
   close CodeQL narrowing-conversion findings.
 

@@ -10,12 +10,14 @@ export const changelogEntries = [
         items: [
           "Refreshed backend and frontend base image digests and dependency groups through Dependabot maintenance updates.",
           "Updated the MCP package metadata to 0.2.1 for the maintenance release.",
+          "Kept monaco-editor on the audit-clean 0.53 line until the newer line clears its transitive advisory.",
         ],
       },
       {
         title: "Security",
         items: [
           "Updated golang.org/x/crypto to 0.53.0.",
+          "Updated the MCP transitive Hono resolution to a non-vulnerable version.",
           "Hardened SSH connector integer config parsing with native-int bounds checks.",
         ],
       },
