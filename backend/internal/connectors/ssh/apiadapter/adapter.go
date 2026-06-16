@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"path"
@@ -1479,10 +1480,7 @@ func targetMaterial(ctx context.Context, runtime connectorapi.GatewayRuntime, ru
 		return sshTargetMaterial{}, sshkeys.PrivateKey{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	host := strings.TrimSpace(stringConfigValue(target.Config, "host"))
-	port := int(int64ConfigValue(target.Config, "port"))
-	if port == 0 {
-		port = 22
-	}
+	port := intConfigValue(target.Config, "port", 22)
 	username := strings.TrimSpace(stringConfigValue(profile.Public, "username"))
 	keyID := int64ConfigValue(profile.Public, "ssh_key_id")
 	if host == "" || username == "" || keyID < 1 {
@@ -2022,11 +2020,60 @@ func stringConfigValue(config map[string]any, key string) string {
 }
 
 func intConfigValue(config map[string]any, key string, fallback int) int {
-	value := int64ConfigValue(config, key)
-	if value == 0 {
+	value, ok := config[key]
+	if !ok || value == nil {
 		return fallback
 	}
-	return int(value)
+	parsed, ok := nativeIntValue(value)
+	if !ok || parsed == 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func nativeIntValue(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		if !int64FitsNativeInt(typed) {
+			return 0, false
+		}
+		return int(typed), true
+	case float64:
+		if typed != math.Trunc(typed) || !float64FitsNativeInt(typed) {
+			return 0, false
+		}
+		return int(typed), true
+	case json.Number:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed.String()), 10, strconv.IntSize)
+		if err != nil {
+			return 0, false
+		}
+		return int(parsed), true
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, strconv.IntSize)
+		if err != nil {
+			return 0, false
+		}
+		return int(parsed), true
+	default:
+		return 0, false
+	}
+}
+
+func int64FitsNativeInt(value int64) bool {
+	if strconv.IntSize == 32 {
+		return value >= -1<<31 && value <= 1<<31-1
+	}
+	return true
+}
+
+func float64FitsNativeInt(value float64) bool {
+	if strconv.IntSize == 32 {
+		return value >= float64(-1<<31) && value <= float64(1<<31-1)
+	}
+	return value >= float64(-1<<63) && value <= float64(1<<63-1)
 }
 
 func int64ConfigValue(config map[string]any, key string) int64 {
