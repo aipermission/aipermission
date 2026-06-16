@@ -71,7 +71,8 @@ The source 0.1.x database remains in the local database list until you remove
 it. That is intentional: the helper never deletes or edits source data. After
 you verify the migrated 0.2 database, select the old database on the unlock
 screen and use **Delete old local copy**. AIPermission asks for that database
-password before deleting the local file.
+password in the normal unlock form, then asks you to type the database name
+before deleting the local file.
 
 ## Unsupported Schema Error
 
@@ -79,7 +80,8 @@ If an older database is opened directly in the normal gateway, unlock fails with
 an unsupported schema message. That is intentional. Create a fresh 0.2 database,
 or run the migration helper above and unlock the new migrated database. If you
 already migrated it and no longer need the old local copy, delete it from the
-unlock screen with the old database password.
+unlock screen by entering the old database password in the unlock form and
+confirming the database name.
 
 ## Future Migrations
 

@@ -73,7 +73,8 @@ normal gateway while migration is running. See
 [Database Migration](database-migration.md).
 
 After verifying the migrated database, remove the old local source database from
-the unlock screen with **Delete old local copy** if you no longer need it.
+the unlock screen with **Delete old local copy** if you no longer need it. Enter
+the old database password in the unlock form, then confirm the database name.
 
 Schema migrations use a versioned `schema_migrations` table from the 0.2
 baseline onward. Runtime maintenance closes stale running sessions after

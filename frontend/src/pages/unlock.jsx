@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, LockKeyhole, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ExternalLink, LockKeyhole, Trash2, Upload } from "lucide-react";
 import { apiPost, apiPostForm } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
@@ -19,7 +19,9 @@ export function UnlockPage({ status, onUnlocked }) {
   const [activeTab, setActiveTab] = useState(hasDatabase ? "unlock" : "create");
   const [createForm, setCreateForm] = useState({ database_name: "", password: "", confirm_password: "" });
   const [unlockForm, setUnlockForm] = useState({ password: "" });
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, password: "", state: "idle", error: null });
+  const [unlockAction, setUnlockAction] = useState("unlock");
+  const [unlockActionMenuOpen, setUnlockActionMenuOpen] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, confirmName: "", state: "idle", error: null });
   const [toast, setToast] = useState("");
   const [importForm, setImportForm] = useState({ file: null, database_password: "" });
   const [createState, setCreateState] = useState({ state: "idle", error: null });
@@ -38,6 +40,11 @@ export function UnlockPage({ status, onUnlocked }) {
     }
     setActiveTab("unlock");
   }, [selectedDatabase?.id, selectedDatabase?.state]);
+
+  useEffect(() => {
+    setUnlockAction("unlock");
+    setUnlockActionMenuOpen(false);
+  }, [selectedDatabase?.id, activeTab]);
 
   const tabs = [
     ...(hasDatabase ? [["unlock", "Unlock Database"]] : []),
@@ -81,11 +88,18 @@ export function UnlockPage({ status, onUnlocked }) {
   }
 
   function openDeleteDialog() {
-    setDeleteDialog({ open: true, password: "", state: "idle", error: null });
+    if (!unlockForm.password) {
+      setUnlockState({ state: "error", error: "Enter the database password before deleting this local database." });
+      return;
+    }
+    setUnlockState({ state: "idle", error: null });
+    setDeleteDialog({ open: true, confirmName: "", state: "idle", error: null });
   }
 
   function closeDeleteDialog() {
     setDeleteDialog((current) => ({ ...current, open: false }));
+    setUnlockAction("unlock");
+    setUnlockActionMenuOpen(false);
   }
 
   async function deleteLockedDatabase(event) {
@@ -95,9 +109,9 @@ export function UnlockPage({ status, onUnlocked }) {
     try {
       await apiPost("/api/databases/delete-locked", {
         database_id: selectedDatabase.id,
-        current_password: deleteDialog.password,
+        current_password: unlockForm.password,
       });
-      setDeleteDialog({ open: false, password: "", state: "idle", error: null });
+      setDeleteDialog({ open: false, confirmName: "", state: "idle", error: null });
       setUnlockForm({ password: "" });
       setMigrationRequiredIDs((current) => {
         const next = { ...current };
@@ -202,15 +216,67 @@ export function UnlockPage({ status, onUnlocked }) {
               </Button>
             </div>
           ) : null}
-          <Button type="submit" disabled={unlockState.state === "unlocking" || selectedUnsupported || selectedMigrationRequired}>
-            <LockKeyhole className="h-4 w-4" />
-            {unlockState.state === "unlocking" ? "Unlocking..." : "Unlock"}
-          </Button>
-          {!selectedMigrationRequired && selectedDatabase ? (
-            <button type="button" className="justify-self-center text-sm font-semibold text-red-700 hover:text-red-800" onClick={openDeleteDialog}>
-              Delete this local database
-            </button>
-          ) : null}
+          <div className="relative">
+            <div className="grid grid-cols-[minmax(0,1fr)_44px] overflow-hidden rounded-md">
+              <Button
+                type={unlockAction === "delete" ? "button" : "submit"}
+                variant={unlockAction === "delete" ? "danger" : "default"}
+                className="rounded-r-none"
+                disabled={
+                  unlockAction === "delete"
+                    ? !selectedDatabase || deleteDialog.state === "deleting"
+                    : unlockState.state === "unlocking" || selectedUnsupported || selectedMigrationRequired
+                }
+                onClick={unlockAction === "delete" ? openDeleteDialog : undefined}
+              >
+                {unlockAction === "delete" ? <Trash2 className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
+                {unlockAction === "delete" ? "Delete this local database" : unlockState.state === "unlocking" ? "Unlocking..." : "Unlock"}
+              </Button>
+              <Button
+                type="button"
+                variant={unlockAction === "delete" ? "danger" : "default"}
+                className={`rounded-l-none px-0 ${
+                  unlockAction === "delete" ? "border-l border-red-800" : "border-l border-emerald-800"
+                }`}
+                aria-expanded={unlockActionMenuOpen}
+                aria-label={unlockAction === "delete" ? "Choose unlock action" : "Choose database action"}
+                title={unlockAction === "delete" ? "Choose unlock action" : "Choose database action"}
+                disabled={!selectedDatabase || unlockState.state === "unlocking"}
+                onClick={() => setUnlockActionMenuOpen((current) => !current)}
+              >
+                <ChevronDown className={`h-4 w-4 transition ${unlockActionMenuOpen ? "rotate-180" : ""}`} />
+              </Button>
+            </div>
+            {unlockActionMenuOpen ? (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-stone-200 bg-white shadow-xl">
+                {unlockAction === "delete" ? (
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-center gap-2 bg-emerald-950 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-emerald-900"
+                    onClick={() => {
+                      setUnlockAction("unlock");
+                      setUnlockActionMenuOpen(false);
+                    }}
+                  >
+                    <LockKeyhole className="h-4 w-4" />
+                    Unlock
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-center gap-2 bg-red-700 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-red-800"
+                    onClick={() => {
+                      setUnlockAction("delete");
+                      setUnlockActionMenuOpen(false);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete this local database
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
         </form>
       ) : null}
 
@@ -308,17 +374,18 @@ export function UnlockPage({ status, onUnlocked }) {
       >
         <form className="grid gap-4" onSubmit={deleteLockedDatabase}>
           <Notice tone="bad">
-            This only removes the local database file from this gateway. If you have not migrated or backed it up, its local configuration will be lost.
+            This local database will be deleted permanently from this gateway. If you have not migrated or backed it up, its local configuration will be lost.
           </Notice>
           <div className="rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
             <span className="font-semibold text-stone-900">Database:</span> {selectedDatabase?.name || "Unknown"}
           </div>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Database password</label>
+            <label className="text-sm font-semibold text-stone-800">Type the database name to confirm</label>
             <Input
-              type="password"
-              value={deleteDialog.password}
-              onChange={(event) => setDeleteDialog((current) => ({ ...current, password: event.target.value }))}
+              type="text"
+              value={deleteDialog.confirmName}
+              onChange={(event) => setDeleteDialog((current) => ({ ...current, confirmName: event.target.value }))}
+              placeholder={selectedDatabase?.name || "Database name"}
               autoFocus
               required
             />
@@ -328,7 +395,7 @@ export function UnlockPage({ status, onUnlocked }) {
             <Button type="button" variant="outline" onClick={closeDeleteDialog} disabled={deleteDialog.state === "deleting"}>
               Cancel
             </Button>
-            <Button type="submit" variant="danger" disabled={deleteDialog.state === "deleting" || !deleteDialog.password}>
+            <Button type="submit" variant="danger" disabled={deleteDialog.state === "deleting" || deleteDialog.confirmName !== selectedDatabase?.name}>
               <Trash2 className="h-4 w-4" />
               {deleteDialog.state === "deleting" ? "Deleting..." : "Delete permanently"}
             </Button>

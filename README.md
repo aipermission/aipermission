@@ -407,7 +407,8 @@ running.
 
 After you verify the migrated 0.2 database, the old 0.1.x source database can be
 removed from the unlock screen with **Delete old local copy**. AIPermission asks
-for the old database password before deleting the local file.
+for the old database password in the normal unlock form, then asks you to type
+the database name before deleting the local file.
 
 After migration, stop the helper:
 

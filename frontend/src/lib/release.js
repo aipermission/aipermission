@@ -326,7 +326,7 @@ export const changelogEntries = [
         items: [
           "Console side panels can collapse for narrower screens.",
           "Browser title shows MCP runtime state and active database name after unlock.",
-          "Database deletion now requires a second confirmation with the current password.",
+          "Database deletion now uses the unlock form password, then asks for the database name before deleting.",
         ],
       },
     ],
