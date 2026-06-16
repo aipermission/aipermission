@@ -531,6 +531,7 @@ export function ConsolePage() {
               approvals={connectorActionApprovals}
               theme={theme}
               session={selectedStructuredSession}
+              onNewStructuredSession={startStructuredConnectorSession}
               onOpenActivity={() => setConnectorActivityOpen(true)}
               onRefreshActivity={loadConnectorActionApprovals}
             >
