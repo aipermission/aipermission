@@ -46,7 +46,7 @@ export function ConnectorTokenPermissionPanel({
   const [savingKey, setSavingKey] = useState("");
   const [openTokenID, setOpenTokenID] = useState(null);
   const [profileByToken, setProfileByToken] = useState({});
-  const [permissionMode, setPermissionMode] = useState("grouped");
+  const [permissionModeByKey, setPermissionModeByKey] = useState({});
   const compactPanelRef = useRef(null);
   const tokenIDsKey = activeTokens.map((token) => token.id).join(",");
   const load = connectorPermissionState || { state: "idle", data: {}, actionsByTargetRef: {}, error: null };
@@ -158,6 +158,10 @@ export function ConnectorTokenPermissionPanel({
           ]
         : preserved;
       await replaceTokenConnectorPermissions?.(token.id, next);
+      const actions = load.actionsByTargetRef?.[connectorActionCacheKey(selectedTarget, profileID)] || selectedActions;
+      const modeKey = tokenProfileModeKey(token.id, selectedTarget, profileID);
+      const nextMode = inferPermissionMode(next, selectedTarget, profileID, actions);
+      setPermissionModeByKey((current) => ({ ...current, [modeKey]: nextMode }));
     } catch (error) {
       console.error(error);
     } finally {
@@ -196,6 +200,9 @@ export function ConnectorTokenPermissionPanel({
     const lifetimeEditable = activePermissions.some((permission) => effectiveRule(permission) !== "blocked");
     const categoryGroups = groupActions(actions);
     const riskGroups = groupActionsByRisk(actions);
+    const modeKey = tokenProfileModeKey(token.id, selectedTarget, profile.profile_id);
+    const inferredPermissionMode = inferPermissionMode(permissions, selectedTarget, profile.profile_id, actions);
+    const permissionMode = permissionModeByKey[modeKey] || inferredPermissionMode;
     return (
       <div className="grid gap-2">
         <ProfileLifetimeControls
@@ -205,7 +212,7 @@ export function ConnectorTokenPermissionPanel({
           onSetPermanent={() => setProfileLifetime(token, profile.profile_id, "")}
           onSetTemporary={(lifetime) => setProfileLifetime(token, profile.profile_id, expiresAtFromLifetime(lifetime))}
         />
-        {actions.length > 0 ? <PermissionModeTabs value={permissionMode} onChange={setPermissionMode} /> : null}
+        {actions.length > 0 ? <PermissionModeTabs value={permissionMode} onChange={(mode) => setPermissionModeByKey((current) => ({ ...current, [modeKey]: mode }))} /> : null}
         {permissionMode === "basic" && actions.length > 0 ? (
           <PermissionRuleGroup
             title="All operations"
@@ -507,6 +514,21 @@ function ruleForActions(permissions, target, profileID, actions) {
   const unique = new Set(rules);
   if (unique.size <= 1) return rules[0] || "";
   return "mixed";
+}
+
+function inferPermissionMode(permissions, target, profileID, actions) {
+  if (!target || actions.length === 0) return "basic";
+  const allRule = ruleForActions(permissions, target, profileID, actions);
+  if (allRule !== "mixed") return "basic";
+  const riskGroups = groupActionsByRisk(actions).filter((group) => group.actions.length > 0);
+  if (riskGroups.length === 0) return "basic";
+  const groupRules = riskGroups.map((group) => ruleForActions(permissions, target, profileID, group.actions));
+  if (groupRules.every((rule) => rule !== "mixed")) return "grouped";
+  return "advanced";
+}
+
+function tokenProfileModeKey(tokenID, target, profileID) {
+  return `${tokenID}:${target?.connector_kind || ""}:${target?.target_id || ""}:${profileID || ""}`;
 }
 
 function groupActions(actions) {

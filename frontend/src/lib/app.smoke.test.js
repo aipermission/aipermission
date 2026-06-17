@@ -248,6 +248,8 @@ test("Token permission controls expose temporary grant lifetimes", () => {
   assert.match(connectorTokenPermissionPanelSource, /Basic/);
   assert.match(connectorTokenPermissionPanelSource, /Grouped/);
   assert.match(connectorTokenPermissionPanelSource, /Advanced/);
+  assert.match(connectorTokenPermissionPanelSource, /inferPermissionMode/);
+  assert.match(connectorTokenPermissionPanelSource, /tokenProfileModeKey/);
   assert.match(connectorTokenPermissionPanelSource, /All operations/);
   assert.match(connectorTokenPermissionPanelSource, /connectorActionRiskOrder/);
   assert.match(connectorTokenPermissionPanelSource, /connectorActionRiskGroupLabel/);
