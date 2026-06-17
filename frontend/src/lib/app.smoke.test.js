@@ -56,6 +56,7 @@ const postgresConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..
 const postgresConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "index.jsx"), "utf8");
 const postgresConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"), "utf8");
 const postgresConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "model.js"), "utf8");
+const postgresConnectorOperationsSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "operations.jsx"), "utf8");
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -106,6 +107,7 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(sshConnectorIndexSource, /CredentialForm/);
   assert.match(sshConnectorIndexSource, /ToolbarActions/);
   assert.match(postgresConnectorIndexSource, /CredentialForm/);
+  assert.match(postgresConnectorIndexSource, /Operations/);
   assert.match(postgresConnectorIndexSource, /ToolbarActions/);
   assert.match(sshConnectorMetadataSource, /"label": "SSH"/);
   assert.match(sshConnectorMetadataSource, /"icon": "server"/);
@@ -143,9 +145,14 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(sshConnectorListItemTemplateSource, /Check Docker/);
   assert.match(sshConnectorListItemTemplateSource, /Install key/);
   assert.match(sshConnectorListItemTemplateSource, /Install key for/);
-  assert.match(postgresConnectorListItemTemplateSource, /Create user/);
-  assert.match(postgresConnectorListItemTemplateSource, /Backup management/);
-  assert.match(postgresConnectorListItemTemplateSource, /onUnderConstruction/);
+  assert.match(postgresConnectorListItemTemplateSource, /Create managed DB user/);
+  assert.match(postgresConnectorListItemTemplateSource, /Backup \/ restore database/);
+  assert.doesNotMatch(postgresConnectorListItemTemplateSource, /Export table JSON/);
+  assert.match(postgresConnectorOperationsSource, /\/profiles\/\$\{profileID\}\/provision/);
+  assert.match(postgresConnectorOperationsSource, /\/backup/);
+  assert.match(postgresConnectorOperationsSource, /\/restore/);
+  assert.doesNotMatch(postgresConnectorOperationsSource, /export_table_json/);
+  assert.match(postgresConnectorOperationsSource, /Create user/);
   assert.doesNotMatch(sshConnectorListItemTemplateSource, /Delete SSH connector|Edit SSH connector|Test SSH/);
   assert.match(connectorsSource, /title="Test connection"/);
   assert.match(connectorsSource, /title="Edit connector"/);
@@ -278,12 +285,22 @@ test("Console exposes connector action approvals", () => {
   assert.match(consolePageSource, /selectedConnectorTemplate\?\.Console/);
   assert.match(consolePageSource, /useConnectorPermissions/);
   assert.match(postgresConnectorConsoleTemplateSource, /PostgresConnectorToolbarActionsTemplate/);
+  assert.match(postgresConnectorConsoleTemplateSource, /Schema browser/);
+  assert.match(postgresConnectorConsoleTemplateSource, /Search schemas or tables/);
+  assert.match(postgresConnectorConsoleTemplateSource, /prepareTableQuery/);
+  assert.match(postgresConnectorConsoleTemplateSource, /filteredTableBrowserRows/);
+  assert.match(postgresConnectorConsoleTemplateSource, /rowsToCSVText/);
+  assert.match(postgresConnectorConsoleTemplateSource, /postgres-result\.csv/);
+  assert.match(postgresConnectorConsoleTemplateSource, /postgres-result\.json/);
   assert.match(postgresConnectorConsoleTemplateSource, /Session requests/);
   assert.match(postgresConnectorConsoleTemplateSource, /No active Postgres session/);
   assert.match(postgresConnectorConsoleTemplateSource, /monaco-editor\/esm\/vs\/editor\/editor\.api/);
   assert.match(postgresConnectorConsoleTemplateSource, /action_name: "query_readonly"/);
   assert.match(postgresConnectorConsoleTemplateSource, /action_name: "describe_table"/);
-  assert.match(postgresConnectorConsoleTemplateSource, /information_schema\.columns/);
+  assert.match(postgresConnectorConsoleTemplateSource, /FROM pg_class c/);
+  assert.match(postgresConnectorConsoleTemplateSource, /json_agg/);
+  assert.match(postgresConnectorConsoleTemplateSource, /a\.attnum/);
+  assert.match(postgresConnectorConsoleTemplateSource, /ChevronRight/);
   assert.match(postgresConnectorConsoleTemplateSource, /referencedTablesFromSQL/);
   assert.match(postgresConnectorConsoleTemplateSource, /tableMatchesReference/);
   assert.match(postgresConnectorConsoleTemplateSource, /CompletionItemKind\.Field/);

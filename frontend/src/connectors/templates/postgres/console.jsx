@@ -1,11 +1,43 @@
-import { Database, RefreshCcw, TerminalSquare, XCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Database, Download, RefreshCcw, TerminalSquare, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
-import { apiPost } from "../../../lib/api";
+import { apiPost, downloadBlob, downloadJSON } from "../../../lib/api";
+
+const consoleMetadataSQL = `
+SELECT
+  n.nspname AS table_schema,
+  c.relname AS table_name,
+  c.relkind AS table_type,
+  COALESCE(
+    json_agg(
+      json_build_object(
+        'name', a.attname,
+        'data_type', format_type(a.atttypid, a.atttypmod),
+        'position', a.attnum
+      )
+      ORDER BY a.attnum
+    ) FILTER (WHERE a.attname IS NOT NULL),
+    '[]'::json
+  ) AS columns
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND n.nspname NOT LIKE 'pg_toast%'
+  AND (
+    has_table_privilege(c.oid, 'SELECT')
+    OR has_table_privilege(c.oid, 'INSERT')
+    OR has_table_privilege(c.oid, 'UPDATE')
+    OR has_table_privilege(c.oid, 'DELETE')
+  )
+GROUP BY n.nspname, c.relname, c.relkind
+ORDER BY n.nspname, c.relname
+`;
 
 export function PostgresConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
   const [selectedID, setSelectedID] = useState(null);
@@ -15,6 +47,8 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
   const [metadata, setMetadata] = useState({ state: "idle", tables: [], error: "" });
   const [editorFocusTick, setEditorFocusTick] = useState(0);
   const [resultView, setResultView] = useState(false);
+  const [leftPanel, setLeftPanel] = useState("browser");
+  const [browserSearch, setBrowserSearch] = useState("");
   const metadataSessionRef = useRef("");
   const metadataRowsRef = useRef([]);
   const columnMetadataRequestsRef = useRef(new Set());
@@ -42,6 +76,7 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
     }
     return items[0] || null;
   }, [items, selectedID]);
+  const browserTables = useMemo(() => filteredTableBrowserRows(metadata.tables, browserSearch), [metadata.tables, browserSearch]);
 
   useEffect(() => {
     setSelectedID(null);
@@ -68,12 +103,8 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
       target_ref: target.ref,
       action_name: "query_readonly",
       input: {
-        sql: `SELECT table_schema, table_name, column_name, data_type
-FROM information_schema.columns
-WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-  AND table_schema NOT LIKE 'pg_toast%'
-ORDER BY table_schema, table_name, ordinal_position`,
-        max_rows: 1000,
+        sql: consoleMetadataSQL,
+        max_rows: 5000,
       },
       reason: "load Postgres console autocomplete",
     })
@@ -158,6 +189,12 @@ ORDER BY table_schema, table_name, ordinal_position`,
     }
   }
 
+  function prepareTableQuery(table) {
+    if (!table?.table) return;
+    setSQL(`SELECT *\nFROM ${qualifiedTableSQL(table)}\nLIMIT ${Math.min(Number(maxRows) || 100, 100)};`);
+    setEditorFocusTick((current) => current + 1);
+  }
+
   if (!activeSession.active) {
     return (
       <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
@@ -209,30 +246,64 @@ ORDER BY table_schema, table_name, ordinal_position`,
         {!resultView ? (
           <section className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass}`}>
             <div className={`border-b px-4 py-3 ${borderClass} ${subtlePanelClass}`}>
-              <h4 className="text-sm font-semibold">Session requests</h4>
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-sm font-semibold">{leftPanel === "browser" ? "Schema browser" : "Session requests"}</h4>
+                <div className={`inline-flex rounded-md border p-0.5 text-xs ${borderClass}`}>
+                  {["browser", "requests"].map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`rounded px-2 py-1 font-semibold transition ${leftPanel === mode ? "bg-emerald-700 text-white" : `${mutedClass} ${hoverClass}`}`}
+                      onClick={() => setLeftPanel(mode)}
+                    >
+                      {mode === "browser" ? "Browser" : "Requests"}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <p className={`mt-1 text-xs ${mutedClass}`}>
-                {activeSession.active ? `${items.length} request${items.length === 1 ? "" : "s"} since ${formatConnectorTime(activeSession.startedAt)}.` : "Session ended. Start a new session to watch new requests here."}
+                {leftPanel === "browser"
+                  ? tableBrowserSummary(metadata, browserTables)
+                  : activeSession.active
+                    ? `${items.length} request${items.length === 1 ? "" : "s"} since ${formatConnectorTime(activeSession.startedAt)}.`
+                    : "Session ended. Start a new session to watch new requests here."}
               </p>
             </div>
-            <div className={`min-h-0 overflow-y-auto divide-y ${theme === "light" ? "divide-stone-200" : "divide-stone-700"}`}>
-              {items.map((item) => {
-                const active = selected && Number(selected.id) === Number(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`grid w-full gap-1 px-4 py-3 text-left transition ${active ? "bg-emerald-950 text-white" : hoverClass}`}
-                    onClick={() => setSelectedID(active ? null : item.id)}
-                  >
-                    <span className="flex min-w-0 items-center justify-between gap-2">
-                      <span className="truncate font-mono text-xs font-semibold">{item.action_name}</span>
-                      <ActivityStatusBadge status={item.status} />
-                    </span>
-                    <span className={`truncate text-xs ${active ? "text-emerald-100" : mutedClass}`}>{item.reason || formatConnectorTime(item.created_at)}</span>
-                  </button>
-                );
-              })}
-              {items.length === 0 ? <p className={`px-4 py-5 text-sm ${mutedClass}`}>{activeSession.active ? "No requests in this session yet." : "No active Postgres session."}</p> : null}
+            <div className={`min-h-0 overflow-hidden ${leftPanel === "requests" ? `divide-y ${theme === "light" ? "divide-stone-200" : "divide-stone-700"}` : ""}`}>
+              {leftPanel === "browser" ? (
+                <PostgresSchemaBrowser
+                  rows={browserTables}
+                  search={browserSearch}
+                  onSearch={setBrowserSearch}
+                  onPrepareQuery={prepareTableQuery}
+                  metadata={metadata}
+                  theme={theme}
+                  inputClass={inputClass}
+                  mutedClass={mutedClass}
+                  hoverClass={hoverClass}
+                />
+              ) : (
+                <div className={`h-full min-h-0 overflow-y-auto divide-y ${theme === "light" ? "divide-stone-200" : "divide-stone-700"}`}>
+                  {items.map((item) => {
+                    const active = selected && Number(selected.id) === Number(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`grid w-full gap-1 px-4 py-3 text-left transition ${active ? "bg-emerald-950 text-white" : hoverClass}`}
+                        onClick={() => setSelectedID(active ? null : item.id)}
+                      >
+                        <span className="flex min-w-0 items-center justify-between gap-2">
+                          <span className="truncate font-mono text-xs font-semibold">{item.action_name}</span>
+                          <ActivityStatusBadge status={item.status} />
+                        </span>
+                        <span className={`truncate text-xs ${active ? "text-emerald-100" : mutedClass}`}>{item.reason || formatConnectorTime(item.created_at)}</span>
+                      </button>
+                    );
+                  })}
+                  {items.length === 0 ? <p className={`px-4 py-5 text-sm ${mutedClass}`}>{activeSession.active ? "No requests in this session yet." : "No active Postgres session."}</p> : null}
+                </div>
+              )}
             </div>
           </section>
         ) : null}
@@ -462,6 +533,88 @@ function ResultViewToggle({ checked, onChange, theme }) {
   );
 }
 
+function PostgresSchemaBrowser({ rows, search, onSearch, onPrepareQuery, metadata, theme, inputClass, mutedClass, hoverClass }) {
+  const [expandedTables, setExpandedTables] = useState({});
+  const grouped = groupTableBrowserRows(rows);
+  function toggleTable(table) {
+    const key = tableBrowserKey(table);
+    setExpandedTables((current) => ({ ...current, [key]: !current[key] }));
+  }
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 p-3">
+      <input
+        type="search"
+        className={`h-9 rounded-md border px-3 text-sm outline-none ${inputClass}`}
+        value={search}
+        onChange={(event) => onSearch(event.target.value)}
+        placeholder="Search schemas or tables"
+      />
+      <div className="min-h-0 overflow-y-auto">
+        {metadata.state === "loading" ? <p className={`px-1 py-3 text-sm ${mutedClass}`}>Loading schema metadata...</p> : null}
+        {metadata.state === "error" ? <Notice tone="bad">{metadata.error || "Schema metadata could not be loaded."}</Notice> : null}
+        {metadata.state !== "loading" && grouped.length === 0 ? <p className={`px-1 py-3 text-sm ${mutedClass}`}>No tables found for this profile.</p> : null}
+        {grouped.map((group) => (
+          <div key={group.schema} className="mb-3">
+            <p className={`mb-1 truncate px-1 text-[11px] font-semibold uppercase tracking-wide ${mutedClass}`}>{group.schema}</p>
+            <div className={`overflow-hidden rounded-md border ${theme === "light" ? "border-stone-200" : "border-stone-700"}`}>
+              {group.tables.map((table) => {
+                const key = tableBrowserKey(table);
+                const expanded = Boolean(expandedTables[key]);
+                const columns = table.columns || [];
+                return (
+                  <div key={key} className={`border-b last:border-b-0 ${theme === "light" ? "border-stone-100" : "border-stone-800"}`}>
+                    <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5 transition ${hoverClass}`}>
+                      <button
+                        type="button"
+                        className="flex min-w-0 items-start gap-2 text-left"
+                        onClick={() => toggleTable(table)}
+                        title={`${expanded ? "Hide" : "Show"} columns for ${table.schema}.${table.table}`}
+                      >
+                        <span className="mt-0.5 shrink-0">
+                          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-mono text-xs font-semibold">{table.table}</span>
+                          <span className={`block truncate text-[11px] ${mutedClass}`}>
+                            {table.columnCount} column{table.columnCount === 1 ? "" : "s"}
+                          </span>
+                        </span>
+                      </button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-7 w-7 px-0"
+                        title={`Prepare SELECT query for ${table.schema}.${table.table}`}
+                        onClick={() => onPrepareQuery(table)}
+                      >
+                        <Database className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {expanded ? (
+                      <div className={`grid gap-1 px-8 pb-2 text-[11px] ${mutedClass}`}>
+                        {columns.length > 0 ? (
+                          columns.map((column) => (
+                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded px-2 py-1 font-mono" key={`${key}.${column.name}`}>
+                              <span className="truncate">{column.name}</span>
+                              {column.dataType ? <span className="truncate opacity-75">{column.dataType}</span> : null}
+                            </div>
+                          ))
+                        ) : (
+                          <span className="rounded px-2 py-1">No column metadata loaded.</span>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ActivityBlock({ title, value }) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
@@ -476,12 +629,29 @@ function PostgresOutputBlock({ title, value, theme }) {
   const columns = Array.isArray(normalized?.columns) ? normalized.columns.map((item) => String(item)) : [];
   const rows = Array.isArray(normalized?.rows) ? normalized.rows : [];
   const tableText = rowsToClipboardText(columns, rows);
+  const csvText = rowsToCSVText(columns, rows);
+  const jsonValue = normalized || value || {};
   if (columns.length > 0) {
     return (
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase text-stone-500">{title}</p>
-          <CopyButton value={tableText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" />
+          <div className="flex flex-wrap justify-end gap-2">
+            <CopyButton value={tableText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy rows as TSV">
+              TSV
+            </CopyButton>
+            <CopyButton value={formatJSON(jsonValue)} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy result JSON">
+              JSON
+            </CopyButton>
+            <Button type="button" variant="outline" className="h-8 px-2 text-xs" title="Download rows as CSV" onClick={() => downloadText(csvText, "postgres-result.csv", "text/csv")}>
+              <Download className="h-3.5 w-3.5" />
+              CSV
+            </Button>
+            <Button type="button" variant="outline" className="h-8 px-2 text-xs" title="Download result JSON" onClick={() => downloadJSON(jsonValue, "postgres-result.json")}>
+              <Download className="h-3.5 w-3.5" />
+              JSON
+            </Button>
+          </div>
         </div>
         <div className={`min-h-0 overflow-auto rounded-md border font-mono text-xs ${theme === "light" ? "border-stone-200 bg-white" : "border-stone-700 bg-[#1a1a1a]"}`}>
           <table className="min-w-full border-separate border-spacing-0 select-text">
@@ -517,10 +687,22 @@ function PostgresOutputBlock({ title, value, theme }) {
       </div>
     );
   }
+  const jsonText = formatJSON(value);
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
-      <p className="text-xs font-semibold uppercase text-stone-500">{title}</p>
-      <TerminalBlock className="min-h-0 overflow-auto text-xs">{formatJSON(value)}</TerminalBlock>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase text-stone-500">{title}</p>
+        <div className="flex justify-end gap-2">
+          <CopyButton value={jsonText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy JSON">
+            JSON
+          </CopyButton>
+          <Button type="button" variant="outline" className="h-8 px-2 text-xs" title="Download JSON" onClick={() => downloadJSON(value || {}, "postgres-result.json")}>
+            <Download className="h-3.5 w-3.5" />
+            JSON
+          </Button>
+        </div>
+      </div>
+      <TerminalBlock className="min-h-0 overflow-auto text-xs">{jsonText}</TerminalBlock>
     </div>
   );
 }
@@ -558,6 +740,26 @@ function rowsToClipboardText(columns, rows) {
   return lines.join("\n");
 }
 
+function rowsToCSVText(columns, rows) {
+  const lines = [columns.map(csvCell).join(",")];
+  for (const row of rows) {
+    lines.push(columns.map((column) => csvCell(formatCell(row?.[column]))).join(","));
+  }
+  return lines.join("\n");
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+  return text;
+}
+
+function downloadText(text, filename, type) {
+  downloadBlob(new Blob([text], { type }), filename);
+}
+
 function targetEndpoint(target) {
   if (!target) return "-";
   const host = target.config?.host || "host";
@@ -577,30 +779,151 @@ function metadataStatusText(metadata) {
   return "Run bounded read-only SQL through this credential profile.";
 }
 
+function tableBrowserSummary(metadata, rows) {
+  if (metadata.state === "loading") return "Loading visible schemas and tables...";
+  if (metadata.state === "error") return "Schema metadata is unavailable. You can still run read-only SQL.";
+  if (rows.length === 0) return "No visible tables found for this profile.";
+  return `${rows.length} visible table${rows.length === 1 ? "" : "s"}. Select one to prepare a read-only query.`;
+}
+
 function extractTableSuggestions(output) {
   const normalized = normalizeConnectorOutput(output);
   const rows = Array.isArray(normalized?.rows) ? normalized.rows : [];
-  return rows
-    .map((row) => ({
-      schema: cleanCompletionValue(row.table_schema || row.schema),
-      table: cleanCompletionValue(row.table_name || row.table),
-      column: cleanCompletionValue(row.column_name || row.column),
-      dataType: cleanCompletionValue(row.data_type || row.type),
-      type: cleanCompletionValue(row.table_type || row.type),
-    }))
-    .filter((row) => row.schema && row.table);
+  const suggestions = [];
+  for (const row of rows) {
+    const schema = cleanCompletionValue(row.table_schema || row.schema);
+    const table = cleanCompletionValue(row.table_name || row.table);
+    const type = cleanCompletionValue(row.table_type || row.type);
+    if (!schema || !table) continue;
+    const columns = metadataColumns(row);
+    if (columns.length === 0) {
+      suggestions.push({
+        schema,
+        table,
+        column: cleanCompletionValue(row.column_name || row.column),
+        dataType: cleanCompletionValue(row.data_type || ""),
+        position: numericPosition(row.ordinal_position || row.position),
+        type,
+      });
+      continue;
+    }
+    for (const column of columns) {
+      suggestions.push({
+        schema,
+        table,
+        column: column.name,
+        dataType: column.dataType,
+        position: column.position,
+        type,
+      });
+    }
+  }
+  return suggestions.filter((row) => row.schema && row.table);
 }
 
 function mergeMetadataRows(current, incoming) {
   const merged = [];
   const seen = new Set();
   for (const item of [...(current || []), ...(incoming || [])]) {
-    const key = [normalizeSQLName(item.schema), normalizeSQLName(item.table), normalizeSQLName(item.column), normalizeSQLName(item.dataType || item.type)].join(".");
+    const key = [normalizeSQLName(item.schema), normalizeSQLName(item.table), normalizeSQLName(item.column), normalizeSQLName(item.dataType || item.type), item.position || ""].join(".");
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(item);
   }
   return merged;
+}
+
+function filteredTableBrowserRows(rows, search) {
+  const terms = normalizeSQLName(search).split(/\s+/).filter(Boolean);
+  const tables = uniqueTableBrowserRows(rows || []);
+  if (terms.length === 0) return tables;
+  return tables.filter((row) => {
+    const haystack = normalizeSQLName(`${row.schema} ${row.table}`);
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
+function uniqueTableBrowserRows(rows) {
+  const byTable = new Map();
+  const seenColumns = new Set();
+  for (const row of rows) {
+    if (!row.schema || !row.table) continue;
+    const key = `${normalizeSQLName(row.schema)}.${normalizeSQLName(row.table)}`;
+    const current = byTable.get(key) || {
+      schema: row.schema,
+      table: row.table,
+      type: row.type || "table",
+      columnCount: 0,
+      columns: [],
+    };
+    if (row.column) {
+      const columnKey = `${key}.${normalizeSQLName(row.column)}`;
+      if (!seenColumns.has(columnKey)) {
+        seenColumns.add(columnKey);
+        current.columns.push({ name: row.column, dataType: row.dataType || "", position: row.position || current.columns.length + 1 });
+      }
+    }
+    byTable.set(key, current);
+  }
+  return Array.from(byTable.values()).map((table) => ({
+    ...table,
+    columnCount: (table.columns || []).length,
+    columns: [...(table.columns || [])].sort((a, b) => (a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name)),
+  })).sort((a, b) => {
+    const schemaCompare = a.schema.localeCompare(b.schema);
+    return schemaCompare || a.table.localeCompare(b.table);
+  });
+}
+
+function metadataColumns(row) {
+  const columns = row.columns;
+  if (!columns) return [];
+  const parsed = typeof columns === "string" ? parseJSON(columns) : columns;
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((item, index) => {
+      if (typeof item === "string") {
+        return { name: cleanCompletionValue(item), dataType: "", position: index + 1 };
+      }
+      return {
+        name: cleanCompletionValue(item?.name || item?.column_name || item?.column),
+        dataType: cleanCompletionValue(item?.data_type || item?.dataType || item?.type),
+        position: numericPosition(item?.position || item?.ordinal_position || index + 1),
+      };
+    })
+    .filter((item) => item.name);
+}
+
+function parseJSON(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function numericPosition(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function tableBrowserKey(table) {
+  return `${normalizeSQLName(table.schema)}.${normalizeSQLName(table.table)}`;
+}
+
+function groupTableBrowserRows(rows) {
+  const bySchema = new Map();
+  for (const row of rows) {
+    const schema = row.schema || "public";
+    const group = bySchema.get(schema) || { schema, tables: [] };
+    group.tables.push(row);
+    bySchema.set(schema, group);
+  }
+  return Array.from(bySchema.values());
+}
+
+function qualifiedTableSQL(table) {
+  return `${quoteSQLIdentifier(table.schema)}.${quoteSQLIdentifier(table.table)}`;
 }
 
 function metadataHasColumns(rows, reference) {
