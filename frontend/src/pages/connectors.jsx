@@ -69,10 +69,13 @@ export function ConnectorsPage() {
         const key = targetProfileSelectionKey(target);
         const profiles = target.profiles || [];
         const currentID = current[key];
-        if (profiles.length === 1) {
-          next[key] = String(profiles[0].id);
-        } else if (profiles.some((profile) => String(profile.id) === String(currentID))) {
+        if (profiles.length === 0) {
+          continue;
+        }
+        if (profiles.some((profile) => String(profile.id) === String(currentID))) {
           next[key] = String(currentID);
+        } else {
+          next[key] = String(profiles[0].id);
         }
       }
       return next;
@@ -480,8 +483,8 @@ function ConnectorTargetRow(props) {
 
 function selectedConnectorProfile(target, selectedProfileID) {
   const profiles = target?.profiles || [];
-  if (profiles.length === 1) return profiles[0];
-  return profiles.find((profile) => String(profile.id) === String(selectedProfileID)) || null;
+  if (profiles.length === 0) return null;
+  return profiles.find((profile) => String(profile.id) === String(selectedProfileID)) || profiles[0];
 }
 
 function ConnectorProfilesCell({ target, selectedProfileID, onSelectProfile }) {

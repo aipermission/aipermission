@@ -2,12 +2,18 @@
 package postgresconnector
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
+	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -33,6 +39,10 @@ const (
 	maxOutputBytes = 500000
 	maxCellBytes   = 64000
 	queryTimeout   = 20 * time.Second
+	backupTimeout  = 2 * time.Minute
+	restoreTimeout = 5 * time.Minute
+	maxBackupBytes = 256 << 20
+	maxRestoreLog  = 2 << 20
 )
 
 const truncatedSuffix = "...[truncated]"
@@ -138,6 +148,42 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 					Required:    true,
 					Secret:      true,
 					Description: "Postgres password for this profile.",
+				},
+				{
+					Name:        "managed_by_aipermission",
+					Label:       "Managed by AIPermission",
+					Type:        connectors.FieldBoolean,
+					Description: "True when AIPermission provisioned this database role and should clean it up when the profile is deleted.",
+				},
+				{
+					Name:        "managed_role_name",
+					Label:       "Managed role name",
+					Type:        connectors.FieldString,
+					Description: "Database role name created by AIPermission.",
+				},
+				{
+					Name:        "managed_admin_profile_id",
+					Label:       "Managed admin profile ID",
+					Type:        connectors.FieldNumber,
+					Description: "Credential profile used to create and clean up the managed role.",
+				},
+				{
+					Name:        "managed_admin_profile_ref",
+					Label:       "Managed admin profile label",
+					Type:        connectors.FieldString,
+					Description: "Credential profile label used to create the managed role.",
+				},
+				{
+					Name:        "managed_preset",
+					Label:       "Managed preset",
+					Type:        connectors.FieldString,
+					Description: "Provisioning preset used for this managed role.",
+				},
+				{
+					Name:        "managed_scope",
+					Label:       "Managed scope",
+					Type:        connectors.FieldJSON,
+					Description: "Provisioning scope summary for this managed role.",
 				},
 			}},
 		},
@@ -453,7 +499,296 @@ func (o queryOutput) DisplayText() string {
 	return text
 }
 
+type provisionScope struct {
+	AllSchemas bool
+	Schemas    []provisionSchemaScope
+}
+
+type provisionSchemaScope struct {
+	Schema    string
+	AllTables bool
+	Tables    []provisionTableScope
+}
+
+type provisionTableScope struct {
+	Table      string
+	AllColumns bool
+	Columns    []string
+}
+
+func (Connector) ProvisionCredentialProfile(ctx context.Context, runtime connectors.RuntimeContext, input map[string]any) (connectors.ProvisionedCredentialProfile, error) {
+	if runtime.Target.ConnectorKind != Kind {
+		return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("target connector kind must be %s", Kind)
+	}
+	if connectionMode(runtime.Target) != "direct" {
+		return connectors.ProvisionedCredentialProfile{}, ErrUnsupportedMode
+	}
+	roleName := cleanSimpleIdentifierInput(input, "role_name")
+	if roleName == "" {
+		return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("role_name is required and must be a simple identifier")
+	}
+	profileLabel := strings.TrimSpace(stringInput(input, "profile_label"))
+	if profileLabel == "" {
+		profileLabel = roleName
+	}
+	preset := strings.TrimSpace(stringInput(input, "preset"))
+	switch preset {
+	case "", "read_only":
+		preset = "read_only"
+	case "read_write":
+	default:
+		return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("unsupported preset %q", preset)
+	}
+	scope, err := provisionScopeInput(input)
+	if err != nil {
+		return connectors.ProvisionedCredentialProfile{}, err
+	}
+	password, err := randomCredentialPassword()
+	if err != nil {
+		return connectors.ProvisionedCredentialProfile{}, err
+	}
+	statements, summary, err := provisionRoleStatements(runtime.Target, roleName, password, preset, scope)
+	if err != nil {
+		return connectors.ProvisionedCredentialProfile{}, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	conn, err := connectPostgres(ctx, runtime, false)
+	if err != nil {
+		return connectors.ProvisionedCredentialProfile{}, err
+	}
+	defer conn.Close(context.Background())
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("start postgres role provisioning transaction: %w", err)
+	}
+	defer tx.Rollback(context.Background())
+	for _, statement := range statements {
+		if _, err := tx.Exec(ctx, statement); err != nil {
+			return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("provision postgres role: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("commit postgres role provisioning: %w", err)
+	}
+
+	public := map[string]any{
+		"username":                  roleName,
+		"managed_by_aipermission":   true,
+		"managed_role_name":         roleName,
+		"managed_admin_profile_id":  runtime.Profile.ID,
+		"managed_admin_profile_ref": runtime.Profile.Label,
+		"managed_preset":            preset,
+		"managed_scope":             summary,
+	}
+	return connectors.ProvisionedCredentialProfile{
+		Kind:      "username_password",
+		Label:     profileLabel,
+		Public:    public,
+		Secret:    map[string]any{"password": password},
+		RiskLabel: provisionRiskLabel(preset),
+		Result: connectors.ActionResult{
+			Status:      connectors.ResultCompleted,
+			Output:      map[string]any{"role_name": roleName, "profile_label": profileLabel, "preset": preset, "scope": summary},
+			DisplayText: "Created Postgres role and saved credential profile",
+		},
+	}, nil
+}
+
+func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtime connectors.RuntimeContext, profile connectors.CredentialProfileView) (connectors.ActionResult, error) {
+	if runtime.Target.ConnectorKind != Kind {
+		return connectors.ActionResult{}, fmt.Errorf("target connector kind must be %s", Kind)
+	}
+	if !boolPublic(profile.Public, "managed_by_aipermission") {
+		return connectors.ActionResult{Status: connectors.ResultCompleted, DisplayText: "No external cleanup required"}, nil
+	}
+	roleName := cleanSimpleIdentifierValue(publicString(profile.Public, "managed_role_name"))
+	if roleName == "" {
+		roleName = cleanSimpleIdentifierValue(publicString(profile.Public, "username"))
+	}
+	if roleName == "" {
+		return connectors.ActionResult{}, fmt.Errorf("managed Postgres profile is missing a role name")
+	}
+	adminRole := cleanSimpleIdentifierValue(publicString(runtime.Profile.Public, "username"))
+	if adminRole == "" {
+		return connectors.ActionResult{}, fmt.Errorf("admin profile is missing a username for managed role cleanup")
+	}
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	conn, err := connectPostgres(ctx, runtime, false)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	defer conn.Close(context.Background())
+	var exists bool
+	if err := conn.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)`, roleName).Scan(&exists); err != nil {
+		return connectors.ActionResult{}, fmt.Errorf("check postgres role: %w", err)
+	}
+	if !exists {
+		return connectors.ActionResult{
+			Status:      connectors.ResultCompleted,
+			Output:      map[string]any{"role_name": roleName, "dropped": false, "reason": "role not found"},
+			DisplayText: "Managed Postgres role was already absent",
+		}, nil
+	}
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return connectors.ActionResult{}, fmt.Errorf("start postgres role cleanup transaction: %w", err)
+	}
+	defer tx.Rollback(context.Background())
+	for _, statement := range []string{
+		fmt.Sprintf("REASSIGN OWNED BY %s TO %s", quoteIdentifier(roleName), quoteIdentifier(adminRole)),
+		fmt.Sprintf("DROP OWNED BY %s", quoteIdentifier(roleName)),
+		fmt.Sprintf("DROP ROLE %s", quoteIdentifier(roleName)),
+	} {
+		if _, err := tx.Exec(ctx, statement); err != nil {
+			return connectors.ActionResult{}, fmt.Errorf("cleanup postgres role: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return connectors.ActionResult{}, fmt.Errorf("commit postgres role cleanup: %w", err)
+	}
+	return connectors.ActionResult{
+		Status:      connectors.ResultCompleted,
+		Output:      map[string]any{"role_name": roleName, "dropped": true},
+		DisplayText: "Dropped managed Postgres role",
+	}, nil
+}
+
+func (Connector) Backup(ctx context.Context, runtime connectors.RuntimeContext, _ connectors.BackupRequest) (connectors.BackupArtifact, error) {
+	if connectionMode(runtime.Target) != "direct" {
+		return connectors.BackupArtifact{}, ErrUnsupportedMode
+	}
+	ctx, cancel := context.WithTimeout(ctx, backupTimeout)
+	defer cancel()
+	env, args, err := postgresCLIConnection(ctx, runtime)
+	if err != nil {
+		return connectors.BackupArtifact{}, err
+	}
+	args = append(args,
+		"--format=plain",
+		"--clean",
+		"--if-exists",
+		"--no-owner",
+		"--no-privileges",
+	)
+	var stdout limitedBuffer
+	stdout.Limit = maxBackupBytes
+	var stderr limitedBuffer
+	stderr.Limit = maxRestoreLog
+	cmd := exec.CommandContext(ctx, "pg_dump", args...)
+	cmd.Env = env
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return connectors.BackupArtifact{}, postgresCommandError("pg_dump", err, stderr.String())
+	}
+	database := targetString(runtime.Target.Config, "database")
+	filename := postgresSafeFilename(runtime.Target.Name, database) + ".sql"
+	return connectors.BackupArtifact{
+		Filename:    filename,
+		ContentType: "application/sql; charset=utf-8",
+		Data:        stdout.Bytes(),
+		Metadata: map[string]any{
+			"connector_kind": Kind,
+			"database":       database,
+			"format":         "plain_sql",
+			"clean":          true,
+		},
+	}, nil
+}
+
+func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext, request connectors.RestoreRequest) (connectors.ActionResult, error) {
+	if connectionMode(runtime.Target) != "direct" {
+		return connectors.ActionResult{}, ErrUnsupportedMode
+	}
+	if len(request.Data) == 0 {
+		return connectors.ActionResult{}, fmt.Errorf("restore SQL file is empty")
+	}
+	if len(request.Data) > maxBackupBytes {
+		return connectors.ActionResult{}, fmt.Errorf("restore SQL file is too large; maximum restore size is 256 MiB")
+	}
+	ctx, cancel := context.WithTimeout(ctx, restoreTimeout)
+	defer cancel()
+	env, args, err := postgresCLIConnection(ctx, runtime)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	args = append(args,
+		"--single-transaction",
+		"--set", "ON_ERROR_STOP=on",
+	)
+	var stdout limitedBuffer
+	stdout.Limit = maxRestoreLog
+	var stderr limitedBuffer
+	stderr.Limit = maxRestoreLog
+	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd.Env = env
+	cmd.Stdin = bytes.NewReader(request.Data)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return connectors.ActionResult{}, postgresCommandError("psql", err, stderr.String())
+	}
+	output := map[string]any{
+		"filename": strings.TrimSpace(request.Filename),
+		"stdout":   stdout.String(),
+		"stderr":   stderr.String(),
+	}
+	return connectors.ActionResult{
+		Status:      connectors.ResultCompleted,
+		Output:      output,
+		DisplayText: "Postgres SQL restore completed",
+		Metadata: map[string]any{
+			"connector_kind": Kind,
+			"database":       targetString(runtime.Target.Config, "database"),
+			"filename":       strings.TrimSpace(request.Filename),
+		},
+	}, nil
+}
+
 func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn, error) {
+	return connectPostgres(ctx, runtime, true)
+}
+
+func postgresCLIConnection(ctx context.Context, runtime connectors.RuntimeContext) ([]string, []string, error) {
+	username := strings.TrimSpace(publicString(runtime.Profile.Public, "username"))
+	if username == "" {
+		return nil, nil, fmt.Errorf("%w: username", ErrMissingSecret)
+	}
+	if runtime.Secrets == nil {
+		return nil, nil, fmt.Errorf("%w: password", ErrMissingSecret)
+	}
+	password, err := runtime.Secrets.GetSecret(ctx, "password")
+	if err != nil || strings.TrimSpace(password) == "" {
+		return nil, nil, fmt.Errorf("%w: password", ErrMissingSecret)
+	}
+	host := targetString(runtime.Target.Config, "host")
+	database := targetString(runtime.Target.Config, "database")
+	if host == "" {
+		return nil, nil, fmt.Errorf("%w: host is required", ErrInvalidConfig)
+	}
+	if database == "" {
+		return nil, nil, fmt.Errorf("%w: database is required", ErrInvalidConfig)
+	}
+	env := append(os.Environ(),
+		"PGPASSWORD="+password,
+		"PGSSLMODE="+sslMode(runtime.Target.Config),
+		"PGCONNECT_TIMEOUT=10",
+		"PGAPPNAME=aipermission",
+	)
+	args := []string{
+		"--host", host,
+		"--port", strconv.Itoa(targetPort(runtime.Target.Config)),
+		"--username", username,
+		"--dbname", database,
+		"--no-password",
+	}
+	return env, args, nil
+}
+
+func connectPostgres(ctx context.Context, runtime connectors.RuntimeContext, readOnly bool) (*pgx.Conn, error) {
 	username := strings.TrimSpace(publicString(runtime.Profile.Public, "username"))
 	if username == "" {
 		return nil, fmt.Errorf("%w: username", ErrMissingSecret)
@@ -495,13 +830,180 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn,
 	}
 	config.RuntimeParams["application_name"] = "aipermission"
 	config.RuntimeParams["statement_timeout"] = strconv.Itoa(int(queryTimeout.Milliseconds()))
-	config.RuntimeParams["default_transaction_read_only"] = "on"
+	if readOnly {
+		config.RuntimeParams["default_transaction_read_only"] = "on"
+	}
 
 	conn, err := pgx.ConnectConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}
 	return conn, nil
+}
+
+func provisionScopeInput(input map[string]any) (provisionScope, error) {
+	raw := input["scope"]
+	if raw == nil {
+		return provisionScope{AllSchemas: true}, nil
+	}
+	if text, ok := raw.(string); ok {
+		if strings.TrimSpace(text) == "" {
+			return provisionScope{AllSchemas: true}, nil
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(text), &decoded); err != nil {
+			return provisionScope{}, fmt.Errorf("scope must be a JSON object")
+		}
+		raw = decoded
+	}
+	scopeMap, ok := raw.(map[string]any)
+	if !ok {
+		return provisionScope{}, fmt.Errorf("scope must be a JSON object")
+	}
+	scope := provisionScope{AllSchemas: boolInput(scopeMap, "all_schemas")}
+	if scope.AllSchemas {
+		return scope, nil
+	}
+	for _, item := range anySlice(scopeMap["schemas"]) {
+		schemaMap, ok := item.(map[string]any)
+		if !ok {
+			return provisionScope{}, fmt.Errorf("scope schemas must be objects")
+		}
+		schema := provisionSchemaScope{
+			Schema:    cleanSimpleIdentifierValue(stringInput(schemaMap, "schema")),
+			AllTables: boolInput(schemaMap, "all_tables"),
+		}
+		if schema.Schema == "" {
+			return provisionScope{}, fmt.Errorf("scope schema is required and must be a simple identifier")
+		}
+		if !schema.AllTables {
+			for _, tableItem := range anySlice(schemaMap["tables"]) {
+				tableMap, ok := tableItem.(map[string]any)
+				if !ok {
+					return provisionScope{}, fmt.Errorf("scope tables must be objects")
+				}
+				table := provisionTableScope{
+					Table:      cleanSimpleIdentifierValue(stringInput(tableMap, "table")),
+					AllColumns: boolInput(tableMap, "all_columns"),
+				}
+				if table.Table == "" {
+					return provisionScope{}, fmt.Errorf("scope table is required and must be a simple identifier")
+				}
+				if !table.AllColumns {
+					for _, column := range stringSlice(tableMap["columns"]) {
+						clean := cleanSimpleIdentifierValue(column)
+						if clean == "" {
+							return provisionScope{}, fmt.Errorf("scope column is required and must be a simple identifier")
+						}
+						table.Columns = append(table.Columns, clean)
+					}
+					if len(table.Columns) == 0 {
+						return provisionScope{}, fmt.Errorf("selected table must grant all columns or at least one column")
+					}
+				}
+				schema.Tables = append(schema.Tables, table)
+			}
+			if len(schema.Tables) == 0 {
+				return provisionScope{}, fmt.Errorf("selected schema must grant all tables or at least one table")
+			}
+		}
+		scope.Schemas = append(scope.Schemas, schema)
+	}
+	if len(scope.Schemas) == 0 {
+		return provisionScope{}, fmt.Errorf("scope must include at least one schema or all_schemas=true")
+	}
+	return scope, nil
+}
+
+func provisionRoleStatements(target connectors.TargetView, roleName string, password string, preset string, scope provisionScope) ([]string, map[string]any, error) {
+	database := targetString(target.Config, "database")
+	if database == "" {
+		return nil, nil, fmt.Errorf("target database is required")
+	}
+	roleSQL := quoteIdentifier(roleName)
+	statements := []string{fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s", roleSQL, quoteLiteral(password))}
+	statements = append(statements, fmt.Sprintf("GRANT CONNECT ON DATABASE %s TO %s", quoteIdentifier(database), roleSQL))
+	grants := []map[string]any{}
+	privileges := "SELECT"
+	if preset == "read_write" {
+		privileges = "SELECT, INSERT, UPDATE, DELETE"
+	}
+	if scope.AllSchemas {
+		grants = append(grants, map[string]any{"all_schemas": true, "all_tables": true, "privileges": privileges})
+		statements = append(statements, fmt.Sprintf(`
+DO $$
+DECLARE schema_name text;
+BEGIN
+	FOR schema_name IN
+		SELECT nspname FROM pg_namespace
+		WHERE nspname NOT LIKE 'pg_%%' AND nspname <> 'information_schema'
+	LOOP
+		EXECUTE format('GRANT USAGE ON SCHEMA %%I TO %%I', schema_name, %s);
+		EXECUTE format('GRANT %s ON ALL TABLES IN SCHEMA %%I TO %%I', schema_name, %s);
+	END LOOP;
+END
+$$`, quoteLiteral(roleName), privileges, quoteLiteral(roleName)))
+		return statements, map[string]any{"preset": preset, "database": database, "grants": grants}, nil
+	}
+	for _, schema := range scope.Schemas {
+		schemaSQL := quoteIdentifier(schema.Schema)
+		statements = append(statements, fmt.Sprintf("GRANT USAGE ON SCHEMA %s TO %s", schemaSQL, roleSQL))
+		if schema.AllTables {
+			statements = append(statements, fmt.Sprintf("GRANT %s ON ALL TABLES IN SCHEMA %s TO %s", privileges, schemaSQL, roleSQL))
+			grants = append(grants, map[string]any{"schema": schema.Schema, "all_tables": true, "privileges": privileges})
+			continue
+		}
+		for _, table := range schema.Tables {
+			if !table.AllColumns && preset == "read_write" {
+				return nil, nil, fmt.Errorf("column-scoped read/write grants are not supported; choose all columns for write access")
+			}
+			if table.AllColumns {
+				statements = append(statements, fmt.Sprintf("GRANT %s ON TABLE %s TO %s", privileges, qualifiedIdentifierSQL(schema.Schema, table.Table), roleSQL))
+				grants = append(grants, map[string]any{"schema": schema.Schema, "table": table.Table, "all_columns": true, "privileges": privileges})
+				continue
+			}
+			columnSQL := make([]string, 0, len(table.Columns))
+			for _, column := range table.Columns {
+				columnSQL = append(columnSQL, quoteIdentifier(column))
+			}
+			statements = append(statements, fmt.Sprintf("GRANT SELECT (%s) ON TABLE %s TO %s", strings.Join(columnSQL, ", "), qualifiedIdentifierSQL(schema.Schema, table.Table), roleSQL))
+			grants = append(grants, map[string]any{"schema": schema.Schema, "table": table.Table, "columns": table.Columns, "privileges": "SELECT"})
+		}
+	}
+	return statements, map[string]any{"preset": preset, "database": database, "grants": grants}, nil
+}
+
+func randomCredentialPassword() (string, error) {
+	buffer := make([]byte, 32)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", fmt.Errorf("generate password: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(buffer), nil
+}
+
+func provisionRiskLabel(preset string) string {
+	if preset == "read_write" {
+		return "managed read-write"
+	}
+	return "managed read-only"
+}
+
+func boolPublic(public map[string]any, name string) bool {
+	if public == nil {
+		return false
+	}
+	value, ok := public[name]
+	if !ok || value == nil {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), "true")
+	default:
+		return false
+	}
 }
 
 func getTables(ctx context.Context, tx pgx.Tx, schema string, includeSystem bool) (queryOutput, error) {
@@ -661,6 +1163,63 @@ func truncateUTF8Bytes(value string, limit int) string {
 		return ""
 	}
 	return value[:cut]
+}
+
+type limitedBuffer struct {
+	Limit int
+	data  bytes.Buffer
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if b.Limit <= 0 {
+		return len(p), nil
+	}
+	remaining := b.Limit - b.data.Len()
+	if remaining <= 0 {
+		return 0, fmt.Errorf("postgres command output exceeded %d bytes", b.Limit)
+	}
+	if len(p) > remaining {
+		_, _ = b.data.Write(p[:remaining])
+		return remaining, fmt.Errorf("postgres command output exceeded %d bytes", b.Limit)
+	}
+	return b.data.Write(p)
+}
+
+func (b *limitedBuffer) Bytes() []byte {
+	return b.data.Bytes()
+}
+
+func (b *limitedBuffer) String() string {
+	return b.data.String()
+}
+
+func postgresCommandError(command string, err error, stderr string) error {
+	var execErr *exec.Error
+	if errors.As(err, &execErr) {
+		return fmt.Errorf("%s is not available in the gateway container; rebuild with postgresql-client installed", command)
+	}
+	message := strings.TrimSpace(truncateUTF8Bytes(stderr, 4000))
+	if message == "" {
+		message = err.Error()
+	}
+	if errors.Is(err, io.ErrShortWrite) {
+		message = "command output exceeded gateway limit"
+	}
+	if command == "pg_dump" && strings.Contains(message, "server version mismatch") {
+		message += "\nThe gateway pg_dump client is older than this Postgres server. Rebuild the AIPermission backend image so the bundled Postgres client is updated."
+	}
+	return fmt.Errorf("%s failed: %s", command, message)
+}
+
+func postgresSafeFilename(parts ...string) string {
+	candidate := strings.Join(parts, "-")
+	candidate = strings.ToLower(strings.TrimSpace(candidate))
+	candidate = regexp.MustCompile(`[^a-z0-9._-]+`).ReplaceAllString(candidate, "-")
+	candidate = strings.Trim(candidate, "-._")
+	if candidate == "" {
+		return "postgres-backup"
+	}
+	return candidate
 }
 
 func minInt(a int, b int) int {
@@ -960,6 +1519,40 @@ func cleanIdentifierInput(input map[string]any, name string) string {
 	return value
 }
 
+func cleanSimpleIdentifierInput(input map[string]any, name string) string {
+	return cleanSimpleIdentifierValue(stringInput(input, name))
+}
+
+func cleanSimpleIdentifierValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "\"")
+	if value == "" || len(value) > 63 {
+		return ""
+	}
+	for index, ch := range value {
+		valid := ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (index > 0 && ch >= '0' && ch <= '9')
+		if !valid {
+			return ""
+		}
+	}
+	return value
+}
+
+func qualifiedIdentifierSQL(schema string, table string) string {
+	if schema == "" {
+		return quoteIdentifier(table)
+	}
+	return quoteIdentifier(schema) + "." + quoteIdentifier(table)
+}
+
+func quoteIdentifier(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func quoteLiteral(value string) string {
+	return `'` + strings.ReplaceAll(value, `'`, `''`) + `'`
+}
+
 func stringInput(input map[string]any, name string) string {
 	if input == nil {
 		return ""
@@ -1013,5 +1606,41 @@ func boolInput(input map[string]any, name string) bool {
 		return strings.EqualFold(strings.TrimSpace(typed), "true")
 	default:
 		return false
+	}
+}
+
+func anySlice(value any) []any {
+	if value == nil {
+		return nil
+	}
+	switch typed := value.(type) {
+	case []any:
+		return typed
+	case []map[string]any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, item)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func stringSlice(value any) []string {
+	if value == nil {
+		return nil
+	}
+	switch typed := value.(type) {
+	case []string:
+		return typed
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, strings.TrimSpace(fmt.Sprint(item)))
+		}
+		return out
+	default:
+		return nil
 	}
 }

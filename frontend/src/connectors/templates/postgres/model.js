@@ -1,7 +1,7 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
 
-const emptyPostgresCredentialForm = { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only" };
+const emptyPostgresCredentialForm = { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only", managed_by_aipermission: false };
 
 export function emptyForm() {
   return {
@@ -82,6 +82,7 @@ export function credentialStateFromRow({ row }) {
       username: row.profile?.public?.username || "",
       password: "",
       risk_label: row.profile?.risk_label || "",
+      managed_by_aipermission: Boolean(row.profile?.public?.managed_by_aipermission),
     },
   };
 }
@@ -281,6 +282,7 @@ function postgresTargetConfigFromForm(form) {
 function credentialMetadata(profile) {
   const items = [];
   if (profile.public?.username) items.push(`username: ${profile.public.username}`);
+  if (profile.public?.managed_by_aipermission) items.push("managed DB role");
   if (profile.risk_label) items.push(`risk: ${profile.risk_label}`);
   if (items.length === 0) items.push("No public metadata");
   return items;

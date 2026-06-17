@@ -52,17 +52,23 @@ Then verify:
 5. SSH config discovery or parsing can prefill an SSH connector form without silently importing private keys.
 6. SSH connector connection test asks for host fingerprint approval on first contact.
 7. A Postgres connector target/profile can be created with a dedicated read-only database role.
-8. A token can be scoped to one connector target/profile/action combination.
-9. MCP `list_connector_targets`, `get_connector_actions`, and `call_connector_action` show only token-allowed actions for the selected target/profile.
-10. An `approval_required` SSH or Postgres connector action appears in Console and can be Run or Declined.
-11. An `always_run` SSH command streams to the persistent console, while a Postgres action appears in the structured activity surface and History.
-12. History and Audit Logs show connector kind, target/profile context, input, output, status, and redacted errors.
-13. Console can upload a queued set of local files to a remote folder, including
+8. Postgres Console can browse schemas/tables, prepare a `SELECT ... LIMIT`
+   query from the browser, and run it through the structured activity surface.
+9. Postgres connector operations can create a managed scoped database role with
+   a random password saved as an encrypted credential profile.
+10. Postgres connector operations can download a SQL dump and restore a SQL
+    dump only after typing the connector target name exactly.
+11. A token can be scoped to one connector target/profile/action combination.
+12. MCP `list_connector_targets`, `get_connector_actions`, and `call_connector_action` show only token-allowed actions for the selected target/profile.
+13. An `approval_required` SSH or Postgres connector action appears in Console and can be Run or Declined.
+14. An `always_run` SSH command streams to the persistent console, while a Postgres action appears in the structured activity surface and History.
+14. History and Audit Logs show connector kind, target/profile context, input, output, status, and redacted errors.
+15. Console can upload a queued set of local files to a remote folder, including
     overwrite confirmation when a remote file already exists.
-14. Console can download one or more remote files, pause/resume or cancel an
+16. Console can download one or more remote files, pause/resume or cancel an
     active queue, and History can show completed transfer metadata through the
     unified connector activity stream. Multi-file downloads should save as a zip.
-15. Settings can download an `.aipdb` backup and import it as a named database.
+17. Settings can download an `.aipdb` backup and import it as a named database.
 
 ## npm Publish Checks
 

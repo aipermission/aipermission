@@ -318,6 +318,13 @@ Schema defaults are declarative UI hints and validation aids. Connector code
 must still normalize defaults in `PrepareAction` or `ExecuteAction` before
 building payloads, opening sockets, or running transport-specific logic.
 
+Operator-only connector operations should use reviewed optional contracts
+instead of adding connector-specific routes. For example, a connector that can
+create external credentials implements `CredentialProvisioner`, and a connector
+that can produce/restore backup artifacts implements `BackupRestorer`. Core owns
+HTTP upload/download, confirmation, vault persistence, and audit; the connector
+owns only the external service-specific work.
+
 ## Example: Redis
 
 A Redis connector should add only Redis-specific behavior:
@@ -353,9 +360,15 @@ Minimal Redis skeleton checklist:
 The built-in Postgres connector is intentionally conservative. `query_readonly`
 rejects obvious write statements, enforces a SQL size limit, executes with a
 read-only transaction, applies a statement timeout, caps row count, and caps
-returned output bytes before MCP/history persistence. Those controls are not a
+returned output bytes before MCP/history persistence. Postgres credential
+provisioning is a UI operator flow, not an MCP action: it uses an admin profile
+to create a scoped database role with a random password, then stores the
+resulting credential profile encrypted in AIPermission. Those controls are not a
 substitute for database-level least privilege. Use dedicated read-only roles for
-AI profiles and prefer `approval_required` for exploratory SQL.
+AI profiles and prefer `approval_required` for exploratory SQL. Postgres
+backup/restore is also a local UI operator flow: backup uses `pg_dump`, restore
+uses `psql` with `ON_ERROR_STOP` and a single transaction, and restore requires
+typed target-name confirmation.
 
 ## Tests
 

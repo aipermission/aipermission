@@ -6,13 +6,16 @@ import { Notice } from "../../../components/ui/notice";
 export function PostgresCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
   const postgresTargets = targets.filter((target) => target.connector_kind === "postgres");
   const editing = formMode === "edit";
+  const managed = Boolean(form.managed_by_aipermission);
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
       {postgresTargets.length === 0 ? (
         <Notice tone="warn">Create a Postgres connector target before adding a Postgres credential profile.</Notice>
       ) : (
         <Notice tone="good">
-          {editing
+          {managed
+            ? "Update the local profile label or risk note. Managed database username and password changes must go through a dedicated managed-role operation."
+            : editing
             ? "Update public credential metadata, or enter a new password to rotate the stored secret."
             : "Create a dedicated Postgres profile, then bind tokens to this profile from Console or Tokens."}
         </Notice>
@@ -42,8 +45,9 @@ export function PostgresCredentialFormTemplate({ targets, form, formMode = "crea
       </div>
       <Field>
         Username
-        <Input value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value })} autoComplete="off" required />
+        <Input value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value })} autoComplete="off" disabled={managed} required />
       </Field>
+      {managed ? <Notice tone="warn">This credential profile owns a managed database role. The username is fixed; deleting the profile also deletes the managed database role.</Notice> : null}
       <Field>
         {editing ? "New password" : "Password"}
         <Input
@@ -51,8 +55,9 @@ export function PostgresCredentialFormTemplate({ targets, form, formMode = "crea
           value={form.password}
           onChange={(event) => onChange({ ...form, password: event.target.value })}
           autoComplete="new-password"
-          placeholder={editing ? "Leave blank to keep current password" : ""}
-          required={!editing}
+          placeholder={managed ? "Managed passwords are rotated through a managed-role operation" : editing ? "Leave blank to keep current password" : ""}
+          disabled={managed}
+          required={!editing && !managed}
         />
       </Field>
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}

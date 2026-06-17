@@ -37,6 +37,51 @@ type TestableConnector interface {
 	TestConnection(ctx context.Context, runtime RuntimeContext) (TestResult, error)
 }
 
+// CredentialProvisioner is an optional connector contract for operator-driven
+// credential profile provisioning. Core owns profile persistence and vault
+// writes; the connector owns external service changes such as creating or
+// dropping a database role.
+type CredentialProvisioner interface {
+	ProvisionCredentialProfile(ctx context.Context, runtime RuntimeContext, input map[string]any) (ProvisionedCredentialProfile, error)
+	CleanupProvisionedCredentialProfile(ctx context.Context, runtime RuntimeContext, profile CredentialProfileView) (ActionResult, error)
+}
+
+// BackupRestorer is an optional connector contract for operator-driven backup
+// and restore flows. Core owns HTTP upload/download, confirmation, and audit;
+// the connector owns the external service dump/restore implementation.
+type BackupRestorer interface {
+	Backup(ctx context.Context, runtime RuntimeContext, request BackupRequest) (BackupArtifact, error)
+	Restore(ctx context.Context, runtime RuntimeContext, request RestoreRequest) (ActionResult, error)
+}
+
+// ProvisionedCredentialProfile is returned by connector provisioning code after
+// it has completed the external service change. Secret is encrypted by core
+// before persistence and must never be returned to UI or MCP list responses.
+type ProvisionedCredentialProfile struct {
+	Kind      string
+	Label     string
+	Public    map[string]any
+	Secret    map[string]any
+	RiskLabel string
+	Result    ActionResult
+}
+
+type BackupRequest struct {
+	Format string
+}
+
+type BackupArtifact struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+	Metadata    map[string]any
+}
+
+type RestoreRequest struct {
+	Filename string
+	Data     []byte
+}
+
 // SecretAccessor resolves connector credential secrets at runtime.
 type SecretAccessor interface {
 	GetSecret(ctx context.Context, name string) (string, error)

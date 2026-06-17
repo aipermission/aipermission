@@ -127,8 +127,11 @@ browse_remote_files
 start_file_download
 ```
 
-Postgres actions currently include read-oriented metadata/query actions such as
-schema/table inspection and bounded read-only queries.
+Postgres actions include schema/table inspection and bounded read-only queries.
+Postgres managed database users are created from the local UI through credential
+provisioning, which uses an admin profile to create a scoped role with a random
+password and stores the resulting profile in the encrypted local vault.
+Postgres backup/restore is also a local UI operator flow, not an MCP action.
 
 ## call_connector_action
 

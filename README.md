@@ -121,8 +121,8 @@ Implemented:
   console/activity surfaces, and connector-owned operations
 - built-in SSH connector with persistent shell, file transfer, remote browsing,
   host-key approval, and command actions
-- built-in Postgres connector with schema/table inspection and bounded read-only
-  SQL actions
+- built-in Postgres connector with schema/table inspection, bounded read-only
+  SQL actions, managed scoped database-user provisioning, and SQL backup/restore
 - gateway-generated SSH keys (`ed25519` and `rsa`)
 - explicit existing SSH private key import into the encrypted local vault
 - SSH host import from OpenSSH config files for prefilling connector targets

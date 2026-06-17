@@ -94,6 +94,7 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				Ref:           "postgres:1:10",
 				ConnectorKind: postgresconnector.Kind,
 				Name:          "main-db",
+				Config:        map[string]any{"database": "appdb"},
 			}, connectors.CredentialProfileView{
 				ID:            10,
 				TargetID:      1,

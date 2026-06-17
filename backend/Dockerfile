@@ -15,7 +15,15 @@ FROM debian:bookworm-slim@sha256:96e378d7e6531ac9a15ad505478fcc2e69f371b10f5cdf8
 WORKDIR /app
 
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ca-certificates gosu \
+	&& apt-get install -y --no-install-recommends ca-certificates curl gnupg gosu \
+	&& install -d /usr/share/postgresql-common/pgdg \
+	&& curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+		| gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
+	&& echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+		> /etc/apt/sources.list.d/pgdg.list \
+	&& apt-get update \
+	&& apt-get install -y --no-install-recommends postgresql-client-18 \
+	&& apt-get purge -y --auto-remove curl gnupg \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& useradd --system --uid 10001 --home /app --shell /usr/sbin/nologin aipermission \
 	&& mkdir -p /app/data \

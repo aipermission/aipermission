@@ -168,6 +168,96 @@ func TestPrepareReadonlyQueryRejectsUnsafeSQL(t *testing.T) {
 	}
 }
 
+func TestProvisionScopeInputSupportsNestedSelection(t *testing.T) {
+	scope, err := provisionScopeInput(map[string]any{
+		"scope": map[string]any{
+			"schemas": []any{
+				map[string]any{
+					"schema":     "public",
+					"all_tables": false,
+					"tables": []any{
+						map[string]any{"table": "orders", "all_columns": true},
+						map[string]any{"table": "users", "columns": []any{"id", "email"}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("scope input: %v", err)
+	}
+	if scope.AllSchemas || len(scope.Schemas) != 1 || len(scope.Schemas[0].Tables) != 2 {
+		t.Fatalf("unexpected scope: %#v", scope)
+	}
+	if !scope.Schemas[0].Tables[0].AllColumns || len(scope.Schemas[0].Tables[1].Columns) != 2 {
+		t.Fatalf("unexpected tables: %#v", scope.Schemas[0].Tables)
+	}
+}
+
+func TestProvisionScopeInputRejectsUnsafeSelection(t *testing.T) {
+	for _, input := range []map[string]any{
+		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "bad-name", "all_tables": true}}}},
+		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "public", "tables": []any{map[string]any{"table": "orders;drop", "all_columns": true}}}}}},
+		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "public", "tables": []any{map[string]any{"table": "orders", "columns": []any{"bad-name"}}}}}}},
+	} {
+		if _, err := provisionScopeInput(input); err == nil {
+			t.Fatalf("expected unsafe scope to be rejected: %#v", input)
+		}
+	}
+}
+
+func TestProvisionRoleStatementsBuildsScopedGrants(t *testing.T) {
+	scope := provisionScope{
+		Schemas: []provisionSchemaScope{
+			{
+				Schema: "public",
+				Tables: []provisionTableScope{
+					{Table: "orders", AllColumns: true},
+					{Table: "users", Columns: []string{"id", "email"}},
+				},
+			},
+		},
+	}
+	statements, summary, err := provisionRoleStatements(
+		connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"database": "appdb"}},
+		"app_reader",
+		"secret-value",
+		"read_only",
+		scope,
+	)
+	if err != nil {
+		t.Fatalf("role statements: %v", err)
+	}
+	joined := strings.Join(statements, "\n")
+	for _, want := range []string{
+		`CREATE ROLE "app_reader" LOGIN PASSWORD 'secret-value'`,
+		`GRANT CONNECT ON DATABASE "appdb" TO "app_reader"`,
+		`GRANT SELECT ON TABLE "public"."orders" TO "app_reader"`,
+		`GRANT SELECT ("id", "email") ON TABLE "public"."users" TO "app_reader"`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("statements missing %q in:\n%s", want, joined)
+		}
+	}
+	grants, ok := summary["grants"].([]map[string]any)
+	if !ok || len(grants) != 2 {
+		t.Fatalf("unexpected summary grants: %#v", summary)
+	}
+}
+
+func TestProvisionRoleStatementsRejectsColumnScopedWrites(t *testing.T) {
+	_, _, err := provisionRoleStatements(
+		connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"database": "appdb"}},
+		"app_writer",
+		"secret-value",
+		"read_write",
+		provisionScope{Schemas: []provisionSchemaScope{{Schema: "public", Tables: []provisionTableScope{{Table: "users", Columns: []string{"email"}}}}}},
+	)
+	if err == nil {
+		t.Fatal("expected column-scoped write grants to be rejected")
+	}
+}
+
 func TestPrepareReadonlyQueryIgnoresUnsafeWordsInsideNonCodeSQL(t *testing.T) {
 	for _, sql := range []string{
 		"select 'drop table users; update accounts' as message",

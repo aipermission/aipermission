@@ -2,6 +2,7 @@ import { PostgresConnectorConsoleTemplate, PostgresConnectorToolbarActionsTempla
 import { PostgresCredentialFormTemplate } from "./credential-form";
 import { PostgresConnectorFormTemplate } from "./form";
 import { PostgresConnectorRowActionsTemplate } from "./list-item";
+import { PostgresConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
 
 export default Object.freeze({
@@ -9,6 +10,7 @@ export default Object.freeze({
   CredentialForm: PostgresCredentialFormTemplate,
   Form: PostgresConnectorFormTemplate,
   model,
+  Operations: PostgresConnectorOperationsTemplate,
   RowActions: PostgresConnectorRowActionsTemplate,
   ToolbarActions: PostgresConnectorToolbarActionsTemplate,
 });
