@@ -1,6 +1,27 @@
-export const appVersion = "0.2.1";
+export const appVersion = "0.2.2";
 
 export const changelogEntries = [
+  {
+    version: "0.2.2",
+    label: "Postgres management",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Postgres connector profiles can provision managed database users with schema, table, and column scopes.",
+          "Postgres connector profiles can run local SQL backup/download and restore/upload flows through pg_dump and psql.",
+          "The Postgres console includes a schema browser with table expansion, column metadata, and SQL autocomplete metadata from pg_catalog.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Managed Postgres credential profiles keep their generated username fixed and clean up the managed database role when the profile is deleted.",
+          "Postgres backup uses a newer PostgreSQL client in the backend image to avoid server/client dump-version mismatches.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.1",
     label: "Maintenance hardening",

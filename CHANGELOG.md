@@ -7,6 +7,17 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-17
+
+### Added
+
+- Added Postgres managed database-user provisioning with schema/table/column
+  scope selection, random password generation, encrypted credential storage, and
+  managed-role cleanup when the profile is deleted.
+- Added Postgres SQL backup/download and restore/upload through a local UI
+  operator flow backed by `pg_dump` and `psql`.
+- Added a Postgres schema/table browser in the Console SQL surface.
+
 ## [0.2.1] - 2026-06-16
 
 ### Changed
