@@ -124,8 +124,9 @@ Implemented:
   console/activity surfaces, and connector-owned operations
 - built-in SSH connector with persistent shell, file transfer, remote browsing,
   host-key approval, and command actions
-- built-in Postgres connector with schema/table inspection, bounded read-only
-  SQL actions, managed scoped database-user provisioning, and SQL backup/restore
+- built-in Postgres connector with Direct and Over SSH connection modes,
+  schema/table inspection, bounded read-only SQL actions, managed scoped
+  database-user provisioning, and SQL backup/restore
 - built-in Redis connector with Direct and Over SSH connection modes, bounded
   key scanning, key inspection, string writes, TTL updates, and explicit deletes
 - gateway-generated SSH keys (`ed25519` and `rsa`)

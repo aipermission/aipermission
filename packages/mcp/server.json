@@ -3,12 +3,12 @@
   "name": "io.github.aipermission/aipermission-mcp",
   "title": "AIPermission",
   "description": "Local-first MCP bridge for the AIPermission gateway.",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@aipermission/mcp",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "transport": {
         "type": "stdio"
       }

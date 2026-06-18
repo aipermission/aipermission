@@ -7,6 +7,21 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-06-18
+
+### Added
+
+- Added Over SSH connection mode for Postgres connector targets, using the same
+  generic connector network transport introduced for Redis.
+- Added Postgres target form controls for selecting an SSH transport profile
+  when the database is reachable only from a remote server.
+
+### Changed
+
+- Postgres actions, connection tests, managed role provisioning, backup, and
+  restore now use the connector transport abstraction instead of a direct-only
+  code path.
+
 ## [0.2.4] - 2026-06-18
 
 ### Added

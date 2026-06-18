@@ -130,14 +130,18 @@ Generic target create shape:
     "host": "127.0.0.1",
     "port": 5432,
     "database": "app",
-    "ssl_mode": "require"
+    "ssl_mode": "require",
+    "transport_target_ref": ""
   }
 }
 ```
 
-Postgres defaults to `ssl_mode=require`. `prefer` and `disable` are available
-for local lab databases, but they weaken transport security and should be a
-deliberate operator choice.
+Postgres supports `connection_mode=direct` and `connection_mode=over_ssh`.
+When `over_ssh` is used, `host` and `port` are resolved from the selected SSH
+server and `transport_target_ref` must point at an SSH connector profile such as
+`ssh:3:5`. Postgres defaults to `ssl_mode=require`. `prefer` and `disable` are
+available for local lab databases or trusted SSH-tunneled databases, but they
+weaken transport security and should be a deliberate operator choice.
 
 `POST /api/connector-targets/with-profile` creates a connector target and its
 initial credential profile in one database transaction:

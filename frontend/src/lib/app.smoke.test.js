@@ -227,7 +227,9 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.4"/);
+  assert.match(releaseSource, /appVersion = "0\.2\.5"/);
+  assert.match(releaseSource, /Postgres over SSH/);
+  assert.match(releaseSource, /Postgres connector targets can now connect directly from the gateway or over an SSH connector profile/);
   assert.match(releaseSource, /Console profile polish/);
   assert.match(releaseSource, /Postgres management/);
   assert.match(releaseSource, /Maintenance hardening/);

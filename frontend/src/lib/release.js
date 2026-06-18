@@ -1,6 +1,25 @@
-export const appVersion = "0.2.4";
+export const appVersion = "0.2.5";
 
 export const changelogEntries = [
+  {
+    version: "0.2.5",
+    label: "Postgres over SSH",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Postgres connector targets can now connect directly from the gateway or over an SSH connector profile.",
+          "The Postgres target form exposes an SSH transport profile selector for databases reachable only from a remote server.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Postgres actions, connection tests, managed role provisioning, backup, and restore now use the shared connector network transport path.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.4",
     label: "Redis connector",

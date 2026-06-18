@@ -70,6 +70,11 @@ For SSH, call `get_connector_actions(target_ref)` to discover actions such as
 `start_file_download`. SSH `exec` is intended for non-interactive commands. Use
 the web console for truly interactive work.
 
+For Postgres, call `get_connector_actions(target_ref)` to discover schema,
+table, and bounded read-only query actions. Postgres targets can connect
+directly from the gateway or over an SSH connector profile when the database is
+reachable only from a remote server.
+
 For Redis, call `get_connector_actions(target_ref)` to discover bounded key
 browser actions such as `scan_keys`, `get_key`, `set_string`, `expire_key`, and
 `delete_keys`.
