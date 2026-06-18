@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
 import {
+  connectorTargetKey,
   currentConnectorTargetProfilePermissions,
   effectiveConnectorTargetProfilePermissions,
   profilesForConnectorTarget,
@@ -13,6 +14,7 @@ import { effectiveRule, permissionLifetimeLabel } from "../lib/permissions";
 import { useConnectorPermissions } from "../lib/use-connector-permissions";
 import { CountBadge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { ConnectorActionApprovalDialog } from "../components/console/connector-action-approval-dialog";
 import { ConnectorActivityDialog } from "../components/console/connector-activity-dialog";
@@ -71,6 +73,7 @@ export function ConsolePage() {
   const [newSessionError, setNewSessionError] = useState("");
   const [now, setNow] = useState(Date.now());
   const [structuredSessionsByTarget, setStructuredSessionsByTarget] = useState({});
+  const [selectedProfileByTarget, setSelectedProfileByTarget] = useState({});
 
   const selectedTargetRef = searchParams.get("target");
   const sessions = consoleSessions.data || [];
@@ -114,6 +117,7 @@ export function ConsolePage() {
     allowTargetFallback: false,
   });
   const selectedTargetProfiles = useMemo(() => profilesForConnectorTarget(targetItems, selectedTarget), [targetItems, selectedTarget?.connector_kind, selectedTarget?.target_id]);
+  const targetRows = useMemo(() => consoleTargetRows(targetItems, selectedTarget, selectedProfileByTarget), [targetItems, selectedTarget?.ref, selectedProfileByTarget]);
   const selectedTokenOptions = useMemo(() => {
     if (!selectedTarget) return [];
     return tokens.data.filter((token) => {
@@ -149,13 +153,14 @@ export function ConsolePage() {
   const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0) + (newSessionError ? 1 : 0);
   const filteredTargets = useMemo(() => {
     const query = targetSearch.trim().toLowerCase();
-    return targetItems.filter((target) => {
+    return targetRows.filter((target) => {
       if (!query) return true;
-      return [targetDisplayName(target), targetSubtitle(target), target.connector_kind, target.profile_label, target.ref]
+      const profiles = profilesForConnectorTarget(targetItems, target);
+      return [targetDisplayName(target), targetSubtitle(target), target.connector_kind, target.ref, ...profiles.map((profile) => profile.profile_label)]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [targetItems, targetSearch]);
+  }, [targetRows, targetItems, targetSearch]);
 
   useEffect(() => {
     if (targetItems.length === 0 || !defaultTargetRef) return;
@@ -163,6 +168,14 @@ export function ConsolePage() {
       setSearchParams({ target: selectedTarget?.ref || defaultTargetRef }, { replace: true });
     }
   }, [targetItems, selectedTargetRef, selectedTarget?.ref, defaultTargetRef, setSearchParams]);
+
+  useEffect(() => {
+    if (!selectedTarget?.profile_id) return;
+    const key = connectorTargetKey(selectedTarget);
+    setSelectedProfileByTarget((current) => (
+      String(current[key] || "") === String(selectedTarget.profile_id) ? current : { ...current, [key]: Number(selectedTarget.profile_id) }
+    ));
+  }, [selectedTarget?.connector_kind, selectedTarget?.target_id, selectedTarget?.profile_id]);
 
   useEffect(() => {
     if (tokens.state !== "ready") return;
@@ -217,8 +230,23 @@ export function ConsolePage() {
     }
   }, [activeConnectorApprovalID, pendingConnectorApprovals.map((approval) => approval.id).join(","), selectedPendingConnectorApprovals.map((approval) => approval.id).join(","), dismissedConnectorApprovalIDs, selectedPendingConnectorApprovals.length, connectorApprovalAction.state]);
 
-  function selectTarget(targetRef) {
-    setSearchParams({ target: targetRef });
+  function selectTarget(target) {
+    if (!target) return;
+    const key = connectorTargetKey(target);
+    const profiles = profilesForConnectorTarget(targetItems, target);
+    const selectedProfileID = selectedProfileByTarget[key] || target.profile_id;
+    const profileTarget = profiles.find((profile) => Number(profile.profile_id) === Number(selectedProfileID)) || profiles[0] || target;
+    setSearchParams({ target: profileTarget.ref });
+  }
+
+  function selectTargetProfile(profileID) {
+    if (!selectedTarget) return;
+    const nextID = Number(profileID);
+    if (!Number.isFinite(nextID) || nextID <= 0) return;
+    const profileTarget = selectedTargetProfiles.find((profile) => Number(profile.profile_id) === Number(nextID));
+    if (!profileTarget) return;
+    setSelectedProfileByTarget((current) => ({ ...current, [connectorTargetKey(selectedTarget)]: nextID }));
+    setSearchParams({ target: profileTarget.ref });
   }
 
   function openConnectorApproval(approval) {
@@ -398,7 +426,7 @@ export function ConsolePage() {
               <h3 className="flex items-center gap-2 text-sm font-semibold">
                 <Database className="h-4 w-4" />
                 Connectors
-                <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">{targetItems.length}</span>
+                <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">{targetRows.length}</span>
               </h3>
               <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse connectors" onClick={() => setTargetsCompact(true)}>
                 <PanelLeftClose className="h-4 w-4" />
@@ -417,8 +445,9 @@ export function ConsolePage() {
           ) : null}
           {filteredTargets.map((target) => (
             <TargetListItem
-              key={target.ref}
+              key={connectorTargetKey(target)}
               target={target}
+              profileTargets={profilesForConnectorTarget(targetItems, target)}
               liveConsoleTargets={liveConsoleTargets}
               sessions={sessions}
               selectedTarget={selectedTarget}
@@ -430,7 +459,7 @@ export function ConsolePage() {
             />
           ))}
           {targets.state === "ready" && targetItems.length === 0 && !targetsCompact ? <Notice>No targets yet.</Notice> : null}
-          {targets.state === "ready" && targetItems.length > 0 && filteredTargets.length === 0 && !targetsCompact ? <Notice>No connectors match that search.</Notice> : null}
+          {targets.state === "ready" && targetRows.length > 0 && filteredTargets.length === 0 && !targetsCompact ? <Notice>No connectors match that search.</Notice> : null}
           {targets.state === "error" && !targetsCompact ? <Notice tone="bad">{targets.error}</Notice> : null}
         </div>
       </aside>
@@ -465,6 +494,22 @@ export function ConsolePage() {
                 </p>
               ) : null}
             </div>
+            {selectedTargetProfiles.length > 1 ? (
+              <label className={`ml-2 hidden min-w-36 max-w-48 shrink-0 items-center gap-2 text-xs font-semibold lg:flex ${theme === "light" ? "text-stone-600" : "text-stone-300"}`}>
+                Profile
+                <Select
+                  className={`h-8 ${theme === "light" ? "" : "border-stone-700 bg-[#1e1e1e] text-stone-100"}`}
+                  value={selectedTarget?.profile_id ? String(selectedTarget.profile_id) : ""}
+                  onChange={(event) => selectTargetProfile(event.target.value)}
+                >
+                  {selectedTargetProfiles.map((profile) => (
+                    <option key={profile.profile_id} value={profile.profile_id}>
+                      {targetProfileLabel(profile)}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ) : null}
           </div>
           <div className="flex shrink-0 gap-2">
             {selectedPendingConnectorApprovals.length > 0 ? (
@@ -625,6 +670,7 @@ export function ConsolePage() {
 
 function TargetListItem({
   target,
+  profileTargets,
   liveConsoleTargets,
   sessions,
   selectedTarget,
@@ -637,12 +683,14 @@ function TargetListItem({
   const runtimeID = targetUsesLiveConsole(target) ? target.runtime_id : null;
   const runtimeTarget = runtimeID ? liveConsoleTargets.data.find((item) => Number(item.id) === Number(runtimeID)) : null;
   const session = runtimeID ? latestSessionForRuntime(sessions, runtimeID) || emptySession : emptySession;
-  const active = selectedTarget && selectedTarget.ref === target.ref;
-  const connectorPendingCount = pendingConnectorApprovals.filter((approval) => approval.target_ref === target.ref).length;
-  const connectorRunningCount = connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === target.ref).length;
+  const active = selectedTarget && connectorTargetKey(selectedTarget) === connectorTargetKey(target);
+  const refs = new Set((profileTargets?.length ? profileTargets : [target]).map((profile) => profile.ref));
+  const runtimeIDs = new Set((profileTargets?.length ? profileTargets : [target]).map((profile) => profile.runtime_id).filter(Boolean).map((id) => Number(id)));
+  const connectorPendingCount = pendingConnectorApprovals.filter((approval) => refs.has(approval.target_ref)).length;
+  const connectorRunningCount = connectorActionApprovals.data.filter((approval) => approval.status === "running" && refs.has(approval.target_ref)).length;
   const pendingCount = connectorPendingCount;
   const runningCount = connectorRunningCount;
-  const unreadCount = runtimeID ? unreadMessages.filter((message) => Number(message.runtime_id) === Number(runtimeID)).length : 0;
+  const unreadCount = runtimeIDs.size > 0 ? unreadMessages.filter((message) => runtimeIDs.has(Number(message.runtime_id))).length : 0;
   const attentionCount = pendingCount + unreadCount;
   const status = selectedTargetStatus({ target, session, pendingCount, runningCount });
   const kindLabel = target.connector_kind;
@@ -656,7 +704,7 @@ function TargetListItem({
       className={`${targetsCompact ? "grid h-10 w-10 place-items-center px-0 py-0" : "grid gap-1.5 px-3 py-2 text-left"} rounded-md transition ${
         active ? "bg-emerald-950 text-white" : "text-stone-700 hover:bg-stone-100"
       }`}
-      onClick={() => onSelect(target.ref)}
+      onClick={() => onSelect(target)}
     >
       {targetsCompact ? (
         <span className="relative grid h-full w-full place-items-center">
@@ -680,6 +728,9 @@ function TargetListItem({
           <span className="flex min-w-0 gap-1.5">
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass}`}>{kindLabel}</span>
             <span className={`truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{profileLabel}</span>
+            {profileTargets?.length > 1 ? (
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{profileTargets.length} profiles</span>
+            ) : null}
           </span>
         </>
       )}
@@ -761,6 +812,25 @@ function formatDuration(ms) {
 
 function newStructuredConsoleSession() {
   return { active: true, startedAt: new Date().toISOString() };
+}
+
+function consoleTargetRows(targets, selectedTarget, selectedProfileByTarget = {}) {
+  const rows = [];
+  const byKey = new Map();
+  for (const target of targets) {
+    const key = connectorTargetKey(target);
+    if (!byKey.has(key)) {
+      byKey.set(key, []);
+      rows.push({ key, first: target });
+    }
+    byKey.get(key).push(target);
+  }
+  return rows.map(({ key, first }) => {
+    const profiles = byKey.get(key) || [first];
+    if (selectedTarget && connectorTargetKey(selectedTarget) === key) return selectedTarget;
+    const preferredID = selectedProfileByTarget[key];
+    return profiles.find((profile) => Number(profile.profile_id) === Number(preferredID)) || profiles[0] || first;
+  });
 }
 
 function defaultConsoleTargetRef(targets, unreadMessages, pendingConnectorApprovals) {

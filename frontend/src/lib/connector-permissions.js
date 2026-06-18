@@ -2,11 +2,15 @@ import { effectiveRule } from "./permissions";
 
 const profileStoragePrefix = "aipermission.console.profile";
 
+export function connectorTargetKey(target) {
+  if (!target) return "";
+  return `${target.connector_kind || "connector"}:${target.target_id || target.id || ""}`;
+}
+
 export function profilesForConnectorTarget(targets, selectedTarget) {
   if (!selectedTarget) return [];
-  const profiles = targets.filter(
-    (target) => target.connector_kind === selectedTarget.connector_kind && Number(target.target_id) === Number(selectedTarget.target_id)
-  );
+  const selectedKey = connectorTargetKey(selectedTarget);
+  const profiles = targets.filter((target) => connectorTargetKey(target) === selectedKey);
   return profiles.length > 0 ? profiles : [selectedTarget];
 }
 
