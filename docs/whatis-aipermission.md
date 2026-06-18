@@ -13,9 +13,10 @@ Related central notes:
 operate on connector targets without receiving SSH private keys, SSH passwords,
 database credentials, API credentials, or other connector secrets.
 
-The current model ships with SSH and Postgres connectors. SSH provides live
-terminal/file-transfer actions; Postgres provides structured metadata and
-bounded read-only query actions. Both use the same target, credential profile,
+The current model ships with SSH, Postgres, and Redis connectors. SSH provides
+live terminal/file-transfer actions, Postgres provides structured metadata and
+bounded read-only query actions, and Redis provides bounded key browsing plus
+explicit write/delete actions. They use the same target, credential profile,
 token permission, approval, history, and audit pipeline.
 
 The product is intentionally not positioned as a full DevOps platform.
@@ -88,9 +89,9 @@ for a database.
 This model also works well with AI client instructions or skills. For example,
 a developer can define a workflow like "check a new VPS before adding it to the
 cluster", "inspect container health across allowed SSH targets", "describe a
-readonly Postgres schema", or later "call this internal API operation through a
-stored credential profile." aipermission provides the execution layer without
-exposing credentials.
+readonly Postgres schema", "inspect Redis cache keys", or later "call this
+internal API operation through a stored credential profile." aipermission
+provides the execution layer without exposing credentials.
 
 ## Typical Flow
 
@@ -228,11 +229,13 @@ allowed connector targets:
 - ssh:core-1/admin -> exec approval_required
 - ssh:core-1/admin -> read_console always_run
 - postgres:main-db/readonly -> query_readonly approval_required
+- redis:cache/ops -> get_key approval_required
 ```
 
 The AI assistant can see and use only the connector targets and actions allowed
-by that token. For example, if the token can access five SSH targets and one
-Postgres target, `list_connector_targets` returns only those target/profile refs.
+by that token. For example, if the token can access five SSH targets, one
+Postgres target, and one Redis target, `list_connector_targets` returns only
+those target/profile refs.
 
 If the same token exists in more than one unlocked database, MCP authentication returns a conflict. The gateway does not guess which workspace should receive the command.
 

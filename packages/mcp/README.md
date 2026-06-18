@@ -12,7 +12,7 @@ to host the gateway for LAN or internet users. SSH, Postgres, and Redis are
 built-in connectors that use the same target/profile/action permission model
 as future connectors.
 
-![AIPermission demo: AI installs Uptime Kuma through approval-based SSH access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
+![AIPermission demo: AI operates through approval-based connector access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
 
 [Watch the demo video](https://github.com/aipermission/aipermission/releases/download/v0.1.0-rc.1/aipermission-demo.mp4) to see an AI assistant install Uptime Kuma on a VPS while the user approves commands and changes the plan mid-run.
 

@@ -4,7 +4,8 @@
   <p><strong>Local permission gateway for AI agents.</strong></p>
   <p>
     Give AI assistants temporary, scoped action access to your local connector
-    targets without sharing SSH keys or database credentials.
+    targets without sharing SSH keys, database passwords, Redis credentials, or
+    future connector secrets.
   </p>
   <p>
     <a href="#quick-start">Quick Start</a>
@@ -96,7 +97,7 @@ With `aipermission`, the AI can inspect approved connector targets directly thro
 
 The UI is built around the live control loop: approve connector actions, inspect structured activity, watch the persistent SSH console when relevant, send notes while the AI works, and audit what happened afterwards.
 
-![AIPermission demo: AI installs Uptime Kuma through approval-based SSH access](docs/assets/demo/aipermission-demo.gif)
+![AIPermission demo: AI operates through approval-based connector access](docs/assets/demo/aipermission-demo.gif)
 
 [Watch the accelerated demo video](https://github.com/aipermission/aipermission/releases/download/v0.1.0-rc.1/aipermission-demo.mp4)
 
