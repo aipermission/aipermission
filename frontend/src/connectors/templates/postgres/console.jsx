@@ -69,6 +69,7 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
       return Number.isFinite(createdAt) && createdAt >= startedAt - 1000;
     });
   }, [rawItems, activeSession.active, activeSession.startedAt]);
+  const recentQueries = useMemo(() => recentPostgresQueries(rawItems), [rawItems]);
   const selected = useMemo(() => {
     if (selectedID) {
       const exact = items.find((item) => Number(item.id) === Number(selectedID));
@@ -195,6 +196,12 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
     setEditorFocusTick((current) => current + 1);
   }
 
+  function loadRecentQuery(query) {
+    if (!query?.sql) return;
+    setSQL(query.sql);
+    setEditorFocusTick((current) => current + 1);
+  }
+
   if (!activeSession.active) {
     return (
       <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
@@ -212,18 +219,28 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
             <p className="text-xs font-semibold">SQL</p>
             <p className={`truncate text-xs ${mutedClass}`}>{metadataStatusText(metadata)}</p>
           </div>
-          <label className="flex shrink-0 items-center gap-2 text-xs font-semibold">
-            Max rows
-            <input
-              type="number"
-              min="1"
-              max="1000"
-              className={`h-8 w-20 rounded-md border px-2 outline-none ${inputClass}`}
-              value={maxRows}
-              onChange={(event) => setMaxRows(event.target.value)}
-              disabled={!activeSession.active || runState.state === "running"}
-            />
-          </label>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <CopyButton value={sql} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy SQL" disabled={!sql.trim()}>
+              SQL
+            </CopyButton>
+            {recentQueries.length > 0 ? (
+              <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => loadRecentQuery(recentQueries[0])} title="Load the most recent query">
+                Last query
+              </Button>
+            ) : null}
+            <label className="flex items-center gap-2 text-xs font-semibold">
+              Max rows
+              <input
+                type="number"
+                min="1"
+                max="1000"
+                className={`h-8 w-20 rounded-md border px-2 outline-none ${inputClass}`}
+                value={maxRows}
+                onChange={(event) => setMaxRows(event.target.value)}
+                disabled={!activeSession.active || runState.state === "running"}
+              />
+            </label>
+          </div>
         </div>
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
           <PostgresSQLEditor
@@ -240,6 +257,22 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
           </Button>
         </div>
         {runState.error ? <Notice tone="bad">{runState.error}</Notice> : null}
+        {recentQueries.length > 0 ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className={`shrink-0 text-[11px] font-semibold uppercase ${mutedClass}`}>Recent</span>
+            {recentQueries.slice(0, 5).map((query) => (
+              <button
+                key={`${query.id}:${query.preview}`}
+                type="button"
+                className={`max-w-64 truncate rounded-full border px-2.5 py-1 text-left font-mono text-[11px] transition ${theme === "light" ? "border-stone-200 bg-white text-stone-700 hover:bg-stone-100" : "border-stone-700 bg-[#1a1a1a] text-stone-200 hover:bg-stone-800"}`}
+                title={query.sql}
+                onClick={() => loadRecentQuery(query)}
+              >
+                {query.preview}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </form>
 
       <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden p-4 ${resultView ? "grid-cols-1" : "lg:grid-cols-[320px_minmax(0,1fr)]"}`}>
@@ -777,6 +810,37 @@ function metadataStatusText(metadata) {
       : "No metadata suggestions found. Run bounded read-only SQL through this credential profile.";
   }
   return "Run bounded read-only SQL through this credential profile.";
+}
+
+function recentPostgresQueries(items) {
+  const seen = new Set();
+  return [...(items || [])]
+    .filter((item) => item?.action_name === "query_readonly" && !isAutocompleteMetadataRequest(item))
+    .sort((left, right) => safeTimestamp(right.created_at) - safeTimestamp(left.created_at))
+    .map((item) => ({ id: item.id, sql: actionInputSQL(item), createdAt: item.created_at }))
+    .filter((item) => {
+      if (!item.sql || seen.has(item.sql)) return false;
+      seen.add(item.sql);
+      return true;
+    })
+    .slice(0, 10)
+    .map((item) => ({ ...item, preview: sqlPreview(item.sql) }));
+}
+
+function sqlPreview(sql) {
+  const compact = String(sql || "").replace(/\s+/g, " ").trim();
+  if (compact.length <= 64) return compact;
+  return `${compact.slice(0, 61)}...`;
+}
+
+function actionInputSQL(item) {
+  const input = typeof item?.input === "string" ? parseJSON(item.input) : item?.input;
+  return String(input?.sql || "").trim();
+}
+
+function safeTimestamp(value) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function tableBrowserSummary(metadata, rows) {
