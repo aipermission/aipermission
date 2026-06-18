@@ -25,11 +25,20 @@ func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectors.
 }
 
 func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *databaseRuntime) connectors.RuntimeCapabilityResolver {
-	adapter := connectorRuntimeAdapterFor(kind)
-	if adapter == nil {
-		return nil
+	capabilities := connectorRuntimeCapabilities{}
+	if server != nil && runtime != nil {
+		transport := connectorNetworkTransport{server: server, runtime: runtime}
+		capabilities[transport.ConnectorRuntimeCapability()] = transport
 	}
-	capabilities := connectorRuntimeCapabilities(adapter.RuntimeCapabilities(server, runtime))
+	adapter := connectorRuntimeAdapterFor(kind)
+	if adapter != nil {
+		for name, capability := range adapter.RuntimeCapabilities(server, runtime) {
+			if name == "" || capability == nil {
+				continue
+			}
+			capabilities[name] = capability
+		}
+	}
 	if len(capabilities) == 0 {
 		return nil
 	}

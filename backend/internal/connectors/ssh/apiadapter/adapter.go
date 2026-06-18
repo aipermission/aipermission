@@ -411,6 +411,71 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 	}, nil
 }
 
+func (adapter) DialConnectorTCP(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, targetRef string, network string, address string) (net.Conn, error) {
+	if network == "" {
+		network = "tcp"
+	}
+	if network != "tcp" {
+		return nil, fmt.Errorf("unsupported SSH connector transport network %q", network)
+	}
+	gateway, err := serverFrom(server)
+	if err != nil {
+		return nil, err
+	}
+	runtimeID, err := runtimeIDForTargetRef(ctx, runtime, targetRef)
+	if err != nil {
+		return nil, err
+	}
+	target, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve ssh material: %w", err)
+	}
+	client, err := execution.DialSSH(ctx, executionTarget(gateway, target, privateKey))
+	if err != nil {
+		return nil, err
+	}
+	type response struct {
+		conn net.Conn
+		err  error
+	}
+	done := make(chan response, 1)
+	go func() {
+		conn, err := client.Dial(network, address)
+		done <- response{conn: conn, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		_ = client.Close()
+		go func() {
+			value := <-done
+			if value.conn != nil {
+				_ = value.conn.Close()
+			}
+		}()
+		return nil, ctx.Err()
+	case value := <-done:
+		if value.err != nil {
+			_ = client.Close()
+			return nil, fmt.Errorf("ssh tcp dial: %w", value.err)
+		}
+		return sshTCPConn{Conn: value.conn, client: client}, nil
+	}
+}
+
+type sshTCPConn struct {
+	net.Conn
+	client *ssh.Client
+}
+
+func (conn sshTCPConn) Close() error {
+	connErr := conn.Conn.Close()
+	clientErr := conn.client.Close()
+	if connErr != nil {
+		return connErr
+	}
+	return clientErr
+}
+
 func (adapter) SupportsRunning(prepared actions.PreparedRequest) bool {
 	return prepared.Target.ConnectorKind == sshconnector.Kind && prepared.Action.ActionName == sshconnector.ActionExec
 }

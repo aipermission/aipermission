@@ -1,6 +1,9 @@
 package connectors
 
-import "context"
+import (
+	"context"
+	"net"
+)
 
 // Connector is the required contract for connector-shaped targets.
 //
@@ -102,6 +105,29 @@ type EventSink interface {
 // should normally not need a runtime capability.
 type RuntimeCapability interface {
 	ConnectorRuntimeCapability() string
+}
+
+const NetworkTransportCapabilityName = "network_transport"
+
+// NetworkDialRequest describes a connector-owned network connection request.
+//
+// Connectors use this capability when the endpoint may be reached either
+// directly from the local gateway or through another reviewed connector-backed
+// transport such as SSH. The connector remains responsible for its protocol;
+// the gateway only opens the TCP pipe.
+type NetworkDialRequest struct {
+	Mode               string
+	Host               string
+	Port               int
+	TransportTargetRef string
+}
+
+// NetworkTransport is a generic TCP transport capability injected by the
+// gateway. It intentionally exposes net.Conn rather than connector internals so
+// protocol connectors such as Redis can stay independent from SSH.
+type NetworkTransport interface {
+	RuntimeCapability
+	DialConnectorTCP(ctx context.Context, request NetworkDialRequest) (net.Conn, error)
 }
 
 // RuntimeCapabilityResolver resolves reviewed connector-owned capabilities

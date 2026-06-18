@@ -56,12 +56,19 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 }
 
 func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
-	if capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, &Server{}, &databaseRuntime{}); capabilities != nil {
-		t.Fatalf("postgres should not receive ssh runtime capabilities: %#v", capabilities)
+	capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, &Server{}, &databaseRuntime{})
+	if capabilities == nil || capabilities.RuntimeCapability(connectors.NetworkTransportCapabilityName) == nil {
+		t.Fatalf("postgres should receive generic network transport capability: %#v", capabilities)
 	}
-	capabilities := connectorRuntimeCapabilitiesFor(sshconnector.Kind, &Server{}, &databaseRuntime{})
+	if capabilities.RuntimeCapability(sshconnector.RuntimeServiceName) != nil {
+		t.Fatalf("postgres should not receive ssh live runtime capability: %#v", capabilities)
+	}
+	capabilities = connectorRuntimeCapabilitiesFor(sshconnector.Kind, &Server{}, &databaseRuntime{})
 	if capabilities == nil || capabilities.RuntimeCapability(sshconnector.RuntimeServiceName) == nil {
 		t.Fatalf("ssh runtime capability missing: %#v", capabilities)
+	}
+	if capabilities.RuntimeCapability(connectors.NetworkTransportCapabilityName) == nil {
+		t.Fatalf("ssh generic network transport capability missing: %#v", capabilities)
 	}
 }
 
