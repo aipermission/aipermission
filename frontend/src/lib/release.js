@@ -1,6 +1,27 @@
-export const appVersion = "0.2.2";
+export const appVersion = "0.2.3";
 
 export const changelogEntries = [
+  {
+    version: "0.2.3",
+    label: "Console profile polish",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "Console shows one row per connector target and keeps credential profiles selectable from the target header.",
+          "Connector token controls infer Basic, Grouped, or Advanced permission mode from the current rules.",
+          "Postgres Console keeps profile-scoped sessions and activity easier to inspect when switching profiles.",
+        ],
+      },
+      {
+        title: "Added",
+        items: [
+          "Postgres Console includes recent-query shortcuts for loading prior SQL back into the editor.",
+          "Postgres request details can load or copy the SQL from the inspected request.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.2",
     label: "Postgres management",

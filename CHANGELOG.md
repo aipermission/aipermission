@@ -7,6 +7,26 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-06-18
+
+### Changed
+
+- Console now shows one row per connector target and keeps credential profiles
+  selectable from the target header, so a Postgres target with multiple
+  profiles no longer looks like multiple databases.
+- Connector token controls now infer Basic, Grouped, or Advanced permission
+  mode from the current action rules instead of always returning to a fixed
+  default view.
+- Postgres Console now keeps profile-scoped sessions and activity easier to
+  inspect when switching between credential profiles.
+
+### Added
+
+- Added Postgres recent-query shortcuts so prior SQL can be loaded back into the
+  editor.
+- Added Postgres request-level SQL actions for loading or copying the SQL from
+  an inspected request.
+
 ## [0.2.2] - 2026-06-17
 
 ### Added
