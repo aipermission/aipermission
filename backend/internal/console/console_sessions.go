@@ -142,6 +142,7 @@ type managedConsoleSession struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	start     chan struct{}
+	done      chan struct{}
 	startOnce sync.Once
 
 	mu            sync.Mutex

@@ -15,7 +15,12 @@ import (
 )
 
 func (s *managedConsoleSession) run() {
-	defer s.manager.remove(s.id)
+	defer func() {
+		s.manager.remove(s.id)
+		if s.done != nil {
+			close(s.done)
+		}
+	}()
 
 	if s.manager.openRuntime == nil {
 		s.markStarted(fmt.Errorf("console transport is not configured"))
@@ -213,6 +218,18 @@ func (s *managedConsoleSession) waitStart(ctx context.Context) error {
 		err := s.startErr
 		s.mu.Unlock()
 		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *managedConsoleSession) waitDone(ctx context.Context) error {
+	if s == nil || s.done == nil {
+		return nil
+	}
+	select {
+	case <-s.done:
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
