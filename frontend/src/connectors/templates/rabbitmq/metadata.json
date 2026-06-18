@@ -1,0 +1,8 @@
+{
+  "kind": "rabbitmq",
+  "label": "RabbitMQ",
+  "summary": "Queue browsing, bounded message previews, and explicit message publishing through RabbitMQ Management API profiles.",
+  "version": "0.2",
+  "icon": "database",
+  "badge_tone": "warn"
+}

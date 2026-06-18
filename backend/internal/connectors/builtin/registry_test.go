@@ -7,6 +7,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
+	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 )
@@ -23,6 +24,13 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 	if postgres.Label() != postgresconnector.Label {
 		t.Fatalf("postgres label = %q", postgres.Label())
+	}
+	rabbitmq, ok := registry.Get(rabbitmqconnector.Kind)
+	if !ok {
+		t.Fatal("expected rabbitmq connector")
+	}
+	if rabbitmq.Label() != rabbitmqconnector.Label {
+		t.Fatalf("rabbitmq label = %q", rabbitmq.Label())
 	}
 	redis, ok := registry.Get(redisconnector.Kind)
 	if !ok {
@@ -41,7 +49,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 3 || infos[0].Kind != postgresconnector.Kind || infos[1].Kind != redisconnector.Kind || infos[2].Kind != sshconnector.Kind {
+	if len(infos) != 4 || infos[0].Kind != postgresconnector.Kind || infos[1].Kind != rabbitmqconnector.Kind || infos[2].Kind != redisconnector.Kind || infos[3].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -136,6 +144,29 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				redisconnector.ActionSetString:  {"key": "app:test", "value": "hello", "ttl_seconds": 60},
 				redisconnector.ActionExpireKey:  {"key": "app:test", "ttl_seconds": 60},
 				redisconnector.ActionDeleteKeys: {"keys": []any{"app:test"}},
+			}
+	case rabbitmqconnector.Kind:
+		return connectors.TargetView{
+				ID:            4,
+				Ref:           "rabbitmq:4:40",
+				ConnectorKind: rabbitmqconnector.Kind,
+				Name:          "queue",
+				Config:        map[string]any{"connection_mode": "direct", "scheme": "http", "host": "127.0.0.1", "port": 15672, "vhost": "/"},
+			}, connectors.CredentialProfileView{
+				ID:            40,
+				TargetID:      4,
+				ConnectorKind: rabbitmqconnector.Kind,
+				Kind:          "username_password",
+				Label:         "monitor",
+				Public:        map[string]any{"username": "guest"},
+			}, map[string]map[string]any{
+				rabbitmqconnector.ActionOverview:     {},
+				rabbitmqconnector.ActionListVhosts:   {},
+				rabbitmqconnector.ActionListQueues:   {"vhost": "/", "pattern": "", "limit": 10},
+				rabbitmqconnector.ActionGetQueue:     {"vhost": "/", "queue": "jobs"},
+				rabbitmqconnector.ActionListBindings: {"vhost": "/", "queue": "jobs", "limit": 10},
+				rabbitmqconnector.ActionPeekMessages: {"vhost": "/", "queue": "jobs", "count": 2, "max_payload_bytes": 4096},
+				rabbitmqconnector.ActionPublish:      {"vhost": "/", "exchange": "amq.default", "routing_key": "jobs", "payload": `{"ok":true}`, "payload_encoding": "string", "properties": map[string]any{"content_type": "application/json"}},
 			}
 	case sshconnector.Kind:
 		return connectors.TargetView{

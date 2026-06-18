@@ -5,6 +5,7 @@ package builtin
 import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
+	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	_ "github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter"
@@ -14,6 +15,7 @@ import (
 func RegisterAll(registry *connectors.Registry) error {
 	for _, connector := range []connectors.Connector{
 		postgresconnector.New(),
+		rabbitmqconnector.New(),
 		redisconnector.New(),
 		sshconnector.New(),
 	} {
