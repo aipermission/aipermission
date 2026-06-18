@@ -35,6 +35,7 @@ const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "conne
 const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "connectors", "templates", "target-profile-save.js"), "utf8");
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
 const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "catalog.js"), "utf8");
+const connectorHostPingSource = readFileSync(join(currentDir, "..", "connectors", "templates", "host-ping-button.jsx"), "utf8");
 const backendConnectorRegistrySource = readFileSync(join(currentDir, "..", "..", "..", "backend", "internal", "connectors", "builtin", "registry.go"), "utf8");
 const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -57,6 +58,8 @@ const postgresConnectorIndexSource = readFileSync(join(currentDir, "..", "connec
 const postgresConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"), "utf8");
 const postgresConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "model.js"), "utf8");
 const postgresConnectorOperationsSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "operations.jsx"), "utf8");
+const redisConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "redis", "form.jsx"), "utf8");
+const rabbitMQConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "rabbitmq", "form.jsx"), "utf8");
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -115,6 +118,7 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(postgresConnectorMetadataSource, /"icon": "database"/);
   assert.match(connectorTemplateRegistrySource, /ConnectorTemplateNotFound/);
   assert.match(sshConnectorFormTemplateSource, /SSHConnectorFormTemplate/);
+  assert.match(sshConnectorFormTemplateSource, /HostPingButton/);
   assert.match(sshConnectorListItemTemplateSource, /SSHConnectorRowActionsTemplate/);
   assert.match(sshConnectorConsoleTemplateSource, /SSHConnectorConsoleTemplate/);
   assert.match(sshConnectorModelSource, /apiPost\("\/api\/connector-targets\/test"/);
@@ -127,6 +131,11 @@ test("Connectors page wires generic connector templates", () => {
   assert.doesNotMatch(sshConnectorModelSource, /apiDelete\(`\/api\/servers\//);
   assert.match(sshConnectorModelSource, /deleteDialog/);
   assert.match(postgresConnectorFormTemplateSource, /PostgresConnectorFormTemplate/);
+  assert.match(postgresConnectorFormTemplateSource, /HostPingButton/);
+  assert.match(redisConnectorFormTemplateSource, /HostPingButton/);
+  assert.match(rabbitMQConnectorFormTemplateSource, /HostPingButton/);
+  assert.match(connectorHostPingSource, /\/api\/connector-targets\/ping/);
+  assert.match(connectorHostPingSource, /transport_target_ref/);
   assert.match(postgresConnectorListItemTemplateSource, /PostgresConnectorRowActionsTemplate/);
   assert.match(postgresConnectorConsoleTemplateSource, /PostgresConnectorConsoleTemplate/);
   assert.match(postgresConnectorModelSource, /createTargetWithProfile/);
@@ -227,9 +236,10 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.5"/);
+  assert.match(releaseSource, /appVersion = "0\.2\.6"/);
+  assert.match(releaseSource, /RabbitMQ connector/);
+  assert.match(releaseSource, /RabbitMQ is now a built-in connector with Direct and Over SSH connection modes/);
   assert.match(releaseSource, /Postgres over SSH/);
-  assert.match(releaseSource, /Postgres connector targets can now connect directly from the gateway or over an SSH connector profile/);
   assert.match(releaseSource, /Console profile polish/);
   assert.match(releaseSource, /Postgres management/);
   assert.match(releaseSource, /Maintenance hardening/);

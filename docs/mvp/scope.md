@@ -11,7 +11,7 @@ Main target:
 The MVP is not a DevOps platform. It does not own production operations. It gives a developer a controlled, token-scoped, auditable execution channel for debugging, maintenance, incident triage, and temporary AI-assisted automation.
 
 The MVP does not introduce first-class management modules for every external
-system. It introduces one connector pipeline. SSH, Postgres, Redis, and future
+system. It introduces one connector pipeline. SSH, Postgres, Redis, RabbitMQ, and future
 integrations are connector kinds that provide their own actions while sharing
 the same target/profile/action permission model. If an allowed SSH target has
 the needed CLI tools and access, the AI can operate at command level through

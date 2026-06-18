@@ -13,11 +13,13 @@ Related central notes:
 operate on connector targets without receiving SSH private keys, SSH passwords,
 database credentials, API credentials, or other connector secrets.
 
-The current model ships with SSH, Postgres, and Redis connectors. SSH provides
-live terminal/file-transfer actions, Postgres provides structured metadata and
-bounded read-only query actions, and Redis provides bounded key browsing plus
-explicit write/delete actions. They use the same target, credential profile,
-token permission, approval, history, and audit pipeline.
+The current model ships with SSH, Postgres, Redis, and RabbitMQ connectors. SSH
+provides live terminal/file-transfer actions, Postgres provides structured
+metadata and bounded read-only query actions, Redis provides bounded key
+browsing plus explicit write/delete actions, and RabbitMQ provides queue
+metadata, bindings, bounded message previews, and explicit message publishing.
+They use the same target, credential profile, token permission, approval,
+history, and audit pipeline.
 
 The product is intentionally not positioned as a full DevOps platform.
 
@@ -251,8 +253,8 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-SSH, Postgres, Redis, and future integrations are exposed as connector actions instead
-of separate product-specific MCP tools.
+SSH, Postgres, Redis, RabbitMQ, and future integrations are exposed as
+connector actions instead of separate product-specific MCP tools.
 
 ## Connector Action Flow
 

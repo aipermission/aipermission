@@ -1,9 +1,9 @@
 # MCP Tools
 
 The MCP surface is connector-first. AIPermission does not expose separate
-product-specific MCP wrappers for SSH or database products. SSH, Postgres, and
-future integrations are reached through the same connector target/action
-pipeline.
+product-specific MCP wrappers for SSH, database, cache, or queue products. SSH,
+Postgres, Redis, RabbitMQ, and future integrations are reached through the same
+connector target/action pipeline.
 
 Recommended package use:
 
@@ -49,15 +49,17 @@ Examples:
 ```txt
 ssh:3:1
 postgres:7:2
+redis:8:3
+rabbitmq:9:4
 ```
 
 The profile chooses which stored credential is used. The connector action still
 runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
-Clients should discover targets and actions at runtime. Do not hardcode SSH or
-Postgres as special MCP modes; future connector kinds use the same tools and
-`target_ref` shape.
+Clients should discover targets and actions at runtime. Do not hardcode SSH,
+Postgres, Redis, or RabbitMQ as special MCP modes; future connector kinds use
+the same tools and `target_ref` shape.
 
 ## list_connector_targets
 
@@ -132,6 +134,15 @@ Postgres managed database users are created from the local UI through credential
 provisioning, which uses an admin profile to create a scoped role with a random
 password and stores the resulting profile in the encrypted local vault.
 Postgres backup/restore is also a local UI operator flow, not an MCP action.
+
+Redis actions include bounded key scanning, key inspection, string writes, TTL
+updates, and explicit key deletes.
+
+RabbitMQ actions include overview metadata, visible vhost listing, bounded
+queue listing, queue detail reads, binding listing, and bounded message peeking
+with `ack_requeue_true`, plus explicit `publish_message` writes. Message
+payload previews and published payloads may contain secrets or customer data;
+prefer approval-required access until the workflow is trusted.
 
 ## call_connector_action
 

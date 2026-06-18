@@ -56,7 +56,7 @@ AIPermission is intentionally designed as a local developer gateway.
 
 - The gateway runs on the developer's own machine.
 - Remote systems are connector targets reached from that local gateway.
-- SSH, Postgres, and Redis are built-in connector types, not separate product modes.
+- SSH, Postgres, Redis, and RabbitMQ are built-in connector types, not separate product modes.
 - The web UI, REST API, and MCP API are not designed to be shared on a LAN.
 - The project does not support running the gateway as a remote hosted service.
 - The project provides a local browser session after database unlock, not multi-user web auth, team RBAC, or public network hardening.
@@ -116,7 +116,7 @@ Implemented:
 - Docker Compose local runtime
 - Go backend with SQLite storage
 - React web UI
-- connector target/profile/action pipeline for SSH, Postgres, Redis, and future local
+- connector target/profile/action pipeline for SSH, Postgres, Redis, RabbitMQ, and future local
   integrations
 - generic connector network transport so protocol connectors can use Direct or
   reviewed Over SSH TCP paths without importing SSH-specific code
@@ -129,6 +129,9 @@ Implemented:
   database-user provisioning, and SQL backup/restore
 - built-in Redis connector with Direct and Over SSH connection modes, bounded
   key scanning, key inspection, string writes, TTL updates, and explicit deletes
+- built-in RabbitMQ connector with Direct and Over SSH connection modes, queue
+  browsing, vhost metadata, binding inspection, bounded message peeking, and
+  explicit message publishing
 - gateway-generated SSH keys (`ed25519` and `rsa`)
 - explicit existing SSH private key import into the encrypted local vault
 - SSH host import from OpenSSH config files for prefilling connector targets
@@ -142,7 +145,7 @@ Implemented:
 - global MCP Started/Stopped switch that preserves permissions while blocking live execution
 - persistent web console with live PTY streaming
 - UI bulk SSH command execution across selected connector targets with per-target history rows
-- MCP bridge with connector action tools for SSH, Postgres, Redis, and future local integrations
+- MCP bridge with connector action tools for SSH, Postgres, Redis, RabbitMQ, and future local integrations
 - approval dialog with Run / Decline / note
 - approval-context snapshots that stale old pending connector actions after
   permission, connector target, credential profile, connector metadata, or
@@ -207,6 +210,14 @@ http://localhost:3210
 ```
 
 The Docker Compose UI port binds to `127.0.0.1` by default. The backend is not published as a separate host port in Docker Compose; the frontend proxies `/api` to the backend inside the shared local container namespace. The backend itself refuses to start when `AIPERMISSION_BACKEND_HOST` is set to `0.0.0.0` or any non-loopback address. AIPermission is local-only: do not publish Compose ports on `0.0.0.0` or a LAN interface. Remote/LAN mode is intentionally not supported.
+
+If AIPermission runs in Docker on a Linux host and a connector target points at
+a service running on that same host, use `host.docker.internal` as the connector
+host instead of `localhost`. The connector network transport resolves that name
+to the Docker host gateway when Docker does not provide it automatically.
+For example, a Postgres service listening on the Linux host can be configured as
+`host.docker.internal:5432` in Direct mode. Use Over SSH only when the service is
+reachable from another SSH target rather than from the Docker host.
 
 ## Basic Flow
 
@@ -300,7 +311,7 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-The MCP surface is connector-first. SSH, Postgres, Redis, and future integrations use
+The MCP surface is connector-first. SSH, Postgres, Redis, RabbitMQ, and future integrations use
 the same target/profile/action permission pipeline. `list_connector_targets` is
 permission-scoped, not a live health check. Current reachability is learned when
 the connector action actually runs and returns a dial, timeout, authentication,
@@ -312,6 +323,12 @@ For SSH, call `get_connector_actions(target_ref)` to discover actions such as
 
 For Redis, call `get_connector_actions(target_ref)` to discover actions such as
 `scan_keys`, `get_key`, `set_string`, `expire_key`, and `delete_keys`.
+
+For RabbitMQ, call `get_connector_actions(target_ref)` to discover actions such
+as `overview`, `list_vhosts`, `list_queues`, `get_queue`, `list_bindings`, and
+`peek_messages`, and `publish_message`. Treat message payload previews and
+message publishing as sensitive queue access; previews use bounded
+count/truncation limits and `ack_requeue_true`.
 
 If an action returns `approval_pending` or `running`, the response includes an
 `assistant_hint` telling the AI to poll `get_connector_action_request` until the

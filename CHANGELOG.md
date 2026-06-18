@@ -7,6 +7,33 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-06-18
+
+### Added
+
+- Added RabbitMQ as a built-in connector with Direct and Over SSH connection
+  modes through the shared connector permission, approval, history, and audit
+  pipeline.
+- Added RabbitMQ actions for overview metadata, visible vhosts, bounded queue
+  lists, queue details, bindings, bounded message peeking with
+  `ack_requeue_true`, and explicit message publishing.
+- Added a RabbitMQ Console queue browser with vhost filtering, queue counters,
+  binding inspection, and bounded message payload previews.
+- Added connector form host reachability checks that run four TCP dials directly
+  or through the selected SSH transport profile.
+
+### Changed
+
+- Direct connector targets can use `host.docker.internal` to reach services
+  running on the same Linux host as AIPermission Docker.
+
+### Security
+
+- RabbitMQ message preview actions are bounded by count and payload truncation
+  limits. `publish_message` is a separate write action; purge, ack, nack,
+  delete, or other destructive queue operations are intentionally not part of
+  the 0.2.6 MVP.
+
 ## [0.2.5] - 2026-06-18
 
 ### Added

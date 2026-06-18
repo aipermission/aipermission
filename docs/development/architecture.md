@@ -30,12 +30,12 @@ target + credential profile + action
   -> history + audit
 ```
 
-SSH, Postgres, and Redis are built-in connectors that share the same
+SSH, Postgres, Redis, and RabbitMQ are built-in connectors that share the same
 target/profile, permission, approval, history, and audit model. SSH owns a live
 terminal and file-transfer surface; Postgres owns structured database actions;
-Redis owns bounded key-browser actions. Future
-connectors should add their own execution surface without adding a new
-permission or audit pipeline.
+Redis owns bounded key-browser actions; RabbitMQ owns queue browsing and
+bounded message previews. Future connectors should add their own execution
+surface without adding a new permission or audit pipeline.
 
 The 0.2 connector line is treated as a clean connector-schema boundary. It is
 allowed to make breaking local database changes while the project is still

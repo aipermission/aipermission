@@ -59,6 +59,7 @@ GET /api/connector-targets
 GET /api/connector-targets/inventory
 POST /api/connector-targets/with-profile
 POST /api/connector-targets
+POST /api/connector-targets/ping
 POST /api/connector-targets/test
 GET /api/connector-targets/{id}
 PUT /api/connector-targets/{id}/with-profile/{profile_id}
@@ -200,6 +201,25 @@ route is implemented for the SSH adapter because host-key approval and
 gateway-managed key selection happen before the target is saved. Other
 connectors should normally use saved profile tests through
 `POST /api/connector-targets/{id}/profiles/{profile_id}/test`.
+
+`POST /api/connector-targets/ping` runs four bounded TCP reachability checks
+from the selected connection mode. This is a local UI helper for connector forms
+and does not use credential secrets or connector action permissions. It checks
+the service port, not ICMP ping:
+
+```json
+{
+  "host": "127.0.0.1",
+  "port": 5432,
+  "mode": "over_ssh",
+  "transport_target_ref": "ssh:3:5",
+  "attempts": 4
+}
+```
+
+When `mode=over_ssh`, the TCP checks are dialed through the referenced SSH
+connector profile so the result matches what Redis, Postgres, RabbitMQ, or a
+future TCP-backed connector would see from that SSH target.
 
 `POST /api/connector-targets/{id}/operations/docker-check` runs a read-only,
 on-demand Docker status command through the SSH connector adapter. It does not

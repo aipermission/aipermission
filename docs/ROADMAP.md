@@ -2,7 +2,7 @@
 
 AIPermission has published its first public release candidate and is moving
 into the connector-native 0.2 line. The local-only permission gateway is usable
-today with built-in SSH, Postgres, and Redis connectors; the next releases focus on
+today with built-in SSH, Postgres, Redis, and RabbitMQ connectors; the next releases focus on
 dogfooding polish, small safety improvements, clearer contributor paths, and
 additional connector kinds such as API, queues, and storage that share one
 permission pipeline.
@@ -53,7 +53,7 @@ AIPermission is intentionally:
 - Local-only.
 - Single-user.
 - Developer-focused.
-- Connector-based, with built-in SSH, Postgres, and Redis.
+- Connector-based, with built-in SSH, Postgres, Redis, and RabbitMQ.
 - Human-in-the-loop.
 
 These requests conflict with the project principles and should normally be
@@ -184,6 +184,8 @@ Goals:
 - Add Postgres as the first structured connector.
 - Add Redis as the first cache/key-value connector with direct and SSH-tunneled
   TCP transport.
+- Add RabbitMQ as the first queue connector with direct and SSH-tunneled
+  Management API access.
 - Store connector permissions by target/profile/action instead of by a
   connector-specific table.
 - Render connector UI through frontend templates so contributors can add a
@@ -208,8 +210,8 @@ Non-goals:
 These may be useful, but they are not required for the RC:
 
 - [ ] API connector definitions from operator-reviewed JSON.
-- [ ] Queue connector exploration after Redis/Postgres prove the shared
-  target/profile/action model.
+- [ ] Expand queue connector destructive operations after RabbitMQ
+  `publish_message` is dogfooded.
 - [ ] Optional sensitive/no-persist console sessions.
 - [ ] Export filters for History and Audit data.
 - [ ] FTS5 search only if the SQLCipher driver/build supports it without

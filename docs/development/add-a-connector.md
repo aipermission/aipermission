@@ -359,6 +359,24 @@ Redis checklist:
 - frontend smoke/runtime tests that assert the shipped connector folders
 - README, REST/MCP docs, and connector-specific safety notes
 
+## Built-In Example: RabbitMQ
+
+The built-in RabbitMQ connector follows the same normal structured connector
+path as Redis:
+
+- target fields such as connection mode, scheme, host, port, default vhost, and
+  optional SSH transport target ref
+- credential profile fields for RabbitMQ Management API username/password
+- actions such as `overview`, `list_vhosts`, `list_queues`, `get_queue`,
+  `list_bindings`, `peek_messages`, and `publish_message`
+- connector help that explains payload sensitivity, bounded peeking, and
+  write-scoped publishing
+- UI templates for RabbitMQ target rows, credential profiles, and queue-browser
+  console output
+
+It should not add RabbitMQ-specific permission tables, approval tables, history
+pages, audit routes, MCP tool families, or global UI pages.
+
 ## Postgres Safety Boundary
 
 The built-in Postgres connector is intentionally conservative. `query_readonly`

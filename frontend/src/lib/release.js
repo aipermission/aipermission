@@ -1,6 +1,33 @@
-export const appVersion = "0.2.5";
+export const appVersion = "0.2.6";
 
 export const changelogEntries = [
+  {
+    version: "0.2.6",
+    label: "RabbitMQ connector",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "RabbitMQ is now a built-in connector with Direct and Over SSH connection modes.",
+          "RabbitMQ actions cover overview metadata, vhost listing, bounded queue lists, queue details, bindings, bounded message peeking with requeue, and explicit message publishing.",
+          "RabbitMQ Console adds a queue browser with counters, binding inspection, message preview panels, and a write-scoped publish panel.",
+          "Connector target forms can run four direct or Over SSH host reachability checks before saving.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Direct connector targets can use host.docker.internal to reach services running on the same Linux host as AIPermission Docker.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "RabbitMQ message preview is bounded by count and payload truncation limits. publish_message is a separate write action; destructive queue operations are intentionally not part of this MVP.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.5",
     label: "Postgres over SSH",
