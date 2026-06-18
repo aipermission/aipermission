@@ -1,5 +1,6 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { HostPingButton } from "../host-ping-button";
 
 export function RedisConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
   const editing = mode === "edit";
@@ -40,10 +41,17 @@ export function RedisConnectorFormTemplate({ form, mode = "create", targets = []
         <Notice>
           Host and port are resolved from the SSH server. Use 127.0.0.1:6379 when Redis only listens on the remote machine.
         </Notice>
-      ) : null}
+      ) : (
+        <Notice>
+          For Redis running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost.
+        </Notice>
+      )}
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px_120px]">
         <Field>
-          Redis host
+          <span className="flex items-center justify-between gap-2">
+            <span>Redis host</span>
+            <HostPingButton host={form.host} port={form.port} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} />
+          </span>
           <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
         </Field>
         <Field>

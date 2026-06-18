@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -213,6 +214,64 @@ func TestConnectorCatalogRoutes(t *testing.T) {
 	}
 	if response := performJSON(handler, http.MethodGet, "/api/connectors/example", "", nil); response.Code != http.StatusNotFound {
 		t.Fatalf("unknown connector should be not found, got %d", response.Code)
+	}
+}
+
+func TestConnectorTargetHostPingRouteChecksTCPReachability(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+	accepted := make(chan net.Conn, 4)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- conn
+		}
+	}()
+	_, rawPort, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatalf("split listener addr: %v", err)
+	}
+	port, err := strconv.Atoi(rawPort)
+	if err != nil {
+		t.Fatalf("parse listener port: %v", err)
+	}
+
+	response := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectorTargetHostPingRequest{
+		Host:     "127.0.0.1",
+		Port:     port,
+		Mode:     "direct",
+		Attempts: 2,
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("ping route failed: %d %s", response.Code, response.Body.String())
+	}
+	page := decodeRouteResponse[connectorTargetHostPingResponse](t, response.Body.Bytes())
+	if !page.OK || page.Sent != 2 || page.Received != 2 || len(page.Attempts) != 2 {
+		t.Fatalf("unexpected ping response: %#v", page)
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case conn := <-accepted:
+			conn.Close()
+		case <-time.After(time.Second):
+			t.Fatalf("listener did not receive attempt %d", i+1)
+		}
+	}
+
+	bad := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectorTargetHostPingRequest{
+		Host: "",
+		Port: port,
+	})
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("missing host should be rejected, got %d %s", bad.Code, bad.Body.String())
 	}
 }
 

@@ -128,6 +128,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/connector-targets/inventory", connectorTargets.listConnectorTargetInventory)
 	s.mux.HandleFunc("POST /api/connector-targets/with-profile", connectorTargets.createConnectorTargetWithProfile)
 	s.mux.HandleFunc("POST /api/connector-targets", connectorTargets.createConnectorTarget)
+	s.mux.HandleFunc("POST /api/connector-targets/ping", connectorTargets.pingConnectorTargetHost)
 	s.mux.HandleFunc("POST /api/connector-targets/test", connectorTargets.testConnectorTargetDraft)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}", connectorTargets.getConnectorTarget)
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}/with-profile/{profile_id}", connectorTargets.updateConnectorTargetWithProfile)

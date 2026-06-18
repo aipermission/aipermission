@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 )
 
 const connectorNetworkDialTimeout = 12 * time.Second
+const dockerHostInternalName = "host.docker.internal"
 
 type connectorNetworkTransport struct {
 	server  *Server
@@ -69,5 +71,47 @@ func networkDialAddress(host string, port int) (string, error) {
 	if port < 1 || port > 65535 {
 		return "", fmt.Errorf("port must be between 1 and 65535")
 	}
-	return net.JoinHostPort(host, strconv.Itoa(port)), nil
+	return net.JoinHostPort(resolveConnectorDialHost(host), strconv.Itoa(port)), nil
+}
+
+func resolveConnectorDialHost(host string) string {
+	if !strings.EqualFold(strings.TrimSpace(host), dockerHostInternalName) {
+		return host
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if addresses, err := net.DefaultResolver.LookupHost(ctx, host); err == nil && len(addresses) > 0 {
+		return host
+	}
+	if gateway, ok := linuxDefaultGatewayHost(); ok {
+		return gateway
+	}
+	return host
+}
+
+func linuxDefaultGatewayHost() (string, bool) {
+	data, err := os.ReadFile("/proc/net/route")
+	if err != nil {
+		return "", false
+	}
+	return parseLinuxDefaultGatewayRoute(string(data))
+}
+
+func parseLinuxDefaultGatewayRoute(data string) (string, bool) {
+	for _, line := range strings.Split(data, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 || fields[1] != "00000000" {
+			continue
+		}
+		value, err := strconv.ParseUint(fields[2], 16, 32)
+		if err != nil {
+			continue
+		}
+		ip := net.IPv4(byte(value), byte(value>>8), byte(value>>16), byte(value>>24))
+		if ip == nil || ip.Equal(net.IPv4zero) {
+			continue
+		}
+		return ip.String(), true
+	}
+	return "", false
 }

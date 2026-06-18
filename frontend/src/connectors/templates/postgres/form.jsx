@@ -1,5 +1,6 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { HostPingButton } from "../host-ping-button";
 
 export function PostgresConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
   const editing = mode === "edit";
@@ -40,10 +41,17 @@ export function PostgresConnectorFormTemplate({ form, mode = "create", targets =
         <Notice>
           Host and port are resolved from the SSH server. Use 127.0.0.1:5432 when Postgres only listens on the remote machine.
         </Notice>
-      ) : null}
+      ) : (
+        <Notice>
+          For Postgres running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost.
+        </Notice>
+      )}
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
         <Field>
-          Host
+          <span className="flex items-center justify-between gap-2">
+            <span>Host</span>
+            <HostPingButton host={form.host} port={form.port} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} />
+          </span>
           <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
         </Field>
         <Field>

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Checkbox, Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { InstallCommandPanel } from "../common";
+import { HostPingButton } from "../host-ping-button";
 
 export function SSHConnectorFormTemplate({ form, credentials, activeCredential, onChange }) {
   return (
@@ -20,7 +21,10 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
       </Field>
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
         <Field>
-          Host
+          <span className="flex items-center justify-between gap-2">
+            <span>Host</span>
+            <HostPingButton host={form.host} port={form.port} />
+          </span>
           <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} placeholder="203.0.113.10" required />
         </Field>
         <Field>
