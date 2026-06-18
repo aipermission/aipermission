@@ -7,6 +7,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
+	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 )
 
@@ -23,6 +24,13 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	if postgres.Label() != postgresconnector.Label {
 		t.Fatalf("postgres label = %q", postgres.Label())
 	}
+	redis, ok := registry.Get(redisconnector.Kind)
+	if !ok {
+		t.Fatal("expected redis connector")
+	}
+	if redis.Label() != redisconnector.Label {
+		t.Fatalf("redis label = %q", redis.Label())
+	}
 
 	connector, ok := registry.Get(sshconnector.Kind)
 	if !ok {
@@ -33,7 +41,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 2 || infos[0].Kind != postgresconnector.Kind || infos[1].Kind != sshconnector.Kind {
+	if len(infos) != 3 || infos[0].Kind != postgresconnector.Kind || infos[1].Kind != redisconnector.Kind || infos[2].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -106,6 +114,28 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				postgresconnector.ActionGetTables:     {"schema": "public", "include_system": false},
 				postgresconnector.ActionDescribeTable: {"schema": "public", "table": "users"},
 				postgresconnector.ActionQueryReadonly: {"sql": "select 1", "max_rows": 1},
+			}
+	case redisconnector.Kind:
+		return connectors.TargetView{
+				ID:            3,
+				Ref:           "redis:3:30",
+				ConnectorKind: redisconnector.Kind,
+				Name:          "cache",
+				Config:        map[string]any{"connection_mode": "direct", "host": "127.0.0.1", "port": 6379, "database": 0},
+			}, connectors.CredentialProfileView{
+				ID:            30,
+				TargetID:      3,
+				ConnectorKind: redisconnector.Kind,
+				Kind:          "username_password",
+				Label:         "default",
+			}, map[string]map[string]any{
+				redisconnector.ActionPing:       {},
+				redisconnector.ActionInfo:       {"section": "server"},
+				redisconnector.ActionScanKeys:   {"pattern": "*", "limit": 10},
+				redisconnector.ActionGetKey:     {"key": "app:test"},
+				redisconnector.ActionSetString:  {"key": "app:test", "value": "hello", "ttl_seconds": 60},
+				redisconnector.ActionExpireKey:  {"key": "app:test", "ttl_seconds": 60},
+				redisconnector.ActionDeleteKeys: {"keys": []any{"app:test"}},
 			}
 	case sshconnector.Kind:
 		return connectors.TargetView{

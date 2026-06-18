@@ -186,10 +186,11 @@ func TestConnectorCatalogRoutes(t *testing.T) {
 		t.Fatalf("list connectors failed: %d %s", listResponse.Code, listResponse.Body.String())
 	}
 	listBody := listResponse.Body.String()
-	if !strings.Contains(listBody, `"kind":"postgres"`) || !strings.Contains(listBody, `"kind":"ssh"`) {
+	if !strings.Contains(listBody, `"kind":"postgres"`) || !strings.Contains(listBody, `"kind":"redis"`) || !strings.Contains(listBody, `"kind":"ssh"`) {
 		t.Fatalf("connector list missing built-ins: %s", listBody)
 	}
-	if strings.Index(listBody, `"kind":"postgres"`) > strings.Index(listBody, `"kind":"ssh"`) {
+	if strings.Index(listBody, `"kind":"postgres"`) > strings.Index(listBody, `"kind":"redis"`) ||
+		strings.Index(listBody, `"kind":"redis"`) > strings.Index(listBody, `"kind":"ssh"`) {
 		t.Fatalf("connector list should be stable by kind: %s", listBody)
 	}
 
@@ -210,7 +211,7 @@ func TestConnectorCatalogRoutes(t *testing.T) {
 	if response := performJSON(handler, http.MethodGet, "/api/connectors/bad-kind", "", nil); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid connector kind should be bad request, got %d", response.Code)
 	}
-	if response := performJSON(handler, http.MethodGet, "/api/connectors/redis", "", nil); response.Code != http.StatusNotFound {
+	if response := performJSON(handler, http.MethodGet, "/api/connectors/example", "", nil); response.Code != http.StatusNotFound {
 		t.Fatalf("unknown connector should be not found, got %d", response.Code)
 	}
 }
@@ -483,7 +484,7 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	}
 
 	unsupportedTarget := performJSON(handler, http.MethodPost, "/api/connector-targets", "", createConnectorTargetRequest{
-		ConnectorKind: "redis",
+		ConnectorKind: "example",
 		Name:          "cache",
 	})
 	if unsupportedTarget.Code != http.StatusBadRequest {
