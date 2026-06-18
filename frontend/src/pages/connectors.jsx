@@ -323,6 +323,7 @@ export function ConnectorsPage() {
               form={form}
               mode={drawer.mode}
               credentials={credentials.data}
+              targets={targets.data}
               activeCredential={activeCredential}
               onChange={updateForm}
             />
