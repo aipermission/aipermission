@@ -8,7 +8,7 @@ part of the security model, not marketing copy.
 - Local-only
 - Single-user
 - Developer-focused
-- Connector-based, with built-in SSH and Postgres
+- Connector-based, with built-in SSH, Postgres, and Redis
 - Human-in-the-loop
 
 ## AIPermission Intentionally Rejects

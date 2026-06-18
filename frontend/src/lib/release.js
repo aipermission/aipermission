@@ -1,6 +1,26 @@
-export const appVersion = "0.2.3";
+export const appVersion = "0.2.4";
 
 export const changelogEntries = [
+  {
+    version: "0.2.4",
+    label: "Redis connector",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Redis is now a built-in connector with Direct and Over SSH connection modes.",
+          "Redis actions cover ping, info, bounded key scanning, key inspection, string writes, TTL updates, and explicit deletes.",
+          "Redis Console adds a key browser with search, value inspection, string editing, TTL updates, and multi-key delete.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Protocol connectors can use a generic network transport capability without importing SSH-specific code.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.3",
     label: "Console profile polish",

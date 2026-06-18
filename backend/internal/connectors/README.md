@@ -1,7 +1,7 @@
 # Connectors
 
 `internal/connectors` defines the internal contract for connector-shaped
-targets. SSH, Postgres, and future API/Redis integrations use the same gateway
+targets. SSH, Postgres, Redis, and future API integrations use the same gateway
 pipeline:
 
 ```text
@@ -125,7 +125,7 @@ receive `TargetLifecycleGateway` or `CredentialResourceGateway`. Do not create
 connector-local copies of those interfaces. Extending the adapter surface should
 mean extending `connectorapi` once and updating every affected adapter.
 
-New connectors such as Redis or HTTP API connectors should follow the
+New connectors such as HTTP API connectors should follow the
 target/profile/action path by default. If they need a capability beyond the
 shared action runner, design a reusable adapter contract first instead of
 adding connector-specific command tables, file-transfer tables, draft-test route
@@ -170,13 +170,17 @@ metadata icons during frontend tests.
 
 Built-in connectors may depend on runtime packages for their own transport.
 SSH uses SSH key, persistent terminal, and SFTP primitives. Postgres uses
-database connection and query primitives. Those transport details stay inside
+database connection and query primitives. Redis uses a bounded RESP client and
+the shared network transport capability. Those transport details stay inside
 the connector implementation; page-level UI, MCP tools, token permissions,
 history, and audit use the shared target/profile/action vocabulary.
 
 `RuntimeContext.Capabilities` is reserved for gateway-owned runtime adapters.
-A connector receives only typed capabilities for its own kind. Do not use it as
-a general escape hatch for arbitrary gateway internals.
+A connector receives only typed capabilities such as `network_transport` or
+reviewed runtime-adapter services. Do not use it as a general escape hatch for
+arbitrary gateway internals. `network_transport` can open a direct TCP
+connection or delegate to another connector's reviewed TCP transport adapter
+such as SSH; protocol connectors still own their own protocol code.
 
 The 0.2 connector line is a clean database baseline. Do not add runtime
 fallbacks for pre-0.2 preview schemas; important old data belongs in the
@@ -184,16 +188,16 @@ separate versioned migration helper, not in gateway runtime code.
 
 ## Adding A Connector
 
-For a new connector such as Redis:
+For a new connector:
 
-1. Add `internal/connectors/redis` with a small implementation of the connector
+1. Add `internal/connectors/<kind>` with a small implementation of the connector
    contract.
 2. Register it in the backend connector registry. Runtime-backed connectors
    also add their adapter side-effect import in that same built-in registry
    file; do not create a hidden second adapter registration list.
 3. Store target/profile data through `internal/connectortargets`; do not create
    connector-specific permission tables.
-4. Add frontend templates under `frontend/src/connectors/templates/redis`.
+4. Add frontend templates under `frontend/src/connectors/templates/<kind>`.
 5. Add `metadata.json` and `index.jsx` so the frontend registry/catalog can
    discover the template folder.
 6. Update built-in registry/tests and frontend smoke/runtime tests that assert

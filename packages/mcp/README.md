@@ -8,9 +8,9 @@ credentials, or other connector secrets.
 
 The gateway is intentionally local-only. Run it on the developer machine and
 keep the URL on `localhost`; remote systems are connector targets, not places
-to host the gateway for LAN or internet users. SSH and Postgres are built-in
-connectors that use the same target/profile/action permission model as future
-connectors.
+to host the gateway for LAN or internet users. SSH, Postgres, and Redis are
+built-in connectors that use the same target/profile/action permission model
+as future connectors.
 
 ![AIPermission demo: AI installs Uptime Kuma through approval-based SSH access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
 
@@ -61,7 +61,7 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `call_connector_action`
 - `get_connector_action_request`
 
-All integration work goes through connector targets. SSH, Postgres, and future
+All integration work goes through connector targets. SSH, Postgres, Redis, and future
 connectors share the same model: target, credential profile, connector action,
 token action permission, approval, history, and audit.
 
@@ -69,6 +69,10 @@ For SSH, call `get_connector_actions(target_ref)` to discover actions such as
 `exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
 `start_file_download`. SSH `exec` is intended for non-interactive commands. Use
 the web console for truly interactive work.
+
+For Redis, call `get_connector_actions(target_ref)` to discover bounded key
+browser actions such as `scan_keys`, `get_key`, `set_string`, `expire_key`, and
+`delete_keys`.
 
 Connector responses can include `approval_pending` or `running`. Poll
 `get_connector_action_request(request_id)` until the request reaches a terminal

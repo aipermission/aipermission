@@ -7,6 +7,26 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-06-18
+
+### Added
+
+- Added Redis as a built-in connector with Direct and Over SSH connection
+  modes through the shared connector permission, approval, history, and audit
+  pipeline.
+- Added Redis actions for `ping`, `info`, bounded `scan_keys`, `get_key`,
+  `set_string`, `expire_key`, and explicit `delete_keys`.
+- Added a Redis Console key browser with SCAN search, key inspection, string
+  editing, TTL updates, and multi-key delete.
+
+### Changed
+
+- Added a generic network transport capability so protocol connectors can open
+  direct TCP connections or delegate to reviewed connector transports such as
+  SSH without importing SSH-specific code.
+- Updated connector docs and MCP package docs to describe Redis as a built-in
+  connector.
+
 ## [0.2.3] - 2026-06-18
 
 ### Changed

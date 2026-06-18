@@ -55,7 +55,7 @@ AIPermission is intentionally designed as a local developer gateway.
 
 - The gateway runs on the developer's own machine.
 - Remote systems are connector targets reached from that local gateway.
-- SSH and Postgres are built-in connector types, not separate product modes.
+- SSH, Postgres, and Redis are built-in connector types, not separate product modes.
 - The web UI, REST API, and MCP API are not designed to be shared on a LAN.
 - The project does not support running the gateway as a remote hosted service.
 - The project provides a local browser session after database unlock, not multi-user web auth, team RBAC, or public network hardening.
@@ -115,14 +115,18 @@ Implemented:
 - Docker Compose local runtime
 - Go backend with SQLite storage
 - React web UI
-- connector target/profile/action pipeline for SSH, Postgres, and future local
+- connector target/profile/action pipeline for SSH, Postgres, Redis, and future local
   integrations
+- generic connector network transport so protocol connectors can use Direct or
+  reviewed Over SSH TCP paths without importing SSH-specific code
 - connector template architecture for target forms, credential forms, list rows,
   console/activity surfaces, and connector-owned operations
 - built-in SSH connector with persistent shell, file transfer, remote browsing,
   host-key approval, and command actions
 - built-in Postgres connector with schema/table inspection, bounded read-only
   SQL actions, managed scoped database-user provisioning, and SQL backup/restore
+- built-in Redis connector with Direct and Over SSH connection modes, bounded
+  key scanning, key inspection, string writes, TTL updates, and explicit deletes
 - gateway-generated SSH keys (`ed25519` and `rsa`)
 - explicit existing SSH private key import into the encrypted local vault
 - SSH host import from OpenSSH config files for prefilling connector targets
@@ -136,7 +140,7 @@ Implemented:
 - global MCP Started/Stopped switch that preserves permissions while blocking live execution
 - persistent web console with live PTY streaming
 - UI bulk SSH command execution across selected connector targets with per-target history rows
-- MCP bridge with connector action tools for SSH, Postgres, and future local integrations
+- MCP bridge with connector action tools for SSH, Postgres, Redis, and future local integrations
 - approval dialog with Run / Decline / note
 - approval-context snapshots that stale old pending connector actions after
   permission, connector target, credential profile, connector metadata, or
@@ -294,7 +298,7 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-The MCP surface is connector-first. SSH, Postgres, and future integrations use
+The MCP surface is connector-first. SSH, Postgres, Redis, and future integrations use
 the same target/profile/action permission pipeline. `list_connector_targets` is
 permission-scoped, not a live health check. Current reachability is learned when
 the connector action actually runs and returns a dial, timeout, authentication,
@@ -303,6 +307,9 @@ host-key, credential, or service error.
 For SSH, call `get_connector_actions(target_ref)` to discover actions such as
 `exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
 `start_file_download`.
+
+For Redis, call `get_connector_actions(target_ref)` to discover actions such as
+`scan_keys`, `get_key`, `set_string`, `expire_key`, and `delete_keys`.
 
 If an action returns `approval_pending` or `running`, the response includes an
 `assistant_hint` telling the AI to poll `get_connector_action_request` until the

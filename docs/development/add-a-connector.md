@@ -325,22 +325,26 @@ that can produce/restore backup artifacts implements `BackupRestorer`. Core owns
 HTTP upload/download, confirmation, vault persistence, and audit; the connector
 owns only the external service-specific work.
 
-## Example: Redis
+## Built-In Example: Redis
 
-A Redis connector should add only Redis-specific behavior:
+The built-in Redis connector adds only Redis-specific behavior:
 
-- target fields such as host, port, TLS mode, and database index
+- target fields such as connection mode, host, port, database index, and
+  optional SSH transport target ref
 - credential profile fields such as username/password or token
-- actions such as `get_info`, `scan_keys`, or `get_key`
+- actions such as `ping`, `info`, `scan_keys`, `get_key`, `set_string`,
+  `expire_key`, and `delete_keys`
 - connector help that explains safe key inspection
-- UI templates for Redis target rows, credential profiles, and activity output
+- UI templates for Redis target rows, credential profiles, and key-browser
+  console output
 
 It should not add a Redis-specific token permission table, approval table,
 history page, audit route, MCP tool family, or global UI page.
 
-Minimal Redis skeleton checklist:
+Redis checklist:
 
 - `backend/internal/connectors/redis/redis.go`
+- `backend/internal/connectors/redis/client.go`
 - `backend/internal/connectors/redis/redis_test.go`
 - backend registry entry and registry test
 - backend route tests if the built-in connector list or inventory expectations

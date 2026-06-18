@@ -248,7 +248,7 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-SSH, Postgres, and future integrations are exposed as connector actions instead
+SSH, Postgres, Redis, and future integrations are exposed as connector actions instead
 of separate product-specific MCP tools.
 
 ## Connector Action Flow
