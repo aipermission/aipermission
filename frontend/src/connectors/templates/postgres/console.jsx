@@ -77,6 +77,7 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
     }
     return items[0] || null;
   }, [items, selectedID]);
+  const selectedSQL = selected ? actionInputSQL(selected) : "";
   const browserTables = useMemo(() => filteredTableBrowserRows(metadata.tables, browserSearch), [metadata.tables, browserSearch]);
 
   useEffect(() => {
@@ -356,7 +357,19 @@ export function PostgresConnectorConsoleTemplate({ target, approvals, theme, ses
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                   {selected.reason ? <p className={`min-w-0 flex-1 truncate text-xs ${mutedClass}`}>Reason: {selected.reason}</p> : <span />}
-                  <ResultViewToggle checked={resultView} onChange={setResultView} theme={theme} />
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {selectedSQL ? (
+                      <>
+                        <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => loadRecentQuery({ sql: selectedSQL })}>
+                          Load SQL
+                        </Button>
+                        <CopyButton value={selectedSQL} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy request SQL">
+                          SQL
+                        </CopyButton>
+                      </>
+                    ) : null}
+                    <ResultViewToggle checked={resultView} onChange={setResultView} theme={theme} />
+                  </div>
                 </div>
                 {selected.error ? <Notice tone="bad">{selected.error}</Notice> : null}
               </header>
