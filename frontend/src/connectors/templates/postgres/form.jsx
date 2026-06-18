@@ -1,8 +1,10 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 
-export function PostgresConnectorFormTemplate({ form, mode = "create", onChange }) {
+export function PostgresConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
   const editing = mode === "edit";
+  const sshProfiles = sshProfileOptions(targets);
+  const overSSH = form.connection_mode === "over_ssh";
   return (
     <>
       <Notice tone="good">
@@ -12,6 +14,33 @@ export function PostgresConnectorFormTemplate({ form, mode = "create", onChange 
         Connector name
         <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} required />
       </Field>
+      <Field>
+        Connection mode
+        <Select value={form.connection_mode} onChange={(event) => onChange("connection_mode", event.target.value)}>
+          <option value="direct">Direct from this gateway</option>
+          <option value="over_ssh">Over an SSH connector profile</option>
+        </Select>
+      </Field>
+      {overSSH ? (
+        <Field>
+          SSH transport profile
+          <Select value={form.transport_target_ref} onChange={(event) => onChange("transport_target_ref", event.target.value)} required>
+            <option value="" disabled>
+              Select SSH profile
+            </option>
+            {sshProfiles.map((profile) => (
+              <option value={profile.ref} key={profile.ref}>
+                {profile.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
+      {overSSH ? (
+        <Notice>
+          Host and port are resolved from the SSH server. Use 127.0.0.1:5432 when Postgres only listens on the remote machine.
+        </Notice>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
         <Field>
           Host
@@ -64,4 +93,15 @@ export function PostgresConnectorFormTemplate({ form, mode = "create", onChange 
       </Field>
     </>
   );
+}
+
+function sshProfileOptions(targets) {
+  return (targets || [])
+    .filter((target) => target.connector_kind === "ssh")
+    .flatMap((target) =>
+      (target.profiles || []).map((profile) => ({
+        ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
+        label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
+      }))
+    );
 }

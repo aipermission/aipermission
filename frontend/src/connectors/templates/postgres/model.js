@@ -7,10 +7,12 @@ export function emptyForm() {
   return {
     connector_kind: "postgres",
     name: "main-db",
+    connection_mode: "direct",
     host: "127.0.0.1",
     port: 5432,
     database: "postgres",
     ssl_mode: "require",
+    transport_target_ref: "",
     profile_label: "readonly",
     username: "",
     password: "",
@@ -24,10 +26,12 @@ export function formFromTarget({ target, profile }) {
     connector_kind: "postgres",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
     name: target.name || "",
+    connection_mode: target.config?.connection_mode || "direct",
     host: target.config?.host || "",
     port: target.config?.port || 5432,
     database: target.config?.database || "",
     ssl_mode: target.config?.ssl_mode || "require",
+    transport_target_ref: target.config?.transport_target_ref || "",
     profile_label: selectedProfile.label || "readonly",
     username: selectedProfile.public?.username || "",
     password: "",
@@ -40,7 +44,15 @@ export function activeCredential() {
 }
 
 export function syncForm({ form }) {
-  return form;
+  if (form.connector_kind !== "postgres") return form;
+  const next = { ...form };
+  if (next.connection_mode === "direct") {
+    next.transport_target_ref = "";
+  }
+  if (next.connection_mode === "over_ssh" && !next.host) {
+    next.host = "127.0.0.1";
+  }
+  return next;
 }
 
 export function submitDisabled({ state }) {
@@ -182,7 +194,8 @@ export function targetEndpoint({ target }) {
   const host = target.config?.host || "host";
   const port = target.config?.port || 5432;
   const database = target.config?.database || "database";
-  return `${host}:${port}/${database}`;
+  const mode = target.config?.connection_mode === "over_ssh" ? "over ssh" : "direct";
+  return `${host}:${port}/${database} · ${mode}`;
 }
 
 export function targetDisplayName({ target }) {
@@ -271,11 +284,12 @@ async function updateTarget({ form, target }) {
 
 function postgresTargetConfigFromForm(form) {
   return {
-    connection_mode: "direct",
-    host: form.host,
+    connection_mode: form.connection_mode || "direct",
+    host: form.host || "127.0.0.1",
     port: Number(form.port) || 5432,
-    database: form.database,
-    ssl_mode: form.ssl_mode,
+    database: form.database || "postgres",
+    ssl_mode: form.ssl_mode || "require",
+    transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref || "" : "",
   };
 }
 

@@ -21,8 +21,11 @@ func TestConnectorMetadataAndSchemas(t *testing.T) {
 	if !hasField(targetSchema, "connection_mode") || !hasField(targetSchema, "host") || !hasField(targetSchema, "database") {
 		t.Fatalf("expected connection_mode, host, and database target fields, got %#v", targetSchema.Fields)
 	}
-	if fieldOptionsContain(targetSchema, "connection_mode", "over_ssh") {
-		t.Fatalf("target schema must not advertise unsupported over_ssh mode: %#v", targetSchema.Fields)
+	if !hasField(targetSchema, "transport_target_ref") {
+		t.Fatalf("expected transport_target_ref field for tunneled connections, got %#v", targetSchema.Fields)
+	}
+	if !fieldOptionsContain(targetSchema, "connection_mode", "over_ssh") {
+		t.Fatalf("target schema should advertise supported over_ssh mode: %#v", targetSchema.Fields)
 	}
 	if defaultFieldValue(targetSchema, "ssl_mode") != "require" {
 		t.Fatalf("postgres ssl_mode should default to require, got %#v", defaultFieldValue(targetSchema, "ssl_mode"))
@@ -123,7 +126,7 @@ func TestPrepareDescribeTableRequiresTable(t *testing.T) {
 func TestPrepareReadonlyQuery(t *testing.T) {
 	connector := New()
 	request := connectors.ActionRequest{
-		Target:     connectors.TargetView{Ref: "postgres:7:11", Name: "main-db", ConnectorKind: Kind},
+		Target:     connectors.TargetView{Ref: "postgres:7:11", Name: "main-db", ConnectorKind: Kind, Config: map[string]any{"connection_mode": "over_ssh", "transport_target_ref": "ssh:3:5"}},
 		Profile:    connectors.CredentialProfileView{ID: 11, ConnectorKind: Kind},
 		ActionName: ActionQueryReadonly,
 		Input: map[string]any{
@@ -142,6 +145,9 @@ func TestPrepareReadonlyQuery(t *testing.T) {
 	}
 	if prepared.ContextMaterial["reason"] != "inspect active users" {
 		t.Fatalf("reason missing from context material: %#v", prepared.ContextMaterial)
+	}
+	if prepared.ContextMaterial["connection_mode"] != "over_ssh" || prepared.ContextMaterial["transport_target_ref"] != "ssh:3:5" {
+		t.Fatalf("transport context missing from context material: %#v", prepared.ContextMaterial)
 	}
 }
 
@@ -288,15 +294,23 @@ func TestPrepareUnsupportedAction(t *testing.T) {
 	}
 }
 
-func TestExecuteActionRejectsUnsupportedConnectionMode(t *testing.T) {
+func TestExecuteActionRequiresNetworkTransport(t *testing.T) {
 	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
 		Target: connectors.TargetView{
 			ConnectorKind: Kind,
-			Config:        map[string]any{"connection_mode": "over_ssh"},
+			Config: map[string]any{
+				"connection_mode":      "over_ssh",
+				"transport_target_ref": "ssh:3:5",
+				"host":                 "127.0.0.1",
+				"port":                 5432,
+				"database":             "app",
+			},
 		},
+		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
+		Secrets: fakeSecrets{"password": "secret"},
 	}, connectors.PreparedAction{ActionName: ActionQueryReadonly})
-	if !errors.Is(err, ErrUnsupportedMode) {
-		t.Fatalf("expected ErrUnsupportedMode, got %v", err)
+	if !errors.Is(err, ErrMissingTransport) {
+		t.Fatalf("expected ErrMissingTransport, got %v", err)
 	}
 }
 

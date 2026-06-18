@@ -49,7 +49,7 @@ const truncatedSuffix = "...[truncated]"
 
 var (
 	ErrUnsupportedAction = errors.New("unsupported postgres connector action")
-	ErrUnsupportedMode   = errors.New("postgres connector connection mode is not supported yet")
+	ErrMissingTransport  = errors.New("postgres connector network transport is unavailable")
 	ErrMissingSecret     = errors.New("postgres connector credential is missing required secret")
 	ErrInvalidConfig     = errors.New("postgres connector target config is invalid")
 
@@ -87,14 +87,21 @@ func (Connector) TargetSchema() connectors.Schema {
 			Description: "Direct connection from the local gateway to a reachable Postgres host.",
 			Options: []connectors.FieldOption{
 				{Value: "direct", Label: "Direct"},
+				{Value: "over_ssh", Label: "Over SSH"},
 			},
+		},
+		{
+			Name:        "transport_target_ref",
+			Label:       "SSH transport profile",
+			Type:        connectors.FieldString,
+			Description: "Connector target profile ref used when connection_mode is over_ssh.",
 		},
 		{
 			Name:        "host",
 			Label:       "Host",
 			Type:        connectors.FieldString,
 			Required:    true,
-			Description: "Postgres host or service address as seen by the gateway.",
+			Description: "Postgres host or service address as seen by the selected connection mode.",
 		},
 		{
 			Name:        "port",
@@ -116,7 +123,7 @@ func (Connector) TargetSchema() connectors.Schema {
 			Label:       "SSL mode",
 			Type:        connectors.FieldSelect,
 			Default:     "require",
-			Description: "Postgres SSL mode for direct connections. Use prefer or disable only when you intentionally accept weaker transport protection.",
+			Description: "Postgres SSL mode. Use prefer or disable only when you intentionally accept weaker transport protection or connect through a trusted SSH tunnel.",
 			Options: []connectors.FieldOption{
 				{Value: "require", Label: "Require"},
 				{Value: "verify_full", Label: "Verify full"},
@@ -304,10 +311,12 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		ProfileID:     req.Profile.ID,
 		ActionName:    req.ActionName,
 		ContextMaterial: map[string]any{
-			"connector_kind": Kind,
-			"target_ref":     req.Target.Ref,
-			"profile_id":     req.Profile.ID,
-			"action_name":    req.ActionName,
+			"connector_kind":       Kind,
+			"target_ref":           req.Target.Ref,
+			"profile_id":           req.Profile.ID,
+			"action_name":          req.ActionName,
+			"connection_mode":      connectionMode(req.Target),
+			"transport_target_ref": targetString(req.Target.Config, "transport_target_ref"),
 		},
 	}
 
@@ -382,9 +391,6 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 	if runtime.Target.ConnectorKind != Kind {
 		return connectors.ActionResult{}, fmt.Errorf("target connector kind must be %s", Kind)
 	}
-	if connectionMode(runtime.Target) != "direct" {
-		return connectors.ActionResult{}, ErrUnsupportedMode
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -452,9 +458,6 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 }
 
 func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeContext) (connectors.TestResult, error) {
-	if connectionMode(runtime.Target) != "direct" {
-		return connectors.TestResult{Status: connectors.TestUnknownError, Message: "unsupported postgres connection mode"}, ErrUnsupportedMode
-	}
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 	conn, err := connect(ctx, runtime)
@@ -519,9 +522,6 @@ type provisionTableScope struct {
 func (Connector) ProvisionCredentialProfile(ctx context.Context, runtime connectors.RuntimeContext, input map[string]any) (connectors.ProvisionedCredentialProfile, error) {
 	if runtime.Target.ConnectorKind != Kind {
 		return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("target connector kind must be %s", Kind)
-	}
-	if connectionMode(runtime.Target) != "direct" {
-		return connectors.ProvisionedCredentialProfile{}, ErrUnsupportedMode
 	}
 	roleName := cleanSimpleIdentifierInput(input, "role_name")
 	if roleName == "" {
@@ -657,15 +657,14 @@ func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtim
 }
 
 func (Connector) Backup(ctx context.Context, runtime connectors.RuntimeContext, _ connectors.BackupRequest) (connectors.BackupArtifact, error) {
-	if connectionMode(runtime.Target) != "direct" {
-		return connectors.BackupArtifact{}, ErrUnsupportedMode
-	}
 	ctx, cancel := context.WithTimeout(ctx, backupTimeout)
 	defer cancel()
-	env, args, err := postgresCLIConnection(ctx, runtime)
+	invocation, err := postgresCLIConnection(ctx, runtime)
 	if err != nil {
 		return connectors.BackupArtifact{}, err
 	}
+	defer invocation.Cleanup()
+	args := invocation.Args
 	args = append(args,
 		"--format=plain",
 		"--clean",
@@ -678,7 +677,7 @@ func (Connector) Backup(ctx context.Context, runtime connectors.RuntimeContext, 
 	var stderr limitedBuffer
 	stderr.Limit = maxRestoreLog
 	cmd := exec.CommandContext(ctx, "pg_dump", args...)
-	cmd.Env = env
+	cmd.Env = invocation.Env
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -700,9 +699,6 @@ func (Connector) Backup(ctx context.Context, runtime connectors.RuntimeContext, 
 }
 
 func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext, request connectors.RestoreRequest) (connectors.ActionResult, error) {
-	if connectionMode(runtime.Target) != "direct" {
-		return connectors.ActionResult{}, ErrUnsupportedMode
-	}
 	if len(request.Data) == 0 {
 		return connectors.ActionResult{}, fmt.Errorf("restore SQL file is empty")
 	}
@@ -711,10 +707,12 @@ func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext,
 	}
 	ctx, cancel := context.WithTimeout(ctx, restoreTimeout)
 	defer cancel()
-	env, args, err := postgresCLIConnection(ctx, runtime)
+	invocation, err := postgresCLIConnection(ctx, runtime)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
+	defer invocation.Cleanup()
+	args := invocation.Args
 	args = append(args,
 		"--single-transaction",
 		"--set", "ON_ERROR_STOP=on",
@@ -724,7 +722,7 @@ func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext,
 	var stderr limitedBuffer
 	stderr.Limit = maxRestoreLog
 	cmd := exec.CommandContext(ctx, "psql", args...)
-	cmd.Env = env
+	cmd.Env = invocation.Env
 	cmd.Stdin = bytes.NewReader(request.Data)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -752,25 +750,42 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn,
 	return connectPostgres(ctx, runtime, true)
 }
 
-func postgresCLIConnection(ctx context.Context, runtime connectors.RuntimeContext) ([]string, []string, error) {
+type postgresCLIInvocation struct {
+	Env     []string
+	Args    []string
+	Cleanup func()
+}
+
+func postgresCLIConnection(ctx context.Context, runtime connectors.RuntimeContext) (postgresCLIInvocation, error) {
 	username := strings.TrimSpace(publicString(runtime.Profile.Public, "username"))
 	if username == "" {
-		return nil, nil, fmt.Errorf("%w: username", ErrMissingSecret)
+		return postgresCLIInvocation{}, fmt.Errorf("%w: username", ErrMissingSecret)
 	}
 	if runtime.Secrets == nil {
-		return nil, nil, fmt.Errorf("%w: password", ErrMissingSecret)
+		return postgresCLIInvocation{}, fmt.Errorf("%w: password", ErrMissingSecret)
 	}
 	password, err := runtime.Secrets.GetSecret(ctx, "password")
 	if err != nil || strings.TrimSpace(password) == "" {
-		return nil, nil, fmt.Errorf("%w: password", ErrMissingSecret)
+		return postgresCLIInvocation{}, fmt.Errorf("%w: password", ErrMissingSecret)
 	}
 	host := targetString(runtime.Target.Config, "host")
 	database := targetString(runtime.Target.Config, "database")
 	if host == "" {
-		return nil, nil, fmt.Errorf("%w: host is required", ErrInvalidConfig)
+		return postgresCLIInvocation{}, fmt.Errorf("%w: host is required", ErrInvalidConfig)
 	}
 	if database == "" {
-		return nil, nil, fmt.Errorf("%w: database is required", ErrInvalidConfig)
+		return postgresCLIInvocation{}, fmt.Errorf("%w: database is required", ErrInvalidConfig)
+	}
+	port := targetPort(runtime.Target.Config)
+	cleanup := func() {}
+	if connectionMode(runtime.Target) == "over_ssh" {
+		localHost, localPort, stop, err := startPostgresTunnel(ctx, runtime)
+		if err != nil {
+			return postgresCLIInvocation{}, err
+		}
+		host = localHost
+		port = localPort
+		cleanup = stop
 	}
 	env := append(os.Environ(),
 		"PGPASSWORD="+password,
@@ -780,12 +795,12 @@ func postgresCLIConnection(ctx context.Context, runtime connectors.RuntimeContex
 	)
 	args := []string{
 		"--host", host,
-		"--port", strconv.Itoa(targetPort(runtime.Target.Config)),
+		"--port", strconv.Itoa(port),
 		"--username", username,
 		"--dbname", database,
 		"--no-password",
 	}
-	return env, args, nil
+	return postgresCLIInvocation{Env: env, Args: args, Cleanup: cleanup}, nil
 }
 
 func connectPostgres(ctx context.Context, runtime connectors.RuntimeContext, readOnly bool) (*pgx.Conn, error) {
@@ -825,6 +840,14 @@ func connectPostgres(ctx context.Context, runtime connectors.RuntimeContext, rea
 	if err != nil {
 		return nil, fmt.Errorf("parse postgres connection config: %w", err)
 	}
+	transport, err := postgresNetworkTransport(runtime)
+	if err != nil {
+		return nil, err
+	}
+	dialRequest := postgresNetworkDialRequest(runtime.Target)
+	config.Config.DialFunc = func(ctx context.Context, network string, address string) (net.Conn, error) {
+		return transport.DialConnectorTCP(ctx, dialRequest)
+	}
 	if config.RuntimeParams == nil {
 		config.RuntimeParams = map[string]string{}
 	}
@@ -839,6 +862,82 @@ func connectPostgres(ctx context.Context, runtime connectors.RuntimeContext, rea
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}
 	return conn, nil
+}
+
+func postgresNetworkTransport(runtime connectors.RuntimeContext) (connectors.NetworkTransport, error) {
+	transport, _ := runtime.Capability(connectors.NetworkTransportCapabilityName).(connectors.NetworkTransport)
+	if transport == nil {
+		return nil, ErrMissingTransport
+	}
+	return transport, nil
+}
+
+func postgresNetworkDialRequest(target connectors.TargetView) connectors.NetworkDialRequest {
+	return connectors.NetworkDialRequest{
+		Mode:               connectionMode(target),
+		Host:               targetString(target.Config, "host"),
+		Port:               targetPort(target.Config),
+		TransportTargetRef: strings.TrimSpace(targetString(target.Config, "transport_target_ref")),
+	}
+}
+
+func startPostgresTunnel(ctx context.Context, runtime connectors.RuntimeContext) (string, int, func(), error) {
+	transport, err := postgresNetworkTransport(runtime)
+	if err != nil {
+		return "", 0, nil, err
+	}
+	request := postgresNetworkDialRequest(runtime.Target)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", 0, nil, fmt.Errorf("start postgres local tunnel: %w", err)
+	}
+	tunnelCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			localConn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go pipePostgresTunnelConn(tunnelCtx, transport, request, localConn)
+		}
+	}()
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		cancel()
+		_ = listener.Close()
+		<-done
+		return "", 0, nil, fmt.Errorf("postgres local tunnel address is not TCP")
+	}
+	cleanup := func() {
+		cancel()
+		_ = listener.Close()
+		<-done
+	}
+	return "127.0.0.1", addr.Port, cleanup, nil
+}
+
+func pipePostgresTunnelConn(ctx context.Context, transport connectors.NetworkTransport, request connectors.NetworkDialRequest, localConn net.Conn) {
+	remoteConn, err := transport.DialConnectorTCP(ctx, request)
+	if err != nil {
+		_ = localConn.Close()
+		return
+	}
+	copyDone := make(chan struct{}, 2)
+	go func() {
+		_, _ = io.Copy(remoteConn, localConn)
+		_ = remoteConn.Close()
+		_ = localConn.Close()
+		copyDone <- struct{}{}
+	}()
+	go func() {
+		_, _ = io.Copy(localConn, remoteConn)
+		_ = localConn.Close()
+		_ = remoteConn.Close()
+		copyDone <- struct{}{}
+	}()
+	<-copyDone
 }
 
 func provisionScopeInput(input map[string]any) (provisionScope, error) {
