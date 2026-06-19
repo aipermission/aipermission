@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-const connectorNativeBaselineDescription = "0.2 connector-native baseline"
+const (
+	connectorNativeBaselineVersion     = 1
+	connectorNativeBaselineDescription = "0.2 connector-native baseline"
+)
 
 var ErrUnsupportedSchema = errors.New("unsupported database schema")
 
@@ -339,6 +342,40 @@ var historyTableStatements = []string{
 	);`,
 }
 
+var backupProviderTableStatements = []string{
+	`CREATE TABLE IF NOT EXISTS backup_providers (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		provider_type TEXT NOT NULL,
+		name TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled', 'archived')),
+		public_json TEXT NOT NULL DEFAULT '{}',
+		encrypted_secret_json TEXT NOT NULL DEFAULT '',
+		last_checked_at TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(provider_type, name)
+	);`,
+	`CREATE TABLE IF NOT EXISTS backup_records (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		provider_id INTEGER NOT NULL,
+		database_id TEXT NOT NULL,
+		database_name TEXT NOT NULL,
+		provider_file_id TEXT NOT NULL,
+		filename TEXT NOT NULL,
+		source_machine TEXT NOT NULL DEFAULT '',
+		size_bytes INTEGER NOT NULL DEFAULT 0,
+		checksum_sha256 TEXT NOT NULL DEFAULT '',
+		backup_created_at TEXT NOT NULL,
+		uploaded_at TEXT NOT NULL,
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		deleted_at TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(provider_id, provider_file_id),
+		FOREIGN KEY(provider_id) REFERENCES backup_providers(id) ON DELETE CASCADE
+	);`,
+}
+
 var indexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_connector_credential_resources_kind_name ON connector_credential_resources(connector_kind, resource_kind, name);`,
 	`CREATE INDEX IF NOT EXISTS idx_api_tokens_name ON api_tokens(name);`,
@@ -515,7 +552,7 @@ var historyProjectionStatements = []string{
 
 var migrations = []migration{
 	{
-		version:     currentSchemaVersion,
+		version:     connectorNativeBaselineVersion,
 		description: connectorNativeBaselineDescription,
 		statements: sqlStatements(
 			coreTableStatements,
@@ -523,6 +560,18 @@ var migrations = []migration{
 			historyTableStatements,
 			indexStatements,
 			searchIndexStatements,
+		),
+	},
+	{
+		version:     2,
+		description: "backup provider metadata",
+		statements: sqlStatements(
+			backupProviderTableStatements,
+			[]string{
+				`CREATE INDEX IF NOT EXISTS idx_backup_providers_type_status ON backup_providers(provider_type, status);`,
+				`CREATE INDEX IF NOT EXISTS idx_backup_records_provider_database_time ON backup_records(provider_id, database_name, backup_created_at);`,
+				`CREATE INDEX IF NOT EXISTS idx_backup_records_database_time ON backup_records(database_name, backup_created_at);`,
+			},
 		),
 	},
 }
@@ -590,7 +639,7 @@ func rejectUnsupportedPreviewSchema(database *sql.DB) error {
 	}
 
 	var baselineDescription string
-	err := database.QueryRow(`SELECT description FROM schema_migrations WHERE version = ?`, currentSchemaVersion).Scan(&baselineDescription)
+	err := database.QueryRow(`SELECT description FROM schema_migrations WHERE version = ?`, connectorNativeBaselineVersion).Scan(&baselineDescription)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("%w: %s", ErrUnsupportedSchema, unsupportedPre02DatabaseMessage)
 	}

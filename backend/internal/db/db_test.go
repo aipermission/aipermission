@@ -56,6 +56,12 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !tableExists(t, database, "file_transfer_batches") {
 		t.Fatalf("file_transfer_batches table was not created")
 	}
+	if !tableExists(t, database, "backup_providers") {
+		t.Fatalf("backup_providers table was not created")
+	}
+	if !tableExists(t, database, "backup_records") {
+		t.Fatalf("backup_records table was not created")
+	}
 	if !columnExists(t, database, "api_tokens", "expires_at") {
 		t.Fatalf("api_tokens.expires_at column was not created")
 	}
@@ -139,6 +145,42 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if wrong, err := OpenEncrypted(path, "wrong-password"); err == nil {
 		_ = wrong.Close()
 		t.Fatalf("expected wrong password to fail")
+	}
+}
+
+func TestOpenEncryptedMigratesConnectorNativeBaseline(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secure.db")
+	database, err := openEncrypted(path, "correct-password", false)
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	if err := runSingleMigration(database, migrations[0]); err != nil {
+		t.Fatalf("create connector-native baseline: %v", err)
+	}
+	if tableExists(t, database, "backup_providers") {
+		t.Fatalf("backup provider table should not exist before v2 migration")
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close baseline db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("open baseline db with migrations: %v", err)
+	}
+	defer reopened.Close()
+	if !tableExists(t, reopened, "backup_providers") {
+		t.Fatalf("backup provider table was not migrated")
+	}
+	if !tableExists(t, reopened, "backup_records") {
+		t.Fatalf("backup records table was not migrated")
+	}
+	var count int
+	if err := reopened.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 2`).Scan(&count); err != nil {
+		t.Fatalf("query backup provider migration: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("backup provider migration was not recorded")
 	}
 }
 
