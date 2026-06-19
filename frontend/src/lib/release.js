@@ -8,16 +8,22 @@ export const changelogEntries = [
       {
         title: "Added",
         items: [
-          "Settings now includes a local-only Maintenance Console for bounded diagnostics inside the gateway runtime.",
+          "Settings now includes a local-only realtime Maintenance Console inside the gateway runtime.",
           "Backup provider metadata can be managed from Settings with Google Drive as the first provider type.",
-          "Backup provider records are stored in the encrypted local database and can track future remote encrypted .aipdb files.",
+          "Google Drive providers can be connected through a local device-code authorization flow.",
+          "Connected Google Drive providers can upload encrypted .aipdb snapshots and store local backup record metadata.",
+          "Google Drive backup records can be downloaded or restored as a new local database from Settings.",
+          "Remote backup uploads show the encrypted snapshot size before the upload starts.",
         ],
       },
       {
         title: "Security",
         items: [
-          "Maintenance Console is local UI only, unavailable to MCP, bounded by timeout/output limits, and audits submitted command text.",
+          "Maintenance Console is local UI only, unavailable to MCP, and audits terminal lifecycle events.",
           "Backup providers are storage metadata only: they do not receive MCP tokens, connector credentials, or the database password.",
+          "Google Drive OAuth tokens are encrypted with the local vault and are never returned by provider list/detail responses.",
+          "Google Drive uploads send encrypted .aipdb snapshots only; database passwords and connector credentials are not uploaded.",
+          "Google Drive restores verify stored size/checksum metadata and never overwrite the currently open database.",
         ],
       },
     ],

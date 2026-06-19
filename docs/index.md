@@ -43,6 +43,10 @@ Start here:
 - [Database Migration](setup/database-migration.md)
 - [MCP Client Setup](setup/mcp-client-setup.md)
 
+## Providers
+
+- [Google Drive Backup Provider](providers/google-drive.md)
+
 ## API And MCP Contracts
 
 - [REST API](api/rest-api.md)

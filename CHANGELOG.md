@@ -11,20 +11,33 @@ and this project uses semantic versioning once public releases begin.
 
 ### Added
 
-- Added a Settings-only Maintenance Console for bounded local diagnostics inside
+- Added a Settings-only realtime Maintenance Console for local diagnostics inside
   the gateway runtime.
 - Added backup provider metadata storage with Google Drive as the first provider
   type.
 - Added Settings UI for adding, editing, disabling, and archiving remote backup
   provider metadata.
+- Added Google Drive device-code authorization that stores OAuth token payloads
+  as encrypted backup-provider secrets.
+- Added Google Drive encrypted database backup upload from the Settings provider
+  row, with local backup record metadata for uploaded `.aipdb` files.
+- Added remote backup record download and restore-as-new-local-database flows
+  for connected Google Drive providers.
+- Added upload confirmation that shows the encrypted snapshot size before a
+  remote backup upload starts.
 
 ### Security
 
-- Maintenance Console is local UI only, unavailable to MCP, bounded by timeout
-  and output limits, and audits submitted command text without storing command
-  output in the audit payload.
+- Maintenance Console is local UI only, unavailable to MCP, and audits terminal
+  lifecycle events without exposing the local terminal through MCP.
 - Backup providers are storage metadata only. They do not receive MCP tokens,
   connector credentials, or the database password.
+- Google Drive OAuth tokens are encrypted with the local vault and are not
+  returned by provider list/detail responses.
+- Google Drive uploads send encrypted `.aipdb` snapshots only; database
+  passwords and connector credentials are not uploaded.
+- Google Drive restores verify stored size/checksum metadata and never
+  overwrite the currently open database.
 
 ## [0.2.6] - 2026-06-18
 

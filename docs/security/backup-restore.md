@@ -67,6 +67,29 @@ Provider metadata lives inside the unlocked SQLCipher database. Provider secrets
 when present, are encrypted with the local gateway vault and are never returned
 by list/detail API responses.
 
+Google Drive uses an explicit local UI authorization flow. The user supplies a
+Google OAuth client id and client secret for the provider, opens the Google
+verification URL, and confirms the device code. Create that OAuth client in
+Google Cloud Console as an OAuth client for TVs and limited-input devices, and
+enable Google Drive API on that Google Cloud project. AIPermission stores the
+client secret and resulting token payload only as encrypted provider secret; it
+does not expose either value to MCP or to provider list/detail responses.
+
+See the [Google Drive backup provider guide](../providers/google-drive.md) for
+step-by-step setup.
+
+After Google Drive is connected, `Upload backup` creates a temporary SQLCipher
+snapshot of the unlocked database and uploads the encrypted `.aipdb` blob to the
+configured Drive folder. The local database password is never uploaded. A local
+backup record stores the provider file id, filename, size, checksum, source
+machine, and timestamps.
+
+Remote backup records can be downloaded back as encrypted `.aipdb` files or
+restored as a new local database. Restore downloads the remote blob, verifies
+stored size/checksum metadata, validates the user-provided database password,
+and imports the backup under a new local database name. Restore never overwrites
+the currently open database.
+
 This does not make AIPermission a remote gateway. A remote backup provider stores
 encrypted `.aipdb` blobs as-is. It does not receive MCP tokens, connector
 credentials, SSH keys, database passwords, or the ability to decrypt a database.

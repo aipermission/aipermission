@@ -744,7 +744,7 @@ PUT    /api/settings/redaction-rules/{id}
 DELETE /api/settings/redaction-rules/{id}
 GET    /api/settings/maintenance-console/status
 POST   /api/settings/maintenance-console/open
-POST   /api/settings/maintenance-console/run
+GET    /api/settings/maintenance-console/attach
 POST   /api/settings/maintenance-console/close
 ```
 
@@ -809,21 +809,13 @@ Retention settings:
 
 Valid targets are `history`, `audit`, `console`, and `messages`.
 
-Maintenance console:
-
-```json
-{
-  "command": "pwd\nls -la",
-  "timeout_seconds": 10
-}
-```
-
-The maintenance console is a local UI-only diagnostics surface for the gateway
-runtime. It is protected by the normal local HTTP boundary, UI session, and CSRF
-checks, is not exposed through MCP, and runs commands with `/bin/sh -lc` inside
-the local gateway container. Command text is audited. Stdout/stderr are bounded
-to 64 KiB each, command text is limited to 8 KiB, and timeouts are capped at 30
-seconds.
+The maintenance console is a local UI-only realtime PTY for diagnostics inside
+the gateway runtime container. It is protected by the normal local HTTP
+boundary, UI session, and CSRF checks, is not exposed through MCP, and uses the
+same browser terminal component as SSH console sessions. The API exposes
+`open`, websocket `attach`, and `close`; lifecycle events are audited, but the
+terminal transcript is kept as bounded in-memory UI state rather than stored as
+command history.
 
 Connector permission update shape:
 
@@ -875,6 +867,11 @@ POST /api/backup/providers
 PUT  /api/backup/providers/{id}
 DELETE /api/backup/providers/{id}
 GET  /api/backup/providers/{id}/records
+POST /api/backup/providers/{id}/upload
+GET  /api/backup/providers/{id}/records/{record_id}/download
+POST /api/backup/providers/{id}/records/{record_id}/restore
+POST /api/backup/providers/{id}/google/device/start
+POST /api/backup/providers/{id}/google/device/poll
 ```
 
 `GET /api/backup/download` returns the active SQLCipher database as a binary `.aipdb` file. The backend creates a temporary SQLCipher snapshot and serves that snapshot instead of streaming the live database file directly.
@@ -896,13 +893,34 @@ Older `.aipbackup` JSON export/restore endpoints are no longer registered in the
 Backup provider endpoints store optional remote encrypted-backup provider
 metadata. Provider secrets are encrypted with the local gateway vault and are
 never returned by list/detail responses. The first provider type is
-`google_drive`; later provider types should use the same metadata contract
-instead of adding one-off Settings storage.
+`google_drive`; it supports a local UI initiated Google OAuth device flow using
+a user-provided OAuth client id stored in provider public metadata and a client
+secret stored only as encrypted provider secret. Use a Google Cloud OAuth client
+for TVs and limited-input devices with Google Drive API enabled. The resulting
+Google token payload is stored only as encrypted provider secret. Later provider
+types should use the same metadata and secret contract instead of adding one-off
+Settings storage.
 
 Remote provider records are metadata only. A provider account stores encrypted
 `.aipdb` blobs as-is; it is not a remote gateway, does not receive MCP tokens,
 does not receive connector credentials, and cannot decrypt a database without
 the database password.
+
+`POST /api/backup/providers/{id}/upload` creates a temporary SQLCipher snapshot
+of the currently unlocked database, uploads that encrypted `.aipdb` file to the
+connected provider, and stores a local backup record with provider file id,
+filename, size, checksum, source machine, and timestamps. Google Drive uploads
+use the connected OAuth token, refresh it locally when possible, create the
+configured Drive folder when missing, and never upload the database password.
+
+`GET /api/backup/providers/{id}/records/{record_id}/download` downloads a
+previously uploaded encrypted `.aipdb` backup record from the provider after
+checking the stored size and checksum metadata.
+
+`POST /api/backup/providers/{id}/records/{record_id}/restore` downloads the
+remote encrypted `.aipdb`, verifies the size/checksum metadata, validates the
+provided database password, and imports it as a new local database. Restore
+never overwrites the currently open database.
 
 ## Console Sessions
 
@@ -1162,7 +1180,7 @@ GET /api/audit-logs?limit=50&offset=0&q=docker&actor=mcp&runtime_id=3
 
 List responses use the same pagination envelope as History and include a payload preview. `GET /api/audit-logs/{id}` returns the full payload.
 
-Token create/revoke, permission changes, security settings changes, retention cleanup, maintenance console lifecycle/commands, connector console lifecycle/input, MCP execution states, and approval decisions are written.
+Token create/revoke, permission changes, security settings changes, retention cleanup, maintenance console lifecycle, connector console lifecycle/input, MCP execution states, and approval decisions are written.
 
 Secret payloads, SSH private keys, and token values must not be written to audit logs.
 
