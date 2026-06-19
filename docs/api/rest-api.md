@@ -742,6 +742,10 @@ GET    /api/settings/redaction-rules
 POST   /api/settings/redaction-rules
 PUT    /api/settings/redaction-rules/{id}
 DELETE /api/settings/redaction-rules/{id}
+GET    /api/settings/maintenance-console/status
+POST   /api/settings/maintenance-console/open
+POST   /api/settings/maintenance-console/run
+POST   /api/settings/maintenance-console/close
 ```
 
 Token create returns the token value once. `expires_at` is optional and must be
@@ -804,6 +808,22 @@ Retention settings:
 ```
 
 Valid targets are `history`, `audit`, `console`, and `messages`.
+
+Maintenance console:
+
+```json
+{
+  "command": "pwd\nls -la",
+  "timeout_seconds": 10
+}
+```
+
+The maintenance console is a local UI-only diagnostics surface for the gateway
+runtime. It is protected by the normal local HTTP boundary, UI session, and CSRF
+checks, is not exposed through MCP, and runs commands with `/bin/sh -lc` inside
+the local gateway container. Command text is audited. Stdout/stderr are bounded
+to 64 KiB each, command text is limited to 8 KiB, and timeouts are capped at 30
+seconds.
 
 Connector permission update shape:
 
@@ -1125,7 +1145,7 @@ GET /api/audit-logs?limit=50&offset=0&q=docker&actor=mcp&runtime_id=3
 
 List responses use the same pagination envelope as History and include a payload preview. `GET /api/audit-logs/{id}` returns the full payload.
 
-Token create/revoke, permission changes, security settings changes, retention cleanup, console lifecycle/input, MCP execution states, and approval decisions are written.
+Token create/revoke, permission changes, security settings changes, retention cleanup, maintenance console lifecycle/commands, connector console lifecycle/input, MCP execution states, and approval decisions are written.
 
 Secret payloads, SSH private keys, and token values must not be written to audit logs.
 

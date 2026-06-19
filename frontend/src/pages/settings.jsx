@@ -1,4 +1,4 @@
-import { Clock3, Download, Edit3, KeyRound, Tags, Trash2 } from "lucide-react";
+import { Clock3, Download, Edit3, KeyRound, Play, Tags, Terminal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../lib/api";
 import { useAsyncAction } from "../lib/use-async-action";
@@ -6,9 +6,10 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { CopyButton } from "../components/ui/copy-button";
 import { Dialog } from "../components/ui/dialog";
-import { Field, Input, Select } from "../components/ui/form";
+import { Field, Input, Select, Textarea } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
+import { TerminalBlock } from "../components/ui/terminal-block";
 
 const emptyState = { state: "idle", error: null, message: null };
 
@@ -21,6 +22,7 @@ export function SettingsPage() {
   const { actionState: retentionState, runAction: runRetentionAction } = useAsyncAction(emptyState);
   const { actionState: purgeState, runAction: runPurgeAction } = useAsyncAction(emptyState);
   const { actionState: labelDeleteState, runAction: runLabelDeleteAction } = useAsyncAction(emptyState);
+  const { actionState: maintenanceState, runAction: runMaintenanceAction } = useAsyncAction(emptyState);
   const [retention, setRetention] = useState({
     state: "loading",
     data: { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 },
@@ -35,6 +37,11 @@ export function SettingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const deletePasswordRef = useRef(null);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [maintenanceOpenError, setMaintenanceOpenError] = useState("");
+  const [maintenanceCommand, setMaintenanceCommand] = useState("pwd\nls -la");
+  const [maintenanceTimeout, setMaintenanceTimeout] = useState(10);
+  const [maintenanceResult, setMaintenanceResult] = useState(null);
 
   async function loadDatabase() {
     try {
@@ -188,6 +195,44 @@ export function SettingsPage() {
     setLabelDeleteDialogOpen(false);
   }
 
+  async function openMaintenanceConsole() {
+    setMaintenanceOpenError("");
+    try {
+      await apiPost("/api/settings/maintenance-console/open", {});
+      setMaintenanceOpen(true);
+    } catch (error) {
+      setMaintenanceOpenError(error.message);
+    }
+  }
+
+  async function closeMaintenanceConsole() {
+    if (maintenanceState.state === "running") return;
+    setMaintenanceOpen(false);
+    try {
+      await apiPost("/api/settings/maintenance-console/close", {});
+    } catch {
+      // The dialog is already local UI state; failing to audit close should not trap the user.
+    }
+  }
+
+  async function runMaintenanceCommand(event) {
+    event.preventDefault();
+    const command = maintenanceCommand.trim();
+    if (!command) return;
+    await runMaintenanceAction({
+      pending: "running",
+      successMessage: (data) => `Maintenance command ${data.status}.`,
+      action: async () => {
+        const data = await apiPost("/api/settings/maintenance-console/run", {
+          command,
+          timeout_seconds: Number(maintenanceTimeout) || 10,
+        });
+        setMaintenanceResult(data);
+        return data;
+      },
+    });
+  }
+
   return (
     <section className="mx-auto grid w-full max-w-2xl gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -212,6 +257,23 @@ export function SettingsPage() {
           </Button>
           {backupState.message ? <Notice tone="good">{backupState.message}</Notice> : null}
           {backupState.state === "error" ? <Notice tone="bad">{backupState.error}</Notice> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Maintenance console</CardTitle>
+          <CardDescription>Run a bounded command inside the local AIPermission gateway runtime.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <Notice tone="warn">
+            Local UI-only diagnostics for the gateway runtime. It is not exposed to MCP, output is bounded, and every submitted command is audited.
+          </Notice>
+          <Button type="button" onClick={openMaintenanceConsole}>
+            <Terminal className="h-4 w-4" />
+            Open maintenance console
+          </Button>
+          {maintenanceOpenError ? <Notice tone="bad">{maintenanceOpenError}</Notice> : null}
         </CardContent>
       </Card>
 
@@ -463,6 +525,77 @@ export function SettingsPage() {
               {deleteState.state === "deleting" ? "Deleting..." : "Delete permanently"}
             </Button>
           </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={maintenanceOpen}
+        title="Maintenance console"
+        description="Run a bounded command inside the local gateway container."
+        onClose={closeMaintenanceConsole}
+        size="xl"
+        closeDisabled={maintenanceState.state === "running"}
+        closeOnOverlay={false}
+      >
+        <form className="grid gap-4" onSubmit={runMaintenanceCommand}>
+          <Notice tone="warn">
+            This console is for local diagnostics only. Do not print secrets; command text is written to the audit log.
+          </Notice>
+          <Field>
+            Command
+            <Textarea
+              value={maintenanceCommand}
+              onChange={(event) => setMaintenanceCommand(event.target.value)}
+              className="min-h-32 font-mono text-xs"
+              spellCheck={false}
+              required
+            />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,12rem)_auto]">
+            <Field>
+              Timeout seconds
+              <Input
+                type="number"
+                min="1"
+                max="30"
+                value={maintenanceTimeout}
+                onChange={(event) => setMaintenanceTimeout(event.target.value)}
+              />
+            </Field>
+            <Button type="submit" className="self-end" disabled={maintenanceState.state === "running" || !maintenanceCommand.trim()}>
+              <Play className="h-4 w-4" />
+              {maintenanceState.state === "running" ? "Running..." : "Run command"}
+            </Button>
+          </div>
+          {maintenanceState.message ? <Notice tone={maintenanceResult?.status === "completed" ? "good" : "warn"}>{maintenanceState.message}</Notice> : null}
+          {maintenanceState.state === "error" ? <Notice tone="bad">{maintenanceState.error}</Notice> : null}
+          {maintenanceResult ? (
+            <div className="grid gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500">
+                <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 px-2 py-1 font-semibold text-stone-700">
+                  <Terminal className="h-3.5 w-3.5" />
+                  {maintenanceResult.status}
+                </span>
+                {maintenanceResult.exit_code !== undefined ? <span>exit {maintenanceResult.exit_code}</span> : null}
+                <span>{maintenanceResult.duration_ms} ms</span>
+                {maintenanceResult.output_truncated ? <span>output truncated</span> : null}
+              </div>
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold uppercase text-stone-500">stdout</p>
+                <TerminalBlock surface="log" className="max-h-72 min-h-28 text-xs">
+                  {maintenanceResult.stdout || "(empty)"}
+                </TerminalBlock>
+              </div>
+              {maintenanceResult.stderr ? (
+                <div className="grid gap-2">
+                  <p className="text-xs font-semibold uppercase text-stone-500">stderr</p>
+                  <TerminalBlock surface="log" className="max-h-48 min-h-20 text-xs">
+                    {maintenanceResult.stderr}
+                  </TerminalBlock>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </form>
       </Dialog>
 

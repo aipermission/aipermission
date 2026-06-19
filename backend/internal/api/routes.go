@@ -23,6 +23,7 @@ type connectorHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type targetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
+type maintenanceConsoleHandlers struct{ *Server }
 
 func (s *Server) routes() {
 	unlock := unlockHandlers{s}
@@ -45,6 +46,7 @@ func (s *Server) routes() {
 	connectorTargets := connectorTargetHandlers{s}
 	targets := targetHandlers{s}
 	mcp := mcpHandlers{s}
+	maintenanceConsole := maintenanceConsoleHandlers{s}
 
 	s.mux.HandleFunc("GET /health", s.health)
 	s.mux.HandleFunc("GET /api/status", s.status)
@@ -57,6 +59,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/settings/redaction-rules", redactionRules.createRedactionRule)
 	s.mux.HandleFunc("PUT /api/settings/redaction-rules/{id}", redactionRules.updateRedactionRule)
 	s.mux.HandleFunc("DELETE /api/settings/redaction-rules/{id}", redactionRules.deleteRedactionRule)
+	s.mux.HandleFunc("GET /api/settings/maintenance-console/status", maintenanceConsole.status)
+	s.mux.HandleFunc("POST /api/settings/maintenance-console/open", maintenanceConsole.open)
+	s.mux.HandleFunc("POST /api/settings/maintenance-console/run", maintenanceConsole.run)
+	s.mux.HandleFunc("POST /api/settings/maintenance-console/close", maintenanceConsole.close)
 	s.mux.HandleFunc("GET /api/unlock/status", unlock.unlockStatus)
 	s.mux.HandleFunc("POST /api/unlock/setup", unlock.setupUnlock)
 	s.mux.HandleFunc("POST /api/unlock", unlock.unlock)

@@ -383,6 +383,16 @@ test("Settings database delete requires a confirmation dialog and current passwo
   assert.doesNotMatch(settingsSource, /onSubmit=\{deleteDatabase\}[\s\S]*Delete<\/CardTitle>/);
 });
 
+test("Settings page exposes a local-only maintenance console", () => {
+  assert.match(settingsSource, /Maintenance console/);
+  assert.match(settingsSource, /Open maintenance console/);
+  assert.match(settingsSource, /\/api\/settings\/maintenance-console\/open/);
+  assert.match(settingsSource, /\/api\/settings\/maintenance-console\/run/);
+  assert.match(settingsSource, /\/api\/settings\/maintenance-console\/close/);
+  assert.match(settingsSource, /not exposed to MCP/i);
+  assert.match(settingsSource, /command text is written to the audit log/i);
+});
+
 test("History page exposes label filtering and item label endpoints", () => {
   assert.match(historySource, /\/api\/history-labels/);
   assert.match(historySource, /\/api\/history\?/);
