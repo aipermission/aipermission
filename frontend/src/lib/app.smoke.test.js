@@ -408,7 +408,7 @@ test("Settings page exposes backup provider metadata management", () => {
   assert.match(settingsSource, /Upload backup/);
   assert.match(settingsSource, /Estimated upload size/);
   assert.match(settingsSource, /Remote backup records/);
-  assert.match(settingsSource, /Restore as new database/);
+  assert.match(settingsSource, /Restore remote backup/);
   assert.match(settingsSource, /\/records\/\$\{record\.id\}\/restore/);
   assert.match(settingsSource, /\/google\/device\/start/);
   assert.match(settingsSource, /\/google\/device\/poll/);
