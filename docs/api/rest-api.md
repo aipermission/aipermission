@@ -869,6 +869,12 @@ permission checks no longer treat them as effective.
 ```txt
 GET  /api/backup/download
 POST /api/backup/import
+GET  /api/backup/providers/catalog
+GET  /api/backup/providers
+POST /api/backup/providers
+PUT  /api/backup/providers/{id}
+DELETE /api/backup/providers/{id}
+GET  /api/backup/providers/{id}/records
 ```
 
 `GET /api/backup/download` returns the active SQLCipher database as a binary `.aipdb` file. The backend creates a temporary SQLCipher snapshot and serves that snapshot instead of streaming the live database file directly.
@@ -886,6 +892,17 @@ The multipart field name must be `sqlite`. JSON/base64 database import is not su
 Import can run while locked. The backend validates the uploaded database with the provided password, stores it as a named local database, and unlocks it. Import never overwrites an existing database file; colliding names are made unique or rejected instead of replacing data.
 
 Older `.aipbackup` JSON export/restore endpoints are no longer registered in the public REST surface. Use `.aipdb` download/import instead.
+
+Backup provider endpoints store optional remote encrypted-backup provider
+metadata. Provider secrets are encrypted with the local gateway vault and are
+never returned by list/detail responses. The first provider type is
+`google_drive`; later provider types should use the same metadata contract
+instead of adding one-off Settings storage.
+
+Remote provider records are metadata only. A provider account stores encrypted
+`.aipdb` blobs as-is; it is not a remote gateway, does not receive MCP tokens,
+does not receive connector credentials, and cannot decrypt a database without
+the database password.
 
 ## Console Sessions
 
