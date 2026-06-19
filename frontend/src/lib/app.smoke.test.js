@@ -238,7 +238,7 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
   assert.match(releaseSource, /appVersion = "0\.2\.7"/);
   assert.match(releaseSource, /Maintenance and backup providers/);
-  assert.match(releaseSource, /Settings now includes a local-only Maintenance Console/);
+  assert.match(releaseSource, /Settings now includes a local-only realtime Maintenance Console/);
   assert.match(releaseSource, /Backup providers are storage metadata only/);
   assert.match(releaseSource, /RabbitMQ connector/);
   assert.match(releaseSource, /RabbitMQ is now a built-in connector with Direct and Over SSH connection modes/);
@@ -390,10 +390,11 @@ test("Settings page exposes a local-only maintenance console", () => {
   assert.match(settingsSource, /Maintenance console/);
   assert.match(settingsSource, /Open maintenance console/);
   assert.match(settingsSource, /\/api\/settings\/maintenance-console\/open/);
-  assert.match(settingsSource, /\/api\/settings\/maintenance-console\/run/);
+  assert.match(settingsSource, /\/api\/settings\/maintenance-console\/attach/);
   assert.match(settingsSource, /\/api\/settings\/maintenance-console\/close/);
+  assert.match(settingsSource, /PtyConsole/);
   assert.match(settingsSource, /not exposed to MCP/i);
-  assert.match(settingsSource, /command text is written to the audit log/i);
+  assert.match(settingsSource, /Avoid printing secrets/i);
 });
 
 test("Settings page exposes backup provider metadata management", () => {
@@ -403,7 +404,24 @@ test("Settings page exposes backup provider metadata management", () => {
   assert.match(settingsSource, /\/api\/backup\/providers/);
   assert.match(settingsSource, /Edit backup provider/);
   assert.match(settingsSource, /Archive backup provider/);
+  assert.match(settingsSource, /Connect Google Drive/);
+  assert.match(settingsSource, /Upload backup/);
+  assert.match(settingsSource, /Estimated upload size/);
+  assert.match(settingsSource, /Remote backup records/);
+  assert.match(settingsSource, /Restore as new database/);
+  assert.match(settingsSource, /\/records\/\$\{record\.id\}\/restore/);
+  assert.match(settingsSource, /\/google\/device\/start/);
+  assert.match(settingsSource, /\/google\/device\/poll/);
+  assert.match(settingsSource, /\/upload/);
+  assert.match(settingsSource, /client_id/);
+  assert.match(settingsSource, /client_secret/);
+  assert.match(settingsSource, /docs\/providers\/google-drive\.md/);
   assert.match(settingsSource, /Remote providers store encrypted database files only/);
+});
+
+test("Unlock page shows the current app version", () => {
+  assert.match(unlockSource, /appVersion/);
+  assert.match(unlockSource, /AIPermission \{appVersion\}/);
 });
 
 test("History page exposes label filtering and item label endpoints", () => {

@@ -6,6 +6,7 @@ import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
+import { appVersion } from "../lib/release";
 
 export function UnlockPage({ status, onUnlocked }) {
   const databases = status?.databases || [];
@@ -421,19 +422,22 @@ function Toast({ message }) {
 export function UnlockShell({ title, children }) {
   return (
     <main className="grid min-h-screen place-items-center bg-stone-100 p-5 text-stone-950">
-      <section className="grid w-full max-w-2xl gap-5 rounded-lg border border-stone-200 bg-white p-6 shadow-xl">
-        <div className="flex items-center gap-3">
-          <img src="/icon.svg" alt="" className="h-10 w-10 rounded-lg" />
-          <div>
-            <h1 className="text-lg font-semibold">aipermission</h1>
-            <p className="text-sm text-stone-500">{title}</p>
+      <div className="grid w-full max-w-2xl gap-2">
+        <section className="grid gap-5 rounded-lg border border-stone-200 bg-white p-6 shadow-xl">
+          <div className="flex items-center gap-3">
+            <img src="/icon.svg" alt="" className="h-10 w-10 rounded-lg" />
+            <div>
+              <h1 className="text-lg font-semibold">aipermission</h1>
+              <p className="text-sm text-stone-500">{title}</p>
+            </div>
           </div>
-        </div>
-        <Notice tone="warn">
-          Local-only gateway. Keep Docker ports bound to <span className="font-mono">127.0.0.1</span>; do not expose this UI or API on LAN or the public internet.
-        </Notice>
-        {children}
-      </section>
+          <Notice tone="warn">
+            Local-only gateway. Keep Docker ports bound to <span className="font-mono">127.0.0.1</span>; do not expose this UI or API on LAN or the public internet.
+          </Notice>
+          {children}
+        </section>
+        <p className="text-center text-xs font-semibold text-stone-400">AIPermission {appVersion}</p>
+      </div>
     </main>
   );
 }
