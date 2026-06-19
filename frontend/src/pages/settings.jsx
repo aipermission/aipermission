@@ -1,4 +1,4 @@
-import { Clock3, Download, Edit3, KeyRound, Play, Tags, Terminal, Trash2 } from "lucide-react";
+import { Archive, Clock3, Cloud, Download, Edit3, KeyRound, Play, Plus, Tags, Terminal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../lib/api";
 import { useAsyncAction } from "../lib/use-async-action";
@@ -23,6 +23,7 @@ export function SettingsPage() {
   const { actionState: purgeState, runAction: runPurgeAction } = useAsyncAction(emptyState);
   const { actionState: labelDeleteState, runAction: runLabelDeleteAction } = useAsyncAction(emptyState);
   const { actionState: maintenanceState, runAction: runMaintenanceAction } = useAsyncAction(emptyState);
+  const { actionState: backupProviderState, runAction: runBackupProviderAction } = useAsyncAction(emptyState);
   const [retention, setRetention] = useState({
     state: "loading",
     data: { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 },
@@ -42,6 +43,17 @@ export function SettingsPage() {
   const [maintenanceCommand, setMaintenanceCommand] = useState("pwd\nls -la");
   const [maintenanceTimeout, setMaintenanceTimeout] = useState(10);
   const [maintenanceResult, setMaintenanceResult] = useState(null);
+  const [backupProviderCatalog, setBackupProviderCatalog] = useState({ state: "loading", data: [], error: null });
+  const [backupProviders, setBackupProviders] = useState({ state: "loading", data: [], error: null });
+  const [backupProviderDialogOpen, setBackupProviderDialogOpen] = useState(false);
+  const [backupProviderArchiveTarget, setBackupProviderArchiveTarget] = useState(null);
+  const [backupProviderEditingID, setBackupProviderEditingID] = useState(null);
+  const [backupProviderForm, setBackupProviderForm] = useState({
+    provider_type: "google_drive",
+    name: "Google Drive",
+    status: "active",
+    folder_name: "AIPermission Backups",
+  });
 
   async function loadDatabase() {
     try {
@@ -71,10 +83,30 @@ export function SettingsPage() {
     }
   }
 
+  async function loadBackupProviderCatalog() {
+    try {
+      const data = await apiGet("/api/backup/providers/catalog");
+      setBackupProviderCatalog({ state: "ready", data: data?.items || [], error: null });
+    } catch (error) {
+      setBackupProviderCatalog({ state: "error", data: [], error: error.message });
+    }
+  }
+
+  async function loadBackupProviders() {
+    try {
+      const data = await apiGet("/api/backup/providers");
+      setBackupProviders({ state: "ready", data: data?.items || [], error: null });
+    } catch (error) {
+      setBackupProviders({ state: "error", data: [], error: error.message });
+    }
+  }
+
   useEffect(() => {
     void loadDatabase();
     void loadRetention();
     void loadHistoryLabels();
+    void loadBackupProviderCatalog();
+    void loadBackupProviders();
   }, []);
 
   const databaseName = database.data?.database_name || "Unknown";
@@ -86,6 +118,82 @@ export function SettingsPage() {
       pending: "downloading",
       successMessage: "Encrypted database downloaded.",
       action: () => apiDownload("/api/backup/download", `${databaseName}-${new Date().toISOString().slice(0, 19)}.aipdb`),
+    });
+  }
+
+  function openBackupProviderDialog(provider = null) {
+    if (provider) {
+      setBackupProviderEditingID(provider.id);
+      setBackupProviderForm({
+        provider_type: provider.provider_type,
+        name: provider.name,
+        status: provider.status,
+        folder_name: provider.public?.folder_name || "AIPermission Backups",
+      });
+    } else {
+      const firstType = backupProviderCatalog.data[0]?.provider_type || "google_drive";
+      setBackupProviderEditingID(null);
+      setBackupProviderForm({
+        provider_type: firstType,
+        name: providerLabel(firstType, backupProviderCatalog.data),
+        status: "active",
+        folder_name: "AIPermission Backups",
+      });
+    }
+    setBackupProviderDialogOpen(true);
+  }
+
+  function closeBackupProviderDialog() {
+    if (backupProviderState.state === "saving") return;
+    setBackupProviderDialogOpen(false);
+  }
+
+  function updateBackupProviderField(field, value) {
+    setBackupProviderForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveBackupProvider(event) {
+    event.preventDefault();
+    const payload = {
+      provider_type: backupProviderForm.provider_type,
+      name: backupProviderForm.name,
+      status: backupProviderForm.status,
+      public: {
+        folder_name: backupProviderForm.folder_name,
+      },
+    };
+    await runBackupProviderAction({
+      pending: "saving",
+      successMessage: backupProviderEditingID ? "Backup provider updated." : "Backup provider added.",
+      action: async () => {
+        if (backupProviderEditingID) {
+          await apiPut(`/api/backup/providers/${backupProviderEditingID}`, payload);
+        } else {
+          await apiPost("/api/backup/providers", payload);
+        }
+        setBackupProviderDialogOpen(false);
+        await loadBackupProviders();
+      },
+    });
+  }
+
+  function closeBackupProviderArchiveDialog() {
+    if (backupProviderState.state === "archiving") return;
+    setBackupProviderArchiveTarget(null);
+  }
+
+  async function archiveBackupProvider(event) {
+    event.preventDefault();
+    const provider = backupProviderArchiveTarget;
+    if (!provider) return;
+    await runBackupProviderAction({
+      pending: "archiving",
+      successMessage: `Archived backup provider "${provider.name}".`,
+      action: async () => {
+        await apiDelete(`/api/backup/providers/${provider.id}`);
+        setBackupProviderArchiveTarget(null);
+        await loadBackupProviders();
+      },
     });
   }
 
@@ -247,7 +355,7 @@ export function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Backup</CardTitle>
-          <CardDescription>Download the currently unlocked encrypted database file.</CardDescription>
+          <CardDescription>Download the current encrypted database and prepare optional remote backup providers.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <Notice>The downloaded file is already protected by its database password.</Notice>
@@ -257,6 +365,63 @@ export function SettingsPage() {
           </Button>
           {backupState.message ? <Notice tone="good">{backupState.message}</Notice> : null}
           {backupState.state === "error" ? <Notice tone="bad">{backupState.error}</Notice> : null}
+          <div className="grid gap-3 border-t border-stone-200 pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-stone-900">Remote backup providers</h4>
+                <p className="text-xs text-stone-500">Provider metadata is local. Remote backup/restore actions will use these records.</p>
+              </div>
+              <Button type="button" variant="outline" onClick={() => openBackupProviderDialog()}>
+                <Plus className="h-4 w-4" />
+                Add provider
+              </Button>
+            </div>
+            {backupProviderCatalog.state === "error" ? <Notice tone="bad">{backupProviderCatalog.error}</Notice> : null}
+            {backupProviders.state === "error" ? <Notice tone="bad">{backupProviders.error}</Notice> : null}
+            {backupProviderState.message ? <Notice tone="good">{backupProviderState.message}</Notice> : null}
+            {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
+            <div className="grid gap-2">
+              {backupProviders.data.length === 0 ? (
+                <div className="rounded-md border border-dashed border-stone-300 px-3 py-4 text-sm text-stone-500">
+                  No remote backup providers configured.
+                </div>
+              ) : (
+                backupProviders.data.map((provider) => (
+                  <div key={provider.id} className="grid gap-3 rounded-md border border-stone-200 p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Cloud className="h-4 w-4 text-emerald-600" />
+                        <p className="truncate text-sm font-semibold text-stone-950">{provider.name}</p>
+                        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold uppercase text-stone-600">
+                          {providerLabel(provider.provider_type, backupProviderCatalog.data)}
+                        </span>
+                        <span className={provider.status === "active" ? "rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700" : "rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-600"}>
+                          {provider.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-stone-500">{provider.public?.folder_name || "AIPermission Backups"}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <Button type="button" variant="outline" className="h-9 px-3" onClick={() => openBackupProviderDialog(provider)}>
+                        <Edit3 className="h-4 w-4" />
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 px-3"
+                        onClick={() => setBackupProviderArchiveTarget(provider)}
+                        disabled={backupProviderState.state === "archiving"}
+                      >
+                        <Archive className="h-4 w-4" />
+                        Archive
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -491,6 +656,90 @@ export function SettingsPage() {
       </Card>
 
       <Dialog
+        open={backupProviderDialogOpen}
+        title={backupProviderEditingID ? "Edit backup provider" : "Add backup provider"}
+        description="Store provider metadata for encrypted database backups."
+        onClose={closeBackupProviderDialog}
+        size="md"
+      >
+        <form className="grid gap-4" onSubmit={saveBackupProvider}>
+          <Notice>Remote providers store encrypted database files only. They do not receive MCP tokens, connector credentials, or the database password.</Notice>
+          <Field>
+            Provider type
+            <Select
+              value={backupProviderForm.provider_type}
+              onChange={(event) => {
+                const providerType = event.target.value;
+                setBackupProviderForm((current) => ({
+                  ...current,
+                  provider_type: providerType,
+                  name: current.name || providerLabel(providerType, backupProviderCatalog.data),
+                }));
+              }}
+              disabled={Boolean(backupProviderEditingID)}
+            >
+              {backupProviderCatalog.data.map((item) => (
+                <option key={item.provider_type} value={item.provider_type}>
+                  {item.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field>
+            Name
+            <Input value={backupProviderForm.name} onChange={(event) => updateBackupProviderField("name", event.target.value)} required />
+          </Field>
+          <Field>
+            Folder name
+            <Input value={backupProviderForm.folder_name} onChange={(event) => updateBackupProviderField("folder_name", event.target.value)} required />
+          </Field>
+          <Field>
+            Status
+            <Select value={backupProviderForm.status} onChange={(event) => updateBackupProviderField("status", event.target.value)}>
+              <option value="active">Active</option>
+              <option value="disabled">Disabled</option>
+            </Select>
+          </Field>
+          {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={closeBackupProviderDialog} disabled={backupProviderState.state === "saving"}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={backupProviderState.state === "saving" || !backupProviderForm.name.trim()}>
+              <Cloud className="h-4 w-4" />
+              {backupProviderState.state === "saving" ? "Saving..." : "Save provider"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(backupProviderArchiveTarget)}
+        title="Archive backup provider"
+        description={backupProviderArchiveTarget ? `Archive "${backupProviderArchiveTarget.name}"?` : "Archive backup provider?"}
+        onClose={closeBackupProviderArchiveDialog}
+        size="md"
+      >
+        <form className="grid gap-4" onSubmit={archiveBackupProvider}>
+          <Notice tone="warn">This removes the provider from Settings. Existing remote backup files are not deleted.</Notice>
+          <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+            <p className="text-xs font-semibold uppercase text-stone-500">Provider</p>
+            <p className="mt-1 truncate text-sm font-semibold text-stone-950">{backupProviderArchiveTarget?.name || "-"}</p>
+          </div>
+          {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={closeBackupProviderArchiveDialog} disabled={backupProviderState.state === "archiving"}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="danger" disabled={!backupProviderArchiveTarget || backupProviderState.state === "archiving"}>
+              <Archive className="h-4 w-4" />
+              {backupProviderState.state === "archiving" ? "Archiving..." : "Archive provider"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
         open={deleteDialogOpen}
         title="Delete database"
         description={`This permanently removes ${databaseName} from the local Docker volume.`}
@@ -637,4 +886,8 @@ function RetentionField({ label, value, onChange }) {
       <Input type="number" min="0" step="1" value={value} onChange={(event) => onChange(event.target.value)} />
     </Field>
   );
+}
+
+function providerLabel(providerType, catalog) {
+  return catalog.find((item) => item.provider_type === providerType)?.label || providerType;
 }

@@ -393,6 +393,16 @@ test("Settings page exposes a local-only maintenance console", () => {
   assert.match(settingsSource, /command text is written to the audit log/i);
 });
 
+test("Settings page exposes backup provider metadata management", () => {
+  assert.match(settingsSource, /Remote backup providers/);
+  assert.match(settingsSource, /Add provider/);
+  assert.match(settingsSource, /\/api\/backup\/providers\/catalog/);
+  assert.match(settingsSource, /\/api\/backup\/providers/);
+  assert.match(settingsSource, /Edit backup provider/);
+  assert.match(settingsSource, /Archive backup provider/);
+  assert.match(settingsSource, /Remote providers store encrypted database files only/);
+});
+
 test("History page exposes label filtering and item label endpoints", () => {
   assert.match(historySource, /\/api\/history-labels/);
   assert.match(historySource, /\/api\/history\?/);
