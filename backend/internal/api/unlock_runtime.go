@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -47,7 +48,7 @@ func (s *Server) currentUnlockStatusLocked() unlockStatusResponse {
 		}
 	}
 	if s.database != nil {
-		return unlockStatusResponse{State: "unlocked", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, UISessionAuthenticated: true, Databases: databases}
+		return unlockStatusResponse{State: "unlocked", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, DatabaseSizeBytes: fileSize(s.activeDataPath), UISessionAuthenticated: true, Databases: databases}
 	}
 	if len(databases) == 0 {
 		return unlockStatusResponse{State: "setup_required", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, Databases: databases}
@@ -66,6 +67,14 @@ func (s *Server) currentUnlockStatusLocked() unlockStatusResponse {
 		DatabaseName: selected.Name,
 		Databases:    databases,
 	}
+}
+
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 func (s *Server) openUnlockedLocked(password string) error {

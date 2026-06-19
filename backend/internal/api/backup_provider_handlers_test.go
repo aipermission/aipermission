@@ -23,14 +23,17 @@ func TestBackupProviderRoutesStoreMetadataWithoutExposingSecrets(t *testing.T) {
 			"folder_name": "AIPermission Backups",
 		},
 		"secret": map[string]any{
-			"refresh_token": "secret-refresh-token",
+			"client_secret": "secret-client-secret",
 		},
 	})
 	if createResponse.Code != http.StatusCreated {
 		t.Fatalf("create backup provider failed: %d %s", createResponse.Code, createResponse.Body.String())
 	}
 	createBody := createResponse.Body.String()
-	if !strings.Contains(createBody, `"has_secret":true`) || strings.Contains(createBody, "secret-refresh-token") {
+	if !strings.Contains(createBody, `"has_secret":true`) ||
+		!strings.Contains(createBody, `"has_oauth_client_secret":true`) ||
+		strings.Contains(createBody, `"has_oauth_token":true`) ||
+		strings.Contains(createBody, "secret-client-secret") {
 		t.Fatalf("backup provider response leaked or missed secret state: %s", createBody)
 	}
 	created := decodeRouteResponse[backupProviderResponse](t, createResponse.Body.Bytes())
@@ -39,12 +42,14 @@ func TestBackupProviderRoutesStoreMetadataWithoutExposingSecrets(t *testing.T) {
 	if err := fixture.db.QueryRow(`SELECT encrypted_secret_json FROM backup_providers WHERE id = ?`, created.ID).Scan(&encrypted); err != nil {
 		t.Fatalf("read encrypted backup provider secret: %v", err)
 	}
-	if encrypted == "" || strings.Contains(encrypted, "secret-refresh-token") {
+	if encrypted == "" || strings.Contains(encrypted, "secret-client-secret") {
 		t.Fatalf("backup provider secret was not encrypted: %q", encrypted)
 	}
 
 	listResponse := performJSON(handler, http.MethodGet, "/api/backup/providers", "", nil)
-	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "Personal Drive") || strings.Contains(listResponse.Body.String(), "secret-refresh-token") {
+	if listResponse.Code != http.StatusOK ||
+		!strings.Contains(listResponse.Body.String(), "Personal Drive") ||
+		strings.Contains(listResponse.Body.String(), "secret-client-secret") {
 		t.Fatalf("list backup providers failed or leaked secret: %d %s", listResponse.Code, listResponse.Body.String())
 	}
 
@@ -69,6 +74,14 @@ func TestBackupProviderRoutesStoreMetadataWithoutExposingSecrets(t *testing.T) {
 	recordsResponse := performJSON(handler, http.MethodGet, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10)+"/records", "", nil)
 	if recordsResponse.Code != http.StatusOK || !strings.Contains(recordsResponse.Body.String(), `"items":[]`) {
 		t.Fatalf("list backup records failed: %d %s", recordsResponse.Code, recordsResponse.Body.String())
+	}
+	uploadNotConnected := performJSON(handler, http.MethodPost, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10)+"/upload", "", map[string]any{})
+	if uploadNotConnected.Code != http.StatusConflict || !strings.Contains(uploadNotConnected.Body.String(), "access token") {
+		t.Fatalf("upload without connected Google token should fail cleanly: %d %s", uploadNotConnected.Code, uploadNotConnected.Body.String())
+	}
+	googleStartMissingClient := performJSON(handler, http.MethodPost, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10)+"/google/device/start", "", map[string]any{})
+	if googleStartMissingClient.Code != http.StatusBadRequest || !strings.Contains(googleStartMissingClient.Body.String(), "client id") {
+		t.Fatalf("google device flow without client id should fail cleanly: %d %s", googleStartMissingClient.Code, googleStartMissingClient.Body.String())
 	}
 
 	deleteResponse := performJSON(handler, http.MethodDelete, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10), "", nil)

@@ -19,6 +19,12 @@ type importDatabaseRequest struct {
 	DatabasePassword string `json:"database_password"`
 }
 
+type databaseSnapshot struct {
+	Path      string
+	Filename  string
+	CreatedAt time.Time
+}
+
 func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request) {
 	s.lifecycleMu.RLock()
 	runtime, ok := s.activeRuntimeOrLocked(w)
@@ -26,24 +32,36 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 		s.lifecycleMu.RUnlock()
 		return
 	}
-	databaseID := runtime.id
-
-	snapshotPath := filepath.Join(filepath.Dir(runtime.path), "."+databaseID+"-"+time.Now().UTC().Format("20060102150405")+".backup.aipdb")
-	if err := dbpkg.Snapshot(runtime.database, snapshotPath); err != nil {
+	snapshot, err := createDatabaseSnapshot(runtime)
+	if err != nil {
 		s.lifecycleMu.RUnlock()
 		writeInternalError(w)
 		return
 	}
 	s.lifecycleMu.RUnlock()
-	defer os.Remove(snapshotPath)
+	defer os.Remove(snapshot.Path)
 
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+snapshot.Filename+`"`)
+	http.ServeFile(w, r, snapshot.Path)
+}
+
+func createDatabaseSnapshot(runtime *databaseRuntime) (databaseSnapshot, error) {
+	createdAt := time.Now().UTC()
+	databaseID := runtime.id
+	snapshotPath := filepath.Join(filepath.Dir(runtime.path), "."+databaseID+"-"+createdAt.Format("20060102150405")+".backup.aipdb")
+	if err := dbpkg.Snapshot(runtime.database, snapshotPath); err != nil {
+		return databaseSnapshot{}, err
+	}
 	filename := strings.Trim(databaseID, "-")
 	if filename == "" {
 		filename = "aipermission"
 	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`-`+time.Now().UTC().Format("20060102-150405")+`.aipdb"`)
-	http.ServeFile(w, r, snapshotPath)
+	return databaseSnapshot{
+		Path:      snapshotPath,
+		Filename:  filename + "-" + createdAt.Format("20060102-150405") + ".aipdb",
+		CreatedAt: createdAt,
+	}, nil
 }
 
 func (s backupHandlers) importDatabase(w http.ResponseWriter, r *http.Request) {

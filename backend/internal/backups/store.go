@@ -11,6 +11,7 @@ import (
 )
 
 var ErrNotFound = errors.New("backup provider not found")
+var ErrRecordNotFound = errors.New("backup record not found")
 
 type ValidationError string
 
@@ -66,6 +67,20 @@ type ListRecordsFilter struct {
 	ProviderID     int64
 	DatabaseName   string
 	IncludeDeleted bool
+}
+
+type CreateRecordRequest struct {
+	ProviderID      int64
+	DatabaseID      string
+	DatabaseName    string
+	ProviderFileID  string
+	Filename        string
+	SourceMachine   string
+	SizeBytes       int64
+	ChecksumSHA256  string
+	BackupCreatedAt string
+	UploadedAt      string
+	Metadata        map[string]any
 }
 
 type Store struct {
@@ -277,6 +292,96 @@ func (s *Store) ListRecords(ctx context.Context, filter ListRecordsFilter) ([]Re
 		return nil, fmt.Errorf("list backup records: %w", err)
 	}
 	return items, nil
+}
+
+func (s *Store) CreateRecord(ctx context.Context, request CreateRecordRequest) (Record, error) {
+	if request.ProviderID < 1 {
+		return Record{}, ValidationError("provider_id is required")
+	}
+	databaseID := strings.TrimSpace(request.DatabaseID)
+	if databaseID == "" {
+		return Record{}, ValidationError("database_id is required")
+	}
+	databaseName := strings.TrimSpace(request.DatabaseName)
+	if databaseName == "" {
+		return Record{}, ValidationError("database_name is required")
+	}
+	providerFileID := strings.TrimSpace(request.ProviderFileID)
+	if providerFileID == "" {
+		return Record{}, ValidationError("provider_file_id is required")
+	}
+	filename := strings.TrimSpace(request.Filename)
+	if filename == "" {
+		return Record{}, ValidationError("filename is required")
+	}
+	backupCreatedAt := strings.TrimSpace(request.BackupCreatedAt)
+	if backupCreatedAt == "" {
+		backupCreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	uploadedAt := strings.TrimSpace(request.UploadedAt)
+	if uploadedAt == "" {
+		uploadedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	metadataJSON, err := marshalJSONObject(request.Metadata)
+	if err != nil {
+		return Record{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO backup_records (
+			provider_id, database_id, database_name, provider_file_id, filename,
+			source_machine, size_bytes, checksum_sha256, backup_created_at, uploaded_at,
+			metadata_json, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		request.ProviderID,
+		databaseID,
+		databaseName,
+		providerFileID,
+		filename,
+		strings.TrimSpace(request.SourceMachine),
+		request.SizeBytes,
+		strings.TrimSpace(request.ChecksumSHA256),
+		backupCreatedAt,
+		uploadedAt,
+		metadataJSON,
+		now,
+		now,
+	)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return Record{}, ValidationError("backup record already exists for this provider file")
+		}
+		return Record{}, fmt.Errorf("create backup record: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return Record{}, fmt.Errorf("read backup record id: %w", err)
+	}
+	return s.GetRecord(ctx, request.ProviderID, id)
+}
+
+func (s *Store) GetRecord(ctx context.Context, providerID int64, id int64) (Record, error) {
+	if providerID < 1 {
+		return Record{}, ValidationError("provider_id is required")
+	}
+	if id < 1 {
+		return Record{}, ValidationError("backup record id is required")
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, provider_id, database_id, database_name, provider_file_id, filename,
+			source_machine, size_bytes, checksum_sha256, backup_created_at, uploaded_at,
+			metadata_json, deleted_at, created_at, updated_at
+		FROM backup_records
+		WHERE id = ? AND provider_id = ? AND deleted_at IS NULL`, id, providerID)
+	item, err := scanRecord(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Record{}, ErrRecordNotFound
+		}
+		return Record{}, err
+	}
+	return item, nil
 }
 
 func SupportedProviderType(providerType string) bool {

@@ -16,20 +16,23 @@ import (
 )
 
 type Server struct {
-	config         config.Config
-	activeDataPath string
-	activeDatabase string
-	workspaces     map[string]*databaseRuntime
-	database       *sql.DB
-	vault          *vault.Vault
-	tokens         *tokens.Store
-	registry       *connectors.Registry
-	mux            *http.ServeMux
-	mu             sync.RWMutex
-	lifecycleMu    sync.RWMutex
-	authLimiter    *authRateLimiter
-	uiSessionMu    sync.RWMutex
-	uiSessions     map[string]uiSessionRecord
+	config             config.Config
+	activeDataPath     string
+	activeDatabase     string
+	workspaces         map[string]*databaseRuntime
+	database           *sql.DB
+	vault              *vault.Vault
+	tokens             *tokens.Store
+	registry           *connectors.Registry
+	mux                *http.ServeMux
+	mu                 sync.RWMutex
+	lifecycleMu        sync.RWMutex
+	maintenanceConsole *maintenanceConsoleRuntime
+	backupOAuthMu      sync.Mutex
+	backupOAuthFlows   map[int64]backupOAuthFlow
+	authLimiter        *authRateLimiter
+	uiSessionMu        sync.RWMutex
+	uiSessions         map[string]uiSessionRecord
 }
 
 type databaseRuntime struct {
@@ -88,17 +91,19 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 	resolved := resolveServerOptions(options)
 	registry := resolved.registry
 	server := &Server{
-		config:         cfg,
-		activeDataPath: cfg.DataPath,
-		activeDatabase: activeID,
-		workspaces:     map[string]*databaseRuntime{},
-		database:       database,
-		vault:          secretVault,
-		tokens:         tokenStore,
-		registry:       registry,
-		mux:            http.NewServeMux(),
-		authLimiter:    newAuthRateLimiter(),
-		uiSessions:     map[string]uiSessionRecord{},
+		config:             cfg,
+		activeDataPath:     cfg.DataPath,
+		activeDatabase:     activeID,
+		workspaces:         map[string]*databaseRuntime{},
+		database:           database,
+		vault:              secretVault,
+		tokens:             tokenStore,
+		registry:           registry,
+		mux:                http.NewServeMux(),
+		maintenanceConsole: newMaintenanceConsoleRuntime(),
+		backupOAuthFlows:   map[int64]backupOAuthFlow{},
+		authLimiter:        newAuthRateLimiter(),
+		uiSessions:         map[string]uiSessionRecord{},
 	}
 	runtime := &databaseRuntime{
 		id:                 activeID,
@@ -124,14 +129,16 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 	resolved := resolveServerOptions(options)
 	server := &Server{
-		config:         cfg,
-		activeDataPath: cfg.DataPath,
-		activeDatabase: dbpkg.DefaultDatabaseID(cfg.DataPath),
-		workspaces:     map[string]*databaseRuntime{},
-		registry:       resolved.registry,
-		mux:            http.NewServeMux(),
-		authLimiter:    newAuthRateLimiter(),
-		uiSessions:     map[string]uiSessionRecord{},
+		config:             cfg,
+		activeDataPath:     cfg.DataPath,
+		activeDatabase:     dbpkg.DefaultDatabaseID(cfg.DataPath),
+		workspaces:         map[string]*databaseRuntime{},
+		registry:           resolved.registry,
+		mux:                http.NewServeMux(),
+		maintenanceConsole: newMaintenanceConsoleRuntime(),
+		backupOAuthFlows:   map[int64]backupOAuthFlow{},
+		authLimiter:        newAuthRateLimiter(),
+		uiSessions:         map[string]uiSessionRecord{},
 	}
 	server.routes()
 	return server

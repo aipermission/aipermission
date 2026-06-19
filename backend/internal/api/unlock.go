@@ -25,6 +25,7 @@ type unlockStatusResponse struct {
 	DataPath               string            `json:"data_path,omitempty"`
 	DatabaseID             string            `json:"database_id"`
 	DatabaseName           string            `json:"database_name"`
+	DatabaseSizeBytes      int64             `json:"database_size_bytes,omitempty"`
 	UISessionAuthenticated bool              `json:"ui_session_authenticated"`
 	Databases              []db.DatabaseInfo `json:"databases"`
 }
