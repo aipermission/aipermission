@@ -848,20 +848,27 @@ func connectPostgres(ctx context.Context, runtime connectors.RuntimeContext, rea
 	config.Config.DialFunc = func(ctx context.Context, network string, address string) (net.Conn, error) {
 		return transport.DialConnectorTCP(ctx, dialRequest)
 	}
-	if config.RuntimeParams == nil {
-		config.RuntimeParams = map[string]string{}
-	}
-	config.RuntimeParams["application_name"] = "aipermission"
-	config.RuntimeParams["statement_timeout"] = strconv.Itoa(int(queryTimeout.Milliseconds()))
-	if readOnly {
-		config.RuntimeParams["default_transaction_read_only"] = "on"
-	}
 
 	conn, err := pgx.ConnectConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}
+	if err := configurePostgresSession(ctx, conn); err != nil {
+		_ = conn.Close(ctx)
+		return nil, err
+	}
 	return conn, nil
+}
+
+func configurePostgresSession(ctx context.Context, conn *pgx.Conn) error {
+	if _, err := conn.Exec(ctx, `SELECT set_config('application_name', 'aipermission', false)`); err != nil {
+		return fmt.Errorf("configure postgres application name: %w", err)
+	}
+	statementTimeout := strconv.Itoa(int(queryTimeout.Milliseconds())) + "ms"
+	if _, err := conn.Exec(ctx, `SELECT set_config('statement_timeout', $1, false)`, statementTimeout); err != nil {
+		return fmt.Errorf("configure postgres statement timeout: %w", err)
+	}
+	return nil
 }
 
 func postgresNetworkTransport(runtime connectors.RuntimeContext) (connectors.NetworkTransport, error) {
