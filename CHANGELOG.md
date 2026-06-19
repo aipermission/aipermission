@@ -7,6 +7,25 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-06-19
+
+### Added
+
+- Added a Settings-only Maintenance Console for bounded local diagnostics inside
+  the gateway runtime.
+- Added backup provider metadata storage with Google Drive as the first provider
+  type.
+- Added Settings UI for adding, editing, disabling, and archiving remote backup
+  provider metadata.
+
+### Security
+
+- Maintenance Console is local UI only, unavailable to MCP, bounded by timeout
+  and output limits, and audits submitted command text without storing command
+  output in the audit payload.
+- Backup providers are storage metadata only. They do not receive MCP tokens,
+  connector credentials, or the database password.
+
 ## [0.2.6] - 2026-06-18
 
 ### Added

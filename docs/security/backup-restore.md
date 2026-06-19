@@ -56,6 +56,26 @@ POST /api/backup/import
 
 Plain SQLite files, JSON/base64 database payloads, and `.aipbackup` files are not imported by the current UI flow. New backups should use `.aipdb`, and imports should use `multipart/form-data`.
 
+## Remote Backup Provider Metadata
+
+Settings can store optional remote backup provider metadata. The first provider
+type is Google Drive, but the storage model is provider-based so future Dropbox,
+S3-compatible, or self-hosted storage providers can share the same local UI and
+record shape.
+
+Provider metadata lives inside the unlocked SQLCipher database. Provider secrets,
+when present, are encrypted with the local gateway vault and are never returned
+by list/detail API responses.
+
+This does not make AIPermission a remote gateway. A remote backup provider stores
+encrypted `.aipdb` blobs as-is. It does not receive MCP tokens, connector
+credentials, SSH keys, database passwords, or the ability to decrypt a database.
+
+Continuous two-way sync is intentionally not part of the current model. Remote
+backup provider actions are explicit user-initiated storage operations, and
+restore still requires the database password before a local database can be
+opened.
+
 ## Security Notes
 
 - `.aipdb` files are sensitive but should be SQLCipher encrypted.

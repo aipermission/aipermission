@@ -1,6 +1,27 @@
-export const appVersion = "0.2.6";
+export const appVersion = "0.2.7";
 
 export const changelogEntries = [
+  {
+    version: "0.2.7",
+    label: "Maintenance and backup providers",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Settings now includes a local-only Maintenance Console for bounded diagnostics inside the gateway runtime.",
+          "Backup provider metadata can be managed from Settings with Google Drive as the first provider type.",
+          "Backup provider records are stored in the encrypted local database and can track future remote encrypted .aipdb files.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Maintenance Console is local UI only, unavailable to MCP, bounded by timeout/output limits, and audits submitted command text.",
+          "Backup providers are storage metadata only: they do not receive MCP tokens, connector credentials, or the database password.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.6",
     label: "RabbitMQ connector",

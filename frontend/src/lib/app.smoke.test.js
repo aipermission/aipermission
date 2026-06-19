@@ -236,7 +236,10 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.6"/);
+  assert.match(releaseSource, /appVersion = "0\.2\.7"/);
+  assert.match(releaseSource, /Maintenance and backup providers/);
+  assert.match(releaseSource, /Settings now includes a local-only Maintenance Console/);
+  assert.match(releaseSource, /Backup providers are storage metadata only/);
   assert.match(releaseSource, /RabbitMQ connector/);
   assert.match(releaseSource, /RabbitMQ is now a built-in connector with Direct and Over SSH connection modes/);
   assert.match(releaseSource, /Postgres over SSH/);

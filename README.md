@@ -156,10 +156,13 @@ Implemented:
 - remote SFTP browser for upload folders and download file selection
 - pause/resume/cancel transfer queues with live progress, speed, ETA, checksum, server, and path metadata
 - configurable local data retention for unified history, audit logs, console sessions, and messages
+- Settings-only Maintenance Console for bounded local gateway diagnostics
 - SQLCipher-backed full SQLite database encryption
 - first-run database password setup and unlock screen
 - local browser session cookie for the web REST API after unlock
 - encrypted database download/import (`.aipdb`)
+- remote encrypted-backup provider metadata baseline, with Google Drive as the
+  first provider type
 - first-connect SSH host fingerprint approval with later `known_hosts` verification
 
 Out of scope for the current MVP:
