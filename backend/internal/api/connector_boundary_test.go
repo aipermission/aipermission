@@ -80,3 +80,42 @@ func TestSSHSpecificAPIReferencesStayInsideConnectorAdapters(t *testing.T) {
 		t.Fatalf("walk api dir: %v", err)
 	}
 }
+
+func TestProvisionedCredentialMetadataStaysInsideConnectors(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime caller unavailable")
+	}
+	apiDir := filepath.Dir(filename)
+	disallowed := []string{
+		"managed_by_aipermission",
+		"managed_role_name",
+		"managed_admin_profile_id",
+		"managed_admin_profile_ref",
+		"managed_preset",
+		"managed_scope",
+	}
+	err := filepath.WalkDir(apiDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		name := filepath.Base(path)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		source := string(content)
+		for _, pattern := range disallowed {
+			if strings.Contains(source, pattern) {
+				t.Fatalf("%s must keep provisioned credential metadata behind connector contracts, found %q", name, pattern)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk api dir: %v", err)
+	}
+}
