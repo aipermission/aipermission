@@ -1,6 +1,30 @@
-export const appVersion = "0.2.8";
+export const appVersion = "0.2.9";
 
 export const changelogEntries = [
+  {
+    version: "0.2.9",
+    label: "Docker inventory and images",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Docker connector actions now include scoped image, network, and volume inventory reads.",
+          "Docker Console adds inventory tabs for Containers, Images, Networks, and Volumes with searchable metadata and raw JSON copy views.",
+          "Container lists now surface health and Docker Compose project/service metadata when Docker exposes it.",
+          "Release tags now publish backend and frontend container images to GitHub Container Registry.",
+          "A new docker-compose.release.yml file lets users pull published images instead of building locally.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Selected Docker credential profiles only expose images used by visible containers, and derive networks/volumes from scoped container inspect data.",
+          "Prebuilt-image Compose keeps ports bound to 127.0.0.1 and does not change the local-only gateway boundary.",
+          "Docker still does not expose arbitrary docker exec, removal, prune, shell, or raw Docker command execution.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.8",
     label: "Docker connector",

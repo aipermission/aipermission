@@ -18,8 +18,9 @@ connectors. SSH provides live terminal/file-transfer actions, Postgres provides
 structured metadata and bounded read-only query actions, Redis provides bounded
 key browsing plus explicit write/delete actions, RabbitMQ provides queue
 metadata, bindings, bounded message previews, and explicit message publishing,
-and Docker provides scoped container inventory, logs, redacted inspect metadata,
-and explicit lifecycle actions. They use the same target, credential profile,
+and Docker provides scoped container/image/network/volume inventory, logs,
+redacted inspect metadata, and explicit lifecycle actions. They use the same
+target, credential profile,
 token permission, approval, history, and audit pipeline.
 
 The product is intentionally not positioned as a full DevOps platform.

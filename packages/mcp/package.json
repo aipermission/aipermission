@@ -1,6 +1,6 @@
 {
   "name": "@aipermission/mcp",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "mcpName": "io.github.aipermission/aipermission-mcp",
   "description": "Local-first MCP bridge for the aipermission gateway.",
   "license": "AGPL-3.0-only",

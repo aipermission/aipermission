@@ -3,9 +3,9 @@
   <h1>AIPermission</h1>
   <p><strong>Local permission gateway for AI agents.</strong></p>
   <p>
-    Let AI assistants inspect and fix your own servers through scoped tokens,
-    approval flows, live consoles, and audit history without giving the AI your
-    SSH keys.
+    Let AI assistants work through local connector targets with scoped tokens,
+    approval flows, live views, and audit history without giving the AI your
+    private credentials.
   </p>
   <p>
     <a href="https://github.com/aipermission/aipermission"><strong>Repository</strong></a>
@@ -28,13 +28,13 @@
 
 ## What We Are Building
 
-AIPermission is for developers who already manage VPSes, containers, clusters,
-or private services and want an AI assistant to help without receiving raw
-credentials.
+AIPermission is for developers who already manage VPSes, containers, databases,
+queues, caches, or private services and want an AI assistant to help without
+receiving raw credentials.
 
 ```txt
-developer machine -> local AIPermission gateway -> SSH targets
-AI client         -> MCP token                 -> scoped tools
+developer machine -> local AIPermission gateway -> connector targets
+AI client         -> MCP token                 -> scoped actions
 ```
 
 The gateway owns credentials, permissions, approvals, persistent console
@@ -45,10 +45,10 @@ sessions, messages, history, and audit logs.
 | Principle | What it means |
 | --- | --- |
 | Local-only | The gateway runs on the developer's own machine and stays bound to localhost. |
-| Credential boundary | SSH private keys and database passwords never leave the gateway. |
-| Scoped tokens | Each AI/client token sees only the servers explicitly granted to it. |
+| Credential boundary | SSH keys, database passwords, API tokens, and connector secrets never leave the gateway. |
+| Scoped tokens | Each AI/client token sees only the connector targets and actions explicitly granted to it. |
 | Human control | Commands can require Run / Decline approval before execution. |
-| Observable work | Users can watch the same live console, send notes, and review history. |
+| Observable work | Users can watch live connector views, send notes, and review history. |
 
 ## Start Here
 
@@ -61,8 +61,8 @@ sessions, messages, history, and audit logs.
 
 AIPermission is pre-1.0 local developer software. It is not a LAN-shared
 operations panel, hosted service, team RBAC product, or production DevOps
-platform. Remote machines belong in the Servers list as SSH targets; they should
-not host the gateway for other clients.
+platform. Remote systems belong in the Connectors list as connector targets;
+they should not host the gateway for other clients.
 
 If you like the idea, try the RC, file issues, and help us make AI-assisted
 server work safer and less tedious.

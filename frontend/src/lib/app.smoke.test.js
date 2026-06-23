@@ -236,9 +236,9 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.8"/);
-  assert.match(releaseSource, /Docker connector/);
-  assert.match(releaseSource, /Docker is now a built-in connector/);
+  assert.match(releaseSource, /appVersion = "0\.2\.9"/);
+  assert.match(releaseSource, /Docker inventory and images/);
+  assert.match(releaseSource, /Docker connector actions now include scoped image/);
   assert.match(releaseSource, /Maintenance and backup providers/);
   assert.match(releaseSource, /Settings now includes a local-only realtime Maintenance Console/);
   assert.match(releaseSource, /Backup providers are storage metadata only/);

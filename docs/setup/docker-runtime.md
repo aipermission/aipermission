@@ -4,8 +4,24 @@ The default runtime model for the MVP is local Docker.
 
 ## Compose Shape
 
+Build from source:
+
 ```txt
-docker compose up
+docker compose up -d --build
+```
+
+Use published release images:
+
+```txt
+docker compose -f docker-compose.release.yml pull
+docker compose -f docker-compose.release.yml up -d
+```
+
+Pin a specific release image with `AIPERMISSION_VERSION` without the leading
+`v`:
+
+```txt
+AIPERMISSION_VERSION=0.2.9 docker compose -f docker-compose.release.yml up -d
 ```
 
 On Windows, keep shell scripts checked out with LF line endings. Git should do
@@ -21,7 +37,7 @@ web API proxy   -> http://localhost:3210/api
 MCP URL         -> http://localhost:3210
 ```
 
-Compose publishes host ports only on `127.0.0.1` by default. This is an intentional security boundary. After unlock, the web REST API uses a local HttpOnly browser session cookie, but that cookie is a localhost UX/session guard and not a remote multi-user auth model.
+Both Compose files publish host ports only on `127.0.0.1` by default. This is an intentional security boundary. After unlock, the web REST API uses a local HttpOnly browser session cookie, but that cookie is a localhost UX/session guard and not a remote multi-user auth model.
 
 The backend refuses to start when `AIPERMISSION_BACKEND_HOST` is `0.0.0.0` or any non-loopback address. In Docker Compose, the backend shares the frontend network namespace, binds only to `127.0.0.1`, and the frontend nginx proxies `/api` to it. Do not change Compose port bindings to `0.0.0.0` or a LAN address. The localhost bind is the security boundary; Host-header checks are defense in depth only. Remote/LAN access is unsupported.
 

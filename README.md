@@ -137,8 +137,8 @@ Implemented:
   browsing, vhost metadata, binding inspection, bounded message peeking, and
   explicit message publishing
 - built-in Docker connector over an SSH transport profile, with scoped
-  container inventory, redacted inspect metadata, bounded logs, and explicit
-  start/stop/restart actions
+  container/image/network/volume inventory, redacted inspect metadata, bounded
+  logs, and explicit start/stop/restart actions
 - Docker credential profiles can scope MCP access to all containers, selected
   container names/IDs, or name patterns, so one token can be limited to a
   single container on a shared Docker host.
@@ -190,10 +190,24 @@ Requirements:
 - Docker and Docker Compose
 - Node.js only if you are running the MCP bridge from source during development
 
-Start the gateway:
+Start the gateway from source:
 
 ```bash
 docker compose up -d --build
+```
+
+Or use published release images:
+
+```bash
+docker compose -f docker-compose.release.yml pull
+docker compose -f docker-compose.release.yml up -d
+```
+
+To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
+`v`:
+
+```bash
+AIPERMISSION_VERSION=0.2.9 docker compose -f docker-compose.release.yml up -d
 ```
 
 On Windows, clone the repository with Git's default text handling or make sure
@@ -225,7 +239,13 @@ MCP clients use:
 http://localhost:3210
 ```
 
-The Docker Compose UI port binds to `127.0.0.1` by default. The backend is not published as a separate host port in Docker Compose; the frontend proxies `/api` to the backend inside the shared local container namespace. The backend itself refuses to start when `AIPERMISSION_BACKEND_HOST` is set to `0.0.0.0` or any non-loopback address. AIPermission is local-only: do not publish Compose ports on `0.0.0.0` or a LAN interface. Remote/LAN mode is intentionally not supported.
+The Docker Compose UI port binds to `127.0.0.1` by default in both source-build
+and prebuilt-image Compose files. The backend is not published as a separate
+host port in Docker Compose; the frontend proxies `/api` to the backend inside
+the shared local container namespace. The backend itself refuses to start when
+`AIPERMISSION_BACKEND_HOST` is set to `0.0.0.0` or any non-loopback address.
+AIPermission is local-only: do not publish Compose ports on `0.0.0.0` or a LAN
+interface. Remote/LAN mode is intentionally not supported.
 
 If AIPermission runs in Docker on a Linux host and a connector target points at
 a service running on that same host, use `host.docker.internal` as the connector
@@ -345,6 +365,14 @@ as `overview`, `list_vhosts`, `list_queues`, `get_queue`, `list_bindings`, and
 `peek_messages`, and `publish_message`. Treat message payload previews and
 message publishing as sensitive queue access; previews use bounded
 count/truncation limits and `ack_requeue_true`.
+
+For Docker, call `get_connector_actions(target_ref)` to discover bounded
+actions such as `docker_version`, `list_containers`, `list_images`,
+`list_networks`, `list_volumes`, `inspect_container`, `container_logs`,
+`start_container`, `stop_container`, and `restart_container`. Docker credential
+profiles can scope a token to all containers, selected container names/IDs, or
+name patterns. The Docker connector does not expose arbitrary `docker exec`,
+prune, removal, shell, or raw Docker command execution.
 
 If an action returns `approval_pending` or `running`, the response includes an
 `assistant_hint` telling the AI to poll `get_connector_action_request` until the

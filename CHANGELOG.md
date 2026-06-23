@@ -7,6 +7,29 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-06-23
+
+### Added
+
+- Added Docker inventory actions for scoped image, network, and volume reads.
+- Added Docker Console inventory tabs for Containers, Images, Networks, and
+  Volumes, with searchable metadata and raw JSON copy/search views.
+- Added Docker container health and Docker Compose project/service metadata to
+  scoped container list output when Docker labels/status expose it.
+- Added a tag-triggered GitHub Actions workflow for publishing ready-to-run
+  backend and frontend images to GitHub Container Registry.
+- Added `docker-compose.release.yml` for users who want to pull published images
+  instead of building from source.
+
+### Security
+
+- Selected Docker credential profiles only expose images used by visible
+  containers, and derive networks/volumes from scoped container inspect output.
+- Prebuilt-image Compose keeps the UI port bound to `127.0.0.1` and does not
+  change AIPermission's local-only gateway boundary.
+- Docker still does not expose arbitrary `docker exec`, container/image
+  removal, prune, shell, or raw Docker command execution.
+
 ## [0.2.8] - 2026-06-23
 
 ### Added
