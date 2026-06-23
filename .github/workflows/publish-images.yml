@@ -1,0 +1,63 @@
+name: Publish Container Images
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-rc.*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Publish GHCR images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Prepare tags
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Set up Docker Buildx
+        run: docker buildx create --use
+
+      - name: Publish backend image
+        run: |
+          tags=(
+            --tag ghcr.io/aipermission/aipermission-backend:${{ steps.meta.outputs.tag }}
+            --tag ghcr.io/aipermission/aipermission-backend:${{ steps.meta.outputs.version }}
+          )
+          if [[ "${{ steps.meta.outputs.version }}" != *-* ]]; then
+            tags+=(--tag ghcr.io/aipermission/aipermission-backend:latest)
+          fi
+          docker buildx build \
+            --platform linux/amd64 \
+            "${tags[@]}" \
+            --push \
+            ./backend
+
+      - name: Publish frontend image
+        run: |
+          tags=(
+            --tag ghcr.io/aipermission/aipermission-frontend:${{ steps.meta.outputs.tag }}
+            --tag ghcr.io/aipermission/aipermission-frontend:${{ steps.meta.outputs.version }}
+          )
+          if [[ "${{ steps.meta.outputs.version }}" != *-* ]]; then
+            tags+=(--tag ghcr.io/aipermission/aipermission-frontend:latest)
+          fi
+          docker buildx build \
+            --platform linux/amd64 \
+            --build-arg VITE_API_URL="" \
+            --build-arg VITE_MCP_API_URL="" \
+            "${tags[@]}" \
+            --push \
+            ./frontend
