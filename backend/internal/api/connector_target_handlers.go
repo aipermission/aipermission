@@ -64,12 +64,6 @@ type connectorTargetTestResponse struct {
 	DurationMS    int64          `json:"duration_ms"`
 }
 
-type connectorTargetOperationRequest struct {
-	ProfileID    int64  `json:"profile_id,omitempty"`
-	ContainerRef string `json:"container_ref,omitempty"`
-	Tail         int    `json:"tail,omitempty"`
-}
-
 type connectorTargetResponse struct {
 	ID            int64            `json:"id"`
 	Ref           string           `json:"ref,omitempty"`
