@@ -10,8 +10,11 @@ import { apiPost } from "../../../lib/api";
 
 export function DockerConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
   const activeSession = session || { active: false, startedAt: "" };
+  const [resourceView, setResourceView] = useState("containers");
   const [containers, setContainers] = useState([]);
+  const [resources, setResources] = useState({ images: [], networks: [], volumes: [] });
   const [selectedID, setSelectedID] = useState("");
+  const [selectedResourceID, setSelectedResourceID] = useState("");
   const [filter, setFilter] = useState("");
   const [tail, setTail] = useState(200);
   const [viewMode, setViewMode] = useState("logs");
@@ -29,16 +32,21 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
   const activeItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
   const latestAction = activeItems[0] || null;
   const selectedContainer = containers.find((container) => container.id === selectedID || container.name === selectedID) || null;
+  const activeResourceList = resourceView === "containers" ? containers : resources[resourceView] || [];
+  const selectedResource = resourceView === "containers" ? selectedContainer : activeResourceList.find((item) => resourceKey(resourceView, item) === selectedResourceID) || null;
   const showingInspect = viewMode === "inspect";
-  const filteredContainers = useMemo(() => {
+  const filteredItems = useMemo(() => {
     const query = filter.trim().toLowerCase();
-    if (!query) return containers;
-    return containers.filter((container) => [container.name, container.image, container.state, container.status, container.ports].some((value) => String(value || "").toLowerCase().includes(query)));
-  }, [containers, filter]);
+    if (!query) return activeResourceList;
+    return activeResourceList.filter((item) => resourceSearchValues(resourceView, item).some((value) => String(value || "").toLowerCase().includes(query)));
+  }, [activeResourceList, filter, resourceView]);
 
   useEffect(() => {
+    setResourceView("containers");
     setContainers([]);
+    setResources({ images: [], networks: [], volumes: [] });
     setSelectedID("");
+    setSelectedResourceID("");
     setFilter("");
     setViewMode("logs");
     setResult(null);
@@ -50,6 +58,11 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
     if (!activeSession.active) return;
     void refreshContainers();
   }, [activeSession.active, activeSession.startedAt, target.ref]);
+
+  useEffect(() => {
+    if (!activeSession.active || resourceView === "containers") return;
+    void refreshResource(resourceView);
+  }, [activeSession.active, activeSession.startedAt, resourceView, target.ref]);
 
   async function runDockerAction({ actionName, input = {}, reason, busy = "running", showResult = true }) {
     setState({ state: busy, error: "", message: "" });
@@ -83,6 +96,25 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
     setSelectedID((current) => (current && next.some((container) => container.id === current || container.name === current) ? current : ""));
   }
 
+  async function refreshResource(kind = resourceView) {
+    if (kind === "containers") {
+      await refreshContainers();
+      return;
+    }
+    const actionName = { images: "list_images", networks: "list_networks", volumes: "list_volumes" }[kind];
+    const outputKey = kind;
+    const item = await runDockerAction({
+      actionName,
+      input: {},
+      reason: `manual Docker browser ${kind} list`,
+      busy: "loading",
+      showResult: false,
+    });
+    const next = item.output?.[outputKey] || [];
+    setResources((current) => ({ ...current, [kind]: next }));
+    setSelectedResourceID((current) => (current && next.some((entry) => resourceKey(kind, entry) === current) ? current : ""));
+  }
+
   async function readLogs(container = selectedContainer) {
     if (!container) return;
     setViewMode("logs");
@@ -109,6 +141,31 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
     } else {
       void readLogs(container);
     }
+  }
+
+  function selectResource(kind, item) {
+    if (kind === "containers") {
+      selectContainer(item);
+      return;
+    }
+    const key = resourceKey(kind, item);
+    if (selectedResourceID === key) {
+      setSelectedResourceID("");
+      return;
+    }
+    setSelectedResourceID(key);
+    setResult(null);
+    setResultSearch("");
+  }
+
+  function switchResourceView(kind) {
+    if (resourceView === kind) return;
+    setResourceView(kind);
+    setFilter("");
+    setResult(null);
+    setResultSearch("");
+    setSelectedID("");
+    setSelectedResourceID("");
   }
 
   async function inspectContainer(container = selectedContainer) {
@@ -183,43 +240,56 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
   return (
     <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
       <div className="grid min-h-0 gap-4 overflow-hidden p-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <section className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+        <section className={`grid min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
           <div className={`border-b p-3 ${borderClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-sm font-semibold">Containers</p>
-                <p className={`text-xs ${mutedClass}`}>{containers.length} visible in this profile scope</p>
+                <p className="text-sm font-semibold">{resourceLabel(resourceView)}</p>
+                <p className={`text-xs ${mutedClass}`}>{activeResourceList.length} visible in this profile scope</p>
               </div>
               <div className="flex items-center gap-2">
                 {latestAction ? <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>{latestAction.action_name}</Badge> : null}
-                <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Refresh containers" onClick={refreshContainers} disabled={state.state !== "idle"}>
+                <Button type="button" variant="outline" className="h-8 w-8 px-0" title={`Refresh ${resourceLabel(resourceView).toLowerCase()}`} onClick={() => refreshResource(resourceView)} disabled={state.state !== "idle"}>
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
           </div>
+          <div className={`grid grid-cols-4 gap-1 border-b p-2 ${borderClass}`}>
+            {["containers", "images", "networks", "volumes"].map((kind) => (
+              <button
+                type="button"
+                key={kind}
+                className={`rounded-md px-2 py-1.5 text-xs font-semibold ${resourceView === kind ? "bg-emerald-600 text-white" : theme === "light" ? "text-stone-600 hover:bg-stone-100" : "text-stone-300 hover:bg-stone-800"}`}
+                onClick={() => switchResourceView(kind)}
+              >
+                {resourceTabLabel(kind)}
+              </button>
+            ))}
+          </div>
           <div className={`border-b p-3 ${borderClass}`}>
-            <Input className={inputClass} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search containers" />
+            <Input className={inputClass} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={`Search ${resourceLabel(resourceView).toLowerCase()}`} />
           </div>
           <div className="min-h-0 overflow-auto">
-            {filteredContainers.length === 0 ? (
-              <div className={`p-4 text-sm ${mutedClass}`}>No containers matched this scope or search.</div>
+            {filteredItems.length === 0 ? (
+              <div className={`p-4 text-sm ${mutedClass}`}>No {resourceLabel(resourceView).toLowerCase()} matched this scope or search.</div>
             ) : (
-              filteredContainers.map((container) => {
-                const active = selectedContainer && (selectedContainer.id === container.id || selectedContainer.name === container.name);
+              filteredItems.map((item) => {
+                const key = resourceKey(resourceView, item);
+                const active = resourceView === "containers" ? selectedContainer && (selectedContainer.id === item.id || selectedContainer.name === item.name) : selectedResourceID === key;
                 return (
                   <button
                     type="button"
-                    key={container.id || container.name}
+                    key={key}
                     className={`grid w-full gap-1 border-b px-3 py-3 text-left text-sm ${borderClass} ${rowHoverClass} ${active ? activeRowClass : ""}`}
-                    onClick={() => selectContainer(container)}
+                    onClick={() => selectResource(resourceView, item)}
                   >
                     <span className="flex min-w-0 items-center justify-between gap-3">
-                      <span className="truncate font-semibold">{container.name || container.id}</span>
-                      <Badge tone={container.state === "running" ? "good" : "neutral"}>{container.state || "unknown"}</Badge>
+                      <span className="truncate font-semibold">{resourcePrimary(resourceView, item)}</span>
+                      <Badge tone={resourceTone(resourceView, item)}>{resourceStatus(resourceView, item)}</Badge>
                     </span>
-                    <span className={`truncate text-xs ${mutedClass}`}>{container.image}</span>
-                    <span className={`truncate text-xs ${mutedClass}`}>{container.status}</span>
+                    <span className={`truncate text-xs ${mutedClass}`}>{resourceSecondary(resourceView, item)}</span>
+                    <span className={`truncate text-xs ${mutedClass}`}>{resourceTertiary(resourceView, item)}</span>
                   </button>
                 );
               })
@@ -232,7 +302,7 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
-                  <p className="truncate text-sm font-semibold">{selectedContainer?.name || "Select a container"}</p>
+                  <p className="truncate text-sm font-semibold">{selectedResource ? resourcePrimary(resourceView, selectedResource) : `Select ${resourceSingular(resourceView)}`}</p>
                   {state.state !== "idle" ? (
                     <span className={`inline-flex shrink-0 items-center gap-1 text-xs ${mutedClass}`}>
                       <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -240,9 +310,9 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
                     </span>
                   ) : null}
                 </div>
-                <p className={`truncate text-xs ${mutedClass}`}>{selectedContainer?.image || "Choose a visible container to read logs, inspect metadata, or run lifecycle actions."}</p>
+                <p className={`truncate text-xs ${mutedClass}`}>{selectedResource ? resourceSecondary(resourceView, selectedResource) : resourcePlaceholder(resourceView)}</p>
               </div>
-              {selectedContainer ? (
+              {resourceView === "containers" && selectedContainer ? (
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={showingInspect ? () => readLogs() : () => inspectContainer()} disabled={state.state !== "idle"} title={showingInspect ? "Show container logs" : "Inspect container"}>
                     {showingInspect ? <RefreshCcw className="h-3.5 w-3.5" /> : <FileJson className="h-3.5 w-3.5" />}
@@ -278,8 +348,10 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
             </div>
           ) : null}
           <div className="grid min-h-0 overflow-hidden p-3">
-            {!selectedContainer ? (
-              <div className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>Select a container from the list to read its logs.</div>
+            {!selectedResource ? (
+              <div className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>{resourcePlaceholder(resourceView)}</div>
+            ) : resourceView !== "containers" ? (
+              <DockerResourceDetail resourceView={resourceView} item={selectedResource} search={resultSearch} onSearch={setResultSearch} inputClass={inputClass} />
             ) : state.state !== "idle" && !result ? (
               <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>
                 <span className="inline-flex items-center gap-2">
@@ -478,6 +550,75 @@ function DockerInspectSummary({ output }) {
   );
 }
 
+function DockerResourceDetail({ resourceView, item, search, onSearch, inputClass }) {
+  const rawValue = JSON.stringify(item || {}, null, 2);
+  const rows = resourceDetailRows(resourceView, item);
+  return (
+    <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
+      <DockerResultHeader title={`${resourceSingular(resourceView)} metadata`} subtitle={resourceSecondary(resourceView, item)} />
+      <div className="mb-3 min-h-0 overflow-auto rounded-md border border-stone-700 bg-[#1a1a1a] p-3">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {rows.map(([label, value]) => (
+            <div key={label} className="min-w-0 rounded border border-stone-700 bg-[#202020] p-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-500">{label}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-stone-100">{String(value)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">{resourceSingular(resourceView)} raw data</p>
+          <div className="flex min-w-0 items-center justify-end gap-2">
+            <Input className={`h-8 w-56 text-xs ${inputClass || ""}`} value={search} onChange={(event) => onSearch?.(event.target.value)} placeholder="Search raw data" />
+            <CopyButton value={rawValue} variant="outline" className="h-8 px-2 text-xs" />
+          </div>
+        </div>
+        <TerminalBlock className="min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]" surface="dark">
+          <HighlightedText text={rawValue} query={search} />
+        </TerminalBlock>
+      </div>
+    </div>
+  );
+}
+
+function resourceDetailRows(kind, item = {}) {
+  if (kind === "images") {
+    return [
+      ["Repository", item.repository],
+      ["Tag", item.tag],
+      ["Image ID", item.id],
+      ["Digest", item.digest],
+      ["Size", item.size],
+      ["Created", item.created_since || item.created_at],
+      ["Visible containers", item.containers ?? 0],
+    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+  }
+  if (kind === "networks") {
+    return [
+      ["Name", item.name],
+      ["Network ID", item.id],
+      ["Driver", item.driver],
+      ["Scope", item.scope],
+      ["IPv6", item.ipv6],
+      ["Internal", item.internal],
+      ["Visible containers", item.containers ?? 0],
+      ["Labels", item.labels],
+    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+  }
+  if (kind === "volumes") {
+    return [
+      ["Name", item.name],
+      ["Driver", item.driver],
+      ["Scope", item.scope],
+      ["Mountpoint", item.mountpoint],
+      ["Visible containers", item.containers ?? 0],
+      ["Labels", item.labels],
+    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+  }
+  return Object.entries(item).map(([key, value]) => [key, typeof value === "string" ? value : JSON.stringify(value)]);
+}
+
 function formatDockerLogs(logs) {
   return String(logs || "")
     .split("\n")
@@ -547,6 +688,92 @@ function shortValue(value) {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   if (!text) return "";
   return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
+function resourceLabel(kind) {
+  if (kind === "images") return "Images";
+  if (kind === "networks") return "Networks";
+  if (kind === "volumes") return "Volumes";
+  return "Containers";
+}
+
+function resourceTabLabel(kind) {
+  if (kind === "containers") return "Ctrs";
+  if (kind === "networks") return "Nets";
+  if (kind === "volumes") return "Vols";
+  return "Images";
+}
+
+function resourceSingular(kind) {
+  if (kind === "images") return "image";
+  if (kind === "networks") return "network";
+  if (kind === "volumes") return "volume";
+  return "container";
+}
+
+function resourceKey(kind, item = {}) {
+  if (kind === "images") return item.id || `${item.repository || ""}:${item.tag || ""}`;
+  if (kind === "networks") return item.id || item.name;
+  if (kind === "volumes") return item.name;
+  return item.id || item.name;
+}
+
+function resourcePrimary(kind, item = {}) {
+  if (kind === "images") return imageRef(item);
+  return item.name || item.id || "-";
+}
+
+function resourceSecondary(kind, item = {}) {
+  if (kind === "containers") return [item.image, item.compose_project ? `project ${item.compose_project}` : ""].filter(Boolean).join(" · ");
+  if (kind === "images") return [item.id, item.size].filter(Boolean).join(" · ");
+  if (kind === "networks") return [item.driver, item.scope].filter(Boolean).join(" · ");
+  if (kind === "volumes") return [item.driver, item.mountpoint].filter(Boolean).join(" · ");
+  return "";
+}
+
+function resourceTertiary(kind, item = {}) {
+  if (kind === "containers") return [item.status, item.compose_service ? `service ${item.compose_service}` : ""].filter(Boolean).join(" · ");
+  if (kind === "images") return [item.created_since || item.created_at, item.containers ? `${item.containers} containers` : ""].filter(Boolean).join(" · ");
+  if (kind === "networks") return item.containers ? `${item.containers} visible containers` : item.labels || "";
+  if (kind === "volumes") return item.containers ? `${item.containers} visible containers` : item.labels || "";
+  return "";
+}
+
+function resourceStatus(kind, item = {}) {
+  if (kind === "containers") return item.health || item.state || "unknown";
+  if (kind === "images") return item.size || "image";
+  if (kind === "networks") return item.driver || "network";
+  if (kind === "volumes") return item.driver || "volume";
+  return "item";
+}
+
+function resourceTone(kind, item = {}) {
+  if (kind === "containers") {
+    if (item.health === "unhealthy") return "bad";
+    if (item.state === "running") return "good";
+    return "neutral";
+  }
+  return "neutral";
+}
+
+function resourceSearchValues(kind, item = {}) {
+  if (kind === "images") return [imageRef(item), item.id, item.size, item.created_since, item.created_at];
+  if (kind === "networks") return [item.name, item.id, item.driver, item.scope, item.labels];
+  if (kind === "volumes") return [item.name, item.driver, item.scope, item.mountpoint, item.labels];
+  return [item.name, item.id, item.image, item.state, item.status, item.health, item.ports, item.compose_project, item.compose_service];
+}
+
+function resourcePlaceholder(kind) {
+  if (kind === "images") return "Select an image to inspect read-only image metadata.";
+  if (kind === "networks") return "Select a network to inspect read-only network metadata.";
+  if (kind === "volumes") return "Select a volume to inspect read-only volume metadata.";
+  return "Choose a visible container to read logs, inspect metadata, or run lifecycle actions.";
+}
+
+function imageRef(item = {}) {
+  if (!item.repository) return item.id || "-";
+  if (!item.tag || item.tag === "<none>") return item.repository;
+  return `${item.repository}:${item.tag}`;
 }
 
 function DockerEndpointFooter({ target, borderClass, mutedClass }) {
