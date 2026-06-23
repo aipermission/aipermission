@@ -302,6 +302,24 @@ func TestManualInputCapturesOutputWhenBracketPromptReturns(t *testing.T) {
 	}
 }
 
+func TestManualInputCapturesOutputWhenPathPromptReturns(t *testing.T) {
+	database, manager, session := newManualHistoryTestSession(t)
+	stdin := &recordingWriteCloser{}
+	session.stdin = stdin
+	session.rawTranscript = "/ # "
+	manager.sessions[session.id] = session
+
+	if err := manager.Input(context.Background(), session.id, "pwd\n"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+	session.appendOutput("pwd\r\n/\r\n/ # ")
+	waitForManualHistoryStatus(t, database, "completed")
+	row := readManualHistoryRow(t, database)
+	if row.command != "pwd" || row.stdout != "/" || row.trackingReason != "exit_code_unavailable" {
+		t.Fatalf("expected captured Kubernetes path prompt output, got %#v", row)
+	}
+}
+
 func TestManualInputCapturesAptUpdateOutput(t *testing.T) {
 	database, manager, session := newManualHistoryTestSession(t)
 	stdin := &recordingWriteCloser{}
@@ -651,6 +669,19 @@ func TestManualPromptPrefixSupportsBracketPathPrompts(t *testing.T) {
 	}
 	if !manualTranscriptEndsWithPrompt("[~] # ", "[~] #") {
 		t.Fatalf("bare bracket prompt should count as returned prompt")
+	}
+}
+
+func TestManualPromptPrefixSupportsKubernetesPathPrompts(t *testing.T) {
+	transcript := "/ # ls"
+	if prompt := lastManualShellPrompt(transcript); prompt != "/ #" {
+		t.Fatalf("expected Kubernetes path prompt prefix from echo line, got %q", prompt)
+	}
+	if manualTranscriptEndsWithPrompt(transcript, "/ #") {
+		t.Fatalf("command echo line must not count as returned path prompt")
+	}
+	if !manualTranscriptEndsWithPrompt("/app $ ", "/app $") {
+		t.Fatalf("bare path prompt should count as returned prompt")
 	}
 }
 

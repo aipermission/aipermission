@@ -621,6 +621,9 @@ func (s *managedConsoleSession) manualOutputCompletionLocked() *manualOutputComp
 	if !manualSegmentHasPrompt(segment) {
 		return nil
 	}
+	if manualActiveIsHistoryRecall(&active) && strings.TrimSpace(active.ResumePrompt) != "" && !manualTranscriptEndsWithPrompt(segment, active.ResumePrompt) {
+		return nil
+	}
 	stdout, outputTruncated := manualCapturedOutput(segment, active.Command)
 	truncated = truncated || outputTruncated
 	status := "completed"
