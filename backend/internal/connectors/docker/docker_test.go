@@ -111,6 +111,81 @@ func TestLifecycleReturnsRefreshedContainerState(t *testing.T) {
 	}
 }
 
+func TestListImagesFiltersBySelectedScope(t *testing.T) {
+	transport := &fakeCommandTransport{
+		results: map[string]connectors.CommandRunResult{
+			"docker image ls --no-trunc --format '{{json .}}'": {Stdout: strings.Join([]string{
+				`{"ID":"sha256:aaa","Repository":"app","Tag":"latest","Size":"100MB"}`,
+				`{"ID":"sha256:bbb","Repository":"postgres","Tag":"16","Size":"400MB"}`,
+			}, "\n")},
+			"docker ps -a --no-trunc --format '{{json .}}'": {Stdout: strings.Join([]string{
+				`{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`,
+				`{"ID":"222222222222","Names":"db","Image":"postgres:16","State":"running","Status":"Up 1 hour"}`,
+			}, "\n")},
+		},
+	}
+	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target:       dockerTarget(),
+		Profile:      dockerProfile("selected"),
+		Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionListImages, Payload: map[string]any{}})
+	if err != nil {
+		t.Fatalf("list images: %v", err)
+	}
+	output, _ := result.Output.(map[string]any)
+	images, _ := output["images"].([]DockerImage)
+	if len(images) != 1 || images[0].Ref() != "app:latest" || images[0].Containers != 1 {
+		t.Fatalf("unexpected scoped images: %#v", images)
+	}
+}
+
+func TestListNetworksAndVolumesUseScopedInspect(t *testing.T) {
+	transport := &fakeCommandTransport{
+		results: map[string]connectors.CommandRunResult{
+			"docker ps -a --no-trunc --format '{{json .}}'": {Stdout: strings.Join([]string{
+				`{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour (healthy)","Labels":"com.docker.compose.project=watb,com.docker.compose.service=api"}`,
+				`{"ID":"222222222222","Names":"db","Image":"postgres:16","State":"running","Status":"Up 1 hour"}`,
+			}, "\n")},
+			"docker inspect -- 'api'": {Stdout: `[{
+				"NetworkSettings":{"Networks":{"frontend":{"NetworkID":"net1","Driver":"bridge"}}},
+				"Mounts":[{"Type":"volume","Name":"api-data","Driver":"local","Source":"/var/lib/docker/volumes/api-data/_data"}]
+			}]`},
+		},
+	}
+	runtime := connectors.RuntimeContext{
+		Target:       dockerTarget(),
+		Profile:      dockerProfile("selected"),
+		Capabilities: fakeCapabilities{transport: transport},
+	}
+	networkResult, err := New().ExecuteAction(context.Background(), runtime, connectors.PreparedAction{ActionName: ActionListNetworks, Payload: map[string]any{}})
+	if err != nil {
+		t.Fatalf("list networks: %v", err)
+	}
+	networkOutput, _ := networkResult.Output.(map[string]any)
+	networks, _ := networkOutput["networks"].([]DockerNetwork)
+	if len(networks) != 1 || networks[0].Name != "frontend" || networks[0].Containers != 1 {
+		t.Fatalf("unexpected scoped networks: %#v", networks)
+	}
+
+	volumeResult, err := New().ExecuteAction(context.Background(), runtime, connectors.PreparedAction{ActionName: ActionListVolumes, Payload: map[string]any{}})
+	if err != nil {
+		t.Fatalf("list volumes: %v", err)
+	}
+	volumeOutput, _ := volumeResult.Output.(map[string]any)
+	volumes, _ := volumeOutput["volumes"].([]DockerVolume)
+	if len(volumes) != 1 || volumes[0].Name != "api-data" || volumes[0].Containers != 1 {
+		t.Fatalf("unexpected scoped volumes: %#v", volumes)
+	}
+
+	containers, err := parseDockerPS(transport.results["docker ps -a --no-trunc --format '{{json .}}'"].Stdout)
+	if err != nil {
+		t.Fatalf("parse containers: %v", err)
+	}
+	if containers[0].Health != "healthy" || containers[0].ComposeProject != "watb" || containers[0].ComposeService != "api" {
+		t.Fatalf("expected enriched compose metadata, got %#v", containers[0])
+	}
+}
+
 func dockerTarget() connectors.TargetView {
 	return connectors.TargetView{
 		ID:            1,

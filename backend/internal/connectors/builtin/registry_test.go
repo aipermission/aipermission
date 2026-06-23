@@ -130,6 +130,9 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 			}, map[string]map[string]any{
 				dockerconnector.ActionVersion:          {},
 				dockerconnector.ActionListContainers:   {"all": true},
+				dockerconnector.ActionListImages:       {},
+				dockerconnector.ActionListNetworks:     {},
+				dockerconnector.ActionListVolumes:      {},
 				dockerconnector.ActionInspectContainer: {"container": "api"},
 				dockerconnector.ActionContainerLogs:    {"container": "api", "tail": 100},
 				dockerconnector.ActionStartContainer:   {"container": "api"},
