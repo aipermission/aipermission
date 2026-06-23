@@ -340,6 +340,8 @@ test("Console exposes connector action approvals", () => {
   assert.match(consolePageSource, /Search connectors/);
   assert.match(consolePageSource, /Connectors/);
   assert.match(consolePageSource, /targetUsesLiveConsole/);
+  assert.match(consolePageSource, /recoverableRunningActions/);
+  assert.doesNotMatch(consolePageSource, /connector_kind === "ssh"/);
   assert.match(consolePageSource, /getConnectorModel/);
   assert.match(consolePageSource, /ConnectorIcon/);
   assert.match(tokenPermissionPanelSource, /ConnectorTokenPermissionPanel/);
