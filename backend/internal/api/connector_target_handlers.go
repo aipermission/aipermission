@@ -815,12 +815,14 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	mergedPublic, err := preserveManagedCredentialPublic(existingProfile.Public, request.Public)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
+	if lifecycle, ok := connector.(connectors.ProvisionedCredentialLifecycle); ok {
+		mergedPublic, err := lifecycle.PreserveProvisionedCredentialPublic(connectortargets.CredentialProfileView(existingProfile), request.Public)
+		if err != nil {
+			handleConnectorTargetError(w, connectortargets.ValidationError(err.Error()))
+			return
+		}
+		request.Public = mergedPublic
 	}
-	request.Public = mergedPublic
 	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request), request.Secret != nil)
 	if !ok {
 		return
@@ -949,37 +951,6 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 		}
 	}
 	return result.Affected, nil
-}
-
-func preserveManagedCredentialPublic(existing map[string]any, requested map[string]any) (map[string]any, error) {
-	if requested == nil {
-		requested = map[string]any{}
-	}
-	if !boolMapValue(existing, "managed_by_aipermission") {
-		return requested, nil
-	}
-	next := cloneMapAny(requested)
-	existingUsername := strings.TrimSpace(toString(existing["username"]))
-	requestedUsername := strings.TrimSpace(toString(next["username"]))
-	if requestedUsername != "" && existingUsername != "" && requestedUsername != existingUsername {
-		return nil, connectortargets.ValidationError("managed credential username cannot be changed; create a new managed profile instead")
-	}
-	if existingUsername != "" {
-		next["username"] = existingUsername
-	}
-	for _, key := range []string{
-		"managed_by_aipermission",
-		"managed_role_name",
-		"managed_admin_profile_id",
-		"managed_admin_profile_ref",
-		"managed_preset",
-		"managed_scope",
-	} {
-		if value, ok := existing[key]; ok {
-			next[key] = value
-		}
-	}
-	return next, nil
 }
 
 func (s connectorTargetHandlers) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
