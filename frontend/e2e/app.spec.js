@@ -146,7 +146,7 @@ test("renders settings retention controls", async ({ page }) => {
   await page.getByRole("link", { name: /Settings/ }).click();
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Backup" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Backup", exact: true })).toBeVisible();
   await page.getByLabel("Command history days").fill("14");
   await page.getByLabel("Audit log days").fill("14");
   await page.getByRole("button", { name: "Save retention" }).click();
