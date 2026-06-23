@@ -119,7 +119,11 @@ func stringParam(params map[string]any, key string) string {
 	if params == nil {
 		return ""
 	}
-	return strings.TrimSpace(fmt.Sprint(params[key]))
+	value, ok := params[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func stringConfigValue(values map[string]any, key string) string {
