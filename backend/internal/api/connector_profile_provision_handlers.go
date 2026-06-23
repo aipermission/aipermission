@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -151,20 +150,24 @@ func cleanupProvisionedCredentialProfileAfterFailure(
 }
 
 func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx context.Context, runtime *databaseRuntime, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-	if !boolMapValue(profile.Public, "managed_by_aipermission") {
-		return nil
-	}
 	connector, ok := runtime.connectorRegistry().Get(target.ConnectorKind)
 	if !ok {
 		return connectortargets.ValidationError("unsupported connector kind")
 	}
+	lifecycle, ok := connector.(connectors.ProvisionedCredentialLifecycle)
+	if !ok {
+		return nil
+	}
+	adminProfileID, managed, err := lifecycle.ProvisionedCredentialAdminProfileID(connectortargets.CredentialProfileView(profile))
+	if err != nil {
+		return connectortargets.ValidationError(err.Error())
+	}
+	if !managed {
+		return nil
+	}
 	provisioner, ok := connector.(connectors.CredentialProvisioner)
 	if !ok {
 		return connectortargets.ValidationError("connector does not support managed credential cleanup")
-	}
-	adminProfileID := int64MapValue(profile.Public, "managed_admin_profile_id")
-	if adminProfileID < 1 || adminProfileID == profile.ID {
-		return connectortargets.ValidationError("managed credential profile is missing a valid admin profile reference")
 	}
 	store := connectortargets.NewStore(runtime.database)
 	adminProfile, err := store.GetCredentialProfile(ctx, target.ID, adminProfileID)
@@ -244,37 +247,4 @@ func handleConnectorProvisionError(w http.ResponseWriter, err error) {
 		return
 	}
 	writeError(w, http.StatusBadRequest, err.Error())
-}
-
-func boolMapValue(values map[string]any, name string) bool {
-	if values == nil {
-		return false
-	}
-	switch typed := values[name].(type) {
-	case bool:
-		return typed
-	case string:
-		return strings.EqualFold(strings.TrimSpace(typed), "true")
-	default:
-		return false
-	}
-}
-
-func int64MapValue(values map[string]any, name string) int64 {
-	if values == nil {
-		return 0
-	}
-	switch typed := values[name].(type) {
-	case int:
-		return int64(typed)
-	case int64:
-		return typed
-	case float64:
-		return int64(typed)
-	case string:
-		parsed, _ := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
-		return parsed
-	default:
-		return 0
-	}
 }

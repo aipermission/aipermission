@@ -49,6 +49,14 @@ type CredentialProvisioner interface {
 	CleanupProvisionedCredentialProfile(ctx context.Context, runtime RuntimeContext, profile CredentialProfileView) (ActionResult, error)
 }
 
+// ProvisionedCredentialLifecycle is an optional connector contract for metadata
+// the connector needs to preserve or interpret for credentials it provisioned.
+// Core owns storage; the connector owns the meaning of the public metadata.
+type ProvisionedCredentialLifecycle interface {
+	PreserveProvisionedCredentialPublic(existing CredentialProfileView, requested map[string]any) (map[string]any, error)
+	ProvisionedCredentialAdminProfileID(profile CredentialProfileView) (adminProfileID int64, managed bool, err error)
+}
+
 // BackupRestorer is an optional connector contract for operator-driven backup
 // and restore flows. Core owns HTTP upload/download, confirmation, and audit;
 // the connector owns the external service dump/restore implementation.
