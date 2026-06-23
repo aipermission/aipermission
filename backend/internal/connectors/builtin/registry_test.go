@@ -135,6 +135,7 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				dockerconnector.ActionListVolumes:      {},
 				dockerconnector.ActionInspectContainer: {"container": "api"},
 				dockerconnector.ActionContainerLogs:    {"container": "api", "tail": 100},
+				dockerconnector.ActionContainerExec:    {"container": "api", "command": "printf ok"},
 				dockerconnector.ActionStartContainer:   {"container": "api"},
 				dockerconnector.ActionStopContainer:    {"container": "api", "timeout_seconds": 10},
 				dockerconnector.ActionRestartContainer: {"container": "api", "timeout_seconds": 10},

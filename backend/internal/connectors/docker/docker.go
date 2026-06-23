@@ -26,6 +26,7 @@ const (
 	ActionListVolumes      = "list_volumes"
 	ActionInspectContainer = "inspect_container"
 	ActionContainerLogs    = "container_logs"
+	ActionContainerExec    = "container_exec"
 	ActionStartContainer   = "start_container"
 	ActionStopContainer    = "stop_container"
 	ActionRestartContainer = "restart_container"
@@ -33,6 +34,8 @@ const (
 	defaultLogTail     = 200
 	maxLogTail         = 2000
 	maxLogBytes        = 256 << 10
+	maxExecCommandLen  = 8000
+	maxExecOutputBytes = 256 << 10
 	maxInspectBytes    = 512 << 10
 	maxDockerReasonLen = 2000
 )
@@ -143,10 +146,12 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use list_images, list_networks, and list_volumes for read-only Docker host inventory.",
 			"Use container_logs with a bounded tail value for recent logs.",
 			"Use inspect_container for redacted Docker metadata. Environment variables are masked.",
+			"Use container_exec for bounded non-interactive commands inside one scoped container.",
 			"Use start_container, stop_container, or restart_container only when the operator intends a container lifecycle change.",
 		},
 		Warnings: []string{
-			"Docker actions run through a selected transport profile. The Docker connector does not expose arbitrary docker exec, prune, rm, or shell access.",
+			"Docker actions run through a selected transport profile. The Docker connector does not expose arbitrary host-level docker commands, prune, rm, or shell access.",
+			"container_exec can change data inside the container. Prefer prompt mode unless the workflow is trusted.",
 			"Credential profile scope can restrict AI access to one container or a small allowed set.",
 			"Container logs may contain secrets. Redaction is best-effort; avoid requesting sensitive logs unless approved.",
 		},
@@ -224,6 +229,21 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{Name: "tail", Label: "Tail lines", Type: connectors.FieldNumber, Default: defaultLogTail},
 			}},
 			OutputHint: connectors.OutputHint{Format: "text", MaxBytes: maxLogBytes},
+		},
+		{
+			Name:        ActionContainerExec,
+			Label:       "Exec in container",
+			Description: "Run one bounded non-interactive shell command inside one scoped Docker container.",
+			Category:    "execution",
+			Risk:        connectors.RiskDestructive,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "container", Label: "Container", Type: connectors.FieldString, Required: true},
+				{Name: "command", Label: "Command", Type: connectors.FieldMultiline, Required: true},
+				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldNumber, Default: 30},
+				{Name: "user", Label: "User", Type: connectors.FieldString, Description: "Optional container user."},
+				{Name: "workdir", Label: "Working directory", Type: connectors.FieldString, Description: "Optional container working directory."},
+			}},
+			OutputHint: connectors.OutputHint{Format: "text", MaxBytes: maxExecOutputBytes},
 		},
 		{
 			Name:        ActionStartContainer,
@@ -305,6 +325,23 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["tail"] = normalizeInt(input, "tail", defaultLogTail, 1, maxLogTail)
 		title = "Read Docker container logs"
 		summary = fmt.Sprintf("%s tail=%d", container, input["tail"])
+	case ActionContainerExec:
+		risk = connectors.RiskDestructive
+		container, err := normalizeContainerInput(input)
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
+		command, err := normalizeExecCommandInput(input)
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
+		input["container"] = container
+		input["command"] = command
+		input["timeout_seconds"] = normalizeInt(input, "timeout_seconds", 30, 1, 600)
+		input["user"] = normalizeDockerOptionInput(input, "user")
+		input["workdir"] = normalizeDockerOptionInput(input, "workdir")
+		title = "Exec inside Docker container"
+		summary = fmt.Sprintf("%s: %s", container, firstLine(command))
 	case ActionStartContainer:
 		risk = connectors.RiskWrite
 		container, err := normalizeContainerInput(input)
@@ -376,6 +413,8 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 		return executeInspectContainer(ctx, client, action.Payload)
 	case ActionContainerLogs:
 		return executeContainerLogs(ctx, client, action.Payload)
+	case ActionContainerExec:
+		return executeContainerExec(ctx, client, action.Payload)
 	case ActionStartContainer:
 		return executeContainerLifecycle(ctx, client, action.Payload, "start")
 	case ActionStopContainer:
@@ -585,6 +624,58 @@ func executeContainerLogs(ctx context.Context, client *dockerClient, input map[s
 			"duration_ms": result.DurationMS,
 		},
 		DisplayText: logs,
+	}, nil
+}
+
+func executeContainerExec(ctx context.Context, client *dockerClient, input map[string]any) (connectors.ActionResult, error) {
+	container, err := client.resolveContainer(ctx, stringValue(input, "container"))
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	commandText, err := normalizeExecCommandInput(input)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	timeout := normalizeInt(input, "timeout_seconds", 30, 1, 600)
+	var options []string
+	if user := normalizeDockerOptionInput(input, "user"); user != "" {
+		options = append(options, "--user", shellQuote(user))
+	}
+	if workdir := normalizeDockerOptionInput(input, "workdir"); workdir != "" {
+		options = append(options, "--workdir", shellQuote(workdir))
+	}
+	optionText := ""
+	if len(options) > 0 {
+		optionText = strings.Join(options, " ") + " "
+	}
+	result, err := client.run(ctx, fmt.Sprintf("%s exec %s-- %s sh -lc %s 2>&1", client.command, optionText, shellQuote(container.Ref()), shellQuote(commandText)), timeout+5)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	outputText := truncateString(result.Stdout, maxExecOutputBytes)
+	status := connectors.ResultCompleted
+	errorText := ""
+	if result.ExitCode != 0 {
+		status = connectors.ResultFailed
+		errorText = fmt.Sprintf("docker exec exited with code %d", result.ExitCode)
+		if strings.TrimSpace(result.Stderr) != "" {
+			errorText += ": " + truncateString(strings.TrimSpace(result.Stderr), 1000)
+		}
+	}
+	return connectors.ActionResult{
+		Status: status,
+		Output: map[string]any{
+			"container":       container,
+			"command":         commandText,
+			"exit_code":       result.ExitCode,
+			"output":          outputText,
+			"timeout_seconds": timeout,
+			"user":            normalizeDockerOptionInput(input, "user"),
+			"workdir":         normalizeDockerOptionInput(input, "workdir"),
+			"duration_ms":     result.DurationMS,
+		},
+		DisplayText: outputText,
+		Error:       errorText,
 	}, nil
 }
 
@@ -1044,6 +1135,14 @@ func dockerScopeFromProfile(profile connectors.CredentialProfileView) dockerScop
 	}
 }
 
+func ProfileAllowsContainerRef(profile connectors.CredentialProfileView, containerRef string) bool {
+	containerRef = strings.TrimSpace(containerRef)
+	if containerRef == "" {
+		return false
+	}
+	return dockerScopeFromProfile(profile).allows(DockerContainer{ID: containerRef, Name: containerRef})
+}
+
 func (scope dockerScope) allows(container DockerContainer) bool {
 	if scope.mode != "selected" {
 		return true
@@ -1103,6 +1202,36 @@ func normalizeContainerInput(input map[string]any) (string, error) {
 		return "", fmt.Errorf("container contains unsupported characters")
 	}
 	return container, nil
+}
+
+func normalizeExecCommandInput(input map[string]any) (string, error) {
+	command := strings.TrimSpace(stringValue(input, "command"))
+	if command == "" {
+		return "", fmt.Errorf("command is required")
+	}
+	if len(command) > maxExecCommandLen {
+		return "", fmt.Errorf("command is larger than %d bytes", maxExecCommandLen)
+	}
+	if strings.ContainsRune(command, '\x00') {
+		return "", fmt.Errorf("command contains unsupported characters")
+	}
+	return command, nil
+}
+
+func normalizeDockerOptionInput(input map[string]any, key string) string {
+	value := strings.TrimSpace(stringValue(input, key))
+	if value == "" || strings.ContainsAny(value, "\x00\n\r") {
+		return ""
+	}
+	return value
+}
+
+func firstLine(value string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(value), "\n")
+	if len(line) > 120 {
+		return line[:117] + "..."
+	}
+	return line
 }
 
 func dockerCommandError(command string, result connectors.CommandRunResult) error {

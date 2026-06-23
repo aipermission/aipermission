@@ -111,6 +111,50 @@ func TestLifecycleReturnsRefreshedContainerState(t *testing.T) {
 	}
 }
 
+func TestContainerExecRunsBoundedCommandInsideScopedContainer(t *testing.T) {
+	transport := &fakeCommandTransport{
+		results: map[string]connectors.CommandRunResult{
+			"docker ps -a --no-trunc --format '{{json .}}'": {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
+			"docker exec -- 'api' sh -lc 'printf hi' 2>&1":  {Stdout: "hi", ExitCode: 0, DurationMS: 7},
+		},
+	}
+	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target:       dockerTarget(),
+		Profile:      dockerProfile("selected"),
+		Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionContainerExec, Payload: map[string]any{"container": "api", "command": "printf hi"}})
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if result.Status != connectors.ResultCompleted || result.DisplayText != "hi" {
+		t.Fatalf("unexpected exec result: %#v", result)
+	}
+	output, _ := result.Output.(map[string]any)
+	if output["exit_code"] != 0 || output["container"] == nil {
+		t.Fatalf("unexpected exec output: %#v", output)
+	}
+}
+
+func TestContainerExecReturnsFailedStatusForNonZeroExit(t *testing.T) {
+	transport := &fakeCommandTransport{
+		results: map[string]connectors.CommandRunResult{
+			"docker ps -a --no-trunc --format '{{json .}}'":   {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
+			"docker exec -- 'api' sh -lc 'cat /missing' 2>&1": {Stdout: "missing\n", ExitCode: 1},
+		},
+	}
+	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target:       dockerTarget(),
+		Profile:      dockerProfile("selected"),
+		Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionContainerExec, Payload: map[string]any{"container": "api", "command": "cat /missing"}})
+	if err != nil {
+		t.Fatalf("exec failed result should not be transport error: %v", err)
+	}
+	if result.Status != connectors.ResultFailed || !strings.Contains(result.Error, "code 1") {
+		t.Fatalf("unexpected failed exec result: %#v", result)
+	}
+}
+
 func TestListImagesFiltersBySelectedScope(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
