@@ -7,6 +7,36 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-06-23
+
+### Added
+
+- Added Docker as a built-in connector that runs bounded Docker CLI templates
+  through an SSH transport profile.
+- Added Docker actions for version metadata, scoped container listing, redacted
+  inspect metadata, bounded log tails, and explicit start/stop/restart lifecycle
+  operations.
+- Added a Docker Console container browser with profile-scoped container lists,
+  logs, inspect output, and lifecycle confirmation dialogs.
+- Added Docker credential profile scopes so a token can be limited to all
+  containers, selected container names/IDs, or name patterns.
+
+### Changed
+
+- Added a generic connector command transport capability so structured
+  connectors can run reviewed command templates through connector transports
+  without importing SSH-specific code.
+
+### Security
+
+- Docker does not expose arbitrary `docker exec`, container/image removal,
+  prune, shell, or raw Docker command execution in the 0.2.8 MVP.
+- Docker inspect output masks container environment values before returning
+  structured output to UI, MCP, history, or audit.
+- Container-targeted Docker actions resolve the requested container first and
+  enforce the credential profile scope before reading logs, inspecting metadata,
+  or running lifecycle changes.
+
 ## [0.2.7] - 2026-06-19
 
 ### Added

@@ -1,6 +1,35 @@
-export const appVersion = "0.2.7";
+export const appVersion = "0.2.8";
 
 export const changelogEntries = [
+  {
+    version: "0.2.8",
+    label: "Docker connector",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Docker is now a built-in connector that runs bounded Docker CLI templates through an SSH transport profile.",
+          "Docker actions cover version metadata, scoped container listing, redacted inspect metadata, bounded log tails, and explicit start/stop/restart lifecycle operations.",
+          "Docker Console adds a profile-scoped container browser with logs, inspect output, and lifecycle confirmation dialogs.",
+          "Docker credential profiles can scope a token to all containers, selected container names/IDs, or name patterns.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Connectors can now use a generic command transport capability for reviewed command templates without importing SSH-specific code.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Docker does not expose arbitrary docker exec, container/image removal, prune, shell, or raw Docker command execution in this MVP.",
+          "Docker inspect output masks container environment values before returning structured output.",
+          "Container-targeted Docker actions resolve the requested container and enforce the credential profile scope before execution.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.7",
     label: "Maintenance and backup providers",

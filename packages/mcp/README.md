@@ -8,9 +8,9 @@ credentials, or other connector secrets.
 
 The gateway is intentionally local-only. Run it on the developer machine and
 keep the URL on `localhost`; remote systems are connector targets, not places
-to host the gateway for LAN or internet users. SSH, Postgres, Redis, and RabbitMQ are
-built-in connectors that use the same target/profile/action permission model
-as future connectors.
+to host the gateway for LAN or internet users. SSH, Postgres, Redis, RabbitMQ,
+and Docker are built-in connectors that use the same target/profile/action
+permission model as future connectors.
 
 ![AIPermission demo: AI operates through approval-based connector access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
 
@@ -61,9 +61,10 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `call_connector_action`
 - `get_connector_action_request`
 
-All integration work goes through connector targets. SSH, Postgres, Redis, RabbitMQ, and future
-connectors share the same model: target, credential profile, connector action,
-token action permission, approval, history, and audit.
+All integration work goes through connector targets. SSH, Postgres, Redis,
+RabbitMQ, Docker, and future connectors share the same model: target,
+credential profile, connector action, token action permission, approval,
+history, and audit.
 
 For SSH, call `get_connector_actions(target_ref)` to discover actions such as
 `exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
@@ -84,6 +85,14 @@ browser actions such as `overview`, `list_vhosts`, `list_queues`, `get_queue`,
 `list_bindings`, `peek_messages`, and `publish_message`. Message payload
 previews and published payloads can contain secrets or customer data; use short
 reasons and prefer approval-required access until the workflow is trusted.
+
+For Docker, call `get_connector_actions(target_ref)` to discover bounded
+container actions such as `docker_version`, `list_containers`,
+`inspect_container`, `container_logs`, `start_container`, `stop_container`, and
+`restart_container`. Docker credential profiles can scope a token to all
+containers, selected container names/IDs, or name patterns. The Docker
+connector does not expose arbitrary `docker exec`, prune, removal, shell, or raw
+Docker command execution.
 
 Connector responses can include `approval_pending` or `running`. Poll
 `get_connector_action_request(request_id)` until the request reaches a terminal
