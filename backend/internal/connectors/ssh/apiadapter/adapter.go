@@ -39,6 +39,11 @@ const (
 	maxConfigParseBytes      = 256 * 1024
 )
 
+type LiveConsoleOptions struct {
+	ForceShellCommand        string
+	StartupInputAfterConnect string
+}
+
 type adapter struct{}
 
 func init() {
@@ -322,7 +327,7 @@ func (adapter) LiveConsoleActionName() string {
 	return sshconnector.ActionExec
 }
 
-func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, rows int, cols int) (*console.RuntimeSession, error) {
+func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, rows int, cols int, _ map[string]any) (*console.RuntimeSession, error) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		return nil, err
@@ -330,6 +335,32 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 	target, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve ssh material: %w", err)
+	}
+	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey, rows, cols, LiveConsoleOptions{})
+}
+
+func OpenLiveConsoleForTargetRef(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, targetRef string, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
+	gateway, err := serverFrom(server)
+	if err != nil {
+		return nil, err
+	}
+	runtimeID, err := runtimeIDForTargetRef(ctx, runtime, targetRef)
+	if err != nil {
+		return nil, err
+	}
+	target, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve ssh material: %w", err)
+	}
+	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey, rows, cols, options)
+}
+
+func openLiveConsoleWithMaterial(_ context.Context, gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
+	if strings.TrimSpace(options.ForceShellCommand) != "" {
+		target.ForceShellCommand = strings.TrimSpace(options.ForceShellCommand)
+	}
+	if options.StartupInputAfterConnect != "" {
+		target.StartupInputAfterConnect = options.StartupInputAfterConnect
 	}
 	signer, err := ssh.ParsePrivateKey([]byte(privateKey.PrivateKey))
 	if err != nil {

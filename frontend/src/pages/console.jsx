@@ -374,11 +374,11 @@ export function ConsolePage() {
     }
   }
 
-  async function startNewConsoleSession(runtimeTarget) {
+  async function startNewConsoleSession(runtimeTarget, options = {}) {
     if (!runtimeTarget) return;
     setNewSessionError("");
     try {
-      await newConsoleSession(runtimeTarget);
+      await newConsoleSession(runtimeTarget, options);
     } catch (error) {
       const model = getConnectorModel(runtimeTarget.connector_kind);
       const operation = model?.operationFromError?.(error, { operation: "new-session", target: runtimeTarget });
@@ -575,8 +575,12 @@ export function ConsolePage() {
               target={selectedTarget}
               approvals={connectorActionApprovals}
               theme={theme}
-              session={selectedStructuredSession}
+              session={selectedTargetUsesLiveConsole ? selectedSession : selectedStructuredSession}
+              selectedSessionLive={selectedSessionLive}
+              selectedRuntimeTarget={selectedRuntimeTarget}
               onNewStructuredSession={startStructuredConnectorSession}
+              onNewLiveSession={(options = {}) => selectedRuntimeTarget && startNewConsoleSession(selectedRuntimeTarget, options)}
+              onEndLiveSession={() => selectedSession.id && closeConsoleSession(selectedSession.id)}
               onOpenActivity={() => setConnectorActivityOpen(true)}
               onRefreshActivity={loadConnectorActionApprovals}
             >

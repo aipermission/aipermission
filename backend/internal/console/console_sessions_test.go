@@ -1179,7 +1179,7 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 23)
-	manager := NewManager(database, func(context.Context, int64, int, int) (*RuntimeSession, error) {
+	manager := NewManager(database, func(context.Context, int64, int, int, map[string]any) (*RuntimeSession, error) {
 		return nil, errors.New("transport dial: dial tcp 127.0.0.1:23: connect: connection refused")
 	}, nil)
 

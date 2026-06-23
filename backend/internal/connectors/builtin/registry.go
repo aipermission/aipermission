@@ -5,6 +5,7 @@ package builtin
 import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
+	_ "github.com/aipermission/aipermission/backend/internal/connectors/docker/apiadapter"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"

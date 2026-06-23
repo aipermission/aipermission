@@ -574,6 +574,23 @@ var migrations = []migration{
 			},
 		),
 	},
+	{
+		version:     3,
+		description: "docker live console runtime surfaces",
+		statements: []string{
+			`INSERT INTO connector_runtime_surfaces (
+				connector_kind, target_id, profile_id, capability_kind, label, status, created_at, updated_at
+			)
+			SELECT p.connector_kind, p.target_id, p.id, 'live_console', p.label, 'active', datetime('now'), datetime('now')
+			FROM connector_credential_profiles p
+			JOIN connector_targets t ON t.id = p.target_id AND t.connector_kind = p.connector_kind
+			WHERE p.connector_kind = 'docker' AND p.status = 'active' AND t.status = 'active'
+			ON CONFLICT(connector_kind, target_id, profile_id, capability_kind) DO UPDATE SET
+				label = excluded.label,
+				status = 'active',
+				updated_at = excluded.updated_at`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {

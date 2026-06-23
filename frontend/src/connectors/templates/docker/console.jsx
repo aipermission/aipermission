@@ -1,4 +1,4 @@
-import { Container, FileJson, LoaderCircle, Play, Power, RefreshCcw, RotateCcw, Square } from "lucide-react";
+import { Container, FileJson, LoaderCircle, Play, Power, RefreshCcw, RotateCcw, Square, TerminalSquare, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -8,8 +8,7 @@ import { Input } from "../../../components/ui/form";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost } from "../../../lib/api";
 
-export function DockerConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
-  const activeSession = session || { active: false, startedAt: "" };
+export function DockerConnectorConsoleTemplate({ children, target, approvals, theme, session, selectedSessionLive, selectedRuntimeTarget, onNewLiveSession, onEndLiveSession, onRefreshActivity }) {
   const [resourceView, setResourceView] = useState("containers");
   const [containers, setContainers] = useState([]);
   const [resources, setResources] = useState({ images: [], networks: [], volumes: [] });
@@ -32,6 +31,9 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
   const activeItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
   const latestAction = activeItems[0] || null;
   const selectedContainer = containers.find((container) => container.id === selectedID || container.name === selectedID) || null;
+  const selectedContainerRef = selectedContainer ? selectedContainer.name || selectedContainer.id : "";
+  const expectedConsoleSessionName = selectedContainerRef ? dockerConsoleSessionName(target, selectedContainerRef) : "";
+  const selectedContainerConsoleLive = Boolean(selectedSessionLive && session?.name === expectedConsoleSessionName);
   const activeResourceList = resourceView === "containers" ? containers : resources[resourceView] || [];
   const selectedResource = resourceView === "containers" ? selectedContainer : activeResourceList.find((item) => resourceKey(resourceView, item) === selectedResourceID) || null;
   const showingInspect = viewMode === "inspect";
@@ -52,17 +54,16 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
     setResult(null);
     setResultSearch("");
     setState({ state: "idle", error: "", message: "" });
-  }, [target.ref, activeSession.active, activeSession.startedAt]);
+  }, [target.ref]);
 
   useEffect(() => {
-    if (!activeSession.active) return;
     void refreshContainers();
-  }, [activeSession.active, activeSession.startedAt, target.ref]);
+  }, [target.ref]);
 
   useEffect(() => {
-    if (!activeSession.active || resourceView === "containers") return;
+    if (resourceView === "containers") return;
     void refreshResource(resourceView);
-  }, [activeSession.active, activeSession.startedAt, resourceView, target.ref]);
+  }, [resourceView, target.ref]);
 
   async function runDockerAction({ actionName, input = {}, reason, busy = "running", showResult = true }) {
     setState({ state: busy, error: "", message: "" });
@@ -126,6 +127,21 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
     });
   }
 
+  function openContainerConsole(container = selectedContainer) {
+    if (!container) return;
+    setViewMode("console");
+    setResult(null);
+    setResultSearch("");
+  }
+
+  async function startContainerConsole() {
+    if (!selectedContainerRef) return;
+    await onNewLiveSession?.({
+      name: expectedConsoleSessionName,
+      params: { container: selectedContainerRef },
+    });
+  }
+
   function selectContainer(container) {
     if (selectedContainer && (selectedContainer.id === container.id || selectedContainer.name === container.name)) {
       setSelectedID("");
@@ -138,6 +154,8 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
     setResultSearch("");
     if (viewMode === "inspect") {
       void inspectContainer(container);
+    } else if (viewMode === "console") {
+      openContainerConsole(container);
     } else {
       void readLogs(container);
     }
@@ -215,26 +233,6 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
     } catch {
       setConfirmDialog((current) => ({ ...current, pending: false }));
     }
-  }
-
-  if (!activeSession.active) {
-    return (
-      <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
-        <div className="grid place-items-center p-8 text-center">
-          <div className="grid max-w-lg gap-4">
-            <Container className={`mx-auto h-10 w-10 ${mutedClass}`} />
-            <div>
-              <h3 className="text-lg font-semibold">No active Docker session</h3>
-              <p className={`mt-2 text-sm ${mutedClass}`}>Start a structured session to browse scoped Docker containers through the connector approval, history, and audit pipeline.</p>
-            </div>
-            <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
-              Start Docker session
-            </Button>
-          </div>
-        </div>
-        <DockerEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      </div>
-    );
   }
 
   return (
@@ -318,7 +316,7 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
                     {showingInspect ? <RefreshCcw className="h-3.5 w-3.5" /> : <FileJson className="h-3.5 w-3.5" />}
                     {showingInspect ? "Logs" : "Inspect"}
                   </Button>
-                  {!showingInspect ? (
+                  {!showingInspect && viewMode !== "console" ? (
                     <>
                       <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
                         Tail
@@ -329,6 +327,9 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
                       </Button>
                     </>
                   ) : null}
+                  <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openContainerConsole()} disabled={state.state !== "idle"} title="Open live console inside this container">
+                    <TerminalSquare className="h-3.5 w-3.5" />
+                  </Button>
                   <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("start_container")} disabled={state.state !== "idle"} title="Start container">
                     <Play className="h-3.5 w-3.5" />
                   </Button>
@@ -352,6 +353,22 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
               <div className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>{resourcePlaceholder(resourceView)}</div>
             ) : resourceView !== "containers" ? (
               <DockerResourceDetail resourceView={resourceView} item={selectedResource} search={resultSearch} onSearch={setResultSearch} inputClass={inputClass} />
+            ) : viewMode === "console" ? (
+              <DockerContainerConsolePanel
+                target={target}
+                container={selectedContainer}
+                containerRef={selectedContainerRef}
+                selectedRuntimeTarget={selectedRuntimeTarget}
+                session={session}
+                sessionLive={selectedContainerConsoleLive}
+                theme={theme}
+                mutedClass={mutedClass}
+                borderClass={borderClass}
+                onStart={startContainerConsole}
+                onEnd={onEndLiveSession}
+              >
+                {children}
+              </DockerContainerConsolePanel>
             ) : state.state !== "idle" && !result ? (
               <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>
                 <span className="inline-flex items-center gap-2">
@@ -398,6 +415,60 @@ export function DockerConnectorConsoleTemplate({ target, approvals, theme, sessi
       </Dialog>
     </div>
   );
+}
+
+function DockerContainerConsolePanel({ children, target, container, containerRef, selectedRuntimeTarget, session, sessionLive, theme, mutedClass, borderClass, onStart, onEnd }) {
+  const light = theme === "light";
+  if (!container) {
+    return (
+      <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>
+        Select a container, then open a live console inside it.
+      </div>
+    );
+  }
+  if (sessionLive) {
+    return (
+      <div className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass}`}>
+        <div className={`flex min-w-0 items-center justify-between gap-3 border-b px-3 py-2 ${borderClass}`}>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">Container console</p>
+            <p className="truncate font-mono text-xs">{containerRef}</p>
+          </div>
+          <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={onEnd} title="Close this container console session">
+            <XCircle className="h-3.5 w-3.5" />
+            End
+          </Button>
+        </div>
+        <div className="min-h-0 overflow-hidden">{children}</div>
+      </div>
+    );
+  }
+  const lastSessionForOtherContainer = session?.id && session?.name !== dockerConsoleSessionName(target, containerRef);
+  return (
+    <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center ${borderClass}`}>
+      <div className="grid max-w-md gap-4">
+        <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${light ? "border-stone-200 bg-stone-100" : "border-stone-600 bg-stone-800"}`}>
+          <TerminalSquare className={`h-6 w-6 ${light ? "text-stone-600" : "text-stone-300"}`} />
+        </div>
+        <div className="grid gap-2">
+          <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>No active container console</h3>
+          <p className={`text-sm leading-6 ${mutedClass}`}>
+            Start an interactive shell inside <span className="font-mono">{containerRef}</span>. It uses the same live terminal as SSH console.
+          </p>
+          {lastSessionForOtherContainer ? <p className="text-xs text-amber-500">Starting this console will close the current Docker console session for this profile.</p> : null}
+          {!selectedRuntimeTarget ? <p className="text-xs text-red-500">This Docker profile does not have a live runtime surface yet. Save the connector once, then retry.</p> : null}
+        </div>
+        <Button type="button" className="mx-auto" onClick={onStart} disabled={!selectedRuntimeTarget}>
+          <RefreshCcw className="h-4 w-4" />
+          Start Container Console
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function dockerConsoleSessionName(target, containerRef) {
+  return `docker:${target?.ref || "target"}:${containerRef}`;
 }
 
 function DockerResultView({ item, search, onSearch, inputClass }) {

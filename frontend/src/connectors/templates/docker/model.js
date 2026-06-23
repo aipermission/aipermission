@@ -188,7 +188,23 @@ export function targetProfileLabel({ target }) {
 }
 
 export function usesLiveConsole() {
-  return false;
+  return true;
+}
+
+export function liveConsoleRuntimeTarget({ target }) {
+  return {
+    id: target.runtime_id,
+    name: targetDisplayName({ target }),
+    host: target.config?.transport_target_ref || "",
+    port: 0,
+    username: target.profile_label || "",
+    description: "Docker container console",
+    connector_ref: target.ref,
+    connector_kind: target.connector_kind,
+    target_id: target.target_id,
+    profile_id: target.profile_id,
+    target,
+  };
 }
 
 export function deleteDialog({ target }) {

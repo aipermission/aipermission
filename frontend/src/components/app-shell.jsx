@@ -247,11 +247,12 @@ export function Shell({ theme, setTheme }) {
     return newConsoleSession(server);
   }
 
-  async function newConsoleSession(server) {
+  async function newConsoleSession(server, options = {}) {
     const session = await apiPost("/api/console/sessions", {
       runtime_id: server.id,
-      name: `${server.name} shell`,
+      name: options.name || `${server.name} shell`,
       close_existing: true,
+      params: options.params || undefined,
     });
     upsertConsoleSession(session);
     attachConsoleSession(session.id);

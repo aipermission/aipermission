@@ -169,7 +169,7 @@ type LiveConsoleTargetAdapter interface {
 // LiveConsoleTransportAdapter opens a connector-owned persistent runtime for
 // the generic live console manager.
 type LiveConsoleTransportAdapter interface {
-	OpenLiveConsole(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, rows int, cols int) (*console.RuntimeSession, error)
+	OpenLiveConsole(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, rows int, cols int, params map[string]any) (*console.RuntimeSession, error)
 }
 
 // TCPTransportAdapter lets one connector provide a reviewed TCP transport for

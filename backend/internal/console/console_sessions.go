@@ -60,12 +60,13 @@ type Record struct {
 }
 
 type CreateRequest struct {
-	RuntimeID     int64  `json:"runtime_id"`
-	Name          string `json:"name"`
-	CloseExisting bool   `json:"close_existing"`
-	Cols          int    `json:"cols"`
-	Rows          int    `json:"rows"`
-	WaitForStart  bool   `json:"wait_for_start"`
+	RuntimeID     int64          `json:"runtime_id"`
+	Name          string         `json:"name"`
+	CloseExisting bool           `json:"close_existing"`
+	Cols          int            `json:"cols"`
+	Rows          int            `json:"rows"`
+	WaitForStart  bool           `json:"wait_for_start"`
+	Params        map[string]any `json:"params,omitempty"`
 }
 
 type InputRequest struct {
@@ -81,7 +82,7 @@ type ExecResult struct {
 	DurationMS int64
 }
 
-type RuntimeOpener func(context.Context, int64, int, int) (*RuntimeSession, error)
+type RuntimeOpener func(context.Context, int64, int, int, map[string]any) (*RuntimeSession, error)
 
 type RuntimeSession struct {
 	Stdin                    io.WriteCloser
@@ -131,12 +132,24 @@ func (m *Manager) redactText(value string) string {
 	return m.redact(value)
 }
 
+func cloneParams(params map[string]any) map[string]any {
+	if len(params) == 0 {
+		return nil
+	}
+	clone := make(map[string]any, len(params))
+	for key, value := range params {
+		clone[key] = value
+	}
+	return clone
+}
+
 type managedConsoleSession struct {
 	id        int64
 	runtimeID int64
 	name      string
 	cols      int
 	rows      int
+	params    map[string]any
 	manager   *Manager
 
 	ctx       context.Context

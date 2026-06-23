@@ -102,6 +102,7 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 		name:      request.Name,
 		cols:      request.Cols,
 		rows:      request.Rows,
+		params:    cloneParams(request.Params),
 		manager:   m,
 		ctx:       sessionCtx,
 		cancel:    cancel,
