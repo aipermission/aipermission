@@ -191,6 +191,10 @@ export function usesLiveConsole() {
   return true;
 }
 
+export function recoverableRunningActions() {
+  return [];
+}
+
 export function liveConsoleRuntimeTarget({ target }) {
   return {
     id: target.runtime_id,

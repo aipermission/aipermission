@@ -227,6 +227,10 @@ export function usesLiveConsole() {
   return true;
 }
 
+export function recoverableRunningActions() {
+  return ["exec"];
+}
+
 export function liveConsoleRuntimeTarget({ target }) {
   const profile = target.public || {};
   return {

@@ -152,8 +152,9 @@ export function ConsolePage() {
     .filter((permission) => permission?.expires_at)
     .map((permission) => permissionLifetimeLabel(permission, now));
   const showAlwaysRunWarning = Boolean(mcpRuntime?.data?.enabled && selectedTarget && alwaysRunTokenPermissions.length > 0);
-  const selectedRunningConnectorRequests = selectedTargetUsesLiveConsole && selectedTarget?.connector_kind === "ssh"
-    ? connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === selectedTarget.ref && approval.action_name === "exec")
+  const selectedRecoverableRunningActions = recoverableRunningActions(selectedTarget);
+  const selectedRunningConnectorRequests = selectedTarget && selectedRecoverableRunningActions.length > 0
+    ? connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === selectedTarget.ref && selectedRecoverableRunningActions.includes(approval.action_name))
     : [];
   const selectedRunningRequest = selectedRunningConnectorRequests[0] || null;
   const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0) + (newSessionError ? 1 : 0);
@@ -886,6 +887,13 @@ function targetUsesLiveConsole(target) {
   if (!target) return false;
   const model = getConnectorModel(target.connector_kind);
   return Boolean(model?.usesLiveConsole?.({ target }));
+}
+
+function recoverableRunningActions(target) {
+  if (!target) return [];
+  const model = getConnectorModel(target.connector_kind);
+  const actions = model?.recoverableRunningActions?.({ target });
+  return Array.isArray(actions) ? actions.filter(Boolean).map(String) : [];
 }
 
 function selectedTargetStatus({ target, session, pendingCount = 0, runningCount = 0 }) {

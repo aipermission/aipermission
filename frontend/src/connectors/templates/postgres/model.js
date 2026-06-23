@@ -215,6 +215,10 @@ export function usesLiveConsole() {
   return false;
 }
 
+export function recoverableRunningActions() {
+  return [];
+}
+
 export function deleteDialog({ target }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",

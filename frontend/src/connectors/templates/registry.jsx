@@ -27,6 +27,7 @@ const requiredModelFunctions = Object.freeze([
   "targetProfileLabel",
   "targetSubtitle",
   "test",
+  "recoverableRunningActions",
   "usesLiveConsole",
 ]);
 
