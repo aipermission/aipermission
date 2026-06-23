@@ -21,7 +21,7 @@ Pin a specific release image with `AIPERMISSION_VERSION` without the leading
 `v`:
 
 ```txt
-AIPERMISSION_VERSION=0.2.9 docker compose -f docker-compose.release.yml up -d
+AIPERMISSION_VERSION=0.2.10 docker compose -f docker-compose.release.yml up -d
 ```
 
 On Windows, keep shell scripts checked out with LF line endings. Git should do

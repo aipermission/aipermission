@@ -1,6 +1,35 @@
-export const appVersion = "0.2.9";
+export const appVersion = "0.2.10";
 
 export const changelogEntries = [
+  {
+    version: "0.2.10",
+    label: "Kubernetes connector",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Kubernetes is now a built-in connector that runs bounded kubectl templates through an SSH transport profile.",
+          "Kubernetes Console adds resource tabs for workloads, pods, services, ingress, nodes, and events with namespace filtering.",
+          "Kubernetes MCP actions cover cluster version, resource lists, resource describe, bounded pod log tails, and explicit rollout restart.",
+          "Pod console sessions reuse the same live terminal component as SSH and Docker console for one selected pod/container.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Manual command history now completes for Kubernetes/BusyBox-style prompts such as / # and /app $.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Kubernetes does not expose raw kubectl, manifest apply/edit/delete, pod deletion, scaling, or Secret value browsing.",
+          "Kubernetes profiles scope access by namespace visibility, and pod logs remain bounded by requested tail limits.",
+          "rollout_restart is the only Kubernetes write action in this release and still follows token/action permissions and approval policy.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.9",
     label: "Docker inventory and images",

@@ -56,7 +56,8 @@ AIPermission is intentionally designed as a local developer gateway.
 
 - The gateway runs on the developer's own machine.
 - Remote systems are connector targets reached from that local gateway.
-- SSH, Postgres, Redis, RabbitMQ, and Docker are built-in connector types, not separate product modes.
+- SSH, Postgres, Redis, RabbitMQ, Docker, and Kubernetes are built-in connector
+  types, not separate product modes.
 - The web UI, REST API, and MCP API are not designed to be shared on a LAN.
 - The project does not support running the gateway as a remote hosted service.
 - The project provides a local browser session after database unlock, not multi-user web auth, team RBAC, or public network hardening.
@@ -143,6 +144,9 @@ Implemented:
 - Docker credential profiles can scope MCP access to all containers, selected
   container names/IDs, or name patterns, so one token can be limited to a
   single container on a shared Docker host.
+- built-in Kubernetes connector over an SSH transport profile, with namespace,
+  workload, pod, service, ingress, node, event, describe, bounded pod-log, live
+  pod-console, and explicit rollout restart actions
 - gateway-generated SSH keys (`ed25519` and `rsa`)
 - explicit existing SSH private key import into the encrypted local vault
 - SSH host import from OpenSSH config files for prefilling connector targets
@@ -208,7 +212,7 @@ To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
 `v`:
 
 ```bash
-AIPERMISSION_VERSION=0.2.9 docker compose -f docker-compose.release.yml up -d
+AIPERMISSION_VERSION=0.2.10 docker compose -f docker-compose.release.yml up -d
 ```
 
 On Windows, clone the repository with Git's default text handling or make sure
@@ -348,8 +352,9 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-The MCP surface is connector-first. SSH, Postgres, Redis, RabbitMQ, Docker, and future integrations use
-the same target/profile/action permission pipeline. `list_connector_targets` is
+The MCP surface is connector-first. SSH, Postgres, Redis, RabbitMQ, Docker,
+Kubernetes, and future integrations use the same target/profile/action permission
+pipeline. `list_connector_targets` is
 permission-scoped, not a live health check. Current reachability is learned when
 the connector action actually runs and returns a dial, timeout, authentication,
 host-key, credential, or service error.
@@ -375,6 +380,13 @@ Docker credential profiles can scope a token to all containers, selected
 container names/IDs, or name patterns. `container_exec` and the live container
 console are scoped to one visible container; arbitrary host-level Docker
 commands, prune, removal, and raw Docker command execution are not exposed.
+
+For Kubernetes, call `get_connector_actions(target_ref)` to discover bounded
+actions such as `cluster_version`, `list_namespaces`, `list_workloads`,
+`list_pods`, `list_services`, `list_ingress`, `list_nodes`, `list_events`,
+`describe_resource`, `get_logs`, and `rollout_restart`. Kubernetes profiles can
+scope access by namespace visibility. Raw `kubectl`, manifest apply/edit/delete,
+pod deletion, scaling, and Secret value browsing are not exposed.
 
 If an action returns `approval_pending` or `running`, the response includes an
 `assistant_hint` telling the AI to poll `get_connector_action_request` until the

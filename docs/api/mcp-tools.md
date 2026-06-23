@@ -2,8 +2,8 @@
 
 The MCP surface is connector-first. AIPermission does not expose separate
 product-specific MCP wrappers for SSH, database, cache, queue, or container
-products. SSH, Postgres, Redis, RabbitMQ, Docker, and future integrations are
-reached through the same connector target/action pipeline.
+products. SSH, Postgres, Redis, RabbitMQ, Docker, Kubernetes, and future
+integrations are reached through the same connector target/action pipeline.
 
 Recommended package use:
 
@@ -52,6 +52,7 @@ postgres:7:2
 redis:8:3
 rabbitmq:9:4
 docker:10:5
+kubernetes:11:6
 ```
 
 The profile chooses which stored credential is used. The connector action still
@@ -59,8 +60,8 @@ runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
-Postgres, Redis, RabbitMQ, or Docker as special MCP modes; future connector
-kinds use the same tools and `target_ref` shape.
+Postgres, Redis, RabbitMQ, Docker, or Kubernetes as special MCP modes; future
+connector kinds use the same tools and `target_ref` shape.
 
 ## list_connector_targets
 
@@ -154,6 +155,12 @@ only list or operate on that container through Docker actions; image, network,
 volume reads, `container_exec`, and live container console sessions are bounded
 to the selected container scope where practical. Arbitrary host-level Docker
 commands, prune, removal, and raw Docker command execution are not exposed.
+
+Kubernetes actions include cluster version metadata, namespace/workload/pod/
+service/ingress/node/event listing, resource JSON describes, bounded pod log
+tails, and explicit `rollout_restart` for deployments. Kubernetes profiles can
+scope access by namespace visibility. Raw `kubectl`, manifest apply/edit/delete,
+pod deletion, scaling, and Secret value browsing are not exposed.
 
 ## call_connector_action
 

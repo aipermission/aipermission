@@ -11,12 +11,13 @@ Main target:
 The MVP is not a DevOps platform. It does not own production operations. It gives a developer a controlled, token-scoped, auditable execution channel for debugging, maintenance, incident triage, and temporary AI-assisted automation.
 
 The MVP does not introduce first-class management modules for every external
-system. It introduces one connector pipeline. SSH, Postgres, Redis, RabbitMQ, Docker, and future
-integrations are connector kinds that provide their own actions while sharing
-the same target/profile/action permission model. If an allowed SSH target has
-the needed CLI tools and access, the AI can operate at command level through
-the SSH connector `exec` action. If a structured connector such as Postgres is
-selected, the AI uses that connector's smaller purpose-built action surface.
+system. It introduces one connector pipeline. SSH, Postgres, Redis, RabbitMQ,
+Docker, Kubernetes, and future integrations are connector kinds that provide
+their own actions while sharing the same target/profile/action permission model.
+If an allowed SSH target has the needed CLI tools and access, the AI can operate
+at command level through the SSH connector `exec` action. If a structured
+connector such as Postgres is selected, the AI uses that connector's smaller
+purpose-built action surface.
 
 The gateway itself is local-only. It is not designed to run on a remote server for browser/MCP clients, to be shared on a LAN, or to act as a central team control plane.
 
@@ -37,8 +38,9 @@ The gateway itself is local-only. It is not designed to run on a remote server f
   SFTP transfer, and host-key approval
 - built-in Postgres connector with schema/table inspection and bounded
   read-only query actions
-- built-in Redis, RabbitMQ, and Docker connectors for scoped cache, queue, and
-  container operations through the shared connector pipeline
+- built-in Redis, RabbitMQ, Docker, and Kubernetes connectors for scoped cache,
+  queue, container runtime, and cluster visibility through the shared connector
+  pipeline
 - API token creation and revocation
 - token-to-target/profile/action permissions
 - execution rules: `always_run`, `approval_required`, `blocked`

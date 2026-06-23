@@ -7,6 +7,38 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-06-23
+
+### Added
+
+- Added Kubernetes as a built-in connector that runs bounded `kubectl` templates
+  through an SSH transport profile.
+- Added Kubernetes Console resource tabs for workloads, pods, services,
+  ingress, nodes, and events, with namespace filtering and selected-resource
+  details.
+- Added Kubernetes MCP actions for cluster version, namespaces, workloads, pods,
+  services, ingress, nodes, warning-first events, resource describe, and bounded
+  pod log tails.
+- Added live Kubernetes pod console sessions that reuse the same terminal
+  component as SSH and Docker console while entering one selected pod/container.
+- Added an explicit `rollout_restart` deployment action for operator-approved
+  restarts.
+
+### Fixed
+
+- Fixed manual command history completion for Kubernetes/BusyBox-style path
+  prompts such as `/ #` and `/app $`, so pod-console commands no longer remain
+  stuck as `running`.
+
+### Security
+
+- Kubernetes does not expose raw `kubectl`, manifest apply/edit/delete, pod
+  deletion, scaling, or Secret value browsing.
+- Kubernetes profiles scope access by namespace visibility, and pod logs remain
+  bounded by requested tail limits.
+- `rollout_restart` is the only Kubernetes write action in this release and is
+  still governed by token/action permissions and approval policy.
+
 ## [0.2.9] - 2026-06-23
 
 ### Added

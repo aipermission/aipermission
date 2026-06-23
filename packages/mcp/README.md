@@ -9,8 +9,8 @@ credentials, or other connector secrets.
 The gateway is intentionally local-only. Run it on the developer machine and
 keep the URL on `localhost`; remote systems are connector targets, not places
 to host the gateway for LAN or internet users. SSH, Postgres, Redis, RabbitMQ,
-and Docker are built-in connectors that use the same target/profile/action
-permission model as future connectors.
+Docker, and Kubernetes are built-in connectors that use the same
+target/profile/action permission model as future connectors.
 
 ![AIPermission demo: AI operates through approval-based connector access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
 
@@ -62,7 +62,7 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `get_connector_action_request`
 
 All integration work goes through connector targets. SSH, Postgres, Redis,
-RabbitMQ, Docker, and future connectors share the same model: target,
+RabbitMQ, Docker, Kubernetes, and future connectors share the same model: target,
 credential profile, connector action, token action permission, approval,
 history, and audit.
 
@@ -95,6 +95,14 @@ container names/IDs, or name patterns. `container_exec` and live container
 console sessions are scoped to one visible container; arbitrary host-level
 Docker commands, prune, removal, and raw Docker command execution are not
 exposed.
+
+For Kubernetes, call `get_connector_actions(target_ref)` to discover bounded
+actions such as `cluster_version`, `list_namespaces`, `list_workloads`,
+`list_pods`, `list_services`, `list_ingress`, `list_nodes`, `list_events`,
+`describe_resource`, `get_logs`, and `rollout_restart`. Kubernetes actions run
+through an SSH transport profile and can be scoped by namespace visibility. Raw
+`kubectl`, manifest apply/edit/delete, pod deletion, scaling, and Secret value
+browsing are not exposed.
 
 Connector responses can include `approval_pending` or `running`. Poll
 `get_connector_action_request(request_id)` until the request reaches a terminal
