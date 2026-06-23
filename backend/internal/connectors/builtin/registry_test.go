@@ -7,6 +7,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
+	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
@@ -25,6 +26,13 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 	if docker.Label() != dockerconnector.Label {
 		t.Fatalf("docker label = %q", docker.Label())
+	}
+	kubernetes, ok := registry.Get(kubernetesconnector.Kind)
+	if !ok {
+		t.Fatal("expected kubernetes connector")
+	}
+	if kubernetes.Label() != kubernetesconnector.Label {
+		t.Fatalf("kubernetes label = %q", kubernetes.Label())
 	}
 
 	postgres, ok := registry.Get(postgresconnector.Kind)
@@ -58,7 +66,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 5 || infos[0].Kind != dockerconnector.Kind || infos[1].Kind != postgresconnector.Kind || infos[2].Kind != rabbitmqconnector.Kind || infos[3].Kind != redisconnector.Kind || infos[4].Kind != sshconnector.Kind {
+	if len(infos) != 6 || infos[0].Kind != dockerconnector.Kind || infos[1].Kind != kubernetesconnector.Kind || infos[2].Kind != postgresconnector.Kind || infos[3].Kind != rabbitmqconnector.Kind || infos[4].Kind != redisconnector.Kind || infos[5].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -139,6 +147,33 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				dockerconnector.ActionStartContainer:   {"container": "api"},
 				dockerconnector.ActionStopContainer:    {"container": "api", "timeout_seconds": 10},
 				dockerconnector.ActionRestartContainer: {"container": "api", "timeout_seconds": 10},
+			}
+	case kubernetesconnector.Kind:
+		return connectors.TargetView{
+				ID:            6,
+				Ref:           "kubernetes:6:60",
+				ConnectorKind: kubernetesconnector.Kind,
+				Name:          "cluster",
+				Config:        map[string]any{"connection_mode": "over_ssh", "transport_target_ref": "ssh:2:20", "kubectl_command": "kubectl"},
+			}, connectors.CredentialProfileView{
+				ID:            60,
+				TargetID:      6,
+				ConnectorKind: kubernetesconnector.Kind,
+				Kind:          "namespace_scope",
+				Label:         "production",
+				Public:        map[string]any{"scope_mode": "selected", "namespaces": "production"},
+			}, map[string]map[string]any{
+				kubernetesconnector.ActionVersion:        {},
+				kubernetesconnector.ActionListNamespaces: {},
+				kubernetesconnector.ActionListWorkloads:  {"namespace": "production"},
+				kubernetesconnector.ActionListPods:       {"namespace": "production"},
+				kubernetesconnector.ActionListServices:   {"namespace": "production"},
+				kubernetesconnector.ActionListIngress:    {"namespace": "production"},
+				kubernetesconnector.ActionListNodes:      {},
+				kubernetesconnector.ActionListEvents:     {"namespace": "production", "limit": 10},
+				kubernetesconnector.ActionDescribe:       {"resource_type": "deployment", "namespace": "production", "name": "api"},
+				kubernetesconnector.ActionLogs:           {"namespace": "production", "pod": "api-123", "container": "api", "tail": 100},
+				kubernetesconnector.ActionRolloutRestart: {"namespace": "production", "deployment": "api"},
 			}
 	case postgresconnector.Kind:
 		return connectors.TargetView{
