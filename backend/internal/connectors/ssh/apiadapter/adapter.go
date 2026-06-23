@@ -476,6 +476,31 @@ func (conn sshTCPConn) Close() error {
 	return clientErr
 }
 
+func (adapter) RunConnectorCommand(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, targetRef string, command string) (connectors.CommandRunResult, error) {
+	gateway, err := serverFrom(server)
+	if err != nil {
+		return connectors.CommandRunResult{}, err
+	}
+	runtimeID, err := runtimeIDForTargetRef(ctx, runtime, targetRef)
+	if err != nil {
+		return connectors.CommandRunResult{}, err
+	}
+	target, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	if err != nil {
+		return connectors.CommandRunResult{}, fmt.Errorf("resolve ssh material: %w", err)
+	}
+	result, err := execution.RunCommand(ctx, executionTarget(gateway, target, privateKey), command)
+	if err != nil {
+		return connectors.CommandRunResult{}, err
+	}
+	return connectors.CommandRunResult{
+		Stdout:     result.Stdout,
+		Stderr:     result.Stderr,
+		ExitCode:   result.ExitCode,
+		DurationMS: result.DurationMS,
+	}, nil
+}
+
 func (adapter) SupportsRunning(prepared actions.PreparedRequest) bool {
 	return prepared.Target.ConnectorKind == sshconnector.Kind && prepared.Action.ActionName == sshconnector.ActionExec
 }

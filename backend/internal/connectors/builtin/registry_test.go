@@ -6,6 +6,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
+	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
@@ -16,6 +17,14 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	registry, err := NewRegistry()
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
+	}
+
+	docker, ok := registry.Get(dockerconnector.Kind)
+	if !ok {
+		t.Fatal("expected docker connector")
+	}
+	if docker.Label() != dockerconnector.Label {
+		t.Fatalf("docker label = %q", docker.Label())
 	}
 
 	postgres, ok := registry.Get(postgresconnector.Kind)
@@ -49,7 +58,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 4 || infos[0].Kind != postgresconnector.Kind || infos[1].Kind != rabbitmqconnector.Kind || infos[2].Kind != redisconnector.Kind || infos[3].Kind != sshconnector.Kind {
+	if len(infos) != 5 || infos[0].Kind != dockerconnector.Kind || infos[1].Kind != postgresconnector.Kind || infos[2].Kind != rabbitmqconnector.Kind || infos[3].Kind != redisconnector.Kind || infos[4].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -104,6 +113,29 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 	t.Helper()
 
 	switch kind {
+	case dockerconnector.Kind:
+		return connectors.TargetView{
+				ID:            5,
+				Ref:           "docker:5:50",
+				ConnectorKind: dockerconnector.Kind,
+				Name:          "docker-host",
+				Config:        map[string]any{"connection_mode": "over_ssh", "transport_target_ref": "ssh:2:20", "docker_command": "docker"},
+			}, connectors.CredentialProfileView{
+				ID:            50,
+				TargetID:      5,
+				ConnectorKind: dockerconnector.Kind,
+				Kind:          "container_scope",
+				Label:         "api-only",
+				Public:        map[string]any{"scope_mode": "selected", "allowed_containers": "api"},
+			}, map[string]map[string]any{
+				dockerconnector.ActionVersion:          {},
+				dockerconnector.ActionListContainers:   {"all": true},
+				dockerconnector.ActionInspectContainer: {"container": "api"},
+				dockerconnector.ActionContainerLogs:    {"container": "api", "tail": 100},
+				dockerconnector.ActionStartContainer:   {"container": "api"},
+				dockerconnector.ActionStopContainer:    {"container": "api", "timeout_seconds": 10},
+				dockerconnector.ActionRestartContainer: {"container": "api", "timeout_seconds": 10},
+			}
 	case postgresconnector.Kind:
 		return connectors.TargetView{
 				ID:            1,

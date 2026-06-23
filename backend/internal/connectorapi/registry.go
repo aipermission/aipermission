@@ -180,6 +180,13 @@ type TCPTransportAdapter interface {
 	DialConnectorTCP(ctx context.Context, server GatewayServer, runtime GatewayRuntime, targetRef string, network string, address string) (net.Conn, error)
 }
 
+// CommandTransportAdapter lets one connector run a bounded command template
+// through another connector-owned transport without exposing connector-specific
+// material to core or to the caller.
+type CommandTransportAdapter interface {
+	RunConnectorCommand(ctx context.Context, server GatewayServer, runtime GatewayRuntime, targetRef string, command string) (connectors.CommandRunResult, error)
+}
+
 type TransferProgress func(transferred int64, total int64)
 
 type TransferOptions struct {

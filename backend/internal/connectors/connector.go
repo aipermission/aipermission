@@ -107,7 +107,10 @@ type RuntimeCapability interface {
 	ConnectorRuntimeCapability() string
 }
 
-const NetworkTransportCapabilityName = "network_transport"
+const (
+	NetworkTransportCapabilityName = "network_transport"
+	CommandTransportCapabilityName = "command_transport"
+)
 
 // NetworkDialRequest describes a connector-owned network connection request.
 //
@@ -128,6 +131,35 @@ type NetworkDialRequest struct {
 type NetworkTransport interface {
 	RuntimeCapability
 	DialConnectorTCP(ctx context.Context, request NetworkDialRequest) (net.Conn, error)
+}
+
+// CommandRunRequest describes a connector-owned command execution request.
+//
+// Connectors use this capability when a bounded, connector-owned command
+// template must run through another reviewed connector transport such as SSH.
+// The caller connector still owns the command shape, output parsing, and
+// safety limits; the gateway only routes the command to the selected transport.
+type CommandRunRequest struct {
+	Mode               string
+	TransportTargetRef string
+	Command            string
+	TimeoutSeconds     int
+}
+
+// CommandRunResult is the captured result of one connector transport command.
+type CommandRunResult struct {
+	Stdout     string `json:"stdout"`
+	Stderr     string `json:"stderr"`
+	ExitCode   int    `json:"exit_code"`
+	DurationMS int64  `json:"duration_ms"`
+}
+
+// CommandTransport is a generic command transport capability injected by the
+// gateway. It intentionally returns only captured process output so structured
+// connectors such as Docker can stay independent from SSH internals.
+type CommandTransport interface {
+	RuntimeCapability
+	RunConnectorCommand(ctx context.Context, request CommandRunRequest) (CommandRunResult, error)
 }
 
 // RuntimeCapabilityResolver resolves reviewed connector-owned capabilities
