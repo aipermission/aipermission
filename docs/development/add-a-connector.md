@@ -69,9 +69,9 @@ These rules are part of the connector contract:
 Connector-specific gateway capabilities live behind adapter contracts in
 `internal/api/connector_api_adapters.go`. SSH uses those contracts for
 persistent PTY sessions, SFTP transfer, host-key approval, key
-generation/import, and remote authorized_keys cleanup. Generic route handlers
-must ask the adapter what the connector supports instead of branching on a
-connector kind.
+generation/import, reviewed TCP transport, reviewed command transport, and
+remote authorized_keys cleanup. Generic route handlers must ask the adapter
+what the connector supports instead of branching on a connector kind.
 
 Adapter methods use the typed `connectorapi.GatewayRuntime`,
 `connectorapi.GatewayServer`, `connectorapi.TargetLifecycleGateway`, and
@@ -184,6 +184,18 @@ adapters. Normal structured connectors should not depend on arbitrary gateway
 services. If a new connector needs a capability similar to live terminals,
 file transfer, or async progress, first define a reusable typed adapter
 contract and document why the shared action runner is not enough.
+
+Use existing reviewed capabilities before inventing connector-specific routes:
+
+- `NetworkTransport` opens direct or Over SSH TCP connections for protocol
+  connectors such as Postgres, Redis, and RabbitMQ.
+- `CommandTransport` runs bounded connector-owned command templates through a
+  reviewed connector transport such as SSH. Docker uses this for fixed Docker
+  CLI templates while keeping arbitrary shell and `docker exec` out of scope.
+
+Do not import the SSH connector package from another connector. Ask for a
+generic capability such as `NetworkTransport` or `CommandTransport`; the
+gateway resolves the selected transport profile.
 
 ## Frontend Templates
 

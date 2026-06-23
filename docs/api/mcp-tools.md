@@ -1,9 +1,9 @@
 # MCP Tools
 
 The MCP surface is connector-first. AIPermission does not expose separate
-product-specific MCP wrappers for SSH, database, cache, or queue products. SSH,
-Postgres, Redis, RabbitMQ, and future integrations are reached through the same
-connector target/action pipeline.
+product-specific MCP wrappers for SSH, database, cache, queue, or container
+products. SSH, Postgres, Redis, RabbitMQ, Docker, and future integrations are
+reached through the same connector target/action pipeline.
 
 Recommended package use:
 
@@ -51,6 +51,7 @@ ssh:3:1
 postgres:7:2
 redis:8:3
 rabbitmq:9:4
+docker:10:5
 ```
 
 The profile chooses which stored credential is used. The connector action still
@@ -58,8 +59,8 @@ runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
-Postgres, Redis, or RabbitMQ as special MCP modes; future connector kinds use
-the same tools and `target_ref` shape.
+Postgres, Redis, RabbitMQ, or Docker as special MCP modes; future connector
+kinds use the same tools and `target_ref` shape.
 
 ## list_connector_targets
 
@@ -143,6 +144,13 @@ queue listing, queue detail reads, binding listing, and bounded message peeking
 with `ack_requeue_true`, plus explicit `publish_message` writes. Message
 payload previews and published payloads may contain secrets or customer data;
 prefer approval-required access until the workflow is trusted.
+
+Docker actions include version metadata, scoped container listing, redacted
+container inspect metadata, bounded container log tails, and explicit
+start/stop/restart lifecycle actions. Docker profiles can be scoped to all
+containers, selected names/IDs, or name patterns. If a token is bound to a
+profile that allows one container, MCP can only list or operate on that
+container through Docker actions.
 
 ## call_connector_action
 

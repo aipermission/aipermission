@@ -13,13 +13,14 @@ Related central notes:
 operate on connector targets without receiving SSH private keys, SSH passwords,
 database credentials, API credentials, or other connector secrets.
 
-The current model ships with SSH, Postgres, Redis, and RabbitMQ connectors. SSH
-provides live terminal/file-transfer actions, Postgres provides structured
-metadata and bounded read-only query actions, Redis provides bounded key
-browsing plus explicit write/delete actions, and RabbitMQ provides queue
-metadata, bindings, bounded message previews, and explicit message publishing.
-They use the same target, credential profile, token permission, approval,
-history, and audit pipeline.
+The current model ships with SSH, Postgres, Redis, RabbitMQ, and Docker
+connectors. SSH provides live terminal/file-transfer actions, Postgres provides
+structured metadata and bounded read-only query actions, Redis provides bounded
+key browsing plus explicit write/delete actions, RabbitMQ provides queue
+metadata, bindings, bounded message previews, and explicit message publishing,
+and Docker provides scoped container inventory, logs, redacted inspect metadata,
+and explicit lifecycle actions. They use the same target, credential profile,
+token permission, approval, history, and audit pipeline.
 
 The product is intentionally not positioned as a full DevOps platform.
 
@@ -56,6 +57,7 @@ When a developer debugs a real system with an AI assistant, the assistant often 
 - "Run this on core-1."
 - "Check Kubernetes state on control-1."
 - "Inspect worker-3 logs."
+- "Restart only the API container on this Docker host."
 - "Check this readonly PostgreSQL table."
 
 Without a tool like aipermission, the developer becomes a terminal operator:
@@ -144,7 +146,7 @@ aipermission gateway
         | auth + permission check + approval flow
         v
 Connector target
-SSH server / Postgres database / future local integration
+SSH server / Postgres database / Redis cache / RabbitMQ broker / Docker host / future local integration
 ```
 
 The AI assistant does not receive SSH credentials or database passwords.
@@ -232,12 +234,13 @@ allowed connector targets:
 - ssh:core-1/admin -> read_console always_run
 - postgres:main-db/readonly -> query_readonly approval_required
 - redis:cache/ops -> get_key approval_required
+- docker:prod-docker/api-only -> container_logs approval_required
 ```
 
 The AI assistant can see and use only the connector targets and actions allowed
 by that token. For example, if the token can access five SSH targets, one
-Postgres target, and one Redis target, `list_connector_targets` returns only
-those target/profile refs.
+Postgres target, one Redis target, and one Docker profile scoped to a single
+container, `list_connector_targets` returns only those target/profile refs.
 
 If the same token exists in more than one unlocked database, MCP authentication returns a conflict. The gateway does not guess which workspace should receive the command.
 
@@ -253,7 +256,7 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-SSH, Postgres, Redis, RabbitMQ, and future integrations are exposed as
+SSH, Postgres, Redis, RabbitMQ, Docker, and future integrations are exposed as
 connector actions instead of separate product-specific MCP tools.
 
 ## Connector Action Flow
