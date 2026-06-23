@@ -1,0 +1,8 @@
+{
+  "kind": "docker",
+  "label": "Docker",
+  "summary": "Bounded container inventory, logs, inspect, and lifecycle actions through an SSH transport profile.",
+  "version": "0.2",
+  "icon": "server",
+  "badge_tone": "neutral"
+}
