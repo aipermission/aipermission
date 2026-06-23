@@ -19,7 +19,8 @@ structured metadata and bounded read-only query actions, Redis provides bounded
 key browsing plus explicit write/delete actions, RabbitMQ provides queue
 metadata, bindings, bounded message previews, and explicit message publishing,
 and Docker provides scoped container/image/network/volume inventory, logs,
-redacted inspect metadata, and explicit lifecycle actions. They use the same
+redacted inspect metadata, scoped container exec, live container console, and
+explicit lifecycle actions. They use the same
 target, credential profile,
 token permission, approval, history, and audit pipeline.
 
@@ -236,6 +237,7 @@ allowed connector targets:
 - postgres:main-db/readonly -> query_readonly approval_required
 - redis:cache/ops -> get_key approval_required
 - docker:prod-docker/api-only -> container_logs approval_required
+- docker:prod-docker/api-only -> container_exec approval_required
 ```
 
 The AI assistant can see and use only the connector targets and actions allowed

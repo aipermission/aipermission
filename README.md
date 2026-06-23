@@ -138,7 +138,8 @@ Implemented:
   explicit message publishing
 - built-in Docker connector over an SSH transport profile, with scoped
   container/image/network/volume inventory, redacted inspect metadata, bounded
-  logs, and explicit start/stop/restart actions
+  logs, scoped container exec, live container console, and explicit
+  start/stop/restart actions
 - Docker credential profiles can scope MCP access to all containers, selected
   container names/IDs, or name patterns, so one token can be limited to a
   single container on a shared Docker host.
@@ -369,10 +370,11 @@ count/truncation limits and `ack_requeue_true`.
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,
 `list_networks`, `list_volumes`, `inspect_container`, `container_logs`,
-`start_container`, `stop_container`, and `restart_container`. Docker credential
-profiles can scope a token to all containers, selected container names/IDs, or
-name patterns. The Docker connector does not expose arbitrary `docker exec`,
-prune, removal, shell, or raw Docker command execution.
+`container_exec`, `start_container`, `stop_container`, and `restart_container`.
+Docker credential profiles can scope a token to all containers, selected
+container names/IDs, or name patterns. `container_exec` and the live container
+console are scoped to one visible container; arbitrary host-level Docker
+commands, prune, removal, and raw Docker command execution are not exposed.
 
 If an action returns `approval_pending` or `running`, the response includes an
 `assistant_hint` telling the AI to poll `get_connector_action_request` until the

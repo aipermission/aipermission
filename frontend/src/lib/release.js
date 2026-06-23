@@ -11,6 +11,8 @@ export const changelogEntries = [
           "Docker connector actions now include scoped image, network, and volume inventory reads.",
           "Docker Console adds inventory tabs for Containers, Images, Networks, and Volumes with searchable metadata and raw JSON copy views.",
           "Container lists now surface health and Docker Compose project/service metadata when Docker exposes it.",
+          "Docker connector actions now include scoped container_exec for bounded non-interactive commands inside one visible container.",
+          "Docker Console can open a live terminal inside a selected container using the same xterm experience as SSH console.",
           "Release tags now publish backend and frontend container images to GitHub Container Registry.",
           "A new docker-compose.release.yml file lets users pull published images instead of building locally.",
         ],
@@ -20,7 +22,7 @@ export const changelogEntries = [
         items: [
           "Selected Docker credential profiles only expose images used by visible containers, and derive networks/volumes from scoped container inspect data.",
           "Prebuilt-image Compose keeps ports bound to 127.0.0.1 and does not change the local-only gateway boundary.",
-          "Docker still does not expose arbitrary docker exec, removal, prune, shell, or raw Docker command execution.",
+          "Docker container_exec and live container console are scoped to one visible container; arbitrary host-level Docker commands, removal, prune, and raw Docker command execution remain unavailable.",
         ],
       },
     ],

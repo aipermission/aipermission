@@ -146,12 +146,14 @@ payload previews and published payloads may contain secrets or customer data;
 prefer approval-required access until the workflow is trusted.
 
 Docker actions include version metadata, scoped container/image/network/volume
-listing, redacted container inspect metadata, bounded container log tails, and
-explicit start/stop/restart lifecycle actions. Docker profiles can be scoped to
-all containers, selected names/IDs, or name patterns. If a token is bound to a
-profile that allows one container, MCP can only list or operate on that
-container through Docker actions; image, network, and volume reads are also
-bounded to the selected container scope where practical.
+listing, redacted container inspect metadata, bounded container log tails,
+scoped `container_exec`, and explicit start/stop/restart lifecycle actions.
+Docker profiles can be scoped to all containers, selected names/IDs, or name
+patterns. If a token is bound to a profile that allows one container, MCP can
+only list or operate on that container through Docker actions; image, network,
+volume reads, `container_exec`, and live container console sessions are bounded
+to the selected container scope where practical. Arbitrary host-level Docker
+commands, prune, removal, and raw Docker command execution are not exposed.
 
 ## call_connector_action
 

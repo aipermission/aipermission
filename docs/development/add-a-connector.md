@@ -191,7 +191,9 @@ Use existing reviewed capabilities before inventing connector-specific routes:
   connectors such as Postgres, Redis, and RabbitMQ.
 - `CommandTransport` runs bounded connector-owned command templates through a
   reviewed connector transport such as SSH. Docker uses this for fixed Docker
-  CLI templates while keeping arbitrary shell and `docker exec` out of scope.
+  CLI templates while keeping arbitrary host-level shell and raw Docker command
+  execution out of scope. Scoped container exec is modeled as a connector action
+  and must enforce the Docker credential profile scope first.
 
 Do not import the SSH connector package from another connector. Ask for a
 generic capability such as `NetworkTransport` or `CommandTransport`; the

@@ -89,10 +89,12 @@ reasons and prefer approval-required access until the workflow is trusted.
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,
 `list_networks`, `list_volumes`, `inspect_container`, `container_logs`,
-`start_container`, `stop_container`, and `restart_container`. Docker credential
-profiles can scope a token to all containers, selected container names/IDs, or
-name patterns. The Docker connector does not expose arbitrary `docker exec`,
-prune, removal, shell, or raw Docker command execution.
+`container_exec`, `start_container`, `stop_container`, and `restart_container`.
+Docker credential profiles can scope a token to all containers, selected
+container names/IDs, or name patterns. `container_exec` and live container
+console sessions are scoped to one visible container; arbitrary host-level
+Docker commands, prune, removal, and raw Docker command execution are not
+exposed.
 
 Connector responses can include `approval_pending` or `running`. Poll
 `get_connector_action_request(request_id)` until the request reaches a terminal
