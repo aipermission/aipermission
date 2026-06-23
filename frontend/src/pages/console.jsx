@@ -22,7 +22,7 @@ import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
 import { PtyConsole } from "../components/console/pty-console";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
-import { emptySession, isUnreadMessage, latestSessionForRuntime } from "../components/console/helpers";
+import { emptySession, isLiveConsoleSession, isUnreadMessage, latestSessionForRuntime } from "../components/console/helpers";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 import { ConnectorIcon } from "../connectors/templates/common";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
@@ -74,6 +74,7 @@ export function ConsolePage() {
   const [now, setNow] = useState(Date.now());
   const [structuredSessionsByTarget, setStructuredSessionsByTarget] = useState({});
   const [selectedProfileByTarget, setSelectedProfileByTarget] = useState({});
+  const [liveSessionNameByTarget, setLiveSessionNameByTarget] = useState({});
 
   const selectedTargetRef = searchParams.get("target");
   const sessions = consoleSessions.data || [];
@@ -105,8 +106,7 @@ export function ConsolePage() {
   const selectedStructuredSession = selectedTarget && !selectedTargetUsesLiveConsole ? structuredSessionsByTarget[selectedTarget.ref] || null : null;
   const {
     selectedRuntimeTarget,
-    selectedSession,
-    selectedSessionLive,
+    selectedSession: runtimeSelectedSession,
     unreadMessages,
     selectedUnreadMessages,
   } = useConsolePageState({
@@ -116,6 +116,12 @@ export function ConsolePage() {
     selectedRuntimeID,
     allowTargetFallback: false,
   });
+  const selectedLiveSessionName = selectedTarget?.ref ? liveSessionNameByTarget[selectedTarget.ref] || "" : "";
+  const selectedNamedLiveSession = selectedRuntimeTarget && selectedLiveSessionName
+    ? sessions.find((session) => Number(session.runtime_id) === Number(selectedRuntimeTarget.id) && session.name === selectedLiveSessionName)
+    : null;
+  const selectedSession = selectedNamedLiveSession || runtimeSelectedSession;
+  const selectedSessionLive = isLiveConsoleSession(selectedSession);
   const selectedTargetProfiles = useMemo(() => profilesForConnectorTarget(targetItems, selectedTarget), [targetItems, selectedTarget?.connector_kind, selectedTarget?.target_id]);
   const targetRows = useMemo(() => consoleTargetRows(targetItems, selectedTarget, selectedProfileByTarget), [targetItems, selectedTarget?.ref, selectedProfileByTarget]);
   const selectedTokenOptions = useMemo(() => {
@@ -146,8 +152,8 @@ export function ConsolePage() {
     .filter((permission) => permission?.expires_at)
     .map((permission) => permissionLifetimeLabel(permission, now));
   const showAlwaysRunWarning = Boolean(mcpRuntime?.data?.enabled && selectedTarget && alwaysRunTokenPermissions.length > 0);
-  const selectedRunningConnectorRequests = selectedTargetUsesLiveConsole && selectedTarget
-    ? connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === selectedTarget.ref)
+  const selectedRunningConnectorRequests = selectedTargetUsesLiveConsole && selectedTarget?.connector_kind === "ssh"
+    ? connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === selectedTarget.ref && approval.action_name === "exec")
     : [];
   const selectedRunningRequest = selectedRunningConnectorRequests[0] || null;
   const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0) + (newSessionError ? 1 : 0);
@@ -377,6 +383,9 @@ export function ConsolePage() {
   async function startNewConsoleSession(runtimeTarget, options = {}) {
     if (!runtimeTarget) return;
     setNewSessionError("");
+    if (options.name && selectedTarget?.ref) {
+      setLiveSessionNameByTarget((current) => ({ ...current, [selectedTarget.ref]: options.name }));
+    }
     try {
       await newConsoleSession(runtimeTarget, options);
     } catch (error) {
@@ -401,6 +410,11 @@ export function ConsolePage() {
   function startStructuredConnectorSession() {
     if (!selectedTarget || selectedTargetUsesLiveConsole) return;
     setStructuredSessionsByTarget((current) => ({ ...current, [selectedTarget.ref]: newStructuredConsoleSession() }));
+  }
+
+  function selectLiveSessionName(name) {
+    if (!selectedTarget?.ref || !name) return;
+    setLiveSessionNameByTarget((current) => ({ ...current, [selectedTarget.ref]: name }));
   }
 
   function endStructuredConnectorSession() {
@@ -465,7 +479,7 @@ export function ConsolePage() {
       </aside>
 
       <section
-        className={`grid min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border shadow-xl ${
+        className={`grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border shadow-xl ${
           theme === "light" ? "border-stone-200 bg-white" : "border-stone-800 bg-[#1e1e1e]"
         }`}
       >
@@ -547,8 +561,8 @@ export function ConsolePage() {
         </header>
 
         <div
-          className={consoleBannerCount > 0 ? "grid min-h-0" : "min-h-0"}
-          style={consoleBannerCount > 0 ? { gridTemplateRows: `${Array(consoleBannerCount).fill("auto").join(" ")} minmax(0, 1fr)` } : undefined}
+          className="grid h-full min-h-0 overflow-hidden"
+          style={{ gridTemplateRows: consoleBannerCount > 0 ? `${Array(consoleBannerCount).fill("auto").join(" ")} minmax(0, 1fr)` : "minmax(0, 1fr)" }}
         >
           {showAlwaysRunWarning ? (
             <div className="sticky top-0 z-10 border-b border-red-800/50 bg-red-950 px-4 py-2 text-xs font-semibold text-red-50">
@@ -580,6 +594,7 @@ export function ConsolePage() {
               selectedRuntimeTarget={selectedRuntimeTarget}
               onNewStructuredSession={startStructuredConnectorSession}
               onNewLiveSession={(options = {}) => selectedRuntimeTarget && startNewConsoleSession(selectedRuntimeTarget, options)}
+              onSelectLiveSessionName={selectLiveSessionName}
               onEndLiveSession={() => selectedSession.id && closeConsoleSession(selectedSession.id)}
               onOpenActivity={() => setConnectorActivityOpen(true)}
               onRefreshActivity={loadConnectorActionApprovals}

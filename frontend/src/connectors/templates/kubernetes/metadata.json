@@ -1,0 +1,8 @@
+{
+  "kind": "kubernetes",
+  "label": "Kubernetes",
+  "summary": "Read-heavy Kubernetes cluster browser with bounded logs and prompt-only rollout restart.",
+  "version": "0.2",
+  "icon": "server",
+  "badge_tone": "neutral"
+}

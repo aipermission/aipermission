@@ -251,7 +251,7 @@ export function Shell({ theme, setTheme }) {
     const session = await apiPost("/api/console/sessions", {
       runtime_id: server.id,
       name: options.name || `${server.name} shell`,
-      close_existing: true,
+      close_existing: options.closeExisting !== false,
       params: options.params || undefined,
     });
     upsertConsoleSession(session);

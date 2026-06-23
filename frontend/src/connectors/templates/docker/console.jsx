@@ -8,7 +8,7 @@ import { Input } from "../../../components/ui/form";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost } from "../../../lib/api";
 
-export function DockerConnectorConsoleTemplate({ children, target, approvals, theme, session, selectedSessionLive, selectedRuntimeTarget, onNewLiveSession, onEndLiveSession, onRefreshActivity }) {
+export function DockerConnectorConsoleTemplate({ children, target, approvals, theme, session, selectedSessionLive, selectedRuntimeTarget, onNewLiveSession, onSelectLiveSessionName, onEndLiveSession, onRefreshActivity }) {
   const [resourceView, setResourceView] = useState("containers");
   const [containers, setContainers] = useState([]);
   const [resources, setResources] = useState({ images: [], networks: [], volumes: [] });
@@ -19,6 +19,7 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
   const [viewMode, setViewMode] = useState("logs");
   const [result, setResult] = useState(null);
   const [resultSearch, setResultSearch] = useState("");
+  const [pendingConsoleName, setPendingConsoleName] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: "", description: "", details: [], actionName: "", pending: false });
   const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
@@ -64,6 +65,12 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
     if (resourceView === "containers") return;
     void refreshResource(resourceView);
   }, [resourceView, target.ref]);
+
+  useEffect(() => {
+    if (pendingConsoleName && selectedContainerConsoleLive) {
+      setPendingConsoleName("");
+    }
+  }, [pendingConsoleName, selectedContainerConsoleLive]);
 
   async function runDockerAction({ actionName, input = {}, reason, busy = "running", showResult = true }) {
     setState({ state: busy, error: "", message: "" });
@@ -129,6 +136,8 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
 
   function openContainerConsole(container = selectedContainer) {
     if (!container) return;
+    const containerRef = container.name || container.id;
+    if (containerRef) onSelectLiveSessionName?.(dockerConsoleSessionName(target, containerRef));
     setViewMode("console");
     setResult(null);
     setResultSearch("");
@@ -136,10 +145,18 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
 
   async function startContainerConsole() {
     if (!selectedContainerRef) return;
-    await onNewLiveSession?.({
-      name: expectedConsoleSessionName,
-      params: { container: selectedContainerRef },
-    });
+    setPendingConsoleName(expectedConsoleSessionName);
+    onSelectLiveSessionName?.(expectedConsoleSessionName);
+    try {
+      await onNewLiveSession?.({
+        name: expectedConsoleSessionName,
+        params: { container: selectedContainerRef },
+        closeExisting: false,
+      });
+    } catch (error) {
+      setPendingConsoleName("");
+      throw error;
+    }
   }
 
   function selectContainer(container) {
@@ -237,8 +254,8 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
 
   return (
     <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
-      <div className="grid min-h-0 gap-4 overflow-hidden p-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <section className={`grid min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+      <div className="grid h-full min-h-0 gap-4 overflow-hidden p-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <section className={`grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
           <div className={`border-b p-3 ${borderClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -295,60 +312,62 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
           </div>
         </section>
 
-        <section className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
-          <div className={`border-b p-3 ${borderClass}`}>
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                  <p className="truncate text-sm font-semibold">{selectedResource ? resourcePrimary(resourceView, selectedResource) : `Select ${resourceSingular(resourceView)}`}</p>
-                  {state.state !== "idle" ? (
-                    <span className={`inline-flex shrink-0 items-center gap-1 text-xs ${mutedClass}`}>
-                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                      Loading
-                    </span>
-                  ) : null}
+        <section className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+          <div>
+            <div className={`border-b p-3 ${borderClass}`}>
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-sm font-semibold">{selectedResource ? resourcePrimary(resourceView, selectedResource) : `Select ${resourceSingular(resourceView)}`}</p>
+                    {state.state !== "idle" ? (
+                      <span className={`inline-flex shrink-0 items-center gap-1 text-xs ${mutedClass}`}>
+                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        Loading
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className={`truncate text-xs ${mutedClass}`}>{selectedResource ? resourceSecondary(resourceView, selectedResource) : resourcePlaceholder(resourceView)}</p>
                 </div>
-                <p className={`truncate text-xs ${mutedClass}`}>{selectedResource ? resourceSecondary(resourceView, selectedResource) : resourcePlaceholder(resourceView)}</p>
+                {resourceView === "containers" && selectedContainer ? (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={showingInspect ? () => readLogs() : () => inspectContainer()} disabled={state.state !== "idle"} title={showingInspect ? "Show container logs" : "Inspect container"}>
+                      {showingInspect ? <RefreshCcw className="h-3.5 w-3.5" /> : <FileJson className="h-3.5 w-3.5" />}
+                      {showingInspect ? "Logs" : "Inspect"}
+                    </Button>
+                    {!showingInspect && viewMode !== "console" ? (
+                      <>
+                        <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+                          Tail
+                          <Input className={`h-8 w-24 ${inputClass}`} type="number" min="1" max="2000" value={tail} onChange={(event) => setTail(event.target.value)} />
+                        </label>
+                        <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => readLogs()} disabled={state.state !== "idle"} title="Refresh logs">
+                          <RefreshCcw className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    ) : null}
+                    <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openContainerConsole()} disabled={state.state !== "idle"} title="Open live console inside this container">
+                      <TerminalSquare className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("start_container")} disabled={state.state !== "idle"} title="Start container">
+                      <Play className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("stop_container")} disabled={state.state !== "idle"} title="Stop container">
+                      <Square className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("restart_container")} disabled={state.state !== "idle"} title="Restart container">
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-              {resourceView === "containers" && selectedContainer ? (
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={showingInspect ? () => readLogs() : () => inspectContainer()} disabled={state.state !== "idle"} title={showingInspect ? "Show container logs" : "Inspect container"}>
-                    {showingInspect ? <RefreshCcw className="h-3.5 w-3.5" /> : <FileJson className="h-3.5 w-3.5" />}
-                    {showingInspect ? "Logs" : "Inspect"}
-                  </Button>
-                  {!showingInspect && viewMode !== "console" ? (
-                    <>
-                      <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
-                        Tail
-                        <Input className={`h-8 w-24 ${inputClass}`} type="number" min="1" max="2000" value={tail} onChange={(event) => setTail(event.target.value)} />
-                      </label>
-                      <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => readLogs()} disabled={state.state !== "idle"} title="Refresh logs">
-                        <RefreshCcw className="h-3.5 w-3.5" />
-                      </Button>
-                    </>
-                  ) : null}
-                  <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openContainerConsole()} disabled={state.state !== "idle"} title="Open live console inside this container">
-                    <TerminalSquare className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("start_container")} disabled={state.state !== "idle"} title="Start container">
-                    <Play className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("stop_container")} disabled={state.state !== "idle"} title="Stop container">
-                    <Square className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("restart_container")} disabled={state.state !== "idle"} title="Restart container">
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ) : null}
             </div>
+            {state.error ? (
+              <div className={`border-b px-3 py-2 text-right text-xs text-red-500 ${borderClass}`}>
+                <span className="break-words">{state.error}</span>
+              </div>
+            ) : null}
           </div>
-          {state.error ? (
-            <div className={`border-b px-3 py-2 text-right text-xs text-red-500 ${borderClass}`}>
-              <span className="break-words">{state.error}</span>
-            </div>
-          ) : null}
-          <div className="grid min-h-0 overflow-hidden p-3">
+          <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-3">
             {!selectedResource ? (
               <div className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>{resourcePlaceholder(resourceView)}</div>
             ) : resourceView !== "containers" ? (
@@ -361,6 +380,7 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
                 selectedRuntimeTarget={selectedRuntimeTarget}
                 session={session}
                 sessionLive={selectedContainerConsoleLive}
+                pending={pendingConsoleName === expectedConsoleSessionName}
                 theme={theme}
                 mutedClass={mutedClass}
                 borderClass={borderClass}
@@ -417,7 +437,7 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
   );
 }
 
-function DockerContainerConsolePanel({ children, target, container, containerRef, selectedRuntimeTarget, session, sessionLive, theme, mutedClass, borderClass, onStart, onEnd }) {
+function DockerContainerConsolePanel({ children, target, container, containerRef, selectedRuntimeTarget, session, sessionLive, pending, theme, mutedClass, borderClass, onStart, onEnd }) {
   const light = theme === "light";
   if (!container) {
     return (
@@ -439,11 +459,22 @@ function DockerContainerConsolePanel({ children, target, container, containerRef
             End
           </Button>
         </div>
-        <div className="min-h-0 overflow-hidden">{children}</div>
+        <div className="h-full min-h-0 overflow-hidden">{children}</div>
       </div>
     );
   }
   const lastSessionForOtherContainer = session?.id && session?.name !== dockerConsoleSessionName(target, containerRef);
+  if (pending) {
+    return (
+      <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center ${borderClass}`}>
+        <div className="grid max-w-md gap-3">
+          <LoaderCircle className="mx-auto h-6 w-6 animate-spin text-emerald-500" />
+          <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>Connecting container console</h3>
+          <p className={`text-sm leading-6 ${mutedClass}`}>Opening an interactive shell inside <span className="font-mono">{containerRef}</span>.</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center ${borderClass}`}>
       <div className="grid max-w-md gap-4">

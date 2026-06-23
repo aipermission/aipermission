@@ -22,12 +22,16 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
     terminal.loadAddon(fit);
     terminal.open(containerRef.current);
     terminal.focus();
-    fit.fit();
-    onResize(terminal.cols, terminal.rows);
-
-    const resizeObserver = new ResizeObserver(() => {
+    const fitAndResize = () => {
       fit.fit();
       onResize(terminal.cols, terminal.rows);
+    };
+    fitAndResize();
+    const frame = requestAnimationFrame(fitAndResize);
+    const settleTimer = window.setTimeout(fitAndResize, 80);
+
+    const resizeObserver = new ResizeObserver(() => {
+      fitAndResize();
     });
     resizeObserver.observe(containerRef.current);
 
@@ -42,6 +46,8 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
     return () => {
       disposable.dispose();
       containerRef.current?.removeEventListener("pointerdown", focusHandler);
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settleTimer);
       resizeObserver.disconnect();
       terminal.dispose();
     };
