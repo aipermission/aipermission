@@ -1,6 +1,48 @@
-export const appVersion = "0.2.10";
+export const appVersion = "0.2.11";
 
 export const changelogEntries = [
+  {
+    version: "0.2.11",
+    label: "S3 connector",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "S3 is now a built-in connector with Direct and Over SSH connection modes.",
+          "S3 Console can browse bucket objects, inspect metadata, download bounded objects, upload bounded objects, rename objects, and delete objects.",
+          "MCP can discover and call S3 actions through the same connector target/profile/action permission pipeline.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Live-console recovery behavior is now defined by connector templates instead of SSH-specific Console code.",
+          "Connector-provisioned credential metadata now stays behind connector contracts instead of generic API handlers.",
+          "Generic target-operation handlers no longer carry stale Docker-shaped request fields.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Direct connector TCP dials now prefer IPv4 before IPv6 fallback to avoid Docker-hosted gateway timeouts on dual-stack endpoints with unreachable IPv6.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "S3 credentials stay in connector credential profile secrets, and object content upload/download actions are bounded by connector size limits.",
+        ],
+      },
+      {
+        title: "Tests",
+        items: [
+          "S3 connector tests cover SigV4 request signing, path escaping, upload preview redaction, list filtering, and overwrite protection.",
+          "Direct connector dial ordering is covered for dual-stack DNS responses.",
+          "Backend and frontend boundary checks now guard connector isolation rules against regressions.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.10",
     label: "Kubernetes connector",
