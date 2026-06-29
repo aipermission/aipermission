@@ -1093,7 +1093,7 @@ func classifyS3TestError(err error) connectors.TestStatus {
 	switch {
 	case strings.Contains(message, "authentication") || strings.Contains(message, "permission") || strings.Contains(message, "forbidden") || strings.Contains(message, "unauthorized"):
 		return connectors.TestFailedAuth
-	case strings.Contains(message, "no such host") || strings.Contains(message, "connection refused") || strings.Contains(message, "timeout") || strings.Contains(message, "network"):
+	case strings.Contains(message, "no such host") || strings.Contains(message, "connection refused") || strings.Contains(message, "timeout") || strings.Contains(message, "deadline exceeded") || strings.Contains(message, "network"):
 		return connectors.TestFailedNetwork
 	case strings.Contains(message, "tls") || strings.Contains(message, "certificate"):
 		return connectors.TestFailedTLS
