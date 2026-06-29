@@ -11,6 +11,7 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
+	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	_ "github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter"
 )
@@ -23,6 +24,7 @@ func RegisterAll(registry *connectors.Registry) error {
 		postgresconnector.New(),
 		rabbitmqconnector.New(),
 		redisconnector.New(),
+		s3connector.New(),
 		sshconnector.New(),
 	} {
 		if err := registry.Register(connector); err != nil {

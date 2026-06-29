@@ -11,6 +11,7 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
+	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 )
 
@@ -56,6 +57,13 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	if redis.Label() != redisconnector.Label {
 		t.Fatalf("redis label = %q", redis.Label())
 	}
+	s3, ok := registry.Get(s3connector.Kind)
+	if !ok {
+		t.Fatal("expected s3 connector")
+	}
+	if s3.Label() != s3connector.Label {
+		t.Fatalf("s3 label = %q", s3.Label())
+	}
 
 	connector, ok := registry.Get(sshconnector.Kind)
 	if !ok {
@@ -66,7 +74,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 6 || infos[0].Kind != dockerconnector.Kind || infos[1].Kind != kubernetesconnector.Kind || infos[2].Kind != postgresconnector.Kind || infos[3].Kind != rabbitmqconnector.Kind || infos[4].Kind != redisconnector.Kind || infos[5].Kind != sshconnector.Kind {
+	if len(infos) != 7 || infos[0].Kind != dockerconnector.Kind || infos[1].Kind != kubernetesconnector.Kind || infos[2].Kind != postgresconnector.Kind || infos[3].Kind != rabbitmqconnector.Kind || infos[4].Kind != redisconnector.Kind || infos[5].Kind != s3connector.Kind || infos[6].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -238,6 +246,29 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				rabbitmqconnector.ActionListBindings: {"vhost": "/", "queue": "jobs", "limit": 10},
 				rabbitmqconnector.ActionPeekMessages: {"vhost": "/", "queue": "jobs", "count": 2, "max_payload_bytes": 4096},
 				rabbitmqconnector.ActionPublish:      {"vhost": "/", "exchange": "amq.default", "routing_key": "jobs", "payload": `{"ok":true}`, "payload_encoding": "string", "properties": map[string]any{"content_type": "application/json"}},
+			}
+	case s3connector.Kind:
+		return connectors.TargetView{
+				ID:            7,
+				Ref:           "s3:7:70",
+				ConnectorKind: s3connector.Kind,
+				Name:          "object-store",
+				Config:        map[string]any{"connection_mode": "direct", "scheme": "https", "host": "s3.example.com", "port": 443, "region": "us-east-1", "bucket": "app-backups", "path_style": true},
+			}, connectors.CredentialProfileView{
+				ID:            70,
+				TargetID:      7,
+				ConnectorKind: s3connector.Kind,
+				Kind:          "access_key",
+				Label:         "backup",
+				Public:        map[string]any{"access_key_id": "AKIAEXAMPLE"},
+			}, map[string]map[string]any{
+				s3connector.ActionBucketInfo:        {},
+				s3connector.ActionListObjects:       {"prefix": "daily/", "search": "db", "limit": 10},
+				s3connector.ActionGetObjectMetadata: {"key": "daily/app.aipdb"},
+				s3connector.ActionDownloadObject:    {"key": "daily/app.aipdb", "max_bytes": 1024},
+				s3connector.ActionUploadObject:      {"key": "daily/app.txt", "content_text": "hello", "content_type": "text/plain", "overwrite": true},
+				s3connector.ActionRenameObject:      {"source_key": "daily/app.txt", "destination_key": "daily/app-renamed.txt", "overwrite": true},
+				s3connector.ActionDeleteObject:      {"key": "daily/app-renamed.txt"},
 			}
 	case sshconnector.Kind:
 		return connectors.TargetView{
