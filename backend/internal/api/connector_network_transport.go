@@ -42,8 +42,7 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 	defer cancel()
 	switch mode {
 	case "direct":
-		var dialer net.Dialer
-		return dialer.DialContext(ctx, "tcp", address)
+		return dialDirectConnectorTCP(ctx, request.Host, request.Port)
 	case "over_ssh":
 		targetRef := strings.TrimSpace(request.TransportTargetRef)
 		if targetRef == "" {
@@ -72,6 +71,69 @@ func networkDialAddress(host string, port int) (string, error) {
 		return "", fmt.Errorf("port must be between 1 and 65535")
 	}
 	return net.JoinHostPort(resolveConnectorDialHost(host), strconv.Itoa(port)), nil
+}
+
+func dialDirectConnectorTCP(ctx context.Context, host string, port int) (net.Conn, error) {
+	host = resolveConnectorDialHost(strings.TrimSpace(host))
+	address := net.JoinHostPort(host, strconv.Itoa(port))
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+		return dialTCPAddress(ctx, ipNetwork(ip), address)
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err == nil && len(addrs) > 0 {
+		var lastErr error
+		for _, addr := range preferredDialAddresses(addrs, port) {
+			conn, err := dialTCPAddress(ctx, addr.network, addr.address)
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		if lastErr != nil {
+			return nil, lastErr
+		}
+	}
+	return dialTCPAddress(ctx, "tcp", address)
+}
+
+type preferredDialAddress struct {
+	network string
+	address string
+}
+
+func preferredDialAddresses(addrs []net.IPAddr, port int) []preferredDialAddress {
+	result := make([]preferredDialAddress, 0, len(addrs))
+	appendFamily := func(wantV4 bool) {
+		for _, addr := range addrs {
+			ip := addr.IP
+			if ip == nil {
+				continue
+			}
+			isV4 := ip.To4() != nil
+			if isV4 != wantV4 {
+				continue
+			}
+			result = append(result, preferredDialAddress{
+				network: ipNetwork(ip),
+				address: net.JoinHostPort(ip.String(), strconv.Itoa(port)),
+			})
+		}
+	}
+	appendFamily(true)
+	appendFamily(false)
+	return result
+}
+
+func ipNetwork(ip net.IP) string {
+	if ip.To4() != nil {
+		return "tcp4"
+	}
+	return "tcp6"
+}
+
+func dialTCPAddress(ctx context.Context, network string, address string) (net.Conn, error) {
+	var dialer net.Dialer
+	return dialer.DialContext(ctx, network, address)
 }
 
 func resolveConnectorDialHost(host string) string {
