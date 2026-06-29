@@ -56,7 +56,7 @@ AIPermission is intentionally designed as a local developer gateway.
 
 - The gateway runs on the developer's own machine.
 - Remote systems are connector targets reached from that local gateway.
-- SSH, Postgres, Redis, RabbitMQ, Docker, and Kubernetes are built-in connector
+- SSH, Postgres, Redis, RabbitMQ, S3, Docker, and Kubernetes are built-in connector
   types, not separate product modes.
 - The web UI, REST API, and MCP API are not designed to be shared on a LAN.
 - The project does not support running the gateway as a remote hosted service.
@@ -118,7 +118,7 @@ Implemented:
 - Go backend with SQLite storage
 - React web UI
 - connector target/profile/action pipeline for SSH, Postgres, Redis, RabbitMQ,
-  Docker, and future local
+  S3, Docker, and future local
   integrations
 - generic connector network transport so protocol connectors can use Direct or
   reviewed Over SSH TCP paths without importing SSH-specific code
@@ -137,6 +137,9 @@ Implemented:
 - built-in RabbitMQ connector with Direct and Over SSH connection modes, queue
   browsing, vhost metadata, binding inspection, bounded message peeking, and
   explicit message publishing
+- built-in S3 connector with Direct and Over SSH connection modes,
+  S3-compatible bucket browsing, object metadata, bounded object
+  upload/download, rename, and delete actions
 - built-in Docker connector over an SSH transport profile, with scoped
   container/image/network/volume inventory, redacted inspect metadata, bounded
   logs, scoped container exec, live container console, and explicit
@@ -161,7 +164,7 @@ Implemented:
 - persistent web console with live PTY streaming
 - UI bulk SSH command execution across selected connector targets with per-target history rows
 - MCP bridge with connector action tools for SSH, Postgres, Redis, RabbitMQ,
-  Docker, and future local integrations
+  S3, Docker, and future local integrations
 - approval dialog with Run / Decline / note
 - approval-context snapshots that stale old pending connector actions after
   permission, connector target, credential profile, connector metadata, or
@@ -352,7 +355,7 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-The MCP surface is connector-first. SSH, Postgres, Redis, RabbitMQ, Docker,
+The MCP surface is connector-first. SSH, Postgres, Redis, RabbitMQ, S3, Docker,
 Kubernetes, and future integrations use the same target/profile/action permission
 pipeline. `list_connector_targets` is
 permission-scoped, not a live health check. Current reachability is learned when
@@ -371,6 +374,13 @@ as `overview`, `list_vhosts`, `list_queues`, `get_queue`, `list_bindings`, and
 `peek_messages`, and `publish_message`. Treat message payload previews and
 message publishing as sensitive queue access; previews use bounded
 count/truncation limits and `ack_requeue_true`.
+
+For S3, call `get_connector_actions(target_ref)` to discover actions such as
+`bucket_info`, `list_objects`, `get_object_metadata`, `download_object`,
+`upload_object`, `rename_object`, and `delete_object`. Object content may
+contain secrets; downloads and uploads are bounded connector actions and large
+transfer-center style object movement is intentionally out of scope for the
+initial S3 connector.
 
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,

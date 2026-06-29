@@ -2,7 +2,7 @@
 
 AIPermission has published its first public release candidate and is moving
 into the connector-native 0.2 line. The local-only permission gateway is usable
-today with built-in SSH, Postgres, Redis, and RabbitMQ connectors; the next releases focus on
+today with built-in SSH, Postgres, Redis, RabbitMQ, and S3 connectors; the next releases focus on
 dogfooding polish, small safety improvements, clearer contributor paths, and
 additional connector kinds such as API, queues, and storage that share one
 permission pipeline.
@@ -53,7 +53,7 @@ AIPermission is intentionally:
 - Local-only.
 - Single-user.
 - Developer-focused.
-- Connector-based, with built-in SSH, Postgres, Redis, and RabbitMQ.
+- Connector-based, with built-in SSH, Postgres, Redis, RabbitMQ, and S3.
 - Human-in-the-loop.
 
 These requests conflict with the project principles and should normally be
@@ -186,6 +186,8 @@ Goals:
   TCP transport.
 - Add RabbitMQ as the first queue connector with direct and SSH-tunneled
   Management API access.
+- Add S3 as the first object-storage connector with direct and SSH-tunneled
+  S3-compatible endpoint access.
 - Store connector permissions by target/profile/action instead of by a
   connector-specific table.
 - Render connector UI through frontend templates so contributors can add a

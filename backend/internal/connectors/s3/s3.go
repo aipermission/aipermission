@@ -1,0 +1,1338 @@
+// Package s3connector defines the S3-compatible storage connector contract.
+package s3connector
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/xml"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+)
+
+const (
+	Kind    = "s3"
+	Label   = "S3"
+	Version = "0.2"
+
+	ActionBucketInfo        = "bucket_info"
+	ActionListObjects       = "list_objects"
+	ActionGetObjectMetadata = "get_object_metadata"
+	ActionDownloadObject    = "download_object"
+	ActionUploadObject      = "upload_object"
+	ActionRenameObject      = "rename_object"
+	ActionDeleteObject      = "delete_object"
+
+	defaultS3Scheme    = "https"
+	defaultS3Host      = "s3.amazonaws.com"
+	defaultS3Port      = 443
+	defaultS3Region    = "us-east-1"
+	defaultS3ListLimit = 100
+	maxS3ListLimit     = 1000
+	maxS3SearchPages   = 20
+	defaultDownloadMax = 5 << 20
+	maxDownloadBytes   = 25 << 20
+	maxUploadBytes     = 16 << 20
+	maxS3ResponseBytes = 2 << 20
+	maxS3ReasonBytes   = 2000
+	s3HTTPTimeout      = 30 * time.Second
+	emptySHA256Hex     = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+)
+
+var (
+	ErrUnsupportedAction = errors.New("unsupported s3 connector action")
+	ErrMissingTransport  = errors.New("s3 connector network transport is unavailable")
+	ErrMissingSecret     = errors.New("s3 connector credential is missing required secret")
+	ErrInvalidConfig     = errors.New("s3 connector target config is invalid")
+)
+
+// Connector describes S3-compatible object storage as a connector-shaped
+// target with bounded object browsing and explicit write/destructive actions.
+type Connector struct{}
+
+func New() Connector {
+	return Connector{}
+}
+
+func (Connector) Kind() string {
+	return Kind
+}
+
+func (Connector) Label() string {
+	return Label
+}
+
+func (Connector) Version() string {
+	return Version
+}
+
+func (Connector) TargetSchema() connectors.Schema {
+	return connectors.Schema{Fields: []connectors.Field{
+		{
+			Name:        "connection_mode",
+			Label:       "Connection mode",
+			Type:        connectors.FieldSelect,
+			Required:    true,
+			Default:     "direct",
+			Description: "Connect directly from the local gateway, or tunnel to an S3-compatible endpoint through an SSH connector profile.",
+			Options: []connectors.FieldOption{
+				{Value: "direct", Label: "Direct"},
+				{Value: "over_ssh", Label: "Over SSH"},
+			},
+		},
+		{
+			Name:        "scheme",
+			Label:       "Scheme",
+			Type:        connectors.FieldSelect,
+			Required:    true,
+			Default:     defaultS3Scheme,
+			Description: "Endpoint HTTP scheme.",
+			Options: []connectors.FieldOption{
+				{Value: "http", Label: "HTTP"},
+				{Value: "https", Label: "HTTPS"},
+			},
+		},
+		{
+			Name:        "host",
+			Label:       "Endpoint host",
+			Type:        connectors.FieldString,
+			Required:    true,
+			Default:     defaultS3Host,
+			Description: "S3-compatible endpoint host. For Over SSH this is resolved from the SSH server.",
+		},
+		{
+			Name:        "port",
+			Label:       "Endpoint port",
+			Type:        connectors.FieldNumber,
+			Required:    true,
+			Default:     defaultS3Port,
+			Description: "Endpoint TCP port.",
+		},
+		{
+			Name:        "region",
+			Label:       "Region",
+			Type:        connectors.FieldString,
+			Required:    true,
+			Default:     defaultS3Region,
+			Description: "AWS SigV4 region. Many S3-compatible services accept us-east-1.",
+		},
+		{
+			Name:        "bucket",
+			Label:       "Bucket",
+			Type:        connectors.FieldString,
+			Required:    true,
+			Description: "Bucket name to browse and manage.",
+		},
+		{
+			Name:        "path_style",
+			Label:       "Path-style addressing",
+			Type:        connectors.FieldBoolean,
+			Default:     true,
+			Description: "Use /bucket/key paths. Keep enabled for most S3-compatible providers such as MinIO.",
+		},
+		{
+			Name:        "transport_target_ref",
+			Label:       "SSH transport target",
+			Type:        connectors.FieldString,
+			Description: "Connector target ref used when connection_mode is over_ssh.",
+		},
+	}}
+}
+
+func (Connector) CredentialSchemas() []connectors.CredentialSchema {
+	return []connectors.CredentialSchema{
+		{
+			Kind:        "access_key",
+			Label:       "Access key",
+			Description: "S3 access key credentials stored through the encrypted vault layer.",
+			Schema: connectors.Schema{Fields: []connectors.Field{
+				{
+					Name:        "access_key_id",
+					Label:       "Access key ID",
+					Type:        connectors.FieldString,
+					Required:    true,
+					Description: "S3 access key ID.",
+				},
+				{
+					Name:        "secret_access_key",
+					Label:       "Secret access key",
+					Type:        connectors.FieldSecret,
+					Required:    true,
+					Secret:      true,
+					Description: "S3 secret access key.",
+				},
+				{
+					Name:        "session_token",
+					Label:       "Session token",
+					Type:        connectors.FieldSecret,
+					Secret:      true,
+					Description: "Optional temporary session token.",
+				},
+			}},
+		},
+	}
+}
+
+func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (connectors.ConnectorHelp, error) {
+	title := "S3 target"
+	if strings.TrimSpace(target.Name) != "" {
+		title = "S3 target: " + target.Name
+	}
+	return connectors.ConnectorHelp{
+		Title:       title,
+		Summary:     "Browse S3-compatible object storage and run bounded object actions through AIPermission approval rules.",
+		Connector:   Label,
+		ConnectorID: Kind,
+		Usage: []string{
+			"Use list_objects with a prefix or search filter before reading object details.",
+			"Use get_object_metadata to inspect one object without downloading content.",
+			"Use download_object only for bounded object reads; large transfer-center style downloads are a future feature.",
+			"Use upload_object and rename_object only for intentional writes.",
+			"Use delete_object carefully; it is destructive and should normally require approval.",
+		},
+		Warnings: []string{
+			"S3 objects may contain secrets or customer data. Redaction is best-effort; avoid reading object content unless explicitly approved.",
+			"download_object and upload_object are intentionally size-bounded in the connector action pipeline.",
+			"S3 credential profiles decide what the object storage service itself allows.",
+		},
+	}, nil
+}
+
+func (Connector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
+	return []connectors.ActionDefinition{
+		{
+			Name:        ActionBucketInfo,
+			Label:       "Bucket info",
+			Description: "Check bucket access and read bounded bucket metadata.",
+			Category:    "metadata",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{},
+			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: 4000},
+		},
+		{
+			Name:        ActionListObjects,
+			Label:       "List objects",
+			Description: "List objects in the bucket with optional prefix/search filters.",
+			Category:    "browser",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "prefix", Label: "Prefix", Type: connectors.FieldString, Description: "Optional object key prefix."},
+				{Name: "search", Label: "Search", Type: connectors.FieldString, Description: "Optional case-insensitive key search applied after listing."},
+				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional pagination cursor returned by a previous list."},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultS3ListLimit},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxS3ListLimit},
+		},
+		{
+			Name:        ActionGetObjectMetadata,
+			Label:       "Read object metadata",
+			Description: "Read headers and metadata for one object without downloading content.",
+			Category:    "browser",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 32 << 10},
+		},
+		{
+			Name:        ActionDownloadObject,
+			Label:       "Download object",
+			Description: "Download one bounded object and return base64 content.",
+			Category:    "browser",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
+				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldNumber, Default: defaultDownloadMax},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDownloadBytes},
+		},
+		{
+			Name:        ActionUploadObject,
+			Label:       "Upload object",
+			Description: "Upload one bounded object from text or base64 content.",
+			Category:    "write",
+			Risk:        connectors.RiskWrite,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
+				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline},
+				{Name: "content_base64", Label: "Base64 content", Type: connectors.FieldMultiline},
+				{Name: "content_type", Label: "Content type", Type: connectors.FieldString, Default: "application/octet-stream"},
+				{Name: "overwrite", Label: "Overwrite existing object", Type: connectors.FieldBoolean, Default: false},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+		},
+		{
+			Name:        ActionRenameObject,
+			Label:       "Rename object",
+			Description: "Copy one object to a new key and delete the original key.",
+			Category:    "write",
+			Risk:        connectors.RiskWrite,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "source_key", Label: "Source key", Type: connectors.FieldString, Required: true},
+				{Name: "destination_key", Label: "Destination key", Type: connectors.FieldString, Required: true},
+				{Name: "overwrite", Label: "Overwrite destination", Type: connectors.FieldBoolean, Default: false},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+		},
+		{
+			Name:        ActionDeleteObject,
+			Label:       "Delete object",
+			Description: "Delete one object from the bucket.",
+			Category:    "destructive",
+			Risk:        connectors.RiskDestructive,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+		},
+	}, nil
+}
+
+func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
+	input := copyMap(req.Input)
+	risk := connectors.RiskRead
+	title := ""
+	summary := ""
+	switch req.ActionName {
+	case ActionBucketInfo:
+		title = "Read S3 bucket info"
+		summary = fmt.Sprintf("Check bucket %q access.", s3Bucket(req.Target))
+	case ActionListObjects:
+		prefix := strings.TrimSpace(stringValue(input, "prefix"))
+		search := strings.TrimSpace(stringValue(input, "search"))
+		cursor := strings.TrimSpace(stringValue(input, "cursor"))
+		limit := normalizeInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
+		input["prefix"] = prefix
+		input["search"] = search
+		input["cursor"] = cursor
+		input["limit"] = limit
+		title = "List S3 objects"
+		summary = fmt.Sprintf("List up to %d object(s) in bucket %q.", limit, s3Bucket(req.Target))
+	case ActionGetObjectMetadata:
+		key := normalizeObjectKey(input, "key")
+		if key == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		}
+		input["key"] = key
+		title = "Read S3 object metadata"
+		summary = key
+	case ActionDownloadObject:
+		key := normalizeObjectKey(input, "key")
+		if key == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		}
+		maxBytes := normalizeInt(input, "max_bytes", defaultDownloadMax, 1, maxDownloadBytes)
+		input["key"] = key
+		input["max_bytes"] = maxBytes
+		title = "Download S3 object"
+		summary = fmt.Sprintf("%s (max %d bytes)", key, maxBytes)
+	case ActionUploadObject:
+		risk = connectors.RiskWrite
+		key := normalizeObjectKey(input, "key")
+		if key == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		}
+		contentText := stringValue(input, "content_text")
+		contentBase64 := strings.TrimSpace(stringValue(input, "content_base64"))
+		if contentText == "" && contentBase64 == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("content_text or content_base64 is required")
+		}
+		if contentText != "" && contentBase64 != "" {
+			return connectors.PreparedAction{}, fmt.Errorf("provide content_text or content_base64, not both")
+		}
+		contentBytes, err := uploadBytes(contentText, contentBase64)
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
+		if len(contentBytes) > maxUploadBytes {
+			return connectors.PreparedAction{}, fmt.Errorf("object content is larger than %d bytes", maxUploadBytes)
+		}
+		contentType := strings.TrimSpace(stringValue(input, "content_type"))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		input["key"] = key
+		input["content_type"] = contentType
+		input["content_bytes"] = len(contentBytes)
+		input["overwrite"] = boolValue(input, "overwrite")
+		delete(input, "content_text")
+		delete(input, "content_base64")
+		if contentBase64 != "" {
+			input["content_base64"] = contentBase64
+		} else {
+			input["content_base64"] = base64.StdEncoding.EncodeToString(contentBytes)
+		}
+		title = "Upload S3 object"
+		summary = fmt.Sprintf("%s (%d bytes)", key, len(contentBytes))
+	case ActionRenameObject:
+		risk = connectors.RiskWrite
+		sourceKey := normalizeObjectKey(input, "source_key")
+		destinationKey := normalizeObjectKey(input, "destination_key")
+		if sourceKey == "" || destinationKey == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("source_key and destination_key are required")
+		}
+		if sourceKey == destinationKey {
+			return connectors.PreparedAction{}, fmt.Errorf("source_key and destination_key must differ")
+		}
+		input["source_key"] = sourceKey
+		input["destination_key"] = destinationKey
+		input["overwrite"] = boolValue(input, "overwrite")
+		title = "Rename S3 object"
+		summary = fmt.Sprintf("%s -> %s", sourceKey, destinationKey)
+	case ActionDeleteObject:
+		risk = connectors.RiskDestructive
+		key := normalizeObjectKey(input, "key")
+		if key == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		}
+		input["key"] = key
+		title = "Delete S3 object"
+		summary = key
+	default:
+		return connectors.PreparedAction{}, ErrUnsupportedAction
+	}
+	if len(req.Reason) > maxS3ReasonBytes {
+		return connectors.PreparedAction{}, fmt.Errorf("reason is too large")
+	}
+	preview := copyMap(input)
+	if _, ok := preview["content_base64"]; ok {
+		preview["content_base64"] = fmt.Sprintf("[base64 content: %v bytes]", input["content_bytes"])
+	}
+	return connectors.PreparedAction{
+		ConnectorKind: Kind,
+		TargetRef:     req.Target.Ref,
+		ProfileID:     req.Profile.ID,
+		ActionName:    req.ActionName,
+		Risk:          risk,
+		Title:         title,
+		Summary:       summary,
+		Preview:       preview,
+		Payload:       input,
+		ContextMaterial: map[string]any{
+			"target":          req.Target.Name,
+			"profile":         req.Profile.Label,
+			"bucket":          s3Bucket(req.Target),
+			"connection_mode": connectionMode(req.Target),
+		},
+	}, nil
+}
+
+func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	client, err := newS3Client(ctx, runtime)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	switch action.ActionName {
+	case ActionBucketInfo:
+		return executeBucketInfo(ctx, client)
+	case ActionListObjects:
+		return executeListObjects(ctx, client, action.Payload)
+	case ActionGetObjectMetadata:
+		return executeGetObjectMetadata(ctx, client, action.Payload)
+	case ActionDownloadObject:
+		return executeDownloadObject(ctx, client, action.Payload)
+	case ActionUploadObject:
+		return executeUploadObject(ctx, client, action.Payload)
+	case ActionRenameObject:
+		return executeRenameObject(ctx, client, action.Payload)
+	case ActionDeleteObject:
+		return executeDeleteObject(ctx, client, action.Payload)
+	default:
+		return connectors.ActionResult{}, ErrUnsupportedAction
+	}
+}
+
+func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeContext) (connectors.TestResult, error) {
+	client, err := newS3Client(ctx, runtime)
+	if err != nil {
+		return connectors.TestResult{Status: classifyS3TestError(err), Message: err.Error()}, nil
+	}
+	headers, err := client.HeadBucket(ctx)
+	if err != nil {
+		return connectors.TestResult{Status: classifyS3TestError(err), Message: err.Error()}, nil
+	}
+	return connectors.TestResult{
+		Status:  connectors.TestOK,
+		Message: "S3 bucket connection ok.",
+		Details: map[string]any{
+			"bucket":     client.bucket,
+			"region":     client.region,
+			"request_id": firstHeader(headers, "X-Amz-Request-Id", "X-Amz-Id-2"),
+		},
+	}, nil
+}
+
+func executeBucketInfo(ctx context.Context, client *s3Client) (connectors.ActionResult, error) {
+	headers, err := client.HeadBucket(ctx)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	output := map[string]any{
+		"bucket":   client.bucket,
+		"region":   client.region,
+		"endpoint": client.endpointDisplay(),
+		"headers":  safeHeaders(headers),
+	}
+	return connectors.ActionResult{
+		Status:      connectors.ResultCompleted,
+		Output:      output,
+		DisplayText: fmt.Sprintf("Bucket %s is reachable at %s.", client.bucket, client.endpointDisplay()),
+	}, nil
+}
+
+func executeListObjects(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
+	prefix := strings.TrimSpace(stringValue(input, "prefix"))
+	search := strings.ToLower(strings.TrimSpace(stringValue(input, "search")))
+	cursor := strings.TrimSpace(stringValue(input, "cursor"))
+	limit := normalizeInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
+
+	objects := make([]map[string]any, 0, limit)
+	directories := make([]map[string]any, 0)
+	nextCursor := cursor
+	isTruncated := false
+	scanned := 0
+	scanLimited := false
+	pageLimit := limit
+	delimiter := search == ""
+	if search != "" {
+		pageLimit = maxS3ListLimit
+	}
+
+	for page := 0; page < maxS3SearchPages; page++ {
+		result, err := client.ListObjects(ctx, prefix, nextCursor, pageLimit, delimiter)
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		scanned += len(result.Contents)
+		isTruncated = result.IsTruncated
+		if search == "" {
+			for _, directory := range result.CommonPrefixes {
+				directories = append(directories, s3DirectorySummary(directory))
+			}
+		}
+		for _, object := range result.Contents {
+			if search != "" && !strings.Contains(strings.ToLower(object.Key), search) {
+				continue
+			}
+			objects = append(objects, s3ObjectSummary(object))
+		}
+		nextCursor = result.NextContinuationToken
+		if search == "" || len(objects) >= limit || !result.IsTruncated || nextCursor == "" {
+			break
+		}
+		if page == maxS3SearchPages-1 {
+			scanLimited = true
+		}
+	}
+
+	if search != "" && len(objects) >= limit {
+		isTruncated = nextCursor != ""
+	}
+	return s3ListResult(client.bucket, prefix, search, directories, objects, isTruncated, nextCursor, scanned, scanLimited), nil
+}
+
+func s3ObjectSummary(object s3Object) map[string]any {
+	return map[string]any{
+		"key":           object.Key,
+		"size":          object.Size,
+		"last_modified": object.LastModified,
+		"etag":          strings.Trim(object.ETag, `"`),
+		"storage_class": object.StorageClass,
+	}
+}
+
+func s3DirectorySummary(directory s3CommonPrefix) map[string]any {
+	return map[string]any{
+		"prefix": directory.Prefix,
+		"name":   directoryName(directory.Prefix),
+	}
+}
+
+func s3ListResult(bucket string, prefix string, search string, directories []map[string]any, objects []map[string]any, isTruncated bool, nextCursor string, scanned int, scanLimited bool) connectors.ActionResult {
+	return connectors.ActionResult{
+		Status: connectors.ResultCompleted,
+		Output: map[string]any{
+			"bucket":          bucket,
+			"prefix":          prefix,
+			"search":          search,
+			"directories":     directories,
+			"directory_count": len(directories),
+			"objects":         objects,
+			"count":           len(objects),
+			"is_truncated":    isTruncated,
+			"next_cursor":     nextCursor,
+			"scanned":         scanned,
+			"scan_limited":    scanLimited,
+		},
+		DisplayText: fmt.Sprintf("%d folder(s), %d object(s)", len(directories), len(objects)),
+	}
+}
+
+func executeGetObjectMetadata(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
+	key := normalizeObjectKey(input, "key")
+	headers, err := client.HeadObject(ctx, key)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	output := objectMetadataOutput(client.bucket, key, headers)
+	return connectors.ActionResult{
+		Status:      connectors.ResultCompleted,
+		Output:      output,
+		DisplayText: fmt.Sprintf("%s · %s bytes", key, fmt.Sprint(output["content_length"])),
+	}, nil
+}
+
+func executeDownloadObject(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
+	key := normalizeObjectKey(input, "key")
+	maxBytes := normalizeInt(input, "max_bytes", defaultDownloadMax, 1, maxDownloadBytes)
+	data, headers, err := client.GetObject(ctx, key, maxBytes)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	output := map[string]any{
+		"bucket":         client.bucket,
+		"key":            key,
+		"filename":       objectFilename(key),
+		"content_type":   headers.Get("Content-Type"),
+		"content_length": len(data),
+		"content_base64": base64.StdEncoding.EncodeToString(data),
+	}
+	return connectors.ActionResult{
+		Status:      connectors.ResultCompleted,
+		Output:      output,
+		DisplayText: fmt.Sprintf("Downloaded %d byte(s) from %s.", len(data), key),
+	}, nil
+}
+
+func executeUploadObject(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
+	key := normalizeObjectKey(input, "key")
+	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(stringValue(input, "content_base64")))
+	if err != nil {
+		return connectors.ActionResult{}, fmt.Errorf("decode content_base64: %w", err)
+	}
+	if len(data) > maxUploadBytes {
+		return connectors.ActionResult{}, fmt.Errorf("object content is larger than %d bytes", maxUploadBytes)
+	}
+	overwrite := boolValue(input, "overwrite")
+	if !overwrite {
+		if _, err := client.HeadObject(ctx, key); err == nil {
+			return connectors.ActionResult{}, fmt.Errorf("object %q already exists; set overwrite=true to replace it", key)
+		} else if !isNotFoundError(err) {
+			return connectors.ActionResult{}, err
+		}
+	}
+	contentType := strings.TrimSpace(stringValue(input, "content_type"))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if err := client.PutObject(ctx, key, data, contentType, nil); err != nil {
+		return connectors.ActionResult{}, err
+	}
+	return connectors.ActionResult{
+		Status: connectors.ResultCompleted,
+		Output: map[string]any{
+			"bucket":       client.bucket,
+			"key":          key,
+			"bytes":        len(data),
+			"content_type": contentType,
+			"overwritten":  overwrite,
+		},
+		DisplayText: fmt.Sprintf("Uploaded %d byte(s) to %s.", len(data), key),
+	}, nil
+}
+
+func executeRenameObject(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
+	sourceKey := normalizeObjectKey(input, "source_key")
+	destinationKey := normalizeObjectKey(input, "destination_key")
+	overwrite := boolValue(input, "overwrite")
+	if !overwrite {
+		if _, err := client.HeadObject(ctx, destinationKey); err == nil {
+			return connectors.ActionResult{}, fmt.Errorf("object %q already exists; set overwrite=true to replace it", destinationKey)
+		} else if !isNotFoundError(err) {
+			return connectors.ActionResult{}, err
+		}
+	}
+	if err := client.CopyObject(ctx, sourceKey, destinationKey); err != nil {
+		return connectors.ActionResult{}, err
+	}
+	if err := client.DeleteObject(ctx, sourceKey); err != nil {
+		return connectors.ActionResult{}, err
+	}
+	return connectors.ActionResult{
+		Status: connectors.ResultCompleted,
+		Output: map[string]any{
+			"bucket":          client.bucket,
+			"source_key":      sourceKey,
+			"destination_key": destinationKey,
+			"overwritten":     overwrite,
+		},
+		DisplayText: fmt.Sprintf("Renamed %s to %s.", sourceKey, destinationKey),
+	}, nil
+}
+
+func executeDeleteObject(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
+	key := normalizeObjectKey(input, "key")
+	if err := client.DeleteObject(ctx, key); err != nil {
+		return connectors.ActionResult{}, err
+	}
+	return connectors.ActionResult{
+		Status: connectors.ResultCompleted,
+		Output: map[string]any{
+			"bucket":  client.bucket,
+			"key":     key,
+			"deleted": true,
+		},
+		DisplayText: fmt.Sprintf("Deleted %s.", key),
+	}, nil
+}
+
+type s3Client struct {
+	scheme       string
+	host         string
+	port         int
+	region       string
+	bucket       string
+	pathStyle    bool
+	accessKey    string
+	secretKey    string
+	sessionToken string
+	httpClient   *http.Client
+}
+
+func newS3Client(ctx context.Context, runtime connectors.RuntimeContext) (*s3Client, error) {
+	transport, _ := runtime.Capability(connectors.NetworkTransportCapabilityName).(connectors.NetworkTransport)
+	if transport == nil {
+		return nil, ErrMissingTransport
+	}
+	accessKey := strings.TrimSpace(stringValue(runtime.Profile.Public, "access_key_id"))
+	if accessKey == "" {
+		return nil, fmt.Errorf("%w: access_key_id is required", ErrMissingSecret)
+	}
+	secretKey, err := runtime.Secrets.GetSecret(ctx, "secret_access_key")
+	if err != nil || strings.TrimSpace(secretKey) == "" {
+		return nil, fmt.Errorf("%w: secret_access_key is required", ErrMissingSecret)
+	}
+	sessionToken, _ := runtime.Secrets.GetSecret(ctx, "session_token")
+	client := &s3Client{
+		scheme:       s3Scheme(runtime.Target),
+		host:         s3Host(runtime.Target),
+		port:         s3Port(runtime.Target),
+		region:       s3Region(runtime.Target),
+		bucket:       s3Bucket(runtime.Target),
+		pathStyle:    s3PathStyle(runtime.Target),
+		accessKey:    accessKey,
+		secretKey:    strings.TrimSpace(secretKey),
+		sessionToken: strings.TrimSpace(sessionToken),
+	}
+	if client.bucket == "" {
+		return nil, fmt.Errorf("%w: bucket is required", ErrInvalidConfig)
+	}
+	request := connectors.NetworkDialRequest{
+		Mode:               connectionMode(runtime.Target),
+		Host:               client.host,
+		Port:               client.port,
+		TransportTargetRef: strings.TrimSpace(stringValue(runtime.Target.Config, "transport_target_ref")),
+	}
+	httpTransport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
+			return transport.DialConnectorTCP(ctx, request)
+		},
+		ForceAttemptHTTP2:     false,
+		MaxIdleConns:          2,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	client.httpClient = &http.Client{Timeout: s3HTTPTimeout, Transport: httpTransport}
+	return client, nil
+}
+
+func (client *s3Client) HeadBucket(ctx context.Context) (http.Header, error) {
+	_, headers, err := client.Do(ctx, http.MethodHead, "", nil, nil, maxS3ResponseBytes)
+	return headers, err
+}
+
+func (client *s3Client) ListObjects(ctx context.Context, prefix string, token string, limit int, delimiter bool) (s3ListBucketResult, error) {
+	query := url.Values{}
+	query.Set("list-type", "2")
+	query.Set("max-keys", strconv.Itoa(limit))
+	if prefix != "" {
+		query.Set("prefix", prefix)
+	}
+	if delimiter {
+		query.Set("delimiter", "/")
+	}
+	if token != "" {
+		query.Set("continuation-token", token)
+	}
+	data, _, err := client.Do(ctx, http.MethodGet, "", query, nil, maxS3ResponseBytes)
+	if err != nil {
+		return s3ListBucketResult{}, err
+	}
+	var result s3ListBucketResult
+	if err := xml.Unmarshal(data, &result); err != nil {
+		return s3ListBucketResult{}, fmt.Errorf("decode s3 list response: %w", err)
+	}
+	return result, nil
+}
+
+func (client *s3Client) HeadObject(ctx context.Context, key string) (http.Header, error) {
+	_, headers, err := client.Do(ctx, http.MethodHead, key, nil, nil, maxS3ResponseBytes)
+	return headers, err
+}
+
+func (client *s3Client) GetObject(ctx context.Context, key string, maxBytes int) ([]byte, http.Header, error) {
+	return client.Do(ctx, http.MethodGet, key, nil, nil, maxBytes)
+}
+
+func (client *s3Client) PutObject(ctx context.Context, key string, data []byte, contentType string, headers http.Header) error {
+	if headers == nil {
+		headers = http.Header{}
+	}
+	headers.Set("Content-Type", contentType)
+	_, _, err := client.Do(ctx, http.MethodPut, key, nil, s3RequestBody{Headers: headers, Data: data}, maxS3ResponseBytes)
+	return err
+}
+
+func (client *s3Client) CopyObject(ctx context.Context, sourceKey string, destinationKey string) error {
+	headers := http.Header{}
+	headers.Set("X-Amz-Copy-Source", "/"+awsPathEscape(client.bucket)+"/"+awsPathEscape(sourceKey))
+	_, _, err := client.Do(ctx, http.MethodPut, destinationKey, nil, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
+	return err
+}
+
+func (client *s3Client) DeleteObject(ctx context.Context, key string) error {
+	_, _, err := client.Do(ctx, http.MethodDelete, key, nil, nil, maxS3ResponseBytes)
+	return err
+}
+
+func (client *s3Client) Do(ctx context.Context, method string, key string, query url.Values, body any, limit int) ([]byte, http.Header, error) {
+	var payload []byte
+	headers := http.Header{}
+	if requestBody, ok := body.(s3RequestBody); ok {
+		payload = requestBody.Data
+		headers = requestBody.Headers.Clone()
+	} else if body != nil {
+		return nil, nil, fmt.Errorf("unsupported s3 request body")
+	}
+	if headers == nil {
+		headers = http.Header{}
+	}
+	u := client.URL(key, query)
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(payload))
+	if err != nil {
+		return nil, nil, err
+	}
+	for name, values := range headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
+	client.Sign(req, payload)
+	resp, err := client.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+	readLimit := limit
+	if readLimit <= 0 {
+		readLimit = maxS3ResponseBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(readLimit)+1))
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(data) > readLimit {
+		return nil, resp.Header, fmt.Errorf("s3 response is larger than %d bytes", readLimit)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, resp.Header, s3HTTPError(resp.StatusCode, data)
+	}
+	return data, resp.Header, nil
+}
+
+func (client *s3Client) URL(key string, query url.Values) *url.URL {
+	host := net.JoinHostPort(client.host, strconv.Itoa(client.port))
+	if (client.scheme == "http" && client.port == 80) || (client.scheme == "https" && client.port == 443) {
+		host = client.host
+	}
+	path := ""
+	rawPath := ""
+	if client.pathStyle {
+		path = "/" + client.bucket
+		rawPath = "/" + awsPathEscape(client.bucket)
+		if key != "" {
+			path += "/" + key
+			rawPath += "/" + awsPathEscape(key)
+		}
+	} else {
+		host = client.bucket + "." + host
+		path = "/"
+		rawPath = "/"
+		if key != "" {
+			path += key
+			rawPath += awsPathEscape(key)
+		}
+	}
+	u := &url.URL{Scheme: client.scheme, Host: host, Path: path}
+	if rawPath != "" && rawPath != path {
+		u.RawPath = rawPath
+	}
+	if len(query) > 0 {
+		u.RawQuery = canonicalQuery(query)
+	}
+	return u
+}
+
+func (client *s3Client) Sign(req *http.Request, payload []byte) {
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
+	payloadHash := sha256Hex(payload)
+	req.Header.Set("X-Amz-Date", amzDate)
+	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	if client.sessionToken != "" {
+		req.Header.Set("X-Amz-Security-Token", client.sessionToken)
+	}
+	canonicalRequest, signedHeaders := canonicalRequest(req, payloadHash)
+	credentialScope := dateStamp + "/" + client.region + "/s3/aws4_request"
+	stringToSign := strings.Join([]string{
+		"AWS4-HMAC-SHA256",
+		amzDate,
+		credentialScope,
+		sha256Hex([]byte(canonicalRequest)),
+	}, "\n")
+	signingKey := awsSigningKey(client.secretKey, dateStamp, client.region)
+	signature := hmacSHA256Hex(signingKey, stringToSign)
+	req.Header.Set("Authorization", fmt.Sprintf(
+		"AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
+		client.accessKey,
+		credentialScope,
+		signedHeaders,
+		signature,
+	))
+}
+
+func (client *s3Client) endpointDisplay() string {
+	return fmt.Sprintf("%s://%s", client.scheme, net.JoinHostPort(client.host, strconv.Itoa(client.port)))
+}
+
+type s3RequestBody struct {
+	Headers http.Header
+	Data    []byte
+}
+
+type s3ListBucketResult struct {
+	XMLName               xml.Name         `xml:"ListBucketResult"`
+	Name                  string           `xml:"Name"`
+	Prefix                string           `xml:"Prefix"`
+	KeyCount              int              `xml:"KeyCount"`
+	MaxKeys               int              `xml:"MaxKeys"`
+	IsTruncated           bool             `xml:"IsTruncated"`
+	NextContinuationToken string           `xml:"NextContinuationToken"`
+	Contents              []s3Object       `xml:"Contents"`
+	CommonPrefixes        []s3CommonPrefix `xml:"CommonPrefixes"`
+}
+
+type s3Object struct {
+	Key          string `xml:"Key"`
+	LastModified string `xml:"LastModified"`
+	ETag         string `xml:"ETag"`
+	Size         int64  `xml:"Size"`
+	StorageClass string `xml:"StorageClass"`
+}
+
+type s3CommonPrefix struct {
+	Prefix string `xml:"Prefix"`
+}
+
+func canonicalRequest(req *http.Request, payloadHash string) (string, string) {
+	host := req.Host
+	if host == "" {
+		host = req.URL.Host
+	}
+	headers := map[string]string{
+		"host":                 host,
+		"x-amz-content-sha256": payloadHash,
+		"x-amz-date":           req.Header.Get("X-Amz-Date"),
+	}
+	for name, values := range req.Header {
+		lower := strings.ToLower(name)
+		if strings.HasPrefix(lower, "x-amz-") || lower == "content-type" {
+			headers[lower] = strings.Join(values, ",")
+		}
+	}
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var canonicalHeaders strings.Builder
+	for _, key := range keys {
+		canonicalHeaders.WriteString(key)
+		canonicalHeaders.WriteByte(':')
+		canonicalHeaders.WriteString(canonicalHeaderValue(headers[key]))
+		canonicalHeaders.WriteByte('\n')
+	}
+	signedHeaders := strings.Join(keys, ";")
+	canonicalURI := req.URL.EscapedPath()
+	if canonicalURI == "" {
+		canonicalURI = "/"
+	}
+	return strings.Join([]string{
+		req.Method,
+		canonicalURI,
+		canonicalQuery(req.URL.Query()),
+		canonicalHeaders.String(),
+		signedHeaders,
+		payloadHash,
+	}, "\n"), signedHeaders
+}
+
+func awsSigningKey(secret string, dateStamp string, region string) []byte {
+	dateKey := hmacSHA256([]byte("AWS4"+secret), dateStamp)
+	regionKey := hmacSHA256(dateKey, region)
+	serviceKey := hmacSHA256(regionKey, "s3")
+	return hmacSHA256(serviceKey, "aws4_request")
+}
+
+func hmacSHA256(key []byte, data string) []byte {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(data))
+	return mac.Sum(nil)
+}
+
+func hmacSHA256Hex(key []byte, data string) string {
+	return hex.EncodeToString(hmacSHA256(key, data))
+}
+
+func sha256Hex(data []byte) string {
+	if len(data) == 0 {
+		return emptySHA256Hex
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func canonicalQuery(values url.Values) string {
+	if len(values) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0)
+	for _, key := range keys {
+		rawValues := append([]string(nil), values[key]...)
+		sort.Strings(rawValues)
+		for _, value := range rawValues {
+			parts = append(parts, awsQueryEscape(key)+"="+awsQueryEscape(value))
+		}
+	}
+	return strings.Join(parts, "&")
+}
+
+func awsPathEscape(value string) string {
+	segments := strings.Split(value, "/")
+	for i, segment := range segments {
+		segments[i] = awsQueryEscape(segment)
+	}
+	return strings.Join(segments, "/")
+}
+
+func awsQueryEscape(value string) string {
+	escaped := url.QueryEscape(value)
+	escaped = strings.ReplaceAll(escaped, "+", "%20")
+	escaped = strings.ReplaceAll(escaped, "%7E", "~")
+	return escaped
+}
+
+func canonicalHeaderValue(value string) string {
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func s3HTTPError(status int, data []byte) error {
+	message := strings.TrimSpace(string(data))
+	if len(message) > 800 {
+		message = message[:800] + "...[truncated]"
+	}
+	if message == "" {
+		message = http.StatusText(status)
+	}
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("s3 authentication or permission failed: %s", message)
+	case http.StatusNotFound:
+		return fmt.Errorf("s3 object or bucket not found: %s", message)
+	default:
+		return fmt.Errorf("s3 request failed with HTTP %d: %s", status, message)
+	}
+}
+
+func classifyS3TestError(err error) connectors.TestStatus {
+	if err == nil {
+		return connectors.TestOK
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "authentication") || strings.Contains(message, "permission") || strings.Contains(message, "forbidden") || strings.Contains(message, "unauthorized"):
+		return connectors.TestFailedAuth
+	case strings.Contains(message, "no such host") || strings.Contains(message, "connection refused") || strings.Contains(message, "timeout") || strings.Contains(message, "network"):
+		return connectors.TestFailedNetwork
+	case strings.Contains(message, "tls") || strings.Contains(message, "certificate"):
+		return connectors.TestFailedTLS
+	default:
+		return connectors.TestUnknownError
+	}
+}
+
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "not found") || strings.Contains(message, "404")
+}
+
+func objectMetadataOutput(bucket string, key string, headers http.Header) map[string]any {
+	output := map[string]any{
+		"bucket":         bucket,
+		"key":            key,
+		"content_type":   headers.Get("Content-Type"),
+		"content_length": int64Header(headers, "Content-Length"),
+		"etag":           strings.Trim(headers.Get("ETag"), `"`),
+		"last_modified":  headers.Get("Last-Modified"),
+		"metadata":       userMetadata(headers),
+	}
+	return output
+}
+
+func safeHeaders(headers http.Header) map[string]string {
+	result := map[string]string{}
+	for name, values := range headers {
+		lower := strings.ToLower(name)
+		if lower == "authorization" || strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "credential") {
+			continue
+		}
+		if len(values) > 0 {
+			result[name] = values[0]
+		}
+	}
+	return result
+}
+
+func userMetadata(headers http.Header) map[string]string {
+	result := map[string]string{}
+	for name, values := range headers {
+		if !strings.HasPrefix(strings.ToLower(name), "x-amz-meta-") || len(values) == 0 {
+			continue
+		}
+		result[strings.TrimPrefix(strings.ToLower(name), "x-amz-meta-")] = values[0]
+	}
+	return result
+}
+
+func int64Header(headers http.Header, name string) int64 {
+	value := strings.TrimSpace(headers.Get(name))
+	if value == "" {
+		return 0
+	}
+	parsed, _ := strconv.ParseInt(value, 10, 64)
+	return parsed
+}
+
+func firstHeader(headers http.Header, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(headers.Get(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func uploadBytes(contentText string, contentBase64 string) ([]byte, error) {
+	if contentBase64 != "" {
+		data, err := base64.StdEncoding.DecodeString(contentBase64)
+		if err != nil {
+			return nil, fmt.Errorf("decode content_base64: %w", err)
+		}
+		return data, nil
+	}
+	return []byte(contentText), nil
+}
+
+func normalizeObjectKey(input map[string]any, name string) string {
+	key := strings.TrimSpace(stringValue(input, name))
+	key = strings.TrimLeft(key, "/")
+	return key
+}
+
+func objectFilename(key string) string {
+	parts := strings.Split(strings.TrimRight(key, "/"), "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[len(parts)-1]) == "" {
+		return "s3-object"
+	}
+	return parts[len(parts)-1]
+}
+
+func directoryName(prefix string) string {
+	parts := strings.Split(strings.TrimRight(prefix, "/"), "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[len(parts)-1]) == "" {
+		return prefix
+	}
+	return parts[len(parts)-1]
+}
+
+func s3Scheme(target connectors.TargetView) string {
+	scheme := strings.ToLower(strings.TrimSpace(stringValue(target.Config, "scheme")))
+	if scheme != "http" && scheme != "https" {
+		return defaultS3Scheme
+	}
+	return scheme
+}
+
+func s3Host(target connectors.TargetView) string {
+	host := strings.TrimSpace(stringValue(target.Config, "host"))
+	if host == "" {
+		return defaultS3Host
+	}
+	return host
+}
+
+func s3Port(target connectors.TargetView) int {
+	defaultPort := defaultS3Port
+	if s3Scheme(target) == "http" {
+		defaultPort = 80
+	}
+	return normalizeInt(target.Config, "port", defaultPort, 1, 65535)
+}
+
+func s3Region(target connectors.TargetView) string {
+	region := strings.TrimSpace(stringValue(target.Config, "region"))
+	if region == "" {
+		return defaultS3Region
+	}
+	return region
+}
+
+func s3Bucket(target connectors.TargetView) string {
+	return strings.TrimSpace(stringValue(target.Config, "bucket"))
+}
+
+func s3PathStyle(target connectors.TargetView) bool {
+	value, ok := target.Config["path_style"]
+	if !ok {
+		return true
+	}
+	return boolish(value)
+}
+
+func connectionMode(target connectors.TargetView) string {
+	mode := strings.TrimSpace(stringValue(target.Config, "connection_mode"))
+	if mode == "" {
+		return "direct"
+	}
+	return mode
+}
+
+func copyMap(value map[string]any) map[string]any {
+	out := map[string]any{}
+	for key, item := range value {
+		out[key] = item
+	}
+	return out
+}
+
+func stringValue(values map[string]any, name string) string {
+	if values == nil {
+		return ""
+	}
+	switch value := values[name].(type) {
+	case string:
+		return value
+	case fmt.Stringer:
+		return value.String()
+	case float64:
+		if value == float64(int64(value)) {
+			return strconv.FormatInt(int64(value), 10)
+		}
+		return strconv.FormatFloat(value, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(value)
+	case int64:
+		return strconv.FormatInt(value, 10)
+	case bool:
+		return strconv.FormatBool(value)
+	default:
+		if value == nil {
+			return ""
+		}
+		return fmt.Sprint(value)
+	}
+}
+
+func normalizeInt(values map[string]any, name string, fallback int, minValue int, maxValue int) int {
+	value, ok := values[name]
+	if !ok || value == nil || value == "" {
+		return fallback
+	}
+	parsed := fallback
+	switch typed := value.(type) {
+	case int:
+		parsed = typed
+	case int64:
+		parsed = int(typed)
+	case float64:
+		parsed = int(typed)
+	case string:
+		if candidate, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
+			parsed = candidate
+		}
+	}
+	if parsed < minValue {
+		return minValue
+	}
+	if parsed > maxValue {
+		return maxValue
+	}
+	return parsed
+}
+
+func boolValue(values map[string]any, name string) bool {
+	if values == nil {
+		return false
+	}
+	return boolish(values[name])
+}
+
+func boolish(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		parsed, _ := strconv.ParseBool(strings.TrimSpace(typed))
+		return parsed
+	case float64:
+		return typed != 0
+	case int:
+		return typed != 0
+	default:
+		return false
+	}
+}

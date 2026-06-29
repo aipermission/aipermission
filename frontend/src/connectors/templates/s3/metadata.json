@@ -1,0 +1,8 @@
+{
+  "kind": "s3",
+  "label": "S3",
+  "summary": "S3-compatible bucket browsing, object metadata, bounded upload/download, rename, and delete actions.",
+  "version": "0.2",
+  "icon": "database",
+  "badge_tone": "neutral"
+}

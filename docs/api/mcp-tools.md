@@ -2,7 +2,7 @@
 
 The MCP surface is connector-first. AIPermission does not expose separate
 product-specific MCP wrappers for SSH, database, cache, queue, or container
-products. SSH, Postgres, Redis, RabbitMQ, Docker, Kubernetes, and future
+products. SSH, Postgres, Redis, RabbitMQ, S3, Docker, Kubernetes, and future
 integrations are reached through the same connector target/action pipeline.
 
 Recommended package use:
@@ -53,6 +53,7 @@ redis:8:3
 rabbitmq:9:4
 docker:10:5
 kubernetes:11:6
+s3:12:7
 ```
 
 The profile chooses which stored credential is used. The connector action still
@@ -60,7 +61,7 @@ runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
-Postgres, Redis, RabbitMQ, Docker, or Kubernetes as special MCP modes; future
+Postgres, Redis, RabbitMQ, S3, Docker, or Kubernetes as special MCP modes; future
 connector kinds use the same tools and `target_ref` shape.
 
 ## list_connector_targets
@@ -145,6 +146,11 @@ queue listing, queue detail reads, binding listing, and bounded message peeking
 with `ack_requeue_true`, plus explicit `publish_message` writes. Message
 payload previews and published payloads may contain secrets or customer data;
 prefer approval-required access until the workflow is trusted.
+
+S3 actions include bucket metadata, bounded object listing, object metadata,
+bounded object download/upload, object rename, and explicit delete. Object
+content may contain secrets or customer data; prefer approval-required access
+for downloads, uploads, renames, and deletes until the workflow is trusted.
 
 Docker actions include version metadata, scoped container/image/network/volume
 listing, redacted container inspect metadata, bounded container log tails,
