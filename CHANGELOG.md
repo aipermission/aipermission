@@ -7,6 +7,44 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-06-29
+
+### Added
+
+- Added S3 as a built-in connector with Direct and Over SSH connection modes.
+- Added S3-compatible bucket browsing, object metadata reads, bounded object
+  download/upload, object rename, and explicit delete actions.
+- Added an S3 Console browser template for object search, metadata inspection,
+  download, upload, rename, and delete flows.
+
+### Changed
+
+- Moved live-console recovery action selection into connector frontend
+  templates, so recovery UI is connector-defined instead of SSH-specific.
+- Moved connector-provisioned credential metadata ownership behind connector
+  contracts, so managed profile details no longer live in generic API handlers.
+- Removed a stale Docker-shaped target-operation request DTO from generic
+  connector target handlers.
+
+### Fixed
+
+- Direct connector TCP dials now prefer IPv4 before IPv6 fallback when both are
+  available, avoiding Docker-hosted gateway timeouts on providers whose IPv6
+  endpoint is unreachable from the container network.
+
+### Tests
+
+- Added S3 connector tests for SigV4 request signing, path escaping, upload
+  preview redaction, list filtering, and overwrite protection.
+- Added direct connector dial ordering coverage for dual-stack DNS responses.
+- Added backend and frontend boundary checks that guard against connector
+  details leaking back into generic API handlers or generic Console code.
+
+### Security
+
+- S3 credentials are stored only as connector credential profile secrets, and
+  object content upload/download actions are bounded by connector size limits.
+
 ## [0.2.10] - 2026-06-23
 
 ### Added
