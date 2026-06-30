@@ -7,6 +7,30 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-06-30
+
+### Changed
+
+- Improved S3 MCP/operator guidance so agents use `bucket_info`,
+  `list_objects`, directory `browse_input`, pagination `cursor`, object
+  metadata, bounded download/upload, rename, and delete actions more reliably.
+- Added S3 list response hints for folder browsing and pagination, including
+  `assistant_hints`, per-folder `browse_input`, and `next_page_input`.
+- Clarified S3 action input descriptions for prefix browsing, search,
+  pagination, metadata-first reads, bounded object content, overwrite behavior,
+  and destructive deletes.
+
+### Security
+
+- S3 operator guidance now explicitly warns agents not to put access keys,
+  signed URLs, reusable tokens, or other secret material into connector action
+  input.
+
+### Tests
+
+- Added S3 connector coverage for directory browse hints and pagination
+  follow-up input.
+
 ## [0.2.11] - 2026-06-29
 
 ### Added
