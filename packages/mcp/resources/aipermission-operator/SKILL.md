@@ -151,6 +151,30 @@ explicitly supports that behavior.
 MCP connector responses never include file contents, gateway temp paths, archive
 staging paths, or local upload contents.
 
+## S3/Object Storage Practice
+
+For S3 connector targets, discover actions with `get_connector_actions` and
+prefer this sequence:
+
+1. Use `bucket_info` only to verify bucket reachability or endpoint metadata.
+2. Use `list_objects` to browse. Pass `prefix` to enter a folder-like prefix,
+   and use `browse_input` from directory entries when it is returned.
+3. Use `cursor` from `next_cursor` or `next_page_input` for pagination. Do not
+   send fields named `continuation_token`; S3 pagination tokens are not
+   credentials here, but the connector exposes them as `cursor` to avoid
+   secret-like input names.
+4. Use `get_object_metadata` before `download_object` when you only need size,
+   type, headers, or existence.
+5. Use `download_object` only for bounded object reads explicitly requested by
+   the operator.
+6. Keep `overwrite=false` for `upload_object` and `rename_object` unless the
+   operator explicitly approved replacement.
+7. Treat `delete_object` as destructive and ask for explicit confirmation if
+   approval mode does not already provide it.
+
+Object content may contain secrets or customer data. Avoid downloading or
+echoing object contents unless the operator asked for that exact object.
+
 ## Secret Hygiene
 
 Command text, action input, action output, history, audit records, and console

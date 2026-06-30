@@ -151,6 +151,11 @@ S3 actions include bucket metadata, bounded object listing, object metadata,
 bounded object download/upload, object rename, and explicit delete. Object
 content may contain secrets or customer data; prefer approval-required access
 for downloads, uploads, renames, and deletes until the workflow is trusted.
+Use `prefix` to browse folder-like object groups, `browse_input` from directory
+entries to enter a folder, and `cursor` from `next_cursor` or `next_page_input`
+to fetch the next page. Do not send `continuation_token` as an action input.
+Use `get_object_metadata` before `download_object` when content is not needed.
+Leave `overwrite=false` unless replacement was explicitly approved.
 
 Docker actions include version metadata, scoped container/image/network/volume
 listing, redacted container inspect metadata, bounded container log tails,
@@ -200,6 +205,59 @@ Example response:
   "output": {
     "exit_code": 0,
     "stdout": "active\n"
+  }
+}
+```
+
+Example S3 directory browse:
+
+```json
+{
+  "target_ref": "s3:12:7",
+  "action_name": "list_objects",
+  "input": {
+    "prefix": "backups/2026/",
+    "limit": 100
+  },
+  "reason": "List backup objects under the requested prefix before reading metadata."
+}
+```
+
+Example S3 list response shape:
+
+```json
+{
+  "status": "completed",
+  "target_ref": "s3:12:7",
+  "connector_kind": "s3",
+  "action_name": "list_objects",
+  "display_text": "1 folder(s), 2 object(s)",
+  "output": {
+    "directories": [
+      {
+        "name": "daily",
+        "prefix": "backups/2026/daily/",
+        "browse_input": {
+          "prefix": "backups/2026/daily/",
+          "limit": 100
+        }
+      }
+    ],
+    "objects": [
+      {
+        "key": "backups/2026/app.aipdb",
+        "size": 2048
+      }
+    ],
+    "next_cursor": "opaque-page-cursor",
+    "next_page_input": {
+      "prefix": "backups/2026/",
+      "cursor": "opaque-page-cursor",
+      "limit": 100
+    },
+    "assistant_hints": [
+      "To enter a folder, call list_objects with that folder's browse_input."
+    ]
   }
 }
 ```

@@ -139,7 +139,8 @@ Implemented:
   explicit message publishing
 - built-in S3 connector with Direct and Over SSH connection modes,
   S3-compatible bucket browsing, object metadata, bounded object
-  upload/download, rename, and delete actions
+  upload/download, rename, and delete actions, plus MCP-friendly folder/prefix
+  browsing hints for AI agents
 - built-in Docker connector over an SSH transport profile, with scoped
   container/image/network/volume inventory, redacted inspect metadata, bounded
   logs, scoped container exec, live container console, and explicit
@@ -377,10 +378,14 @@ count/truncation limits and `ack_requeue_true`.
 
 For S3, call `get_connector_actions(target_ref)` to discover actions such as
 `bucket_info`, `list_objects`, `get_object_metadata`, `download_object`,
-`upload_object`, `rename_object`, and `delete_object`. Object content may
-contain secrets; downloads and uploads are bounded connector actions and large
-transfer-center style object movement is intentionally out of scope for the
-initial S3 connector.
+`upload_object`, `rename_object`, and `delete_object`. Use `prefix` and
+directory `browse_input` values to browse folder-like object groups, and use
+`cursor` or `next_page_input` for pagination. Object content may contain
+secrets; use `get_object_metadata` before downloading content, keep
+`overwrite=false` unless replacement was explicitly approved, and treat delete
+as destructive. Downloads and uploads are bounded connector actions and large
+transfer-center style object movement is intentionally out of scope for the S3
+connector.
 
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,
