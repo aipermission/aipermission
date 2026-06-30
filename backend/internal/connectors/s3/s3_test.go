@@ -188,6 +188,48 @@ func TestExecuteListObjectsReturnsDirectoryPrefixes(t *testing.T) {
 	if directories[0]["prefix"] != "2025/" || directories[1]["name"] != "2026" {
 		t.Fatalf("directories = %#v", directories)
 	}
+	browseInput := directories[0]["browse_input"].(map[string]any)
+	if browseInput["prefix"] != "2025/" {
+		t.Fatalf("browse_input = %#v", browseInput)
+	}
+	hints := output["assistant_hints"].([]string)
+	if len(hints) == 0 || !strings.Contains(strings.Join(hints, " "), "browse_input") {
+		t.Fatalf("assistant_hints = %#v", hints)
+	}
+}
+
+func TestExecuteListObjectsReturnsNextPageInput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<ListBucketResult>
+<Name>test-bucket</Name>
+<IsTruncated>true</IsTruncated>
+<NextContinuationToken>page-2</NextContinuationToken>
+<Contents><Key>daily/one.txt</Key><LastModified>2026-06-29T10:00:00.000Z</LastModified><ETag>"abc"</ETag><Size>42</Size><StorageClass>STANDARD</StorageClass></Contents>
+</ListBucketResult>`))
+	}))
+	defer server.Close()
+
+	connector := New()
+	result, err := connector.ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionListObjects,
+		Payload:    map[string]any{"prefix": "daily/", "limit": 10},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	output := result.Output.(map[string]any)
+	if output["next_cursor"] != "page-2" {
+		t.Fatalf("next_cursor = %#v", output["next_cursor"])
+	}
+	nextPageInput := output["next_page_input"].(map[string]any)
+	if nextPageInput["prefix"] != "daily/" || nextPageInput["cursor"] != "page-2" {
+		t.Fatalf("next_page_input = %#v", nextPageInput)
+	}
+	hints := output["assistant_hints"].([]string)
+	if len(hints) == 0 || !strings.Contains(strings.Join(hints, " "), "next_cursor") {
+		t.Fatalf("assistant_hints = %#v", hints)
+	}
 }
 
 func TestPrepareListObjectsUsesNonSecretCursorPayload(t *testing.T) {

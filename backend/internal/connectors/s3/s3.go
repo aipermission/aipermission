@@ -197,15 +197,20 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 		Connector:   Label,
 		ConnectorID: Kind,
 		Usage: []string{
-			"Use list_objects with a prefix or search filter before reading object details.",
+			"Use bucket_info first when you need to verify bucket reachability or endpoint metadata.",
+			"Use list_objects with prefix to browse folders. Folder entries return browse_input; call list_objects with that input to enter the folder.",
+			"Use list_objects with cursor from next_cursor to fetch the next page. Do not send continuation_token; use the cursor field only.",
+			"Use search for bounded key lookup across pages. When search is set, folder grouping is disabled and results are returned as matching objects.",
 			"Use get_object_metadata to inspect one object without downloading content.",
-			"Use download_object only for bounded object reads; large transfer-center style downloads are a future feature.",
-			"Use upload_object and rename_object only for intentional writes.",
-			"Use delete_object carefully; it is destructive and should normally require approval.",
+			"Use download_object only for bounded object reads. It returns base64 content for the requested object up to max_bytes.",
+			"Use upload_object with overwrite=false by default. If the object exists, ask the operator before retrying with overwrite=true.",
+			"Use rename_object only for intentional object moves. It copies to the destination key and then deletes the source key.",
+			"Use delete_object carefully; it is destructive and should normally require explicit approval.",
 		},
 		Warnings: []string{
 			"S3 objects may contain secrets or customer data. Redaction is best-effort; avoid reading object content unless explicitly approved.",
 			"download_object and upload_object are intentionally size-bounded in the connector action pipeline.",
+			"Do not put access keys, secret keys, signed URLs, or reusable tokens into action input. Store credentials in the selected credential profile.",
 			"S3 credential profiles decide what the object storage service itself allows.",
 		},
 	}, nil
@@ -229,10 +234,10 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "prefix", Label: "Prefix", Type: connectors.FieldString, Description: "Optional object key prefix."},
-				{Name: "search", Label: "Search", Type: connectors.FieldString, Description: "Optional case-insensitive key search applied after listing."},
-				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional pagination cursor returned by a previous list."},
-				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultS3ListLimit},
+				{Name: "prefix", Label: "Prefix", Type: connectors.FieldString, Description: "Optional object key prefix. Use a folder prefix ending in / to browse inside that folder."},
+				{Name: "search", Label: "Search", Type: connectors.FieldString, Description: "Optional case-insensitive key search applied across bounded list pages. Folder grouping is disabled while searching."},
+				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional pagination cursor returned as next_cursor by a previous list_objects response."},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultS3ListLimit, Description: "Maximum objects to return, capped by the connector."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxS3ListLimit},
 		},
@@ -243,7 +248,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key returned by list_objects."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 32 << 10},
 		},
@@ -254,8 +259,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
-				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldNumber, Default: defaultDownloadMax},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key returned by list_objects."},
+				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldNumber, Default: defaultDownloadMax, Description: "Maximum bytes to read, capped by the connector."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDownloadBytes},
 		},
@@ -266,11 +271,11 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "write",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
-				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline},
-				{Name: "content_base64", Label: "Base64 content", Type: connectors.FieldMultiline},
-				{Name: "content_type", Label: "Content type", Type: connectors.FieldString, Default: "application/octet-stream"},
-				{Name: "overwrite", Label: "Overwrite existing object", Type: connectors.FieldBoolean, Default: false},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Destination object key."},
+				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline, Description: "Text payload for small text objects. Use this or content_base64, not both."},
+				{Name: "content_base64", Label: "Base64 content", Type: connectors.FieldMultiline, Description: "Base64 payload for binary objects. Use this or content_text, not both."},
+				{Name: "content_type", Label: "Content type", Type: connectors.FieldString, Default: "application/octet-stream", Description: "Object content type to send with the upload."},
+				{Name: "overwrite", Label: "Overwrite existing object", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless the operator explicitly approved replacing an existing object."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -281,9 +286,9 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "write",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "source_key", Label: "Source key", Type: connectors.FieldString, Required: true},
-				{Name: "destination_key", Label: "Destination key", Type: connectors.FieldString, Required: true},
-				{Name: "overwrite", Label: "Overwrite destination", Type: connectors.FieldBoolean, Default: false},
+				{Name: "source_key", Label: "Source key", Type: connectors.FieldString, Required: true, Description: "Existing object key to move."},
+				{Name: "destination_key", Label: "Destination key", Type: connectors.FieldString, Required: true, Description: "New object key."},
+				{Name: "overwrite", Label: "Overwrite destination", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless the operator explicitly approved replacing the destination object."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -294,7 +299,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "destructive",
 			Risk:        connectors.RiskDestructive,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key to delete."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -556,29 +561,64 @@ func s3ObjectSummary(object s3Object) map[string]any {
 
 func s3DirectorySummary(directory s3CommonPrefix) map[string]any {
 	return map[string]any{
-		"prefix": directory.Prefix,
-		"name":   directoryName(directory.Prefix),
+		"prefix":       directory.Prefix,
+		"name":         directoryName(directory.Prefix),
+		"browse_input": map[string]any{"prefix": directory.Prefix, "limit": defaultS3ListLimit},
 	}
 }
 
 func s3ListResult(bucket string, prefix string, search string, directories []map[string]any, objects []map[string]any, isTruncated bool, nextCursor string, scanned int, scanLimited bool) connectors.ActionResult {
+	hints := s3ListAssistantHints(prefix, search, len(directories), len(objects), isTruncated, nextCursor, scanLimited)
+	output := map[string]any{
+		"bucket":          bucket,
+		"prefix":          prefix,
+		"search":          search,
+		"directories":     directories,
+		"directory_count": len(directories),
+		"objects":         objects,
+		"count":           len(objects),
+		"is_truncated":    isTruncated,
+		"next_cursor":     nextCursor,
+		"scanned":         scanned,
+		"scan_limited":    scanLimited,
+		"assistant_hints": hints,
+	}
+	if isTruncated && nextCursor != "" {
+		output["next_page_input"] = map[string]any{
+			"prefix": prefix,
+			"search": search,
+			"cursor": nextCursor,
+			"limit":  defaultS3ListLimit,
+		}
+	}
 	return connectors.ActionResult{
-		Status: connectors.ResultCompleted,
-		Output: map[string]any{
-			"bucket":          bucket,
-			"prefix":          prefix,
-			"search":          search,
-			"directories":     directories,
-			"directory_count": len(directories),
-			"objects":         objects,
-			"count":           len(objects),
-			"is_truncated":    isTruncated,
-			"next_cursor":     nextCursor,
-			"scanned":         scanned,
-			"scan_limited":    scanLimited,
-		},
+		Status:      connectors.ResultCompleted,
+		Output:      output,
 		DisplayText: fmt.Sprintf("%d folder(s), %d object(s)", len(directories), len(objects)),
 	}
+}
+
+func s3ListAssistantHints(prefix string, search string, directoryCount int, objectCount int, isTruncated bool, nextCursor string, scanLimited bool) []string {
+	hints := []string{}
+	if directoryCount > 0 {
+		hints = append(hints, "To enter a folder, call list_objects with that folder's browse_input.")
+	}
+	if objectCount > 0 {
+		hints = append(hints, "Use get_object_metadata before download_object when you only need size, type, or headers.")
+	}
+	if isTruncated && nextCursor != "" {
+		hints = append(hints, "More objects are available. Call list_objects with next_page_input or use next_cursor as cursor.")
+	}
+	if search != "" {
+		hints = append(hints, "Search scans bounded pages and returns matching objects without folder grouping.")
+	}
+	if scanLimited {
+		hints = append(hints, "Search stopped at the connector page limit; narrow the prefix or search term for a deeper lookup.")
+	}
+	if prefix == "" && search == "" && directoryCount == 0 && objectCount == 0 {
+		hints = append(hints, "The bucket root is empty or the credential profile cannot see objects under this prefix.")
+	}
+	return hints
 }
 
 func executeGetObjectMetadata(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
