@@ -236,7 +236,9 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.11"/);
+  assert.match(releaseSource, /appVersion = "0\.2\.12"/);
+  assert.match(releaseSource, /S3 MCP polish/);
+  assert.match(releaseSource, /S3 list responses now include assistant_hints/);
   assert.match(releaseSource, /S3 connector/);
   assert.match(releaseSource, /S3 is now a built-in connector/);
   assert.match(releaseSource, /Live-console recovery behavior is now defined by connector templates/);

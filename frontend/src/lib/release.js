@@ -1,6 +1,32 @@
-export const appVersion = "0.2.11";
+export const appVersion = "0.2.12";
 
 export const changelogEntries = [
+  {
+    version: "0.2.12",
+    label: "S3 MCP polish",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "S3 MCP/operator guidance now explains bucket_info, list_objects, folder browse_input, pagination cursor, metadata reads, bounded transfers, rename, and delete actions more clearly.",
+          "S3 list responses now include assistant_hints, per-folder browse_input, and next_page_input so AI agents can browse object prefixes without guessing field names.",
+          "S3 action input descriptions now clarify prefix browsing, search, pagination, metadata-first reads, bounded content, overwrite behavior, and destructive deletes.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "S3 operator guidance now explicitly warns agents not to put access keys, signed URLs, reusable tokens, or other secret material into connector action input.",
+        ],
+      },
+      {
+        title: "Tests",
+        items: [
+          "S3 connector tests now cover directory browse hints and pagination follow-up input.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.11",
     label: "S3 connector",
