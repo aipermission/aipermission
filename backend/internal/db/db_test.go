@@ -148,6 +148,20 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	}
 }
 
+func TestConnectorTargetsRequireProjectIdentity(t *testing.T) {
+	database, err := OpenEncrypted(filepath.Join(t.TempDir(), "project-required.db"), "test-password")
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	defer database.Close()
+	_, err = database.Exec(`
+		INSERT INTO connector_targets (connector_kind, name, config_json, status, created_at, updated_at)
+		VALUES ('postgres', 'missing-project', '{}', 'active', datetime('now'), datetime('now'))`)
+	if err == nil || !strings.Contains(err.Error(), "project_id is required") {
+		t.Fatalf("missing project insert error = %v", err)
+	}
+}
+
 func TestOpenEncryptedMigratesConnectorNativeBaseline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secure.db")
 	database, err := openEncrypted(path, "correct-password", false)
@@ -522,8 +536,11 @@ func assertConnectorProfileTargetForeignKeys(t *testing.T, database *sql.DB) {
 func insertConnectorTargetAndProfile(t *testing.T, database *sql.DB) (int64, int64) {
 	t.Helper()
 	result, err := database.Exec(`
-		INSERT INTO connector_targets (connector_kind, name, config_json, created_at, updated_at)
-		VALUES ('postgres', 'postgres-' || lower(hex(randomblob(4))), '{"host":"127.0.0.1"}', datetime('now'), datetime('now'))`,
+		INSERT INTO connector_targets (project_id, connector_kind, name, config_json, created_at, updated_at)
+		VALUES (
+			(SELECT id FROM projects WHERE slug = 'ungrouped' AND status = 'active'),
+			'postgres', 'postgres-' || lower(hex(randomblob(4))), '{"host":"127.0.0.1"}', datetime('now'), datetime('now')
+		)`,
 	)
 	if err != nil {
 		t.Fatalf("insert connector target: %v", err)

@@ -62,6 +62,9 @@ func NewTxStore(tx *sql.Tx) *Store {
 
 type Target struct {
 	ID            int64
+	ProjectID     int64
+	ProjectName   string
+	ProjectSlug   string
 	ConnectorKind string
 	Name          string
 	Config        map[string]any
@@ -72,18 +75,21 @@ type Target struct {
 
 type ListTargetsFilter struct {
 	ConnectorKind string
+	ProjectID     int64
 }
 
 type CreateTargetInput struct {
+	ProjectID     int64
 	ConnectorKind string
 	Name          string
 	Config        map[string]any
 }
 
 type UpdateTargetInput struct {
-	ID     int64
-	Name   string
-	Config map[string]any
+	ID        int64
+	ProjectID int64
+	Name      string
+	Config    map[string]any
 }
 
 func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Target, error) {
@@ -101,10 +107,15 @@ func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Targ
 	if err != nil {
 		return Target{}, ValidationError("target config must be a JSON object")
 	}
+	projectID, err := s.resolveProjectID(ctx, input.ProjectID)
+	if err != nil {
+		return Target{}, err
+	}
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO connector_targets (connector_kind, name, config_json, status, created_at, updated_at)
-		VALUES (?, ?, ?, 'active', ?, ?)`,
+		INSERT INTO connector_targets (project_id, connector_kind, name, config_json, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+		projectID,
 		input.ConnectorKind,
 		name,
 		configJSON,
@@ -121,15 +132,7 @@ func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Targ
 	if err != nil {
 		return Target{}, err
 	}
-	return Target{
-		ID:            id,
-		ConnectorKind: input.ConnectorKind,
-		Name:          name,
-		Config:        cloneMap(input.Config),
-		Status:        TargetStatusActive,
-		CreatedAt:     now,
-		UpdatedAt:     now,
-	}, nil
+	return s.GetTarget(ctx, id)
 }
 
 func (s *Store) UpdateTarget(ctx context.Context, input UpdateTargetInput) (Target, error) {
@@ -147,10 +150,15 @@ func (s *Store) UpdateTarget(ctx context.Context, input UpdateTargetInput) (Targ
 	if err != nil {
 		return Target{}, ValidationError("target config must be a JSON object")
 	}
+	projectID, err := s.resolveProjectID(ctx, input.ProjectID)
+	if err != nil {
+		return Target{}, err
+	}
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE connector_targets
-		SET name = ?, config_json = ?, updated_at = ?
+		SET project_id = ?, name = ?, config_json = ?, updated_at = ?
 		WHERE id = ? AND status = 'active'`,
+		projectID,
 		name,
 		configJSON,
 		nowString(),
@@ -245,19 +253,27 @@ func (s *Store) ListTargets(ctx context.Context, filter ListTargetsFilter) ([]Ta
 		return nil, fmt.Errorf("connector target store is not configured")
 	}
 	args := []any{}
-	where := "status = 'active'"
+	where := "t.status = 'active'"
 	if strings.TrimSpace(filter.ConnectorKind) != "" {
 		if !connectors.ValidIdentifier(filter.ConnectorKind) {
 			return nil, ValidationError("invalid connector kind")
 		}
-		where += " AND connector_kind = ?"
+		where += " AND t.connector_kind = ?"
 		args = append(args, filter.ConnectorKind)
 	}
+	if filter.ProjectID != 0 {
+		if filter.ProjectID < 1 {
+			return nil, ValidationError("invalid project id")
+		}
+		where += " AND t.project_id = ?"
+		args = append(args, filter.ProjectID)
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, connector_kind, name, config_json, status, created_at, updated_at
-		FROM connector_targets
+		SELECT t.id, t.project_id, p.name, p.slug, t.connector_kind, t.name, t.config_json, t.status, t.created_at, t.updated_at
+		FROM connector_targets t
+		JOIN projects p ON p.id = t.project_id AND p.status = 'active'
 		WHERE `+where+`
-		ORDER BY connector_kind, name, id`,
+		ORDER BY lower(p.name), t.connector_kind, lower(t.name), t.id`,
 		args...,
 	)
 	if err != nil {
@@ -287,9 +303,10 @@ func (s *Store) GetTarget(ctx context.Context, id int64) (Target, error) {
 		return Target{}, ErrTargetNotFound
 	}
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, connector_kind, name, config_json, status, created_at, updated_at
-		FROM connector_targets
-		WHERE id = ? AND status = 'active'`,
+		SELECT t.id, t.project_id, p.name, p.slug, t.connector_kind, t.name, t.config_json, t.status, t.created_at, t.updated_at
+		FROM connector_targets t
+		JOIN projects p ON p.id = t.project_id AND p.status = 'active'
+		WHERE t.id = ? AND t.status = 'active'`,
 		id,
 	)
 	target, err := scanTarget(row)
@@ -1426,6 +1443,9 @@ func scanTarget(row rowScanner) (Target, error) {
 	var target Target
 	if err := row.Scan(
 		&target.ID,
+		&target.ProjectID,
+		&target.ProjectName,
+		&target.ProjectSlug,
 		&target.ConnectorKind,
 		&target.Name,
 		&configJSON,
@@ -1441,6 +1461,28 @@ func scanTarget(row rowScanner) (Target, error) {
 	}
 	target.Config = config
 	return target, nil
+}
+
+func (s *Store) resolveProjectID(ctx context.Context, projectID int64) (int64, error) {
+	if projectID < 0 {
+		return 0, ValidationError("invalid project id")
+	}
+	if projectID == 0 {
+		err := s.db.QueryRowContext(ctx, `SELECT id FROM projects WHERE slug = 'ungrouped' AND status = 'active'`).Scan(&projectID)
+		if err != nil {
+			return 0, fmt.Errorf("resolve ungrouped project: %w", err)
+		}
+		return projectID, nil
+	}
+	var exists int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM projects WHERE id = ? AND status = 'active'`, projectID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ValidationError("project not found")
+	}
+	if err != nil {
+		return 0, fmt.Errorf("validate project: %w", err)
+	}
+	return projectID, nil
 }
 
 func scanCredentialProfile(row rowScanner) (CredentialProfile, error) {
