@@ -7,6 +7,42 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-07-11
+
+### Added
+
+- Added first-class local projects for organizing connector targets, with a
+  protected `Ungrouped` project for existing and unassigned targets.
+- Added project management and grouped connector navigation in Connectors and
+  Console, including project-aware search and stable collapsed groups.
+- Added project-scoped MCP visibility controls to Tokens and the Console token
+  panel.
+
+### Changed
+
+- MCP target discovery now returns only targets in projects enabled for the
+  calling token, while preserving existing target/profile/action grants when a
+  project is temporarily disabled.
+- History and Audit Logs now store project snapshots and support project
+  filters; the History search and filter controls use a clearer two-row layout.
+- Updated the Go toolchain baseline to 1.26.5.
+
+### Security
+
+- Project scope is an additional local visibility boundary above connector
+  action permissions. It does not introduce team RBAC, multi-user isolation,
+  remote hosting, or a tenant security boundary.
+
+### Maintenance
+
+- Updated Lucide, React Router, and Tailwind frontend patch dependencies while
+  keeping the production dependency audit clean.
+
+### Tests
+
+- Added migration, project lifecycle, target assignment, token project scope,
+  MCP visibility, history/audit snapshot, and connector project-edit coverage.
+
 ## [0.2.12] - 2026-06-30
 
 ### Changed
