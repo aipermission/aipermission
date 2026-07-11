@@ -12,6 +12,7 @@ import (
 )
 
 type historyEntryFilter struct {
+	ProjectID     int64
 	ConnectorKind string
 	ActivityType  string
 	Status        string
@@ -33,6 +34,8 @@ type historyEntryRecord struct {
 	ActivityType     string               `json:"activity_type"`
 	TokenID          *int64               `json:"token_id,omitempty"`
 	TokenName        string               `json:"token_name,omitempty"`
+	ProjectID        *int64               `json:"project_id,omitempty"`
+	ProjectName      string               `json:"project_name,omitempty"`
 	RuntimeID        *int64               `json:"runtime_id,omitempty"`
 	TargetID         *int64               `json:"target_id,omitempty"`
 	ProfileID        *int64               `json:"profile_id,omitempty"`
@@ -65,6 +68,8 @@ type historyEntryRecord struct {
 
 type historyTargetFacetRecord struct {
 	Ref           string `json:"ref"`
+	ProjectID     *int64 `json:"project_id,omitempty"`
+	ProjectName   string `json:"project_name,omitempty"`
 	ConnectorKind string `json:"connector_kind"`
 	RuntimeID     *int64 `json:"runtime_id,omitempty"`
 	TargetID      *int64 `json:"target_id,omitempty"`
@@ -112,6 +117,13 @@ func (s historyEntryHandlers) listHistoryEntries(w http.ResponseWriter, r *http.
 			return
 		}
 		filter.RuntimeID = id
+	}
+	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
+		id, ok := parseInt64Query(w, rawProjectID, "project_id")
+		if !ok {
+			return
+		}
+		filter.ProjectID = id
 	}
 	if rawTargetID := strings.TrimSpace(r.URL.Query().Get("target_id")); rawTargetID != "" {
 		id, ok := parseInt64Query(w, rawTargetID, "target_id")
@@ -167,6 +179,8 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 	rows, err := runtime.database.QueryContext(ctx, `
 		SELECT
 			he.connector_kind,
+			he.project_id,
+			COALESCE(project.name, '') AS project_name,
 			he.runtime_id,
 			he.target_id,
 			he.profile_id,
@@ -174,9 +188,10 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 			COALESCE(he.profile_label, '') AS profile_label,
 			MAX(he.created_at) AS last_seen_at
 		FROM history_entries he
+		LEFT JOIN projects project ON project.id = he.project_id
 		WHERE he.target_id IS NOT NULL OR he.runtime_id IS NOT NULL
-		GROUP BY he.connector_kind, he.runtime_id, he.target_id, he.profile_id, he.target_name, he.profile_label
-		ORDER BY lower(target_name), lower(profile_label), he.connector_kind`,
+		GROUP BY he.connector_kind, he.project_id, project.name, he.runtime_id, he.target_id, he.profile_id, he.target_name, he.profile_label
+		ORDER BY lower(project_name), lower(target_name), lower(profile_label), he.connector_kind`,
 	)
 	if err != nil {
 		return nil, err
@@ -185,11 +200,14 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 	items := []historyTargetFacetRecord{}
 	for rows.Next() {
 		var item historyTargetFacetRecord
+		var projectID sql.NullInt64
 		var runtimeID sql.NullInt64
 		var targetID sql.NullInt64
 		var profileID sql.NullInt64
 		if err := rows.Scan(
 			&item.ConnectorKind,
+			&projectID,
+			&item.ProjectName,
 			&runtimeID,
 			&targetID,
 			&profileID,
@@ -198,6 +216,10 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 			&item.LastSeenAt,
 		); err != nil {
 			return nil, err
+		}
+		if projectID.Valid {
+			value := projectID.Int64
+			item.ProjectID = &value
 		}
 		if runtimeID.Valid {
 			value := runtimeID.Int64
@@ -228,6 +250,7 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 		SELECT COUNT(*)
 		FROM history_entries he
 		LEFT JOIN api_tokens tok ON tok.id = he.token_id
+		LEFT JOIN projects project ON project.id = he.project_id
 		WHERE `+where,
 		args...,
 	).Scan(&total); err != nil {
@@ -237,7 +260,7 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 	queryArgs := append(append([]any{}, args...), filter.Limit, filter.Offset)
 	rows, err := runtime.database.QueryContext(ctx, `
 		SELECT he.id, he.source_ref_type, he.source_ref_id, he.connector_kind, he.activity_type,
-		       he.token_id, COALESCE(tok.name, ''), he.runtime_id, he.target_id, he.profile_id,
+		       he.token_id, COALESCE(tok.name, ''), he.project_id, COALESCE(project.name, ''), he.runtime_id, he.target_id, he.profile_id,
 		       he.target_name, he.profile_label, he.source, he.status, he.action_name,
 		       he.title, he.summary, he.preview_json, he.input_text, he.input_json, '' AS output_text,
 		       '{}' AS output_json, he.error, he.exit_code, he.progress_current,
@@ -245,6 +268,7 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 		       he.user_note, he.created_at, he.started_at, he.completed_at, he.updated_at
 		FROM history_entries he
 		LEFT JOIN api_tokens tok ON tok.id = he.token_id
+		LEFT JOIN projects project ON project.id = he.project_id
 		WHERE `+where+`
 		ORDER BY he.created_at DESC, he.id DESC
 		LIMIT ? OFFSET ?`,
@@ -274,7 +298,7 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 func (s *Server) getHistoryEntryRecord(ctx context.Context, runtime *databaseRuntime, id int64) (historyEntryRecord, error) {
 	row := runtime.database.QueryRowContext(ctx, `
 		SELECT he.id, he.source_ref_type, he.source_ref_id, he.connector_kind, he.activity_type,
-		       he.token_id, COALESCE(tok.name, ''), he.runtime_id, he.target_id, he.profile_id,
+		       he.token_id, COALESCE(tok.name, ''), he.project_id, COALESCE(project.name, ''), he.runtime_id, he.target_id, he.profile_id,
 		       he.target_name, he.profile_label, he.source, he.status, he.action_name,
 		       he.title, he.summary, he.preview_json, he.input_text, he.input_json, he.output_text,
 		       he.output_json, he.error, he.exit_code, he.progress_current,
@@ -282,6 +306,7 @@ func (s *Server) getHistoryEntryRecord(ctx context.Context, runtime *databaseRun
 		       he.user_note, he.created_at, he.started_at, he.completed_at, he.updated_at
 		FROM history_entries he
 		LEFT JOIN api_tokens tok ON tok.id = he.token_id
+		LEFT JOIN projects project ON project.id = he.project_id
 		WHERE he.id = ?`,
 		id,
 	)
@@ -299,6 +324,7 @@ func (s *Server) getHistoryEntryRecord(ctx context.Context, runtime *databaseRun
 
 func historyEntryWhere(filter historyEntryFilter) (string, []any) {
 	where := []string{
+		"(? = 0 OR he.project_id = ?)",
 		"(? = '' OR he.connector_kind = ?)",
 		"(? = '' OR he.activity_type = ?)",
 		"(? = '' OR he.status = ?)",
@@ -308,6 +334,7 @@ func historyEntryWhere(filter historyEntryFilter) (string, []any) {
 		"(? = 0 OR he.profile_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE profile_id = ? AND status = 'active'))",
 	}
 	args := []any{
+		filter.ProjectID, filter.ProjectID,
 		filter.ConnectorKind, filter.ConnectorKind,
 		filter.ActivityType, filter.ActivityType,
 		filter.Status, filter.Status,
@@ -322,8 +349,8 @@ func historyEntryWhere(filter historyEntryFilter) (string, []any) {
 	}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
-		where = append(where, `(he.title LIKE ? OR he.summary LIKE ? OR he.preview_json LIKE ? OR he.input_text LIKE ? OR he.input_json LIKE ? OR he.output_text LIKE ? OR he.output_json LIKE ? OR he.error LIKE ? OR he.target_name LIKE ? OR he.profile_label LIKE ? OR he.action_name LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
-		args = append(args, like, like, like, like, like, like, like, like, like, like, like, like)
+		where = append(where, `(he.title LIKE ? OR he.summary LIKE ? OR he.preview_json LIKE ? OR he.input_text LIKE ? OR he.input_json LIKE ? OR he.output_text LIKE ? OR he.output_json LIKE ? OR he.error LIKE ? OR he.target_name LIKE ? OR he.profile_label LIKE ? OR he.action_name LIKE ? OR COALESCE(tok.name, '') LIKE ? OR COALESCE(project.name, '') LIKE ?)`)
+		args = append(args, like, like, like, like, like, like, like, like, like, like, like, like, like)
 	}
 	return strings.Join(where, " AND "), args
 }
@@ -333,6 +360,7 @@ func scanHistoryEntry(scanner interface {
 }) (historyEntryRecord, error) {
 	var item historyEntryRecord
 	var tokenID sql.NullInt64
+	var projectID sql.NullInt64
 	var runtimeID sql.NullInt64
 	var targetID sql.NullInt64
 	var profileID sql.NullInt64
@@ -348,6 +376,8 @@ func scanHistoryEntry(scanner interface {
 		&item.ActivityType,
 		&tokenID,
 		&item.TokenName,
+		&projectID,
+		&item.ProjectName,
 		&runtimeID,
 		&targetID,
 		&profileID,
@@ -382,6 +412,10 @@ func scanHistoryEntry(scanner interface {
 	if tokenID.Valid {
 		value := tokenID.Int64
 		item.TokenID = &value
+	}
+	if projectID.Valid {
+		value := projectID.Int64
+		item.ProjectID = &value
 	}
 	if runtimeID.Valid {
 		value := runtimeID.Int64

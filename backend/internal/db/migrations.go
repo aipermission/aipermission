@@ -470,13 +470,13 @@ var searchIndexStatements = []string{
 var historyProjectionStatements = []string{
 	`INSERT OR IGNORE INTO history_entries (
 		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_id,
-		target_id, profile_id, target_name, profile_label, source, status, action_name,
+		project_id, target_id, profile_id, target_name, profile_label, source, status, action_name,
 		title, summary, input_text, output_text, error, exit_code, approval_required,
 		user_note, created_at, started_at, completed_at, updated_at
 	)
 	SELECT
 		'command_request', cr.id, COALESCE(rs.connector_kind, ''), 'command', cr.token_id, cr.runtime_id,
-		ct.id, cp.id, COALESCE(ct.name, ''), COALESCE(cp.label, ''), cr.source, cr.status, 'exec',
+		ct.project_id, ct.id, cp.id, COALESCE(ct.name, ''), COALESCE(cp.label, ''), cr.source, cr.status, 'exec',
 		CASE
 			WHEN length(cr.command) > 120 THEN substr(cr.command, 1, 117) || '...'
 			ELSE cr.command
@@ -500,13 +500,13 @@ var historyProjectionStatements = []string{
 	LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
 	LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind;`,
 	`INSERT OR IGNORE INTO history_entries (
-		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, target_id,
+		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, project_id, target_id,
 		profile_id, target_name, profile_label, source, status, action_name, title, summary,
 		preview_json, input_json, output_text, output_json, error, approval_required, created_at,
 		completed_at, updated_at
 	)
 	SELECT
-		'connector_action_request', r.id, r.connector_kind, 'action', r.token_id, r.target_id,
+		'connector_action_request', r.id, r.connector_kind, 'action', r.token_id, t.project_id, r.target_id,
 		r.profile_id, t.name, p.label, COALESCE(NULLIF(r.source, ''), 'mcp'),
 		CASE WHEN r.status = 'approval_pending' THEN 'pending_approval' ELSE r.status END,
 		r.action_name, COALESCE(NULLIF(r.title, ''), r.action_name),
@@ -517,14 +517,14 @@ var historyProjectionStatements = []string{
 	JOIN connector_targets t ON t.id = r.target_id
 	JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id AND p.connector_kind = r.connector_kind;`,
 	`INSERT OR IGNORE INTO history_entries (
-		source_ref_type, source_ref_id, connector_kind, activity_type, runtime_id, target_id,
+		source_ref_type, source_ref_id, connector_kind, activity_type, runtime_id, project_id, target_id,
 		profile_id, target_name, profile_label, source, status, action_name, title, summary,
 		input_text, input_json, output_text, error, progress_current, progress_total,
 		bytes_done, bytes_total, approval_required, created_at, started_at, completed_at,
 		updated_at
 	)
 	SELECT
-		'file_transfer', ft.id, COALESCE(rs.connector_kind, ''), 'file_transfer', ft.runtime_id, ct.id, cp.id,
+		'file_transfer', ft.id, COALESCE(rs.connector_kind, ''), 'file_transfer', ft.runtime_id, ct.project_id, ct.id, cp.id,
 		COALESCE(ct.name, ''), COALESCE(cp.label, ''), ft.source, ft.status, ft.direction,
 		ft.direction || ': ' || ft.file_name,
 		ft.remote_path,

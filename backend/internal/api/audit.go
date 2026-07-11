@@ -18,6 +18,8 @@ type auditLogRecord struct {
 	ActorType       string `json:"actor_type"`
 	TokenID         *int64 `json:"token_id,omitempty"`
 	TokenName       string `json:"token_name,omitempty"`
+	ProjectID       *int64 `json:"project_id,omitempty"`
+	ProjectName     string `json:"project_name,omitempty"`
 	RuntimeID       *int64 `json:"runtime_id,omitempty"`
 	ConnectorKind   string `json:"connector_kind,omitempty"`
 	TargetID        *int64 `json:"target_id,omitempty"`
@@ -51,6 +53,16 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		runtimeID = id
 	}
 	args = append(args, runtimeID, runtimeID)
+	var projectID int64
+	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
+		id, ok := parseInt64Query(w, rawProjectID, "project_id")
+		if !ok {
+			return
+		}
+		projectID = id
+		where = append(where, "a.project_id = ?")
+		args = append(args, projectID)
+	}
 	connectorKind := strings.TrimSpace(r.URL.Query().Get("connector_kind"))
 	if connectorKind != "" {
 		where = append(where, "a.connector_kind = ?")
@@ -69,11 +81,11 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	if page.Query != "" {
 		like := "%" + page.Query + "%"
 		if ftsQuery := buildFTSQuery(page.Query); ftsQuery != "" {
-			where = append(where, `(a.id IN (SELECT rowid FROM audit_logs_fts WHERE audit_logs_fts MATCH ?) OR COALESCE(t.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
-			args = append(args, ftsQuery, like, like, like)
+			where = append(where, `(a.id IN (SELECT rowid FROM audit_logs_fts WHERE audit_logs_fts MATCH ?) OR COALESCE(t.name, '') LIKE ? OR COALESCE(project.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
+			args = append(args, ftsQuery, like, like, like, like)
 		} else {
-			where = append(where, `(a.action LIKE ? OR a.actor_type LIKE ? OR a.payload_json LIKE ? OR a.connector_kind LIKE ? OR COALESCE(t.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
-			args = append(args, like, like, like, like, like, like, like)
+			where = append(where, `(a.action LIKE ? OR a.actor_type LIKE ? OR a.payload_json LIKE ? OR a.connector_kind LIKE ? OR COALESCE(t.name, '') LIKE ? OR COALESCE(project.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
+			args = append(args, like, like, like, like, like, like, like, like)
 		}
 	}
 	whereSQL := strings.Join(where, " AND ")
@@ -82,6 +94,7 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		SELECT COUNT(*)
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
+		LEFT JOIN projects project ON project.id = a.project_id
 		LEFT JOIN connector_runtime_surfaces profile_rs ON profile_rs.id = a.runtime_id
 		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = profile_rs.profile_id AND profile_cp.target_id = profile_rs.target_id AND profile_cp.connector_kind = profile_rs.connector_kind
 		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
@@ -95,11 +108,12 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	queryArgs := append(append([]any{}, args...), page.Limit, page.Offset)
 	rows, err := runtime.database.QueryContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.runtime_id, COALESCE(profile_ct.name, ''),
+		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id, COALESCE(profile_ct.name, ''),
 			a.connector_kind, a.target_id, COALESCE(ct.name, ''), a.profile_id, a.action_request_id,
 			a.action, substr(a.payload_json, 1, 500), a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
+		LEFT JOIN projects project ON project.id = a.project_id
 		LEFT JOIN connector_runtime_surfaces profile_rs ON profile_rs.id = a.runtime_id
 		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = profile_rs.profile_id AND profile_cp.target_id = profile_rs.target_id AND profile_cp.connector_kind = profile_rs.connector_kind
 		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
@@ -141,11 +155,12 @@ func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row := runtime.database.QueryRowContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.runtime_id, COALESCE(profile_ct.name, ''),
+		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id, COALESCE(profile_ct.name, ''),
 			a.connector_kind, a.target_id, COALESCE(ct.name, ''), a.profile_id, a.action_request_id,
 			a.action, a.payload_json, a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
+		LEFT JOIN projects project ON project.id = a.project_id
 		LEFT JOIN connector_runtime_surfaces profile_rs ON profile_rs.id = a.runtime_id
 		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = profile_rs.profile_id AND profile_cp.target_id = profile_rs.target_id AND profile_cp.connector_kind = profile_rs.connector_kind
 		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
@@ -170,6 +185,7 @@ func scanAuditLog(scanner interface {
 }) (auditLogRecord, error) {
 	var item auditLogRecord
 	var tokenID sql.NullInt64
+	var projectID sql.NullInt64
 	var runtimeID sql.NullInt64
 	var targetID sql.NullInt64
 	var profileID sql.NullInt64
@@ -179,6 +195,8 @@ func scanAuditLog(scanner interface {
 		&item.ActorType,
 		&tokenID,
 		&item.TokenName,
+		&projectID,
+		&item.ProjectName,
 		&runtimeID,
 		&item.TargetName,
 		&item.ConnectorKind,
@@ -194,6 +212,9 @@ func scanAuditLog(scanner interface {
 	}
 	if tokenID.Valid {
 		item.TokenID = &tokenID.Int64
+	}
+	if projectID.Valid {
+		item.ProjectID = &projectID.Int64
 	}
 	if runtimeID.Valid {
 		item.RuntimeID = &runtimeID.Int64
@@ -219,16 +240,18 @@ func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actor
 		payloadBytes = []byte(`{}`)
 	}
 	payloadJSON := s.redactForPersistence(ctx, runtime, string(payloadBytes))
-	connectorKind, targetID, profileID, actionRequestID := auditConnectorMetadata(payload)
+	connectorKind, projectID, targetID, profileID, actionRequestID := auditConnectorMetadata(payload)
+	projectID = resolveAuditProjectID(ctx, runtime.database, projectID, targetID, runtimeID)
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, _ = runtime.database.ExecContext(ctx, `
 		INSERT INTO audit_logs (
-			actor_type, token_id, runtime_id, connector_kind, target_id, profile_id,
+			actor_type, token_id, project_id, runtime_id, connector_kind, target_id, profile_id,
 			action_request_id, action, payload_json, created_at
 		)
-		VALUES (?, ?, NULLIF(?, 0), ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?)`,
+		VALUES (?, ?, NULLIF(?, 0), NULLIF(?, 0), ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?)`,
 		actorType,
 		nullableInt64(tokenID),
+		projectID,
 		runtimeID,
 		connectorKind,
 		targetID,
@@ -240,12 +263,13 @@ func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actor
 	)
 }
 
-func auditConnectorMetadata(payload any) (string, int64, int64, int64) {
+func auditConnectorMetadata(payload any) (string, int64, int64, int64, int64) {
 	values, ok := payload.(map[string]any)
 	if !ok {
-		return "", 0, 0, 0
+		return "", 0, 0, 0, 0
 	}
 	connectorKind := strings.TrimSpace(fmt.Sprint(values["connector_kind"]))
+	projectID := int64FromAny(values["project_id"])
 	targetID := int64FromAny(values["target_id"])
 	profileID := int64FromAny(values["profile_id"])
 	actionRequestID := int64FromAny(values["action_request_id"])
@@ -266,7 +290,27 @@ func auditConnectorMetadata(payload any) (string, int64, int64, int64) {
 			}
 		}
 	}
-	return connectorKind, targetID, profileID, actionRequestID
+	return connectorKind, projectID, targetID, profileID, actionRequestID
+}
+
+func resolveAuditProjectID(ctx context.Context, database *sql.DB, projectID int64, targetID int64, runtimeID int64) int64 {
+	if projectID > 0 || database == nil {
+		return projectID
+	}
+	if targetID > 0 {
+		_ = database.QueryRowContext(ctx, `SELECT project_id FROM connector_targets WHERE id = ?`, targetID).Scan(&projectID)
+		if projectID > 0 {
+			return projectID
+		}
+	}
+	if runtimeID > 0 {
+		_ = database.QueryRowContext(ctx, `
+			SELECT ct.project_id
+			FROM connector_runtime_surfaces rs
+			JOIN connector_targets ct ON ct.id = rs.target_id
+			WHERE rs.id = ?`, runtimeID).Scan(&projectID)
+	}
+	return projectID
 }
 
 func int64FromAny(value any) int64 {

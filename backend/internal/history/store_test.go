@@ -68,6 +68,35 @@ func TestStoreDeleteSourceRefRemovesCanonicalHistoryEntry(t *testing.T) {
 	}
 }
 
+func TestHistoryProjectSnapshotSurvivesTargetMove(t *testing.T) {
+	database := openTestDB(t)
+	tokenID := insertToken(t, database)
+	targetID, profileID := insertTargetProfile(t, database, "postgres", "orders-db", "username_password", "readonly")
+	firstProjectID := insertProject(t, database, "WickRadar", "wickradar")
+	secondProjectID := insertProject(t, database, "CandleSwarm", "candleswarm")
+	if _, err := database.Exec(`UPDATE connector_targets SET project_id = ? WHERE id = ?`, firstProjectID, targetID); err != nil {
+		t.Fatalf("assign first project: %v", err)
+	}
+	actionID := insertConnectorActionRequest(t, database, tokenID, targetID, profileID)
+	store := NewStore(database)
+	if err := store.SyncConnectorActionRequest(context.Background(), actionID); err != nil {
+		t.Fatalf("sync initial project history: %v", err)
+	}
+	if _, err := database.Exec(`UPDATE connector_targets SET project_id = ? WHERE id = ?`, secondProjectID, targetID); err != nil {
+		t.Fatalf("move target project: %v", err)
+	}
+	if err := store.SyncConnectorActionRequest(context.Background(), actionID); err != nil {
+		t.Fatalf("resync moved target history: %v", err)
+	}
+	var projectID int64
+	if err := database.QueryRow(`SELECT project_id FROM history_entries WHERE source_ref_type = ? AND source_ref_id = ?`, SourceConnectorActionRequest, actionID).Scan(&projectID); err != nil {
+		t.Fatalf("read history project snapshot: %v", err)
+	}
+	if projectID != firstProjectID {
+		t.Fatalf("history project snapshot = %d, want %d", projectID, firstProjectID)
+	}
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	database, err := gatewaydb.OpenEncrypted(filepath.Join(t.TempDir(), "history.db"), "test-password")
@@ -98,8 +127,8 @@ func insertToken(t *testing.T, database *sql.DB) int64 {
 func insertTargetProfile(t *testing.T, database *sql.DB, connectorKind string, targetName string, profileKind string, profileLabel string) (int64, int64) {
 	t.Helper()
 	result, err := database.Exec(`
-		INSERT INTO connector_targets (connector_kind, name, config_json, created_at, updated_at)
-		VALUES (?, ?, '{"host":"127.0.0.1"}', datetime('now'), datetime('now'))`,
+		INSERT INTO connector_targets (project_id, connector_kind, name, config_json, created_at, updated_at)
+		VALUES ((SELECT id FROM projects WHERE slug = 'ungrouped' AND status = 'active'), ?, ?, '{"host":"127.0.0.1"}', datetime('now'), datetime('now'))`,
 		connectorKind,
 		targetName,
 	)
@@ -128,6 +157,19 @@ func insertTargetProfile(t *testing.T, database *sql.DB, connectorKind string, t
 		t.Fatalf("profile id: %v", err)
 	}
 	return targetID, profileID
+}
+
+func insertProject(t *testing.T, database *sql.DB, name string, slug string) int64 {
+	t.Helper()
+	result, err := database.Exec(`INSERT INTO projects (name, slug, status, created_at, updated_at) VALUES (?, ?, 'active', datetime('now'), datetime('now'))`, name, slug)
+	if err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("project id: %v", err)
+	}
+	return id
 }
 
 func insertRuntimeSurface(t *testing.T, database *sql.DB, connectorKind string, targetID int64, profileID int64, capabilityKind string) int64 {
