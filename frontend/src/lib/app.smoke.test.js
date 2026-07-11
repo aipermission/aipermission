@@ -22,6 +22,7 @@ const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"
 const auditLogsSource = readFileSync(join(currentDir, "..", "pages", "audit-logs.jsx"), "utf8");
 const consolePageSource = readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8");
 const connectorsSource = readFileSync(join(currentDir, "..", "pages", "connectors.jsx"), "utf8");
+const projectsSource = readFileSync(join(currentDir, "..", "pages", "projects.jsx"), "utf8");
 const credentialsSource = readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8");
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-dialog.jsx"), "utf8");
 const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-browser-dialog.jsx"), "utf8");
@@ -81,7 +82,7 @@ function backendRegisteredConnectorKinds(source) {
 }
 
 test("App keeps the primary route surface available", () => {
-  for (const route of ["/console", "/connectors", "/history", "/audit-logs", "/tokens", "/credentials", "/mcp-setup", "/security", "/settings"]) {
+  for (const route of ["/console", "/projects", "/connectors", "/history", "/audit-logs", "/tokens", "/credentials", "/mcp-setup", "/security", "/settings"]) {
     assert.match(appSource, new RegExp(`path="${route}"`));
     assert.match(sidebarSource, new RegExp(`to: "${route}"`));
   }
@@ -89,6 +90,22 @@ test("App keeps the primary route surface available", () => {
   assert.match(appSource, /<Navigate to="\/connectors" replace/);
   assert.doesNotMatch(sidebarSource, /to: "\/servers"/);
   assert.match(shellSource, /Promise\.allSettled/);
+});
+
+test("Projects group connector targets and scope token visibility", () => {
+  assert.match(projectsSource, /apiGet\("\/api\/projects"\)/);
+  assert.match(projectsSource, /apiPost\("\/api\/projects"/);
+  assert.match(projectsSource, /apiPut\(`\/api\/projects\/\$\{editor\.project\.id\}`/);
+  assert.match(projectsSource, /apiDelete\(`\/api\/projects\/\$\{remove\.project\.id\}`/);
+  assert.match(connectorsSource, /project_id/);
+  assert.match(connectorsSource, /ProjectTargetRows/);
+  assert.match(consolePageSource, /project_name \|\| "Ungrouped"/);
+  assert.match(connectorTargetProfileSaveSource, /project_id: Number\(projectID\) \|\| 0/);
+  assert.match(connectorPermissionDialogSource, /\/project-scopes/);
+  assert.match(connectorPermissionDialogSource, /Changes apply immediately/);
+  assert.match(connectorTokenPermissionPanelSource, /\/project-scopes/);
+  assert.match(historySource, /project_id/);
+  assert.match(auditLogsSource, /project_id/);
 });
 
 test("Connectors page wires generic connector templates", () => {
