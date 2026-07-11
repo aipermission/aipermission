@@ -11,6 +11,9 @@ import (
 
 type targetProfileItem struct {
 	Ref           string         `json:"ref"`
+	ProjectID     int64          `json:"project_id"`
+	ProjectName   string         `json:"project_name"`
+	ProjectSlug   string         `json:"project_slug"`
 	ConnectorKind string         `json:"connector_kind"`
 	TargetID      int64          `json:"target_id"`
 	TargetName    string         `json:"target_name"`
@@ -32,13 +35,14 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := runtime.database.QueryContext(r.Context(), `
 			SELECT
-				t.id, t.connector_kind, t.name, t.config_json, t.status,
+				t.id, t.project_id, project.name, project.slug, t.connector_kind, t.name, t.config_json, t.status,
 				p.id, p.kind, p.label, p.public_json,
 				t.created_at, t.updated_at
 			FROM connector_targets t
+			JOIN projects project ON project.id = t.project_id AND project.status = 'active'
 			JOIN connector_credential_profiles p ON p.target_id = t.id
 			WHERE t.status = 'active' AND p.status = 'active' AND p.connector_kind = t.connector_kind
-		ORDER BY t.connector_kind, t.name, p.label, p.id`)
+			ORDER BY lower(project.name), t.connector_kind, lower(t.name), p.label, p.id`)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -52,6 +56,9 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		var publicJSON string
 		if err := rows.Scan(
 			&item.TargetID,
+			&item.ProjectID,
+			&item.ProjectName,
+			&item.ProjectSlug,
 			&item.ConnectorKind,
 			&item.TargetName,
 			&configJSON,

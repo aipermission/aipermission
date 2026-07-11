@@ -1,4 +1,4 @@
-import { ChevronDown, CircleCheck, CircleX, Edit3, Plus, PlugZap, RefreshCcw, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleCheck, CircleX, Edit3, FolderKanban, Plus, PlugZap, RefreshCcw, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
@@ -6,7 +6,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
-import { Field, Select } from "../components/ui/form";
+import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { ConnectorIcon, ConnectorKindCell, StatusCell, TargetCell, connectorKindLabel, connectorSummary } from "../connectors/templates/common";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
@@ -20,6 +20,7 @@ export function ConnectorsPage() {
   const { targets: unifiedTargets, credentials, loadTargets: loadUnifiedTargets } = useGateway();
   const [catalog, setCatalog] = useState({ state: "loading", data: [], details: {}, error: null });
   const [targets, setTargets] = useState({ state: "loading", data: [], error: null });
+  const [projects, setProjects] = useState({ state: "loading", data: [], error: null });
   const defaultConnectorKind = supportedConnectorKinds[0] || "";
   const [drawer, setDrawer] = useState({ open: false, mode: "create", kind: defaultConnectorKind, target: null });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, target: null });
@@ -30,6 +31,8 @@ export function ConnectorsPage() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [profileSelections, setProfileSelections] = useState({});
   const [toast, setToast] = useState("");
+  const [connectorSearch, setConnectorSearch] = useState("");
+  const [collapsedProjects, setCollapsedProjects] = useState({});
   const catalogWarnings = useMemo(() => connectorCatalogWarnings(catalog), [catalog]);
   const availableConnectorKinds = useMemo(() => {
     if (catalog.state !== "ready") return [];
@@ -52,6 +55,7 @@ export function ConnectorsPage() {
       }),
     [availableConnectorKinds, catalog.data]
   );
+  const defaultProjectID = useMemo(() => projects.data.find((project) => project.slug === "ungrouped")?.id || projects.data[0]?.id || "", [projects.data]);
 
   useEffect(() => {
     setForm((current) => getConnectorModel(current.connector_kind)?.syncForm?.({ form: current, firstCredentialID }) || current);
@@ -83,7 +87,17 @@ export function ConnectorsPage() {
   }, [targets.data.map((target) => `${target.connector_kind}:${target.id}:${(target.profiles || []).map((profile) => profile.id).join(",")}`).join("|")]);
 
   async function refreshConnectors() {
-    await Promise.all([loadTargets(), loadUnifiedTargets()]);
+    await Promise.all([loadTargets(), loadProjects(), loadUnifiedTargets()]);
+  }
+
+  async function loadProjects() {
+    setProjects((current) => ({ ...current, state: "loading", error: null }));
+    try {
+      const data = await apiGet("/api/projects");
+      setProjects({ state: "ready", data: data.items || [], error: null });
+    } catch (error) {
+      setProjects({ state: "error", data: [], error: error.message });
+    }
   }
 
   async function loadCatalog() {
@@ -119,7 +133,7 @@ export function ConnectorsPage() {
   function openCreateDrawer(kind = availableConnectorKinds[0] || defaultConnectorKind) {
     setState({ state: "idle", error: null, message: "" });
     setAddMenuOpen(false);
-    setForm(emptyConnectorForm(kind, { firstCredentialID }));
+    setForm({ ...emptyConnectorForm(kind, { firstCredentialID }), project_id: defaultProjectID });
     setDrawer({ open: true, mode: "create", kind, target: null });
   }
 
@@ -150,13 +164,13 @@ export function ConnectorsPage() {
       return;
     }
     setState({ state: "idle", error: null, message: "" });
-    setForm(model.formFromTarget({ target, profile }));
+    setForm({ ...model.formFromTarget({ target, profile }), project_id: target.project_id || defaultProjectID });
     setDrawer({ open: true, mode: "edit", kind: target.connector_kind, target });
   }
 
   function setConnectorKind(kind) {
     setState({ state: "idle", error: null, message: "" });
-    setForm(emptyConnectorForm(kind, { firstCredentialID }));
+    setForm((current) => ({ ...emptyConnectorForm(kind, { firstCredentialID }), project_id: current.project_id || defaultProjectID }));
     setDrawer((current) => ({ ...current, kind }));
   }
 
@@ -175,7 +189,7 @@ export function ConnectorsPage() {
     try {
       await model.save({ mode: drawer.mode, form, target: drawer.target });
       setDrawer({ open: false, mode: "create", kind: form.connector_kind, target: null });
-      setForm(emptyConnectorForm(form.connector_kind, { firstCredentialID }));
+      setForm({ ...emptyConnectorForm(form.connector_kind, { firstCredentialID }), project_id: defaultProjectID });
       setState({ state: "idle", error: null, message: drawer.mode === "edit" ? "Connector updated." : "Connector created." });
       await refreshConnectors();
     } catch (error) {
@@ -222,7 +236,7 @@ export function ConnectorsPage() {
     }
     const kind = operation?.connector_kind || operation?.kind || form.connector_kind;
     setDrawer({ open: false, mode: "create", kind, target: null });
-    setForm(emptyConnectorForm(kind, { firstCredentialID }));
+    setForm({ ...emptyConnectorForm(kind, { firstCredentialID }), project_id: defaultProjectID });
     setState({ state: "idle", error: null, message: result?.message || "Connector updated." });
     await refreshConnectors();
   }
@@ -280,12 +294,18 @@ export function ConnectorsPage() {
         <Notice tone="warn" key={warning}>{warning}</Notice>
       ))}
       {targets.state === "error" ? <Notice tone="bad">{targets.error}</Notice> : null}
+      {projects.state === "error" ? <Notice tone="bad">{projects.error}</Notice> : null}
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       {toast ? <div className="fixed right-5 top-5 z-[80] rounded-md border border-stone-700 bg-stone-950 px-4 py-3 text-sm font-semibold text-white shadow-xl">{toast}</div> : null}
 
       <ConnectorTargetsTable
         targets={targets}
+        projects={projects.data}
+        search={connectorSearch}
+        collapsedProjects={collapsedProjects}
+        onSearch={setConnectorSearch}
+        onToggleProject={(projectID) => setCollapsedProjects((current) => ({ ...current, [projectID]: !current[projectID] }))}
         catalog={catalog}
         unifiedTargets={unifiedTargets.data}
         credentials={credentials.data}
@@ -318,6 +338,15 @@ export function ConnectorsPage() {
               </Select>
             </Field>
           ) : null}
+          <Field>
+            Project
+            <Select value={form.project_id || ""} onChange={(event) => updateForm("project_id", event.target.value)} required>
+              <option value="" disabled>Select project</option>
+              {projects.data.map((project) => (
+                <option value={project.id} key={project.id}>{project.name}</option>
+              ))}
+            </Select>
+          </Field>
           {ActiveConnectorFormTemplate ? (
             <ActiveConnectorFormTemplate
               form={form}
@@ -364,9 +393,25 @@ export function ConnectorsPage() {
   );
 }
 
-function ConnectorTargetsTable({ targets, catalog, unifiedTargets, credentials, profileSelections, tests, onSelectProfile, onTestConnector, onOperation, onUnderConstruction, onEdit, onDelete }) {
+function ConnectorTargetsTable({ targets, projects, search, collapsedProjects, onSearch, onToggleProject, catalog, unifiedTargets, credentials, profileSelections, tests, onSelectProfile, onTestConnector, onOperation, onUnderConstruction, onEdit, onDelete }) {
+  const query = search.trim().toLowerCase();
+  const groups = projects
+    .map((project) => {
+      const projectMatches = query && [project.name, project.slug].some((value) => String(value || "").toLowerCase().includes(query));
+      return {
+        project,
+        targets: targets.data.filter((target) => target.project_id === project.id && (!query || projectMatches || [target.name, target.connector_kind, ...(target.profiles || []).map((profile) => profile.label)].some((value) => String(value || "").toLowerCase().includes(query)))),
+      };
+    })
+    .filter((group) => group.targets.length > 0 || (!query && group.project.target_count > 0));
   return (
     <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+      <div className="border-b border-stone-200 bg-stone-50 p-3">
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+          <Input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search connectors" className="pl-9" />
+        </div>
+      </div>
       <table className="w-full table-fixed border-collapse text-left text-sm">
         <thead className="bg-stone-50 text-xs uppercase text-stone-500">
           <tr>
@@ -379,14 +424,17 @@ function ConnectorTargetsTable({ targets, catalog, unifiedTargets, credentials, 
           </tr>
         </thead>
         <tbody className="divide-y divide-stone-200">
-          {targets.data.map((target) => (
-            <ConnectorTargetRow
-              key={`${target.connector_kind}:${target.id}`}
-              target={target}
+          {groups.map(({ project, targets: projectTargets }) => (
+            <ProjectTargetRows
+              key={project.id}
+              project={project}
+              targets={projectTargets}
+              collapsed={Boolean(collapsedProjects[project.id])}
+              onToggle={() => onToggleProject(project.id)}
               catalog={catalog}
               unifiedTargets={unifiedTargets}
               credentials={credentials}
-              selectedProfileID={profileSelections[targetProfileSelectionKey(target)] || ""}
+              profileSelections={profileSelections}
               tests={tests}
               onSelectProfile={onSelectProfile}
               onTestConnector={onTestConnector}
@@ -408,7 +456,33 @@ function ConnectorTargetsTable({ targets, catalog, unifiedTargets, credentials, 
           <Notice>Create your first connector target. Every connector uses the same target, credential profile, permission, history, and audit pipeline.</Notice>
         </div>
       ) : null}
+      {targets.state === "ready" && targets.data.length > 0 && groups.length === 0 ? <div className="p-4"><Notice>No connectors match that search.</Notice></div> : null}
     </div>
+  );
+}
+
+function ProjectTargetRows({ project, targets, collapsed, onToggle, ...rowProps }) {
+  return (
+    <>
+      <tr className="bg-stone-50">
+        <td colSpan={6} className="px-3 py-2">
+          <button type="button" className="flex w-full items-center gap-2 text-left text-xs font-semibold uppercase text-stone-600" onClick={onToggle}>
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            <FolderKanban className="h-4 w-4" />
+            <span className="truncate">{project.name}</span>
+            <Badge tone="neutral">{targets.length}</Badge>
+          </button>
+        </td>
+      </tr>
+      {!collapsed ? targets.map((target) => (
+        <ConnectorTargetRow
+          key={`${target.connector_kind}:${target.id}`}
+          target={target}
+          selectedProfileID={rowProps.profileSelections[targetProfileSelectionKey(target)] || ""}
+          {...rowProps}
+        />
+      )) : null}
+    </>
   );
 }
 
