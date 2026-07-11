@@ -12,6 +12,9 @@ target + credential profile + action
 
 The connector owns transport-specific behavior. The gateway owns permission,
 approval, history, audit, local-only HTTP/MCP boundaries, and token checks.
+The generic target layer also owns project assignment and token project-scope
+enforcement. A connector must not implement project-specific storage, routes,
+filters, or permission checks.
 
 ## Connector Invariants
 
@@ -19,6 +22,8 @@ These rules are part of the connector contract:
 
 - A connector does not create its own token permission, approval, history,
   audit, or MCP tool pipeline.
+- A connector does not create its own project model. Shared target save helpers
+  carry `project_id`; generic UI and backend layers group and scope targets.
 - A connector target stores non-secret connection metadata. A credential
   profile stores public identity metadata plus encrypted secret material.
 - Target schemas must not declare secret fields. The backend rejects secret
@@ -316,6 +321,7 @@ Not expected for a normal connector:
 - new approval request tables
 - connector-specific history or audit tables
 - a new MCP tool family
+- project-specific tables, routes, filters, or token-scope checks
 - route-level branches such as `if kind == "redis"` or `if kind === "redis"`
 - connector-specific command/session/file-transfer tables
 - direct imports of `internal/api` or `internal/connectorapi`

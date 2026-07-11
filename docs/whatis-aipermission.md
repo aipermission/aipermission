@@ -5,6 +5,7 @@ Related central notes:
 - [Docs Index](index.md)
 - [Local Gateway](architecture/local-gateway.md)
 - [MCP Permission Flow](architecture/mcp-permission-flow.md)
+- [Projects And Token Visibility](projects.md)
 - [Credential Boundary](security/credential-boundary.md)
 - [MVP Scope](mvp/scope.md)
 - [Use Cases](mvp/use-cases.md)
@@ -105,14 +106,16 @@ provides the execution layer without exposing credentials.
 
 1. The developer starts aipermission with local Docker.
 2. The developer opens the local web UI.
-3. The developer creates a credential profile, such as an SSH key or Postgres readonly role.
-4. The developer adds a connector target and binds it to a credential profile.
-5. The developer creates an API token.
-6. The developer grants that token access to selected target/profile/action combinations.
-7. The MCP client connects to the gateway with that token.
-8. The AI operates through the gateway.
-9. The developer watches, approves, declines, or sends notes from the web UI.
-10. When the work is done, the token can be revoked, permissions can be removed, the database can be locked, or Docker can be stopped.
+3. The developer creates a local project or uses `Ungrouped`.
+4. The developer creates a credential profile, such as an SSH key or Postgres readonly role.
+5. The developer adds a connector target to that project and binds it to a credential profile.
+6. The developer creates an API token.
+7. The developer enables the projects that token may see and grants access to
+   selected target/profile/action combinations.
+8. The MCP client connects to the gateway with that token.
+9. The AI operates through the gateway.
+10. The developer watches, approves, declines, or sends notes from the web UI.
+11. When the work is done, the token can be revoked, permissions can be removed, the database can be locked, or Docker can be stopped.
 
 ## What It Is Not
 
@@ -242,8 +245,9 @@ allowed connector targets:
 - docker:prod-docker/api-only -> container_exec approval_required
 ```
 
-The AI assistant can see and use only the connector targets and actions allowed
-by that token. For example, if the token can access five SSH targets, one
+The AI assistant can see and use only connector targets in the token's enabled
+projects and actions allowed by that token. Project scope is checked before the
+target/profile/action grant. For example, if the token can access five SSH targets, one
 Postgres target, one Redis target, and one Docker profile scoped to a single
 container, `list_connector_targets` returns only those target/profile refs.
 

@@ -120,6 +120,8 @@ Implemented:
 - connector target/profile/action pipeline for SSH, Postgres, Redis, RabbitMQ,
   S3, Docker, and future local
   integrations
+- local Projects for grouping connector targets, filtering History/Audit, and
+  limiting which project target refs each MCP token can discover or call
 - generic connector network transport so protocol connectors can use Direct or
   reviewed Over SSH TCP paths without importing SSH-specific code
 - generic connector command transport so structured connectors can run reviewed
@@ -269,11 +271,13 @@ reachable from another SSH target rather than from the Docker host.
 1. Open the web UI.
 2. Create the local database password on first run, import a database file, or unlock an existing database. New database passwords must be at least 14 characters and include uppercase letters, lowercase letters, and numbers. Unlock issues a local browser session cookie for web REST calls; if the cookie is deleted or expires while the backend is still unlocked, the UI asks for the same database password again and continues.
 3. Create a credential profile in `Credentials`. SSH profiles can use generated or imported keys; Postgres profiles store database credentials; future connectors define their own profile fields.
-4. Add a connector target in `Connectors` and select the credential profile.
+4. Create or choose a local project, then add a connector target in
+   `Connectors` and select the credential profile.
 5. For SSH targets, copy the generated public-key install command and paste it on the remote machine when needed.
 6. Test the connector target.
 7. Create a token in `Tokens`.
-8. Give that token permission for one or more target/profile/action combinations.
+8. Choose which projects the token can see, then grant one or more
+   target/profile/action combinations inside those projects.
 9. Configure your MCP client with the token.
 10. Start MCP from the sidebar when you are ready to let the AI execute through saved permissions.
 11. Ask your AI assistant to use `aipermission`.
@@ -299,6 +303,12 @@ Each token/target/action grant has one execution rule:
 In API/MCP data, denied access is represented as `blocked`. In the UI, an unset permission can appear as disabled because there is no token/target/action permission row yet.
 
 Use `approval_required` for real systems until you trust the workflow. Use `always_run` for low-risk maintenance sessions or temporary local/dev servers.
+
+Project visibility is checked before action permissions. Hiding a project from
+a token removes all of that project's target refs from MCP discovery and blocks
+direct calls, while preserving the existing action grants for later
+re-enablement. It is an organization and token-scope feature for one local
+developer, not team RBAC. See [Projects](docs/projects.md).
 
 Token action permissions can be permanent or temporary. A temporary grant has an
 `expires_at` timestamp; after it expires, MCP no longer treats that permission
@@ -358,7 +368,8 @@ get_connector_action_request(request_id)
 
 The MCP surface is connector-first. SSH, Postgres, Redis, RabbitMQ, S3, Docker,
 Kubernetes, and future integrations use the same target/profile/action permission
-pipeline. `list_connector_targets` is
+pipeline. `list_connector_targets` also applies the token's enabled project
+scope before returning target refs. It is
 permission-scoped, not a live health check. Current reachability is learned when
 the connector action actually runs and returns a dial, timeout, authentication,
 host-key, credential, or service error.
@@ -446,7 +457,8 @@ Important boundaries:
 - API tokens are shown once by default. Security can enable reusable token copy for newly created tokens; reusable values are stored with gateway vault encryption.
 - API tokens and token action permissions can use expiration timestamps for
   temporary maintenance access.
-- Tokens only see connector target/profile/action grants explicitly permitted for that token.
+- Tokens only see targets in enabled projects and connector
+  target/profile/action grants explicitly permitted for that token.
 - Revoked tokens, expired tokens, and expired token action permission grants are
   rejected by MCP permission checks.
 - Connector credentials are not returned by REST or MCP responses.

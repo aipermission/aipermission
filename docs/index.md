@@ -10,6 +10,7 @@ Start here:
 - [Implementation Roadmap](mvp/implementation-roadmap.md)
 - [Roadmap](ROADMAP.md)
 - [Project Principles](project-principles.md)
+- [Projects And Token Visibility](projects.md)
 
 ## Architecture
 
