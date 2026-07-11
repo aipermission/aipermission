@@ -1,6 +1,33 @@
-export const appVersion = "0.2.12";
+export const appVersion = "0.2.13";
 
 export const changelogEntries = [
+  {
+    version: "0.2.13",
+    label: "Projects and scoped visibility",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Projects organize connector targets for one local developer, with a protected Ungrouped fallback for existing targets.",
+          "Connectors and Console group targets by project, while History and Audit Logs add project filters.",
+          "Tokens can enable or disable project visibility in both Tokens and the Console permission panel.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "MCP target discovery only returns targets from projects enabled for the calling token without deleting saved action grants.",
+          "History and audit records retain project snapshots, and History filters now use a clearer two-row layout.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Project scope is a local visibility boundary above connector permissions, not team RBAC or multi-tenant isolation.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.12",
     label: "S3 MCP polish",

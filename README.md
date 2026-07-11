@@ -218,7 +218,7 @@ To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
 `v`:
 
 ```bash
-AIPERMISSION_VERSION=0.2.12 docker compose -f docker-compose.release.yml up -d
+AIPERMISSION_VERSION=0.2.13 docker compose -f docker-compose.release.yml up -d
 ```
 
 On Windows, clone the repository with Git's default text handling or make sure
