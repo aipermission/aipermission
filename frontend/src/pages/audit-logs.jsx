@@ -19,7 +19,8 @@ const actorOptions = [
 
 export function AuditLogsPage() {
   const { targets } = useGateway();
-  const [filters, setFilters] = useState({ query: "", actor: "", connectorKind: "", targetID: "" });
+  const [filters, setFilters] = useState({ query: "", projectID: "", actor: "", connectorKind: "", targetID: "" });
+  const [projects, setProjects] = useState({ state: "loading", data: [], error: null });
   const [state, setState] = useState({
     state: "idle",
     data: [],
@@ -32,24 +33,39 @@ export function AuditLogsPage() {
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
+    void loadProjects();
+  }, []);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadAuditLogs(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.actor, filters.connectorKind, filters.targetID]);
+  }, [filters.query, filters.projectID, filters.actor, filters.connectorKind, filters.targetID]);
+
+  async function loadProjects() {
+    try {
+      const data = await apiGet("/api/projects");
+      setProjects({ state: "ready", data: data.items || [], error: null });
+    } catch (error) {
+      setProjects({ state: "error", data: [], error: error.message });
+    }
+  }
 
   const targetOptions = useMemo(() => {
     const options = new Map();
     (targets.data || []).forEach((target) => {
+      if (filters.projectID && String(target.project_id) !== String(filters.projectID)) return;
       const id = target.target_id || target.id;
       if (id) options.set(String(id), target.target_name || target.name || target.ref || `target ${id}`);
     });
     state.data.forEach((item) => {
+      if (filters.projectID && String(item.project_id) !== String(filters.projectID)) return;
       if (item.target_id) options.set(String(item.target_id), item.target_name || `target ${item.target_id}`);
       if (!item.target_id && item.runtime_id) options.set(`runtime:${item.runtime_id}`, item.target_name || `server ${item.runtime_id}`);
     });
     return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1]));
-  }, [targets.data, state.data]);
+  }, [targets.data, state.data, filters.projectID]);
 
   const connectorKindOptions = useMemo(() => {
     const kinds = new Set();
@@ -79,6 +95,7 @@ export function AuditLogsPage() {
       offset: String(Math.max(0, offset)),
     });
     if (filters.query.trim()) params.set("q", filters.query.trim());
+    if (filters.projectID) params.set("project_id", filters.projectID);
     if (filters.actor) params.set("actor", filters.actor);
     if (filters.connectorKind) params.set("connector_kind", filters.connectorKind);
     if (filters.targetID && !filters.targetID.startsWith("runtime:")) params.set("target_id", filters.targetID);
@@ -132,7 +149,7 @@ export function AuditLogsPage() {
         <AuditStat label="User" value={stats.user} tone="good" />
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_160px_180px_220px]">
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-5">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <Input
@@ -142,6 +159,10 @@ export function AuditLogsPage() {
             className="pl-9"
           />
         </div>
+        <Select value={filters.projectID} onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetID: "" }))}>
+          <option value="">All projects</option>
+          {projects.data.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+        </Select>
         <Select
           value={filters.actor}
           onChange={(event) => setFilters((current) => ({ ...current, actor: event.target.value }))}
@@ -177,6 +198,7 @@ export function AuditLogsPage() {
       </div>
 
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+      {projects.state === "error" ? <Notice tone="bad">{projects.error}</Notice> : null}
 
       <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
         <table className="w-full table-fixed border-collapse text-left text-sm">
@@ -218,7 +240,10 @@ export function AuditLogsPage() {
                     <td className="truncate px-4 py-3">
                       <ActionBadge action={item.action} />
                     </td>
-                    <td className="truncate px-4 py-3 font-medium text-stone-900">{auditTargetLabel(item)}</td>
+                    <td className="truncate px-4 py-3">
+                      <div className="truncate font-medium text-stone-900">{auditTargetLabel(item)}</div>
+                      {item.project_name ? <div className="truncate text-xs text-stone-500">{item.project_name}</div> : null}
+                    </td>
                     <td className="truncate px-4 py-3 text-stone-600">{item.token_name || "-"}</td>
                     <td className="truncate px-4 py-3 font-mono text-xs text-stone-700">{payloadPreview(item.payload_json)}</td>
                     <td className="px-4 py-3 text-right text-xs text-stone-500">{formatShortTime(item.created_at)}</td>

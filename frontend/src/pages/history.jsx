@@ -38,6 +38,7 @@ const sourceOptions = [
 export function HistoryPage() {
   const [filters, setFilters] = useState({
     query: "",
+    projectID: "",
     connectorKind: "",
     status: "",
     source: "",
@@ -55,15 +56,17 @@ export function HistoryPage() {
   });
   const [labels, setLabels] = useState({ state: "idle", data: [], error: null });
   const [targets, setTargets] = useState({ state: "idle", data: [], error: null });
+  const [projects, setProjects] = useState({ state: "idle", data: [], error: null });
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     void loadLabels();
     void loadHistoryTargets();
+    void loadProjects();
   }, []);
 
   const targetItems = targets.data || [];
-  const targetSignature = targetItems.map((target) => target.ref).join(",");
+  const targetSignature = targetItems.map((target) => `${target.ref}:${target.project_id || ""}:${target.project_name || ""}`).join(",");
   const connectorKindOptions = useMemo(() => {
     const kinds = Array.from(new Set(targetItems.map((target) => target.connector_kind).filter(Boolean))).sort();
     return [{ value: "", label: "All connectors" }, ...kinds.map((kind) => ({ value: kind, label: connectorKindLabel(kind) }))];
@@ -74,7 +77,7 @@ export function HistoryPage() {
       void loadHistory(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.connectorKind, filters.status, filters.source, filters.targetRef, filters.labelID, targetSignature]);
+  }, [filters.query, filters.projectID, filters.connectorKind, filters.status, filters.source, filters.targetRef, filters.labelID, targetSignature]);
 
   useEffect(() => {
     const hasActive = state.data.some((item) => ["pending", "pending_approval", "running", "paused"].includes(item.status));
@@ -115,6 +118,16 @@ export function HistoryPage() {
     }
   }
 
+  async function loadProjects() {
+    setProjects((current) => ({ ...current, state: "loading", error: null }));
+    try {
+      const data = await apiGet("/api/projects");
+      setProjects({ state: "ready", data: data.items || [], error: null });
+    } catch (error) {
+      setProjects({ state: "error", data: [], error: error.message });
+    }
+  }
+
   async function loadHistory(offset = state.offset, options = {}) {
     if (!options.silent) {
       setState((current) => ({ ...current, state: "loading", error: null }));
@@ -124,6 +137,7 @@ export function HistoryPage() {
       offset: String(Math.max(0, offset)),
     });
     if (filters.query.trim()) params.set("q", filters.query.trim());
+    if (filters.projectID) params.set("project_id", filters.projectID);
     if (filters.connectorKind) params.set("connector_kind", filters.connectorKind);
     if (filters.status) params.set("status", filters.status);
     if (filters.source) params.set("source", filters.source);
@@ -221,64 +235,73 @@ export function HistoryPage() {
         <HistoryStat label="Failed/stale" value={stats.failed} tone="bad" />
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_150px_160px_150px_220px_220px]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-          <Input
-            value={filters.query}
-            onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
-            placeholder="Search targets, actions, output, paths, or tokens"
-            className="pl-9"
-          />
+      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[1fr_.8fr_.8fr_.8fr_1.2fr_.9fr]">
+          <Select value={filters.projectID} onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetRef: "" }))}>
+            <option value="">All projects</option>
+            {projects.data.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </Select>
+          <Select value={filters.connectorKind} onChange={(event) => setFilters((current) => ({ ...current, connectorKind: event.target.value }))}>
+            {connectorKindOptions.map((option) => (
+              <option key={option.value || "all"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+          <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+            {statusOptions.map((option) => (
+              <option key={option.value || "all"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+          <Select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}>
+            {sourceOptions.map((option) => (
+              <option key={option.value || "all"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+          <Select value={filters.targetRef} onChange={(event) => setFilters((current) => ({ ...current, targetRef: event.target.value }))}>
+            <option value="">All connectors</option>
+            {targetItems.filter((target) => !filters.projectID || String(target.project_id) === String(filters.projectID)).map((target) => (
+              <option key={target.ref} value={target.ref}>
+                {targetOptionLabel(target)}
+              </option>
+            ))}
+          </Select>
+          <Select value={filters.labelID} onChange={(event) => setFilters((current) => ({ ...current, labelID: event.target.value }))}>
+            <option value="">All labels</option>
+            {labels.data.map((label) => (
+              <option key={label.id} value={label.id}>
+                {label.name}
+              </option>
+            ))}
+          </Select>
         </div>
-        <Select value={filters.connectorKind} onChange={(event) => setFilters((current) => ({ ...current, connectorKind: event.target.value }))}>
-          {connectorKindOptions.map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
-          {statusOptions.map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}>
-          {sourceOptions.map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Select value={filters.targetRef} onChange={(event) => setFilters((current) => ({ ...current, targetRef: event.target.value }))}>
-          <option value="">All connectors</option>
-          {targetItems.map((target) => (
-            <option key={target.ref} value={target.ref}>
-              {targetOptionLabel(target)}
-            </option>
-          ))}
-        </Select>
-        <Select value={filters.labelID} onChange={(event) => setFilters((current) => ({ ...current, labelID: event.target.value }))}>
-          <option value="">All labels</option>
-          {labels.data.map((label) => (
-            <option key={label.id} value={label.id}>
-              {label.name}
-            </option>
-          ))}
-        </Select>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => setFilters({ query: "", connectorKind: "", status: "", source: "", targetRef: "", labelID: "" })}
-        >
-          Clear filters
-        </Button>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+            <Input
+              value={filters.query}
+              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              placeholder="Search targets, actions, output, paths, or tokens"
+              className="pl-9"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setFilters({ query: "", projectID: "", connectorKind: "", status: "", source: "", targetRef: "", labelID: "" })}
+          >
+            Clear filters
+          </Button>
+        </div>
       </div>
 
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       {labels.state === "error" ? <Notice tone="bad">{labels.error}</Notice> : null}
+      {projects.state === "error" ? <Notice tone="bad">{projects.error}</Notice> : null}
 
       <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
         <table className="w-full table-fixed border-collapse text-left text-sm">
@@ -319,7 +342,7 @@ export function HistoryPage() {
                     </td>
                     <td className="truncate px-4 py-3">
                       <div className="truncate font-medium text-stone-900">{item.target_name || "-"}</div>
-                      {item.profile_label ? <div className="truncate text-xs text-stone-500">{item.profile_label}</div> : null}
+                      <div className="truncate text-xs text-stone-500">{[item.project_name, item.profile_label].filter(Boolean).join(" / ")}</div>
                     </td>
                     <td className="px-4 py-3">
                       <ActionBadge item={item} />
