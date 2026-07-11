@@ -386,8 +386,8 @@ func TestStoreValidatesFileTransfers(t *testing.T) {
 func insertTestServer(t *testing.T, database *sql.DB) int64 {
 	t.Helper()
 	targetResult, err := database.Exec(
-		`INSERT INTO connector_targets (connector_kind, name, config_json, created_at, updated_at)
-		VALUES ('ssh', ?, ?, datetime('now'), datetime('now'))`,
+		`INSERT INTO connector_targets (project_id, connector_kind, name, config_json, created_at, updated_at)
+			VALUES ((SELECT id FROM projects WHERE slug = 'ungrouped' AND status = 'active'), 'ssh', ?, ?, datetime('now'), datetime('now'))`,
 		"worker-1",
 		`{"host":"127.0.0.1","port":22}`,
 	)

@@ -591,6 +591,75 @@ var migrations = []migration{
 				updated_at = excluded.updated_at`,
 		},
 	},
+	{
+		version:     4,
+		description: "projects and token project scopes",
+		statements: []string{
+			`CREATE TABLE projects (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				slug TEXT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			);`,
+			`CREATE UNIQUE INDEX idx_projects_active_name ON projects(name COLLATE NOCASE) WHERE status = 'active';`,
+			`CREATE UNIQUE INDEX idx_projects_slug ON projects(slug);`,
+			`INSERT INTO projects (name, slug, status, created_at, updated_at)
+			 VALUES ('Ungrouped', 'ungrouped', 'active', datetime('now'), datetime('now'));`,
+			`ALTER TABLE connector_targets ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE RESTRICT;`,
+			`UPDATE connector_targets SET project_id = (SELECT id FROM projects WHERE slug = 'ungrouped' AND status = 'active');`,
+			`DROP INDEX IF EXISTS idx_connector_targets_active_kind_name;`,
+			`CREATE UNIQUE INDEX idx_connector_targets_active_project_kind_name ON connector_targets(project_id, connector_kind, name) WHERE status = 'active';`,
+			`CREATE INDEX idx_connector_targets_project_status ON connector_targets(project_id, status, name);`,
+			`CREATE TRIGGER connector_targets_project_required_insert
+			 BEFORE INSERT ON connector_targets
+			 WHEN NEW.project_id IS NULL
+			 BEGIN
+				SELECT RAISE(ABORT, 'connector target project_id is required');
+			 END;`,
+			`CREATE TRIGGER connector_targets_project_required_update
+			 BEFORE UPDATE OF project_id ON connector_targets
+			 WHEN NEW.project_id IS NULL
+			 BEGIN
+				SELECT RAISE(ABORT, 'connector target project_id is required');
+			 END;`,
+			`CREATE TABLE token_project_scopes (
+				token_id INTEGER NOT NULL,
+				project_id INTEGER NOT NULL,
+				enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY(token_id, project_id),
+				FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
+				FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+			);`,
+			`INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
+			 SELECT tok.id, p.id, 1, datetime('now'), datetime('now')
+			 FROM api_tokens tok CROSS JOIN projects p WHERE p.status = 'active';`,
+			`CREATE INDEX idx_token_project_scopes_enabled ON token_project_scopes(token_id, enabled, project_id);`,
+			`ALTER TABLE history_entries ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL;`,
+			`UPDATE history_entries
+			 SET project_id = COALESCE(
+				(SELECT ct.project_id FROM connector_targets ct WHERE ct.id = history_entries.target_id),
+				(SELECT ct.project_id
+				 FROM connector_runtime_surfaces rs
+				 JOIN connector_targets ct ON ct.id = rs.target_id
+				 WHERE rs.id = history_entries.runtime_id)
+			 );`,
+			`CREATE INDEX idx_history_entries_project_created ON history_entries(project_id, created_at);`,
+			`ALTER TABLE audit_logs ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL;`,
+			`UPDATE audit_logs
+			 SET project_id = COALESCE(
+				(SELECT ct.project_id FROM connector_targets ct WHERE ct.id = audit_logs.target_id),
+				(SELECT ct.project_id
+				 FROM connector_runtime_surfaces rs
+				 JOIN connector_targets ct ON ct.id = rs.target_id
+				 WHERE rs.id = audit_logs.runtime_id)
+			 );`,
+			`CREATE INDEX idx_audit_logs_project_created ON audit_logs(project_id, created_at);`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {

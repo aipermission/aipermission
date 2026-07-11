@@ -125,7 +125,12 @@ func (s *Store) Create(ctx context.Context, request CreateRequest, options ...Cr
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	result, err := s.db.ExecContext(ctx, `INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, request.Name, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now, now)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return CreateResponse{}, fmt.Errorf("begin create token: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, request.Name, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return CreateResponse{}, ValidationError("token name already exists")
@@ -135,6 +140,14 @@ func (s *Store) Create(ctx context.Context, request CreateRequest, options ...Cr
 	id, err := result.LastInsertId()
 	if err != nil {
 		return CreateResponse{}, fmt.Errorf("read token id: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
+		SELECT ?, id, 1, ?, ? FROM projects WHERE status = 'active'`, id, now, now); err != nil {
+		return CreateResponse{}, fmt.Errorf("initialize token project scopes: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return CreateResponse{}, fmt.Errorf("commit create token: %w", err)
 	}
 	item, err := s.Get(ctx, id)
 	if err != nil {

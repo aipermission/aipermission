@@ -295,8 +295,8 @@ func TestSSHKeyStoreValidatesAndRefusesDeleteWhenInUse(t *testing.T) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	targetResult, err := database.Exec(`
-		INSERT INTO connector_targets (connector_kind, name, config_json, created_at, updated_at)
-		VALUES ('ssh', 'worker-1', '{"host":"127.0.0.1","port":22}', ?, ?)`,
+		INSERT INTO connector_targets (project_id, connector_kind, name, config_json, created_at, updated_at)
+		VALUES ((SELECT id FROM projects WHERE slug = 'ungrouped' AND status = 'active'), 'ssh', 'worker-1', '{"host":"127.0.0.1","port":22}', ?, ?)`,
 		now,
 		now,
 	)
