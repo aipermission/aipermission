@@ -18,6 +18,7 @@ type unlockHandlers struct{ *Server }
 type messageHandlers struct{ *Server }
 type historyEntryHandlers struct{ *Server }
 type historyLabelHandlers struct{ *Server }
+type projectHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
 type connectorHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
@@ -40,6 +41,7 @@ func (s *Server) routes() {
 	audit := auditHandlers{s}
 	historyEntries := historyEntryHandlers{s}
 	historyLabels := historyLabelHandlers{s}
+	projects := projectHandlers{s}
 	fileTransfers := fileTransferHandlers{s}
 	connectors := connectorHandlers{s}
 	connectorActions := connectorActionHandlers{s}
@@ -120,6 +122,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/history-labels", historyLabels.listHistoryLabels)
 	s.mux.HandleFunc("POST /api/history-labels", historyLabels.createHistoryLabel)
 	s.mux.HandleFunc("DELETE /api/history-labels/{id}", historyLabels.deleteHistoryLabel)
+	s.mux.HandleFunc("GET /api/projects", projects.listProjects)
+	s.mux.HandleFunc("POST /api/projects", projects.createProject)
+	s.mux.HandleFunc("PUT /api/projects/{id}", projects.updateProject)
+	s.mux.HandleFunc("DELETE /api/projects/{id}", projects.archiveProject)
 	s.mux.HandleFunc("GET /api/file-transfers", fileTransfers.listFileTransfers)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}", fileTransfers.getFileTransfer)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}/download", fileTransfers.downloadTransferredFile)
