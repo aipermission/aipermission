@@ -25,6 +25,9 @@ type connectorPermissionInput struct {
 }
 
 type connectorPermissionResponse struct {
+	ProjectID     int64  `json:"project_id"`
+	ProjectName   string `json:"project_name"`
+	ProjectSlug   string `json:"project_slug"`
 	TargetID      int64  `json:"target_id"`
 	TargetName    string `json:"target_name"`
 	ProfileID     int64  `json:"profile_id"`
@@ -127,11 +130,25 @@ func connectorPermissionInputs(r *http.Request, registry *connectors.Registry, s
 }
 
 func activeSupportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, tokenID int64) ([]connectortargets.ActionPermission, error) {
+	return supportedConnectorPermissions(ctx, runtime, tokenID, false)
+}
+
+func projectScopedSupportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, tokenID int64) ([]connectortargets.ActionPermission, error) {
+	return supportedConnectorPermissions(ctx, runtime, tokenID, true)
+}
+
+func supportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, tokenID int64, projectScoped bool) ([]connectortargets.ActionPermission, error) {
 	if runtime == nil || runtime.database == nil {
 		return nil, connectortargets.ValidationError("database runtime is not available")
 	}
 	store := connectortargets.NewStore(runtime.database)
-	permissions, err := store.ListActionPermissions(ctx, tokenID)
+	var permissions []connectortargets.ActionPermission
+	var err error
+	if projectScoped {
+		permissions, err = store.ListScopedActionPermissions(ctx, tokenID, time.Now().UTC())
+	} else {
+		permissions, err = store.ListActionPermissions(ctx, tokenID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -248,6 +265,9 @@ func connectorPermissionResponses(permissions []connectortargets.ActionPermissio
 	items := make([]connectorPermissionResponse, 0, len(permissions))
 	for _, permission := range permissions {
 		items = append(items, connectorPermissionResponse{
+			ProjectID:     permission.ProjectID,
+			ProjectName:   permission.ProjectName,
+			ProjectSlug:   permission.ProjectSlug,
 			TargetID:      permission.TargetID,
 			TargetName:    permission.TargetName,
 			ProfileID:     permission.ProfileID,
