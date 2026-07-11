@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
@@ -39,6 +40,10 @@ func TestProjectRoutesAssignAndProtectConnectorTargets(t *testing.T) {
 	target := decodeRouteResponse[connectorTargetResponse](t, createTarget.Body.Bytes())
 	if target.ProjectID != project.ID || target.ProjectName != "WickRadar" {
 		t.Fatalf("target project response = %#v", target)
+	}
+	projectAudit := performJSON(handler, http.MethodGet, "/api/audit-logs?project_id="+strconv.FormatInt(project.ID, 10), "", nil)
+	if projectAudit.Code != http.StatusOK || !strings.Contains(projectAudit.Body.String(), "connector.target.created") || !strings.Contains(projectAudit.Body.String(), `"project_name":"WickRadar"`) {
+		t.Fatalf("project audit filter failed: %d %s", projectAudit.Code, projectAudit.Body.String())
 	}
 
 	archivePopulated := performJSON(handler, http.MethodDelete, "/api/projects/"+strconv.FormatInt(project.ID, 10), "", nil)
