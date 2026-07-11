@@ -57,12 +57,13 @@ export function submitLabel({ state, mode, form }) {
 
 export async function save({ mode, form, target }) {
   const payload = payloadFromForm(form);
+  const projectID = form.project_id;
   if (mode === "edit") {
     if (!target) throw new Error("SSH connector target is not loaded.");
-    await saveFromPayload({ targetID: target.id, payload, setupLater: Boolean(form.setup_later), previousTarget: target });
+    await saveFromPayload({ targetID: target.id, projectID, payload, setupLater: Boolean(form.setup_later), previousTarget: target });
     return;
   }
-  await createFromPayload({ payload, setupLater: Boolean(form.setup_later) });
+  await createFromPayload({ projectID, payload, setupLater: Boolean(form.setup_later) });
 }
 
 export async function deleteTarget({ target, removeKey }) {
@@ -286,6 +287,7 @@ export function hostKeyActionFromError(error, { mode, form, target, profile, tes
   return {
     kind: "ssh",
     type: mode === "edit" ? "save" : "create",
+    projectID: form.project_id,
     payload: payloadFromForm(form),
     target,
     setupLater: Boolean(form.setup_later),
@@ -308,12 +310,12 @@ export function operationFromError(error, context) {
 
 export async function resumeHostKeyAction(action) {
   if (action.type === "create") {
-    await createFromPayload({ payload: action.payload, setupLater: Boolean(action.setupLater) });
+    await createFromPayload({ projectID: action.projectID, payload: action.payload, setupLater: Boolean(action.setupLater) });
     return { message: "Connector created." };
   }
   if (action.type === "save") {
     if (!action.target) throw new Error("SSH connector target is not loaded.");
-    await saveFromPayload({ targetID: action.target.id, payload: action.payload, setupLater: Boolean(action.setupLater), previousTarget: action.target });
+    await saveFromPayload({ targetID: action.target.id, projectID: action.projectID, payload: action.payload, setupLater: Boolean(action.setupLater), previousTarget: action.target });
     return { message: "Connector updated." };
   }
   if (action.type === "test") {
@@ -328,7 +330,7 @@ export async function resumeHostKeyAction(action) {
   throw new Error("Unsupported SSH host-key action.");
 }
 
-async function createFromPayload({ payload, setupLater }) {
+async function createFromPayload({ projectID, payload, setupLater }) {
   if (!setupLater) {
     const testResult = await apiPost("/api/connector-targets/test", {
       connector_kind: "ssh",
@@ -341,6 +343,7 @@ async function createFromPayload({ payload, setupLater }) {
     }
   }
   await createTargetWithProfile({
+    projectID,
     targetPayload: {
       connector_kind: "ssh",
       name: payload.name,
@@ -354,7 +357,7 @@ async function createFromPayload({ payload, setupLater }) {
   });
 }
 
-async function saveFromPayload({ targetID, payload, setupLater, previousTarget }) {
+async function saveFromPayload({ targetID, projectID, payload, setupLater, previousTarget }) {
   if (!setupLater) {
     const testResult = await apiPost("/api/connector-targets/test", {
       connector_kind: "ssh",
@@ -369,6 +372,7 @@ async function saveFromPayload({ targetID, payload, setupLater, previousTarget }
   const profile = previousTarget?.profiles?.find((item) => Number(item.id) === Number(payload.profile_id)) || (previousTarget?.profiles?.length === 1 ? previousTarget.profiles[0] : null);
   if (!profile) throw new Error("SSH connector profile is not loaded.");
   await updateTargetWithProfile({
+    projectID,
     targetID,
     previousTarget,
     profileID: profile.id,

@@ -49,6 +49,22 @@ database password, validates the encrypted file without running schema
 migrations, and deletes only the local database file. It is intended for
 removing old pre-0.2 source databases after migration.
 
+## Projects
+
+```txt
+GET /api/projects
+POST /api/projects
+PUT /api/projects/{id}
+DELETE /api/projects/{id}
+```
+
+Projects organize connector targets for one local developer. Existing targets
+are assigned to the protected `Ungrouped` project during migration. Creating a
+project also initializes an enabled project-scope row for existing API tokens.
+Renaming a project preserves its stable slug. A project can be archived only
+after its active connector targets have been moved elsewhere; `Ungrouped`
+cannot be archived.
+
 ## Connector Catalog And Targets
 
 ```txt
@@ -124,6 +140,7 @@ Generic target create shape:
 
 ```json
 {
+  "project_id": 2,
   "connector_kind": "postgres",
   "name": "main-db",
   "config": {

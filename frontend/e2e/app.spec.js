@@ -43,6 +43,9 @@ test.beforeEach(async ({ page }) => {
   await page.route("http://localhost:8080/api/connector-targets/inventory", async (route) => {
     await route.fulfill({ json: { items: [targetInventory()] } });
   });
+  await page.route("http://localhost:8080/api/projects", async (route) => {
+    await route.fulfill({ json: { items: [project(), secondaryProject()] } });
+  });
   await page.route("http://localhost:8080/api/connector-targets/1", async (route) => {
     await route.fulfill({ json: targetDetail() });
   });
@@ -168,6 +171,27 @@ test("updates token connector permission from the Tokens page", async ({ page })
   await expect(page.getByText("Connector permissions saved.")).toBeVisible();
 });
 
+test("moves an edited connector to another project", async ({ page }) => {
+  let updatePayload = null;
+  await page.route("http://localhost:8080/api/connector-targets/1/with-profile/1", async (route) => {
+    updatePayload = route.request().postDataJSON();
+    await route.fulfill({ json: { ...targetDetail(), project_id: 2, project_name: "My Project", project_slug: "my-project" } });
+  });
+
+  await page.goto("/");
+  await page.getByRole("textbox").fill("local-password");
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await page.locator('aside a[href="/connectors"]').click();
+
+  await page.getByTitle("Edit connector").click();
+  await page.getByLabel("Project").selectOption("2");
+  await page.getByLabel("I will install the key later").check();
+  await page.getByRole("button", { name: "Save changes" }).click();
+
+  await expect(page.getByText("Connector updated.")).toBeVisible();
+  expect(updatePayload?.target?.project_id).toBe(2);
+});
+
 function unlockedStatus() {
   return {
     state: "unlocked",
@@ -189,6 +213,36 @@ function targetSummary() {
   };
 }
 
+function project() {
+  return {
+    id: 1,
+    name: "Ungrouped",
+    slug: "ungrouped",
+    target_count: 1,
+    created_at: "2026-05-31T00:00:00Z",
+    updated_at: "2026-05-31T00:00:00Z",
+  };
+}
+
+function secondaryProject() {
+  return {
+    id: 2,
+    name: "My Project",
+    slug: "my-project",
+    target_count: 0,
+    created_at: "2026-05-31T00:00:00Z",
+    updated_at: "2026-05-31T00:00:00Z",
+  };
+}
+
+function projectScope(enabled) {
+  return {
+    project_id: 1,
+    project_name: "Ungrouped",
+    project_slug: "ungrouped",
+    enabled,
+  };
+}
 function targetDetail() {
   return {
     ...targetSummary(),

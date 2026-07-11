@@ -16,6 +16,7 @@ import (
 )
 
 type createConnectorTargetRequest struct {
+	ProjectID     int64          `json:"project_id"`
 	ConnectorKind string         `json:"connector_kind"`
 	Name          string         `json:"name"`
 	Config        map[string]any `json:"config,omitempty"`
@@ -31,8 +32,9 @@ type createConnectorCredentialProfileRequest struct {
 }
 
 type updateConnectorTargetRequest struct {
-	Name   string         `json:"name"`
-	Config map[string]any `json:"config,omitempty"`
+	ProjectID int64          `json:"project_id"`
+	Name      string         `json:"name"`
+	Config    map[string]any `json:"config,omitempty"`
 }
 
 type updateConnectorCredentialProfileRequest struct {
@@ -66,6 +68,9 @@ type connectorTargetTestResponse struct {
 
 type connectorTargetResponse struct {
 	ID            int64            `json:"id"`
+	ProjectID     int64            `json:"project_id"`
+	ProjectName   string           `json:"project_name"`
+	ProjectSlug   string           `json:"project_slug"`
 	Ref           string           `json:"ref,omitempty"`
 	ConnectorKind string           `json:"connector_kind"`
 	Name          string           `json:"name"`
@@ -295,6 +300,7 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 	}
 	request.Config = config
 	target, err := connectortargets.NewStore(runtime.database).CreateTarget(r.Context(), connectortargets.CreateTargetInput{
+		ProjectID:     request.ProjectID,
 		ConnectorKind: strings.TrimSpace(request.ConnectorKind),
 		Name:          request.Name,
 		Config:        request.Config,
@@ -304,6 +310,7 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.created", map[string]any{
+		"project_id":     target.ProjectID,
 		"target_id":      target.ID,
 		"connector_kind": target.ConnectorKind,
 		"name":           target.Name,
@@ -349,6 +356,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 	defer tx.Rollback()
 	store := connectortargets.NewTxStore(tx)
 	target, err := store.CreateTarget(r.Context(), connectortargets.CreateTargetInput{
+		ProjectID:     request.Target.ProjectID,
 		ConnectorKind: strings.TrimSpace(request.Target.ConnectorKind),
 		Name:          request.Target.Name,
 		Config:        request.Target.Config,
@@ -385,6 +393,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.created", map[string]any{
+		"project_id":     target.ProjectID,
 		"target_id":      target.ID,
 		"connector_kind": target.ConnectorKind,
 		"name":           target.Name,
@@ -491,6 +500,9 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	request.Config = config
+	if request.ProjectID == 0 {
+		request.ProjectID = existing.ProjectID
+	}
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -499,9 +511,10 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 	defer tx.Rollback()
 	txStore := connectortargets.NewTxStore(tx)
 	target, err := txStore.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
-		ID:     id,
-		Name:   request.Name,
-		Config: request.Config,
+		ID:        id,
+		ProjectID: request.ProjectID,
+		Name:      request.Name,
+		Config:    request.Config,
 	})
 	if err != nil {
 		handleConnectorTargetError(w, err)
@@ -528,6 +541,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.updated", map[string]any{
+		"project_id":               target.ProjectID,
 		"target_id":                target.ID,
 		"connector_kind":           target.ConnectorKind,
 		"name":                     target.Name,
@@ -576,6 +590,9 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	request.Target.Config = targetConfig
+	if request.Target.ProjectID == 0 {
+		request.Target.ProjectID = existing.ProjectID
+	}
 	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request.Profile), request.Profile.Secret != nil)
 	if !ok {
 		return
@@ -588,9 +605,10 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 	defer tx.Rollback()
 	txStore := connectortargets.NewTxStore(tx)
 	target, err := txStore.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
-		ID:     id,
-		Name:   request.Target.Name,
-		Config: request.Target.Config,
+		ID:        id,
+		ProjectID: request.Target.ProjectID,
+		Name:      request.Target.Name,
+		Config:    request.Target.Config,
 	})
 	if err != nil {
 		handleConnectorTargetError(w, err)
@@ -624,6 +642,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.updated", map[string]any{
+		"project_id":               target.ProjectID,
 		"target_id":                target.ID,
 		"connector_kind":           target.ConnectorKind,
 		"name":                     target.Name,
@@ -1226,6 +1245,9 @@ func toString(value any) string {
 func connectorTargetToResponse(target connectortargets.Target, profiles []connectortargets.CredentialProfile) connectorTargetResponse {
 	return connectorTargetResponse{
 		ID:            target.ID,
+		ProjectID:     target.ProjectID,
+		ProjectName:   target.ProjectName,
+		ProjectSlug:   target.ProjectSlug,
 		ConnectorKind: target.ConnectorKind,
 		Name:          target.Name,
 		Config:        target.Config,
