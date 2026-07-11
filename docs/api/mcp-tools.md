@@ -76,8 +76,8 @@ Example response:
   {
     "target_ref": "ssh:3:1",
     "project_id": 2,
-    "project_name": "WickRadar",
-    "project_slug": "wickradar",
+    "project_name": "My Project",
+    "project_slug": "my-project",
     "target_id": 3,
     "target_name": "core-1",
     "connector_kind": "ssh",

@@ -144,7 +144,7 @@ export function ProjectsPage() {
         <form className="grid gap-4" onSubmit={saveProject}>
           <Field>
             Project name
-            <Input autoFocus value={editor.name} maxLength={80} onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))} placeholder="WickRadar" />
+            <Input autoFocus value={editor.name} maxLength={80} onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))} placeholder="My Project" />
           </Field>
           {action.error && editor.open ? <Notice tone="bad">{action.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">

@@ -122,7 +122,7 @@ func TestExecuteListObjectsSearchScansSubsequentPages(t *testing.T) {
 			_, _ = w.Write([]byte(`<ListBucketResult>
 <Name>test-bucket</Name>
 <IsTruncated>false</IsTruncated>
-<Contents><Key>assets/candleswarm-icon.svg</Key><LastModified>2026-06-29T10:01:00.000Z</LastModified><ETag>"def"</ETag><Size>12</Size><StorageClass>STANDARD</StorageClass></Contents>
+<Contents><Key>assets/project-icon.svg</Key><LastModified>2026-06-29T10:01:00.000Z</LastModified><ETag>"def"</ETag><Size>12</Size><StorageClass>STANDARD</StorageClass></Contents>
 </ListBucketResult>`))
 		default:
 			t.Fatalf("unexpected extra request %d", requests)
@@ -133,7 +133,7 @@ func TestExecuteListObjectsSearchScansSubsequentPages(t *testing.T) {
 	connector := New()
 	result, err := connector.ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
 		ActionName: ActionListObjects,
-		Payload:    map[string]any{"search": "candleswarm-icon.svg", "limit": 10},
+		Payload:    map[string]any{"search": "project-icon.svg", "limit": 10},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -149,7 +149,7 @@ func TestExecuteListObjectsSearchScansSubsequentPages(t *testing.T) {
 		t.Fatalf("count = %#v output=%#v", output["count"], output)
 	}
 	objects := output["objects"].([]map[string]any)
-	if objects[0]["key"] != "assets/candleswarm-icon.svg" {
+	if objects[0]["key"] != "assets/project-icon.svg" {
 		t.Fatalf("objects = %#v", objects)
 	}
 }

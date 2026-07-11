@@ -187,7 +187,7 @@ func TestListNetworksAndVolumesUseScopedInspect(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
 			"docker ps -a --no-trunc --format '{{json .}}'": {Stdout: strings.Join([]string{
-				`{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour (healthy)","Labels":"com.docker.compose.project=watb,com.docker.compose.service=api"}`,
+				`{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour (healthy)","Labels":"com.docker.compose.project=sample-app,com.docker.compose.service=api"}`,
 				`{"ID":"222222222222","Names":"db","Image":"postgres:16","State":"running","Status":"Up 1 hour"}`,
 			}, "\n")},
 			"docker inspect -- 'api'": {Stdout: `[{
@@ -225,7 +225,7 @@ func TestListNetworksAndVolumesUseScopedInspect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse containers: %v", err)
 	}
-	if containers[0].Health != "healthy" || containers[0].ComposeProject != "watb" || containers[0].ComposeService != "api" {
+	if containers[0].Health != "healthy" || containers[0].ComposeProject != "sample-app" || containers[0].ComposeService != "api" {
 		t.Fatalf("expected enriched compose metadata, got %#v", containers[0])
 	}
 }
