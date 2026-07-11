@@ -29,11 +29,11 @@ func TestProjectLifecycleAndTokenScopeDefaults(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 
-	project, err := store.Create(ctx, "Wick Radar")
+	project, err := store.Create(ctx, "Project Alpha")
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	if project.Slug != "wick-radar" {
+	if project.Slug != "project-alpha" {
 		t.Fatalf("project slug = %q", project.Slug)
 	}
 
@@ -45,11 +45,11 @@ func TestProjectLifecycleAndTokenScopeDefaults(t *testing.T) {
 		t.Fatalf("unexpected default project scopes: %#v", scopes)
 	}
 
-	updated, err := store.Update(ctx, project.ID, "WickRadar")
+	updated, err := store.Update(ctx, project.ID, "Renamed Project")
 	if err != nil {
 		t.Fatalf("rename project: %v", err)
 	}
-	if updated.Slug != project.Slug || updated.Name != "WickRadar" {
+	if updated.Slug != project.Slug || updated.Name != "Renamed Project" {
 		t.Fatalf("rename changed stable identity: %#v", updated)
 	}
 
@@ -67,11 +67,11 @@ func TestProjectLifecycleAndTokenScopeDefaults(t *testing.T) {
 	if err := store.Archive(ctx, project.ID); err != nil {
 		t.Fatalf("archive empty project: %v", err)
 	}
-	recreated, err := store.Create(ctx, "Wick Radar")
+	recreated, err := store.Create(ctx, "Project Alpha")
 	if err != nil {
 		t.Fatalf("recreate archived project name: %v", err)
 	}
-	if recreated.Slug != "wick-radar-2" {
+	if recreated.Slug != "project-alpha-2" {
 		t.Fatalf("archived project slug was reused: %q", recreated.Slug)
 	}
 }
@@ -80,7 +80,7 @@ func TestProjectCannotBeArchivedWithActiveTargets(t *testing.T) {
 	database := openProjectTestDB(t)
 	store := NewStore(database)
 	ctx := context.Background()
-	project, err := store.Create(ctx, "CandleSwarm")
+	project, err := store.Create(ctx, "Project Beta")
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}

@@ -91,7 +91,7 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	projects := projectstore.NewStore(fixture.db)
-	project, err := projects.Create(ctx, "CandleSwarm")
+	project, err := projects.Create(ctx, "Project Alpha")
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 	}
 
 	visible := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
-	if visible.Code != http.StatusOK || !strings.Contains(visible.Body.String(), `"project_name":"CandleSwarm"`) {
+	if visible.Code != http.StatusOK || !strings.Contains(visible.Body.String(), `"project_name":"Project Alpha"`) {
 		t.Fatalf("project target should be visible: %d %s", visible.Code, visible.Body.String())
 	}
 

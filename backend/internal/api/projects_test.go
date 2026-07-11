@@ -13,12 +13,12 @@ func TestProjectRoutesAssignAndProtectConnectorTargets(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
 
-	createProject := performJSON(handler, http.MethodPost, "/api/projects", "", projectRequest{Name: "WickRadar"})
+	createProject := performJSON(handler, http.MethodPost, "/api/projects", "", projectRequest{Name: "My Project"})
 	if createProject.Code != http.StatusCreated {
 		t.Fatalf("create project failed: %d %s", createProject.Code, createProject.Body.String())
 	}
 	project := decodeRouteResponse[projectstore.Project](t, createProject.Body.Bytes())
-	if project.ID < 1 || project.Slug != "wickradar" {
+	if project.ID < 1 || project.Slug != "my-project" {
 		t.Fatalf("unexpected project: %#v", project)
 	}
 
@@ -38,11 +38,11 @@ func TestProjectRoutesAssignAndProtectConnectorTargets(t *testing.T) {
 		t.Fatalf("create project target failed: %d %s", createTarget.Code, createTarget.Body.String())
 	}
 	target := decodeRouteResponse[connectorTargetResponse](t, createTarget.Body.Bytes())
-	if target.ProjectID != project.ID || target.ProjectName != "WickRadar" {
+	if target.ProjectID != project.ID || target.ProjectName != "My Project" {
 		t.Fatalf("target project response = %#v", target)
 	}
 	projectAudit := performJSON(handler, http.MethodGet, "/api/audit-logs?project_id="+strconv.FormatInt(project.ID, 10), "", nil)
-	if projectAudit.Code != http.StatusOK || !strings.Contains(projectAudit.Body.String(), "connector.target.created") || !strings.Contains(projectAudit.Body.String(), `"project_name":"WickRadar"`) {
+	if projectAudit.Code != http.StatusOK || !strings.Contains(projectAudit.Body.String(), "connector.target.created") || !strings.Contains(projectAudit.Body.String(), `"project_name":"My Project"`) {
 		t.Fatalf("project audit filter failed: %d %s", projectAudit.Code, projectAudit.Body.String())
 	}
 
@@ -62,12 +62,12 @@ func TestProjectRoutesAssignAndProtectConnectorTargets(t *testing.T) {
 		t.Fatalf("unexpected projects: %#v", list.Items)
 	}
 
-	updateProject := performJSON(handler, http.MethodPut, "/api/projects/"+strconv.FormatInt(project.ID, 10), "", projectRequest{Name: "Wick Radar"})
+	updateProject := performJSON(handler, http.MethodPut, "/api/projects/"+strconv.FormatInt(project.ID, 10), "", projectRequest{Name: "Renamed Project"})
 	if updateProject.Code != http.StatusOK {
 		t.Fatalf("rename project failed: %d %s", updateProject.Code, updateProject.Body.String())
 	}
 	renamed := decodeRouteResponse[projectstore.Project](t, updateProject.Body.Bytes())
-	if renamed.Name != "Wick Radar" || renamed.Slug != project.Slug {
+	if renamed.Name != "Renamed Project" || renamed.Slug != project.Slug {
 		t.Fatalf("unexpected renamed project: %#v", renamed)
 	}
 }

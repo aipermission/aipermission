@@ -72,8 +72,8 @@ func TestHistoryProjectSnapshotSurvivesTargetMove(t *testing.T) {
 	database := openTestDB(t)
 	tokenID := insertToken(t, database)
 	targetID, profileID := insertTargetProfile(t, database, "postgres", "orders-db", "username_password", "readonly")
-	firstProjectID := insertProject(t, database, "WickRadar", "wickradar")
-	secondProjectID := insertProject(t, database, "CandleSwarm", "candleswarm")
+	firstProjectID := insertProject(t, database, "Project Alpha", "project-alpha")
+	secondProjectID := insertProject(t, database, "Project Beta", "project-beta")
 	if _, err := database.Exec(`UPDATE connector_targets SET project_id = ? WHERE id = ?`, firstProjectID, targetID); err != nil {
 		t.Fatalf("assign first project: %v", err)
 	}

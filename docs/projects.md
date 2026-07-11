@@ -6,8 +6,8 @@ users, teams, tenants, or remote RBAC boundaries.
 
 Examples:
 
-- `WickRadar`
-- `CandleSwarm`
+- `My Project`
+- `Client Infrastructure`
 - `Personal infrastructure`
 
 Every connector target belongs to exactly one project. Existing targets are
