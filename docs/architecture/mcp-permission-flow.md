@@ -24,8 +24,9 @@ For the detailed tool contract, see [MCP Tools](../api/mcp-tools.md).
 
 ## Target Discovery
 
-`list_connector_targets()` returns only target/profile refs that the token can
-use. Temporary grants include `expires_at`; expired grants are omitted.
+`list_connector_targets()` returns only target/profile refs that are inside an
+enabled token project and have an effective action grant. Temporary grants
+include `expires_at`; expired grants are omitted.
 
 Example:
 
@@ -33,6 +34,9 @@ Example:
 [
   {
     "target_ref": "ssh:3:1",
+    "project_id": 2,
+    "project_name": "WickRadar",
+    "project_slug": "wickradar",
     "target_name": "core-1",
     "connector_kind": "ssh",
     "profile_label": "admin",
@@ -64,16 +68,17 @@ Gateway flow:
 
 1. Validate the API token.
 2. Reject revoked or expired tokens.
-3. Resolve the connector target and credential profile.
-4. Prepare the connector action.
-5. Check token permission for target/profile/action.
-6. Reject expired action grants.
-7. Check whether the global MCP runtime is started.
-8. If the runtime is stopped, return a stopped/error response.
-9. If the rule is `always_run`, execute the connector action.
-10. If the rule is `approval_required`, create a pending connector action approval.
-11. If the rule is `blocked`, reject the action without execution.
-12. Record history and audit events.
+3. Resolve the connector target, project, and credential profile.
+4. Require that project to be enabled for the token.
+5. Prepare the connector action.
+6. Check token permission for target/profile/action.
+7. Reject expired action grants.
+8. Check whether the global MCP runtime is started.
+9. If the runtime is stopped, return a stopped/error response.
+10. If the rule is `always_run`, execute the connector action.
+11. If the rule is `approval_required`, create a pending connector action approval.
+12. If the rule is `blocked`, reject the action without execution.
+13. Record project-snapshotted history and audit events.
 
 ## Approval Required
 
@@ -86,7 +91,8 @@ user decides in the web UI:
 - Add a note
 
 When a pending approval is created, the gateway snapshots the approval context:
-token identity, connector target, credential profile, token action permission,
+token identity, project identity and scope, connector target, credential
+profile, token action permission,
 connector metadata, action input, and prepared payload hash. When the user
 clicks Run, the gateway recomputes that context before execution. If it
 changed, the request becomes `stale` and the AI must submit a fresh connector

@@ -30,13 +30,14 @@ get_connector_action_request(request_id)
 
 Every connector uses the same permission path:
 
-1. target
-2. credential profile
-3. connector action
-4. token action permission
-5. approval or direct execution
-6. history
-7. audit
+1. project visibility
+2. target
+3. credential profile
+4. connector action
+5. token action permission
+6. approval or direct execution
+7. project-snapshotted history
+8. project-snapshotted audit
 
 The `target_ref` format is:
 
@@ -74,6 +75,9 @@ Example response:
 [
   {
     "target_ref": "ssh:3:1",
+    "project_id": 2,
+    "project_name": "WickRadar",
+    "project_slug": "wickradar",
     "target_id": 3,
     "target_name": "core-1",
     "connector_kind": "ssh",
@@ -90,6 +94,11 @@ Example response:
   }
 ]
 ```
+
+Visibility requires both an enabled token project and an effective connector
+action grant. Disabling a project hides all of its target refs and blocks direct
+calls without deleting the saved action grants. Project scope is a local
+single-user organization boundary, not team RBAC.
 
 Visibility is permission-scoped, not a live health check. A visible SSH target
 may still be powered off, unreachable, reject authentication, or require host

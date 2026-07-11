@@ -28,7 +28,9 @@ Before acting:
 5. Call `call_connector_action(target_ref, action_name, input, reason)`.
 
 If no target is visible, say that the current token has no accessible connector
-targets. If an action grant includes `expires_at`, treat access as temporary and
+targets. A target can be absent because its project is disabled for the token or
+because no effective action grant exists; do not claim that it was deleted or
+is offline. If an action grant includes `expires_at`, treat access as temporary and
 finish within that maintenance window or ask the operator to extend access.
 
 Target visibility is permission-scoped, not a live health check. A visible SSH

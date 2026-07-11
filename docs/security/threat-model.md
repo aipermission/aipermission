@@ -136,6 +136,25 @@ Mitigations:
 - `always_run` should be temporary and scoped to trusted maintenance windows
 - revoke tokens or remove permissions when work is done
 
+### Cross-Project Token Discovery
+
+Risk: a token configured for one local project discovers or invokes connector
+targets organized under another project.
+
+Mitigations:
+
+- every connector target belongs to one project
+- token project visibility is checked before target/profile/action grants
+- hidden projects are omitted from MCP target discovery
+- direct connector action calls are rejected when the target project is hidden
+- approval snapshots include project identity and become stale after project or
+  project-scope drift
+- history and audit records snapshot project identity when activity is created
+
+Projects are not a remote multi-user isolation claim. They narrow local MCP
+token visibility for one developer; the localhost and single-user boundaries
+remain unchanged.
+
 ## Out Of Scope
 
 - remote/LAN hosting

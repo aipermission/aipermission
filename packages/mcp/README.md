@@ -66,6 +66,12 @@ RabbitMQ, Docker, Kubernetes, and future connectors share the same model: target
 credential profile, connector action, token action permission, approval,
 history, and audit.
 
+Projects group connector targets for one local developer. Each MCP token has an
+enabled project scope in addition to its target/profile/action grants. Targets
+from disabled projects are omitted from discovery and rejected on direct calls;
+their saved action grants are preserved for later re-enablement. Projects are
+not multi-user or hosted RBAC.
+
 For SSH, call `get_connector_actions(target_ref)` to discover actions such as
 `exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
 `start_file_download`. SSH `exec` is intended for non-interactive commands. Use
