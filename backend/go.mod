@@ -2,7 +2,7 @@ module github.com/aipermission/aipermission/backend
 
 go 1.25.0
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	github.com/creack/pty v1.1.24
