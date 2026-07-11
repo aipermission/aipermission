@@ -7,20 +7,24 @@ import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import { connectorActionRiskLabel, connectorActionRiskTone } from "../../lib/connector-action-risks";
 
-const emptyLoad = { state: "idle", catalog: [], targets: [], actionsByProfile: {}, permissions: [], error: null };
+const emptyLoad = { state: "idle", catalog: [], targets: [], actionsByProfile: {}, permissions: [], projectScopes: [], error: null };
 
 export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   const [load, setLoad] = useState(emptyLoad);
   const [draft, setDraft] = useState({});
   const [save, setSave] = useState({ state: "idle", error: null });
+  const [scopeSave, setScopeSave] = useState({ state: "idle", error: null });
   const [selectedProfileKey, setSelectedProfileKey] = useState("");
+  const [projectDraft, setProjectDraft] = useState({});
 
   useEffect(() => {
     if (!token) {
       setLoad(emptyLoad);
       setDraft({});
       setSave({ state: "idle", error: null });
+      setScopeSave({ state: "idle", error: null });
       setSelectedProfileKey("");
+      setProjectDraft({});
       return;
     }
     void loadConnectorPermissions(token.id);
@@ -53,10 +57,11 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   async function loadConnectorPermissions(tokenID) {
     setLoad((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const [catalog, targetList, permissions] = await Promise.all([
+      const [catalog, targetList, permissions, projectScopes] = await Promise.all([
         apiGet("/api/connectors"),
         apiGet("/api/connector-targets/inventory"),
         apiGet(`/api/tokens/${tokenID}/connector-permissions`),
+        apiGet(`/api/tokens/${tokenID}/project-scopes`),
       ]);
       const targets = targetList.items || [];
       const actionEntries = targets.flatMap((target) =>
@@ -64,7 +69,9 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
       );
       const actionsByProfile = Object.fromEntries(actionEntries);
       const permissionItems = permissions.items || [];
-      setLoad({ state: "ready", catalog: catalog.items || [], targets, actionsByProfile, permissions: permissionItems, error: null });
+      const scopeItems = projectScopes.items || [];
+      setLoad({ state: "ready", catalog: catalog.items || [], targets, actionsByProfile, permissions: permissionItems, projectScopes: scopeItems, error: null });
+      setProjectDraft(Object.fromEntries(scopeItems.map((scope) => [scope.project_id, Boolean(scope.enabled)])));
       setDraft(
         Object.fromEntries(
           permissionItems
@@ -78,8 +85,9 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
         )
       );
     } catch (error) {
-      setLoad({ state: "error", catalog: [], targets: [], actionsByProfile: {}, permissions: [], error: error.message });
+      setLoad({ state: "error", catalog: [], targets: [], actionsByProfile: {}, permissions: [], projectScopes: [], error: error.message });
       setDraft({});
+      setProjectDraft({});
     }
   }
 
@@ -88,6 +96,25 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
       ...current,
       [key]: rule ? { execution_rule: rule, expires_at: rule === "blocked" ? "" : current[key]?.expires_at || "" } : { execution_rule: "", expires_at: "" },
     }));
+  }
+
+  async function toggleProjectScope(projectID, enabled) {
+    if (!token) return;
+    const nextDraft = { ...projectDraft, [projectID]: enabled };
+    setProjectDraft(nextDraft);
+    setScopeSave({ state: "saving", error: null });
+    try {
+      const enabledProjectIDs = load.projectScopes.filter((scope) => nextDraft[scope.project_id]).map((scope) => scope.project_id);
+      const result = await apiPut(`/api/tokens/${token.id}/project-scopes`, { enabled_project_ids: enabledProjectIDs });
+      const items = result.items || [];
+      setLoad((current) => ({ ...current, projectScopes: items }));
+      setProjectDraft(Object.fromEntries(items.map((scope) => [scope.project_id, Boolean(scope.enabled)])));
+      await onSaved?.();
+      setScopeSave({ state: "ready", error: null });
+    } catch (error) {
+      setProjectDraft(projectDraft);
+      setScopeSave({ state: "error", error: error.message });
+    }
   }
 
   async function savePermissions(event) {
@@ -147,8 +174,32 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
         {load.state === "loading" ? <Notice>Loading connector targets...</Notice> : null}
         {load.state === "error" ? <Notice tone="bad">{load.error}</Notice> : null}
         {save.state === "error" ? <Notice tone="bad">{save.error}</Notice> : null}
+        {scopeSave.state === "error" ? <Notice tone="bad">{scopeSave.error}</Notice> : null}
         {save.state === "ready" ? <Notice tone="good">Connector permissions saved.</Notice> : null}
         {load.state === "ready" && rows.length === 0 ? <Notice>Create a connector target before granting action permissions.</Notice> : null}
+
+        {load.state === "ready" ? (
+          <div className="grid gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-stone-500">Project visibility</p>
+              <p className="mt-0.5 text-xs text-stone-500">Disabled projects stay configured, but disappear from this token's MCP target list. Changes apply immediately.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {load.projectScopes.map((scope) => (
+                <label key={scope.project_id} className={`inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold ${projectDraft[scope.project_id] ? "border-emerald-700 bg-emerald-950 text-white" : "border-stone-300 bg-white text-stone-600"}`}>
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-emerald-700"
+                    checked={Boolean(projectDraft[scope.project_id])}
+                    disabled={scopeSave.state === "saving"}
+                    onChange={(event) => void toggleProjectScope(scope.project_id, event.target.checked)}
+                  />
+                  {scope.project_name}
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {load.state === "ready" && rows.length > 0 ? (
           <div
@@ -164,13 +215,14 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
                 {profileGroups.map((group) => {
                   const activeCount = activeRuleCount(group, draft);
                   const selected = group.key === selectedProfileKey;
+                  const projectEnabled = Boolean(projectDraft[group.target.project_id]);
                   return (
                     <button
                       key={group.key}
                       type="button"
                       className={`grid w-full gap-1 px-3 py-3 text-left transition ${
                         selected ? "bg-emerald-950 text-white" : "bg-white text-stone-950 hover:bg-stone-50"
-                      }`}
+                      } ${projectEnabled ? "" : "opacity-60"}`}
                       onClick={() => setSelectedProfileKey((current) => (current === group.key ? "" : group.key))}
                     >
                       <div className="flex min-w-0 items-center justify-between gap-2">
@@ -179,6 +231,7 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
                       </div>
                       <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
                         <Badge tone="neutral">{connectorLabel(load.catalog, group.target.connector_kind)}</Badge>
+                        <Badge tone={projectEnabled ? "good" : "warn"}>{group.target.project_name || "Ungrouped"}</Badge>
                         <span className={selected ? "truncate text-emerald-50" : "truncate text-stone-500"}>{group.profile.label}</span>
                       </div>
                     </button>

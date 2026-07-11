@@ -661,21 +661,22 @@ type SetActionPermissionInput struct {
 }
 
 type ActionPermission struct {
-	TokenID       int64
-	ProjectID     int64
-	ProjectName   string
-	ProjectSlug   string
-	TargetID      int64
-	TargetName    string
-	ProfileID     int64
-	ProfileLabel  string
-	ConnectorKind string
-	ProfileKind   string
-	ActionName    string
-	ExecutionRule ActionPermissionRule
-	ExpiresAt     string
-	CreatedAt     string
-	UpdatedAt     string
+	TokenID        int64
+	ProjectID      int64
+	ProjectName    string
+	ProjectSlug    string
+	ProjectEnabled bool
+	TargetID       int64
+	TargetName     string
+	ProfileID      int64
+	ProfileLabel   string
+	ConnectorKind  string
+	ProfileKind    string
+	ActionName     string
+	ExecutionRule  ActionPermissionRule
+	ExpiresAt      string
+	CreatedAt      string
+	UpdatedAt      string
 }
 
 type ActionRequest struct {
@@ -800,7 +801,7 @@ func (s *Store) GetActionPermission(ctx context.Context, tokenID int64, targetID
 	}
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
-			p.token_id, t.project_id, project.name, project.slug, p.target_id, t.name, p.profile_id, cp.label,
+			p.token_id, t.project_id, project.name, project.slug, scope.enabled, p.target_id, t.name, p.profile_id, cp.label,
 			t.connector_kind, cp.kind, p.action_name, p.execution_rule,
 			COALESCE(p.expires_at, ''), p.created_at, p.updated_at
 		FROM token_connector_action_permissions p
@@ -901,19 +902,19 @@ func (s *Store) listActionPermissions(ctx context.Context, tokenID int64, now ti
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	scopeJoin := ""
+	scopeFilter := ""
 	if scoped {
-		scopeJoin = `JOIN token_project_scopes scope ON scope.token_id = p.token_id AND scope.project_id = t.project_id AND scope.enabled = 1`
+		scopeFilter = "AND scope.enabled = 1"
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			p.token_id, t.project_id, project.name, project.slug, p.target_id, t.name, p.profile_id, cp.label,
+			p.token_id, t.project_id, project.name, project.slug, scope.enabled, p.target_id, t.name, p.profile_id, cp.label,
 			t.connector_kind, cp.kind, p.action_name, p.execution_rule,
 			COALESCE(p.expires_at, ''), p.created_at, p.updated_at
 		FROM token_connector_action_permissions p
 		JOIN connector_targets t ON t.id = p.target_id
 		JOIN projects project ON project.id = t.project_id AND project.status = 'active'
-		`+scopeJoin+`
+		JOIN token_project_scopes scope ON scope.token_id = p.token_id AND scope.project_id = t.project_id
 		JOIN connector_credential_profiles cp ON cp.id = p.profile_id AND cp.target_id = p.target_id
 			WHERE
 				p.token_id = ?
@@ -921,6 +922,7 @@ func (s *Store) listActionPermissions(ctx context.Context, tokenID int64, now ti
 				AND cp.status = 'active'
 				AND cp.connector_kind = t.connector_kind
 				AND (COALESCE(p.expires_at, '') = '' OR p.expires_at > ?)
+				`+scopeFilter+`
 		ORDER BY t.connector_kind, t.name, cp.label, p.action_name`,
 		tokenID,
 		now.UTC().Format(time.RFC3339),
@@ -1531,11 +1533,13 @@ func scanCredentialProfile(row rowScanner) (CredentialProfile, error) {
 
 func scanActionPermission(row rowScanner) (ActionPermission, error) {
 	var item ActionPermission
+	var projectEnabled int
 	if err := row.Scan(
 		&item.TokenID,
 		&item.ProjectID,
 		&item.ProjectName,
 		&item.ProjectSlug,
+		&projectEnabled,
 		&item.TargetID,
 		&item.TargetName,
 		&item.ProfileID,
@@ -1550,6 +1554,7 @@ func scanActionPermission(row rowScanner) (ActionPermission, error) {
 	); err != nil {
 		return ActionPermission{}, fmt.Errorf("scan connector action permission: %w", err)
 	}
+	item.ProjectEnabled = projectEnabled == 1
 	return item, nil
 }
 

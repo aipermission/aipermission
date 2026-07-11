@@ -27,6 +27,7 @@ import { Button } from "../ui/button";
 import { Select } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
+import { apiGet, apiPut } from "../../lib/api";
 
 export function ConnectorTokenPermissionPanel({
   tokens,
@@ -47,6 +48,8 @@ export function ConnectorTokenPermissionPanel({
   const [openTokenID, setOpenTokenID] = useState(null);
   const [profileByToken, setProfileByToken] = useState({});
   const [permissionModeByKey, setPermissionModeByKey] = useState({});
+  const [projectScopesByToken, setProjectScopesByToken] = useState({});
+  const [projectScopeError, setProjectScopeError] = useState("");
   const compactPanelRef = useRef(null);
   const tokenIDsKey = activeTokens.map((token) => token.id).join(",");
   const load = connectorPermissionState || { state: "idle", data: {}, actionsByTargetRef: {}, error: null };
@@ -116,11 +119,43 @@ export function ConnectorTokenPermissionPanel({
 
   async function loadConnectorPermissions() {
     if (!selectedTarget) return;
+    setProjectScopeError("");
     const profilesToLoad = targetProfiles.length > 0 ? targetProfiles : [selectedTarget];
     await Promise.all([
       ...profilesToLoad.map((profile) => loadConnectorActions?.({ ...selectedTarget, profile_id: profile.profile_id || profile.id })),
       loadAllConnectorPermissions?.(activeTokens),
+      ...activeTokens.map(async (token) => {
+        try {
+          const result = await apiGet(`/api/tokens/${token.id}/project-scopes`);
+          setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
+        } catch (error) {
+          setProjectScopeError(error.message || "Failed to load token project scopes.");
+        }
+      }),
     ]);
+  }
+
+  function projectEnabledForToken(tokenID) {
+    const scope = (projectScopesByToken[tokenID] || []).find((item) => Number(item.project_id) === Number(selectedTarget?.project_id));
+    return scope ? Boolean(scope.enabled) : false;
+  }
+
+  async function setProjectVisibility(token, enabled) {
+    if (!selectedTarget?.project_id) return;
+    const key = `${token.id}:project:${selectedTarget.project_id}`;
+    setSavingKey(key);
+    setProjectScopeError("");
+    try {
+      const scopes = projectScopesByToken[token.id] || [];
+      const enabledProjectIDs = scopes.filter((scope) => Number(scope.project_id) === Number(selectedTarget.project_id) ? enabled : scope.enabled).map((scope) => scope.project_id);
+      const result = await apiPut(`/api/tokens/${token.id}/project-scopes`, { enabled_project_ids: enabledProjectIDs });
+      setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
+      await loadAllConnectorPermissions?.(activeTokens);
+    } catch (error) {
+      setProjectScopeError(error.message || "Failed to update token project scope.");
+    } finally {
+      setSavingKey("");
+    }
   }
 
   async function refreshPanel() {
@@ -203,8 +238,15 @@ export function ConnectorTokenPermissionPanel({
     const modeKey = tokenProfileModeKey(token.id, selectedTarget, profile.profile_id);
     const inferredPermissionMode = inferPermissionMode(permissions, selectedTarget, profile.profile_id, actions);
     const permissionMode = permissionModeByKey[modeKey] || inferredPermissionMode;
+    const projectEnabled = projectEnabledForToken(token.id);
     return (
       <div className="grid gap-2">
+        <ProjectVisibilityControl
+          projectName={selectedTarget.project_name || "Ungrouped"}
+          enabled={projectEnabled}
+          saving={savingKey === `${token.id}:project:${selectedTarget.project_id}`}
+          onChange={(enabled) => setProjectVisibility(token, enabled)}
+        />
         <ProfileLifetimeControls
           value={lifetimeValue}
           saving={savingKey === `${token.id}:${profile.profile_id}:lifetime`}
@@ -334,6 +376,7 @@ export function ConnectorTokenPermissionPanel({
       <div className="min-h-0 overflow-auto p-3">
         {load.state === "loading" ? <Notice>Loading connector permissions...</Notice> : null}
         {load.state === "error" ? <Notice tone="bad">{load.error}</Notice> : null}
+        {projectScopeError ? <Notice tone="bad">{projectScopeError}</Notice> : null}
         {tokens.state === "error" ? <Notice tone="bad">{tokens.error}</Notice> : null}
         {tokens.state === "ready" && tokens.data.length === 0 ? <Notice>Create a token first.</Notice> : null}
         {tokens.state === "ready" && tokens.data.length > 0 && activeTokens.length === 0 ? <Notice>No active tokens.</Notice> : null}
@@ -372,6 +415,20 @@ export function ConnectorTokenPermissionPanel({
         </div>
       </div>
     </aside>
+  );
+}
+
+function ProjectVisibilityControl({ projectName, enabled, saving, onChange }) {
+  return (
+    <div className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs ${enabled ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-stone-800">{projectName}</p>
+        <p className="truncate text-stone-500">{enabled ? "Visible to this token through MCP" : "Hidden from this token's MCP target list"}</p>
+      </div>
+      <Button type="button" variant="outline" className="h-8 shrink-0 px-2 text-xs" disabled={saving} onClick={() => onChange(!enabled)}>
+        {saving ? "Saving..." : enabled ? "Hide" : "Enable"}
+      </Button>
+    </div>
   );
 }
 

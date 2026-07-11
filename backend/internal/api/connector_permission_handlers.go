@@ -25,21 +25,22 @@ type connectorPermissionInput struct {
 }
 
 type connectorPermissionResponse struct {
-	ProjectID     int64  `json:"project_id"`
-	ProjectName   string `json:"project_name"`
-	ProjectSlug   string `json:"project_slug"`
-	TargetID      int64  `json:"target_id"`
-	TargetName    string `json:"target_name"`
-	ProfileID     int64  `json:"profile_id"`
-	ProfileLabel  string `json:"profile_label"`
-	TargetRef     string `json:"target_ref"`
-	ConnectorKind string `json:"connector_kind"`
-	ProfileKind   string `json:"profile_kind"`
-	ActionName    string `json:"action_name"`
-	ExecutionRule string `json:"execution_rule"`
-	ExpiresAt     string `json:"expires_at,omitempty"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
+	ProjectID      int64  `json:"project_id"`
+	ProjectName    string `json:"project_name"`
+	ProjectSlug    string `json:"project_slug"`
+	ProjectEnabled bool   `json:"project_enabled"`
+	TargetID       int64  `json:"target_id"`
+	TargetName     string `json:"target_name"`
+	ProfileID      int64  `json:"profile_id"`
+	ProfileLabel   string `json:"profile_label"`
+	TargetRef      string `json:"target_ref"`
+	ConnectorKind  string `json:"connector_kind"`
+	ProfileKind    string `json:"profile_kind"`
+	ActionName     string `json:"action_name"`
+	ExecutionRule  string `json:"execution_rule"`
+	ExpiresAt      string `json:"expires_at,omitempty"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
 
 func (s tokenHandlers) listTokenConnectorPermissions(w http.ResponseWriter, r *http.Request) {
@@ -265,21 +266,22 @@ func connectorPermissionResponses(permissions []connectortargets.ActionPermissio
 	items := make([]connectorPermissionResponse, 0, len(permissions))
 	for _, permission := range permissions {
 		items = append(items, connectorPermissionResponse{
-			ProjectID:     permission.ProjectID,
-			ProjectName:   permission.ProjectName,
-			ProjectSlug:   permission.ProjectSlug,
-			TargetID:      permission.TargetID,
-			TargetName:    permission.TargetName,
-			ProfileID:     permission.ProfileID,
-			ProfileLabel:  permission.ProfileLabel,
-			TargetRef:     connectortargets.ConnectorTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID),
-			ConnectorKind: permission.ConnectorKind,
-			ProfileKind:   permission.ProfileKind,
-			ActionName:    permission.ActionName,
-			ExecutionRule: string(permission.ExecutionRule),
-			ExpiresAt:     permission.ExpiresAt,
-			CreatedAt:     permission.CreatedAt,
-			UpdatedAt:     permission.UpdatedAt,
+			ProjectID:      permission.ProjectID,
+			ProjectName:    permission.ProjectName,
+			ProjectSlug:    permission.ProjectSlug,
+			ProjectEnabled: permission.ProjectEnabled,
+			TargetID:       permission.TargetID,
+			TargetName:     permission.TargetName,
+			ProfileID:      permission.ProfileID,
+			ProfileLabel:   permission.ProfileLabel,
+			TargetRef:      connectortargets.ConnectorTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID),
+			ConnectorKind:  permission.ConnectorKind,
+			ProfileKind:    permission.ProfileKind,
+			ActionName:     permission.ActionName,
+			ExecutionRule:  string(permission.ExecutionRule),
+			ExpiresAt:      permission.ExpiresAt,
+			CreatedAt:      permission.CreatedAt,
+			UpdatedAt:      permission.UpdatedAt,
 		})
 	}
 	return items

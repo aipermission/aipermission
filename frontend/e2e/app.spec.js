@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
   let connectorPermissions = [];
+  let enabledProjectIDs = [1];
   let mcpRuntimeEnabled = false;
   await page.route("http://localhost:8080/api/unlock/status", async (route) => {
     await route.fulfill({
@@ -99,6 +100,12 @@ test.beforeEach(async ({ page }) => {
     }
     await route.fulfill({ json: { items: connectorPermissions } });
   });
+  await page.route("http://localhost:8080/api/tokens/1/project-scopes", async (route) => {
+    if (route.request().method() === "PUT") {
+      enabledProjectIDs = route.request().postDataJSON().enabled_project_ids || [];
+    }
+    await route.fulfill({ json: { items: [projectScope(enabledProjectIDs.includes(1))] } });
+  });
 });
 
 test("unlocks the local UI session and renders the dashboard", async ({ page }) => {
@@ -165,6 +172,10 @@ test("updates token connector permission from the Tokens page", async ({ page })
   await page.getByRole("button", { name: "Connectors" }).click();
   const dialog = page.getByRole("dialog", { name: "agent connector permissions" });
   await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Ungrouped").uncheck();
+  await expect(dialog.getByLabel("Ungrouped")).not.toBeChecked();
+  await dialog.getByLabel("Ungrouped").check();
+  await expect(dialog.getByLabel("Ungrouped")).toBeChecked();
   await dialog.getByRole("button", { name: /worker-1/ }).click();
   await dialog.getByRole("button", { name: /Prompt/ }).click();
   await dialog.getByRole("button", { name: "Save connector permissions" }).click();
@@ -205,6 +216,9 @@ function unlockedStatus() {
 function targetSummary() {
   return {
     id: 1,
+    project_id: 1,
+    project_name: "Ungrouped",
+    project_slug: "ungrouped",
     ref: "ssh:1:1",
     connector_kind: "ssh",
     name: "worker-1",
@@ -234,7 +248,6 @@ function secondaryProject() {
     updated_at: "2026-05-31T00:00:00Z",
   };
 }
-
 function projectScope(enabled) {
   return {
     project_id: 1,
