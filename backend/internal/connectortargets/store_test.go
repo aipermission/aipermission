@@ -937,5 +937,10 @@ func insertConnectorTestToken(t *testing.T, database *sql.DB) int64 {
 	if err != nil {
 		t.Fatalf("token id: %v", err)
 	}
+	if _, err := database.Exec(`
+		INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
+		SELECT ?, id, 1, datetime('now'), datetime('now') FROM projects WHERE status = 'active'`, id); err != nil {
+		t.Fatalf("insert token project scopes: %v", err)
+	}
 	return id
 }

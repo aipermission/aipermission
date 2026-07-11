@@ -56,6 +56,8 @@ GET /api/projects
 POST /api/projects
 PUT /api/projects/{id}
 DELETE /api/projects/{id}
+GET /api/tokens/{id}/project-scopes
+PUT /api/tokens/{id}/project-scopes
 ```
 
 Projects organize connector targets for one local developer. Existing targets
@@ -64,6 +66,13 @@ project also initializes an enabled project-scope row for existing API tokens.
 Renaming a project preserves its stable slug. A project can be archived only
 after its active connector targets have been moved elsewhere; `Ungrouped`
 cannot be archived.
+
+Token project scopes are an MCP visibility boundary above target/profile/action
+permissions. `GET` returns every active project with its enabled state. `PUT`
+accepts `{"enabled_project_ids":[1,2]}` and replaces the token's project scope.
+Disabling a project hides all of its connector targets from MCP discovery and
+prevents connector actions for that project, while preserving the underlying
+per-action grants for later re-enablement.
 
 ## Connector Catalog And Targets
 

@@ -553,6 +553,11 @@ func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Tok
 			"rule":       permission.ExecutionRule,
 			"expires_at": permission.ExpiresAt,
 		},
+		"project": map[string]any{
+			"id":   permission.ProjectID,
+			"name": permission.ProjectName,
+			"slug": permission.ProjectSlug,
+		},
 		"target": map[string]any{
 			"id":             prepared.Target.ID,
 			"ref":            prepared.Target.Ref,
@@ -612,7 +617,7 @@ func connectorApprovalDriftReason(previousContext string, currentContext string)
 	if err := json.Unmarshal([]byte(currentContext), &current); err != nil {
 		return "unknown"
 	}
-	for _, area := range []string{"connector", "token", "permission", "target", "profile"} {
+	for _, area := range []string{"connector", "token", "permission", "project", "target", "profile"} {
 		if !reflect.DeepEqual(previous[area], current[area]) {
 			return area
 		}
