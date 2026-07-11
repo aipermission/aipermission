@@ -249,6 +249,7 @@ export function operationFromError() {
 
 async function createTarget({ form }) {
   await createTargetWithProfile({
+	projectID: form.project_id,
     targetPayload: {
       connector_kind: "s3",
       name: form.name,
@@ -278,6 +279,7 @@ async function updateTarget({ form, target }) {
     profilePayload.secret = secret;
   }
   await updateTargetWithProfile({
+	projectID: form.project_id,
     targetID: target.id,
     profileID: profile.id,
     targetPayload: {

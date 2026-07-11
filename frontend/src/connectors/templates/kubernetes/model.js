@@ -231,6 +231,7 @@ export function deleteDialog({ target }) {
 
 async function createTarget({ form }) {
   await createTargetWithProfile({
+	projectID: form.project_id,
     targetPayload: {
       connector_kind: "kubernetes",
       name: form.name,
@@ -244,6 +245,7 @@ async function updateTarget({ form, target }) {
   const profile = target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) || (target?.profiles?.length === 1 ? target.profiles[0] : null);
   if (!target || !profile) throw new Error("Kubernetes connector profile is not loaded.");
   await updateTargetWithProfile({
+	projectID: form.project_id,
     targetID: target.id,
     profileID: profile.id,
     targetPayload: {

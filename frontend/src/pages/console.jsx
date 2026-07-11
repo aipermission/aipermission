@@ -1,4 +1,4 @@
-import { AlertTriangle, Circle, Clock, Database, PanelLeftClose, PanelLeftOpen, RefreshCcw, TerminalSquare } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Circle, Clock, Database, FolderKanban, PanelLeftClose, PanelLeftOpen, RefreshCcw, TerminalSquare } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
@@ -67,6 +67,7 @@ export function ConsolePage() {
   const [targetsCompact, setTargetsCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
   const [targetSearch, setTargetSearch] = useState("");
+  const [collapsedProjects, setCollapsedProjects] = useState({});
   const [connectorActivityOpen, setConnectorActivityOpen] = useState(false);
   const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   const [restartAction, setRestartAction] = useState({ state: "idle", error: null });
@@ -129,7 +130,7 @@ export function ConsolePage() {
     return tokens.data.filter((token) => {
       if (token.revoked_at) return false;
       const profileID = selectedConnectorProfileID(token.id, selectedTarget, selectedTargetProfiles);
-      return effectiveConnectorTargetProfilePermissions(connectorPermissionState.data[token.id] || [], selectedTarget, profileID, now).length > 0;
+      return effectiveConnectorTargetProfilePermissions(connectorPermissionState.data[token.id] || [], selectedTarget, profileID, now).some((permission) => permission.project_enabled !== false);
     });
   }, [tokens.data, connectorPermissionState.data, selectedTarget, selectedTargetProfiles, now]);
   const selectedPendingConnectorApprovals = selectedTarget ? pendingConnectorApprovals.filter((approval) => approval.target_ref === selectedTarget.ref) : [];
@@ -163,11 +164,12 @@ export function ConsolePage() {
     return targetRows.filter((target) => {
       if (!query) return true;
       const profiles = profilesForConnectorTarget(targetItems, target);
-      return [targetDisplayName(target), targetSubtitle(target), target.connector_kind, target.ref, ...profiles.map((profile) => profile.profile_label)]
+      return [target.project_name, target.project_slug, targetDisplayName(target), targetSubtitle(target), target.connector_kind, target.ref, ...profiles.map((profile) => profile.profile_label)]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
   }, [targetRows, targetItems, targetSearch]);
+  const projectTargetGroups = useMemo(() => groupConsoleTargetsByProject(filteredTargets), [filteredTargets]);
 
   useEffect(() => {
     if (targetItems.length === 0 || !defaultTargetRef) return;
@@ -458,20 +460,30 @@ export function ConsolePage() {
               onChange={(event) => setTargetSearch(event.target.value)}
             />
           ) : null}
-          {filteredTargets.map((target) => (
-            <TargetListItem
-              key={connectorTargetKey(target)}
-              target={target}
-              profileTargets={profilesForConnectorTarget(targetItems, target)}
-              liveConsoleTargets={liveConsoleTargets}
-              sessions={sessions}
-              selectedTarget={selectedTarget}
+          {projectTargetGroups.map((group) => (
+            <ConsoleProjectGroup
+              key={group.id}
+              group={group}
+              collapsed={Boolean(collapsedProjects[group.id])}
               targetsCompact={targetsCompact}
-              pendingConnectorApprovals={pendingConnectorApprovals}
-              connectorActionApprovals={connectorActionApprovals}
-              unreadMessages={unreadMessages}
-              onSelect={selectTarget}
-            />
+              onToggle={() => setCollapsedProjects((current) => ({ ...current, [group.id]: !current[group.id] }))}
+            >
+              {group.targets.map((target) => (
+                <TargetListItem
+                  key={connectorTargetKey(target)}
+                  target={target}
+                  profileTargets={profilesForConnectorTarget(targetItems, target)}
+                  liveConsoleTargets={liveConsoleTargets}
+                  sessions={sessions}
+                  selectedTarget={selectedTarget}
+                  targetsCompact={targetsCompact}
+                  pendingConnectorApprovals={pendingConnectorApprovals}
+                  connectorActionApprovals={connectorActionApprovals}
+                  unreadMessages={unreadMessages}
+                  onSelect={selectTarget}
+                />
+              ))}
+            </ConsoleProjectGroup>
           ))}
           {targets.state === "ready" && targetItems.length === 0 && !targetsCompact ? <Notice>No targets yet.</Notice> : null}
           {targets.state === "ready" && targetRows.length > 0 && filteredTargets.length === 0 && !targetsCompact ? <Notice>No connectors match that search.</Notice> : null}
@@ -688,6 +700,29 @@ export function ConsolePage() {
   );
 }
 
+function ConsoleProjectGroup({ group, collapsed, targetsCompact, onToggle, children }) {
+  return (
+    <div className="grid gap-1">
+      <button
+        type="button"
+        className={`${targetsCompact ? "grid h-8 w-10 place-items-center" : "flex h-8 items-center gap-2 px-2"} rounded-md text-left text-xs font-semibold text-stone-500 hover:bg-stone-100`}
+        title={`${group.name} (${group.targets.length})`}
+        onClick={onToggle}
+      >
+        {targetsCompact ? <FolderKanban className="h-4 w-4" /> : (
+          <>
+            {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            <FolderKanban className="h-3.5 w-3.5" />
+            <span className="min-w-0 flex-1 truncate">{group.name}</span>
+            <span className="shrink-0 text-[10px]">{group.targets.length}</span>
+          </>
+        )}
+      </button>
+      {!collapsed ? children : null}
+    </div>
+  );
+}
+
 function TargetListItem({
   target,
   profileTargets,
@@ -851,6 +886,18 @@ function consoleTargetRows(targets, selectedTarget, selectedProfileByTarget = {}
     const preferredID = selectedProfileByTarget[key];
     return profiles.find((profile) => Number(profile.profile_id) === Number(preferredID)) || profiles[0] || first;
   });
+}
+
+function groupConsoleTargetsByProject(targets) {
+  const groups = new Map();
+  for (const target of targets) {
+    const id = String(target.project_id || "ungrouped");
+    if (!groups.has(id)) {
+      groups.set(id, { id, name: target.project_name || "Ungrouped", targets: [] });
+    }
+    groups.get(id).targets.push(target);
+  }
+  return [...groups.values()];
 }
 
 function defaultConsoleTargetRef(targets, unreadMessages, pendingConnectorApprovals) {

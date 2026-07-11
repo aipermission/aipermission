@@ -241,6 +241,7 @@ export function operationFromError() {
 
 async function createTarget({ form }) {
   await createTargetWithProfile({
+	projectID: form.project_id,
     targetPayload: {
       connector_kind: "postgres",
       name: form.name,
@@ -275,6 +276,7 @@ async function updateTarget({ form, target }) {
     profilePayload.secret = { password: form.password };
   }
   await updateTargetWithProfile({
+	projectID: form.project_id,
     targetID: target.id,
     previousTarget: target,
     profileID: profile.id,

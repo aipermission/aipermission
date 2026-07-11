@@ -1,17 +1,17 @@
 import { apiPost, apiPut } from "../../lib/api";
 
-export async function createTargetWithProfile({ targetPayload, profilePayload }) {
+export async function createTargetWithProfile({ projectID, targetPayload, profilePayload }) {
   const target = await apiPost("/api/connector-targets/with-profile", {
-    target: targetPayload,
+    target: { ...targetPayload, project_id: Number(projectID) || 0 },
     profile: profilePayload,
   });
   return { target, profile: target.profiles?.[0] || null };
 }
 
-export async function updateTargetWithProfile({ targetID, targetPayload, profileID, profilePayload }) {
+export async function updateTargetWithProfile({ targetID, projectID, targetPayload, profileID, profilePayload }) {
   if (!targetID || !profileID) throw new Error("Connector target profile is not loaded.");
   const target = await apiPut(`/api/connector-targets/${targetID}/with-profile/${profileID}`, {
-    target: targetPayload,
+    target: { ...targetPayload, project_id: Number(projectID) || 0 },
     profile: profilePayload,
   });
   return { target, profile: target.profiles?.[0] || null };
