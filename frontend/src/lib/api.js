@@ -1,11 +1,13 @@
+const viteEnv = import.meta.env || {};
+
 export const apiUrl =
-  import.meta.env.VITE_API_URL === undefined
+  viteEnv.VITE_API_URL === undefined
     ? "http://localhost:8080"
-    : normalizeApiUrl(import.meta.env.VITE_API_URL);
+    : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl =
-  import.meta.env.VITE_MCP_API_URL === undefined
+  viteEnv.VITE_MCP_API_URL === undefined
     ? "http://localhost:3210"
-    : normalizeApiUrl(import.meta.env.VITE_MCP_API_URL || browserOrigin());
+    : normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 export async function apiGet(path) {
   const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });

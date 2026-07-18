@@ -1,0 +1,8 @@
+{
+  "kind": "clickhouse",
+  "label": "ClickHouse",
+  "icon": "database",
+  "badge_tone": "neutral",
+  "summary": "Metadata inspection and bounded read-only analytics SQL through ClickHouse credential profiles.",
+  "version": "0.1"
+}
