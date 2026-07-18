@@ -9,9 +9,9 @@ passwords, database passwords, API credentials, or decrypted connection
 strings.
 
 Connector targets use credential profiles. SSH profiles can reference
-gateway-generated or explicitly imported key material. Postgres profiles store
-database connection secrets. Future connectors define their own credential
-schemas, but the boundary remains the same: credentials stay in the encrypted
+gateway-generated or explicitly imported key material. Postgres and ClickHouse
+profiles store database connection secrets. Future connectors define their own
+credential schemas, but the boundary remains the same: credentials stay in the encrypted
 local gateway and are used only during approved or permitted connector action
 execution.
 
@@ -20,7 +20,7 @@ execution.
 The gateway vault may store:
 
 - gateway-generated or explicitly imported SSH private keys
-- Postgres/database credentials for connector profiles
+- Postgres, ClickHouse, and other database credentials for connector profiles
 - connector-specific connection secrets
 
 The SQLite database is encrypted with SQLCipher. Secret payloads such as SSH private keys are also encrypted by the gateway vault layer. API token lookup uses hashes. Token values are shown once by default; if reusable token copy is enabled in Security, token values created after that setting is enabled are stored with vault encryption for local MCP setup.

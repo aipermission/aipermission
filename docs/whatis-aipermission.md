@@ -14,9 +14,10 @@ Related central notes:
 operate on connector targets without receiving SSH private keys, SSH passwords,
 database credentials, API credentials, or other connector secrets.
 
-The current model ships with SSH, Postgres, Redis, RabbitMQ, S3, and Docker
-connectors. SSH provides live terminal/file-transfer actions, Postgres provides
-structured metadata and bounded read-only query actions, Redis provides bounded
+The current model ships with SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3,
+Docker, and Kubernetes connectors. SSH provides live terminal/file-transfer
+actions, Postgres and ClickHouse provide structured metadata and bounded
+read-only query actions, Redis provides bounded
 key browsing plus explicit write/delete actions, RabbitMQ provides queue
 metadata, bindings, bounded message previews, and explicit message publishing,
 S3 provides S3-compatible bucket browsing, object metadata, bounded
@@ -153,7 +154,7 @@ aipermission gateway
         | auth + permission check + approval flow
         v
 Connector target
-SSH server / Postgres database / Redis cache / RabbitMQ broker / Docker host / future local integration
+SSH server / Postgres database / ClickHouse analytics database / Redis cache / RabbitMQ broker / Docker host / future local integration
 ```
 
 The AI assistant does not receive SSH credentials or database passwords.
@@ -265,7 +266,7 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-SSH, Postgres, Redis, RabbitMQ, S3, Docker, Kubernetes, and future integrations are exposed as
+SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, Kubernetes, and future integrations are exposed as
 connector actions instead of separate product-specific MCP tools.
 
 ## Connector Action Flow
