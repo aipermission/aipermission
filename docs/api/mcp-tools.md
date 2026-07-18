@@ -2,8 +2,9 @@
 
 The MCP surface is connector-first. AIPermission does not expose separate
 product-specific MCP wrappers for SSH, database, cache, queue, or container
-products. SSH, Postgres, Redis, RabbitMQ, S3, Docker, Kubernetes, and future
-integrations are reached through the same connector target/action pipeline.
+products. SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, Kubernetes,
+and future integrations are reached through the same connector target/action
+pipeline.
 
 Recommended package use:
 
@@ -62,8 +63,8 @@ runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
-Postgres, Redis, RabbitMQ, S3, Docker, or Kubernetes as special MCP modes; future
-connector kinds use the same tools and `target_ref` shape.
+Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, or Kubernetes as special MCP
+modes; future connector kinds use the same tools and `target_ref` shape.
 
 ## list_connector_targets
 
@@ -146,6 +147,13 @@ Postgres managed database users are created from the local UI through credential
 provisioning, which uses an admin profile to create a scoped role with a random
 password and stores the resulting profile in the encrypted local vault.
 Postgres backup/restore is also a local UI operator flow, not an MCP action.
+
+ClickHouse actions include visible database/table metadata, ordered column
+descriptions, and bounded `query_readonly` analytics over the native ClickHouse
+protocol. Queries accept one `SELECT`, `WITH`, `SHOW`, or `EXPLAIN` statement,
+run with ClickHouse `readonly=1`, and are capped by timeout, row count, cell
+size, and output bytes. Use a dedicated least-privilege ClickHouse user; these
+checks are defense in depth and do not replace database grants.
 
 Redis actions include bounded key scanning, key inspection, string writes, TTL
 updates, and explicit key deletes.

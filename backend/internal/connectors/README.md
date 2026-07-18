@@ -1,8 +1,8 @@
 # Connectors
 
 `internal/connectors` defines the internal contract for connector-shaped
-targets. SSH, Postgres, Redis, and future API integrations use the same gateway
-pipeline:
+targets. SSH, Postgres, ClickHouse, Redis, and future API integrations use the
+same gateway pipeline:
 
 ```text
 target + credential profile + action
@@ -141,6 +141,14 @@ statement timeouts, row caps, and output byte caps, but it is not a replacement
 for database roles. Operators should use dedicated read-only Postgres users for
 AI profiles.
 
+The ClickHouse connector follows the same structured SQL surface through the
+native protocol. It uses the generic network transport for Direct and Over SSH
+connections, exposes only metadata and bounded read-only actions, and applies
+ClickHouse read-only settings plus timeout, row, cell, and output caps. Its
+protocol driver and SQL behavior remain inside `connectors/clickhouse`; shared
+permission, approval, history, audit, REST, and MCP code do not branch on its
+kind.
+
 ## Frontend Templates
 
 Every connector kind with UI support must provide templates under:
@@ -169,8 +177,9 @@ metadata icons during frontend tests.
 ## Built-In Connector Shape
 
 Built-in connectors may depend on runtime packages for their own transport.
-SSH uses SSH key, persistent terminal, and SFTP primitives. Postgres uses
-database connection and query primitives. Redis uses a bounded RESP client and
+SSH uses SSH key, persistent terminal, and SFTP primitives. Postgres and
+ClickHouse use connector-owned database drivers plus shared SQL safety, bounded
+result, frontend model, and console primitives. Redis uses a bounded RESP client and
 the shared network transport capability. Those transport details stay inside
 the connector implementation; page-level UI, MCP tools, token permissions,
 history, and audit use the shared target/profile/action vocabulary.

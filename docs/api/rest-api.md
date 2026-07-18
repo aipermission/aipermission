@@ -405,6 +405,15 @@ timeout, but operators should still use dedicated
 least-privilege database roles and prefer `approval_required` for ad-hoc
 queries over sensitive data.
 
+ClickHouse exposes `get_databases`, `get_tables`, `describe_table`, and
+`query_readonly` through the same target/profile/action routes. It uses the
+native ClickHouse protocol over Direct or generic Over SSH network transport.
+`query_readonly` accepts one `SELECT`, `WITH`, `SHOW`, or `EXPLAIN` statement,
+sets ClickHouse `readonly=1`, and caps execution time, rows, cell size, and
+persisted output bytes. It is not a SQL sandbox; use a dedicated read-only
+ClickHouse credential profile and prefer `approval_required` for exploratory
+queries.
+
 ## Console Commands
 
 ```txt

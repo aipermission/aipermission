@@ -48,6 +48,7 @@ Good reasons:
 Check Docker service state before cleanup.
 Inspect recent kubelet errors on worker node.
 List Postgres schemas before a read-only metadata query.
+Describe ClickHouse columns before a bounded analytics query.
 Peek a RabbitMQ queue after the operator approved payload inspection. Publish
 RabbitMQ messages only when the operator explicitly asked for a write.
 ```

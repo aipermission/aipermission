@@ -412,6 +412,23 @@ backup/restore is also a local UI operator flow: backup uses `pg_dump`, restore
 uses `psql` with `ON_ERROR_STOP` and a single transaction, and restore requires
 typed target-name confirmation.
 
+## ClickHouse Safety Boundary
+
+The built-in ClickHouse connector is a normal structured connector. Its native
+protocol driver, target/profile schemas, metadata SQL, and action execution live
+under `backend/internal/connectors/clickhouse`; its UI lives under
+`frontend/src/connectors/templates/clickhouse`. It reuses the generic network
+transport, shared read-only SQL validation, bounded SQL result builder,
+database connector model factory, and structured SQL console without adding
+ClickHouse branches to generic routes, pages, permissions, history, audit, or
+MCP tools.
+
+`query_readonly` accepts one `SELECT`, `WITH`, `SHOW`, or `EXPLAIN` statement,
+sets ClickHouse `readonly=1`, and caps timeout, rows, cell values, and total
+output. These controls do not replace ClickHouse grants. Contributors and
+operators must still use a dedicated read-only database user and should default
+exploratory query access to `approval_required`.
+
 ## Tests
 
 Add focused tests for:

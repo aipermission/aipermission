@@ -60,19 +60,27 @@ Then verify:
    a random password saved as an encrypted credential profile.
 11. Postgres connector operations can download a SQL dump and restore a SQL
     dump only after typing the connector target name exactly.
-12. A token can enable one project, hide another project, and keep separate
+12. A ClickHouse connector can connect directly and Over SSH through the native
+    protocol with a dedicated read-only credential profile.
+13. ClickHouse Console can browse visible databases, tables, and ordered
+    columns, prepare bounded SQL, and persist results in structured History.
+14. ClickHouse rejects writes and multi-statement SQL, caps `max_rows` at 1000,
+    preserves duplicate result columns with deterministic names, caps the final
+    serialized output, and returns timeout, authentication, and network failures
+    without exposing the stored password.
+15. A token can enable one project, hide another project, and keep separate
     target/profile/action grants inside the enabled project.
-13. MCP `list_connector_targets`, `get_connector_actions`, and
+16. MCP `list_connector_targets`, `get_connector_actions`, and
     `call_connector_action` omit and reject targets from hidden projects.
-14. An `approval_required` SSH or Postgres connector action appears in Console and can be Run or Declined.
-15. An `always_run` SSH command streams to the persistent console, while a Postgres action appears in the structured activity surface and History.
-16. History and Audit Logs show and filter the project snapshot together with connector kind, target/profile context, input, output, status, and redacted errors.
-17. Console can upload a queued set of local files to a remote folder, including
+17. An `approval_required` SSH, Postgres, or ClickHouse connector action appears in Console and can be Run or Declined.
+18. An `always_run` SSH command streams to the persistent console, while Postgres and ClickHouse actions appear in the structured activity surface and History.
+19. History and Audit Logs show and filter the project snapshot together with connector kind, target/profile context, input, output, status, and redacted errors.
+20. Console can upload a queued set of local files to a remote folder, including
     overwrite confirmation when a remote file already exists.
-18. Console can download one or more remote files, pause/resume or cancel an
+21. Console can download one or more remote files, pause/resume or cancel an
     active queue, and History can show completed transfer metadata through the
     unified connector activity stream. Multi-file downloads should save as a zip.
-19. Settings can download an `.aipdb` backup and import it as a named database.
+22. Settings can download an `.aipdb` backup and import it as a named database.
 
 ## npm Publish Checks
 
