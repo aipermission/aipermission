@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/sqlresult"
+	"github.com/aipermission/aipermission/backend/internal/connectors/sqlsafe"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -473,33 +475,15 @@ func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeC
 }
 
 type queryOutput struct {
-	Columns   []string         `json:"columns"`
-	Rows      []map[string]any `json:"rows"`
-	RowCount  int              `json:"row_count"`
-	MaxRows   int              `json:"max_rows"`
-	Truncated bool             `json:"truncated"`
+	sqlresult.Result
 }
 
 func (o queryOutput) ToMap() map[string]any {
-	return map[string]any{
-		"columns":   o.Columns,
-		"rows":      o.Rows,
-		"row_count": o.RowCount,
-		"max_rows":  o.MaxRows,
-		"max_bytes": maxOutputBytes,
-		"truncated": o.Truncated,
-	}
+	return o.Result.ToMap(maxOutputBytes, nil)
 }
 
 func (o queryOutput) DisplayText() string {
-	text := fmt.Sprintf("%d row", o.RowCount)
-	if o.RowCount != 1 {
-		text += "s"
-	}
-	if o.Truncated {
-		text += " (truncated)"
-	}
-	return text
+	return o.Result.DisplayText()
 }
 
 type provisionScope struct {
@@ -1195,53 +1179,20 @@ func queryRows(ctx context.Context, tx pgx.Tx, sql string, rowLimit int, args ..
 	for _, field := range fields {
 		columns = append(columns, field.Name)
 	}
-	items := []map[string]any{}
-	outputBytes := 0
-	truncated := false
+	builder := sqlresult.NewBuilder(columns, rowLimit, maxOutputBytes, maxCellBytes, truncatedSuffix)
 	for rows.Next() {
-		if outputBytes >= maxOutputBytes {
-			return queryOutput{Columns: columns, Rows: items, RowCount: len(items), MaxRows: rowLimit, Truncated: true}, nil
-		}
 		values, err := rows.Values()
 		if err != nil {
 			return queryOutput{}, fmt.Errorf("read postgres row: %w", err)
 		}
-		if len(items) >= rowLimit {
-			return queryOutput{
-				Columns:   columns,
-				Rows:      items,
-				RowCount:  len(items),
-				MaxRows:   rowLimit,
-				Truncated: true,
-			}, nil
-		}
-		item := make(map[string]any, len(columns))
-		for index, column := range columns {
-			var value any
-			if index < len(values) {
-				var valueBytes int
-				var valueTruncated bool
-				value, valueBytes, valueTruncated = boundPostgresValue(normalizePostgresValue(values[index]), maxOutputBytes-outputBytes)
-				outputBytes += valueBytes
-				if valueTruncated {
-					truncated = true
-				}
-			}
-			item[column] = value
-			if outputBytes >= maxOutputBytes {
-				truncated = true
-				break
-			}
-		}
-		items = append(items, item)
-		if truncated && outputBytes >= maxOutputBytes {
-			return queryOutput{Columns: columns, Rows: items, RowCount: len(items), MaxRows: rowLimit, Truncated: true}, nil
+		if !builder.Add(values, normalizePostgresValue) {
+			break
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return queryOutput{}, fmt.Errorf("iterate postgres rows: %w", err)
 	}
-	return queryOutput{Columns: columns, Rows: items, RowCount: len(items), MaxRows: rowLimit, Truncated: truncated}, nil
+	return queryOutput{Result: builder.Result(nil)}, nil
 }
 
 func normalizePostgresValue(value any) any {
@@ -1253,44 +1204,6 @@ func normalizePostgresValue(value any) any {
 	default:
 		return typed
 	}
-}
-
-func boundPostgresValue(value any, remainingBytes int) (any, int, bool) {
-	if remainingBytes <= 0 {
-		return truncateStringWithSuffix("", 0), 0, true
-	}
-	limit := minInt(maxCellBytes, remainingBytes)
-	switch typed := value.(type) {
-	case string:
-		if len(typed) > limit {
-			truncated := truncateStringWithSuffix(typed, limit)
-			return truncated, len(truncated), true
-		}
-		return typed, len(typed), false
-	case nil:
-		return nil, minInt(4, remainingBytes), false
-	default:
-		encoded, err := json.Marshal(typed)
-		if err == nil && len(encoded) <= limit {
-			return typed, len(encoded), false
-		}
-		text := fmt.Sprint(typed)
-		truncated := truncateStringWithSuffix(text, limit)
-		return truncated, len(truncated), true
-	}
-}
-
-func truncateStringWithSuffix(value string, limit int) string {
-	if limit <= 0 {
-		return ""
-	}
-	if len(value) <= limit {
-		return value
-	}
-	if limit <= len(truncatedSuffix) {
-		return truncateUTF8Bytes(truncatedSuffix, limit)
-	}
-	return truncateUTF8Bytes(value, limit-len(truncatedSuffix)) + truncatedSuffix
 }
 
 func truncateUTF8Bytes(value string, limit int) string {
@@ -1368,13 +1281,6 @@ func postgresSafeFilename(parts ...string) string {
 		return "postgres-backup"
 	}
 	return candidate
-}
-
-func minInt(a int, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func connectionMode(target connectors.TargetView) string {
@@ -1519,183 +1425,14 @@ func targetSummary(target connectors.TargetView, action string) string {
 }
 
 func validateReadonlySQL(sql string) error {
-	if sql == "" {
-		return fmt.Errorf("%s sql is required", ActionQueryReadonly)
-	}
-	if len(sql) > maxSQLBytes {
-		return fmt.Errorf("%s sql exceeds %d bytes", ActionQueryReadonly, maxSQLBytes)
-	}
-	if strings.ContainsRune(sql, '\x00') {
-		return fmt.Errorf("%s sql contains invalid null byte", ActionQueryReadonly)
-	}
-	normalized := strings.TrimSpace(stripTrailingStatementTerminator(stripLeadingSQLComments(sql)))
-	if normalized == "" {
-		return fmt.Errorf("%s sql is required", ActionQueryReadonly)
-	}
-	checkSQL := readonlyValidationSQL(normalized)
-	if strings.Contains(checkSQL, ";") {
-		return fmt.Errorf("%s only accepts a single statement", ActionQueryReadonly)
-	}
-	if disallowedReadonlyTerms.MatchString(checkSQL) {
-		return fmt.Errorf("%s only accepts read-only SQL", ActionQueryReadonly)
-	}
-	if !hasReadonlyPrefix(strings.TrimSpace(checkSQL)) {
-		return fmt.Errorf("%s only accepts SELECT, WITH, SHOW, or EXPLAIN SQL", ActionQueryReadonly)
-	}
-	return nil
-}
-
-func hasReadonlyPrefix(sql string) bool {
-	for _, prefix := range []string{"select", "with", "show", "explain"} {
-		if sql == prefix || strings.HasPrefix(sql, prefix+" ") || strings.HasPrefix(sql, prefix+"\n") || strings.HasPrefix(sql, prefix+"\t") {
-			return true
-		}
-	}
-	return false
-}
-
-func readonlyValidationSQL(sql string) string {
-	var out strings.Builder
-	out.Grow(len(sql))
-	for i := 0; i < len(sql); {
-		switch {
-		case strings.HasPrefix(sql[i:], "--"):
-			for i < len(sql) && sql[i] != '\n' {
-				out.WriteByte(' ')
-				i++
-			}
-		case strings.HasPrefix(sql[i:], "/*"):
-			out.WriteString("  ")
-			i += 2
-			for i < len(sql) && !strings.HasPrefix(sql[i:], "*/") {
-				if sql[i] == '\n' {
-					out.WriteByte('\n')
-				} else {
-					out.WriteByte(' ')
-				}
-				i++
-			}
-			if strings.HasPrefix(sql[i:], "*/") {
-				out.WriteString("  ")
-				i += 2
-			}
-		case sql[i] == '\'':
-			i = maskQuotedSQL(sql, i, '\'', &out)
-		case sql[i] == '"':
-			i = maskQuotedSQL(sql, i, '"', &out)
-		case sql[i] == '$':
-			if end := dollarQuoteEnd(sql, i); end > i {
-				for i < end {
-					out.WriteByte(' ')
-					i++
-				}
-			} else {
-				out.WriteByte(byteLower(sql[i]))
-				i++
-			}
-		default:
-			out.WriteByte(byteLower(sql[i]))
-			i++
-		}
-	}
-	return out.String()
-}
-
-func maskQuotedSQL(sql string, start int, quote byte, out *strings.Builder) int {
-	i := start
-	if i < len(sql) {
-		out.WriteByte(' ')
-		i++
-	}
-	for i < len(sql) {
-		if sql[i] == '\n' {
-			out.WriteByte('\n')
-		} else {
-			out.WriteByte(' ')
-		}
-		if sql[i] == quote {
-			if i+1 < len(sql) && sql[i+1] == quote {
-				i += 2
-				out.WriteByte(' ')
-				continue
-			}
-			i++
-			break
-		}
-		i++
-	}
-	return i
-}
-
-func dollarQuoteEnd(sql string, start int) int {
-	if sql[start] != '$' {
-		return -1
-	}
-	next := strings.IndexByte(sql[start+1:], '$')
-	if next < 0 {
-		return -1
-	}
-	tagEnd := start + 1 + next
-	tag := sql[start : tagEnd+1]
-	if !validDollarQuoteTag(tag) {
-		return -1
-	}
-	closing := strings.Index(sql[tagEnd+1:], tag)
-	if closing < 0 {
-		return -1
-	}
-	return tagEnd + 1 + closing + len(tag)
-}
-
-func validDollarQuoteTag(tag string) bool {
-	if len(tag) < 2 || tag[0] != '$' || tag[len(tag)-1] != '$' {
-		return false
-	}
-	body := tag[1 : len(tag)-1]
-	for i := 0; i < len(body); i++ {
-		ch := body[i]
-		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_') {
-			return false
-		}
-	}
-	return true
-}
-
-func byteLower(ch byte) byte {
-	if ch >= 'A' && ch <= 'Z' {
-		return ch + ('a' - 'A')
-	}
-	return ch
-}
-
-func stripLeadingSQLComments(sql string) string {
-	for {
-		sql = strings.TrimSpace(sql)
-		switch {
-		case strings.HasPrefix(sql, "--"):
-			lineEnd := strings.IndexByte(sql, '\n')
-			if lineEnd < 0 {
-				return ""
-			}
-			sql = sql[lineEnd+1:]
-		case strings.HasPrefix(sql, "/*"):
-			commentEnd := strings.Index(sql, "*/")
-			if commentEnd < 0 {
-				return sql
-			}
-			sql = sql[commentEnd+2:]
-		default:
-			return sql
-		}
-	}
-}
-
-func stripTrailingStatementTerminator(sql string) string {
-	sql = strings.TrimSpace(sql)
-	if strings.HasSuffix(sql, ";") {
-		return strings.TrimSpace(strings.TrimSuffix(sql, ";"))
-	}
-	return sql
+	return sqlsafe.ValidateReadOnly(
+		sql,
+		ActionQueryReadonly,
+		maxSQLBytes,
+		[]string{"select", "with", "show", "explain"},
+		"SELECT, WITH, SHOW, or EXPLAIN",
+		disallowedReadonlyTerms,
+	)
 }
 
 func cleanIdentifierInput(input map[string]any, name string) string {
