@@ -275,7 +275,7 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.13"/);
+  assert.match(releaseSource, /appVersion = "0\.2\.14"/);
   assert.match(releaseSource, /Projects and scoped visibility/);
   assert.match(releaseSource, /MCP target discovery only returns targets from projects enabled for the calling token/);
   assert.match(releaseSource, /S3 MCP polish/);
