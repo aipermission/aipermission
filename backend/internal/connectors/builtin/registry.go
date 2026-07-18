@@ -4,6 +4,7 @@ package builtin
 
 import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	clickhouseconnector "github.com/aipermission/aipermission/backend/internal/connectors/clickhouse"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	_ "github.com/aipermission/aipermission/backend/internal/connectors/docker/apiadapter"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
@@ -19,6 +20,7 @@ import (
 // RegisterAll adds all built-in connectors to the provided registry.
 func RegisterAll(registry *connectors.Registry) error {
 	for _, connector := range []connectors.Connector{
+		clickhouseconnector.New(),
 		dockerconnector.New(),
 		kubernetesconnector.New(),
 		postgresconnector.New(),
