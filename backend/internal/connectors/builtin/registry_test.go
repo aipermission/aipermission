@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	clickhouseconnector "github.com/aipermission/aipermission/backend/internal/connectors/clickhouse"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
@@ -19,6 +20,14 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	registry, err := NewRegistry()
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
+	}
+
+	clickhouse, ok := registry.Get(clickhouseconnector.Kind)
+	if !ok {
+		t.Fatal("expected clickhouse connector")
+	}
+	if clickhouse.Label() != clickhouseconnector.Label {
+		t.Fatalf("clickhouse label = %q", clickhouse.Label())
 	}
 
 	docker, ok := registry.Get(dockerconnector.Kind)
@@ -74,7 +83,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 7 || infos[0].Kind != dockerconnector.Kind || infos[1].Kind != kubernetesconnector.Kind || infos[2].Kind != postgresconnector.Kind || infos[3].Kind != rabbitmqconnector.Kind || infos[4].Kind != redisconnector.Kind || infos[5].Kind != s3connector.Kind || infos[6].Kind != sshconnector.Kind {
+	if len(infos) != 8 || infos[0].Kind != clickhouseconnector.Kind || infos[1].Kind != dockerconnector.Kind || infos[2].Kind != kubernetesconnector.Kind || infos[3].Kind != postgresconnector.Kind || infos[4].Kind != rabbitmqconnector.Kind || infos[5].Kind != redisconnector.Kind || infos[6].Kind != s3connector.Kind || infos[7].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -129,6 +138,26 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 	t.Helper()
 
 	switch kind {
+	case clickhouseconnector.Kind:
+		return connectors.TargetView{
+				ID:            8,
+				Ref:           "clickhouse:8:80",
+				ConnectorKind: clickhouseconnector.Kind,
+				Name:          "analytics",
+				Config:        map[string]any{"connection_mode": "direct", "host": "127.0.0.1", "port": 9000, "database": "default", "tls_mode": "disable"},
+			}, connectors.CredentialProfileView{
+				ID:            80,
+				TargetID:      8,
+				ConnectorKind: clickhouseconnector.Kind,
+				Kind:          "username_password",
+				Label:         "readonly",
+				Public:        map[string]any{"username": "reader"},
+			}, map[string]map[string]any{
+				clickhouseconnector.ActionGetDatabases:  {},
+				clickhouseconnector.ActionGetTables:     {"database": "analytics"},
+				clickhouseconnector.ActionDescribeTable: {"database": "analytics", "table": "events"},
+				clickhouseconnector.ActionQueryReadonly: {"sql": "select 1", "max_rows": 1},
+			}
 	case dockerconnector.Kind:
 		return connectors.TargetView{
 				ID:            5,
