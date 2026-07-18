@@ -117,10 +117,7 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
         apiPost("/api/connector-actions/local-run", {
           target_ref: target.ref,
           action_name: connector.describeAction,
-          input: {
-            schema: reference.schema || "",
-            table: reference.table,
-          },
+          input: connector.describeInput(reference),
           reason: connector.metadataReason,
         })
           .then(async (item) => {
@@ -813,6 +810,12 @@ function normalizeSQLConsoleConfig(config = {}) {
     tableQuery:
       config.tableQuery ||
       ((table, maxRows) => `SELECT *\nFROM ${quoteSQLIdentifier(table.schema)}.${quoteSQLIdentifier(table.table)}\nLIMIT ${maxRows};`),
+    describeInput:
+      config.describeInput ||
+      ((reference) => ({
+        schema: reference.schema || "",
+        table: reference.table,
+      })),
   };
 }
 

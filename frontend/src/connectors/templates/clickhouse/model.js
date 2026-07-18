@@ -1,30 +1,29 @@
 import { createDatabaseConnectorModel } from "../_shared/database-connector-model";
 
-const kind = "postgres";
-const defaultPort = 5432;
-const defaultDatabase = "postgres";
+const kind = "clickhouse";
+const defaultPort = 9000;
+const defaultDatabase = "default";
 
 const model = createDatabaseConnectorModel({
   kind,
-  label: "Postgres",
-  defaultRiskLabel: "read-only",
-  includeEmptyPassword: true,
+  label: "ClickHouse",
+  defaultRiskLabel: "read-only analytics",
   targetDefaults: {
-    name: "main-db",
+    name: "analytics-db",
     connection_mode: "direct",
     host: "127.0.0.1",
     port: defaultPort,
     database: defaultDatabase,
-    ssl_mode: "require",
+    tls_mode: "disable",
     transport_target_ref: "",
   },
-  credentialDefaults: { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only", managed_by_aipermission: false },
+  credentialDefaults: { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only analytics" },
   targetForm: (target) => ({
     connection_mode: target.config?.connection_mode || "direct",
-    host: target.config?.host || "",
+    host: target.config?.host || "127.0.0.1",
     port: target.config?.port || defaultPort,
-    database: target.config?.database || "",
-    ssl_mode: target.config?.ssl_mode || "require",
+    database: target.config?.database || defaultDatabase,
+    tls_mode: target.config?.tls_mode || "disable",
     transport_target_ref: target.config?.transport_target_ref || "",
   }),
   targetConfig: (form) => ({
@@ -32,24 +31,15 @@ const model = createDatabaseConnectorModel({
     host: form.host || "127.0.0.1",
     port: Number(form.port) || defaultPort,
     database: form.database || defaultDatabase,
-    ssl_mode: form.ssl_mode || "require",
+    tls_mode: form.tls_mode || "disable",
     transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref || "" : "",
   }),
   targetEndpoint: ({ target }) => {
-    const host = target.config?.host || "host";
+    const host = target.config?.host || "127.0.0.1";
     const port = target.config?.port || defaultPort;
-    const database = target.config?.database || "database";
+    const database = target.config?.database || defaultDatabase;
     const mode = target.config?.connection_mode === "over_ssh" ? "over ssh" : "direct";
     return `${host}:${port}/${database} · ${mode}`;
-  },
-  credentialExtras: (row) => ({ managed_by_aipermission: Boolean(row.profile?.public?.managed_by_aipermission) }),
-  credentialMetadata: (profile) => {
-    const items = [];
-    if (profile.public?.username) items.push(`username: ${profile.public.username}`);
-    if (profile.public?.managed_by_aipermission) items.push("managed DB role");
-    if (profile.risk_label) items.push(`risk: ${profile.risk_label}`);
-    if (items.length === 0) items.push("No public metadata");
-    return items;
   },
 });
 

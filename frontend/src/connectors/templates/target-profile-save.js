@@ -1,4 +1,4 @@
-import { apiPost, apiPut } from "../../lib/api";
+import { apiPost, apiPut } from "../../lib/api.js";
 
 export async function createTargetWithProfile({ projectID, targetPayload, profilePayload }) {
   const target = await apiPost("/api/connector-targets/with-profile", {
