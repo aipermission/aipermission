@@ -56,6 +56,7 @@ const postgresCredentialFormTemplateSource = readFileSync(join(currentDir, "..",
 const postgresConnectorListItemTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "list-item.jsx"), "utf8");
 const postgresConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "console.jsx"), "utf8");
 const sharedSQLConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "sql-console.jsx"), "utf8");
+const sharedNetworkTransportSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "network-transport-fields.jsx"), "utf8");
 const postgresSQLConsoleSource = `${postgresConnectorConsoleTemplateSource}\n${sharedSQLConsoleSource}`;
 const postgresConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "index.jsx"), "utf8");
 const postgresConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"), "utf8");
@@ -150,7 +151,9 @@ test("Connectors page wires generic connector templates", () => {
   assert.doesNotMatch(sshConnectorModelSource, /apiDelete\(`\/api\/servers\//);
   assert.match(sshConnectorModelSource, /deleteDialog/);
   assert.match(postgresConnectorFormTemplateSource, /PostgresConnectorFormTemplate/);
-  assert.match(postgresConnectorFormTemplateSource, /HostPingButton/);
+  assert.match(postgresConnectorFormTemplateSource, /NetworkTransportFields/);
+  assert.match(sharedNetworkTransportSource, /HostPingButton/);
+  assert.match(sharedNetworkTransportSource, /transport_target_ref/);
   assert.match(redisConnectorFormTemplateSource, /HostPingButton/);
   assert.match(rabbitMQConnectorFormTemplateSource, /HostPingButton/);
   assert.match(connectorHostPingSource, /\/api\/connector-targets\/ping/);
