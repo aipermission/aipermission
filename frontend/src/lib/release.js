@@ -1,6 +1,32 @@
-export const appVersion = "0.2.13";
+export const appVersion = "0.2.14";
 
 export const changelogEntries = [
+  {
+    version: "0.2.14",
+    label: "ClickHouse connector",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "ClickHouse is now a built-in connector over the native protocol with Direct and generic Over SSH connection modes.",
+          "ClickHouse Console can browse databases, tables, ordered columns, and run bounded read-only analytics queries with structured results.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Postgres and ClickHouse share connector-owned SQL console, validation, result bounding, and network transport primitives.",
+          "Go cryptography dependencies were updated while Monaco remains on the audit-clean 0.53 line.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "ClickHouse rejects writes and multi-statement SQL, uses readonly=1, and caps execution time, rows, cell size, and total output.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.13",
     label: "Projects and scoped visibility",

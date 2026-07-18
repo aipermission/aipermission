@@ -7,6 +7,37 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-07-18
+
+### Added
+
+- Added ClickHouse as a built-in connector with native-protocol Direct and
+  generic Over SSH connection modes.
+- Added structured ClickHouse actions for visible databases, tables, ordered
+  column metadata, and bounded read-only analytics queries.
+- Added a ClickHouse Console workspace with database/table browsing, SQL
+  completion, structured results, raw JSON, and per-session activity.
+
+### Changed
+
+- Postgres and ClickHouse now share connector-owned SQL console primitives,
+  read-only SQL validation, bounded result serialization, and reusable network
+  transport fields without adding database-specific branches to generic pages.
+- Updated Go cryptography dependencies, including `golang.org/x/crypto` 0.54.0.
+
+### Security
+
+- ClickHouse queries reject writes and multi-statement SQL, run with
+  `readonly=1`, and enforce timeout, row, cell-size, and serialized-output
+  limits. Database grants remain the primary least-privilege boundary.
+- Kept Monaco Editor on the audit-clean 0.53 line because the proposed 0.55.1
+  update currently introduces a production DOMPurify advisory.
+
+### Tests
+
+- Added ClickHouse Direct, Over SSH, TLS, metadata, query, parser, output-limit,
+  connector registration, and shared SQL console coverage.
+
 ## [0.2.13] - 2026-07-11
 
 ### Added
