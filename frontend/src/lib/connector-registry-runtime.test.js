@@ -10,7 +10,7 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = join(currentDir, "..", "..");
 const connectorTemplatesDir = join(currentDir, "..", "connectors", "templates");
 const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
+  .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
   .map((entry) => entry.name)
   .sort();
 

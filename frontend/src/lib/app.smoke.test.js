@@ -39,7 +39,7 @@ const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "conn
 const connectorHostPingSource = readFileSync(join(currentDir, "..", "connectors", "templates", "host-ping-button.jsx"), "utf8");
 const backendConnectorRegistrySource = readFileSync(join(currentDir, "..", "..", "..", "backend", "internal", "connectors", "builtin", "registry.go"), "utf8");
 const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
+  .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
   .map((entry) => entry.name)
   .sort();
 const sshConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "form.jsx"), "utf8");
@@ -55,6 +55,8 @@ const postgresConnectorFormTemplateSource = readFileSync(join(currentDir, "..", 
 const postgresCredentialFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "credential-form.jsx"), "utf8");
 const postgresConnectorListItemTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "list-item.jsx"), "utf8");
 const postgresConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "console.jsx"), "utf8");
+const sharedSQLConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "sql-console.jsx"), "utf8");
+const postgresSQLConsoleSource = `${postgresConnectorConsoleTemplateSource}\n${sharedSQLConsoleSource}`;
 const postgresConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "index.jsx"), "utf8");
 const postgresConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"), "utf8");
 const postgresConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "model.js"), "utf8");
@@ -331,32 +333,31 @@ test("Console exposes connector action approvals", () => {
   assert.match(consolePageSource, /SelectedConnectorConsoleTemplate/);
   assert.match(consolePageSource, /selectedConnectorTemplate\?\.Console/);
   assert.match(consolePageSource, /useConnectorPermissions/);
-  assert.match(postgresConnectorConsoleTemplateSource, /PostgresConnectorToolbarActionsTemplate/);
-  assert.match(postgresConnectorConsoleTemplateSource, /Schema browser/);
-  assert.match(postgresConnectorConsoleTemplateSource, /Search schemas or tables/);
-  assert.match(postgresConnectorConsoleTemplateSource, /prepareTableQuery/);
-  assert.match(postgresConnectorConsoleTemplateSource, /filteredTableBrowserRows/);
-  assert.match(postgresConnectorConsoleTemplateSource, /rowsToCSVText/);
-  assert.match(postgresConnectorConsoleTemplateSource, /postgres-result\.csv/);
-  assert.match(postgresConnectorConsoleTemplateSource, /postgres-result\.json/);
-  assert.match(postgresConnectorConsoleTemplateSource, /Session requests/);
-  assert.match(postgresConnectorConsoleTemplateSource, /No active Postgres session/);
-  assert.match(postgresConnectorConsoleTemplateSource, /monaco-editor\/esm\/vs\/editor\/editor\.api/);
-  assert.match(postgresConnectorConsoleTemplateSource, /action_name: "query_readonly"/);
-  assert.match(postgresConnectorConsoleTemplateSource, /action_name: "describe_table"/);
-  assert.match(postgresConnectorConsoleTemplateSource, /FROM pg_class c/);
-  assert.match(postgresConnectorConsoleTemplateSource, /json_agg/);
-  assert.match(postgresConnectorConsoleTemplateSource, /a\.attnum/);
-  assert.match(postgresConnectorConsoleTemplateSource, /ChevronRight/);
-  assert.match(postgresConnectorConsoleTemplateSource, /referencedTablesFromSQL/);
-  assert.match(postgresConnectorConsoleTemplateSource, /tableMatchesReference/);
-  assert.match(postgresConnectorConsoleTemplateSource, /CompletionItemKind\.Field/);
-  assert.match(postgresConnectorConsoleTemplateSource, /fixedOverflowWidgets: true/);
-  assert.match(postgresConnectorConsoleTemplateSource, /suggestController\.js/);
-  assert.match(postgresConnectorConsoleTemplateSource, /acceptSuggestionOnEnter: "on"/);
-  assert.match(postgresConnectorConsoleTemplateSource, /KeyMod\.CtrlCmd \| monacoInstance\.KeyCode\.Enter/);
-  assert.match(postgresConnectorConsoleTemplateSource, /Run SQL \(Ctrl\+Enter\)/);
-  assert.match(postgresConnectorConsoleTemplateSource, /Result View/);
+  assert.match(postgresSQLConsoleSource, /PostgresConnectorToolbarActionsTemplate/);
+  assert.match(postgresSQLConsoleSource, /browserLabel: "Schema"/);
+  assert.match(postgresSQLConsoleSource, /Search \$\{namespaceLabel\.toLowerCase\(\)\}s or tables/);
+  assert.match(postgresSQLConsoleSource, /prepareTableQuery/);
+  assert.match(postgresSQLConsoleSource, /filteredTableBrowserRows/);
+  assert.match(postgresSQLConsoleSource, /rowsToCSVText/);
+  assert.match(postgresSQLConsoleSource, /filenamePrefix: "postgres-result"/);
+  assert.match(postgresSQLConsoleSource, /Session requests/);
+  assert.match(postgresSQLConsoleSource, /No active \{config\.label\} session/);
+  assert.match(postgresSQLConsoleSource, /monaco-editor\/esm\/vs\/editor\/editor\.api/);
+  assert.match(postgresSQLConsoleSource, /queryAction: "query_readonly"/);
+  assert.match(postgresSQLConsoleSource, /describeAction: "describe_table"/);
+  assert.match(postgresSQLConsoleSource, /FROM pg_class c/);
+  assert.match(postgresSQLConsoleSource, /json_agg/);
+  assert.match(postgresSQLConsoleSource, /a\.attnum/);
+  assert.match(postgresSQLConsoleSource, /ChevronRight/);
+  assert.match(postgresSQLConsoleSource, /referencedTablesFromSQL/);
+  assert.match(postgresSQLConsoleSource, /tableMatchesReference/);
+  assert.match(postgresSQLConsoleSource, /CompletionItemKind\.Field/);
+  assert.match(postgresSQLConsoleSource, /fixedOverflowWidgets: true/);
+  assert.match(postgresSQLConsoleSource, /suggestController\.js/);
+  assert.match(postgresSQLConsoleSource, /acceptSuggestionOnEnter: "on"/);
+  assert.match(postgresSQLConsoleSource, /KeyMod\.CtrlCmd \| monacoInstance\.KeyCode\.Enter/);
+  assert.match(postgresSQLConsoleSource, /Run SQL \(Ctrl\+Enter\)/);
+  assert.match(postgresSQLConsoleSource, /Result View/);
   assert.match(consolePageSource, /structuredSessionsByTarget/);
   assert.match(consolePageSource, /onNewStructuredSession/);
   assert.match(consolePageSource, /onNewStructuredSession=\{startStructuredConnectorSession\}/);
