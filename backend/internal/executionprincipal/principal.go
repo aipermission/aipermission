@@ -54,6 +54,10 @@ func (p Principal) IsLocalOperator() bool {
 	return p.Validate() == nil && p.Kind == KindLocalOperator
 }
 
+func (p Principal) IsMCPToken() bool {
+	return p.Validate() == nil && p.Kind == KindMCPToken
+}
+
 func (p Principal) SameRuntime(other Principal) bool {
 	return p.Validate() == nil &&
 		other.Validate() == nil &&

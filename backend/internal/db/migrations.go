@@ -30,6 +30,7 @@ func UnsupportedSchemaMessage(err error) string {
 type migration struct {
 	version     int
 	description string
+	preflight   func(*sql.Tx) error
 	statements  []string
 }
 
@@ -403,8 +404,8 @@ var projectVaultTableStatements = []string{
 		updated_at TEXT NOT NULL,
 		FOREIGN KEY(owner_project_id) REFERENCES projects(id) ON DELETE RESTRICT
 	);`,
-	`CREATE UNIQUE INDEX idx_vault_items_active_owner_name
-		ON vault_items(owner_project_id, name COLLATE NOCASE)
+	`CREATE UNIQUE INDEX idx_vault_items_active_name
+		ON vault_items(name COLLATE NOCASE)
 		WHERE status = 'active';`,
 	`CREATE INDEX idx_vault_items_owner_status_name
 		ON vault_items(owner_project_id, status, name COLLATE NOCASE);`,
@@ -471,8 +472,6 @@ var projectVaultTableStatements = []string{
 		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
 		FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 	);`,
-	`CREATE INDEX idx_token_project_capabilities_lookup
-		ON token_project_capabilities(token_id, project_id, capability_name);`,
 	`CREATE TABLE token_project_capability_revisions (
 		token_id INTEGER NOT NULL,
 		project_id INTEGER NOT NULL,
@@ -665,8 +664,31 @@ var historyProjectionStatements = []string{
 		CASE WHEN r.status = 'approval_pending' THEN 1 ELSE 0 END,
 		r.created_at, r.completed_at, COALESCE(r.completed_at, r.created_at)
 	FROM connector_action_requests r
-	JOIN connector_targets t ON t.id = r.target_id
-	JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id AND p.connector_kind = r.connector_kind;`,
+		JOIN connector_targets t ON t.id = r.target_id
+		JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id AND p.connector_kind = r.connector_kind;`,
+	`INSERT OR IGNORE INTO history_entries (
+		source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_id,
+		project_id, target_id, profile_id, target_name, profile_label, source, status,
+		action_name, title, summary, preview_json, input_json, output_json, error,
+		approval_required, user_note, created_at, started_at, completed_at, updated_at
+	)
+	SELECT
+		'vault_action_request', r.id, COALESCE(rs.connector_kind, 'vault'), 'vault',
+		r.token_id, r.runtime_id, r.project_id, ct.id, cp.id,
+		COALESCE(ct.name, p.name), COALESCE(cp.label, ''), r.source,
+		CASE WHEN r.status = 'approval_pending' THEN 'pending_approval' ELSE r.status END,
+		r.action_name, r.action_name, r.reason, r.approval_context_json, r.input_json,
+		r.output_json, r.error,
+		CASE WHEN r.status = 'approval_pending' THEN 1 ELSE 0 END,
+		r.user_note, r.created_at,
+		CASE WHEN r.status = 'running' OR r.completed_at IS NOT NULL THEN r.updated_at ELSE NULL END,
+		r.completed_at, r.updated_at
+	FROM vault_action_requests r
+	JOIN projects p ON p.id = r.project_id
+	LEFT JOIN connector_runtime_surfaces rs ON rs.id = r.runtime_id
+	LEFT JOIN connector_credential_profiles cp
+		ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
+	LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind;`,
 	`INSERT OR IGNORE INTO history_entries (
 		source_ref_type, source_ref_id, connector_kind, activity_type, runtime_id, project_id, target_id,
 		profile_id, target_name, profile_label, source, status, action_name, title, summary,
@@ -834,6 +856,108 @@ var migrations = []migration{
 			`CREATE INDEX idx_connector_action_requests_session ON connector_action_requests(session_id, session_generation);`,
 		},
 	},
+	{
+		version:     7,
+		description: "Vault approvals and session enforcement",
+		statements: []string{
+			`ALTER TABLE vault_action_requests ADD COLUMN output_json TEXT NOT NULL DEFAULT 'null';`,
+			`ALTER TABLE vault_action_requests ADD COLUMN user_note TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE vault_action_requests ADD COLUMN expires_at TEXT NOT NULL DEFAULT '';`,
+			`UPDATE vault_action_requests
+			 SET expires_at = strftime('%Y-%m-%dT%H:%M:%fZ', created_at, '+15 minutes')
+			 WHERE expires_at = '';`,
+			`CREATE INDEX idx_vault_action_requests_pending_expiry
+				ON vault_action_requests(status, expires_at);`,
+			`ALTER TABLE vault_session_leases ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE;`,
+			`ALTER TABLE vault_session_leases ADD COLUMN environment_content_hash TEXT NOT NULL DEFAULT '';`,
+			`UPDATE vault_session_leases
+			 SET environment_content_hash = COALESCE(
+				(SELECT environment_content_hash
+				 FROM console_sessions
+				 WHERE console_sessions.id = vault_session_leases.session_id),
+				''
+			 );`,
+			`CREATE INDEX idx_vault_session_leases_project
+				ON vault_session_leases(project_id, status, expires_at);`,
+			`CREATE INDEX idx_vault_action_requests_project_status
+				ON vault_action_requests(project_id, status, id);`,
+			`CREATE INDEX idx_vault_action_requests_runtime_status
+				ON vault_action_requests(runtime_id, status, id);`,
+			`CREATE INDEX idx_vault_action_requests_action_status
+				ON vault_action_requests(action_name, status, id);`,
+			`CREATE INDEX idx_vault_session_leases_session_status
+				ON vault_session_leases(session_id, session_generation, status);`,
+			`CREATE TABLE vault_session_items (
+				session_id INTEGER NOT NULL,
+				vault_item_id INTEGER NOT NULL,
+				source_project_id INTEGER NOT NULL,
+				value_version INTEGER NOT NULL,
+				metadata_revision INTEGER NOT NULL,
+				binding_id INTEGER,
+				binding_revision INTEGER NOT NULL DEFAULT 0,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY(session_id, vault_item_id),
+				FOREIGN KEY(session_id) REFERENCES console_sessions(id) ON DELETE CASCADE,
+				FOREIGN KEY(vault_item_id) REFERENCES vault_items(id) ON DELETE CASCADE,
+				FOREIGN KEY(source_project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+				FOREIGN KEY(binding_id) REFERENCES vault_default_bindings(id) ON DELETE SET NULL
+			);`,
+			`CREATE INDEX idx_vault_session_items_item
+				ON vault_session_items(vault_item_id, session_id);`,
+			`CREATE INDEX idx_vault_session_items_binding
+				ON vault_session_items(binding_id, session_id);`,
+		},
+	},
+	{
+		version:     8,
+		description: "globally unique active Vault item names",
+		// Fresh databases already receive the global index from the baseline.
+		// This upgrades unpublished development databases that applied the
+		// earlier owner-scoped index before the branch changed.
+		preflight: requireGloballyUniqueVaultItemNames,
+		statements: []string{
+			`DROP INDEX IF EXISTS idx_vault_items_active_owner_name;`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_items_active_name
+				ON vault_items(name COLLATE NOCASE)
+				WHERE status = 'active';`,
+		},
+	},
+	{
+		version:     9,
+		description: "immutable Vault session item snapshots",
+		statements: []string{
+			`CREATE TABLE vault_session_items_snapshot (
+				session_id INTEGER NOT NULL,
+				vault_item_id INTEGER NOT NULL,
+				vault_item_name TEXT NOT NULL,
+				source_project_id INTEGER NOT NULL,
+				value_version INTEGER NOT NULL,
+				metadata_revision INTEGER NOT NULL,
+				binding_id INTEGER,
+				binding_revision INTEGER NOT NULL DEFAULT 0,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY(session_id, vault_item_id),
+				FOREIGN KEY(session_id) REFERENCES console_sessions(id) ON DELETE CASCADE,
+				FOREIGN KEY(source_project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+				FOREIGN KEY(binding_id) REFERENCES vault_default_bindings(id) ON DELETE SET NULL
+			);`,
+			`INSERT INTO vault_session_items_snapshot (
+				session_id, vault_item_id, vault_item_name, source_project_id,
+				value_version, metadata_revision, binding_id, binding_revision, created_at
+			)
+			SELECT vsi.session_id, vsi.vault_item_id, vi.name, vsi.source_project_id,
+			       vsi.value_version, vsi.metadata_revision, vsi.binding_id,
+			       vsi.binding_revision, vsi.created_at
+			FROM vault_session_items vsi
+			JOIN vault_items vi ON vi.id = vsi.vault_item_id;`,
+			`DROP TABLE vault_session_items;`,
+			`ALTER TABLE vault_session_items_snapshot RENAME TO vault_session_items;`,
+			`CREATE INDEX idx_vault_session_items_item
+				ON vault_session_items(vault_item_id, session_id);`,
+			`CREATE INDEX idx_vault_session_items_binding
+				ON vault_session_items(binding_id, session_id);`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {
@@ -970,6 +1094,11 @@ func runSingleMigration(database *sql.DB, migration migration) error {
 	}
 	defer tx.Rollback()
 
+	if migration.preflight != nil {
+		if err := migration.preflight(tx); err != nil {
+			return fmt.Errorf("preflight migration %d: %w", migration.version, err)
+		}
+	}
 	for _, statement := range migration.statements {
 		if _, err := tx.Exec(statement); err != nil {
 			return fmt.Errorf("run migration %d: %w", migration.version, err)
@@ -988,6 +1117,39 @@ func runSingleMigration(database *sql.DB, migration migration) error {
 	return nil
 }
 
+func requireGloballyUniqueVaultItemNames(tx *sql.Tx) error {
+	rows, err := tx.Query(`
+		SELECT name
+		FROM vault_items
+		WHERE status = 'active'
+		GROUP BY name COLLATE NOCASE
+		HAVING COUNT(*) > 1
+		ORDER BY lower(name), name
+		LIMIT 10`)
+	if err != nil {
+		return fmt.Errorf("inspect active Vault item names: %w", err)
+	}
+	defer rows.Close()
+	names := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return fmt.Errorf("scan duplicate Vault item name: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate duplicate Vault item names: %w", err)
+	}
+	if len(names) > 0 {
+		return fmt.Errorf(
+			"active Vault item names must be globally unique before this upgrade; rename duplicate names first: %s",
+			strings.Join(names, ", "),
+		)
+	}
+	return nil
+}
+
 func syncHistoryProjections(database *sql.DB) error {
 	for _, statement := range historyProjectionStatements {
 		if _, err := database.Exec(statement); err != nil {
@@ -1002,10 +1164,13 @@ func runMigrationMaintenance(database *sql.DB) error {
 		`UPDATE console_sessions SET status = 'closed', error = 'gateway restarted', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('connecting', 'connected')`,
 		`UPDATE command_requests SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
 		`UPDATE connector_action_requests SET status = 'error', error = 'gateway restarted while connector action was running', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
+		`UPDATE vault_action_requests SET status = 'failed', error = 'gateway restarted while the Vault action was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status = 'running'`,
+		`UPDATE vault_session_leases SET status = 'revoked', updated_at = datetime('now') WHERE status = 'active'`,
 		`UPDATE file_transfers SET status = 'failed', error = 'gateway restarted while file transfer was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'pending_approval', 'running', 'paused')`,
 		`UPDATE file_transfer_batches SET status = 'failed', error = 'gateway restarted while file transfer queue was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'pending_approval', 'running', 'paused')`,
 		`UPDATE history_entries SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'command_request' AND status = 'running'`,
 		`UPDATE history_entries SET status = 'error', error = 'gateway restarted while connector action was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'connector_action_request' AND status = 'running'`,
+		`UPDATE history_entries SET status = 'failed', error = 'gateway restarted while the Vault action was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'vault_action_request' AND status = 'running'`,
 		`UPDATE history_entries SET status = 'failed', error = 'gateway restarted while file transfer was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'file_transfer' AND status IN ('pending', 'pending_approval', 'running', 'paused')`,
 	} {
 		if _, err := database.Exec(statement); err != nil {

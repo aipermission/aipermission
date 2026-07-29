@@ -74,17 +74,29 @@ func (s tokenHandlers) updateTokenProjectCapabilities(w http.ResponseWriter, r *
 		writeInternalError(w)
 		return
 	}
-	items, err := projectcapabilities.NewStore(runtime.database).Replace(r.Context(), tokenID, inputs)
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "Vault capability update was canceled")
+		return
+	}
+	defer release()
+	items, changed, err := projectcapabilities.NewStore(runtime.database).ReplaceWithChange(r.Context(), tokenID, inputs)
 	if err != nil {
 		handleProjectCapabilityError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.project_capabilities.updated", map[string]any{
-		"token_id": tokenID, "capabilities": items,
-	})
+	if changed {
+		if err := invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "Vault project capability changed; send a fresh request"); err != nil {
+			writeInternalError(w)
+			return
+		}
+		s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.project_capabilities.updated", map[string]any{
+			"token_id": tokenID, "capabilities": items,
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"definitions": projectcapabilities.Definitions(),
-		"items":       items,
+		"items":       items, "changed": changed,
 	})
 }
 

@@ -84,8 +84,23 @@ func (s projectHandlers) archiveProject(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "project archive was canceled")
+		return
+	}
+	defer release()
 	if err := projectstore.NewStore(runtime.database).Archive(r.Context(), id); err != nil {
 		handleProjectError(w, err)
+		return
+	}
+	if err := invalidateVaultProjectSessions(
+		r.Context(),
+		runtime,
+		id,
+		"project was archived; send a fresh Vault request",
+	); err != nil {
+		writeInternalError(w)
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "project.archived", map[string]any{"project_id": id})

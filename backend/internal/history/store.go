@@ -3,6 +3,8 @@ package history
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -10,6 +12,7 @@ const (
 	SourceCommandRequest         = "command_request"
 	SourceConnectorActionRequest = "connector_action_request"
 	SourceFileTransfer           = "file_transfer"
+	SourceVaultActionRequest     = "vault_action_request"
 )
 
 type Store struct {
@@ -81,6 +84,142 @@ func (s *Store) SyncCommandRequest(ctx context.Context, id int64) error {
 	)
 	if err != nil {
 		return fmt.Errorf("sync command history entry: %w", err)
+	}
+	return s.syncCommandVaultContext(ctx, id)
+}
+
+func (s *Store) SyncVaultActionRequest(ctx context.Context, id int64) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("history store is not configured")
+	}
+	return SyncVaultActionRequestWithExecutor(ctx, s.db, id)
+}
+
+type vaultActionHistoryExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+// SyncVaultActionRequestWithExecutor lets request state and its history
+// projection commit in the same database transaction.
+func SyncVaultActionRequestWithExecutor(ctx context.Context, executor vaultActionHistoryExecutor, id int64) error {
+	if executor == nil {
+		return fmt.Errorf("history executor is not configured")
+	}
+	_, err := executor.ExecContext(ctx, `
+		INSERT INTO history_entries (
+			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_id,
+			project_id, target_id, profile_id, target_name, profile_label, source, status,
+			action_name, title, summary, preview_json, input_json, output_json, error,
+			approval_required, user_note, created_at, started_at, completed_at, updated_at
+		)
+		SELECT
+			?, r.id, COALESCE(rs.connector_kind, 'vault'), 'vault', r.token_id, r.runtime_id,
+			r.project_id, ct.id, cp.id, COALESCE(ct.name, p.name), COALESCE(cp.label, ''),
+			r.source,
+			CASE WHEN r.status = 'approval_pending' THEN 'pending_approval' ELSE r.status END,
+			r.action_name, r.action_name, r.reason, r.approval_context_json, r.input_json,
+			r.output_json, r.error,
+			CASE WHEN r.status = 'approval_pending' THEN 1 ELSE 0 END,
+			r.user_note, r.created_at,
+			CASE WHEN r.status = 'running' OR r.completed_at IS NOT NULL THEN r.updated_at ELSE NULL END,
+			r.completed_at, r.updated_at
+		FROM vault_action_requests r
+		JOIN projects p ON p.id = r.project_id
+		LEFT JOIN connector_runtime_surfaces rs ON rs.id = r.runtime_id
+		LEFT JOIN connector_credential_profiles cp
+			ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
+		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
+		WHERE r.id = ?
+		ON CONFLICT(source_ref_type, source_ref_id) DO UPDATE SET
+			token_id = excluded.token_id,
+			runtime_id = excluded.runtime_id,
+			project_id = excluded.project_id,
+			target_id = excluded.target_id,
+			profile_id = excluded.profile_id,
+			target_name = excluded.target_name,
+			profile_label = excluded.profile_label,
+			status = excluded.status,
+			action_name = excluded.action_name,
+			title = excluded.title,
+			summary = excluded.summary,
+			preview_json = excluded.preview_json,
+			input_json = excluded.input_json,
+			output_json = excluded.output_json,
+			error = excluded.error,
+			approval_required = excluded.approval_required,
+			user_note = excluded.user_note,
+			started_at = excluded.started_at,
+			completed_at = excluded.completed_at,
+			updated_at = excluded.updated_at`,
+		SourceVaultActionRequest,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("sync Vault action history entry: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) syncCommandVaultContext(ctx context.Context, commandRequestID int64) error {
+	var sessionID, generation int64
+	var environmentHash, approvalHash string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT cs.id, cs.generation, cs.environment_content_hash, cs.approval_context_hash
+		FROM command_requests cr
+		JOIN console_sessions cs ON cs.id = cr.session_id
+		WHERE cr.id = ? AND cs.environment_content_hash != ''`,
+		commandRequestID,
+	).Scan(&sessionID, &generation, &environmentHash, &approvalHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read command Vault context: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT vsi.vault_item_id, vsi.vault_item_name, vsi.source_project_id,
+		       COALESCE(vsi.binding_id, 0), vsi.binding_revision
+		FROM vault_session_items vsi
+		WHERE vsi.session_id = ?
+		ORDER BY vsi.vault_item_name COLLATE NOCASE, vsi.vault_item_id`,
+		sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("read command Vault items: %w", err)
+	}
+	defer rows.Close()
+	items := []map[string]any{}
+	for rows.Next() {
+		var itemID, sourceProjectID, bindingID, bindingRevision int64
+		var name string
+		if err := rows.Scan(&itemID, &name, &sourceProjectID, &bindingID, &bindingRevision); err != nil {
+			return err
+		}
+		items = append(items, map[string]any{
+			"item_id": itemID, "name": name, "source_project_id": sourceProjectID,
+			"binding_id": bindingID, "binding_revision": bindingRevision,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"vault_session": map[string]any{
+			"session_id": sessionID, "session_generation": generation,
+			"environment_content_hash": environmentHash,
+			"approval_context_hash":    approvalHash,
+			"items":                    items,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("encode command Vault context: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE history_entries SET preview_json = ?
+		WHERE source_ref_type = ? AND source_ref_id = ?`,
+		string(payload), SourceCommandRequest, commandRequestID,
+	); err != nil {
+		return fmt.Errorf("persist command Vault context: %w", err)
 	}
 	return nil
 }

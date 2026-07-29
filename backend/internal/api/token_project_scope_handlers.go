@@ -49,14 +49,26 @@ func (s tokenHandlers) updateTokenProjectScopes(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	items, err := projectstore.NewStore(runtime.database).ReplaceTokenScopes(r.Context(), tokenID, request.EnabledProjectIDs)
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "project scope update was canceled")
+		return
+	}
+	defer release()
+	items, changed, err := projectstore.NewStore(runtime.database).ReplaceTokenScopesWithChange(r.Context(), tokenID, request.EnabledProjectIDs)
 	if err != nil {
 		handleProjectError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.project_scopes.updated", map[string]any{
-		"token_id":            tokenID,
-		"enabled_project_ids": request.EnabledProjectIDs,
-	})
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	if changed {
+		if err := invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "project visibility changed; send a fresh Vault request"); err != nil {
+			writeInternalError(w)
+			return
+		}
+		s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.project_scopes.updated", map[string]any{
+			"token_id":            tokenID,
+			"enabled_project_ids": request.EnabledProjectIDs,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "changed": changed})
 }

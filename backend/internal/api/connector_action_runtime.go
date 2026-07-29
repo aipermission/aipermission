@@ -153,6 +153,10 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	if status == "" {
 		status = connectors.ResultCompleted
 	}
+	request, err = s.captureConnectorActionSessionHandleIfReturned(ctx, runtime, request, result.Handles)
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
 	if status == connectors.ResultRunning {
 		if !connectorActionSupportsRunning(prepared) {
 			finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
@@ -167,10 +171,6 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 					Error:  "connector returned running for an action that does not support asynchronous execution",
 				},
 			}, nil
-		}
-		request, err = s.captureConnectorActionSessionHandle(ctx, runtime, request.ID, result.Handles)
-		if err != nil {
-			return connectorActionCallResult{}, err
 		}
 		result.Handles.RequestID = request.ID
 		if result.Handles.FollowupTool == "" {
@@ -240,6 +240,10 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 	if status == "" {
 		status = connectors.ResultCompleted
 	}
+	request, err = s.captureConnectorActionSessionHandleIfReturned(ctx, runtime, request, result.Handles)
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
 	if status == connectors.ResultRunning {
 		if !connectorActionSupportsRunning(prepared) {
 			finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultError, nil, "", "connector returned running for a local action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
@@ -253,10 +257,6 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 					Error:  "connector returned running for a local action that does not support asynchronous execution",
 				},
 			}, nil
-		}
-		request, err = s.captureConnectorActionSessionHandle(ctx, runtime, request.ID, result.Handles)
-		if err != nil {
-			return connectorActionCallResult{}, err
 		}
 		result.Handles.RequestID = request.ID
 		result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
@@ -373,7 +373,7 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 			return connectors.ActionResult{}, err
 		}
 	}
-	return connector.ExecuteAction(ctx, connectors.RuntimeContext{
+	result, err := connector.ExecuteAction(ctx, connectors.RuntimeContext{
 		Target:       prepared.Target,
 		Profile:      prepared.Profile,
 		Secrets:      connectorSecretAccessor{values: secrets},
@@ -381,6 +381,22 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 		Principal:    principal,
 		Capabilities: connectorRuntimeCapabilitiesFor(prepared.Target.ConnectorKind, s, runtime),
 	}, prepared.Action)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	if err := validateConnectorActionResult(result); err != nil {
+		return connectors.ActionResult{}, err
+	}
+	return result, nil
+}
+
+func validateConnectorActionResult(result connectors.ActionResult) error {
+	hasSessionID := result.Handles.SessionID > 0
+	hasGeneration := result.Handles.SessionGeneration > 0
+	if hasSessionID != hasGeneration {
+		return errors.New("connector returned an incomplete session handle")
+	}
+	return nil
 }
 
 func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
@@ -407,6 +423,23 @@ func (s *Server) captureConnectorActionSessionHandle(ctx context.Context, runtim
 		return connectortargets.ActionRequest{}, err
 	}
 	return request, nil
+}
+
+func (s *Server) captureConnectorActionSessionHandleIfReturned(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	request connectortargets.ActionRequest,
+	handles connectors.ActionHandles,
+) (connectortargets.ActionRequest, error) {
+	hasSessionID := handles.SessionID > 0
+	hasGeneration := handles.SessionGeneration > 0
+	if !hasSessionID && !hasGeneration {
+		return request, nil
+	}
+	if !hasSessionID || !hasGeneration {
+		return connectortargets.ActionRequest{}, errors.New("connector returned an incomplete session handle")
+	}
+	return s.captureConnectorActionSessionHandle(ctx, runtime, request.ID, handles)
 }
 
 func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
@@ -68,6 +69,63 @@ func (s vaultItemHandlers) saveVaultDefaultBinding(w http.ResponseWriter, r *htt
 		writeInternalError(w)
 		return
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "Vault binding update was canceled")
+		return
+	}
+	defer release()
+	targetStore := connectortargets.NewStore(runtime.database)
+	target, err := targetStore.GetTarget(r.Context(), request.TargetID)
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind)
+	if adapter == nil {
+		writeError(w, http.StatusConflict, "this connector profile does not support Vault session environments")
+		return
+	}
+	surface, err := targetStore.GetRuntimeSurfaceByProfile(
+		r.Context(),
+		target.ConnectorKind,
+		request.TargetID,
+		request.ProfileID,
+		adapter.LiveConsoleCapabilityKind(),
+	)
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	if err := requireSessionEnvironmentCapability(r.Context(), s.Server, runtime, surface.ID); err != nil {
+		writeError(w, http.StatusConflict, "this connector profile does not support Vault session environments")
+		return
+	}
+	existing, found, err := store.FindDefaultBinding(r.Context(), projectvault.DefaultBindingInput{
+		VaultItemID: request.VaultItemID, SourceProjectID: request.SourceProjectID,
+		TargetID: request.TargetID, ProfileID: request.ProfileID,
+	})
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if (found && existing.BindingRevision != request.ExpectedBindingRevision) ||
+		(!found && request.ExpectedBindingRevision != 0) {
+		handleVaultBindingError(w, projectvault.ErrStale)
+		return
+	}
+	if found && existing.ReplaceExisting == request.ReplaceExisting {
+		writeJSON(w, http.StatusOK, existing)
+		return
+	}
+	sessions := []projectvault.SessionReference{}
+	if found {
+		sessions, err = store.ActiveSessionsForMutation(r.Context(), projectvault.SessionMutationScope{BindingID: existing.ID})
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+	}
 	item, err := store.SaveDefaultBinding(r.Context(), projectvault.DefaultBindingInput{
 		VaultItemID: request.VaultItemID, SourceProjectID: request.SourceProjectID,
 		TargetID: request.TargetID, ProfileID: request.ProfileID,
@@ -76,6 +134,10 @@ func (s vaultItemHandlers) saveVaultDefaultBinding(w http.ResponseWriter, r *htt
 	})
 	if err != nil {
 		handleVaultBindingError(w, err)
+		return
+	}
+	if err := invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{BindingID: item.ID}); err != nil {
+		writeInternalError(w)
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.binding.updated", vaultBindingAuditPayload(item))
@@ -102,8 +164,32 @@ func (s vaultItemHandlers) deleteVaultDefaultBinding(w http.ResponseWriter, r *h
 		writeInternalError(w)
 		return
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "Vault binding deletion was canceled")
+		return
+	}
+	defer release()
+	binding, err := store.GetDefaultBinding(r.Context(), id)
+	if err != nil {
+		handleVaultBindingError(w, err)
+		return
+	}
+	if binding.BindingRevision != request.ExpectedBindingRevision {
+		handleVaultBindingError(w, projectvault.ErrStale)
+		return
+	}
+	sessions, err := store.ActiveSessionsForMutation(r.Context(), projectvault.SessionMutationScope{BindingID: binding.ID})
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := store.DeleteDefaultBinding(r.Context(), id, request.ExpectedBindingRevision); err != nil {
 		handleVaultBindingError(w, err)
+		return
+	}
+	if err := invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{BindingID: binding.ID}); err != nil {
+		writeInternalError(w)
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.binding.deleted", map[string]any{"binding_id": id})

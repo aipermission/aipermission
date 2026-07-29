@@ -31,6 +31,7 @@ const (
 var ErrCommandActive = errors.New("another command is already running on this console session")
 var ErrNotFound = errors.New("console session not found")
 var ErrSessionLimit = errors.New("active console session limit reached")
+var ErrSessionChanged = errors.New("console session changed")
 var ErrClientLimit = errors.New("console session client limit reached")
 var ErrInputTooLarge = errors.New("console input is too large")
 var ErrUnauthorized = errors.New("execution principal is not authorized for this console session")
@@ -74,9 +75,19 @@ type CreateRequest struct {
 	Params                 map[string]any               `json:"params,omitempty"`
 	Principal              executionprincipal.Principal `json:"-"`
 	Environment            *sessionenv.Envelope         `json:"-"`
+	PrepareEnvironment     EnvironmentPreparer          `json:"-"`
 	EnvironmentContentHash string                       `json:"-"`
 	ApprovalContextHash    string                       `json:"-"`
 }
+
+type EnvironmentPreparation struct {
+	Environment  *sessionenv.Envelope
+	Release      func()
+	PostValidate func(context.Context) error
+	Finalize     func(context.Context, SessionHandle) error
+}
+
+type EnvironmentPreparer func(context.Context, string) (EnvironmentPreparation, error)
 
 type InputRequest struct {
 	Data string `json:"data"`
@@ -103,12 +114,12 @@ func (h SessionHandle) Valid() bool {
 }
 
 type RuntimeOpenRequest struct {
-	RuntimeID   int64
-	Generation  int64
-	Rows        int
-	Cols        int
-	Params      map[string]any
-	Environment *sessionenv.Envelope
+	RuntimeID      int64
+	Generation     int64
+	Rows           int
+	Cols           int
+	Params         map[string]any
+	HasEnvironment bool
 }
 
 type RuntimeOpener func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error)
@@ -120,6 +131,8 @@ type RuntimeSession struct {
 	Wait                     func() error
 	Resize                   func(cols int, rows int) error
 	Close                    func() error
+	ApplyEnvironment         func(context.Context, *sessionenv.Envelope) error
+	PeerIdentity             string
 	StartupInputAfterConnect string
 }
 
@@ -146,13 +159,17 @@ type consoleSessionManualPause struct {
 }
 
 type Manager struct {
-	db          *sql.DB
-	openRuntime RuntimeOpener
-	redact      func(string) string
-	authorize   SessionAuthorizer
+	db            *sql.DB
+	openRuntime   RuntimeOpener
+	redact        func(string) string
+	authorize     SessionAuthorizer
+	sessionClosed func(SessionHandle)
 
 	mu       sync.Mutex
 	sessions map[int64]*managedConsoleSession
+
+	lifecycleMu sync.Mutex
+	lifecycle   map[int64]*sync.Mutex
 }
 
 type SessionAuthorization struct {
@@ -172,7 +189,16 @@ const (
 	OperationClose     SessionOperation = "close"
 )
 
-type SessionAuthorizer func(context.Context, executionprincipal.Principal, SessionAuthorization, SessionOperation) error
+// SessionAuthorizer must invoke run only while the authorization decision
+// remains valid. This keeps permission mutations from crossing the boundary
+// between a successful check and the protected console operation.
+type SessionAuthorizer func(
+	context.Context,
+	executionprincipal.Principal,
+	SessionAuthorization,
+	SessionOperation,
+	func() error,
+) error
 
 func (m *Manager) redactText(value string) string {
 	if m == nil || m.redact == nil || value == "" {
@@ -202,9 +228,12 @@ type managedConsoleSession struct {
 	params                 map[string]any
 	principal              executionprincipal.Principal
 	environment            *sessionenv.Envelope
+	prepareEnvironment     EnvironmentPreparer
 	environmentContentHash string
 	approvalContextHash    string
 	exactRedactor          *sessionenv.Redactor
+	stdoutExactRedactor    *sessionenv.Redactor
+	stderrExactRedactor    *sessionenv.Redactor
 	exactRedactionClosed   bool
 	manager                *Manager
 

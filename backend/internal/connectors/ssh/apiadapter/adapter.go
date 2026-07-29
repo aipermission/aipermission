@@ -48,6 +48,7 @@ type LiveConsoleOptions struct {
 	ForceShellCommand        string
 	StartupInputAfterConnect string
 	Generation               int64
+	HasEnvironment           bool
 	Environment              *sessionenv.Envelope
 }
 
@@ -114,16 +115,18 @@ func (adapter) approveHostKey(server connectorapi.GatewayServer, w http.Response
 		return
 	}
 	hostname := net.JoinHostPort(input.Host, strconv.Itoa(input.Port))
-	if input.Replace {
-		err = execution.ReplaceHostKey(gateway.ConnectorTrustStorePath(), hostname, input.PublicKey)
-	} else {
-		err = execution.TrustHostKey(gateway.ConnectorTrustStorePath(), hostname, input.PublicKey)
-	}
+	key, err := execution.ParseHostPublicKey(input.PublicKey)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	key, err := execution.ParseHostPublicKey(input.PublicKey)
+	if input.Replace {
+		err = gateway.ConnectorChangeVaultPeerTrust(r.Context(), func() error {
+			return execution.ReplaceHostKey(gateway.ConnectorTrustStorePath(), hostname, input.PublicKey)
+		})
+	} else {
+		err = execution.TrustHostKey(gateway.ConnectorTrustStorePath(), hostname, input.PublicKey)
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -298,7 +301,8 @@ type parseConfigRequest struct {
 
 func (adapter) RuntimeCapabilities(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime) map[string]connectors.RuntimeCapability {
 	return map[string]connectors.RuntimeCapability{
-		sshconnector.RuntimeServiceName: runtimeExecutor{server: server, runtime: runtime},
+		sshconnector.RuntimeServiceName:             runtimeExecutor{server: server, runtime: runtime},
+		connectors.SessionEnvironmentCapabilityName: sessionEnvironmentCapability{},
 	}
 }
 
@@ -344,9 +348,24 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 		return nil, fmt.Errorf("resolve ssh material: %w", err)
 	}
 	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey, request.Rows, request.Cols, LiveConsoleOptions{
-		Generation:  request.Generation,
-		Environment: request.Environment,
+		Generation:     request.Generation,
+		HasEnvironment: request.HasEnvironment,
 	})
+}
+
+func (adapter) ExpectedLiveConsolePeerIdentities(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64) ([]string, error) {
+	gateway, err := serverFrom(server)
+	if err != nil {
+		return nil, err
+	}
+	target, _, err := targetMaterial(ctx, runtime, runtimeID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve ssh material: %w", err)
+	}
+	return execution.TrustedHostFingerprints(
+		gateway.ConnectorTrustStorePath(),
+		net.JoinHostPort(target.Host, strconv.Itoa(target.Port)),
+	)
 }
 
 func OpenLiveConsoleForTargetRef(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, targetRef string, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
@@ -372,7 +391,8 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.Gatew
 	if options.StartupInputAfterConnect != "" {
 		target.StartupInputAfterConnect = options.StartupInputAfterConnect
 	}
-	if options.Environment != nil && options.Environment.Len() > 0 && target.ForceShellCommand != "" {
+	hasEnvironment := options.HasEnvironment || (options.Environment != nil && options.Environment.Len() > 0)
+	if hasEnvironment && target.ForceShellCommand != "" {
 		return nil, errors.New("session environment is not supported with a forced shell command")
 	}
 	signer, err := ssh.ParsePrivateKey([]byte(privateKey.PrivateKey))
@@ -383,10 +403,18 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.Gatew
 	if err != nil {
 		return nil, fmt.Errorf("load known_hosts: %w", err)
 	}
+	peerIdentity := ""
+	verifiedHostKeyCallback := func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		if err := hostKeyCallback(hostname, remote, key); err != nil {
+			return err
+		}
+		peerIdentity = execution.HostKeyFingerprintSHA256(key)
+		return nil
+	}
 	config := &ssh.ClientConfig{
 		User:            target.Username,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: hostKeyCallback,
+		HostKeyCallback: verifiedHostKeyCallback,
 		Timeout:         12 * time.Second,
 	}
 	address := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
@@ -428,7 +456,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.Gatew
 		ssh.TTY_OP_ISPEED: 14400,
 		ssh.TTY_OP_OSPEED: 14400,
 	}
-	if options.Environment != nil && options.Environment.Len() > 0 {
+	if hasEnvironment {
 		modes[ssh.ECHO] = 0
 	}
 	if err := sshSession.RequestPty("xterm-256color", rows, cols, modes); err != nil {
@@ -437,25 +465,33 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.Gatew
 		return nil, fmt.Errorf("request pty: %w", err)
 	}
 	runtimeStdout := io.Reader(stdout)
-	if options.Environment != nil && options.Environment.Len() > 0 {
-		protocol, err := sessionenvprotocol.New(options.Generation)
+	var runtimeSession *console.RuntimeSession
+	var applyEnvironment func(context.Context, *sessionenv.Envelope) error
+	if hasEnvironment {
+		bootstrap, err := newSessionEnvironmentBootstrap(options.Generation)
 		if err != nil {
 			_ = sshSession.Close()
 			_ = sshClient.Close()
 			return nil, err
 		}
-		if err := sshSession.Start(protocol.Command()); err != nil {
+		if err := sshSession.Shell(); err != nil {
 			_ = sshSession.Close()
 			_ = sshClient.Close()
 			return nil, fmt.Errorf("start environment shell: %w", err)
 		}
-		bootstrap, err := protocol.Bootstrap(ctx, stdin, stdout, options.Environment)
-		if err != nil {
+		if err := writeEnvironmentBootstrapCommand(stdin, target.StartupInputAfterConnect, bootstrap.Command()); err != nil {
 			_ = sshSession.Close()
 			_ = sshClient.Close()
 			return nil, err
 		}
-		runtimeStdout = io.MultiReader(bytes.NewReader(bootstrap.Prelude), bootstrap.Reader)
+		applyEnvironment = func(applyCtx context.Context, environment *sessionenv.Envelope) error {
+			result, err := bootstrap.Apply(applyCtx, stdin, stdout, environment)
+			if err != nil {
+				return err
+			}
+			runtimeSession.Stdout = io.MultiReader(bytes.NewReader(result.Prelude), result.Reader)
+			return nil
+		}
 	} else if target.ForceShellCommand != "" {
 		if err := sshSession.Start(target.ForceShellCommand); err != nil {
 			_ = sshSession.Close()
@@ -467,15 +503,73 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.Gatew
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("start shell: %w", err)
 	}
-	return &console.RuntimeSession{
+	runtimeSession = &console.RuntimeSession{
 		Stdin:                    stdin,
 		Stdout:                   runtimeStdout,
 		Stderr:                   stderr,
 		Wait:                     sshSession.Wait,
 		Resize:                   func(cols int, rows int) error { return sshSession.WindowChange(rows, cols) },
 		Close:                    func() error { _ = sshSession.Close(); return sshClient.Close() },
-		StartupInputAfterConnect: target.StartupInputAfterConnect,
-	}, nil
+		PeerIdentity:             peerIdentity,
+		StartupInputAfterConnect: startupInputAfterConnect(target.StartupInputAfterConnect, hasEnvironment),
+		ApplyEnvironment:         applyEnvironment,
+	}
+	return runtimeSession, nil
+}
+
+type sessionEnvironmentBootstrap struct {
+	protocol *sessionenvprotocol.Protocol
+}
+
+func newSessionEnvironmentBootstrap(generation int64) (sessionEnvironmentBootstrap, error) {
+	protocol, err := sessionenvprotocol.New(generation)
+	if err != nil {
+		return sessionEnvironmentBootstrap{}, err
+	}
+	return sessionEnvironmentBootstrap{protocol: protocol}, nil
+}
+
+func (b sessionEnvironmentBootstrap) Command() string {
+	if b.protocol == nil {
+		return ""
+	}
+	return b.protocol.Command()
+}
+
+func (b sessionEnvironmentBootstrap) Apply(
+	ctx context.Context,
+	stdin io.Writer,
+	stdout io.Reader,
+	environment *sessionenv.Envelope,
+) (sessionenvprotocol.Result, error) {
+	if b.protocol == nil {
+		return sessionenvprotocol.Result{}, errors.New("session environment bootstrap is unavailable")
+	}
+	return b.protocol.Bootstrap(ctx, stdin, stdout, environment)
+}
+
+func startupInputAfterConnect(input string, hasEnvironment bool) string {
+	if hasEnvironment {
+		return ""
+	}
+	return input
+}
+
+func writeEnvironmentBootstrapCommand(stdin io.Writer, startupInput string, command string) error {
+	if startupInput != "" {
+		if _, err := io.WriteString(stdin, startupInput); err != nil {
+			return fmt.Errorf("write startup input before environment bootstrap: %w", err)
+		}
+		if !strings.HasSuffix(startupInput, "\n") && !strings.HasSuffix(startupInput, "\r") {
+			if _, err := io.WriteString(stdin, "\n"); err != nil {
+				return fmt.Errorf("separate startup input from environment bootstrap: %w", err)
+			}
+		}
+	}
+	if _, err := io.WriteString(stdin, command+"\n"); err != nil {
+		return fmt.Errorf("write environment bootstrap command: %w", err)
+	}
+	return nil
 }
 
 func (adapter) DialConnectorTCP(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, targetRef string, network string, address string) (net.Conn, error) {
@@ -633,6 +727,20 @@ type runtimeExecutor struct {
 	runtime connectorapi.GatewayRuntime
 }
 
+type sessionEnvironmentCapability struct{}
+
+func (sessionEnvironmentCapability) ConnectorRuntimeCapability() string {
+	return connectors.SessionEnvironmentCapabilityName
+}
+
+func (sessionEnvironmentCapability) SessionEnvironmentVersion() string {
+	return sessionenvprotocol.Version
+}
+
+func (sessionEnvironmentCapability) SessionEnvironmentPeerIdentityRequired() bool {
+	return true
+}
+
 func (runtimeExecutor) ConnectorRuntimeCapability() string {
 	return sshconnector.RuntimeServiceName
 }
@@ -741,8 +849,15 @@ func (e runtimeExecutor) readConsole(ctx context.Context, principal executionpri
 			"error":      session.Error,
 			"tail_bytes": tail,
 		},
-		Handles: connectors.ActionHandles{SessionID: session.ID},
+		Handles: exactSessionActionHandles(session),
 	}, nil
+}
+
+func exactSessionActionHandles(session console.Record) connectors.ActionHandles {
+	return connectors.ActionHandles{
+		SessionID:         session.ID,
+		SessionGeneration: session.Generation,
+	}
 }
 
 func (e runtimeExecutor) restartConsole(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (connectors.ActionResult, error) {

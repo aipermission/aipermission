@@ -53,6 +53,7 @@ type mcpConnectorActionResponse struct {
 	Error             string         `json:"error,omitempty"`
 	RetryAfterSeconds int            `json:"retry_after_seconds,omitempty"`
 	AssistantHint     string         `json:"assistant_hint,omitempty"`
+	OutputWithheld    bool           `json:"output_withheld,omitempty"`
 }
 
 func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Request) {
@@ -248,7 +249,29 @@ func (s mcpHandlers) mcpGetConnectorActionRequest(w http.ResponseWriter, r *http
 		writeError(w, http.StatusNotFound, "connector action request not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, connectorActionRequestToMCPResponse(request))
+	response := connectorActionRequestToMCPResponse(request)
+	if !connectorActionVaultPollAuthorized(r.Context(), auth.runtime, auth.TokenID, request) {
+		response.Output = nil
+		response.DisplayText = ""
+		response.OutputWithheld = true
+		response.AssistantHint = "Current Vault session authorization no longer permits returning this connector output."
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func connectorActionVaultPollAuthorized(ctx context.Context, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest) bool {
+	if request.SessionID == nil || request.SessionGeneration == nil {
+		return true
+	}
+	return vaultSessionObserveAuthorized(
+		ctx,
+		runtime,
+		tokenID,
+		*request.SessionID,
+		*request.SessionGeneration,
+		0,
+		false,
+	)
 }
 
 func (s mcpHandlers) resolveMCPConnectorTarget(w http.ResponseWriter, r *http.Request, auth mcpAuthContext) (connectors.TargetView, connectors.CredentialProfileView, connectors.Connector, bool) {

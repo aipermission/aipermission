@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
 type mcpRuntimeResponse struct {
@@ -42,7 +44,51 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
+	var release func()
+	if !request.Enabled {
+		var err error
+		release, err = runtime.vaultDelivery.acquire(r.Context())
+		if err != nil {
+			writeError(w, http.StatusRequestTimeout, "MCP stop was canceled")
+			return
+		}
+		defer release()
+	}
 	runtime.setMCPStarted(request.Enabled)
+	if !request.Enabled {
+		runtimeIDs, err := vaultAllRuntimeIDs(r.Context(), runtime)
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		runtime.vaultLeases.Clear()
+		if err := revokeAllPersistedVaultLeases(r.Context(), runtime); err != nil {
+			writeInternalError(w)
+			return
+		}
+		if err := invalidateVaultRuntimeSessions(
+			r.Context(),
+			runtime,
+			runtimeIDs,
+			"MCP execution stopped; send a fresh Vault request after it starts",
+		); err != nil {
+			writeInternalError(w)
+			return
+		}
+		store := vaultrequests.NewStore(runtime.database)
+		if err := store.StalePendingForAction(
+			r.Context(),
+			vaultrequests.ActionGenerateItem,
+			"MCP execution stopped; send a fresh Vault request after it starts",
+		); err != nil {
+			writeInternalError(w)
+			return
+		}
+		if err := store.FailRunning(r.Context(), "MCP execution stopped while the Vault action was running"); err != nil {
+			writeInternalError(w)
+			return
+		}
+	}
 	action := "mcp.runtime.stopped"
 	if request.Enabled {
 		action = "mcp.runtime.started"
@@ -70,8 +116,8 @@ func (runtime *databaseRuntime) isMCPStarted() bool {
 
 func (runtime *databaseRuntime) setMCPStarted(enabled bool) {
 	runtime.mcpMu.Lock()
-	defer runtime.mcpMu.Unlock()
 	runtime.mcpStarted = enabled
+	runtime.mcpMu.Unlock()
 }
 
 func (s *Server) rejectStoppedMCP(w http.ResponseWriter, runtime *databaseRuntime) bool {

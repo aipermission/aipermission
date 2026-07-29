@@ -48,6 +48,7 @@ type GatewayRuntime interface {
 type GatewayServer interface {
 	ConnectorActiveRuntimeAvailable(w http.ResponseWriter) bool
 	ConnectorTrustStorePath() string
+	ConnectorChangeVaultPeerTrust(ctx context.Context, change func() error) error
 	ConnectorRestartConsoleSession(ctx context.Context, runtime GatewayRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (ConsoleRestartResult, error)
 	ConnectorFinishActionRequest(ctx context.Context, runtime GatewayRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error)
 	ConnectorCreateDownloadBatch(ctx context.Context, runtime GatewayRuntime, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error)
@@ -172,6 +173,10 @@ type LiveConsoleTargetAdapter interface {
 // the generic live console manager.
 type LiveConsoleTransportAdapter interface {
 	OpenLiveConsole(ctx context.Context, server GatewayServer, runtime GatewayRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error)
+}
+
+type LiveConsolePeerIdentityAdapter interface {
+	ExpectedLiveConsolePeerIdentities(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64) ([]string, error)
 }
 
 // TCPTransportAdapter lets one connector provide a reviewed TCP transport for

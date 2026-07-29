@@ -16,6 +16,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 func (s *Server) isUnlocked() bool {
@@ -138,6 +139,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		batchControls:      map[int64]*transferControl{},
 		workspaceUUID:      workspaceUUID,
 		runtimeInstanceID:  runtimeInstanceID,
+		vaultLeases:        vaultsessions.NewStore(),
 	}
 	settings, err := readSecuritySettingsFromDB(context.Background(), runtime)
 	if err != nil {
@@ -148,6 +150,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 	runtime.securitySettings = settings
 	runtime.securityLoaded = true
 	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
+	s.configureVaultSessionRuntime(runtime)
 	return runtime, nil
 }
 
@@ -311,6 +314,9 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) {
+	if runtime.vaultLeases != nil {
+		runtime.vaultLeases.Clear()
+	}
 	if runtime.consoleSessions != nil {
 		runtime.consoleSessions.CloseAll()
 	}

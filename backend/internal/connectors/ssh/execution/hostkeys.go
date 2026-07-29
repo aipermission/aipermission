@@ -1,12 +1,14 @@
 package execution
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -118,6 +120,55 @@ func HostKeyFingerprintSHA256(key ssh.PublicKey) string {
 	return ssh.FingerprintSHA256(key)
 }
 
+func TrustedHostFingerprints(path string, hostname string) ([]string, error) {
+	path = filepath.Clean(path)
+	hostname = strings.TrimSpace(hostname)
+	if path == "." || path == "" || hostname == "" {
+		return nil, fmt.Errorf("known_hosts path and hostname are required")
+	}
+	knownHostsMu.Lock()
+	defer knownHostsMu.Unlock()
+	if err := ensureKnownHostsFile(path); err != nil {
+		return nil, err
+	}
+	callback, err := knownhosts.New(path)
+	if err != nil {
+		return nil, fmt.Errorf("load known_hosts: %w", err)
+	}
+	probe, err := ssh.NewPublicKey(ed25519.PublicKey(make([]byte, ed25519.PublicKeySize)))
+	if err != nil {
+		return nil, fmt.Errorf("create host key probe: %w", err)
+	}
+	verifyErr := callback(hostname, knownHostsRemoteAddr(nil), probe)
+	wanted := []knownhosts.KnownKey{}
+	if verifyErr == nil {
+		wanted = append(wanted, knownhosts.KnownKey{Key: probe})
+	} else {
+		var keyErr *knownhosts.KeyError
+		if !errors.As(verifyErr, &keyErr) {
+			return nil, fmt.Errorf("verify known_hosts entry: %w", verifyErr)
+		}
+		wanted = keyErr.Want
+	}
+	seen := map[string]bool{}
+	fingerprints := []string{}
+	for _, item := range wanted {
+		if item.Key == nil {
+			continue
+		}
+		fingerprint := HostKeyFingerprintSHA256(item.Key)
+		if fingerprint != "" && !seen[fingerprint] {
+			seen[fingerprint] = true
+			fingerprints = append(fingerprints, fingerprint)
+		}
+	}
+	sort.Strings(fingerprints)
+	if len(fingerprints) == 0 {
+		return nil, fmt.Errorf("no trusted SSH host key exists for %s", hostname)
+	}
+	return fingerprints, nil
+}
+
 func TrustHostKey(path string, hostname string, publicKey string) error {
 	path = filepath.Clean(path)
 	if path == "." || path == "" {
@@ -172,6 +223,10 @@ func ReplaceHostKey(path string, hostname string, publicKey string) error {
 	if hostname == "" {
 		return fmt.Errorf("hostname is required")
 	}
+	key, err := ParseHostPublicKey(publicKey)
+	if err != nil {
+		return err
+	}
 
 	knownHostsMu.Lock()
 	defer knownHostsMu.Unlock()
@@ -179,29 +234,19 @@ func ReplaceHostKey(path string, hostname string, publicKey string) error {
 	if err := ensureKnownHostsFile(path); err != nil {
 		return err
 	}
-	if err := removeKnownHostLine(path, hostname); err != nil {
-		return err
-	}
-	key, err := ParseHostPublicKey(publicKey)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("open known_hosts: %w", err)
-	}
-	defer file.Close()
-	if _, err := fmt.Fprintln(file, knownhosts.Line([]string{hostname}, key)); err != nil {
-		return fmt.Errorf("append known_hosts: %w", err)
-	}
-	return nil
-}
-
-func removeKnownHostLine(path string, hostname string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read known_hosts: %w", err)
 	}
+	output := replaceKnownHostData(data, hostname, knownhosts.Line([]string{hostname}, key))
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat known_hosts: %w", err)
+	}
+	return writeKnownHostsAtomically(path, output, info.Mode().Perm())
+}
+
+func replaceKnownHostData(data []byte, hostname, replacement string) []byte {
 	matches := knownHostNameSet(hostname)
 	lines := strings.Split(string(data), "\n")
 	kept := make([]string, 0, len(lines))
@@ -224,12 +269,41 @@ func removeKnownHostLine(path string, hostname string) error {
 			kept = append(kept, line)
 		}
 	}
-	output := strings.Join(kept, "\n")
-	if output != "" {
-		output += "\n"
+	kept = append(kept, replacement)
+	return []byte(strings.Join(kept, "\n") + "\n")
+}
+
+func writeKnownHostsAtomically(path string, data []byte, mode os.FileMode) (err error) {
+	dir := filepath.Dir(path)
+	file, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create known_hosts replacement: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(output), 0o600); err != nil {
-		return fmt.Errorf("write known_hosts: %w", err)
+	tempPath := file.Name()
+	defer func() {
+		if file != nil {
+			_ = file.Close()
+		}
+		if err != nil {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if err = file.Chmod(mode); err != nil {
+		return fmt.Errorf("set known_hosts replacement permissions: %w", err)
+	}
+	if _, err = file.Write(data); err != nil {
+		return fmt.Errorf("write known_hosts replacement: %w", err)
+	}
+	if err = file.Sync(); err != nil {
+		return fmt.Errorf("sync known_hosts replacement: %w", err)
+	}
+	if err = file.Close(); err != nil {
+		file = nil
+		return fmt.Errorf("close known_hosts replacement: %w", err)
+	}
+	file = nil
+	if err = os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("replace known_hosts: %w", err)
 	}
 	return nil
 }

@@ -110,6 +110,9 @@ type ListFilter struct {
 type ReplaceValueInput struct {
 	ID                   int64
 	Value                string
+	Source               string
+	GeneratorKind        string
+	GeneratorParams      map[string]any
 	ExpectedValueVersion int64
 }
 
@@ -204,7 +207,7 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Item, error) {
 	)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			return Item{}, ValidationError("an active vault item with this name already exists in the owner project")
+			return Item{}, ValidationError("an active vault item with this name already exists")
 		}
 		return Item{}, fmt.Errorf("insert vault item: %w", err)
 	}
@@ -334,6 +337,32 @@ func (s *Store) Reveal(ctx context.Context, id int64) (string, error) {
 }
 
 func (s *Store) ReplaceValue(ctx context.Context, input ReplaceValueInput) (Item, error) {
+	input.Source = strings.TrimSpace(input.Source)
+	input.GeneratorKind = strings.TrimSpace(input.GeneratorKind)
+	if input.Source == "" {
+		input.Source = "imported"
+	}
+	var generatorParameters map[string]any
+	switch input.Source {
+	case "generated":
+		if input.GeneratorKind == "" {
+			return Item{}, ValidationError("generator kind is required")
+		}
+		if err := ValidateGeneratorKind(input.GeneratorKind); err != nil {
+			return Item{}, err
+		}
+		if input.Value == "" || len(input.GeneratorParams) == 0 {
+			return Item{}, ValidationError("generated replacement preview is required")
+		}
+		generatorParameters = input.GeneratorParams
+	case "imported":
+		if input.GeneratorKind != "" {
+			return Item{}, ValidationError("imported values cannot specify a generator")
+		}
+		generatorParameters = map[string]any{}
+	default:
+		return Item{}, ValidationError("source must be imported or generated")
+	}
 	if err := validateValue(input.Value); err != nil {
 		return Item{}, err
 	}
@@ -349,13 +378,19 @@ func (s *Store) ReplaceValue(ctx context.Context, input ReplaceValueInput) (Item
 	if err != nil {
 		return Item{}, err
 	}
+	generatorJSON, err := json.Marshal(generatorParameters)
+	if err != nil {
+		return Item{}, ValidationError("invalid generator parameters")
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE vault_items
 		SET encrypted_value = ?, value_version = ?, encryption_version = ?,
-			last_value_replaced_at = ?, updated_at = ?
+			last_value_replaced_at = ?, source = ?, generator_kind = ?,
+			generator_parameters_json = ?, updated_at = ?
 		WHERE id = ? AND status = 'active' AND value_version = ?`,
-		encrypted, nextVersion, itemEncryptionVersion, now, now, input.ID, input.ExpectedValueVersion,
+		encrypted, nextVersion, itemEncryptionVersion, now, input.Source, input.GeneratorKind,
+		string(generatorJSON), now, input.ID, input.ExpectedValueVersion,
 	)
 	if err != nil {
 		return Item{}, fmt.Errorf("replace vault value: %w", err)
@@ -433,7 +468,7 @@ func (s *Store) UpdateMetadata(ctx context.Context, input UpdateMetadataInput) (
 	)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			return Item{}, ValidationError("an active vault item with this name already exists in the owner project")
+			return Item{}, ValidationError("an active vault item with this name already exists")
 		}
 		return Item{}, fmt.Errorf("update vault metadata: %w", err)
 	}
@@ -449,9 +484,9 @@ func (s *Store) UpdateMetadata(ctx context.Context, input UpdateMetadataInput) (
 	}
 	var nextAssignmentRevision int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(assignment_revision), 0) + 1
-		FROM vault_item_projects
-		WHERE vault_item_id = ?`, input.ID).Scan(&nextAssignmentRevision); err != nil {
+		SELECT metadata_revision
+		FROM vault_items
+		WHERE id = ?`, input.ID).Scan(&nextAssignmentRevision); err != nil {
 		return Item{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM vault_item_projects WHERE vault_item_id = ?`, input.ID); err != nil {
@@ -588,7 +623,9 @@ func scanItem(scanner interface{ Scan(...any) error }) (Item, error) {
 		return Item{}, err
 	}
 	item.GeneratorParameters = map[string]any{}
-	_ = json.Unmarshal([]byte(generatorJSON), &item.GeneratorParameters)
+	if err := json.Unmarshal([]byte(generatorJSON), &item.GeneratorParameters); err != nil {
+		return Item{}, fmt.Errorf("decode vault generator parameters: %w", err)
+	}
 	return item, nil
 }
 
@@ -606,6 +643,10 @@ func (s *Store) loadRelations(ctx context.Context, item *Item) error {
 		}
 		item.ProjectIDs = append(item.ProjectIDs, id)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
@@ -621,6 +662,10 @@ func (s *Store) loadRelations(ctx context.Context, item *Item) error {
 			return err
 		}
 		item.Tags = append(item.Tags, tag)
+	}
+	if err := tagRows.Err(); err != nil {
+		tagRows.Close()
+		return err
 	}
 	if err := tagRows.Close(); err != nil {
 		return err
@@ -640,6 +685,10 @@ func (s *Store) loadRelations(ctx context.Context, item *Item) error {
 		}
 		item.UsageNotes = append(item.UsageNotes, note)
 	}
+	if err := noteRows.Err(); err != nil {
+		noteRows.Close()
+		return err
+	}
 	return noteRows.Close()
 }
 
@@ -648,10 +697,6 @@ func validateEnvironmentName(value string) error {
 		return ValidationError(err.Error())
 	}
 	return nil
-}
-
-func isReservedEnvironmentName(value string) bool {
-	return sessionenv.ReservedName(value)
 }
 
 func validateValue(value string) error {
@@ -779,14 +824,7 @@ func enforceCreateQuota(ctx context.Context, tx *sql.Tx, ownerProjectID int64) e
 }
 
 func insertAssignments(ctx context.Context, tx *sql.Tx, itemID int64, ids []int64, now string) error {
-	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO vault_item_projects (vault_item_id, project_id, assignment_revision, created_at, updated_at)
-			VALUES (?, ?, 1, ?, ?)`, itemID, id, now, now); err != nil {
-			return fmt.Errorf("insert vault project assignment: %w", err)
-		}
-	}
-	return nil
+	return insertAssignmentsAtRevision(ctx, tx, itemID, ids, 1, now)
 }
 
 func insertAssignmentsAtRevision(ctx context.Context, tx *sql.Tx, itemID int64, ids []int64, revision int64, now string) error {

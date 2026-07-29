@@ -12,13 +12,15 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 )
 
 const (
-	Version         = "APENV/1"
-	maxPreludeBytes = 256 * 1024
+	Version          = "APENV/1"
+	maxPreludeBytes  = 256 * 1024
+	bootstrapTimeout = 30 * time.Second
 )
 
 type Result struct {
@@ -49,7 +51,8 @@ func (p *Protocol) Command() string {
 	if p == nil {
 		return ""
 	}
-	return "exec /bin/sh -c " + shellSingleQuote(bootstrapScript(p.nonce, p.generation))
+	script := compactShellScript(bootstrapScript(p.nonce, p.generation))
+	return "__apenv_user_shell=${SHELL:-/bin/sh}; export __apenv_user_shell; eval " + shellSingleQuote(script)
 }
 
 // Bootstrap applies the complete envelope to one POSIX interactive shell.
@@ -59,6 +62,8 @@ func (p *Protocol) Bootstrap(ctx context.Context, stdin io.Writer, stdout io.Rea
 	if p == nil || stdin == nil || stdout == nil || envelope == nil || envelope.Len() == 0 {
 		return Result{}, errors.New("secret environment bootstrap requires a protocol, stdin, stdout, and a non-empty envelope")
 	}
+	bootstrapCtx, cancel := context.WithTimeout(ctx, bootstrapTimeout)
+	defer cancel()
 	reader := bufio.NewReader(stdout)
 	frames, aggregateBytes, err := metadataFrames(envelope)
 	if err != nil {
@@ -70,14 +75,19 @@ func (p *Protocol) Bootstrap(ctx context.Context, stdin io.Writer, stdout io.Rea
 	if _, err := io.WriteString(stdin, frames+"META_END "+p.nonce+"\n"); err != nil {
 		return Result{}, fmt.Errorf("write environment metadata: %w", err)
 	}
-	prelude, err := waitForFrame(ctx, reader, "READY "+Version+" "+p.nonce+" "+strconv.FormatInt(p.generation, 10))
+	prelude, err := waitForFrame(
+		bootstrapCtx,
+		reader,
+		"READY "+Version+" "+p.nonce+" "+strconv.FormatInt(p.generation, 10),
+		p.Command(),
+	)
 	if err != nil {
 		return Result{}, fmt.Errorf("environment metadata was not accepted: %w", err)
 	}
 	if err := writeValueFrames(stdin, envelope, p.nonce); err != nil {
 		return Result{}, err
 	}
-	afterMetadata, err := waitForFrame(ctx, reader, "ACK "+Version+" "+p.nonce+" "+strconv.FormatInt(p.generation, 10))
+	afterMetadata, err := waitForFrame(bootstrapCtx, reader, "ACK "+Version+" "+p.nonce+" "+strconv.FormatInt(p.generation, 10))
 	if err != nil {
 		return Result{}, fmt.Errorf("environment bootstrap was not acknowledged: %w", err)
 	}
@@ -121,7 +131,7 @@ func writeValueFrames(stdin io.Writer, envelope *sessionenv.Envelope, nonce stri
 	})
 }
 
-func waitForFrame(ctx context.Context, reader *bufio.Reader, expected string) ([]byte, error) {
+func waitForFrame(ctx context.Context, reader *bufio.Reader, expected string, ignoredSuffixes ...string) ([]byte, error) {
 	type lineResult struct {
 		line string
 		err  error
@@ -137,8 +147,26 @@ func waitForFrame(ctx context.Context, reader *bufio.Reader, expected string) ([
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case item := <-result:
-			trimmed := strings.TrimSpace(strings.ReplaceAll(item.line, "\r", ""))
-			if trimmed == expected {
+			normalized := strings.ReplaceAll(item.line, "\r", "")
+			trimmed := strings.TrimSpace(normalized)
+			ignored := false
+			for _, suffix := range ignoredSuffixes {
+				if suffix != "" && strings.HasSuffix(trimmed, suffix) {
+					ignored = true
+					break
+				}
+			}
+			if ignored {
+				continue
+			}
+			if strings.HasSuffix(trimmed, expected) {
+				frameAt := strings.LastIndex(normalized, expected)
+				if frameAt > 0 {
+					if prelude.Len()+frameAt > maxPreludeBytes {
+						return nil, errors.New("shell prelude exceeded safety limit")
+					}
+					prelude.WriteString(normalized[:frameAt])
+				}
 				return prelude.Bytes(), nil
 			}
 			if item.line != "" {
@@ -162,6 +190,30 @@ func randomNonce() (string, error) {
 	return hex.EncodeToString(value), nil
 }
 
+func compactShellScript(script string) string {
+	lines := strings.Split(script, "\n")
+	var builder strings.Builder
+	previousOpenedBlock := false
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if builder.Len() > 0 {
+			if previousOpenedBlock {
+				builder.WriteByte(' ')
+			} else {
+				builder.WriteString("; ")
+			}
+		}
+		builder.WriteString(line)
+		previousOpenedBlock = strings.HasSuffix(line, " do") ||
+			strings.HasSuffix(line, " then") ||
+			strings.HasSuffix(line, " {")
+	}
+	return builder.String()
+}
+
 func shellSingleQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
@@ -172,8 +224,12 @@ func bootstrapScript(nonce string, generation int64) string {
 set +x +v
 HISTFILE=/dev/null
 export HISTFILE
-stty -echo 2>/dev/null || exit 90
-__apenv_fail() { stty echo 2>/dev/null || true; exit 97; }
+__apenv_shell=${__apenv_user_shell:-/bin/sh}
+unset __apenv_user_shell
+case "$__apenv_shell" in /*) ;; *) __apenv_shell=/bin/sh ;; esac
+[ -x "$__apenv_shell" ] || __apenv_shell=/bin/sh
+stty -echo -icanon min 1 time 0 2>/dev/null || exit 90
+__apenv_fail() { stty echo icanon 2>/dev/null || true; exit 97; }
 IFS=' ' read -r __apenv_version __apenv_nonce __apenv_generation __apenv_count __apenv_total || __apenv_fail
 [ "$__apenv_version" = '%s' ] || __apenv_fail
 [ "$__apenv_nonce" = '%s' ] || __apenv_fail
@@ -206,7 +262,7 @@ while [ "$__apenv_i" -le "$__apenv_count" ]; do
   [ "$__apenv_value_index" = "$__apenv_i" ] || __apenv_fail
   eval "__apenv_expected_len=\${__apenv_len_$__apenv_i}"
   [ "${#__apenv_encoded}" -eq "$__apenv_expected_len" ] || __apenv_fail
-  __apenv_decoded=$({ printf '%%s' "$__apenv_encoded" | base64 -d 2>/dev/null; printf .; }) || __apenv_fail
+  __apenv_decoded=$(printf '%%s' "$__apenv_encoded" | base64 -d 2>/dev/null; __apenv_status=$?; printf .; exit "$__apenv_status") || __apenv_fail
   __apenv_decoded=${__apenv_decoded%%?}
   eval "__apenv_name=\${__apenv_name_$__apenv_i}"
   export "$__apenv_name=$__apenv_decoded" || __apenv_fail
@@ -218,11 +274,11 @@ IFS=' ' read -r __apenv_end __apenv_end_nonce || __apenv_fail
 [ "$__apenv_end_nonce" = "$__apenv_nonce" ] || __apenv_fail
 unset __apenv_version __apenv_count __apenv_total __apenv_i __apenv_tag __apenv_index __apenv_name
 unset __apenv_replace __apenv_encoded_len __apenv_meta_end __apenv_meta_nonce
-unset __apenv_value_tag __apenv_value_index __apenv_encoded __apenv_expected_len __apenv_decoded __apenv_end __apenv_end_nonce
-stty echo 2>/dev/null || __apenv_fail
+unset __apenv_value_tag __apenv_value_index __apenv_encoded __apenv_expected_len __apenv_decoded __apenv_status __apenv_end __apenv_end_nonce
+stty echo icanon 2>/dev/null || __apenv_fail
 printf 'ACK %s %%s %%s\n' "$__apenv_nonce" "$__apenv_generation"
 unset __apenv_nonce __apenv_generation
 unset -f __apenv_fail 2>/dev/null || unset __apenv_fail
-exec /bin/sh -i
+exec "$__apenv_shell" -i
 `, Version, nonce, generation, sessionenv.MaxItems, sessionenv.MaxTotalBytes, Version, Version)
 }

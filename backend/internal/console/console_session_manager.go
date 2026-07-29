@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -23,12 +24,19 @@ func NewManager(db *sql.DB, openRuntime RuntimeOpener, redact func(string) strin
 		openRuntime: openRuntime,
 		redact:      redact,
 		sessions:    map[int64]*managedConsoleSession{},
+		lifecycle:   map[int64]*sync.Mutex{},
 	}
 }
 
 func (m *Manager) SetAuthorizer(authorize SessionAuthorizer) {
 	m.mu.Lock()
 	m.authorize = authorize
+	m.mu.Unlock()
+}
+
+func (m *Manager) SetSessionClosedHook(hook func(SessionHandle)) {
+	m.mu.Lock()
+	m.sessionClosed = hook
 	m.mu.Unlock()
 }
 
@@ -63,17 +71,81 @@ func (m *Manager) List(ctx context.Context, runtimeID int64) ([]Record, error) {
 }
 
 func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, error) {
-	if err := request.Principal.Validate(); err != nil {
-		if request.Environment != nil {
-			request.Environment.Destroy()
-		}
+	if request.RuntimeID < 1 {
+		destroyCreateEnvironment(request)
+		return Record{}, fmt.Errorf("runtime_id is required")
+	}
+	lock := m.runtimeLifecycle(request.RuntimeID)
+	lock.Lock()
+	record, session, err := m.createLocked(ctx, request)
+	lock.Unlock()
+	if err != nil {
 		return Record{}, err
 	}
-	if request.RuntimeID < 1 {
-		if request.Environment != nil {
-			request.Environment.Destroy()
+	return m.finishCreate(ctx, record, session, request.WaitForStart)
+}
+
+func (m *Manager) ReplaceIfCurrent(ctx context.Context, closePrincipal executionprincipal.Principal, expected SessionHandle, request CreateRequest) (Record, error) {
+	if err := closePrincipal.Validate(); err != nil {
+		destroyCreateEnvironment(request)
+		return Record{}, err
+	}
+	if request.RuntimeID < 1 || (expected.Valid() && expected.RuntimeID != request.RuntimeID) {
+		destroyCreateEnvironment(request)
+		return Record{}, ErrSessionChanged
+	}
+	lock := m.runtimeLifecycle(request.RuntimeID)
+	lock.Lock()
+
+	if expected.Valid() {
+		current := m.active(expected.ID)
+		if current == nil || current.runtimeID != expected.RuntimeID || current.generation != expected.Generation {
+			lock.Unlock()
+			destroyCreateEnvironment(request)
+			return Record{}, ErrSessionChanged
 		}
-		return Record{}, fmt.Errorf("runtime_id is required")
+		status, _ := current.snapshot()
+		if status != "connecting" && status != "connected" {
+			lock.Unlock()
+			destroyCreateEnvironment(request)
+			return Record{}, ErrSessionChanged
+		}
+		request.Cols, request.Rows = current.dimensions()
+		if err := m.closeSessionLocked(ctx, closePrincipal, current); err != nil {
+			lock.Unlock()
+			destroyCreateEnvironment(request)
+			return Record{}, err
+		}
+	} else if m.activeForRuntime(request.RuntimeID) != nil {
+		lock.Unlock()
+		destroyCreateEnvironment(request)
+		return Record{}, ErrSessionChanged
+	}
+	request.CloseExisting = false
+	record, session, err := m.createLocked(ctx, request)
+	lock.Unlock()
+	if err != nil {
+		return Record{}, err
+	}
+	return m.finishCreate(ctx, record, session, request.WaitForStart)
+}
+
+func (m *Manager) ActiveRecord(ctx context.Context, runtimeID int64) (Record, error) {
+	session := m.activeForRuntime(runtimeID)
+	if session == nil {
+		return Record{}, ErrNotFound
+	}
+	return m.Get(ctx, session.id)
+}
+
+func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Record, *managedConsoleSession, error) {
+	if err := request.Principal.Validate(); err != nil {
+		destroyCreateEnvironment(request)
+		return Record{}, nil, err
+	}
+	if request.RuntimeID < 1 {
+		destroyCreateEnvironment(request)
+		return Record{}, nil, fmt.Errorf("runtime_id is required")
 	}
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Name == "" {
@@ -86,31 +158,25 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 		request.Rows = 32
 	}
 	if request.CloseExisting {
-		if err := m.CloseRuntime(ctx, request.Principal, request.RuntimeID); err != nil {
-			if request.Environment != nil {
-				request.Environment.Destroy()
-			}
-			return Record{}, err
+		if err := m.closeRuntimeLocked(ctx, request.Principal, request.RuntimeID); err != nil {
+			destroyCreateEnvironment(request)
+			return Record{}, nil, err
 		}
 	}
 	if !request.CloseExisting && m.activeSessionCount() >= maxActiveConsoleSessions {
-		return Record{}, ErrSessionLimit
+		destroyCreateEnvironment(request)
+		return Record{}, nil, ErrSessionLimit
 	}
 
-	exactRedactor, err := request.Environment.ExactValueRedactor()
-	if err != nil {
-		request.Environment.Destroy()
-		return Record{}, fmt.Errorf("prepare console redaction: %w", err)
-	}
+	var err error
 	now := time.Now().UTC().Format(time.RFC3339)
 	m.mu.Lock()
 	var generation int64
 	err = m.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(generation), 0) + 1 FROM console_sessions WHERE runtime_id = ?`, request.RuntimeID).Scan(&generation)
 	if err != nil {
 		m.mu.Unlock()
-		_ = exactRedactor.Close()
 		request.Environment.Destroy()
-		return Record{}, fmt.Errorf("read next console generation: %w", err)
+		return Record{}, nil, fmt.Errorf("read next console generation: %w", err)
 	}
 	result, err := m.db.ExecContext(ctx, `
 		INSERT INTO console_sessions (
@@ -135,16 +201,14 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 	)
 	if err != nil {
 		m.mu.Unlock()
-		_ = exactRedactor.Close()
 		request.Environment.Destroy()
-		return Record{}, fmt.Errorf("create console session: %w", err)
+		return Record{}, nil, fmt.Errorf("create console session: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
 		m.mu.Unlock()
-		_ = exactRedactor.Close()
 		request.Environment.Destroy()
-		return Record{}, fmt.Errorf("read console session id: %w", err)
+		return Record{}, nil, fmt.Errorf("read console session id: %w", err)
 	}
 
 	sessionCtx, cancel := context.WithCancel(context.Background())
@@ -158,9 +222,9 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 		params:                 cloneParams(request.Params),
 		principal:              request.Principal,
 		environment:            request.Environment,
+		prepareEnvironment:     request.PrepareEnvironment,
 		environmentContentHash: strings.TrimSpace(request.EnvironmentContentHash),
 		approvalContextHash:    strings.TrimSpace(request.ApprovalContextHash),
-		exactRedactor:          exactRedactor,
 		manager:                m,
 		ctx:                    sessionCtx,
 		cancel:                 cancel,
@@ -173,15 +237,33 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 	m.sessions[id] = managed
 	m.mu.Unlock()
 	go managed.run()
-	if request.WaitForStart {
-		if err := managed.waitStart(ctx); err != nil {
-			managed.close()
-			_ = managed.waitDone(ctx)
-			return Record{}, err
-		}
+	record, err := m.Get(ctx, id)
+	if err != nil {
+		managed.close()
+		return Record{}, nil, err
 	}
+	return record, managed, nil
+}
 
-	return m.Get(ctx, id)
+func (m *Manager) finishCreate(ctx context.Context, record Record, session *managedConsoleSession, waitForStart bool) (Record, error) {
+	if !waitForStart {
+		return record, nil
+	}
+	if session == nil {
+		return Record{}, errors.New("console session did not start")
+	}
+	if err := session.waitStart(ctx); err != nil {
+		session.close()
+		_ = session.waitDone(ctx)
+		return Record{}, err
+	}
+	return m.Get(ctx, record.ID)
+}
+
+func destroyCreateEnvironment(request CreateRequest) {
+	if request.Environment != nil {
+		request.Environment.Destroy()
+	}
 }
 
 func (m *Manager) Get(ctx context.Context, id int64) (Record, error) {
@@ -205,10 +287,13 @@ func (m *Manager) ActiveSnapshot(ctx context.Context, principal executionprincip
 	if session == nil {
 		return Record{}, ErrNotFound
 	}
-	if err := m.authorizeOperation(ctx, principal, session, OperationObserve); err != nil {
-		return Record{}, err
-	}
-	return m.Get(ctx, session.id)
+	var record Record
+	err := m.authorizeOperation(ctx, principal, session, OperationObserve, func() error {
+		var getErr error
+		record, getErr = m.Get(ctx, session.id)
+		return getErr
+	})
+	return record, err
 }
 
 func (m *Manager) transcriptTail(ctx context.Context, sessionID int64, limit int, fallback string) string {
@@ -270,15 +355,14 @@ func (m *Manager) Input(ctx context.Context, principal executionprincipal.Princi
 	if session == nil {
 		return fmt.Errorf("console session is not active")
 	}
-	if err := m.authorizeOperation(ctx, principal, session, OperationInput); err != nil {
-		return err
-	}
-	manualCommands := session.prepareManualInput(data)
-	if err := session.writeInput(data); err != nil {
-		return err
-	}
-	session.persistManualInput(manualCommands)
-	return nil
+	return m.authorizeOperation(ctx, principal, session, OperationInput, func() error {
+		manualCommands := session.prepareManualInput(data)
+		if err := session.writeInput(data); err != nil {
+			return err
+		}
+		session.persistManualInput(manualCommands)
+		return nil
+	})
 }
 
 func (m *Manager) Exec(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, command string) (ExecResult, error) {
@@ -302,10 +386,16 @@ func (m *Manager) Exec(ctx context.Context, principal executionprincipal.Princip
 	if session == nil {
 		return ExecResult{}, fmt.Errorf("console session did not start")
 	}
-	if err := m.authorizeOperation(ctx, principal, session, OperationExecute); err != nil {
+	result, execErr := session.execCommand(ctx, command, func(write func() error) error {
+		return m.authorizeOperation(ctx, principal, session, OperationExecute, write)
+	})
+	if execErr != nil && !errors.Is(execErr, ErrCommandActive) {
+		return result, execErr
+	}
+	if err := m.authorizeOperation(ctx, principal, session, OperationObserve, nil); err != nil {
 		return ExecResult{}, err
 	}
-	return session.execCommand(ctx, command)
+	return result, execErr
 }
 
 func (m *Manager) EnsureReady(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (SessionHandle, error) {
@@ -329,7 +419,7 @@ func (m *Manager) EnsureReady(ctx context.Context, principal executionprincipal.
 	if session == nil {
 		return SessionHandle{}, fmt.Errorf("console session did not start")
 	}
-	if err := m.authorizeOperation(ctx, principal, session, OperationObserve); err != nil {
+	if err := m.authorizeOperation(ctx, principal, session, OperationObserve, nil); err != nil {
 		return SessionHandle{}, err
 	}
 	if err := session.waitReady(ctx); err != nil {
@@ -343,10 +433,17 @@ func (m *Manager) WaitActive(ctx context.Context, principal executionprincipal.P
 	if err != nil {
 		return ExecResult{}, err
 	}
-	if err := m.authorizeOperation(ctx, principal, session, OperationObserve); err != nil {
+	if err := m.authorizeOperation(ctx, principal, session, OperationObserve, nil); err != nil {
 		return ExecResult{}, err
 	}
-	return session.waitActiveCommand(ctx)
+	result, waitErr := session.waitActiveCommand(ctx)
+	if waitErr != nil {
+		return result, waitErr
+	}
+	if err := m.authorizeOperation(ctx, principal, session, OperationObserve, nil); err != nil {
+		return ExecResult{}, err
+	}
+	return result, nil
 }
 
 func (m *Manager) InterruptActive(ctx context.Context, principal executionprincipal.Principal, handle SessionHandle) error {
@@ -354,15 +451,21 @@ func (m *Manager) InterruptActive(ctx context.Context, principal executionprinci
 	if err != nil {
 		return err
 	}
-	if err := m.authorizeOperation(ctx, principal, session, OperationInterrupt); err != nil {
-		return err
-	}
-	return session.interruptActiveCommand(ctx)
+	return m.authorizeOperation(ctx, principal, session, OperationInterrupt, func() error {
+		return session.interruptActiveCommand(ctx)
+	})
 }
 
 func (m *Manager) Resize(id int64, cols int, rows int) {
 	session := m.active(id)
 	if session == nil || cols < 1 || rows < 1 {
+		return
+	}
+	lock := m.runtimeLifecycle(session.runtimeID)
+	lock.Lock()
+	defer lock.Unlock()
+	session = m.active(id)
+	if session == nil {
 		return
 	}
 	session.resize(cols, rows)
@@ -371,11 +474,17 @@ func (m *Manager) Resize(id int64, cols int, rows int) {
 func (m *Manager) Close(ctx context.Context, principal executionprincipal.Principal, id int64) error {
 	session := m.active(id)
 	if session != nil {
-		if err := m.authorizeOperation(ctx, principal, session, OperationClose); err != nil {
-			return err
+		lock := m.runtimeLifecycle(session.runtimeID)
+		lock.Lock()
+		defer lock.Unlock()
+		session = m.active(id)
+		if session == nil {
+			return nil
 		}
-		session.close()
-		return nil
+		return m.authorizeOperation(ctx, principal, session, OperationClose, func() error {
+			session.close()
+			return nil
+		})
 	}
 	if err := principal.Validate(); err != nil || !principal.IsLocalOperator() {
 		return ErrUnauthorized
@@ -389,6 +498,13 @@ func (m *Manager) CloseRuntime(ctx context.Context, principal executionprincipal
 	if err := principal.Validate(); err != nil {
 		return err
 	}
+	lock := m.runtimeLifecycle(runtimeID)
+	lock.Lock()
+	defer lock.Unlock()
+	return m.closeRuntimeLocked(ctx, principal, runtimeID)
+}
+
+func (m *Manager) closeRuntimeLocked(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) error {
 	m.mu.Lock()
 	sessions := []*managedConsoleSession{}
 	for _, session := range m.sessions {
@@ -398,7 +514,7 @@ func (m *Manager) CloseRuntime(ctx context.Context, principal executionprincipal
 	}
 	m.mu.Unlock()
 	for _, session := range sessions {
-		if err := m.authorizeOperation(ctx, principal, session, OperationClose); err != nil {
+		if err := m.authorizeOperation(ctx, principal, session, OperationClose, nil); err != nil {
 			return err
 		}
 	}
@@ -408,6 +524,40 @@ func (m *Manager) CloseRuntime(ctx context.Context, principal executionprincipal
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := m.db.ExecContext(ctx, `UPDATE console_sessions SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ? WHERE runtime_id = ? AND status IN ('connecting', 'connected')`, now, now, runtimeID)
 	return err
+}
+
+func (m *Manager) closeSessionLocked(ctx context.Context, principal executionprincipal.Principal, session *managedConsoleSession) error {
+	if session == nil {
+		return ErrNotFound
+	}
+	return m.authorizeOperation(ctx, principal, session, OperationClose, func() error {
+		session.mu.Lock()
+		session.status = "closed"
+		session.mu.Unlock()
+		session.close()
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, err := m.db.ExecContext(ctx, `
+			UPDATE console_sessions
+			SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ?
+			WHERE id = ? AND generation = ? AND status IN ('connecting', 'connected')`,
+			now, now, session.id, session.generation,
+		)
+		return err
+	})
+}
+
+func (m *Manager) runtimeLifecycle(runtimeID int64) *sync.Mutex {
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+	if m.lifecycle == nil {
+		m.lifecycle = make(map[int64]*sync.Mutex)
+	}
+	lock := m.lifecycle[runtimeID]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		m.lifecycle[runtimeID] = lock
+	}
+	return lock
 }
 
 func (m *Manager) CloseAll() {
@@ -431,7 +581,7 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 		}
 		return InactiveError{Status: record.Status, Detail: record.Error}
 	}
-	if err := m.authorizeOperation(r.Context(), principal, session, OperationAttach); err != nil {
+	if err := m.authorizeOperation(r.Context(), principal, session, OperationAttach, nil); err != nil {
 		return err
 	}
 
@@ -455,8 +605,14 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 	defer close(stopPing)
 	go keepPTYAlive(ws, writeMu, stopPing)
 
-	snapshotStatus, transcript := session.snapshot()
-	_ = writePTYMessage(ws, writeMu, ptyServerMessage{Type: "snapshot", Status: snapshotStatus, Data: transcript, SessionID: session.id})
+	if err := m.authorizeOperation(r.Context(), principal, session, OperationObserve, func() error {
+		snapshotStatus, transcript := session.snapshot()
+		return writePTYMessage(ws, writeMu, ptyServerMessage{
+			Type: "snapshot", Status: snapshotStatus, Data: transcript, SessionID: session.id,
+		})
+	}); err != nil {
+		return err
+	}
 
 	inputLimiter := newConsoleIntervalLimiter(ptyInputMinInterval)
 	resizeLimiter := newConsoleIntervalLimiter(ptyResizeMinInterval)
@@ -478,32 +634,43 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 			if !inputLimiter.allow() {
 				continue
 			}
-			if err := m.authorizeOperation(r.Context(), principal, session, OperationInput); err != nil {
-				_ = writePTYMessage(ws, writeMu, ptyServerMessage{Type: "error", Status: "error", Data: err.Error(), SessionID: session.id})
-				continue
-			}
-			manualCommands := session.prepareManualInput(message.Data)
-			if err := session.writeInput(message.Data); err == nil {
+			if err := m.authorizeOperation(r.Context(), principal, session, OperationInput, func() error {
+				manualCommands := session.prepareManualInput(message.Data)
+				if err := session.writeInput(message.Data); err != nil {
+					return err
+				}
 				session.persistManualInput(manualCommands)
+				return nil
+			}); err != nil {
+				_ = writePTYMessage(ws, writeMu, ptyServerMessage{Type: "error", Status: "error", Data: err.Error(), SessionID: session.id})
 			}
 		case "resize":
 			if !resizeLimiter.allow() {
 				continue
 			}
-			if err := m.authorizeOperation(r.Context(), principal, session, OperationInput); err != nil {
-				continue
-			}
-			session.resize(message.Cols, message.Rows)
+			_ = m.authorizeOperation(r.Context(), principal, session, OperationInput, func() error {
+				session.resize(message.Cols, message.Rows)
+				return nil
+			})
 		}
 	}
 }
 
-func (m *Manager) authorizeOperation(ctx context.Context, principal executionprincipal.Principal, session *managedConsoleSession, operation SessionOperation) error {
+func (m *Manager) authorizeOperation(
+	ctx context.Context,
+	principal executionprincipal.Principal,
+	session *managedConsoleSession,
+	operation SessionOperation,
+	run func() error,
+) error {
+	if run == nil {
+		run = func() error { return nil }
+	}
 	if session == nil || principal.Validate() != nil || !principal.SameRuntime(session.principal) {
 		return ErrUnauthorized
 	}
 	if principal.IsLocalOperator() || session.environmentContentHash == "" {
-		return nil
+		return run()
 	}
 	m.mu.Lock()
 	authorize := m.authorize
@@ -515,7 +682,7 @@ func (m *Manager) authorizeOperation(ctx context.Context, principal executionpri
 		Handle:                 session.handle(),
 		EnvironmentContentHash: session.environmentContentHash,
 		ApprovalContextHash:    session.approvalContextHash,
-	}, operation)
+	}, operation, run)
 }
 
 func (m *Manager) exactSession(handle SessionHandle) (*managedConsoleSession, error) {
@@ -567,8 +734,13 @@ func (m *Manager) activeForRuntime(runtimeID int64) *managedConsoleSession {
 
 func (m *Manager) remove(id int64) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	session := m.sessions[id]
 	delete(m.sessions, id)
+	hook := m.sessionClosed
+	m.mu.Unlock()
+	if session != nil && hook != nil {
+		hook(session.handle())
+	}
 }
 
 func (s *managedConsoleSession) handle() SessionHandle {
