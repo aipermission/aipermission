@@ -1,4 +1,4 @@
-import { Copy, Edit3, Eye, KeyRound, Plus, RefreshCcw, RotateCw, Search, Trash2, X } from "lucide-react";
+import { Copy, Edit3, Eye, KeyRound, Link2, Plus, RefreshCcw, RotateCw, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -54,6 +54,10 @@ export function VaultPage() {
   const [reveal, setReveal] = useState({ open: false, item: null, state: "idle", value: "", error: null, copied: false });
   const [replace, setReplace] = useState({ open: false, item: null, value: "", state: "idle", error: null });
   const [remove, setRemove] = useState({ open: false, item: null, confirm: "", state: "idle", error: null });
+  const [bindings, setBindings] = useState({
+    open: false, item: null, state: "idle", data: [], targets: [],
+    source_project_id: "", target_id: "", profile_id: "", replace_existing: false, error: null,
+  });
   const [action, setAction] = useState({ state: "idle", message: "", error: null });
   const searchTimer = useRef(null);
 
@@ -239,6 +243,69 @@ export function VaultPage() {
     }
   }
 
+  async function openBindings(item) {
+    setBindings({
+      open: true, item, state: "loading", data: [], targets: [],
+      source_project_id: String(item.owner_project_id), target_id: "", profile_id: "",
+      replace_existing: false, error: null,
+    });
+    try {
+      const [bindingData, inventory] = await Promise.all([
+        apiGet(`/api/vault-default-bindings?vault_item_id=${item.id}`),
+        apiGet("/api/connector-targets/inventory"),
+      ]);
+      setBindings((current) => ({
+        ...current, state: "ready", data: bindingData.items || [],
+        targets: (inventory.items || []).filter((target) => (target.profiles || []).length > 0),
+      }));
+    } catch (error) {
+      setBindings((current) => ({ ...current, state: "error", error: error.message }));
+    }
+  }
+
+  function closeBindings() {
+    setBindings({
+      open: false, item: null, state: "idle", data: [], targets: [],
+      source_project_id: "", target_id: "", profile_id: "", replace_existing: false, error: null,
+    });
+  }
+
+  async function saveBinding(event) {
+    event.preventDefault();
+    const current = selectedBinding(bindings);
+    setBindings((value) => ({ ...value, state: "saving", error: null }));
+    try {
+      await apiPut("/api/vault-default-bindings", {
+        vault_item_id: bindings.item.id,
+        source_project_id: Number(bindings.source_project_id),
+        target_id: Number(bindings.target_id),
+        profile_id: Number(bindings.profile_id),
+        replace_existing: bindings.replace_existing,
+        expected_binding_revision: current?.binding_revision || 0,
+      });
+      const result = await apiGet(`/api/vault-default-bindings?vault_item_id=${bindings.item.id}`);
+      setBindings((value) => ({ ...value, state: "ready", data: result.items || [], error: null }));
+      setAction({ state: "ready", message: "Default session environment binding saved.", error: null });
+    } catch (error) {
+      setBindings((value) => ({ ...value, state: "error", error: error.message }));
+    }
+  }
+
+  async function deleteBinding(item) {
+    setBindings((value) => ({ ...value, state: "saving", error: null }));
+    try {
+      await apiPost(`/api/vault-default-bindings/${item.id}/delete`, {
+        expected_binding_revision: item.binding_revision,
+      });
+      setBindings((value) => ({
+        ...value, state: "ready", data: value.data.filter((binding) => binding.id !== item.id), error: null,
+      }));
+      setAction({ state: "ready", message: "Default session environment binding removed.", error: null });
+    } catch (error) {
+      setBindings((value) => ({ ...value, state: "error", error: error.message }));
+    }
+  }
+
   return (
     <section className="mx-auto grid w-full max-w-7xl gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -301,6 +368,7 @@ export function VaultPage() {
                 onEdit={() => openEdit(item)}
                 onReveal={() => void openReveal(item)}
                 onReplace={() => setReplace({ open: true, item, value: "", state: "idle", error: null })}
+                onBindings={() => void openBindings(item)}
                 onDelete={() => setRemove({ open: true, item, confirm: "", state: "idle", error: null })}
               />
             ))}
@@ -319,6 +387,15 @@ export function VaultPage() {
       </div>
 
       <VaultEditor editor={editor} projects={projects.data} action={action} onChange={setEditor} onClose={closeEditor} onSubmit={saveItem} />
+
+      <VaultBindingsDialog
+        state={bindings}
+        projects={projects.data}
+        onChange={setBindings}
+        onClose={closeBindings}
+        onSave={saveBinding}
+        onDelete={(item) => void deleteBinding(item)}
+      />
 
       <Dialog open={reveal.open} title={`Reveal ${reveal.item?.name || "Vault item"}`} description="The value is visible only in this local dialog and clears after 30 seconds." onClose={closeReveal} size="lg" autoFocusClose={false}>
         <div className="grid gap-4">
@@ -370,7 +447,7 @@ export function VaultPage() {
   );
 }
 
-function VaultRow({ item, projects, onEdit, onReveal, onReplace, onDelete }) {
+function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindings, onDelete }) {
   const projectNames = [item.owner_project_name, ...(item.project_ids || []).map((id) => projects.find((project) => Number(project.id) === Number(id))?.name).filter(Boolean)];
   const expiry = expiryState(item);
   return (
@@ -394,11 +471,101 @@ function VaultRow({ item, projects, onEdit, onReveal, onReplace, onDelete }) {
           <IconButton title="Reveal and copy" icon={Eye} onClick={onReveal} />
           <IconButton title="Edit metadata" icon={Edit3} onClick={onEdit} />
           <IconButton title="Replace local value" icon={RotateCw} onClick={onReplace} />
+          <IconButton title="Default session bindings" icon={Link2} onClick={onBindings} />
           <IconButton title="Delete" icon={Trash2} onClick={onDelete} danger />
         </div>
       </td>
     </tr>
   );
+}
+
+function VaultBindingsDialog({ state, projects, onChange, onClose, onSave, onDelete }) {
+  const allowedProjects = useMemo(() => {
+    if (!state.item) return [];
+    const ids = new Set([Number(state.item.owner_project_id), ...(state.item.project_ids || []).map(Number)]);
+    return projects.filter((project) => ids.has(Number(project.id)));
+  }, [state.item, projects]);
+  const selectedTarget = state.targets.find((target) => String(target.id) === String(state.target_id));
+  const current = selectedBinding(state);
+
+  useEffect(() => {
+    if (!state.open) return;
+    const nextReplace = current?.replace_existing || false;
+    if (state.replace_existing !== nextReplace) {
+      onChange((value) => ({ ...value, replace_existing: nextReplace }));
+    }
+  }, [state.open, state.source_project_id, state.target_id, state.profile_id, current?.id]);
+
+  function update(key, value) {
+    onChange((currentState) => ({ ...currentState, [key]: value, error: null }));
+  }
+
+  return (
+    <Dialog
+      open={state.open}
+      title={`Default environment for ${state.item?.name || "Vault item"}`}
+      description="Bindings preselect this item for future sessions. They do not grant an AI permission."
+      onClose={onClose}
+      size="xl"
+    >
+      <div className="grid gap-4">
+        <form className="grid gap-3 rounded-lg border border-stone-200 p-4" onSubmit={onSave}>
+          <div className="grid gap-3 md:grid-cols-3">
+            <Field>Source project
+              <Select value={state.source_project_id} onChange={(event) => update("source_project_id", event.target.value)} required>
+                {allowedProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+              </Select>
+            </Field>
+            <Field>Connector target
+              <Select value={state.target_id} onChange={(event) => onChange((value) => ({ ...value, target_id: event.target.value, profile_id: "", replace_existing: false, error: null }))} required>
+                <option value="">Choose target</option>
+                {state.targets.map((target) => <option key={target.id} value={target.id}>{target.name} ({target.connector_kind})</option>)}
+              </Select>
+            </Field>
+            <Field>Credential profile
+              <Select value={state.profile_id} onChange={(event) => update("profile_id", event.target.value)} disabled={!selectedTarget} required>
+                <option value="">Choose profile</option>
+                {(selectedTarget?.profiles || []).map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
+              </Select>
+            </Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-stone-700">
+            <Checkbox checked={state.replace_existing} onChange={(event) => update("replace_existing", event.target.checked)} />
+            Replace an existing remote environment value with the same name
+          </label>
+          {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
+          <div className="flex justify-end">
+            <Button type="submit" disabled={!state.target_id || !state.profile_id || state.state === "saving"}>
+              <Link2 className="h-4 w-4" />
+              {state.state === "saving" ? "Saving..." : current ? "Update binding" : "Add binding"}
+            </Button>
+          </div>
+        </form>
+
+        <div className="max-h-64 overflow-y-auto rounded-lg border border-stone-200">
+          {state.data.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 last:border-b-0">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{item.target_name} / {item.profile_label}</p>
+                <p className="truncate text-xs text-stone-500">{item.source_project_name} · {item.connector_kind} · {item.replace_existing ? "replace existing" : "keep existing"}</p>
+              </div>
+              <IconButton title="Remove binding" icon={Trash2} danger onClick={() => onDelete(item)} />
+            </div>
+          ))}
+          {state.state === "loading" ? <div className="p-4"><Notice>Loading default bindings...</Notice></div> : null}
+          {state.state !== "loading" && state.data.length === 0 ? <p className="p-4 text-sm text-stone-500">No default bindings yet.</p> : null}
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+function selectedBinding(state) {
+  return state.data.find((item) =>
+    Number(item.source_project_id) === Number(state.source_project_id)
+    && Number(item.target_id) === Number(state.target_id)
+    && Number(item.profile_id) === Number(state.profile_id)
+  ) || null;
 }
 
 function IconButton({ title, icon: Icon, onClick, danger = false }) {
