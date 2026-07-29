@@ -18,6 +18,10 @@ get_connector_help(target_ref)
 get_connector_actions(target_ref)
 call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
+list_vault_items(project_ref?)
+call_vault_action(project_ref, action_name, input, reason, idempotency_key)
+get_vault_action_request(request_id)
+cancel_vault_action_request(request_id)
 ```
 
 For the detailed tool contract, see [MCP Tools](../api/mcp-tools.md).
@@ -106,3 +110,24 @@ When the user declines the request, the decline note is stored on the connector
 action request and returned to the MCP client.
 
 For credential rules, see [Credential Boundary](../security/credential-boundary.md).
+
+## Project Vault Flow
+
+Project Vault uses project capabilities instead of connector action grants.
+Metadata listing requires `vault.metadata.read`; generation and session
+application use `vault.item.generate` and `vault.session.apply`. Each mutation
+capability may be Disabled, Prompt, or Always.
+
+Vault mutations always create a tracked request containing non-secret metadata,
+an action-context hash, and a caller-stable idempotency key. Prompt waits for a
+local decision and expires after 15 minutes. Always executes immediately
+without the local decision. Both paths revalidate token/project visibility,
+capability rules and revisions, item revisions, target/profile/runtime identity,
+and the exact current session before executing.
+
+Secret values are never returned by MCP. A completed session-application result
+is returned only while the exact session lease and current authorization remain
+valid. Capability or item drift stales pending requests; later polls with
+insufficient authorization withhold already-produced output.
+
+See [Project Vault](../project-vault.md) for the complete boundary.

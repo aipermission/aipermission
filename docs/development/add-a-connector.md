@@ -190,6 +190,16 @@ services. If a new connector needs a capability similar to live terminals,
 file transfer, or async progress, first define a reusable typed adapter
 contract and document why the shared action runner is not enough.
 
+Session environment delivery is an opt-in live-runtime capability. A connector
+that advertises `SessionEnvironmentCapabilityName` must implement the complete
+`SessionEnvironmentCapability` contract, including a stable capability version
+and `SessionEnvironmentPeerIdentityRequired`. When peer identity is required,
+the live-console adapter must return at least one normalized expected identity
+and the opened runtime must report the matching actual identity. Missing
+identity support fails closed. A connector may return `false` only when peer
+identity is genuinely not applicable to its transport and that boundary is
+documented and reviewed.
+
 Use existing reviewed capabilities before inventing connector-specific routes:
 
 - `NetworkTransport` opens direct or Over SSH TCP connections for protocol

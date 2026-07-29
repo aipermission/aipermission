@@ -111,6 +111,11 @@ When updating docs, check whether the change touches:
 - token-to-connector target/profile/action permissions
 - execution rules: `always_run`, `approval_required`, `blocked`
 - MCP tools: `list_connector_targets`, `get_connector_help`, `get_connector_actions`, `call_connector_action`, `get_connector_action_request`
+- Project Vault tools: `list_vault_items`, `call_vault_action`,
+  `get_vault_action_request`, `cancel_vault_action_request`
+- Project Vault values never returned by MCP, Disabled/Prompt/Always
+  generation and session application, 15-minute Prompt approvals, and
+  exact-session invalidation
 - approval dashboard behavior
 - Run / Decline / approval note behavior
 - live message queue behavior
@@ -177,6 +182,10 @@ get_connector_help(target_ref)
 get_connector_actions(target_ref)
 call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
+list_vault_items(project_ref?)
+call_vault_action(project_ref, action_name, input, reason, idempotency_key)
+get_vault_action_request(request_id)
+cancel_vault_action_request(request_id)
 ```
 
 When writing examples, show:

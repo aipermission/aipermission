@@ -7,6 +7,32 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+### Added
+
+- Added Project Vault for encrypted project-scoped secret inventory, metadata,
+  expiration tracking, local reveal, generated-value replacement, and default
+  connector-session bindings.
+- Added an Always-only project capability for metadata listing plus Prompt and
+  Always capabilities for secret generation and exact-session environment
+  application without returning secret values through MCP.
+- Added local Vault approval, request history, audit events, exact-session
+  authorization leases, peer-identity binding, and context-drift invalidation.
+
+### Security
+
+- Bound Vault session use to the exact token, workspace, runtime, session,
+  generation, approval context, environment content, target/profile state, and
+  connector peer identity.
+- Added framed one-time SSH environment delivery, terminal echo suppression,
+  exact-value transcript and manual-history redaction, strict action input
+  normalization, bounded approval lifetimes and request creation, and
+  fail-closed session cleanup.
+
+### Documentation
+
+- Added the Project Vault guide and aligned the MCP, REST, architecture,
+  connector-development, credential, storage, and threat-model documentation.
+
 ## [0.2.15] - 2026-07-29
 
 ### Changed

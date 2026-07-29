@@ -94,6 +94,25 @@ runtime, lifecycle, or credential-resource contracts.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
   checksum storage. File contents are not stored in SQLCipher.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.
+- `internal/projectvault`: Project Vault item metadata, encrypted values,
+  project sharing, default session bindings, and exact-session item tracking.
+- `internal/sessionenv`: framed one-time session environment envelopes and
+  acknowledgement parsing. It never persists plaintext values.
+- `internal/vaultrequests`: tracked Prompt/Always Project Vault action request
+  lifecycle, idempotency, expiry, cancellation, and stale transitions.
+- `internal/vaultsessions`: in-memory exact-session authorization leases for
+  Project Vault application. SQL rows persist lease lifecycle/revocation
+  metadata only; authorization is never restored after gateway restart.
+
+`internal/vault` is the low-level encryption primitive used by credentials and
+other encrypted payloads. Project Vault is the user-facing project secret
+inventory built in `internal/projectvault`; do not merge these responsibilities.
+Project Vault requests also remain distinct from connector action requests:
+connector actions execute one connector-owned action against one target/profile,
+while Vault requests authorize project-scoped secret inventory changes or
+cross-connector session environment delivery. They may share orchestration
+helpers, but must not share a persistence model that erases those different
+authorization and compensation boundaries.
 
 Large API files should be split by behavior before they become cross-domain modules. Runtime-heavy domains should move out of `internal/api` when possible; `internal/console` is the first example of that boundary. Prefer small handler/service files such as `mcp_auth.go`, `command_requests.go`, `command_request_queries.go`, and connector adapter files. Route handlers should usually hang off small handler groups (`mcpHandlers`, `tokenHandlers`, `consoleHandlers`) instead of adding every endpoint directly to `*Server`.
 

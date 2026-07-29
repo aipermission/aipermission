@@ -12,6 +12,7 @@ AIPermission is a local, single-user developer gateway. Its security model is in
 - gateway vault secret
 - connector action history, SSH transcripts, messages, and audit records
 - connector targets reachable from configured credential profiles
+- Project Vault values and metadata
 
 ## Trust Boundary
 
@@ -80,6 +81,9 @@ Mitigations:
 - the user should verify the fingerprint through a trusted channel
 - approved keys are pinned in the local `known_hosts` file outside the encrypted database
 - later host key mismatches are rejected
+- replacing a pinned peer key is serialized with secret delivery; it revokes
+  active Vault session leases, closes those secret-bearing sessions, and stales
+  pending Vault environment-session approvals before the trust file changes
 
 ### Secrets In Connector Input Or Output
 
@@ -100,6 +104,60 @@ Mitigations:
 - users can prefer existence checks and redacted output commands
 
 Known risk: redaction is best-effort and pattern-based, including custom regex rules. It is not a guarantee that every secret shape will be detected. Do not print secrets into connector action input, console output, command text, reasons, or messages.
+
+### Project Vault Session Exfiltration
+
+Risk: an approved command or process in a session that received Project Vault
+values sends them to another service, writes them to disk, or passes them to a
+detached child process.
+
+Mitigations:
+
+- MCP never receives raw values, generated values, or environment envelopes
+- generation and session application require explicit Prompt or Always project
+  capabilities; Disabled is the default
+- Prompt approval lists exact item assignments without displaying values;
+  Always is an explicit autonomous secret-use grant
+- approval context binds item revisions, project visibility, target/profile,
+  runtime, and exact session identity
+- session environment transport is framed, acknowledged, and omitted from
+  persistent command/transcript setup records
+- item, binding, token, permission, and project-scope changes invalidate
+  affected pending requests and exact-session leases
+- connector target/profile changes and MCP stop are serialized against secret
+  delivery, close affected secret-bearing sessions, and stale pending requests
+- MCP command/input authorization and the corresponding PTY write share that
+  lifecycle gate, preventing permission mutations from crossing the
+  authorize-to-I/O boundary; long-running output is reauthorized before return
+- a PTY write that acquires the lifecycle gate before a permission or trust
+  mutation may finish that write; the mutation then revokes and closes the
+  session before any later token operation
+- in-memory leases expire after at most 12 hours and do not survive restart;
+  expiry ends agent authorization for the exact session but does not prove that
+  the remote shell or detached child processes erased inherited values
+
+Known risk: once the local user approves applying a value, code in that remote
+process can use or exfiltrate it. Closing the interactive shell cannot guarantee
+that detached children discarded inherited environment values. Redaction is not
+an execution sandbox.
+
+### Shared Persistent Console Runtime
+
+Risk: two MCP tokens or the local operator use the same non-secret persistent
+console runtime and observe work started by another principal.
+
+This is intentional for the local-only, single-user product model. A normal
+connector console is one shared live workspace inside the currently unlocked
+database runtime, not a multi-tenant terminal. Token target/profile/action
+permissions still gate how an MCP client reaches that runtime. Secret-bearing
+Project Vault sessions are the exception: MCP execution and observation require
+an exact token-bound lease containing the session id, generation, approval
+context, and environment-content hash. Local-UI-created Vault sessions remain
+human-console-only unless an MCP token creates its own approved session.
+
+Do not treat AIPermission runtime principals as operating-system users or team
+tenant isolation. Use separate local databases when workflows require a hard
+workspace boundary.
 
 ### SSH Shell-Interpreted Commands
 

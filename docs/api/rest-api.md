@@ -78,10 +78,10 @@ per-action grants for later re-enablement.
 
 Project capabilities are separate from connector action permissions. The
 capability response includes the supported definitions and the token's
-explicit grants. `vault.metadata.read` accepts `blocked` or `always_run`;
-`vault.item.generate` and `vault.session.apply` accept `blocked` or
-`approval_required`. Omitting a capability disables it. Enabling project
-visibility never creates a Vault capability grant automatically.
+explicit grants. `vault.metadata.read` accepts `always_run`;
+`vault.item.generate` and `vault.session.apply` accept `approval_required` or
+`always_run`. Omitting a capability disables it. Enabling project visibility
+never creates a Vault capability grant automatically.
 
 ## Connector Catalog And Targets
 
@@ -1237,20 +1237,56 @@ GET /api/vault-items
 POST /api/vault-items
 GET /api/vault-items/{id}
 PUT /api/vault-items/{id}
+POST /api/vault-items/{id}/generate-preview
 POST /api/vault-items/{id}/value
 POST /api/vault-items/{id}/reveal
 POST /api/vault-items/{id}/delete
 GET /api/vault-default-bindings
 PUT /api/vault-default-bindings
 POST /api/vault-default-bindings/{id}/delete
+GET /api/vault-session-options
+GET /api/vault-action-approvals
+POST /api/vault-action-approvals/{id}/run
+POST /api/vault-action-approvals/{id}/decline
+GET /api/mcp/vault-items
+POST /api/mcp/vault-actions/call
+GET /api/mcp/vault-action-requests/{id}
+POST /api/mcp/vault-action-requests/{id}/cancel
 ```
 
 Project Vault endpoints are local UI operations. Metadata responses never
 contain stored values. Reveal is an explicit audited `POST` response with
 `Cache-Control: no-store, private`; create, update, replacement, and deletion
 use revision preconditions so stale forms cannot overwrite newer state.
+Value replacement accepts either an explicitly imported value or a supported
+local `generator_kind`. The local preview endpoint returns the generated value
+with no-store headers and a five-minute encrypted preview token. Confirmation
+sends that token rather than the plaintext value back to the replacement
+endpoint. Generated replacement responses contain source and generator
+metadata but never the generated value. Imported values and generators are
+mutually exclusive in one request.
 
 Default bindings associate an exact Vault item assignment with one connector
-target and credential profile. They preselect future session environment
-content but do not grant token permission. Binding updates and deletes use the
-current `binding_revision` for optimistic concurrency.
+target and credential profile that advertises the typed session-environment
+capability. They preselect future session environment content but do not grant
+token permission. Binding updates and deletes use the current
+`binding_revision` for optimistic concurrency. Re-saving an identical binding
+returns the existing revision and does not invalidate an active session.
+
+MCP Vault mutations use explicit Disabled, Prompt, or Always project
+capabilities. Prompt requests expire after 15 minutes and can be declined by
+the local user, canceled by the owning token, or marked stale when
+authorization/item/session context changes. Always requests execute immediately
+through the same context-drift, history, audit, and redaction path. List,
+request, history, and audit payloads contain metadata only; secret values are
+never returned through MCP.
+
+Vault action input is decoded against an action-specific strict schema before
+request persistence. Unknown keys are rejected, so an accidental raw `value`,
+`token`, or other undeclared field is not written to the request/history
+pipeline. `usage_notes` entries accept `location` and optional `notes` only.
+Session selections accept `item_id`, `source_project_id`, and optional
+`replace_existing` only.
+
+See [Project Vault](../project-vault.md) for session identity, environment
+application, and exfiltration boundaries.

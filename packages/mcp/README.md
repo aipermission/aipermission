@@ -60,6 +60,10 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `get_connector_actions`
 - `call_connector_action`
 - `get_connector_action_request`
+- `list_vault_items`
+- `call_vault_action`
+- `get_vault_action_request`
+- `cancel_vault_action_request`
 
 All integration work goes through connector targets. SSH, Postgres, Redis,
 RabbitMQ, Docker, Kubernetes, and future connectors share the same model: target,
@@ -71,6 +75,19 @@ enabled project scope in addition to its target/profile/action grants. Targets
 from disabled projects are omitted from discovery and rejected on direct calls;
 their saved action grants are preserved for later re-enablement. Projects are
 not multi-user or hosted RBAC.
+
+Project Vault stores project-scoped secret values in the encrypted local
+database. MCP can list non-secret item metadata only when the token has
+`vault.metadata.read`. Secret generation and supported console-session
+application use explicit Disabled, Prompt, or Always project capabilities.
+Prompt creates a local approval request; Always executes immediately through
+the same tracked context-validation path. Poll `get_vault_action_request` for
+pending requests, which expire after 15 minutes and may be declined, canceled,
+expired, or stale. Raw values are never returned by this package.
+Session item input is strict: only `item_id`, `source_project_id`, and optional
+`replace_existing` are accepted. Lease expiry ends MCP authorization for the
+exact session but cannot guarantee that a remote process erased inherited
+environment values.
 
 For SSH, call `get_connector_actions(target_ref)` to discover actions such as
 `exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
