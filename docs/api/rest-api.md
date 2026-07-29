@@ -58,6 +58,8 @@ PUT /api/projects/{id}
 DELETE /api/projects/{id}
 GET /api/tokens/{id}/project-scopes
 PUT /api/tokens/{id}/project-scopes
+GET /api/tokens/{id}/project-capabilities
+PUT /api/tokens/{id}/project-capabilities
 ```
 
 Projects organize connector targets for one local developer. Existing targets
@@ -73,6 +75,13 @@ accepts `{"enabled_project_ids":[1,2]}` and replaces the token's project scope.
 Disabling a project hides all of its connector targets from MCP discovery and
 prevents connector actions for that project, while preserving the underlying
 per-action grants for later re-enablement.
+
+Project capabilities are separate from connector action permissions. The
+capability response includes the supported definitions and the token's
+explicit grants. `vault.metadata.read` accepts `blocked` or `always_run`;
+`vault.item.generate` and `vault.session.apply` accept `blocked` or
+`approval_required`. Omitting a capability disables it. Enabling project
+visibility never creates a Vault capability grant automatically.
 
 ## Connector Catalog And Targets
 
