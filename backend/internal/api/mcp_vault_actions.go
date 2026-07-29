@@ -67,12 +67,7 @@ func (s mcpHandlers) mcpListVaultItems(w http.ResponseWriter, r *http.Request) {
 	}
 	items := []mcpVaultItem{}
 	truncated := false
-	for projectIndex, project := range projects {
-		remaining := maxMCPVaultItems - len(items)
-		if remaining <= 0 {
-			truncated = true
-			break
-		}
+	for _, project := range projects {
 		visible, err := projectStore.TokenCanAccessProject(r.Context(), auth.TokenID, project.ID)
 		if err != nil {
 			writeInternalError(w)
@@ -92,12 +87,24 @@ func (s mcpHandlers) mcpListVaultItems(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w)
 			return
 		}
-		projectItems, total, err := store.List(r.Context(), projectvault.ListFilter{ProjectID: project.ID, Limit: remaining})
+		remaining := maxMCPVaultItems - len(items)
+		queryLimit := remaining
+		if queryLimit < 1 {
+			queryLimit = 1
+		}
+		projectItems, total, err := store.List(r.Context(), projectvault.ListFilter{ProjectID: project.ID, Limit: queryLimit})
 		if err != nil {
 			writeInternalError(w)
 			return
 		}
-		if total > len(projectItems) || (len(items)+len(projectItems) >= maxMCPVaultItems && projectIndex < len(projects)-1) {
+		if remaining < 1 {
+			if total > 0 {
+				truncated = true
+				break
+			}
+			continue
+		}
+		if total > len(projectItems) {
 			truncated = true
 		}
 		for _, item := range projectItems {
@@ -149,6 +156,30 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	normalizedInput, err := normalizeVaultActionInput(input.ActionName, input.Input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	requestStore := vaultrequests.NewStore(auth.runtime.database)
+	existing, existingErr := requestStore.GetByIdempotencyKey(r.Context(), auth.TokenID, input.IdempotencyKey)
+	if existingErr == nil {
+		if !sameVaultActionCall(existing, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
+			writeError(w, http.StatusConflict, vaultrequests.ErrIdempotencyConflict.Error())
+			return
+		}
+		writeVaultRequestMCPResponse(w, r.Context(), s.Server, auth.runtime, existing)
+		return
+	}
+	if !errors.Is(existingErr, vaultrequests.ErrNotFound) {
+		writeInternalError(w)
+		return
+	}
+	if s.vaultRequestLimiter == nil ||
+		!s.vaultRequestLimiter.allow("vault-request:"+auth.runtime.id+":"+strconv.FormatInt(auth.TokenID, 10)) {
+		writeError(w, http.StatusTooManyRequests, "Vault action request rate limit exceeded; retry later")
+		return
+	}
 	project, err := resolveProjectRef(r.Context(), auth.runtime, input.ProjectRef)
 	if errors.Is(err, projectstore.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "project not found")
@@ -158,19 +189,8 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		writeInternalError(w)
 		return
 	}
-	requestStore := vaultrequests.NewStore(auth.runtime.database)
-	if _, existingErr := requestStore.GetByIdempotencyKey(r.Context(), auth.TokenID, input.IdempotencyKey); errors.Is(existingErr, vaultrequests.ErrNotFound) {
-		if s.vaultRequestLimiter == nil ||
-			!s.vaultRequestLimiter.allow("vault-request:"+auth.runtime.id+":"+strconv.FormatInt(auth.TokenID, 10)) {
-			writeError(w, http.StatusTooManyRequests, "Vault action request rate limit exceeded; retry later")
-			return
-		}
-	} else if existingErr != nil {
-		writeInternalError(w)
-		return
-	}
 	approval, contextHash, normalizedInput, err := buildVaultApprovalContext(
-		r.Context(), s.Server, auth.runtime, auth.TokenID, project, input.ActionName, input.Input,
+		r.Context(), s.Server, auth.runtime, auth.TokenID, project, input.ActionName, normalizedInput,
 	)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -227,11 +247,7 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		}
 		request = result.Request
 	}
-	response := vaultRequestMCPResponse(request)
-	if request.Output != nil && !currentVaultPollAuthorization(r.Context(), s.Server, auth.runtime, request) {
-		withholdVaultRequestOutput(response)
-	}
-	writeJSON(w, http.StatusOK, response)
+	writeVaultRequestMCPResponse(w, r.Context(), s.Server, auth.runtime, request)
 }
 
 func (s mcpHandlers) mcpGetVaultActionRequest(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +287,36 @@ func withholdVaultRequestOutput(response map[string]any) {
 	delete(response, "output")
 	response["output_withheld"] = true
 	response["assistant_hint"] = "Current Vault authorization no longer permits returning this action output."
+}
+
+func sameVaultActionCall(
+	request vaultrequests.Request,
+	projectRef string,
+	actionName string,
+	input map[string]any,
+	reason string,
+) bool {
+	projectMatches := request.ProjectSlug == projectRef || strconv.FormatInt(request.ProjectID, 10) == projectRef
+	if !projectMatches || request.ActionName != actionName || request.Reason != reason {
+		return false
+	}
+	requestJSON, requestErr := json.Marshal(request.Input)
+	inputJSON, inputErr := json.Marshal(input)
+	return requestErr == nil && inputErr == nil && string(requestJSON) == string(inputJSON)
+}
+
+func writeVaultRequestMCPResponse(
+	w http.ResponseWriter,
+	ctx context.Context,
+	server *Server,
+	runtime *databaseRuntime,
+	request vaultrequests.Request,
+) {
+	response := vaultRequestMCPResponse(request)
+	if request.Output != nil && !currentVaultPollAuthorization(ctx, server, runtime, request) {
+		withholdVaultRequestOutput(response)
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s mcpHandlers) mcpCancelVaultActionRequest(w http.ResponseWriter, r *http.Request) {

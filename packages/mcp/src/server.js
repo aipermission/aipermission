@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { callVaultActionSchema, listVaultItemsSchema, vaultActionRequestSchema } from "./vault-tools.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { jsonToolResult } from "./results.js";
 
@@ -87,6 +88,53 @@ server.tool(
   },
   async ({ request_id }) => {
     return jsonToolResult(() => apiGet(`/api/mcp/connector-action-requests/${request_id}`));
+  }
+);
+
+server.tool(
+  "list_vault_items",
+  "List secret names and bounded non-secret Vault metadata for projects this token can read. Secret values are never returned.",
+  listVaultItemsSchema,
+  async ({ project_ref }) => {
+    return jsonToolResult(() => {
+      const params = new URLSearchParams();
+      if (project_ref) params.set("project_ref", project_ref);
+      const query = params.toString();
+      return apiGet(`/api/mcp/vault-items${query ? `?${query}` : ""}`);
+    });
+  }
+);
+
+server.tool(
+  "call_vault_action",
+  "Run a Vault action under the configured project capability. Prompt waits for local approval; Always executes immediately through the same tracked request path. generate_item input accepts name, secret_type, generator_kind, provider, environment, description, expires_at, expiry_warning_days, tags (string array), usage_notes (array of {location, notes}), and shared_project_ids (integer array). restart_session_with_environment input requires target_ref and items with item_id, source_project_id, and optional replace_existing. Never include raw secret values.",
+  callVaultActionSchema,
+  async ({ project_ref, action_name, input, reason, idempotency_key }) => {
+    return jsonToolResult(() => apiPost("/api/mcp/vault-actions/call", {
+      project_ref,
+      action_name,
+      input,
+      reason,
+      idempotency_key,
+    }));
+  }
+);
+
+server.tool(
+  "get_vault_action_request",
+  "Read one Vault action request after call_vault_action returns approval_pending. Responses never include secret values.",
+  vaultActionRequestSchema,
+  async ({ request_id }) => {
+    return jsonToolResult(() => apiGet(`/api/mcp/vault-action-requests/${request_id}`));
+  }
+);
+
+server.tool(
+  "cancel_vault_action_request",
+  "Cancel one approval_pending Vault action request owned by this token. Running or terminal requests cannot be canceled.",
+  vaultActionRequestSchema,
+  async ({ request_id }) => {
+    return jsonToolResult(() => apiPost(`/api/mcp/vault-action-requests/${request_id}/cancel`, {}));
   }
 );
 
