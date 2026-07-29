@@ -1,6 +1,25 @@
-export const appVersion = "0.2.14";
+export const appVersion = "0.2.15";
 
 export const changelogEntries = [
+  {
+    version: "0.2.15",
+    label: "Security and dependency maintenance",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "The MCP SDK, verified frontend packages, Go builder image, and GitHub Actions checkout pin were refreshed.",
+          "The frontend now uses the patched React Router 8 package while Monaco remains on 0.53 for SQL console compatibility.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "The SFTP dependency now bounds untrusted attribute allocation, and current frontend and MCP production audit findings are resolved.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.14",
     label: "ClickHouse connector",
