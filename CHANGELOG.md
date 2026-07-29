@@ -7,6 +7,33 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-07-29
+
+### Changed
+
+- Updated the MCP SDK to 1.30.0 and refreshed its production dependency tree.
+- Migrated the frontend from `react-router-dom` 7 to the patched
+  `react-router` 8 line, and updated verified React, Radix, Lucide, Tailwind,
+  and Playwright dependencies.
+- Refreshed the pinned Go builder image and upgraded `actions/checkout` to
+  4.4.0 across CI and publishing workflows.
+- Kept Monaco Editor on 0.53 because 0.56 removes the worker import path used
+  by the SQL console and currently breaks the production build.
+
+### Security
+
+- Updated `github.com/pkg/sftp` to 1.13.11, which bounds untrusted SFTP
+  extended-attribute preallocation and prevents a peer from forcing excessive
+  memory allocation.
+- Removed the current production npm audit findings from the frontend and MCP
+  package dependency trees.
+
+### Tests
+
+- Re-ran backend tests, race detection, vet, `govulncheck`, frontend runtime
+  tests, production build, Playwright scenarios, MCP tests/build/package
+  validation, production npm audits, and a full Docker Compose rebuild.
+
 ## [0.2.14] - 2026-07-18
 
 ### Added
