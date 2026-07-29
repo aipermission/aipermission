@@ -232,18 +232,22 @@ func scanAuditLog(scanner interface {
 }
 
 func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any) {
+	_ = s.writeAuditRequired(ctx, runtime, actorType, tokenID, runtimeID, action, payload)
+}
+
+func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any) error {
 	if runtime == nil || runtime.database == nil {
-		return
+		return fmt.Errorf("audit database is unavailable")
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		payloadBytes = []byte(`{}`)
+		return fmt.Errorf("marshal audit payload: %w", err)
 	}
 	payloadJSON := s.redactForPersistence(ctx, runtime, string(payloadBytes))
 	connectorKind, projectID, targetID, profileID, actionRequestID := auditConnectorMetadata(payload)
 	projectID = resolveAuditProjectID(ctx, runtime.database, projectID, targetID, runtimeID)
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, _ = runtime.database.ExecContext(ctx, `
+	_, err = runtime.database.ExecContext(ctx, `
 		INSERT INTO audit_logs (
 			actor_type, token_id, project_id, runtime_id, connector_kind, target_id, profile_id,
 			action_request_id, action, payload_json, created_at
@@ -261,6 +265,10 @@ func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actor
 		payloadJSON,
 		now,
 	)
+	if err != nil {
+		return fmt.Errorf("write audit log: %w", err)
+	}
+	return nil
 }
 
 func auditConnectorMetadata(payload any) (string, int64, int64, int64, int64) {

@@ -19,6 +19,7 @@ type messageHandlers struct{ *Server }
 type historyEntryHandlers struct{ *Server }
 type historyLabelHandlers struct{ *Server }
 type projectHandlers struct{ *Server }
+type vaultItemHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
 type connectorHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
@@ -42,6 +43,7 @@ func (s *Server) routes() {
 	historyEntries := historyEntryHandlers{s}
 	historyLabels := historyLabelHandlers{s}
 	projects := projectHandlers{s}
+	vaultItems := vaultItemHandlers{s}
 	fileTransfers := fileTransferHandlers{s}
 	connectors := connectorHandlers{s}
 	connectorActions := connectorActionHandlers{s}
@@ -128,6 +130,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/projects", projects.createProject)
 	s.mux.HandleFunc("PUT /api/projects/{id}", projects.updateProject)
 	s.mux.HandleFunc("DELETE /api/projects/{id}", projects.archiveProject)
+	s.mux.HandleFunc("GET /api/vault-items", vaultItems.listVaultItems)
+	s.mux.HandleFunc("POST /api/vault-items", vaultItems.createVaultItem)
+	s.mux.HandleFunc("GET /api/vault-items/{id}", vaultItems.getVaultItem)
+	s.mux.HandleFunc("PUT /api/vault-items/{id}", vaultItems.updateVaultItem)
+	s.mux.HandleFunc("POST /api/vault-items/{id}/value", vaultItems.replaceVaultItemValue)
+	s.mux.HandleFunc("POST /api/vault-items/{id}/reveal", vaultItems.revealVaultItem)
+	s.mux.HandleFunc("POST /api/vault-items/{id}/delete", vaultItems.deleteVaultItem)
 	s.mux.HandleFunc("GET /api/file-transfers", fileTransfers.listFileTransfers)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}", fileTransfers.getFileTransfer)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}/download", fileTransfers.downloadTransferredFile)
