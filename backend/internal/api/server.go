@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -31,6 +32,7 @@ type Server struct {
 	backupOAuthMu      sync.Mutex
 	backupOAuthFlows   map[int64]backupOAuthFlow
 	authLimiter        *authRateLimiter
+	vaultRevealLimiter *windowRateLimiter
 	uiSessionMu        sync.RWMutex
 	uiSessions         map[string]uiSessionRecord
 }
@@ -103,6 +105,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		maintenanceConsole: newMaintenanceConsoleRuntime(),
 		backupOAuthFlows:   map[int64]backupOAuthFlow{},
 		authLimiter:        newAuthRateLimiter(),
+		vaultRevealLimiter: newWindowRateLimiter(8, time.Minute),
 		uiSessions:         map[string]uiSessionRecord{},
 	}
 	runtime := &databaseRuntime{
@@ -138,6 +141,7 @@ func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 		maintenanceConsole: newMaintenanceConsoleRuntime(),
 		backupOAuthFlows:   map[int64]backupOAuthFlow{},
 		authLimiter:        newAuthRateLimiter(),
+		vaultRevealLimiter: newWindowRateLimiter(8, time.Minute),
 		uiSessions:         map[string]uiSessionRecord{},
 	}
 	server.routes()

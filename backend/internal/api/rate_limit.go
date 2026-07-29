@@ -22,6 +22,44 @@ type authRateLimitEntry struct {
 	lockedUntil time.Time
 }
 
+type windowRateLimiter struct {
+	mu       sync.Mutex
+	limit    int
+	window   time.Duration
+	attempts map[string][]time.Time
+}
+
+func newWindowRateLimiter(limit int, window time.Duration) *windowRateLimiter {
+	return &windowRateLimiter{limit: limit, window: window, attempts: map[string][]time.Time{}}
+}
+
+func (l *windowRateLimiter) allow(key string) bool {
+	if l == nil || l.limit < 1 || l.window <= 0 {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	cutoff := now.Add(-l.window)
+	recent := l.attempts[key][:0]
+	for _, attempt := range l.attempts[key] {
+		if attempt.After(cutoff) {
+			recent = append(recent, attempt)
+		}
+	}
+	if len(recent) >= l.limit {
+		l.attempts[key] = recent
+		return false
+	}
+	l.attempts[key] = append(recent, now)
+	for storedKey, attempts := range l.attempts {
+		if len(attempts) == 0 || attempts[len(attempts)-1].Before(cutoff) {
+			delete(l.attempts, storedKey)
+		}
+	}
+	return true
+}
+
 func newAuthRateLimiter() *authRateLimiter {
 	return &authRateLimiter{entries: map[string]authRateLimitEntry{}}
 }

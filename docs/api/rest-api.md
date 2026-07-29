@@ -1220,3 +1220,20 @@ Token create/revoke, permission changes, security settings changes, retention cl
 Secret payloads, SSH private keys, and token values must not be written to audit logs.
 
 Command text is stored in audit/history records. Users should avoid putting secret values directly in command strings and should be cautious when printing files or environment output that may contain secrets.
+
+## Project Vault
+
+```text
+GET /api/vault-items
+POST /api/vault-items
+GET /api/vault-items/{id}
+PUT /api/vault-items/{id}
+POST /api/vault-items/{id}/value
+POST /api/vault-items/{id}/reveal
+POST /api/vault-items/{id}/delete
+```
+
+Project Vault endpoints are local UI operations. Metadata responses never
+contain stored values. Reveal is an explicit audited `POST` response with
+`Cache-Control: no-store, private`; create, update, replacement, and deletion
+use revision preconditions so stale forms cannot overwrite newer state.
