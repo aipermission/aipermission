@@ -27,7 +27,8 @@ import { Button } from "../ui/button";
 import { Select } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
-import { apiGet, apiPut } from "../../lib/api";
+import { apiGet } from "../../lib/api";
+import { updateTokenProjectVisibility } from "../../lib/project-scopes";
 
 export function ConnectorTokenPermissionPanel({
   tokens,
@@ -147,8 +148,7 @@ export function ConnectorTokenPermissionPanel({
     setProjectScopeError("");
     try {
       const scopes = projectScopesByToken[token.id] || [];
-      const enabledProjectIDs = scopes.filter((scope) => Number(scope.project_id) === Number(selectedTarget.project_id) ? enabled : scope.enabled).map((scope) => scope.project_id);
-      const result = await apiPut(`/api/tokens/${token.id}/project-scopes`, { enabled_project_ids: enabledProjectIDs });
+      const result = await updateTokenProjectVisibility(token.id, scopes, selectedTarget.project_id, enabled);
       setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
       await loadAllConnectorPermissions?.(activeTokens);
     } catch (error) {

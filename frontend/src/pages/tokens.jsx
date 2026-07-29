@@ -1,4 +1,4 @@
-import { Ban, CalendarClock, Database, KeyRound, PlugZap, Plus, RefreshCcw, TicketCheck } from "lucide-react";
+import { Ban, CalendarClock, Database, KeyRound, LockKeyhole, PlugZap, Plus, RefreshCcw, TicketCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
@@ -13,6 +13,7 @@ import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { ConnectorPermissionDialog } from "../components/tokens/connector-permission-dialog";
 import { TokenInstallDialog } from "../components/tokens/token-install-dialog";
+import { VaultPermissionDialog } from "../components/tokens/vault-permission-dialog";
 
 const tokenExpiryOptions = [
   { value: "never", label: "Never expires", ms: 0 },
@@ -29,6 +30,7 @@ export function TokensPage() {
   const [form, setForm] = useState(emptyForm);
   const [createdToken, setCreatedToken] = useState(null);
   const [connectorPermissionDialog, setConnectorPermissionDialog] = useState(null);
+  const [vaultPermissionDialog, setVaultPermissionDialog] = useState(null);
   const { connectorPermissionState, loadAllConnectorPermissions } = useConnectorPermissions(tokens.data);
   const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
   const { actionState: state, runAction } = useAsyncAction();
@@ -162,11 +164,11 @@ export function TokensPage() {
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
-              <th className="w-[24%] px-4 py-3 font-semibold">Name</th>
-              <th className="w-[18%] px-4 py-3 font-semibold">Connector grants</th>
-              <th className="w-[10%] px-4 py-3 font-semibold">Status</th>
+              <th className="w-[20%] px-4 py-3 font-semibold">Name</th>
+              <th className="w-[16%] px-4 py-3 font-semibold">Connector grants</th>
+              <th className="w-[8%] px-4 py-3 font-semibold">Status</th>
               <th className="w-[16%] px-4 py-3 font-semibold">Created / expires</th>
-              <th className="w-[32%] px-4 py-3 text-right font-semibold">Actions</th>
+              <th className="w-[40%] px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
@@ -243,6 +245,17 @@ export function TokensPage() {
                         type="button"
                         variant="outline"
                         className="h-9 px-3"
+                        onClick={() => setVaultPermissionDialog(token)}
+                        disabled={inactive}
+                        title="Set this token's project visibility and Vault capabilities"
+                      >
+                        <LockKeyhole className="h-4 w-4" />
+                        Vault
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 px-3"
                         onClick={() => setInstallDialog({ open: true, token, provider: "manual" })}
                         disabled={inactive || !token.token}
                         title={token.token ? "Install MCP with this token" : "Create a new token or enable reusable token copy in Settings"}
@@ -311,6 +324,11 @@ export function TokensPage() {
       <ConnectorPermissionDialog
         token={connectorPermissionDialog}
         onClose={() => setConnectorPermissionDialog(null)}
+        onSaved={() => loadAllConnectorPermissions(tokens.data)}
+      />
+      <VaultPermissionDialog
+        token={vaultPermissionDialog}
+        onClose={() => setVaultPermissionDialog(null)}
         onSaved={() => loadAllConnectorPermissions(tokens.data)}
       />
       <TokenInstallDialog

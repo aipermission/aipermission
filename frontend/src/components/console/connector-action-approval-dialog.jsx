@@ -5,10 +5,11 @@ import { Dialog } from "../ui/dialog";
 import { Textarea } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { TerminalBlock } from "../ui/terminal-block";
+import { formatLocalTimestamp, formatRelativeAge } from "../../lib/date-time";
 
 export function ConnectorActionApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }) {
-  const requestAge = approval ? formatRequestAge(approval.created_at) : "";
-  const requestTimestamp = approval?.created_at ? formatRequestTimestamp(approval.created_at) : "";
+  const requestAge = approval ? formatRelativeAge(approval.created_at) : "";
+  const requestTimestamp = approval?.created_at ? formatLocalTimestamp(approval.created_at) : "";
   const terminalError = action.state === "failed";
   const stale = action.state === "stale";
   const inputText = approval ? JSON.stringify(approval.input || {}, null, 2) : "";
@@ -80,24 +81,4 @@ export function ConnectorActionApprovalDialog({ approval, note, action, onNoteCh
       ) : null}
     </Dialog>
   );
-}
-
-function formatRequestAge(value) {
-  if (!value) return "";
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return "";
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function formatRequestTimestamp(value) {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return "";
-  return new Date(timestamp).toLocaleString();
 }

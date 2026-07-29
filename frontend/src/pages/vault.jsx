@@ -2,11 +2,13 @@ import { Copy, Edit3, Eye, KeyRound, Link2, Plus, RefreshCcw, RotateCw, Search, 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { DateTimePicker } from "../components/ui/date-time-picker";
 import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Checkbox, Field, Input, Select, Textarea } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiGet, apiPost, apiPut } from "../lib/api";
+import { formatRelativeAge, toLocalDateTime, toRFC3339 } from "../lib/date-time";
 
 const secretTypes = [
   ["generic_secret", "Generic secret"],
@@ -46,13 +48,26 @@ const emptyEditor = {
   usage_notes: [],
 };
 
+const emptyReplace = {
+  open: false,
+  item: null,
+  source: "imported",
+  value: "",
+  generator_kind: "random_token",
+  preview_value: "",
+  preview_token: "",
+  preview_state: "idle",
+  state: "idle",
+  error: null,
+};
+
 export function VaultPage() {
   const [items, setItems] = useState({ state: "loading", data: [], total: 0, error: null });
   const [projects, setProjects] = useState({ state: "loading", data: [], error: null });
   const [filters, setFilters] = useState({ project_id: "", query: "", expiry: "all" });
   const [editor, setEditor] = useState(emptyEditor);
   const [reveal, setReveal] = useState({ open: false, item: null, state: "idle", value: "", error: null, copied: false });
-  const [replace, setReplace] = useState({ open: false, item: null, value: "", state: "idle", error: null });
+  const [replace, setReplace] = useState(emptyReplace);
   const [remove, setRemove] = useState({ open: false, item: null, confirm: "", state: "idle", error: null });
   const [bindings, setBindings] = useState({
     open: false, item: null, state: "idle", data: [], targets: [],
@@ -60,10 +75,17 @@ export function VaultPage() {
   });
   const [action, setAction] = useState({ state: "idle", message: "", error: null });
   const searchTimer = useRef(null);
+  const itemsRequest = useRef(0);
+  const revealRequest = useRef(0);
+  const replacePreviewRequest = useRef(0);
+  const bindingsRequest = useRef(0);
 
   useEffect(() => {
-    void Promise.all([loadProjects(), loadItems()]);
-    return () => clearTimeout(searchTimer.current);
+    void loadProjects();
+    return () => {
+      clearTimeout(searchTimer.current);
+      itemsRequest.current += 1;
+    };
   }, []);
 
   useEffect(() => {
@@ -77,6 +99,20 @@ export function VaultPage() {
     const timer = setTimeout(closeReveal, 30000);
     return () => clearTimeout(timer);
   }, [reveal.open, reveal.value]);
+
+  useEffect(() => {
+    if (!replace.open || !replace.preview_value) return undefined;
+    const timer = setTimeout(() => {
+      replacePreviewRequest.current += 1;
+      setReplace((current) => ({
+        ...current,
+        preview_value: "",
+        preview_token: "",
+        preview_state: "idle",
+      }));
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, [replace.open, replace.preview_value]);
 
   const visibleItems = useMemo(() => {
     const now = Date.now();
@@ -103,14 +139,17 @@ export function VaultPage() {
   }
 
   async function loadItems() {
+    const requestID = ++itemsRequest.current;
     setItems((current) => ({ ...current, state: "loading", error: null }));
     try {
       const params = new URLSearchParams();
       if (filters.project_id) params.set("project_id", filters.project_id);
       if (filters.query.trim()) params.set("q", filters.query.trim());
       const data = await apiGet(`/api/vault-items${params.size ? `?${params}` : ""}`);
+      if (requestID !== itemsRequest.current) return;
       setItems({ state: "ready", data: data.items || [], total: data.total || 0, error: null });
     } catch (error) {
+      if (requestID !== itemsRequest.current) return;
       setItems({ state: "error", data: [], total: 0, error: error.message });
     }
   }
@@ -187,16 +226,20 @@ export function VaultPage() {
   }
 
   async function openReveal(item) {
+    const requestID = ++revealRequest.current;
     setReveal({ open: true, item, state: "loading", value: "", error: null, copied: false });
     try {
       const data = await apiPost(`/api/vault-items/${item.id}/reveal`, {});
+      if (requestID !== revealRequest.current) return;
       setReveal({ open: true, item, state: "ready", value: data.value || "", error: null, copied: false });
     } catch (error) {
+      if (requestID !== revealRequest.current) return;
       setReveal({ open: true, item, state: "error", value: "", error: error.message, copied: false });
     }
   }
 
   function closeReveal() {
+    revealRequest.current += 1;
     setReveal({ open: false, item: null, state: "idle", value: "", error: null, copied: false });
   }
 
@@ -216,15 +259,66 @@ export function VaultPage() {
     setReplace((current) => ({ ...current, state: "saving", error: null }));
     try {
       await apiPost(`/api/vault-items/${replace.item.id}/value`, {
-        value: replace.value,
+        source: replace.source,
+        value: replace.source === "imported" ? replace.value : "",
+        generator_kind: replace.source === "generated" ? replace.generator_kind : "",
+        preview_token: replace.source === "generated" ? replace.preview_token : "",
         expected_value_version: replace.item.value_version,
       });
-      setReplace({ open: false, item: null, value: "", state: "idle", error: null });
-      setAction({ state: "ready", message: "Local Vault value replaced. Provider-side credentials were not rotated.", error: null });
+      setReplace(emptyReplace);
+      setAction({
+        state: "ready",
+        message: replace.source === "generated"
+          ? "A new local Vault value was generated. Provider-side credentials were not rotated."
+          : "Local Vault value replaced. Provider-side credentials were not rotated.",
+        error: null,
+      });
       await loadItems();
     } catch (error) {
       setReplace((current) => ({ ...current, state: "error", error: error.message }));
     }
+  }
+
+  async function generateReplacementPreview(item, generatorKind) {
+    if (!item || !generatorKind) return;
+    const requestID = ++replacePreviewRequest.current;
+    setReplace((current) => ({
+      ...current,
+      source: "generated",
+      generator_kind: generatorKind,
+      value: "",
+      preview_value: "",
+      preview_token: "",
+      preview_state: "loading",
+      error: null,
+    }));
+    try {
+      const data = await apiPost(`/api/vault-items/${item.id}/generate-preview`, {
+        generator_kind: generatorKind,
+      });
+      if (requestID !== replacePreviewRequest.current) return;
+      setReplace((current) => ({
+        ...current,
+        preview_value: data.value || "",
+        preview_token: data.preview_token || "",
+        preview_state: "ready",
+        error: null,
+      }));
+    } catch (error) {
+      if (requestID !== replacePreviewRequest.current) return;
+      setReplace((current) => ({
+        ...current,
+        preview_value: "",
+        preview_token: "",
+        preview_state: "error",
+        error: error.message,
+      }));
+    }
+  }
+
+  function closeReplace() {
+    replacePreviewRequest.current += 1;
+    setReplace(emptyReplace);
   }
 
   async function deleteItem() {
@@ -244,6 +338,7 @@ export function VaultPage() {
   }
 
   async function openBindings(item) {
+    const requestID = ++bindingsRequest.current;
     setBindings({
       open: true, item, state: "loading", data: [], targets: [],
       source_project_id: String(item.owner_project_id), target_id: "", profile_id: "",
@@ -254,16 +349,24 @@ export function VaultPage() {
         apiGet(`/api/vault-default-bindings?vault_item_id=${item.id}`),
         apiGet("/api/connector-targets/inventory"),
       ]);
+      if (requestID !== bindingsRequest.current) return;
       setBindings((current) => ({
         ...current, state: "ready", data: bindingData.items || [],
-        targets: (inventory.items || []).filter((target) => (target.profiles || []).length > 0),
+        targets: (inventory.items || [])
+          .map((target) => ({
+            ...target,
+            profiles: (target.profiles || []).filter((profile) => profile.vault_session_supported),
+          }))
+          .filter((target) => target.profiles.length > 0),
       }));
     } catch (error) {
+      if (requestID !== bindingsRequest.current) return;
       setBindings((current) => ({ ...current, state: "error", error: error.message }));
     }
   }
 
   function closeBindings() {
+    bindingsRequest.current += 1;
     setBindings({
       open: false, item: null, state: "idle", data: [], targets: [],
       source_project_id: "", target_id: "", profile_id: "", replace_existing: false, error: null,
@@ -346,17 +449,22 @@ export function VaultPage() {
       {projects.state === "error" ? <Notice tone="bad">{projects.error}</Notice> : null}
       {action.message ? <Notice tone="good">{action.message}</Notice> : null}
       {action.error && !editor.open ? <Notice tone="bad">{action.error}</Notice> : null}
+      {items.state === "ready" && items.total > items.data.length ? (
+        <Notice tone="warn">
+          Showing {items.data.length} of {items.total} matching Vault items. Refine the project or search filter to reach items outside this bounded result.
+        </Notice>
+      ) : null}
 
       <div className="min-w-0 overflow-x-auto rounded-lg border border-stone-200 bg-white">
-        <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-sm">
+        <table className="w-full min-w-[1100px] table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
-              <th className="w-[24%] px-4 py-3 font-semibold">Name</th>
-              <th className="w-[15%] px-4 py-3 font-semibold">Type</th>
-              <th className="w-[25%] px-4 py-3 font-semibold">Projects</th>
-              <th className="w-[14%] px-4 py-3 font-semibold">Expires</th>
-              <th className="w-[10%] px-4 py-3 font-semibold">Last injected</th>
-              <th className="w-[12%] px-4 py-3 text-right font-semibold">Actions</th>
+              <th className="w-[22%] px-4 py-3 font-semibold">Name</th>
+              <th className="w-[12%] px-4 py-3 font-semibold">Type</th>
+              <th className="w-[18%] px-4 py-3 font-semibold">Projects</th>
+              <th className="w-[12%] px-4 py-3 font-semibold">Expires</th>
+              <th className="w-[12%] px-4 py-3 font-semibold">Last injected</th>
+              <th className="w-[24%] px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
@@ -367,7 +475,7 @@ export function VaultPage() {
                 projects={projects.data}
                 onEdit={() => openEdit(item)}
                 onReveal={() => void openReveal(item)}
-                onReplace={() => setReplace({ open: true, item, value: "", state: "idle", error: null })}
+                onReplace={() => setReplace({ ...emptyReplace, open: true, item })}
                 onBindings={() => void openBindings(item)}
                 onDelete={() => setRemove({ open: true, item, confirm: "", state: "idle", error: null })}
               />
@@ -415,16 +523,52 @@ export function VaultPage() {
         </div>
       </Dialog>
 
-      <Dialog open={replace.open} title="Replace local value" description="This updates AIPermission only. It does not rotate the credential at its provider." onClose={() => setReplace({ open: false, item: null, value: "", state: "idle", error: null })} size="lg" autoFocusClose={false}>
+      <Dialog open={replace.open} title="Replace local value" description="Import a new value or preview a locally generated value before saving it. This does not rotate the credential at its provider." onClose={() => replace.state !== "saving" && closeReplace()} size="lg" autoFocusClose={false}>
         <form className="grid gap-4" onSubmit={replaceValue}>
-          <Field>
-            New value
-            <Textarea autoFocus className="min-h-36 font-mono" value={replace.value} onChange={(event) => setReplace((current) => ({ ...current, value: event.target.value }))} required />
-          </Field>
+          <div className="grid grid-cols-2 rounded-md border border-stone-300 p-1">
+            <Button type="button" variant={replace.source === "imported" ? "default" : "ghost"} className="h-9" onClick={() => {
+              replacePreviewRequest.current += 1;
+              setReplace((current) => ({ ...current, source: "imported", preview_value: "", preview_token: "", preview_state: "idle", error: null }));
+            }}>Import value</Button>
+            <Button type="button" variant={replace.source === "generated" ? "default" : "ghost"} className="h-9" onClick={() => void generateReplacementPreview(replace.item, replace.generator_kind)}>Generate locally</Button>
+          </div>
+          {replace.source === "imported" ? (
+            <Field>
+              New value
+              <Textarea autoFocus className="min-h-36 font-mono" value={replace.value} onChange={(event) => setReplace((current) => ({ ...current, value: event.target.value }))} required />
+            </Field>
+          ) : (
+            <div className="grid gap-3">
+              <Field>
+                Generator
+                <Select
+                  autoFocus
+                  value={replace.generator_kind}
+                  disabled={replace.preview_state === "loading" || replace.state === "saving"}
+                  onChange={(event) => void generateReplacementPreview(replace.item, event.target.value)}
+                >
+                  {generatorKinds.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </Select>
+              </Field>
+              <Field>
+                Generated value
+                <Textarea readOnly className="min-h-28 font-mono" value={replace.preview_value} placeholder={replace.preview_state === "loading" ? "Generating locally..." : "Choose Generate locally to create a preview."} />
+              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-stone-500">The displayed value clears after 30 seconds and is not saved until you confirm.</p>
+                <Button type="button" variant="outline" disabled={replace.preview_state === "loading" || replace.state === "saving"} onClick={() => void generateReplacementPreview(replace.item, replace.generator_kind)}>
+                  <RotateCw className="h-4 w-4" />
+                  {replace.preview_state === "loading" ? "Generating..." : "Regenerate"}
+                </Button>
+              </div>
+            </div>
+          )}
           {replace.error ? <Notice tone="bad">{replace.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={() => setReplace({ open: false, item: null, value: "", state: "idle", error: null })}>Cancel</Button>
-            <Button type="submit" disabled={!replace.value || replace.state === "saving"}>{replace.state === "saving" ? "Replacing..." : "Replace local value"}</Button>
+            <Button type="button" variant="outline" disabled={replace.state === "saving"} onClick={closeReplace}>Cancel</Button>
+            <Button type="submit" disabled={(replace.source === "imported" && !replace.value) || (replace.source === "generated" && !replace.preview_token) || replace.state === "saving"}>
+              {replace.state === "saving" ? "Replacing..." : replace.source === "generated" ? "Save generated value" : "Replace local value"}
+            </Button>
           </div>
         </form>
       </Dialog>
@@ -449,12 +593,20 @@ export function VaultPage() {
 
 function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindings, onDelete }) {
   const projectNames = [item.owner_project_name, ...(item.project_ids || []).map((id) => projects.find((project) => Number(project.id) === Number(id))?.name).filter(Boolean)];
+  const visibleTags = (item.tags || []).slice(0, 3);
+  const hiddenTagCount = Math.max(0, (item.tags || []).length - visibleTags.length);
   const expiry = expiryState(item);
   return (
     <tr className="hover:bg-stone-50">
       <td className="px-4 py-3">
         <p className="truncate font-mono text-xs font-semibold text-stone-950">{item.name}</p>
         <p className="mt-1 truncate text-xs text-stone-500">{[item.provider, item.environment].filter(Boolean).join(" / ") || "Local secret"}</p>
+        {visibleTags.length > 0 ? (
+          <div className="mt-2 flex min-w-0 flex-wrap gap-1" title={(item.tags || []).join(", ")}>
+            {visibleTags.map((tag) => <Badge key={tag} tone="neutral" className="max-w-32 truncate px-2 py-0.5 font-medium">{tag}</Badge>)}
+            {hiddenTagCount > 0 ? <Badge tone="neutral" className="px-2 py-0.5 font-medium">+{hiddenTagCount}</Badge> : null}
+          </div>
+        ) : null}
       </td>
       <td className="px-4 py-3"><Badge tone="neutral">{secretTypeLabel(item.secret_type)}</Badge></td>
       <td className="px-4 py-3">
@@ -465,14 +617,14 @@ function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindings, onD
       <td className="px-4 py-3">
         <Badge tone={expiry.tone}>{expiry.label}</Badge>
       </td>
-      <td className="px-4 py-3 text-xs text-stone-500">{item.last_used_at ? timeAgo(item.last_used_at) : "Never"}</td>
+      <td className="px-4 py-3 text-xs text-stone-500">{item.last_used_at ? formatRelativeAge(item.last_used_at) : "Never"}</td>
       <td className="px-4 py-3">
-        <div className="flex justify-end gap-1">
-          <IconButton title="Reveal and copy" icon={Eye} onClick={onReveal} />
-          <IconButton title="Edit metadata" icon={Edit3} onClick={onEdit} />
-          <IconButton title="Replace local value" icon={RotateCw} onClick={onReplace} />
+        <div className="flex justify-end gap-2">
           <IconButton title="Default session bindings" icon={Link2} onClick={onBindings} />
-          <IconButton title="Delete" icon={Trash2} onClick={onDelete} danger />
+          <IconButton title="Reveal and copy" icon={Eye} onClick={onReveal} />
+          <IconButton title="Replace local value" icon={RotateCw} onClick={onReplace} />
+          <IconButton title="Edit metadata" icon={Edit3} onClick={onEdit} />
+          <IconButton title="Delete" icon={Trash2} onClick={onDelete} />
         </div>
       </td>
     </tr>
@@ -531,7 +683,7 @@ function VaultBindingsDialog({ state, projects, onChange, onClose, onSave, onDel
           </div>
           <label className="flex items-center gap-2 text-sm text-stone-700">
             <Checkbox checked={state.replace_existing} onChange={(event) => update("replace_existing", event.target.checked)} />
-            Replace an existing remote environment value with the same name
+            Overwrite an existing shell value with the same name
           </label>
           {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
           <div className="flex justify-end">
@@ -547,9 +699,9 @@ function VaultBindingsDialog({ state, projects, onChange, onClose, onSave, onDel
             <div key={item.id} className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 last:border-b-0">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{item.target_name} / {item.profile_label}</p>
-                <p className="truncate text-xs text-stone-500">{item.source_project_name} · {item.connector_kind} · {item.replace_existing ? "replace existing" : "keep existing"}</p>
+                <p className="truncate text-xs text-stone-500">{item.source_project_name} · {item.connector_kind} · {item.replace_existing ? "overwrite shell value" : "keep shell value"}</p>
               </div>
-              <IconButton title="Remove binding" icon={Trash2} danger onClick={() => onDelete(item)} />
+              <IconButton title="Remove binding" icon={Trash2} onClick={() => onDelete(item)} />
             </div>
           ))}
           {state.state === "loading" ? <div className="p-4"><Notice>Loading default bindings...</Notice></div> : null}
@@ -568,9 +720,9 @@ function selectedBinding(state) {
   ) || null;
 }
 
-function IconButton({ title, icon: Icon, onClick, danger = false }) {
+function IconButton({ title, icon: Icon, onClick }) {
   return (
-    <Button type="button" variant="ghost" className={`h-9 w-9 px-0 ${danger ? "text-red-700" : ""}`} title={title} onClick={onClick}>
+    <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} onClick={onClick}>
       <Icon className="h-4 w-4" />
     </Button>
   );
@@ -656,8 +808,8 @@ function VaultEditor({ editor, projects, action, onChange, onClose, onSubmit }) 
         </div>
         <Field>Description<Textarea value={editor.description} onChange={(event) => update("description", event.target.value)} placeholder="Non-secret purpose and access scope" /></Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field>Expires at<Input type="datetime-local" value={editor.expires_at} onChange={(event) => update("expires_at", event.target.value)} /></Field>
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(120px,1fr)]">
+          <Field>Expires at<DateTimePicker value={editor.expires_at} onChange={(value) => update("expires_at", value)} /></Field>
           <Field>Warning days<Input type="number" min="1" max="3650" value={editor.expiry_warning_days} onChange={(event) => update("expiry_warning_days", event.target.value)} required /></Field>
         </div>
         <Field>Tags<Input value={editor.tags} onChange={(event) => update("tags", event.target.value)} placeholder="deploy, production, ci" /></Field>
@@ -704,20 +856,6 @@ function splitTags(value) {
   return String(value || "").split(",").map((tag) => tag.trim()).filter(Boolean);
 }
 
-function toRFC3339(value) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
-}
-
-function toLocalDateTime(value) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  const local = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
 function expiryState(item) {
   if (!item.expires_at) return { tone: "neutral", label: "Never" };
   const expiresAt = Date.parse(item.expires_at);
@@ -726,15 +864,4 @@ function expiryState(item) {
   const days = Math.max(1, Math.ceil((expiresAt - now) / 86400000));
   if (days <= Number(item.expiry_warning_days || 14)) return { tone: "warn", label: `${days}d left` };
   return { tone: "good", label: new Date(expiresAt).toLocaleDateString() };
-}
-
-function timeAgo(value) {
-  const difference = Date.now() - Date.parse(value);
-  if (!Number.isFinite(difference) || difference < 0) return "Just now";
-  const minutes = Math.floor(difference / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
