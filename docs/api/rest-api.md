@@ -1240,9 +1240,17 @@ PUT /api/vault-items/{id}
 POST /api/vault-items/{id}/value
 POST /api/vault-items/{id}/reveal
 POST /api/vault-items/{id}/delete
+GET /api/vault-default-bindings
+PUT /api/vault-default-bindings
+POST /api/vault-default-bindings/{id}/delete
 ```
 
 Project Vault endpoints are local UI operations. Metadata responses never
 contain stored values. Reveal is an explicit audited `POST` response with
 `Cache-Control: no-store, private`; create, update, replacement, and deletion
 use revision preconditions so stale forms cannot overwrite newer state.
+
+Default bindings associate an exact Vault item assignment with one connector
+target and credential profile. They preselect future session environment
+content but do not grant token permission. Binding updates and deletes use the
+current `binding_revision` for optimistic concurrency.
