@@ -49,6 +49,17 @@ func deriveVaultKey(secret string) ([]byte, error) {
 }
 
 func (v *Vault) EncryptJSON(value any) (string, error) {
+	return v.encryptJSON(value, nil)
+}
+
+func (v *Vault) EncryptJSONWithAAD(value any, associatedData []byte) (string, error) {
+	if len(associatedData) == 0 {
+		return "", fmt.Errorf("associated data is required")
+	}
+	return v.encryptJSON(value, associatedData)
+}
+
+func (v *Vault) encryptJSON(value any, associatedData []byte) (string, error) {
 	plain, err := json.Marshal(value)
 	if err != nil {
 		return "", fmt.Errorf("marshal secret: %w", err)
@@ -59,12 +70,23 @@ func (v *Vault) EncryptJSON(value any) (string, error) {
 		return "", fmt.Errorf("create nonce: %w", err)
 	}
 
-	ciphertext := v.aead.Seal(nil, nonce, plain, nil)
+	ciphertext := v.aead.Seal(nil, nonce, plain, associatedData)
 	payload := append(nonce, ciphertext...)
 	return base64.StdEncoding.EncodeToString(payload), nil
 }
 
 func (v *Vault) DecryptJSON(encrypted string, target any) error {
+	return v.decryptJSON(encrypted, target, nil)
+}
+
+func (v *Vault) DecryptJSONWithAAD(encrypted string, target any, associatedData []byte) error {
+	if len(associatedData) == 0 {
+		return fmt.Errorf("associated data is required")
+	}
+	return v.decryptJSON(encrypted, target, associatedData)
+}
+
+func (v *Vault) decryptJSON(encrypted string, target any, associatedData []byte) error {
 	payload, err := base64.StdEncoding.DecodeString(encrypted)
 	if err != nil {
 		return fmt.Errorf("decode secret: %w", err)
@@ -77,7 +99,7 @@ func (v *Vault) DecryptJSON(encrypted string, target any) error {
 
 	nonce := payload[:nonceSize]
 	ciphertext := payload[nonceSize:]
-	plain, err := v.aead.Open(nil, nonce, ciphertext, nil)
+	plain, err := v.aead.Open(nil, nonce, ciphertext, associatedData)
 	if err != nil {
 		return fmt.Errorf("decrypt secret: %w", err)
 	}
