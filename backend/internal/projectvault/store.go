@@ -11,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -643,41 +644,14 @@ func (s *Store) loadRelations(ctx context.Context, item *Item) error {
 }
 
 func validateEnvironmentName(value string) error {
-	if value == "" {
-		return ValidationError("name is required")
-	}
-	if utf8.RuneCountInString(value) > maxNameRunes {
-		return ValidationError("name is too long")
-	}
-	for index, r := range value {
-		if (r >= 'A' && r <= 'Z') || r == '_' || (index > 0 && r >= '0' && r <= '9') {
-			continue
-		}
-		return ValidationError("name must use uppercase letters, digits, and underscores, and cannot start with a digit")
-	}
-	if isReservedEnvironmentName(value) {
-		return ValidationError("name is reserved and cannot be injected")
+	if err := sessionenv.ValidateName(value); err != nil {
+		return ValidationError(err.Error())
 	}
 	return nil
 }
 
 func isReservedEnvironmentName(value string) bool {
-	exact := map[string]bool{
-		"PATH": true, "HOME": true, "SHELL": true, "USER": true, "LOGNAME": true,
-		"IFS": true, "ENV": true, "BASH_ENV": true, "CDPATH": true, "GCONV_PATH": true,
-		"OPENSSL_CONF": true, "PYTHONHOME": true, "PYTHONPATH": true, "RUBYOPT": true,
-		"PERL5OPT": true, "NODE_OPTIONS": true, "GIT_CONFIG": true, "GIT_CONFIG_SYSTEM": true,
-		"GIT_CONFIG_GLOBAL": true, "GIT_SSH": true, "GIT_SSH_COMMAND": true,
-	}
-	if exact[value] {
-		return true
-	}
-	for _, prefix := range []string{"LD_", "DYLD_", "BASH_FUNC_", "GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"} {
-		if strings.HasPrefix(value, prefix) {
-			return true
-		}
-	}
-	return false
+	return sessionenv.ReservedName(value)
 }
 
 func validateValue(value string) error {
