@@ -473,6 +473,16 @@ var projectVaultTableStatements = []string{
 	);`,
 	`CREATE INDEX idx_token_project_capabilities_lookup
 		ON token_project_capabilities(token_id, project_id, capability_name);`,
+	`CREATE TABLE token_project_capability_revisions (
+		token_id INTEGER NOT NULL,
+		project_id INTEGER NOT NULL,
+		capability_name TEXT NOT NULL,
+		revision INTEGER NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(token_id, project_id, capability_name),
+		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
+		FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+	);`,
 	`CREATE TABLE vault_action_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		token_id INTEGER NOT NULL,
