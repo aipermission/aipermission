@@ -13,9 +13,6 @@ const emptyLoad = {
   targets: [],
   actionsByProfile: {},
   permissions: [],
-  projectScopes: [],
-  capabilityDefinitions: [],
-  projectCapabilities: [],
   error: null,
 };
 
@@ -23,22 +20,14 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   const [load, setLoad] = useState(emptyLoad);
   const [draft, setDraft] = useState({});
   const [save, setSave] = useState({ state: "idle", error: null });
-  const [scopeSave, setScopeSave] = useState({ state: "idle", error: null });
-  const [capabilitySave, setCapabilitySave] = useState({ state: "idle", error: null });
   const [selectedProfileKey, setSelectedProfileKey] = useState("");
-  const [projectDraft, setProjectDraft] = useState({});
-  const [capabilityDraft, setCapabilityDraft] = useState({});
 
   useEffect(() => {
     if (!token) {
       setLoad(emptyLoad);
       setDraft({});
       setSave({ state: "idle", error: null });
-      setScopeSave({ state: "idle", error: null });
-      setCapabilitySave({ state: "idle", error: null });
       setSelectedProfileKey("");
-      setProjectDraft({});
-      setCapabilityDraft({});
       return;
     }
     void loadConnectorPermissions(token.id);
@@ -71,12 +60,10 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   async function loadConnectorPermissions(tokenID) {
     setLoad((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const [catalog, targetList, permissions, projectScopes, projectCapabilities] = await Promise.all([
+      const [catalog, targetList, permissions] = await Promise.all([
         apiGet("/api/connectors"),
         apiGet("/api/connector-targets/inventory"),
         apiGet(`/api/tokens/${tokenID}/connector-permissions`),
-        apiGet(`/api/tokens/${tokenID}/project-scopes`),
-        apiGet(`/api/tokens/${tokenID}/project-capabilities`),
       ]);
       const targets = targetList.items || [];
       const actionEntries = targets.flatMap((target) =>
@@ -84,28 +71,14 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
       );
       const actionsByProfile = Object.fromEntries(actionEntries);
       const permissionItems = permissions.items || [];
-      const scopeItems = projectScopes.items || [];
-      const capabilityItems = projectCapabilities.items || [];
       setLoad({
         state: "ready",
         catalog: catalog.items || [],
         targets,
         actionsByProfile,
         permissions: permissionItems,
-        projectScopes: scopeItems,
-        capabilityDefinitions: projectCapabilities.definitions || [],
-        projectCapabilities: capabilityItems,
         error: null,
       });
-      setProjectDraft(Object.fromEntries(scopeItems.map((scope) => [scope.project_id, Boolean(scope.enabled)])));
-      setCapabilityDraft(
-        Object.fromEntries(
-          capabilityItems.map((capability) => [
-            projectCapabilityKey(capability.project_id, capability.capability_name),
-            capability.execution_rule,
-          ])
-        )
-      );
       setDraft(
         Object.fromEntries(
           permissionItems
@@ -121,54 +94,6 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
     } catch (error) {
       setLoad({ ...emptyLoad, state: "error", error: error.message });
       setDraft({});
-      setProjectDraft({});
-      setCapabilityDraft({});
-    }
-  }
-
-  function setProjectCapabilityRule(projectID, capabilityName, rule) {
-    setCapabilityDraft((current) => ({
-      ...current,
-      [projectCapabilityKey(projectID, capabilityName)]: rule,
-    }));
-  }
-
-  async function saveProjectCapabilities() {
-    if (!token) return;
-    setCapabilitySave({ state: "saving", error: null });
-    try {
-      const capabilities = load.projectScopes.flatMap((project) =>
-        load.capabilityDefinitions
-          .map((definition) => {
-            const executionRule = capabilityDraft[projectCapabilityKey(project.project_id, definition.name)] || "";
-            if (!executionRule) return null;
-            return {
-              project_id: project.project_id,
-              capability_name: definition.name,
-              execution_rule: executionRule,
-            };
-          })
-          .filter(Boolean)
-      );
-      const result = await apiPut(`/api/tokens/${token.id}/project-capabilities`, { capabilities });
-      const items = result.items || [];
-      setLoad((current) => ({
-        ...current,
-        capabilityDefinitions: result.definitions || current.capabilityDefinitions,
-        projectCapabilities: items,
-      }));
-      setCapabilityDraft(
-        Object.fromEntries(
-          items.map((capability) => [
-            projectCapabilityKey(capability.project_id, capability.capability_name),
-            capability.execution_rule,
-          ])
-        )
-      );
-      setCapabilitySave({ state: "ready", error: null });
-      await onSaved?.();
-    } catch (error) {
-      setCapabilitySave({ state: "error", error: error.message });
     }
   }
 
@@ -177,25 +102,6 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
       ...current,
       [key]: rule ? { execution_rule: rule, expires_at: rule === "blocked" ? "" : current[key]?.expires_at || "" } : { execution_rule: "", expires_at: "" },
     }));
-  }
-
-  async function toggleProjectScope(projectID, enabled) {
-    if (!token) return;
-    const nextDraft = { ...projectDraft, [projectID]: enabled };
-    setProjectDraft(nextDraft);
-    setScopeSave({ state: "saving", error: null });
-    try {
-      const enabledProjectIDs = load.projectScopes.filter((scope) => nextDraft[scope.project_id]).map((scope) => scope.project_id);
-      const result = await apiPut(`/api/tokens/${token.id}/project-scopes`, { enabled_project_ids: enabledProjectIDs });
-      const items = result.items || [];
-      setLoad((current) => ({ ...current, projectScopes: items }));
-      setProjectDraft(Object.fromEntries(items.map((scope) => [scope.project_id, Boolean(scope.enabled)])));
-      await onSaved?.();
-      setScopeSave({ state: "ready", error: null });
-    } catch (error) {
-      setProjectDraft(projectDraft);
-      setScopeSave({ state: "error", error: error.message });
-    }
   }
 
   async function savePermissions(event) {
@@ -246,7 +152,7 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
       onClose={onClose}
       size="wide"
       className="!max-w-[1120px]"
-      bodyClassName="max-h-[calc(100vh-180px)] overflow-y-auto"
+      bodyClassName="max-h-[calc(100vh-180px)] overflow-hidden"
     >
       <form className="grid gap-4" onSubmit={savePermissions}>
         <Notice>
@@ -255,101 +161,8 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
         {load.state === "loading" ? <Notice>Loading connector targets...</Notice> : null}
         {load.state === "error" ? <Notice tone="bad">{load.error}</Notice> : null}
         {save.state === "error" ? <Notice tone="bad">{save.error}</Notice> : null}
-        {scopeSave.state === "error" ? <Notice tone="bad">{scopeSave.error}</Notice> : null}
-        {capabilitySave.state === "error" ? <Notice tone="bad">{capabilitySave.error}</Notice> : null}
         {save.state === "ready" ? <Notice tone="good">Connector permissions saved.</Notice> : null}
-        {capabilitySave.state === "ready" ? <Notice tone="good">Project Vault capabilities saved.</Notice> : null}
         {load.state === "ready" && rows.length === 0 ? <Notice>Create a connector target before granting action permissions.</Notice> : null}
-
-        {load.state === "ready" ? (
-          <div className="grid gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
-            <div>
-              <p className="text-xs font-semibold uppercase text-stone-500">Project visibility</p>
-              <p className="mt-0.5 text-xs text-stone-500">Disabled projects stay configured, but disappear from this token's MCP target list. Changes apply immediately.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {load.projectScopes.map((scope) => (
-                <label key={scope.project_id} className={`inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold ${projectDraft[scope.project_id] ? "border-emerald-700 bg-emerald-950 text-white" : "border-stone-300 bg-white text-stone-600"}`}>
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 accent-emerald-700"
-                    checked={Boolean(projectDraft[scope.project_id])}
-                    disabled={scopeSave.state === "saving"}
-                    onChange={(event) => void toggleProjectScope(scope.project_id, event.target.checked)}
-                  />
-                  {scope.project_name}
-                </label>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {load.state === "ready" && load.capabilityDefinitions.length > 0 ? (
-          <section className="grid gap-3 rounded-lg border border-stone-200 bg-white p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase text-stone-500">Project Vault capabilities</p>
-                <p className="mt-0.5 text-xs text-stone-500">
-                  Vault metadata and session access are explicit project grants. Enabling project visibility does not grant them.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={capabilitySave.state === "saving"}
-                onClick={() => void saveProjectCapabilities()}
-              >
-                {capabilitySave.state === "saving" ? "Saving..." : "Save Vault capabilities"}
-              </Button>
-            </div>
-            <div className="grid max-h-[280px] gap-2 overflow-y-auto pr-1">
-              {load.projectScopes.map((project) => (
-                <div key={project.project_id} className={`grid gap-2 rounded-md border border-stone-200 p-3 ${projectDraft[project.project_id] ? "" : "opacity-60"}`}>
-                  <div className="flex min-w-0 items-center justify-between gap-2">
-                    <span className="truncate text-sm font-semibold text-stone-950">{project.project_name}</span>
-                    <Badge tone={projectDraft[project.project_id] ? "good" : "warn"}>
-                      {projectDraft[project.project_id] ? "visible" : "hidden"}
-                    </Badge>
-                  </div>
-                  <div className="grid gap-2 xl:grid-cols-3">
-                    {load.capabilityDefinitions.map((definition) => {
-                      const key = projectCapabilityKey(project.project_id, definition.name);
-                      const rule = capabilityDraft[key] || "";
-                      return (
-                        <div key={definition.name} className="grid gap-2 rounded-md bg-stone-50 p-2">
-                          <div className="min-w-0">
-                            <p className="truncate font-mono text-xs font-semibold text-stone-950">{definition.label}</p>
-                            <p className="line-clamp-2 text-xs text-stone-500">{definition.description}</p>
-                          </div>
-                          <div className={`grid gap-1 ${definition.allowed_rules.length === 2 ? "grid-cols-3" : "grid-cols-4"}`}>
-                            <ConnectorRuleButton active={!rule} onClick={() => setProjectCapabilityRule(project.project_id, definition.name, "")}>
-                              Disabled
-                            </ConnectorRuleButton>
-                            {definition.allowed_rules.includes("blocked") ? (
-                              <ConnectorRuleButton active={rule === "blocked"} onClick={() => setProjectCapabilityRule(project.project_id, definition.name, "blocked")}>
-                                Blocked
-                              </ConnectorRuleButton>
-                            ) : null}
-                            {definition.allowed_rules.includes("approval_required") ? (
-                              <ConnectorRuleButton active={rule === "approval_required"} onClick={() => setProjectCapabilityRule(project.project_id, definition.name, "approval_required")}>
-                                Prompt
-                              </ConnectorRuleButton>
-                            ) : null}
-                            {definition.allowed_rules.includes("always_run") ? (
-                              <ConnectorRuleButton active={rule === "always_run"} onClick={() => setProjectCapabilityRule(project.project_id, definition.name, "always_run")}>
-                                Always
-                              </ConnectorRuleButton>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
 
         {load.state === "ready" && rows.length > 0 ? (
           <div
@@ -365,14 +178,13 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
                 {profileGroups.map((group) => {
                   const activeCount = activeRuleCount(group, draft);
                   const selected = group.key === selectedProfileKey;
-                  const projectEnabled = Boolean(projectDraft[group.target.project_id]);
                   return (
                     <button
                       key={group.key}
                       type="button"
                       className={`grid w-full gap-1 px-3 py-3 text-left transition ${
                         selected ? "bg-emerald-950 text-white" : "bg-white text-stone-950 hover:bg-stone-50"
-                      } ${projectEnabled ? "" : "opacity-60"}`}
+                      }`}
                       onClick={() => setSelectedProfileKey((current) => (current === group.key ? "" : group.key))}
                     >
                       <div className="flex min-w-0 items-center justify-between gap-2">
@@ -381,7 +193,6 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
                       </div>
                       <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
                         <Badge tone="neutral">{connectorLabel(load.catalog, group.target.connector_kind)}</Badge>
-                        <Badge tone={projectEnabled ? "good" : "warn"}>{group.target.project_name || "Ungrouped"}</Badge>
                         <span className={selected ? "truncate text-emerald-50" : "truncate text-stone-500"}>{group.profile.label}</span>
                       </div>
                     </button>
@@ -461,10 +272,6 @@ function permissionKey(targetID, profileID, actionName) {
 
 function profileActionKey(targetID, profileID) {
   return `${targetID}:${profileID}`;
-}
-
-function projectCapabilityKey(projectID, capabilityName) {
-  return `${projectID}:${capabilityName}`;
 }
 
 function connectorLabel(catalog, kind) {

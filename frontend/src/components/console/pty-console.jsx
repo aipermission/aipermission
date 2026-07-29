@@ -2,11 +2,13 @@ import "@xterm/xterm/css/xterm.css";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
+import { syncTerminalTranscript } from "./terminal-transcript";
 
 export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
   const containerRef = useRef(null);
   const terminalRef = useRef(null);
   const lastTranscriptRef = useRef("");
+  const latestTranscriptRef = useRef(session.transcript || "");
 
   useEffect(() => {
     const terminal = new Terminal({
@@ -18,9 +20,10 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
       lineHeight: 1.65,
       theme: terminalTheme(theme),
     });
+    const container = containerRef.current;
     const fit = new FitAddon();
     terminal.loadAddon(fit);
-    terminal.open(containerRef.current);
+    terminal.open(container);
     terminal.focus();
     const fitAndResize = () => {
       fit.fit();
@@ -33,47 +36,34 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
     const resizeObserver = new ResizeObserver(() => {
       fitAndResize();
     });
-    resizeObserver.observe(containerRef.current);
+    resizeObserver.observe(container);
 
     const disposable = terminal.onData((data) => {
       onInput(data);
     });
     const focusHandler = () => terminal.focus();
-    containerRef.current?.addEventListener("pointerdown", focusHandler);
+    container?.addEventListener("pointerdown", focusHandler);
 
     terminalRef.current = terminal;
+    lastTranscriptRef.current = "";
+    syncTerminalTranscript(terminal, lastTranscriptRef, latestTranscriptRef.current);
 
     return () => {
       disposable.dispose();
-      containerRef.current?.removeEventListener("pointerdown", focusHandler);
+      container?.removeEventListener("pointerdown", focusHandler);
       cancelAnimationFrame(frame);
       window.clearTimeout(settleTimer);
       resizeObserver.disconnect();
+      if (terminalRef.current === terminal) terminalRef.current = null;
       terminal.dispose();
     };
   }, [theme]);
 
   useEffect(() => {
+    latestTranscriptRef.current = session.transcript || "";
     const terminal = terminalRef.current;
     if (!terminal) return;
-    const transcript = session.transcript || "";
-    const previous = lastTranscriptRef.current;
-    if (transcript.startsWith(previous)) {
-      terminal.write(transcript.slice(previous.length));
-    } else {
-      terminal.clear();
-      terminal.reset();
-      terminal.write(transcript);
-    }
-    lastTranscriptRef.current = transcript;
-    terminal.scrollToBottom();
-  }, [session.transcript]);
-
-  useEffect(() => {
-    if (!session.transcript) {
-      terminalRef.current?.clear();
-      lastTranscriptRef.current = "";
-    }
+    syncTerminalTranscript(terminal, lastTranscriptRef, session.transcript || "");
   }, [session.transcript]);
 
   return (

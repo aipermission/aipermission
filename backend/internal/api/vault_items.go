@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -68,6 +70,7 @@ type generatedVaultItemPreview struct {
 	GeneratorParameters  map[string]any `json:"generator_parameters"`
 	Value                string         `json:"value"`
 	ExpiresAtUnix        int64          `json:"expires_at_unix"`
+	Nonce                string         `json:"nonce"`
 }
 
 type deleteVaultItemRequest struct {
@@ -294,7 +297,8 @@ func (s vaultItemHandlers) replaceVaultItemValue(w http.ResponseWriter, r *http.
 			generatedPreview.ItemID != id ||
 			generatedPreview.ExpectedValueVersion != request.ExpectedValueVersion ||
 			generatedPreview.GeneratorKind != request.GeneratorKind ||
-			generatedPreview.ExpiresAtUnix <= time.Now().UTC().Unix() {
+			generatedPreview.ExpiresAtUnix <= time.Now().UTC().Unix() ||
+			!runtime.vaultPreviewCurrent(id, generatedPreview.Nonce) {
 			writeError(w, http.StatusBadRequest, "generated replacement preview is invalid or expired")
 			return
 		}
@@ -319,6 +323,7 @@ func (s vaultItemHandlers) replaceVaultItemValue(w http.ResponseWriter, r *http.
 		writeInternalError(w)
 		return
 	}
+	runtime.clearVaultPreview(id)
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.item.value_replaced", vaultItemAuditPayload(item))
 	writeJSON(w, http.StatusOK, item)
 }
@@ -363,9 +368,14 @@ func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *ht
 		return
 	}
 	expiresAt := time.Now().UTC().Add(5 * time.Minute)
+	nonce, err := newVaultPreviewNonce()
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	preview := generatedVaultItemPreview{
 		ItemID: id, ExpectedValueVersion: item.ValueVersion, GeneratorKind: request.GeneratorKind,
-		GeneratorParameters: parameters, Value: value, ExpiresAtUnix: expiresAt.Unix(),
+		GeneratorParameters: parameters, Value: value, ExpiresAtUnix: expiresAt.Unix(), Nonce: nonce,
 	}
 	if runtime.vault == nil {
 		writeInternalError(w)
@@ -384,6 +394,7 @@ func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *ht
 		writeInternalError(w)
 		return
 	}
+	runtime.setVaultPreview(id, nonce)
 	w.Header().Set("Cache-Control", "no-store, private")
 	w.Header().Set("Pragma", "no-cache")
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -394,6 +405,44 @@ func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *ht
 
 func vaultItemPreviewAAD(workspaceUUID string, itemID, valueVersion int64) []byte {
 	return []byte(fmt.Sprintf("project-vault-value-preview:v1:%s:%d:%d", workspaceUUID, itemID, valueVersion))
+}
+
+func newVaultPreviewNonce() (string, error) {
+	value := make([]byte, 16)
+	if _, err := rand.Read(value); err != nil {
+		return "", fmt.Errorf("generate Vault preview nonce: %w", err)
+	}
+	return hex.EncodeToString(value), nil
+}
+
+func (runtime *databaseRuntime) setVaultPreview(itemID int64, nonce string) {
+	if runtime == nil || itemID < 1 || nonce == "" {
+		return
+	}
+	runtime.vaultPreviewMu.Lock()
+	defer runtime.vaultPreviewMu.Unlock()
+	if runtime.vaultPreviewNonces == nil {
+		runtime.vaultPreviewNonces = map[int64]string{}
+	}
+	runtime.vaultPreviewNonces[itemID] = nonce
+}
+
+func (runtime *databaseRuntime) vaultPreviewCurrent(itemID int64, nonce string) bool {
+	if runtime == nil || itemID < 1 || nonce == "" {
+		return false
+	}
+	runtime.vaultPreviewMu.Lock()
+	defer runtime.vaultPreviewMu.Unlock()
+	return runtime.vaultPreviewNonces[itemID] == nonce
+}
+
+func (runtime *databaseRuntime) clearVaultPreview(itemID int64) {
+	if runtime == nil || itemID < 1 {
+		return
+	}
+	runtime.vaultPreviewMu.Lock()
+	defer runtime.vaultPreviewMu.Unlock()
+	delete(runtime.vaultPreviewNonces, itemID)
 }
 
 func (s vaultItemHandlers) revealVaultItem(w http.ResponseWriter, r *http.Request) {
@@ -478,6 +527,7 @@ func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Reques
 		writeInternalError(w)
 		return
 	}
+	runtime.clearVaultPreview(id)
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.item.deleted", vaultItemAuditPayload(item))
 	w.WriteHeader(http.StatusNoContent)
 }

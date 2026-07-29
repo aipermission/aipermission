@@ -70,6 +70,8 @@ type databaseRuntime struct {
 	runtimeInstanceID  string
 	vaultLeases        *vaultsessions.Store
 	vaultDelivery      vaultDeliveryCoordinator
+	vaultPreviewMu     sync.Mutex
+	vaultPreviewNonces map[int64]string
 	identityMu         sync.Mutex
 }
 

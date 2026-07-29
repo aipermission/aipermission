@@ -7,8 +7,11 @@ import { TransferCenter } from "./transfer-center";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Notice } from "./ui/notice";
+import { VaultSessionDialog } from "./console/vault-session-dialog";
+import { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
+import { reconcileVaultApprovalDialog } from "../lib/vault-approval-poll";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
   function toggleTheme() {
@@ -20,6 +23,7 @@ export function Shell({ theme, setTheme }) {
   const [tokens, setTokens] = useState({ state: "loading", data: [], error: null });
   const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
   const [connectorActionApprovals, setConnectorActionApprovals] = useState({ state: "loading", data: [], error: null });
+  const [vaultActionApprovals, setVaultActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [messages, setMessages] = useState({ state: "loading", data: [], error: null });
   const [fileTransferBatches, setFileTransferBatches] = useState({ state: "loading", data: [], error: null });
   const [databaseStatus, setDatabaseStatus] = useState({ state: "loading", data: null, error: null });
@@ -27,8 +31,12 @@ export function Shell({ theme, setTheme }) {
   const [switchDialog, setSwitchDialog] = useState({ open: false, database_id: "", password: "", state: "idle", error: null });
   const [lockDialog, setLockDialog] = useState({ open: false, state: "idle", error: null });
   const [transferCenterOpen, setTransferCenterOpen] = useState(false);
+  const [vaultSessionDialog, setVaultSessionDialog] = useState({ open: false, status: "idle", runtime: null, options: null, sessionOptions: null, error: null });
+  const [vaultActionDialog, setVaultActionDialog] = useState({ approval: null, note: "", state: "idle", error: null });
+  const vaultSessionResolverRef = useRef(null);
   const consoleConnectionsRef = useRef({});
   const seenPendingTransferApprovalsRef = useRef(new Set());
+  const seenPendingVaultApprovalsRef = useRef(new Set());
 
   async function loadStatus() {
     try {
@@ -109,6 +117,17 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
+  async function loadVaultActionApprovals() {
+    try {
+      const data = await apiGet("/api/vault-action-approvals?status=approval_pending");
+      setVaultActionApprovals({ state: "ready", data, error: null });
+      const pending = data.filter((item) => item.status === "approval_pending");
+      setVaultActionDialog((current) => reconcileVaultApprovalDialog(current, pending, seenPendingVaultApprovalsRef.current));
+    } catch (error) {
+      setVaultActionApprovals({ state: "error", data: [], error: error.message });
+    }
+  }
+
   async function loadMessages() {
     try {
       const data = await apiGet("/api/messages");
@@ -148,7 +167,7 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function refreshAll() {
-    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadTargets(), loadCredentials(), loadTokens(), loadConsoleSessions(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadTargets(), loadCredentials(), loadTokens(), loadConsoleSessions(), loadConnectorActionApprovals(), loadVaultActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
   }
 
   useEffect(() => {
@@ -162,7 +181,7 @@ export function Shell({ theme, setTheme }) {
         return;
       }
       if (location.pathname === "/console") {
-        await Promise.all([loadStatus(), loadDatabaseStatus(), loadTargets(), loadConsoleSessions(), loadConnectorActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+        await Promise.all([loadStatus(), loadDatabaseStatus(), loadTargets(), loadConsoleSessions(), loadConnectorActionApprovals(), loadVaultActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
       } else {
         await refreshAll();
       }
@@ -248,15 +267,63 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function newConsoleSession(server, options = {}) {
+    if (options.vaultItems === undefined) {
+      try {
+        const vaultOptions = await apiGet(`/api/vault-session-options?runtime_id=${encodeURIComponent(server.id)}`);
+        if (vaultOptions.supported && ((vaultOptions.items || []).length > 0 || (vaultOptions.defaults || []).length > 0)) {
+          vaultSessionResolverRef.current?.resolve(null);
+          return new Promise((resolve, reject) => {
+            vaultSessionResolverRef.current = { resolve, reject };
+            setVaultSessionDialog({ open: true, status: "idle", runtime: server, options: vaultOptions, sessionOptions: options, error: null });
+          });
+        }
+      } catch {
+        // Vault selection is optional for local sessions; a failed probe must not block a normal console.
+      }
+    }
+    return createConsoleSession(server, options);
+  }
+
+  async function createConsoleSession(server, options = {}) {
     const session = await apiPost("/api/console/sessions", {
       runtime_id: server.id,
       name: options.name || `${server.name} shell`,
       close_existing: options.closeExisting !== false,
       params: options.params || undefined,
+      vault_items: options.vaultItems || undefined,
     });
-    upsertConsoleSession(session);
-    attachConsoleSession(session.id);
+    if (options.deferActivation) return session;
+    activateConsoleSession(session);
     return session;
+  }
+
+  function activateConsoleSession(session) {
+    upsertConsoleSession(session);
+    window.setTimeout(() => attachConsoleSession(session.id), 0);
+  }
+
+  async function startVaultConsoleSession(vaultItems) {
+    const current = vaultSessionDialog;
+    setVaultSessionDialog((value) => ({ ...value, status: "starting", error: null }));
+    try {
+      const session = await createConsoleSession(current.runtime, {
+        ...current.sessionOptions,
+        vaultItems,
+        deferActivation: true,
+      });
+      setVaultSessionDialog({ open: false, status: "idle", runtime: null, options: null, sessionOptions: null, error: null });
+      window.setTimeout(() => activateConsoleSession(session), 0);
+      vaultSessionResolverRef.current?.resolve(session);
+      vaultSessionResolverRef.current = null;
+    } catch (error) {
+      setVaultSessionDialog((value) => ({ ...value, status: "error", error: error.message }));
+    }
+  }
+
+  function closeVaultSessionDialog() {
+    vaultSessionResolverRef.current?.resolve(null);
+    vaultSessionResolverRef.current = null;
+    setVaultSessionDialog({ open: false, status: "idle", runtime: null, options: null, sessionOptions: null, error: null });
   }
 
   function attachConsoleSession(sessionID, options = {}) {
@@ -380,6 +447,41 @@ export function Shell({ theme, setTheme }) {
     return item;
   }
 
+  async function runVaultActionApproval() {
+    const approval = vaultActionDialog.approval;
+    if (!approval) return;
+    setVaultActionDialog((current) => ({ ...current, state: "running", error: null }));
+    try {
+      await apiPost(`/api/vault-action-approvals/${approval.id}/run`, { user_note: vaultActionDialog.note });
+      setVaultActionDialog({ approval: null, note: "", state: "idle", error: null });
+      await Promise.all([loadVaultActionApprovals(), loadConsoleSessions()]);
+    } catch (error) {
+      await loadVaultActionApprovals();
+      setVaultActionDialog((current) => ({
+        ...current,
+        state: error.message.toLowerCase().includes("stale") || error.message.toLowerCase().includes("changed") ? "stale" : "failed",
+        error: error.message,
+      }));
+    }
+  }
+
+  async function declineVaultActionApproval() {
+    const approval = vaultActionDialog.approval;
+    if (!approval) return;
+    setVaultActionDialog((current) => ({ ...current, state: "declining", error: null }));
+    try {
+      await apiPost(`/api/vault-action-approvals/${approval.id}/decline`, { user_note: vaultActionDialog.note });
+      setVaultActionDialog({ approval: null, note: "", state: "idle", error: null });
+      await loadVaultActionApprovals();
+    } catch (error) {
+      setVaultActionDialog((current) => ({ ...current, state: "error", error: error.message }));
+    }
+  }
+
+  function closeVaultActionApproval() {
+    setVaultActionDialog({ approval: null, note: "", state: "idle", error: null });
+  }
+
   async function markRuntimeMessagesRead(runtimeID) {
     const result = await apiPost("/api/messages/read", { runtime_id: Number(runtimeID) });
     await loadMessages();
@@ -470,8 +572,9 @@ export function Shell({ theme, setTheme }) {
   }
 
   const pendingConnectorActionApprovalCount = connectorActionApprovals.data.filter((approval) => approval.status === "approval_pending").length;
+  const pendingVaultActionApprovalCount = vaultActionApprovals.data.filter((approval) => approval.status === "approval_pending").length;
   const unreadMessageCount = messages.data.filter(isUnreadMessage).length;
-  const consoleAttentionCount = pendingConnectorActionApprovalCount + unreadMessageCount;
+  const consoleAttentionCount = pendingConnectorActionApprovalCount + pendingVaultActionApprovalCount + unreadMessageCount;
   const activeTransferCount = fileTransferBatches.data.filter(isActiveTransferBatch).length;
 
   return (
@@ -502,6 +605,16 @@ export function Shell({ theme, setTheme }) {
         onCancel={cancelFileTransferBatch}
         onApprove={approveFileTransferBatch}
         onDecline={declineFileTransferBatch}
+      />
+      <VaultSessionDialog state={vaultSessionDialog} onClose={closeVaultSessionDialog} onStart={startVaultConsoleSession} />
+      <VaultActionApprovalDialog
+        approval={vaultActionDialog.approval}
+        note={vaultActionDialog.note}
+        action={vaultActionDialog}
+        onNoteChange={(note) => setVaultActionDialog((current) => ({ ...current, note }))}
+        onRun={runVaultActionApproval}
+        onDecline={declineVaultActionApproval}
+        onClose={closeVaultActionApproval}
       />
 
       <DatabaseSwitchDialog
