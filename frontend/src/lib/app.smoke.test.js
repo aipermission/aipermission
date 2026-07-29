@@ -347,6 +347,9 @@ test("Token page exposes connector action permissions", () => {
   assert.match(connectorPermissionDialogSource, /approval_required/);
   assert.match(connectorPermissionDialogSource, /always_run/);
   assert.match(connectorPermissionDialogSource, /Save connector permissions/);
+  assert.match(connectorPermissionDialogSource, /\/project-capabilities/);
+  assert.match(connectorPermissionDialogSource, /Project Vault capabilities/);
+  assert.match(connectorPermissionDialogSource, /Save Vault capabilities/);
 });
 
 test("Console exposes connector action approvals", () => {
