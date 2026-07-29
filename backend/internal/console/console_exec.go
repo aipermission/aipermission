@@ -29,6 +29,7 @@ func (s *managedConsoleSession) execCommand(ctx context.Context, command string)
 			s.restoreTerminalInput()
 			return ExecResult{
 				SessionID:  s.id,
+				Generation: s.generation,
 				Command:    active.Command,
 				Output:     output,
 				ExitCode:   exitCode,
@@ -37,6 +38,7 @@ func (s *managedConsoleSession) execCommand(ctx context.Context, command string)
 		}
 		return ExecResult{
 			SessionID:  s.id,
+			Generation: s.generation,
 			Command:    active.Command,
 			Output:     output,
 			Running:    true,
@@ -77,6 +79,7 @@ func (s *managedConsoleSession) execCommand(ctx context.Context, command string)
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return ExecResult{
 				SessionID:  s.id,
+				Generation: s.generation,
 				Command:    command,
 				Output:     output,
 				Running:    true,
@@ -91,6 +94,7 @@ func (s *managedConsoleSession) execCommand(ctx context.Context, command string)
 
 	return ExecResult{
 		SessionID:  s.id,
+		Generation: s.generation,
 		Command:    command,
 		Output:     output,
 		ExitCode:   exitCode,
@@ -111,6 +115,7 @@ func (s *managedConsoleSession) waitActiveCommand(ctx context.Context) (ExecResu
 	s.restoreTerminalInput()
 	return ExecResult{
 		SessionID:  s.id,
+		Generation: s.generation,
 		Command:    active.Command,
 		Output:     output,
 		ExitCode:   exitCode,

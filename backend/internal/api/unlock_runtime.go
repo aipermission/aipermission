@@ -11,7 +11,9 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -110,6 +112,16 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		_ = database.Close()
 		return nil, err
 	}
+	workspaceUUID, err := projectvault.EnsureWorkspaceUUID(context.Background(), database)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	runtimeInstanceID, err := executionprincipal.NewRuntimeInstanceID()
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	runtime := &databaseRuntime{
 		id:                 id,
 		path:               path,
@@ -124,6 +136,8 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		batchCancels:       map[int64]context.CancelFunc{},
 		transferControls:   map[int64]*transferControl{},
 		batchControls:      map[int64]*transferControl{},
+		workspaceUUID:      workspaceUUID,
+		runtimeInstanceID:  runtimeInstanceID,
 	}
 	settings, err := readSecuritySettingsFromDB(context.Background(), runtime)
 	if err != nil {

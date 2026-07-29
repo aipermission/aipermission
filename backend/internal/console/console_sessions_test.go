@@ -13,6 +13,8 @@ import (
 	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
 )
 
@@ -70,13 +72,75 @@ func TestConsoleSessionManagerActiveForServerUsesNewestLiveSession(t *testing.T)
 	}
 }
 
+func TestConsoleSessionManagerRequiresExactGeneration(t *testing.T) {
+	manager := &Manager{sessions: map[int64]*managedConsoleSession{
+		7: {
+			id: 7, runtimeID: 10, generation: 3, status: "connected",
+			principal: testExecutionPrincipal(),
+		},
+	}}
+	if _, err := manager.exactSession(SessionHandle{ID: 7, RuntimeID: 10, Generation: 2}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("stale generation should not resolve, got %v", err)
+	}
+	if session, err := manager.exactSession(SessionHandle{ID: 7, RuntimeID: 10, Generation: 3}); err != nil || session.id != 7 {
+		t.Fatalf("exact generation should resolve, session=%#v err=%v", session, err)
+	}
+}
+
+func TestConsoleSessionManagerDeniesTokenWithoutVaultLease(t *testing.T) {
+	local := testExecutionPrincipal()
+	token, err := executionprincipal.MCPToken(9, local.WorkspaceID, local.RuntimeInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &managedConsoleSession{
+		id: 4, runtimeID: 5, generation: 6, status: "connected",
+		principal: local, environmentContentHash: "vault-context",
+	}
+	manager := &Manager{sessions: map[int64]*managedConsoleSession{4: session}}
+	if err := manager.authorizeOperation(context.Background(), token, session, OperationObserve); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("token without an exact lease should be denied, got %v", err)
+	}
+	if err := manager.authorizeOperation(context.Background(), local, session, OperationObserve); err != nil {
+		t.Fatalf("local operator should retain access: %v", err)
+	}
+}
+
+func TestManagedConsoleSessionRedactsVaultValueAcrossOutputChunks(t *testing.T) {
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+		Name: "MY_PROJECT_TOKEN", Value: []byte("secret-value"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer envelope.Destroy()
+	redactor, err := envelope.ExactValueRedactor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &managedConsoleSession{
+		id: 1, generation: 1, status: "connected",
+		manager: &Manager{redact: func(value string) string { return value }},
+		clients: map[*websocket.Conn]*sync.Mutex{}, exactRedactor: redactor,
+	}
+	session.appendOutput("before secret-")
+	session.appendOutput("value after")
+	session.closeExactRedactor()
+	if strings.Contains(session.rawTranscript, "secret-value") || strings.Contains(session.transcript, "secret-value") {
+		t.Fatalf("vault value leaked into console state: raw=%q display=%q", session.rawTranscript, session.transcript)
+	}
+	if !strings.Contains(session.rawTranscript, "[REDACTED VAULT VALUE]") {
+		t.Fatalf("redaction marker missing: %q", session.rawTranscript)
+	}
+}
+
 func TestConsoleSessionManagerEnforcesActiveSessionLimit(t *testing.T) {
 	manager := &Manager{sessions: map[int64]*managedConsoleSession{}}
 	for i := 0; i < maxActiveConsoleSessions; i++ {
 		manager.sessions[int64(i+1)] = &managedConsoleSession{id: int64(i + 1), status: "connected"}
 	}
 
-	if _, err := manager.Create(context.Background(), CreateRequest{RuntimeID: 1}); !errors.Is(err, ErrSessionLimit) {
+	if _, err := manager.Create(context.Background(), CreateRequest{RuntimeID: 1, Principal: testExecutionPrincipal()}); !errors.Is(err, ErrSessionLimit) {
 		t.Fatalf("expected session limit error, got %v", err)
 	}
 }
@@ -95,7 +159,7 @@ func TestManagedConsoleSessionEnforcesClientLimit(t *testing.T) {
 
 func TestConsoleSessionInputLimit(t *testing.T) {
 	manager := &Manager{sessions: map[int64]*managedConsoleSession{}}
-	if err := manager.Input(context.Background(), 1, strings.Repeat("x", maxConsoleInputBytes+1)); !errors.Is(err, ErrInputTooLarge) {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), 1, strings.Repeat("x", maxConsoleInputBytes+1)); !errors.Is(err, ErrInputTooLarge) {
 		t.Fatalf("expected input limit error, got %v", err)
 	}
 }
@@ -255,7 +319,7 @@ func TestConsoleManagerInputWritesPTYAndRecordsManualHistory(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "uptime\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "uptime\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	if stdin.String() != "uptime\n" {
@@ -273,7 +337,7 @@ func TestManualInputCapturesOutputWhenPromptReturns(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "node --version\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "node --version\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.appendOutput("node --version\r\nv24.1.0\r\nroot@worker:~# ")
@@ -291,7 +355,7 @@ func TestManualInputCapturesOutputWhenBracketPromptReturns(t *testing.T) {
 	session.rawTranscript = "[~] # "
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "ls\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "ls\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.appendOutput("ls\r\nindex_default.html\r\n[~] # ")
@@ -309,7 +373,7 @@ func TestManualInputCapturesOutputWhenPathPromptReturns(t *testing.T) {
 	session.rawTranscript = "/ # "
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "pwd\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "pwd\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.appendOutput("pwd\r\n/\r\n/ # ")
@@ -326,7 +390,7 @@ func TestManualInputCapturesAptUpdateOutput(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "apt update\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "apt update\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.appendOutput("apt update\r\nHit:1 https://download.docker.com/linux/ubuntu noble InRelease\r\nReading package lists... Done\r\n9 packages can be upgraded. Run 'apt list --upgradable' to see them.\r\nroot@candle-query-1:~# ")
@@ -343,7 +407,7 @@ func TestManualInputCapturesAptProgressOutput(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "apt update\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "apt update\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.appendOutput("apt update\r\nHit:1 https://download.docker.com/linux/ubuntu noble InRelease\r\n")
@@ -363,10 +427,10 @@ func TestManualInputDoesNotInferHistoryRecallFromShellEcho(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "\x1b[A"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "\x1b[A"); err != nil {
 		t.Fatalf("history recall input: %v", err)
 	}
-	if err := manager.Input(context.Background(), session.id, "\r"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "\r"); err != nil {
 		t.Fatalf("enter input: %v", err)
 	}
 	session.appendOutput("apt update\r\nHit:1 https://download.docker.com/linux/ubuntu noble InRelease\r\n9 packages can be upgraded. Run 'apt list --upgradable' to see them.\r\nroot@candle-query-1:~# ")
@@ -385,27 +449,27 @@ func TestManualInputPausesUnknownHistoryRecallWhenMoreInputArrives(t *testing.T)
 	session.rawTranscript = "root@worker:~# "
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "\x1b[A"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "\x1b[A"); err != nil {
 		t.Fatalf("history recall input: %v", err)
 	}
-	if err := manager.Input(context.Background(), session.id, "\r"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "\r"); err != nil {
 		t.Fatalf("enter input: %v", err)
 	}
 	session.appendOutput("root@worker:~# docker exec -it f6f sh\r\n/ # ")
-	if err := manager.Input(context.Background(), session.id, "test\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "test\n"); err != nil {
 		t.Fatalf("nested input: %v", err)
 	}
 	waitForManualHistoryStatus(t, database, "untracked")
 	assertManualHistoryCount(t, database, 1)
 
 	session.appendOutput("test\r\n/ # ")
-	if err := manager.Input(context.Background(), session.id, "exit\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "exit\n"); err != nil {
 		t.Fatalf("nested exit input: %v", err)
 	}
 	assertManualHistoryCount(t, database, 1)
 
 	session.appendOutput("exit\r\nroot@worker:~# ")
-	if err := manager.Input(context.Background(), session.id, "pwd\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "pwd\n"); err != nil {
 		t.Fatalf("host input after nested recall: %v", err)
 	}
 	session.appendOutput("pwd\r\n/home/root\r\nroot@worker:~# ")
@@ -433,7 +497,7 @@ func TestManualInputClearsStaleRunningRowsWhenPromptReturns(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "node --version\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "node --version\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.appendOutput("node --version\r\nv24.1.0\r\nroot@worker:~# ")
@@ -451,7 +515,7 @@ func TestManualInputClearsStaleRunningRowsWhenCanceled(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "sleep 10\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "sleep 10\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.appendOutput("sleep 10\r\n^C\r\nroot@worker:~# ")
@@ -468,14 +532,14 @@ func TestManualInputCompletesPreviousCommandBeforeRecordingNextInput(t *testing.
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "pwd\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "pwd\n"); err != nil {
 		t.Fatalf("first input: %v", err)
 	}
 	session.mu.Lock()
 	session.rawTranscript = "pwd\r\n/home/root\r\nroot@worker:~# "
 	session.mu.Unlock()
 
-	if err := manager.Input(context.Background(), session.id, "hostname\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "hostname\n"); err != nil {
 		t.Fatalf("second input: %v", err)
 	}
 	session.appendOutput("hostname\r\nworker-1\r\nroot@worker:~# ")
@@ -499,11 +563,11 @@ func TestManualInputAppendsNextLineAfterOutputStartsBeforePromptReturns(t *testi
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "sleep 1\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "sleep 1\n"); err != nil {
 		t.Fatalf("first input: %v", err)
 	}
 	session.appendOutput("sleep 1\r\npartial output\r\n")
-	if err := manager.Input(context.Background(), session.id, "pwd\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "pwd\n"); err != nil {
 		t.Fatalf("second input: %v", err)
 	}
 	session.appendOutput("pwd\r\n/home/root\r\nroot@worker:~# ")
@@ -540,11 +604,11 @@ func TestManualInputKeepsSplitHealthCheckPasteAsSingleRow(t *testing.T) {
 	}, "\n")
 	secondChunk := `journalctl -p warning..alert --since "30 min ago" --no-pager 2>&1 | tail -80 || true` + "\n"
 
-	if err := manager.Input(context.Background(), session.id, firstChunk); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, firstChunk); err != nil {
 		t.Fatalf("first chunk input: %v", err)
 	}
 	session.appendOutput("set -e\r\necho \"== system ==\"\r\n== system ==\r\nworker-1\r\n")
-	if err := manager.Input(context.Background(), session.id, secondChunk); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, secondChunk); err != nil {
 		t.Fatalf("second chunk input: %v", err)
 	}
 	session.appendOutput("journalctl -p warning..alert --since \"30 min ago\" --no-pager 2>&1 | tail -80 || true\r\nJun 05 warning\r\nroot@worker:~# ")
@@ -569,7 +633,7 @@ func TestManualInputPausesInsideNestedShellUntilOriginalPromptReturns(t *testing
 	session.rawTranscript = "root@worker:~# "
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "docker exec -it f6f sh\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "docker exec -it f6f sh\n"); err != nil {
 		t.Fatalf("nested shell input: %v", err)
 	}
 	row := readManualHistoryRow(t, database)
@@ -578,13 +642,13 @@ func TestManualInputPausesInsideNestedShellUntilOriginalPromptReturns(t *testing
 	}
 
 	session.appendOutput("root@worker:~# docker exec -it f6f sh\r\n/ # ")
-	if err := manager.Input(context.Background(), session.id, "exit\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "exit\n"); err != nil {
 		t.Fatalf("nested exit input: %v", err)
 	}
 	assertManualHistoryCount(t, database, 1)
 
 	session.appendOutput("exit\r\nroot@worker:~# ")
-	if err := manager.Input(context.Background(), session.id, "pwd\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "pwd\n"); err != nil {
 		t.Fatalf("host input after nested shell: %v", err)
 	}
 	session.appendOutput("pwd\r\n/home/root\r\nroot@worker:~# ")
@@ -609,10 +673,10 @@ func TestManualInputRecordsSplitNestedShellCommandAsOneRow(t *testing.T) {
 	session.rawTranscript = "root@worker:~# "
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "docker exec -it f6f "); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "docker exec -it f6f "); err != nil {
 		t.Fatalf("nested shell prefix input: %v", err)
 	}
-	if err := manager.Input(context.Background(), session.id, "sh\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "sh\n"); err != nil {
 		t.Fatalf("nested shell suffix input: %v", err)
 	}
 
@@ -628,16 +692,16 @@ func TestManualInputPausesNestedShellEvenWithoutKnownResumePrompt(t *testing.T) 
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "docker exec -it f6f sh\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "docker exec -it f6f sh\n"); err != nil {
 		t.Fatalf("nested shell input: %v", err)
 	}
-	if err := manager.Input(context.Background(), session.id, "exit\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "exit\n"); err != nil {
 		t.Fatalf("nested exit input: %v", err)
 	}
 	assertManualHistoryCount(t, database, 1)
 
 	session.appendOutput("docker exec -it f6f sh\r\n/ # exit\r\nroot@worker:~# ")
-	if err := manager.Input(context.Background(), session.id, "pwd\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "pwd\n"); err != nil {
 		t.Fatalf("host input after nested shell: %v", err)
 	}
 	session.appendOutput("pwd\r\n/home/root\r\nroot@worker:~# ")
@@ -691,7 +755,7 @@ func TestManualInputCloseSessionFinalizesRunningCapture(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "sleep 60\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "sleep 60\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.finish("closed", "")
@@ -712,7 +776,7 @@ func TestManualInputAutomationFinalizesRunningCapture(t *testing.T) {
 	session.ctx = context.Background()
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "sleep 60\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "sleep 60\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
@@ -739,7 +803,7 @@ func TestManualInputCapturesMultilinePasteAsSingleRow(t *testing.T) {
 	manager.sessions[session.id] = session
 
 	input := "echo hello\npwd\ntrue\n"
-	if err := manager.Input(context.Background(), session.id, input); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, input); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 	session.appendOutput("echo hello\r\nhello\r\npwd\r\n/home/root\r\ntrue\r\nroot@worker:~# ")
@@ -761,7 +825,7 @@ func TestManualInputCapturesSplitMultilinePasteAsSingleRow(t *testing.T) {
 	manager.sessions[session.id] = session
 
 	for _, input := range []string{"echo hello\n", "pwd\n", "true\n"} {
-		if err := manager.Input(context.Background(), session.id, input); err != nil {
+		if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, input); err != nil {
 			t.Fatalf("input %q: %v", input, err)
 		}
 	}
@@ -783,7 +847,7 @@ func TestManualInputKeepsUnsafeMultilinePasteUntracked(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "nano test.txt\npwd\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "nano test.txt\npwd\n"); err != nil {
 		t.Fatalf("input: %v", err)
 	}
 
@@ -799,10 +863,10 @@ func TestManualInputKeepsSplitUnsafeMultilinePasteUntracked(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "echo hello\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "echo hello\n"); err != nil {
 		t.Fatalf("safe input: %v", err)
 	}
-	if err := manager.Input(context.Background(), session.id, "nano test.txt\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "nano test.txt\n"); err != nil {
 		t.Fatalf("unsafe input: %v", err)
 	}
 
@@ -833,10 +897,10 @@ func TestManualInputAppendsNextLineBeforePromptReturns(t *testing.T) {
 	session.stdin = stdin
 	manager.sessions[session.id] = session
 
-	if err := manager.Input(context.Background(), session.id, "ls /root/nope\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "ls /root/nope\n"); err != nil {
 		t.Fatalf("first input: %v", err)
 	}
-	if err := manager.Input(context.Background(), session.id, "docker ps\n"); err != nil {
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "docker ps\n"); err != nil {
 		t.Fatalf("second input: %v", err)
 	}
 	session.appendOutput("ls /root/nope\r\nls: cannot access '/root/nope': Permission denied\r\ndocker ps\r\nCONTAINER ID   IMAGE\r\nroot@worker:~# ")
@@ -1195,10 +1259,10 @@ func TestConsoleSessionManagerCreateValidationAndCloseInactive(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close() })
 	manager := NewManager(database, nil, nil)
 
-	if _, err := manager.Create(context.Background(), CreateRequest{}); err == nil {
+	if _, err := manager.Create(context.Background(), CreateRequest{Principal: testExecutionPrincipal()}); err == nil {
 		t.Fatalf("expected missing server id to fail")
 	}
-	if err := manager.Close(context.Background(), 999); err != nil {
+	if err := manager.Close(context.Background(), testExecutionPrincipal(), 999); err != nil {
 		t.Fatalf("closing inactive/missing session should be idempotent: %v", err)
 	}
 }
@@ -1210,17 +1274,17 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-1", "127.0.0.1", 23)
-	manager := NewManager(database, func(context.Context, int64, int, int, map[string]any) (*RuntimeSession, error) {
+	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
 		return nil, errors.New("transport dial: dial tcp 127.0.0.1:23: connect: connection refused")
 	}, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	sessionID, err := manager.EnsureReady(ctx, runtimeID)
+	handle, err := manager.EnsureReady(ctx, testExecutionPrincipal(), runtimeID)
 	if err == nil || !strings.Contains(err.Error(), "connection refused") {
-		t.Fatalf("expected connection error, session=%d err=%v", sessionID, err)
+		t.Fatalf("expected connection error, session=%d err=%v", handle.ID, err)
 	}
-	record, recordErr := manager.Get(context.Background(), sessionID)
+	record, recordErr := manager.Get(context.Background(), handle.ID)
 	if recordErr != nil {
 		t.Fatalf("read failed session: %v", recordErr)
 	}
@@ -1267,7 +1331,7 @@ func TestConsoleSessionManagerListGetAndCloseRuntime(t *testing.T) {
 	if item.ID != sessionID || item.Status != "connected" {
 		t.Fatalf("unexpected session: %#v", item)
 	}
-	if err := manager.CloseRuntime(context.Background(), runtimeID); err != nil {
+	if err := manager.CloseRuntime(context.Background(), testExecutionPrincipal(), runtimeID); err != nil {
 		t.Fatalf("close server sessions: %v", err)
 	}
 	item, err = manager.Get(context.Background(), sessionID)
@@ -1437,13 +1501,23 @@ func newManualHistoryTestSession(t *testing.T) (*sql.DB, *Manager, *managedConso
 	}
 	manager := NewManager(database, nil, nil)
 	session := &managedConsoleSession{
-		id:        sessionID,
-		runtimeID: runtimeID,
-		manager:   manager,
-		status:    "connected",
-		clients:   map[*websocket.Conn]*sync.Mutex{},
+		id:         sessionID,
+		runtimeID:  runtimeID,
+		generation: sessionID,
+		principal:  testExecutionPrincipal(),
+		manager:    manager,
+		status:     "connected",
+		clients:    map[*websocket.Conn]*sync.Mutex{},
 	}
 	return database, manager, session
+}
+
+func testExecutionPrincipal() executionprincipal.Principal {
+	principal, err := executionprincipal.LocalOperator("test-workspace", "test-runtime")
+	if err != nil {
+		panic(err)
+	}
+	return principal
 }
 
 func readManualHistoryRow(t *testing.T, database *sql.DB) manualHistoryRow {

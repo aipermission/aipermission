@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
@@ -93,13 +94,13 @@ func (s *Server) commandRequestExecutionCommand(ctx context.Context, runtime *da
 	return command, nil
 }
 
-func (s *Server) finishActiveCommandRequest(runtime *databaseRuntime, requestID int64, runtimeID int64) {
+func (s *Server) finishActiveCommandRequest(runtime *databaseRuntime, requestID int64, principal executionprincipal.Principal, handle console.SessionHandle) {
 	ctx, cancel := context.WithTimeout(context.Background(), mcpBackgroundCommandTimeout)
 	defer cancel()
-	result, err := runtime.consoleSessions.WaitActive(ctx, runtimeID)
+	result, err := runtime.consoleSessions.WaitActive(ctx, principal, handle)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			_ = runtime.consoleSessions.InterruptActive(context.Background(), runtimeID)
+			_ = runtime.consoleSessions.InterruptActive(context.Background(), principal, handle)
 			_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, "command timed out while running in background")
 			return
 		}

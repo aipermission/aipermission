@@ -62,17 +62,17 @@ func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile c
 	}
 }
 
-func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, rows int, cols int, params map[string]any) (*console.RuntimeSession, error) {
-	target, profile, surface, err := kubernetesTargetProfileByRuntimeID(ctx, runtime, runtimeID)
+func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+	target, profile, surface, err := kubernetesTargetProfileByRuntimeID(ctx, runtime, request.RuntimeID)
 	if err != nil {
 		return nil, err
 	}
 	if surface.ConnectorKind != kubernetesconnector.Kind || surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole {
 		return nil, connectortargets.ErrRuntimeSurfaceNotFound
 	}
-	namespace := strings.TrimSpace(stringParam(params, "namespace"))
-	pod := strings.TrimSpace(stringParam(params, "pod"))
-	container := strings.TrimSpace(stringParam(params, "container"))
+	namespace := strings.TrimSpace(stringParam(request.Params, "namespace"))
+	pod := strings.TrimSpace(stringParam(request.Params, "pod"))
+	container := strings.TrimSpace(stringParam(request.Params, "container"))
 	if namespace == "" || pod == "" {
 		return nil, errors.New("kubernetes namespace and pod are required")
 	}
@@ -89,7 +89,7 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 		return nil, fmt.Errorf("%w: transport_target_ref is required", kubernetesconnector.ErrInvalidConfig)
 	}
 	command := kubectlExecShellCommand(target, namespace, pod, container)
-	return sshapiadapter.OpenLiveConsoleForTargetRef(ctx, server, runtime, transportRef, rows, cols, sshapiadapter.LiveConsoleOptions{
+	return sshapiadapter.OpenLiveConsoleForTargetRef(ctx, server, runtime, transportRef, request.Rows, request.Cols, sshapiadapter.LiveConsoleOptions{
 		ForceShellCommand: command,
 	})
 }

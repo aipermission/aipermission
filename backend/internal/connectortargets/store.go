@@ -703,6 +703,8 @@ type ActionRequest struct {
 	ApprovalContext      string
 	ApprovalContextHash  string
 	ApprovalContextDrift string
+	SessionID            *int64
+	SessionGeneration    *int64
 	CreatedAt            string
 	CompletedAt          *string
 }
@@ -1062,6 +1064,32 @@ func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionReque
 		return s.GetActionRequest(ctx, input.ID)
 	}
 	return s.GetActionRequest(ctx, input.ID)
+}
+
+func (s *Store) SetActionRequestSessionHandle(ctx context.Context, id int64, sessionID int64, generation int64) (ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+	}
+	if id < 1 || sessionID < 1 || generation < 1 {
+		return ActionRequest{}, ValidationError("an exact session handle is required")
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE connector_action_requests
+		SET session_id = ?, session_generation = ?
+		WHERE id = ? AND status = ?`,
+		sessionID, generation, id, string(connectors.ResultRunning),
+	)
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	if affected == 0 {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	return s.GetActionRequest(ctx, id)
 }
 
 func (s *Store) StaleActionRequestsForTarget(ctx context.Context, input StaleActionRequestsForTargetInput) (StaleActionRequestsForTargetResult, error) {
@@ -1567,6 +1595,7 @@ func actionRequestSelectSQL() string {
 			r.source, r.input_json, r.encrypted_payload_json,
 			r.reason, r.status, r.output_json, r.display_text, r.error,
 			r.approval_context, r.approval_context_hash, r.approval_context_drift,
+			r.session_id, r.session_generation,
 			r.created_at, r.completed_at
 		FROM connector_action_requests r
 		JOIN connector_targets t ON t.id = r.target_id
@@ -1581,6 +1610,8 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 	var previewJSON string
 	var outputJSON string
 	var completedAt sql.NullString
+	var sessionID sql.NullInt64
+	var sessionGeneration sql.NullInt64
 	if err := row.Scan(
 		&request.ID,
 		&tokenID,
@@ -1605,6 +1636,8 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 		&request.ApprovalContext,
 		&request.ApprovalContextHash,
 		&request.ApprovalContextDrift,
+		&sessionID,
+		&sessionGeneration,
 		&request.CreatedAt,
 		&completedAt,
 	); err != nil {
@@ -1612,6 +1645,12 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 	}
 	if tokenID.Valid {
 		request.TokenID = &tokenID.Int64
+	}
+	if sessionID.Valid {
+		request.SessionID = &sessionID.Int64
+	}
+	if sessionGeneration.Valid {
+		request.SessionGeneration = &sessionGeneration.Int64
 	}
 	input, err := parseJSONObject(inputJSON)
 	if err != nil {

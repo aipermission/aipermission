@@ -15,6 +15,7 @@ func scanConsoleSession(scanner interface {
 	if err := scanner.Scan(
 		&item.ID,
 		&item.RuntimeID,
+		&item.Generation,
 		&item.TargetName,
 		&item.Name,
 		&item.Status,
@@ -25,6 +26,7 @@ func scanConsoleSession(scanner interface {
 		&item.CreatedAt,
 		&item.UpdatedAt,
 		&closedAt,
+		&item.EnvironmentContentHash,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Record{}, err

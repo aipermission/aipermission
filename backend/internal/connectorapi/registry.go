@@ -16,6 +16,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -39,6 +40,7 @@ type GatewayRuntime interface {
 	ConnectorVault() *vault.Vault
 	ConnectorResource(kind string, name string) any
 	ConnectorConsoleSessions() *console.Manager
+	ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error)
 }
 
 // GatewayServer exposes shared gateway services that connector adapters may
@@ -46,7 +48,7 @@ type GatewayRuntime interface {
 type GatewayServer interface {
 	ConnectorActiveRuntimeAvailable(w http.ResponseWriter) bool
 	ConnectorTrustStorePath() string
-	ConnectorRestartConsoleSession(ctx context.Context, runtime GatewayRuntime, runtimeID int64, runningRequestError string) (ConsoleRestartResult, error)
+	ConnectorRestartConsoleSession(ctx context.Context, runtime GatewayRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (ConsoleRestartResult, error)
 	ConnectorFinishActionRequest(ctx context.Context, runtime GatewayRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error)
 	ConnectorCreateDownloadBatch(ctx context.Context, runtime GatewayRuntime, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error)
 	ConnectorRunTransferBatch(runtime GatewayRuntime, batchID int64, overwrite bool)
@@ -104,7 +106,7 @@ func For(kind string) Adapter {
 type RuntimeAdapter interface {
 	RuntimeCapabilities(server GatewayServer, runtime GatewayRuntime) map[string]connectors.RuntimeCapability
 	SupportsRunning(prepared actions.PreparedRequest) bool
-	FinishRunning(server GatewayServer, runtime GatewayRuntime, requestID int64, prepared actions.PreparedRequest)
+	FinishRunning(server GatewayServer, runtime GatewayRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles)
 	RunningHint(request connectortargets.ActionRequest) string
 }
 
@@ -169,7 +171,7 @@ type LiveConsoleTargetAdapter interface {
 // LiveConsoleTransportAdapter opens a connector-owned persistent runtime for
 // the generic live console manager.
 type LiveConsoleTransportAdapter interface {
-	OpenLiveConsole(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, rows int, cols int, params map[string]any) (*console.RuntimeSession, error)
+	OpenLiveConsole(ctx context.Context, server GatewayServer, runtime GatewayRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error)
 }
 
 // TCPTransportAdapter lets one connector provide a reviewed TCP transport for

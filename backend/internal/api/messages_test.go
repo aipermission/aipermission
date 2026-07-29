@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -163,9 +164,10 @@ func insertMessageTestSession(t *testing.T, database interface {
 }, runtimeID int64, name string) int64 {
 	t.Helper()
 	result, err := database.Exec(`
-		INSERT INTO console_sessions (runtime_id, name, status, transcript, cols, rows, created_at, updated_at)
-		VALUES (?, ?, 'connected', '', 120, 32, datetime('now'), datetime('now'))`,
+		INSERT INTO console_sessions (runtime_id, generation, name, status, transcript, cols, rows, created_at, updated_at)
+		VALUES (?, ?, ?, 'connected', '', 120, 32, datetime('now'), datetime('now'))`,
 		runtimeID,
+		time.Now().UnixNano(),
 		name,
 	)
 	if err != nil {
