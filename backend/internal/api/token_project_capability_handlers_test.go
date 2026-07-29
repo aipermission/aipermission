@@ -47,7 +47,7 @@ func TestTokenProjectCapabilityRoutes(t *testing.T) {
 	}
 }
 
-func TestTokenProjectCapabilityRouteRejectsAlwaysApply(t *testing.T) {
+func TestTokenProjectCapabilityRouteAcceptsAlwaysApply(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := t.Context()
 	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-agent"})
@@ -65,7 +65,7 @@ func TestTokenProjectCapabilityRouteRejectsAlwaysApply(t *testing.T) {
 			ExecutionRule: projectcapabilities.RuleAlwaysRun,
 		}}},
 	)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("expected bad request, got %d %s", response.Code, response.Body.String())
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected always apply to succeed, got %d %s", response.Code, response.Body.String())
 	}
 }

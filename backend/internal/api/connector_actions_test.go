@@ -297,6 +297,36 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	if historyCount != 1 {
 		t.Fatalf("expected one local action history row, got %d", historyCount)
 	}
+
+	completedWithHandle, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo",
+		Input:      map[string]any{"value": "with-handle"},
+		Reason:     "capture completed session handle",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completedWithHandle.Request.Status != connectors.ResultCompleted ||
+		completedWithHandle.Request.SessionID == nil || *completedWithHandle.Request.SessionID != 123 ||
+		completedWithHandle.Request.SessionGeneration == nil || *completedWithHandle.Request.SessionGeneration != 456 {
+		t.Fatalf("completed action handle was not persisted: %#v", completedWithHandle.Request)
+	}
+
+	incompleteHandle, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo",
+		Input:      map[string]any{"value": "incomplete-handle"},
+		Reason:     "reject incomplete session handle",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if incompleteHandle.Request.Status != connectors.ResultFailed ||
+		incompleteHandle.Result.Status != connectors.ResultFailed ||
+		!strings.Contains(incompleteHandle.Result.Error, "incomplete session handle") {
+		t.Fatalf("incomplete session handle should fail terminally: %#v", incompleteHandle)
+	}
 }
 
 func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
@@ -1103,9 +1133,16 @@ func (localActionTestConnector) PrepareAction(_ context.Context, req connectors.
 }
 
 func (localActionTestConnector) ExecuteAction(_ context.Context, _ connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
-	return connectors.ActionResult{
+	result := connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
 		Output:      map[string]any{"echo": action.Payload["value"]},
 		DisplayText: fmt.Sprint(action.Payload["value"]),
-	}, nil
+	}
+	if action.Payload["value"] == "with-handle" {
+		result.Handles = connectors.ActionHandles{SessionID: 123, SessionGeneration: 456}
+	}
+	if action.Payload["value"] == "incomplete-handle" {
+		result.Handles = connectors.ActionHandles{SessionID: 123}
+	}
+	return result, nil
 }

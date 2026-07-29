@@ -140,6 +140,60 @@ func TestStoreCreateListRevealReplaceAndDelete(t *testing.T) {
 	if _, err := store.Get(ctx, item.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("deleted item get error = %v", err)
 	}
+	if _, err := store.Reveal(ctx, item.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted item reveal error = %v", err)
+	}
+}
+
+func TestVaultAssignmentRevisionRemainsMonotonicAfterAllSharesAreRemoved(t *testing.T) {
+	ctx := context.Background()
+	database, store := openTestStore(t)
+	projects := projectstore.NewStore(database)
+	owner, err := projects.Create(ctx, "Assignment Owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared, err := projects.Create(ctx, "Assignment Shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.Create(ctx, CreateInput{
+		Name: "ASSIGNMENT_REVISION_SECRET", Value: "assignment-revision-value",
+		OwnerProjectID: owner.ID, SharedProjectIDs: []int64{shared.ID},
+		SecretType: "generic_secret", Source: "imported",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutShares, err := store.UpdateMetadata(ctx, UpdateMetadataInput{
+		ID: item.ID, ExpectedMetadataRevision: item.MetadataRevision,
+		Name: item.Name, OwnerProjectID: owner.ID, SecretType: item.SecretType,
+		ExpiryWarningDays: item.ExpiryWarningDays,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withShareAgain, err := store.UpdateMetadata(ctx, UpdateMetadataInput{
+		ID: item.ID, ExpectedMetadataRevision: withoutShares.MetadataRevision,
+		Name: item.Name, OwnerProjectID: owner.ID, SharedProjectIDs: []int64{shared.ID},
+		SecretType: item.SecretType, ExpiryWarningDays: item.ExpiryWarningDays,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var assignmentRevision int64
+	if err := database.QueryRowContext(ctx, `
+		SELECT assignment_revision
+		FROM vault_item_projects
+		WHERE vault_item_id = ? AND project_id = ?`,
+		item.ID,
+		shared.ID,
+	).Scan(&assignmentRevision); err != nil {
+		t.Fatal(err)
+	}
+	if assignmentRevision != withShareAgain.MetadataRevision || assignmentRevision <= item.MetadataRevision {
+		t.Fatalf("assignment revision=%d metadata revision=%d", assignmentRevision, withShareAgain.MetadataRevision)
+	}
 }
 
 func TestProjectArchiveIsBlockedByOwnedAndSharedVaultItems(t *testing.T) {
@@ -176,6 +230,32 @@ func TestProjectArchiveIsBlockedByOwnedAndSharedVaultItems(t *testing.T) {
 	}
 	if err := projects.Archive(ctx, shared.ID); err != nil {
 		t.Fatalf("archive detached shared project: %v", err)
+	}
+}
+
+func TestVaultItemNamesAreGloballyUniqueAcrossProjects(t *testing.T) {
+	ctx := context.Background()
+	database, store := openTestStore(t)
+	projects := projectstore.NewStore(database)
+	first, err := projects.Create(ctx, "First Project")
+	if err != nil {
+		t.Fatalf("create first project: %v", err)
+	}
+	second, err := projects.Create(ctx, "Second Project")
+	if err != nil {
+		t.Fatalf("create second project: %v", err)
+	}
+	if _, err := store.Create(ctx, CreateInput{
+		Name: "SHARED_ENV_NAME", Value: "first-project-value",
+		OwnerProjectID: first.ID, SecretType: "generic_secret", Source: "imported",
+	}); err != nil {
+		t.Fatalf("create first Vault item: %v", err)
+	}
+	if _, err := store.Create(ctx, CreateInput{
+		Name: "SHARED_ENV_NAME", Value: "second-project-value",
+		OwnerProjectID: second.ID, SecretType: "generic_secret", Source: "imported",
+	}); err == nil || !strings.Contains(err.Error(), "active vault item with this name already exists") {
+		t.Fatalf("cross-project case-insensitive duplicate error = %v", err)
 	}
 }
 

@@ -76,6 +76,28 @@ func TestProjectLifecycleAndTokenScopeDefaults(t *testing.T) {
 	}
 }
 
+func TestReplaceTokenScopesReportsNoOp(t *testing.T) {
+	db := openProjectTestDB(t)
+	ctx := context.Background()
+	store := NewStore(db)
+	project, err := store.Create(ctx, "Scope Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := tokens.NewStore(db).Create(ctx, tokens.CreateRequest{Name: "scope-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, changed, err := store.ReplaceTokenScopesWithChange(ctx, token.ID, []int64{project.ID})
+	if err != nil || !changed {
+		t.Fatalf("initial scope replace: changed=%v err=%v", changed, err)
+	}
+	_, changed, err = store.ReplaceTokenScopesWithChange(ctx, token.ID, []int64{project.ID})
+	if err != nil || changed {
+		t.Fatalf("identical scope replace: changed=%v err=%v", changed, err)
+	}
+}
+
 func TestProjectCannotBeArchivedWithActiveTargets(t *testing.T) {
 	database := openProjectTestDB(t)
 	store := NewStore(database)

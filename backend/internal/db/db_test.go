@@ -207,6 +207,48 @@ func TestOpenEncryptedMigratesConnectorNativeBaseline(t *testing.T) {
 	}
 }
 
+func TestVaultGlobalNameMigrationRejectsCrossProjectDuplicates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault-duplicate.db")
+	database, err := openEncrypted(path, "correct-password", false)
+	if err != nil {
+		t.Fatalf("open raw encrypted db: %v", err)
+	}
+	defer database.Close()
+	for index := 0; index < 7; index++ {
+		if err := runSingleMigration(database, migrations[index]); err != nil {
+			t.Fatalf("apply migration %d: %v", migrations[index].version, err)
+		}
+	}
+	if _, err := database.Exec(`
+		DROP INDEX idx_vault_items_active_name;
+		CREATE UNIQUE INDEX idx_vault_items_active_owner_name
+			ON vault_items(owner_project_id, name COLLATE NOCASE)
+			WHERE status = 'active';
+		INSERT INTO projects (name, slug, status, created_at, updated_at)
+			VALUES ('Second Project', 'second-project', 'active', datetime('now'), datetime('now'));
+		INSERT INTO vault_items (
+			name, owner_project_id, secret_type, last_value_replaced_at, source, created_at, updated_at
+		)
+			VALUES
+			('DUPLICATE_ENV', (SELECT id FROM projects WHERE slug = 'ungrouped'), 'generic_secret', datetime('now'), 'imported', datetime('now'), datetime('now')),
+			('duplicate_env', (SELECT id FROM projects WHERE slug = 'second-project'), 'generic_secret', datetime('now'), 'imported', datetime('now'), datetime('now'));`,
+	); err != nil {
+		t.Fatalf("prepare pre-v8 duplicate data: %v", err)
+	}
+	err = runSingleMigration(database, migrations[7])
+	if err == nil || !strings.Contains(err.Error(), "active Vault item names must be globally unique") ||
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate_env") {
+		t.Fatalf("global Vault name migration error = %v", err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 8`).Scan(&count); err != nil {
+		t.Fatalf("read failed migration state: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("failed migration must not be recorded")
+	}
+}
+
 func TestOpenEncryptedRejectsPre02PreviewSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secure.db")
 	database, err := openEncrypted(path, "correct-password", false)
@@ -287,6 +329,109 @@ func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
 	}
 	if message != "gateway restarted while connector action was running" {
 		t.Fatalf("unexpected history entry error message: %q", message)
+	}
+}
+
+func TestOpenEncryptedClosesVaultRuntimeStateAfterRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secure.db")
+	database, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	runtimeID := insertConnectorRuntimeSurface(t, database, "postgres", targetID, profileID, "live_console")
+	tokenResult, err := database.Exec(`
+		INSERT INTO api_tokens (name, token_hash, token_prefix, created_at, updated_at)
+		VALUES ('vault-restart-token', 'vault-restart-hash', 'aip_restart', datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatalf("insert token: %v", err)
+	}
+	tokenID, err := tokenResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("token id: %v", err)
+	}
+	var projectID int64
+	if err := database.QueryRow(`SELECT project_id FROM connector_targets WHERE id = ?`, targetID).Scan(&projectID); err != nil {
+		t.Fatalf("read target project: %v", err)
+	}
+	sessionResult, err := database.Exec(`
+		INSERT INTO console_sessions (
+			runtime_id, generation, principal_kind, principal_token_id, workspace_id,
+			runtime_instance_id, environment_content_hash, approval_context_hash,
+			name, status, created_at, updated_at
+		)
+		VALUES (?, 1, 'mcp_token', ?, 'workspace', 'runtime-instance', 'environment-hash',
+			'approval-hash', 'vault restart session', 'connected', datetime('now'), datetime('now'))`,
+		runtimeID,
+		tokenID,
+	)
+	if err != nil {
+		t.Fatalf("insert console session: %v", err)
+	}
+	sessionID, err := sessionResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("session id: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO vault_action_requests (
+			token_id, project_id, runtime_id, action_name, status, approval_context_hash,
+			idempotency_key, expires_at, created_at, updated_at
+		)
+		VALUES (?, ?, ?, 'restart_session_with_environment', 'running', 'approval-hash',
+			'vault-restart-request', datetime('now', '+15 minutes'), datetime('now'), datetime('now'))`,
+		tokenID,
+		projectID,
+		runtimeID,
+	); err != nil {
+		t.Fatalf("insert running Vault request: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO vault_session_leases (
+			token_id, project_id, runtime_id, session_id, session_generation,
+			approval_context_hash, environment_content_hash, status, expires_at, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, 1, 'approval-hash', 'environment-hash', 'active',
+			datetime('now', '+1 hour'), datetime('now'), datetime('now'))`,
+		tokenID,
+		projectID,
+		runtimeID,
+		sessionID,
+	); err != nil {
+		t.Fatalf("insert active Vault lease: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("reopen encrypted db: %v", err)
+	}
+	defer reopened.Close()
+	var requestStatus, requestError string
+	if err := reopened.QueryRow(`SELECT status, error FROM vault_action_requests LIMIT 1`).Scan(&requestStatus, &requestError); err != nil {
+		t.Fatalf("read Vault request: %v", err)
+	}
+	if requestStatus != "failed" || requestError != "gateway restarted while the Vault action was running" {
+		t.Fatalf("unexpected restarted Vault request: status=%q error=%q", requestStatus, requestError)
+	}
+	var historyStatus, historyError string
+	if err := reopened.QueryRow(`
+		SELECT status, error
+		FROM history_entries
+		WHERE source_ref_type = 'vault_action_request'
+		LIMIT 1`).Scan(&historyStatus, &historyError); err != nil {
+		t.Fatalf("read Vault request history: %v", err)
+	}
+	if historyStatus != "failed" || historyError != "gateway restarted while the Vault action was running" {
+		t.Fatalf("unexpected restarted Vault history: status=%q error=%q", historyStatus, historyError)
+	}
+	var leaseStatus string
+	if err := reopened.QueryRow(`SELECT status FROM vault_session_leases LIMIT 1`).Scan(&leaseStatus); err != nil {
+		t.Fatalf("read Vault lease: %v", err)
+	}
+	if leaseStatus != "revoked" {
+		t.Fatalf("expected restarted Vault lease to be revoked, got %q", leaseStatus)
 	}
 }
 

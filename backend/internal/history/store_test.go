@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	gatewaydb "github.com/aipermission/aipermission/backend/internal/db"
@@ -45,6 +46,25 @@ func TestStoreSyncsCanonicalHistoryEntries(t *testing.T) {
 		t.Fatalf("sync file transfer: %v", err)
 	}
 	assertHistoryEntry(t, database, SourceFileTransfer, transferID, "ssh", "file_transfer", "ui", "completed", "test-vps", "main")
+
+	projectID := insertProject(t, database, "Vault History", "vault-history")
+	vaultRequestID := insertVaultActionRequest(t, database, tokenID, projectID, runtimeID)
+	if err := store.SyncVaultActionRequest(context.Background(), vaultRequestID); err != nil {
+		t.Fatalf("sync Vault action request: %v", err)
+	}
+	assertHistoryEntry(t, database, SourceVaultActionRequest, vaultRequestID, "ssh", "vault", "mcp", "pending_approval", "test-vps", "main")
+	var inputJSON, previewJSON string
+	if err := database.QueryRow(`
+		SELECT input_json, preview_json
+		FROM history_entries
+		WHERE source_ref_type = ? AND source_ref_id = ?`,
+		SourceVaultActionRequest, vaultRequestID,
+	).Scan(&inputJSON, &previewJSON); err != nil {
+		t.Fatalf("read Vault history payload: %v", err)
+	}
+	if inputJSON != `{"target_ref":"ssh:1:1"}` || previewJSON != `{"schema":"vault-action-v1"}` {
+		t.Fatalf("Vault history payload mismatch: input=%q preview=%q", inputJSON, previewJSON)
+	}
 }
 
 func TestStoreDeleteSourceRefRemovesCanonicalHistoryEntry(t *testing.T) {
@@ -94,6 +114,70 @@ func TestHistoryProjectSnapshotSurvivesTargetMove(t *testing.T) {
 	}
 	if projectID != firstProjectID {
 		t.Fatalf("history project snapshot = %d, want %d", projectID, firstProjectID)
+	}
+}
+
+func TestCommandVaultContextSurvivesVaultItemDeletion(t *testing.T) {
+	database := openTestDB(t)
+	tokenID := insertToken(t, database)
+	targetID, profileID := insertTargetProfile(t, database, "ssh", "test-vps", "private_key", "main")
+	runtimeID := insertRuntimeSurface(t, database, "ssh", targetID, profileID, "live_console")
+	projectID := insertProject(t, database, "Vault History", "vault-history")
+	itemResult, err := database.Exec(`
+		INSERT INTO vault_items (
+			name, encrypted_value, owner_project_id, secret_type, value_version,
+			metadata_revision, last_value_replaced_at, source, created_at, updated_at
+		) VALUES ('VAULT_HISTORY_TOKEN', 'encrypted', ?, 'api_token', 1, 1, datetime('now'), 'imported', datetime('now'), datetime('now'))`,
+		projectID,
+	)
+	if err != nil {
+		t.Fatalf("insert Vault item: %v", err)
+	}
+	itemID, _ := itemResult.LastInsertId()
+	sessionResult, err := database.Exec(`
+		INSERT INTO console_sessions (
+			runtime_id, name, status, generation, environment_content_hash,
+			approval_context_hash, created_at, updated_at
+		) VALUES (?, 'Vault session', 'connected', 1, 'environment-hash', 'approval-hash', datetime('now'), datetime('now'))`,
+		runtimeID,
+	)
+	if err != nil {
+		t.Fatalf("insert console session: %v", err)
+	}
+	sessionID, _ := sessionResult.LastInsertId()
+	if _, err := database.Exec(`
+		INSERT INTO vault_session_items (
+			session_id, vault_item_id, vault_item_name, source_project_id,
+			value_version, metadata_revision, binding_revision, created_at
+		) VALUES (?, ?, 'VAULT_HISTORY_TOKEN', ?, 1, 1, 0, datetime('now'))`,
+		sessionID, itemID, projectID,
+	); err != nil {
+		t.Fatalf("insert Vault session item snapshot: %v", err)
+	}
+	commandID := insertCommandRequest(t, database, tokenID, runtimeID)
+	if _, err := database.Exec(`UPDATE command_requests SET session_id = ? WHERE id = ?`, sessionID, commandID); err != nil {
+		t.Fatalf("attach command session: %v", err)
+	}
+	store := NewStore(database)
+	if err := store.SyncCommandRequest(context.Background(), commandID); err != nil {
+		t.Fatalf("sync command Vault context: %v", err)
+	}
+	if _, err := database.Exec(`DELETE FROM vault_items WHERE id = ?`, itemID); err != nil {
+		t.Fatalf("delete Vault item: %v", err)
+	}
+	if err := store.SyncCommandRequest(context.Background(), commandID); err != nil {
+		t.Fatalf("resync command after Vault item deletion: %v", err)
+	}
+	var previewJSON string
+	if err := database.QueryRow(`
+		SELECT preview_json FROM history_entries
+		WHERE source_ref_type = ? AND source_ref_id = ?`,
+		SourceCommandRequest, commandID,
+	).Scan(&previewJSON); err != nil {
+		t.Fatalf("read command Vault context: %v", err)
+	}
+	if !strings.Contains(previewJSON, `"name":"VAULT_HISTORY_TOKEN"`) {
+		t.Fatalf("Vault item snapshot was lost after deletion: %s", previewJSON)
 	}
 }
 
@@ -236,6 +320,31 @@ func insertConnectorActionRequest(t *testing.T, database *sql.DB, tokenID int64,
 	id, err := result.LastInsertId()
 	if err != nil {
 		t.Fatalf("connector action request id: %v", err)
+	}
+	return id
+}
+
+func insertVaultActionRequest(t *testing.T, database *sql.DB, tokenID, projectID, runtimeID int64) int64 {
+	t.Helper()
+	result, err := database.Exec(`
+		INSERT INTO vault_action_requests (
+			token_id, project_id, runtime_id, action_name, source, input_json, reason,
+			status, approval_context_json, approval_context_hash, idempotency_key,
+			output_json, user_note, created_at, expires_at, updated_at
+		)
+		VALUES (?, ?, ?, 'restart_session_with_environment', 'mcp',
+			'{"target_ref":"ssh:1:1"}', 'apply approved project environment',
+			'approval_pending', '{"schema":"vault-action-v1"}', 'approval-hash',
+			'vault-history-request', 'null', '', datetime('now'),
+			strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+15 minutes'), datetime('now'))`,
+		tokenID, projectID, runtimeID,
+	)
+	if err != nil {
+		t.Fatalf("insert Vault action request: %v", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("Vault action request id: %v", err)
 	}
 	return id
 }

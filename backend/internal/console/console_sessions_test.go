@@ -98,11 +98,72 @@ func TestConsoleSessionManagerDeniesTokenWithoutVaultLease(t *testing.T) {
 		principal: local, environmentContentHash: "vault-context",
 	}
 	manager := &Manager{sessions: map[int64]*managedConsoleSession{4: session}}
-	if err := manager.authorizeOperation(context.Background(), token, session, OperationObserve); !errors.Is(err, ErrUnauthorized) {
+	if err := manager.authorizeOperation(context.Background(), token, session, OperationObserve, nil); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("token without an exact lease should be denied, got %v", err)
 	}
-	if err := manager.authorizeOperation(context.Background(), local, session, OperationObserve); err != nil {
+	if err := manager.authorizeOperation(context.Background(), local, session, OperationObserve, nil); err != nil {
 		t.Fatalf("local operator should retain access: %v", err)
+	}
+}
+
+func TestConsoleSessionManagerSerializesAuthorizationWithInputWrite(t *testing.T) {
+	local := testExecutionPrincipal()
+	token, err := executionprincipal.MCPToken(9, local.WorkspaceID, local.RuntimeInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeStarted := make(chan struct{})
+	allowWrite := make(chan struct{})
+	stdin := &blockingWriteCloser{started: writeStarted, proceed: allowWrite}
+	session := &managedConsoleSession{
+		id: 4, runtimeID: 5, generation: 6, status: "connected",
+		principal: local, environmentContentHash: "vault-context",
+		stdin: stdin, clients: map[*websocket.Conn]*sync.Mutex{},
+	}
+	manager := &Manager{sessions: map[int64]*managedConsoleSession{4: session}}
+	var gate sync.Mutex
+	allowed := true
+	manager.authorize = func(
+		_ context.Context,
+		_ executionprincipal.Principal,
+		_ SessionAuthorization,
+		_ SessionOperation,
+		run func() error,
+	) error {
+		gate.Lock()
+		defer gate.Unlock()
+		if !allowed {
+			return ErrUnauthorized
+		}
+		return run()
+	}
+
+	inputDone := make(chan error, 1)
+	go func() {
+		inputDone <- manager.Input(context.Background(), token, session.id, "x")
+	}()
+	<-writeStarted
+
+	revokeDone := make(chan struct{})
+	go func() {
+		gate.Lock()
+		allowed = false
+		gate.Unlock()
+		close(revokeDone)
+	}()
+	select {
+	case <-revokeDone:
+		t.Fatal("authorization mutation crossed an in-flight input write")
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	close(allowWrite)
+	if err := <-inputDone; err != nil {
+		t.Fatalf("authorized input: %v", err)
+	}
+	<-revokeDone
+	if err := manager.Input(context.Background(), token, session.id, "y"); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("input after revocation should be denied, got %v", err)
 	}
 }
 
@@ -134,14 +195,109 @@ func TestManagedConsoleSessionRedactsVaultValueAcrossOutputChunks(t *testing.T) 
 	}
 }
 
+func TestManagedConsoleSessionKeepsStdoutAndStderrRedactionStateIndependent(t *testing.T) {
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+		Name: "MY_PROJECT_TOKEN", Value: []byte("secret-value"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer envelope.Destroy()
+	persistenceRedactor, err := envelope.ExactValueRedactor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdoutRedactor, err := envelope.ExactValueRedactor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderrRedactor, err := envelope.ExactValueRedactor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &managedConsoleSession{
+		id: 1, generation: 1, status: "connected",
+		manager:       &Manager{redact: func(value string) string { return value }},
+		clients:       map[*websocket.Conn]*sync.Mutex{},
+		exactRedactor: persistenceRedactor, stdoutExactRedactor: stdoutRedactor, stderrExactRedactor: stderrRedactor,
+	}
+
+	session.appendStreamOutput("stdout secret-", stdoutRedactor)
+	session.appendStreamOutput("stderr remains visible\n", stderrRedactor)
+	session.appendStreamOutput("value complete\n", stdoutRedactor)
+	session.closeExactRedactor()
+
+	if strings.Contains(session.rawTranscript, "secret-value") || strings.Contains(session.transcript, "secret-value") {
+		t.Fatalf("interleaved stream leaked Vault value: raw=%q display=%q", session.rawTranscript, session.transcript)
+	}
+	if !strings.Contains(session.rawTranscript, "[REDACTED VAULT VALUE]") || !strings.Contains(session.rawTranscript, "stderr remains visible") {
+		t.Fatalf("independent streams were not preserved safely: %q", session.rawTranscript)
+	}
+}
+
+func TestManagedConsoleSessionRedactsVaultValueFromDisplayAndPersistenceText(t *testing.T) {
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+		Name: "MY_PROJECT_TOKEN", Value: []byte("secret-value"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer envelope.Destroy()
+	redactor, err := envelope.ExactValueRedactor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &managedConsoleSession{
+		id: 1, generation: 1, status: "connected",
+		manager: &Manager{redact: func(value string) string { return value }},
+		clients: map[*websocket.Conn]*sync.Mutex{}, exactRedactor: redactor,
+	}
+	session.appendDisplayOutput("[AI command]\n$ printf secret-value\n")
+	if strings.Contains(session.transcript, "secret-value") {
+		t.Fatalf("display output leaked Vault value: %q", session.transcript)
+	}
+	if got := session.redactForPersistence("manual secret-value"); got != "manual [REDACTED VAULT VALUE]" {
+		t.Fatalf("persistence redaction = %q", got)
+	}
+}
+
+func TestManagedConsoleSessionRejectsInputUntilEnvironmentBootstrapCompletes(t *testing.T) {
+	stdin := &recordingWriteCloser{}
+	session := &managedConsoleSession{status: "connecting", stdin: stdin}
+	if err := session.writeInput("echo unsafe\n"); err == nil {
+		t.Fatal("input should be rejected while the session is connecting")
+	}
+	if stdin.String() != "" {
+		t.Fatalf("connecting input reached transport: %q", stdin.String())
+	}
+	session.status = "connected"
+	if err := session.writeInput("echo safe\n"); err != nil {
+		t.Fatalf("connected input: %v", err)
+	}
+	if stdin.String() != "echo safe\n" {
+		t.Fatalf("connected input = %q", stdin.String())
+	}
+}
+
 func TestConsoleSessionManagerEnforcesActiveSessionLimit(t *testing.T) {
 	manager := &Manager{sessions: map[int64]*managedConsoleSession{}}
 	for i := 0; i < maxActiveConsoleSessions; i++ {
 		manager.sessions[int64(i+1)] = &managedConsoleSession{id: int64(i + 1), status: "connected"}
 	}
 
-	if _, err := manager.Create(context.Background(), CreateRequest{RuntimeID: 1, Principal: testExecutionPrincipal()}); !errors.Is(err, ErrSessionLimit) {
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+		Name: "SESSION_LIMIT_TOKEN", Value: []byte("secret-value-for-limit-test"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Create(context.Background(), CreateRequest{
+		RuntimeID: 1, Principal: testExecutionPrincipal(), Environment: envelope,
+	}); !errors.Is(err, ErrSessionLimit) {
 		t.Fatalf("expected session limit error, got %v", err)
+	}
+	if err := envelope.WithEntries(func([]sessionenv.EntryView) error { return nil }); !errors.Is(err, sessionenv.ErrDestroyed) {
+		t.Fatalf("session limit should destroy the secret environment, got %v", err)
 	}
 }
 
@@ -781,7 +937,7 @@ func TestManualInputAutomationFinalizesRunningCapture(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
-	_, _ = session.execCommand(ctx, "echo ai")
+	_, _ = session.execCommand(ctx, "echo ai", nil)
 
 	row := readManualHistoryRow(t, database)
 	if row.command != "sleep 60" || row.status != "untracked" || row.trackingReason != manualActiveExecPaused {
@@ -923,6 +1079,22 @@ func (r *recordingWriteCloser) Close() error {
 	return nil
 }
 
+type blockingWriteCloser struct {
+	started chan struct{}
+	proceed chan struct{}
+	once    sync.Once
+}
+
+func (w *blockingWriteCloser) Write(data []byte) (int, error) {
+	w.once.Do(func() { close(w.started) })
+	<-w.proceed
+	return len(data), nil
+}
+
+func (w *blockingWriteCloser) Close() error {
+	return nil
+}
+
 func TestManagedConsoleSessionExecRejectsConcurrentAutomationCommand(t *testing.T) {
 	session := &managedConsoleSession{
 		id:            7,
@@ -936,7 +1108,7 @@ func TestManagedConsoleSessionExecRejectsConcurrentAutomationCommand(t *testing.
 		},
 	}
 
-	result, err := session.execCommand(context.Background(), "docker ps")
+	result, err := session.execCommand(context.Background(), "docker ps", nil)
 	if !errors.Is(err, ErrCommandActive) {
 		t.Fatalf("expected active command error, got %v", err)
 	}
@@ -961,7 +1133,7 @@ func TestManagedConsoleSessionExecRejectsCompletedActiveCommandUntilFinalized(t 
 		},
 	}
 
-	result, err := session.execCommand(context.Background(), "docker ps")
+	result, err := session.execCommand(context.Background(), "docker ps", nil)
 	if !errors.Is(err, ErrCommandActive) {
 		t.Fatalf("expected active command error, got %v", err)
 	}
@@ -1002,7 +1174,7 @@ func TestManagedConsoleSessionWaitActiveDoesNotBlockConcurrentExec(t *testing.T)
 
 	execCtx, cancelExec := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancelExec()
-	result, err := session.execCommand(execCtx, "docker ps")
+	result, err := session.execCommand(execCtx, "docker ps", nil)
 	if !errors.Is(err, ErrCommandActive) {
 		t.Fatalf("expected active command error, got %v", err)
 	}
@@ -1290,6 +1462,303 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 	}
 	if record.Status != "error" || !strings.Contains(record.Error, "connection refused") {
 		t.Fatalf("expected failed session record, got %#v", record)
+	}
+}
+
+func TestConsoleSessionManagerReplaceIfCurrentUsesExactSessionCAS(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-cas", "127.0.0.1", 22)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin:  &recordingWriteCloser{},
+			Stdout: strings.NewReader(""),
+			Wait: func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			},
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	principal := testExecutionPrincipal()
+	first, err := manager.Create(context.Background(), CreateRequest{
+		RuntimeID: runtimeID, Name: "first", Principal: principal, WaitForStart: true,
+	})
+	if err != nil {
+		t.Fatalf("create first session: %v", err)
+	}
+	manager.Resize(first.ID, 144, 41)
+
+	if _, err := manager.ReplaceIfCurrent(context.Background(), principal, SessionHandle{}, CreateRequest{
+		RuntimeID: runtimeID, Name: "unexpected concurrent session", Principal: principal, WaitForStart: true,
+	}); !errors.Is(err, ErrSessionChanged) {
+		t.Fatalf("replacement expecting no active session error = %v", err)
+	}
+	stale := SessionHandle{ID: first.ID - 1, RuntimeID: runtimeID, Generation: first.Generation}
+	if _, err := manager.ReplaceIfCurrent(context.Background(), principal, stale, CreateRequest{
+		RuntimeID: runtimeID, Name: "stale replacement", Principal: principal, WaitForStart: true,
+	}); !errors.Is(err, ErrSessionChanged) {
+		t.Fatalf("stale replacement error = %v", err)
+	}
+	active, err := manager.ActiveSnapshot(context.Background(), principal, runtimeID)
+	if err != nil || active.ID != first.ID || active.Generation != first.Generation {
+		t.Fatalf("stale replacement changed active session: %#v err=%v", active, err)
+	}
+	unrelated, err := manager.Create(context.Background(), CreateRequest{
+		RuntimeID: runtimeID, Name: "unrelated", Principal: principal, WaitForStart: true,
+	})
+	if err != nil {
+		t.Fatalf("create unrelated same-runtime session: %v", err)
+	}
+
+	type replaceResult struct {
+		record Record
+		err    error
+	}
+	start := make(chan struct{})
+	results := make(chan replaceResult, 2)
+	expected := SessionHandle{ID: first.ID, RuntimeID: runtimeID, Generation: first.Generation}
+	for index := 0; index < 2; index++ {
+		go func(index int) {
+			<-start
+			record, replaceErr := manager.ReplaceIfCurrent(context.Background(), principal, expected, CreateRequest{
+				RuntimeID: runtimeID, Name: "concurrent-" + strconv.Itoa(index),
+				Cols: 200, Rows: 60, Principal: principal, WaitForStart: true,
+			})
+			results <- replaceResult{record: record, err: replaceErr}
+		}(index)
+	}
+	close(start)
+	var winner Record
+	successes := 0
+	staleResults := 0
+	for index := 0; index < 2; index++ {
+		result := <-results
+		switch {
+		case result.err == nil:
+			successes++
+			winner = result.record
+		case errors.Is(result.err, ErrSessionChanged):
+			staleResults++
+		default:
+			t.Fatalf("concurrent replacement error = %v", result.err)
+		}
+	}
+	if successes != 1 || staleResults != 1 {
+		t.Fatalf("concurrent replacements successes=%d stale=%d", successes, staleResults)
+	}
+	if winner.ID == first.ID || winner.Generation <= first.Generation {
+		t.Fatalf("replacement did not advance session identity: first=%#v winner=%#v", first, winner)
+	}
+	if winner.Cols != 144 || winner.Rows != 41 {
+		t.Fatalf("replacement did not preserve current terminal geometry: %#v", winner)
+	}
+	active, err = manager.ActiveSnapshot(context.Background(), principal, runtimeID)
+	if err != nil || active.ID != winner.ID || active.Generation != winner.Generation {
+		t.Fatalf("replacement winner is not active: %#v err=%v", active, err)
+	}
+	unrelatedRecord, err := manager.Get(context.Background(), unrelated.ID)
+	if err != nil || unrelatedRecord.Status != "connected" {
+		t.Fatalf("exact replacement closed unrelated session: %#v err=%v", unrelatedRecord, err)
+	}
+	if err := manager.Close(context.Background(), principal, winner.ID); err != nil {
+		t.Fatalf("close replacement: %v", err)
+	}
+	if err := manager.Close(context.Background(), principal, unrelated.ID); err != nil {
+		t.Fatalf("close unrelated session: %v", err)
+	}
+}
+
+func TestConsoleSessionManagerPreparesEnvironmentAfterPeerVerification(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-environment", "127.0.0.1", 22)
+	events := []string{}
+	manager := NewManager(database, func(ctx context.Context, request RuntimeOpenRequest) (*RuntimeSession, error) {
+		if !request.HasEnvironment {
+			t.Fatalf("runtime opener was not told to prepare environment transport")
+		}
+		events = append(events, "open")
+		return &RuntimeSession{
+			Stdin:        &recordingWriteCloser{},
+			Stdout:       strings.NewReader(""),
+			PeerIdentity: "SHA256:test-peer",
+			ApplyEnvironment: func(_ context.Context, environment *sessionenv.Envelope) error {
+				events = append(events, "apply")
+				return environment.WithEntries(func(entries []sessionenv.EntryView) error {
+					if len(entries) != 1 || entries[0].Name != "API_TOKEN" ||
+						string(entries[0].Value) != "secret-delivered-after-peer-check" {
+						t.Fatalf("unexpected prepared environment: %#v", entries)
+					}
+					return nil
+				})
+			},
+			Wait: func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			},
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	principal := testExecutionPrincipal()
+	record, err := manager.Create(context.Background(), CreateRequest{
+		RuntimeID: runtimeID, Name: "prepared", Principal: principal, WaitForStart: true,
+		PrepareEnvironment: func(_ context.Context, peerIdentity string) (EnvironmentPreparation, error) {
+			if peerIdentity != "SHA256:test-peer" {
+				t.Fatalf("preparer peer identity = %q", peerIdentity)
+			}
+			events = append(events, "prepare")
+			envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+				Name: "API_TOKEN", Value: []byte("secret-delivered-after-peer-check"),
+			}})
+			return EnvironmentPreparation{
+				Environment: envelope,
+				PostValidate: func(context.Context) error {
+					events = append(events, "post-validate")
+					return nil
+				},
+				Finalize: func(_ context.Context, handle SessionHandle) error {
+					if handle.ID < 1 || handle.RuntimeID != runtimeID || handle.Generation < 1 {
+						t.Fatalf("finalize handle = %#v", handle)
+					}
+					events = append(events, "finalize")
+					return nil
+				},
+			}, err
+		},
+	})
+	if err != nil {
+		t.Fatalf("create prepared session: %v", err)
+	}
+	if got := strings.Join(events, ","); got != "open,prepare,apply,post-validate,finalize" {
+		t.Fatalf("environment delivery order = %q", got)
+	}
+	if err := manager.Close(context.Background(), principal, record.ID); err != nil {
+		t.Fatalf("close prepared session: %v", err)
+	}
+}
+
+func TestConsoleSessionManagerFinalizationFailureNeverBecomesReady(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-finalization", "127.0.0.1", 22)
+	closed := make(chan struct{}, 1)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin:        &recordingWriteCloser{},
+			Stdout:       strings.NewReader(""),
+			PeerIdentity: "SHA256:test-peer",
+			ApplyEnvironment: func(context.Context, *sessionenv.Envelope) error {
+				return nil
+			},
+			Wait: func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			},
+			Close: func() error {
+				select {
+				case closed <- struct{}{}:
+				default:
+				}
+				return nil
+			},
+		}, nil
+	}, nil)
+	_, err = manager.Create(context.Background(), CreateRequest{
+		RuntimeID: runtimeID, Name: "finalization failure",
+		Principal: testExecutionPrincipal(), WaitForStart: true,
+		PrepareEnvironment: func(context.Context, string) (EnvironmentPreparation, error) {
+			envelope, envelopeErr := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+				Name: "API_TOKEN", Value: []byte("secret-delivered-before-finalization"),
+			}})
+			return EnvironmentPreparation{
+				Environment: envelope,
+				Finalize: func(context.Context, SessionHandle) error {
+					return errors.New("persist session binding failed")
+				},
+			}, envelopeErr
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "persist session binding failed") {
+		t.Fatalf("finalization error = %v", err)
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("runtime was not closed after finalization failure")
+	}
+	var status string
+	if err := database.QueryRow(`
+		SELECT status FROM console_sessions
+		WHERE runtime_id = ? ORDER BY id DESC LIMIT 1`, runtimeID,
+	).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status == "connected" {
+		t.Fatal("failed finalization session became ready")
+	}
+}
+
+func TestConsoleSessionManagerPostDeliveryDriftNeverBecomesReady(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-drift", "127.0.0.1", 22)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin:        &recordingWriteCloser{},
+			Stdout:       strings.NewReader(""),
+			PeerIdentity: "SHA256:test-peer",
+			ApplyEnvironment: func(context.Context, *sessionenv.Envelope) error {
+				return nil
+			},
+			Wait: func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			},
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	_, err = manager.Create(context.Background(), CreateRequest{
+		RuntimeID: runtimeID, Name: "drifted", Principal: testExecutionPrincipal(), WaitForStart: true,
+		PrepareEnvironment: func(context.Context, string) (EnvironmentPreparation, error) {
+			envelope, envelopeErr := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+				Name: "API_TOKEN", Value: []byte("secret-delivered-before-final-check"),
+			}})
+			return EnvironmentPreparation{
+				Environment: envelope,
+				PostValidate: func(context.Context) error {
+					return errors.New("authorization changed during delivery")
+				},
+			}, envelopeErr
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "authorization changed during delivery") {
+		t.Fatalf("post-delivery drift error = %v", err)
+	}
+	var status string
+	if err := database.QueryRow(`
+		SELECT status
+		FROM console_sessions
+		WHERE runtime_id = ?
+		ORDER BY id DESC
+		LIMIT 1`, runtimeID,
+	).Scan(&status); err != nil {
+		t.Fatalf("read drifted session: %v", err)
+	}
+	if status == "connected" {
+		t.Fatalf("post-delivery drift session became attachable")
 	}
 }
 

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
   let connectorPermissions = [];
+  let projectCapabilities = [];
   let enabledProjectIDs = [1];
   let mcpRuntimeEnabled = false;
   await page.route("http://localhost:8080/api/unlock/status", async (route) => {
@@ -106,6 +107,19 @@ test.beforeEach(async ({ page }) => {
     }
     await route.fulfill({ json: { items: [projectScope(enabledProjectIDs.includes(1))] } });
   });
+  await page.route("http://localhost:8080/api/tokens/1/project-capabilities", async (route) => {
+    if (route.request().method() === "PUT") {
+      projectCapabilities = (route.request().postDataJSON().capabilities || []).map((capability) => ({
+        ...capability,
+        token_id: 1,
+        project_name: "Ungrouped",
+        project_slug: "ungrouped",
+        project_enabled: enabledProjectIDs.includes(capability.project_id),
+        revision: 1,
+      }));
+    }
+    await route.fulfill({ json: { definitions: projectCapabilityDefinitions(), items: projectCapabilities } });
+  });
 });
 
 test("unlocks the local UI session and renders the dashboard", async ({ page }) => {
@@ -172,14 +186,32 @@ test("updates token connector permission from the Tokens page", async ({ page })
   await page.getByRole("button", { name: "Connectors" }).click();
   const dialog = page.getByRole("dialog", { name: "agent connector permissions" });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Ungrouped").uncheck();
-  await expect(dialog.getByLabel("Ungrouped")).not.toBeChecked();
-  await dialog.getByLabel("Ungrouped").check();
-  await expect(dialog.getByLabel("Ungrouped")).toBeChecked();
   await dialog.getByRole("button", { name: /worker-1/ }).click();
-  await dialog.getByRole("button", { name: /Prompt/ }).click();
+  await dialog.getByRole("button", { name: "Prompt", exact: true }).last().click();
   await dialog.getByRole("button", { name: "Save connector permissions" }).click();
   await expect(page.getByText("Connector permissions saved.")).toBeVisible();
+});
+
+test("updates project Vault permissions from the Tokens page", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox").fill("local-password");
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await page.locator('aside a[href="/tokens"]').click();
+
+  await page.getByRole("button", { name: "Vault", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "agent Vault permissions" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Ungrouped project visibility").uncheck();
+  await expect(dialog.getByLabel("Ungrouped project visibility")).not.toBeChecked();
+  await dialog.getByLabel("Ungrouped project visibility").check();
+  await expect(dialog.getByLabel("Ungrouped project visibility")).toBeChecked();
+  const metadataCapability = dialog.getByText("Read metadata", { exact: true }).locator("..").locator("..");
+  await metadataCapability.getByRole("button", { name: "Always", exact: true }).click();
+  const generateCapability = dialog.getByText("Generate items", { exact: true }).locator("..").locator("..");
+  await expect(generateCapability.getByRole("button", { name: "Disabled", exact: true })).toBeVisible();
+  await generateCapability.getByRole("button", { name: "Always", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save Vault capabilities" }).click();
+  await expect(dialog.getByText("Project Vault capabilities saved.")).toBeVisible();
 });
 
 test("moves an edited connector to another project", async ({ page }) => {
@@ -256,6 +288,30 @@ function projectScope(enabled) {
     enabled,
   };
 }
+
+function projectCapabilityDefinitions() {
+  return [
+    {
+      name: "vault.metadata.read",
+      label: "Read metadata",
+      description: "List secret names and bounded non-secret metadata for this project.",
+      allowed_rules: ["always_run"],
+    },
+    {
+      name: "vault.item.generate",
+      label: "Generate items",
+      description: "Generate and store a new secret value without returning it to the agent.",
+      allowed_rules: ["approval_required", "always_run"],
+    },
+    {
+      name: "vault.session.apply",
+      label: "Apply to sessions",
+      description: "Restart an eligible connector session with approved Vault items in its environment.",
+      allowed_rules: ["approval_required", "always_run"],
+    },
+  ];
+}
+
 function targetDetail() {
   return {
     ...targetSummary(),

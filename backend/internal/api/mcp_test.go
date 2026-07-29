@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -17,11 +20,13 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/config"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
+	"golang.org/x/crypto/ssh"
 )
 
 type apiTestFixture struct {
@@ -91,6 +96,25 @@ func testSSHKeyStore(t *testing.T, runtime *databaseRuntime) *sshkeys.Store {
 func (f apiTestFixture) createKeyAndServer(t *testing.T, name string) testSSHConnectorProfile {
 	t.Helper()
 	return createTestSSHConnectorProfile(t, f.db, f.sshKeys, name)
+}
+
+func (f apiTestFixture) trustServerHostKey(t *testing.T, profile testSSHConnectorProfile) {
+	t.Helper()
+	key, err := f.sshKeys.Get(t.Context(), profile.SSHKeyID)
+	if err != nil {
+		t.Fatalf("get test SSH public key: %v", err)
+	}
+	publicKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key.PublicKey))
+	if err != nil {
+		t.Fatalf("parse test SSH public key: %v", err)
+	}
+	if err := execution.TrustHostKey(
+		f.server.ConnectorTrustStorePath(),
+		net.JoinHostPort(profile.Host, strconv.Itoa(profile.Port)),
+		base64.StdEncoding.EncodeToString(publicKey.Marshal()),
+	); err != nil {
+		t.Fatalf("trust test SSH host key: %v", err)
+	}
 }
 
 func createTestSSHConnectorProfile(t *testing.T, database *sql.DB, sshKeyStore *sshkeys.Store, name string) testSSHConnectorProfile {
