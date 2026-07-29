@@ -171,7 +171,7 @@ func TestStoreReplaceAndListActionPermissions(t *testing.T) {
 	target, profile := createPostgresTargetProfile(t, ctx, store)
 	expiresAt := time.Now().UTC().Add(time.Hour)
 
-	permissions, err := store.ReplaceActionPermissions(ctx, tokenID, []SetActionPermissionInput{
+	inputs := []SetActionPermissionInput{
 		{
 			TargetID:      target.ID,
 			ProfileID:     profile.ID,
@@ -179,9 +179,13 @@ func TestStoreReplaceAndListActionPermissions(t *testing.T) {
 			ExecutionRule: ActionPermissionApprovalRequired,
 			ExpiresAt:     &expiresAt,
 		},
-	})
+	}
+	permissions, changed, err := store.ReplaceActionPermissionsWithChange(ctx, tokenID, inputs)
 	if err != nil {
 		t.Fatalf("replace action permissions: %v", err)
+	}
+	if !changed {
+		t.Fatal("initial action permission replace was reported unchanged")
 	}
 	if len(permissions) != 1 {
 		t.Fatalf("expected 1 permission, got %#v", permissions)
@@ -192,6 +196,21 @@ func TestStoreReplaceAndListActionPermissions(t *testing.T) {
 	}
 	if got.ExecutionRule != ActionPermissionApprovalRequired || got.ExpiresAt == "" {
 		t.Fatalf("unexpected permission rule/expiry: %#v", got)
+	}
+
+	permissions, changed, err = store.ReplaceActionPermissionsWithChange(ctx, tokenID, inputs)
+	if err != nil || changed {
+		t.Fatalf("identical action permission replace: changed=%v err=%v", changed, err)
+	}
+
+	inputs[0].ExpiresAt = nil
+	permissions, changed, err = store.ReplaceActionPermissionsWithChange(ctx, tokenID, inputs)
+	if err != nil || !changed {
+		t.Fatalf("remove action permission expiry: changed=%v err=%v", changed, err)
+	}
+	permissions, changed, err = store.ReplaceActionPermissionsWithChange(ctx, tokenID, inputs)
+	if err != nil || changed {
+		t.Fatalf("identical permission without expiry: changed=%v err=%v", changed, err)
 	}
 
 	permissions, err = store.ReplaceActionPermissions(ctx, tokenID, nil)

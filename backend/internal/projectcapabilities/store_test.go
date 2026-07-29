@@ -43,11 +43,21 @@ func TestCapabilityRulesAreDefinitionSpecific(t *testing.T) {
 
 	for _, input := range []SetInput{
 		{ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleApprovalRequired},
-		{ProjectID: projectID, Name: VaultItemGenerate, ExecutionRule: RuleAlwaysRun},
-		{ProjectID: projectID, Name: VaultSessionApply, ExecutionRule: RuleAlwaysRun},
+		{ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: "blocked"},
+		{ProjectID: projectID, Name: VaultItemGenerate, ExecutionRule: "blocked"},
+		{ProjectID: projectID, Name: VaultSessionApply, ExecutionRule: "blocked"},
 	} {
 		if _, err := store.Replace(context.Background(), tokenID, []SetInput{input}); err == nil {
 			t.Fatalf("expected invalid rule to fail: %#v", input)
+		}
+	}
+
+	for _, input := range []SetInput{
+		{ProjectID: projectID, Name: VaultItemGenerate, ExecutionRule: RuleAlwaysRun},
+		{ProjectID: projectID, Name: VaultSessionApply, ExecutionRule: RuleAlwaysRun},
+	} {
+		if _, err := store.Replace(context.Background(), tokenID, []SetInput{input}); err != nil {
+			t.Fatalf("expected always rule to succeed: %#v: %v", input, err)
 		}
 	}
 }
@@ -105,6 +115,31 @@ func TestCapabilityRevisionDoesNotResetAfterRemoval(t *testing.T) {
 	}
 	if second[0].Revision <= first[0].Revision {
 		t.Fatalf("revision reset after removal: first=%d second=%d", first[0].Revision, second[0].Revision)
+	}
+}
+
+func TestReplaceDoesNotBumpRevisionForIdenticalCapabilities(t *testing.T) {
+	db := openCapabilityTestDB(t)
+	ctx := context.Background()
+	tokenID, projectID := seedCapabilityFixture(t, db)
+	store := NewStore(db)
+	input := SetInput{ProjectID: projectID, Name: VaultSessionApply, ExecutionRule: RuleAlwaysRun}
+	first, changed, err := store.ReplaceWithChange(ctx, tokenID, []SetInput{input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("initial capability replace was reported unchanged")
+	}
+	second, changed, err := store.ReplaceWithChange(ctx, tokenID, []SetInput{input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("identical capability replace was reported changed")
+	}
+	if len(first) != 1 || len(second) != 1 || second[0].Revision != first[0].Revision {
+		t.Fatalf("no-op replace changed revision: first=%#v second=%#v", first, second)
 	}
 }
 

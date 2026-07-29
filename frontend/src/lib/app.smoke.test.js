@@ -23,6 +23,7 @@ const auditLogsSource = readFileSync(join(currentDir, "..", "pages", "audit-logs
 const consolePageSource = readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8");
 const connectorsSource = readFileSync(join(currentDir, "..", "pages", "connectors.jsx"), "utf8");
 const projectsSource = readFileSync(join(currentDir, "..", "pages", "projects.jsx"), "utf8");
+const tokensSource = readFileSync(join(currentDir, "..", "pages", "tokens.jsx"), "utf8");
 const credentialsSource = readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8");
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-dialog.jsx"), "utf8");
 const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-browser-dialog.jsx"), "utf8");
@@ -32,6 +33,7 @@ const transferCenterSource = readFileSync(join(currentDir, "..", "components", "
 const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "token-permission-panel.jsx"), "utf8");
 const connectorTokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "connector-token-permission-panel.jsx"), "utf8");
 const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"), "utf8");
+const vaultPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "vault-permission-dialog.jsx"), "utf8");
 const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "connectors", "templates", "common.jsx"), "utf8");
 const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "connectors", "templates", "target-profile-save.js"), "utf8");
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
@@ -71,6 +73,9 @@ const clickHouseConnectorModelSource = readFileSync(join(currentDir, "..", "conn
 const redisConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "redis", "form.jsx"), "utf8");
 const rabbitMQConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "rabbitmq", "form.jsx"), "utf8");
 const vaultPageSource = readFileSync(join(currentDir, "..", "pages", "vault.jsx"), "utf8");
+const vaultSessionDialogSource = readFileSync(join(currentDir, "..", "components", "console", "vault-session-dialog.jsx"), "utf8");
+const ptyConsoleSource = readFileSync(join(currentDir, "..", "components", "console", "pty-console.jsx"), "utf8");
+const vaultActionApprovalDialogSource = readFileSync(join(currentDir, "..", "components", "vault", "vault-action-approval-dialog.jsx"), "utf8");
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -107,6 +112,13 @@ test("Vault keeps values behind explicit local actions", () => {
   assert.match(vaultPageSource, /\/reveal/);
   assert.match(vaultPageSource, /navigator\.clipboard\.writeText/);
   assert.match(vaultPageSource, /Replace local value/);
+  assert.match(vaultPageSource, /Save generated value/);
+  assert.match(vaultPageSource, /\/generate-preview/);
+  assert.match(vaultPageSource, /Regenerate/);
+  assert.match(vaultPageSource, /generator_kind:/);
+  assert.match(vaultPageSource, /DateTimePicker/);
+  assert.match(vaultPageSource, /visibleTags/);
+  assert.match(vaultPageSource, /variant="outline" className="h-9 w-9 px-0"/);
   assert.match(vaultPageSource, /expected_value_version/);
   assert.match(vaultPageSource, /expected_metadata_revision/);
 });
@@ -120,8 +132,8 @@ test("Projects group connector targets and scope token visibility", () => {
   assert.match(connectorsSource, /ProjectTargetRows/);
   assert.match(consolePageSource, /project_name \|\| "Ungrouped"/);
   assert.match(connectorTargetProfileSaveSource, /project_id: Number\(projectID\) \|\| 0/);
-  assert.match(connectorPermissionDialogSource, /\/project-scopes/);
-  assert.match(connectorPermissionDialogSource, /Changes apply immediately/);
+  assert.match(vaultPermissionDialogSource, /\/project-scopes/);
+  assert.match(vaultPermissionDialogSource, /Changes apply immediately|control whether this token can discover it/);
   assert.match(connectorTokenPermissionPanelSource, /\/project-scopes/);
   assert.match(historySource, /project_id/);
   assert.match(auditLogsSource, /project_id/);
@@ -347,9 +359,13 @@ test("Token page exposes connector action permissions", () => {
   assert.match(connectorPermissionDialogSource, /approval_required/);
   assert.match(connectorPermissionDialogSource, /always_run/);
   assert.match(connectorPermissionDialogSource, /Save connector permissions/);
-  assert.match(connectorPermissionDialogSource, /\/project-capabilities/);
-  assert.match(connectorPermissionDialogSource, /Project Vault capabilities/);
-  assert.match(connectorPermissionDialogSource, /Save Vault capabilities/);
+  assert.doesNotMatch(connectorPermissionDialogSource, /\/project-capabilities|\/project-scopes/);
+  assert.match(vaultPermissionDialogSource, /\/project-capabilities/);
+  assert.match(vaultPermissionDialogSource, /Vault capabilities/);
+  assert.match(vaultPermissionDialogSource, /Save Vault capabilities/);
+  assert.match(vaultPermissionDialogSource, /!max-w-\[1120px\]/);
+  assert.match(tokensSource, /VaultPermissionDialog/);
+  assert.match(tokensSource, /setVaultPermissionDialog\(token\)/);
 });
 
 test("Console exposes connector action approvals", () => {
@@ -552,6 +568,30 @@ test("Console exposes stuck command recovery controls", () => {
   assert.match(consolePageSource, /Looks stuck\? Restart opens a fresh console session/);
   assert.match(consolePageSource, /commandPreview/);
   assert.match(consolePageSource, /Restart/);
+});
+
+test("Console starts supported sessions with explicit Vault environment choices", () => {
+  assert.match(shellSource, /\/api\/vault-session-options\?runtime_id=/);
+  assert.match(shellSource, /vault_items:/);
+  assert.match(shellSource, /deferActivation: true/);
+  assert.match(shellSource, /setTimeout\(\(\) => activateConsoleSession\(session\), 0\)/);
+  assert.match(shellSource, /setTimeout\(\(\) => attachConsoleSession\(session\.id\), 0\)/);
+  assert.match(ptyConsoleSource, /lastTranscriptRef\.current = ""/);
+  assert.match(ptyConsoleSource, /syncTerminalTranscript\(terminal, lastTranscriptRef, latestTranscriptRef\.current\)/);
+  assert.match(vaultSessionDialogSource, /Start session with Vault environment/);
+  assert.match(vaultSessionDialogSource, /target_project_id/);
+  assert.match(vaultSessionDialogSource, /Search this project/);
+  assert.match(vaultSessionDialogSource, /Overwrite existing shell value/);
+  assert.doesNotMatch(vaultSessionDialogSource, /allowedProjectIDs/);
+});
+
+test("Vault Prompt actions expose an explicit local approval dialog", () => {
+  assert.match(shellSource, /\/api\/vault-action-approvals/);
+  assert.match(shellSource, /runVaultActionApproval/);
+  assert.match(shellSource, /declineVaultActionApproval/);
+  assert.match(vaultActionApprovalDialogSource, /Every process in that shell can read, transform, persist, or transmit them/);
+  assert.match(vaultActionApprovalDialogSource, /generated value stays hidden from the AI/);
+  assert.match(vaultActionApprovalDialogSource, /Requested metadata/);
 });
 
 test("Console exposes bulk command execution controls", () => {

@@ -1913,10 +1913,10 @@ func TestCreateConsoleSessionReturnsHostKeyConflict(t *testing.T) {
 		return nil, fmt.Errorf("ssh dial: %w", execution.NewUnknownHostKeyError("[example.test]:22", publicKey))
 	}, fixture.server.runtimeRedactor(runtime))
 
-	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions", "", console.CreateRequest{
-		RuntimeID:     server.ID,
-		Name:          "host-key session",
-		CloseExisting: true,
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions", "", map[string]any{
+		"runtime_id":     server.ID,
+		"name":           "host-key session",
+		"close_existing": true,
 	})
 	if response.Code != http.StatusConflict {
 		t.Fatalf("host key conflict should return 409, got %d %s", response.Code, response.Body.String())

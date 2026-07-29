@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -39,6 +40,13 @@ func TestHostKeyRequiresExplicitTrustBeforeFirstUse(t *testing.T) {
 	}
 	if err := callback("[example.test]:2222", nil, hostKey); err != nil {
 		t.Fatalf("trusted host key should pass: %v", err)
+	}
+	fingerprints, err := TrustedHostFingerprints(knownHostsPath, "[example.test]:2222")
+	if err != nil {
+		t.Fatalf("list trusted host fingerprints: %v", err)
+	}
+	if len(fingerprints) != 1 || fingerprints[0] != HostKeyFingerprintSHA256(hostKey) {
+		t.Fatalf("unexpected trusted fingerprints: %#v", fingerprints)
 	}
 }
 
@@ -90,5 +98,36 @@ func TestHostKeyChangeRequiresExplicitReplacement(t *testing.T) {
 	var changedAgain *ChangedHostKeyError
 	if err := callback(hostname, nil, firstKey); !errors.As(err, &changedAgain) {
 		t.Fatalf("old host key should now be rejected, got %T: %v", err, err)
+	}
+}
+
+func TestHostKeyReplacementValidatesBeforeChangingTrustFile(t *testing.T) {
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostKey, err := ssh.NewPublicKey(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	knownHostsPath := filepath.Join(t.TempDir(), "known_hosts")
+	hostname := "[example.test]:2222"
+	if err := TrustHostKey(knownHostsPath, hostname, NewUnknownHostKeyError(hostname, hostKey).PublicKey); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ReplaceHostKey(knownHostsPath, hostname, "not-an-ssh-public-key"); err == nil {
+		t.Fatal("expected invalid replacement key to fail")
+	}
+	after, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("invalid replacement changed known_hosts:\nbefore=%q\nafter=%q", before, after)
 	}
 }

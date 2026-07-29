@@ -7,11 +7,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/console"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
@@ -80,6 +83,71 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 		strings.Contains(actionsResponse.Body.String(), postgresconnector.ActionQueryReadonly) ||
 		strings.Contains(actionsResponse.Body.String(), "no_longer_supported") {
 		t.Fatalf("unexpected action discovery response: %s", actionsResponse.Body.String())
+	}
+}
+
+func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := t.Context()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-session-poll"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target := fixture.createKeyAndServer(t, "vault-session-output")
+	runtime := fixture.server.activeRuntime()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := fixture.db.ExecContext(ctx, `
+		INSERT INTO console_sessions (
+			runtime_id, generation, principal_kind, principal_token_id, workspace_id,
+			runtime_instance_id, environment_content_hash, approval_context_hash,
+			name, status, created_at, updated_at
+		) VALUES (?, 1, 'mcp_token', ?, ?, ?, 'environment-hash', 'approval-hash', 'Vault session', 'connected', ?, ?)`,
+		target.ID,
+		token.ID,
+		runtime.workspaceUUID,
+		runtime.runtimeInstanceID,
+		now,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("insert Vault console session: %v", err)
+	}
+	sessionID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read Vault console session id: %v", err)
+	}
+	generation := int64(1)
+	request := connectortargets.ActionRequest{
+		TokenID: &token.ID, SessionID: &sessionID, SessionGeneration: &generation,
+	}
+	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
+		t.Fatalf("Vault session output was authorized without a lease")
+	}
+	if err := runtime.vaultLeases.Grant(vaultsessions.Lease{
+		WorkspaceID: runtime.workspaceUUID, RuntimeInstanceID: runtime.runtimeInstanceID,
+		TokenID: token.ID, RuntimeID: target.ID, SessionID: sessionID, SessionGeneration: generation,
+		EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
+		ExpiresAt: time.Now().UTC().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("grant Vault session lease: %v", err)
+	}
+	principal, err := tokenExecutionPrincipal(runtime, token.ID)
+	if err != nil {
+		t.Fatalf("create token execution principal: %v", err)
+	}
+	if err := runtime.vaultLeases.Authorize(ctx, principal, console.SessionAuthorization{
+		Handle:                 console.SessionHandle{ID: sessionID, RuntimeID: target.ID, Generation: generation},
+		EnvironmentContentHash: "environment-hash",
+		ApprovalContextHash:    "approval-hash",
+	}, console.OperationObserve); err != nil {
+		t.Fatalf("exact Vault lease should authorize output: %v", err)
+	}
+	if !connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
+		t.Fatalf("valid exact Vault lease did not authorize connector output")
+	}
+	runtime.vaultLeases.RevokeToken(token.ID)
+	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
+		t.Fatalf("revoked Vault lease still authorized connector output")
 	}
 }
 

@@ -76,6 +76,19 @@ func TestDefaultBindingsValidateAssignmentsAndUseOptimisticRevision(t *testing.T
 	if updated.BindingRevision != 2 || !updated.ReplaceExisting {
 		t.Fatalf("unexpected updated binding: %#v", updated)
 	}
+	found, ok, err := store.FindDefaultBinding(ctx, DefaultBindingInput{
+		VaultItemID: item.ID, SourceProjectID: shared.ID,
+		TargetID: target.ID, ProfileID: profile.ID,
+	})
+	if err != nil || !ok || found.ID != updated.ID || found.BindingRevision != updated.BindingRevision {
+		t.Fatalf("find binding = %#v, %v, %v", found, ok, err)
+	}
+	if _, ok, err := store.FindDefaultBinding(ctx, DefaultBindingInput{
+		VaultItemID: item.ID, SourceProjectID: owner.ID,
+		TargetID: target.ID, ProfileID: profile.ID,
+	}); err != nil || ok {
+		t.Fatalf("unexpected binding lookup = %v, %v", ok, err)
+	}
 	if _, err := store.SaveDefaultBinding(ctx, DefaultBindingInput{
 		VaultItemID: item.ID, SourceProjectID: shared.ID,
 		TargetID: target.ID, ProfileID: profile.ID,
