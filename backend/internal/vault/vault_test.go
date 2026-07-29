@@ -76,3 +76,48 @@ func TestVaultUsesHKDFDerivedKeyMaterial(t *testing.T) {
 		t.Fatalf("vault key should not be the raw SHA-256 secret digest")
 	}
 }
+
+func TestVaultEncryptDecryptWithAssociatedData(t *testing.T) {
+	v, err := New("secret-one")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	aad := []byte{0, 1, 2, 3, 4}
+	encrypted, err := v.EncryptJSONWithAAD(vaultSecret{Value: "private"}, aad)
+	if err != nil {
+		t.Fatalf("encrypt with aad: %v", err)
+	}
+
+	var decoded vaultSecret
+	if err := v.DecryptJSONWithAAD(encrypted, &decoded, aad); err != nil {
+		t.Fatalf("decrypt with aad: %v", err)
+	}
+	if decoded.Value != "private" {
+		t.Fatalf("unexpected value: %q", decoded.Value)
+	}
+}
+
+func TestVaultAssociatedDataFailsClosed(t *testing.T) {
+	v, err := New("secret-one")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	encrypted, err := v.EncryptJSONWithAAD(vaultSecret{Value: "private"}, []byte("record-one"))
+	if err != nil {
+		t.Fatalf("encrypt with aad: %v", err)
+	}
+
+	var decoded vaultSecret
+	if err := v.DecryptJSONWithAAD(encrypted, &decoded, []byte("record-two")); err == nil {
+		t.Fatalf("expected mismatched aad to fail")
+	}
+	if err := v.DecryptJSON(encrypted, &decoded); err == nil {
+		t.Fatalf("expected aad ciphertext to fail without aad")
+	}
+	if _, err := v.EncryptJSONWithAAD(vaultSecret{Value: "private"}, nil); err == nil {
+		t.Fatalf("expected empty aad to fail encryption")
+	}
+	if err := v.DecryptJSONWithAAD(encrypted, &decoded, nil); err == nil {
+		t.Fatalf("expected empty aad to fail decryption")
+	}
+}
