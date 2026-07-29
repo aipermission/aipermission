@@ -1,5 +1,5 @@
 import { Activity, Cable, History, KeyRound, PlugZap, TerminalSquare, TicketCheck } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { apiUrl, mcpApiUrl } from "../lib/api";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { apiGet } from "./lib/api";
 import { useTheme } from "./lib/theme";
 import { Notice } from "./components/ui/notice";

@@ -12,7 +12,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ["react", "react-dom", "react-router-dom"],
+          react: ["react", "react-dom", "react-router"],
           terminal: ["@xterm/xterm", "@xterm/addon-fit"],
           ui: ["lucide-react", "@radix-ui/react-slot"],
         },

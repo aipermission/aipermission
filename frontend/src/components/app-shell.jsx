@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router";
 import { apiGet, apiPost, apiPut, apiUrl } from "../lib/api";
 import { AppSidebar } from "./app-sidebar";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Command, Database, ExternalLink, FolderKanban, GitFork, History, Home, KeyRound, ListTree, LockKeyhole, Moon, Package, PlugZap, Power, PowerOff, Settings, Shield, ShieldCheck, Sun, TicketCheck, UploadCloud } from "lucide-react";
 import { appVersion, changelogEntries } from "../lib/release";
 import { Badge, CountBadge } from "./ui/badge";
