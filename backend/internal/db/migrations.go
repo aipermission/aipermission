@@ -376,6 +376,147 @@ var backupProviderTableStatements = []string{
 	);`,
 }
 
+var projectVaultTableStatements = []string{
+	`CREATE TABLE vault_items (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		encrypted_value TEXT NOT NULL DEFAULT '',
+		owner_project_id INTEGER NOT NULL,
+		secret_type TEXT NOT NULL,
+		value_mode TEXT NOT NULL DEFAULT 'text' CHECK (value_mode IN ('text')),
+		value_version INTEGER NOT NULL DEFAULT 1,
+		metadata_revision INTEGER NOT NULL DEFAULT 1,
+		encryption_version INTEGER NOT NULL DEFAULT 1,
+		provider TEXT NOT NULL DEFAULT '',
+		environment TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		expires_at TEXT,
+		expiry_warning_days INTEGER NOT NULL DEFAULT 14,
+		last_value_replaced_at TEXT NOT NULL,
+		last_used_at TEXT,
+		usage_count INTEGER NOT NULL DEFAULT 0,
+		source TEXT NOT NULL CHECK (source IN ('imported', 'generated')),
+		generator_kind TEXT NOT NULL DEFAULT '',
+		generator_parameters_json TEXT NOT NULL DEFAULT '{}',
+		status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		FOREIGN KEY(owner_project_id) REFERENCES projects(id) ON DELETE RESTRICT
+	);`,
+	`CREATE UNIQUE INDEX idx_vault_items_active_owner_name
+		ON vault_items(owner_project_id, name COLLATE NOCASE)
+		WHERE status = 'active';`,
+	`CREATE INDEX idx_vault_items_owner_status_name
+		ON vault_items(owner_project_id, status, name COLLATE NOCASE);`,
+	`CREATE INDEX idx_vault_items_expiry
+		ON vault_items(status, expires_at);`,
+	`CREATE TABLE vault_item_projects (
+		vault_item_id INTEGER NOT NULL,
+		project_id INTEGER NOT NULL,
+		assignment_revision INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(vault_item_id, project_id),
+		FOREIGN KEY(vault_item_id) REFERENCES vault_items(id) ON DELETE CASCADE,
+		FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
+	);`,
+	`CREATE INDEX idx_vault_item_projects_project
+		ON vault_item_projects(project_id, vault_item_id);`,
+	`CREATE TABLE vault_item_usage_notes (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		vault_item_id INTEGER NOT NULL,
+		location TEXT NOT NULL,
+		notes TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		FOREIGN KEY(vault_item_id) REFERENCES vault_items(id) ON DELETE CASCADE
+	);`,
+	`CREATE INDEX idx_vault_item_usage_notes_item
+		ON vault_item_usage_notes(vault_item_id, id);`,
+	`CREATE TABLE vault_item_tags (
+		vault_item_id INTEGER NOT NULL,
+		tag TEXT NOT NULL COLLATE NOCASE,
+		created_at TEXT NOT NULL,
+		PRIMARY KEY(vault_item_id, tag),
+		FOREIGN KEY(vault_item_id) REFERENCES vault_items(id) ON DELETE CASCADE
+	);`,
+	`CREATE TABLE vault_default_bindings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		vault_item_id INTEGER NOT NULL,
+		source_project_id INTEGER NOT NULL,
+		target_id INTEGER NOT NULL,
+		profile_id INTEGER NOT NULL,
+		replace_existing INTEGER NOT NULL DEFAULT 0 CHECK (replace_existing IN (0, 1)),
+		binding_revision INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(vault_item_id, source_project_id, target_id, profile_id),
+		FOREIGN KEY(vault_item_id) REFERENCES vault_items(id) ON DELETE CASCADE,
+		FOREIGN KEY(source_project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+		FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE RESTRICT,
+		FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE RESTRICT
+	);`,
+	`CREATE INDEX idx_vault_default_bindings_profile
+		ON vault_default_bindings(target_id, profile_id, vault_item_id);`,
+	`CREATE TABLE token_project_capabilities (
+		token_id INTEGER NOT NULL,
+		project_id INTEGER NOT NULL,
+		capability_name TEXT NOT NULL,
+		execution_rule TEXT NOT NULL CHECK (execution_rule IN ('always_run', 'approval_required', 'blocked')),
+		expires_at TEXT,
+		revision INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(token_id, project_id, capability_name),
+		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
+		FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+	);`,
+	`CREATE INDEX idx_token_project_capabilities_lookup
+		ON token_project_capabilities(token_id, project_id, capability_name);`,
+	`CREATE TABLE vault_action_requests (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		token_id INTEGER NOT NULL,
+		project_id INTEGER NOT NULL,
+		runtime_id INTEGER,
+		action_name TEXT NOT NULL,
+		source TEXT NOT NULL DEFAULT 'mcp',
+		input_json TEXT NOT NULL DEFAULT '{}',
+		reason TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,
+		approval_context_json TEXT NOT NULL DEFAULT '{}',
+		approval_context_hash TEXT NOT NULL DEFAULT '',
+		idempotency_key TEXT NOT NULL,
+		error TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		completed_at TEXT,
+		updated_at TEXT NOT NULL,
+		UNIQUE(token_id, idempotency_key),
+		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
+		FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+		FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE SET NULL
+	);`,
+	`CREATE INDEX idx_vault_action_requests_token_status_created
+		ON vault_action_requests(token_id, status, created_at);`,
+	`CREATE TABLE vault_session_leases (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		token_id INTEGER NOT NULL,
+		runtime_id INTEGER NOT NULL,
+		session_id INTEGER NOT NULL,
+		session_generation INTEGER NOT NULL,
+		approval_context_hash TEXT NOT NULL,
+		status TEXT NOT NULL CHECK (status IN ('active', 'expired', 'revoked')),
+		expires_at TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(token_id, runtime_id, session_id, session_generation, approval_context_hash),
+		FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE CASCADE,
+		FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE CASCADE,
+		FOREIGN KEY(session_id) REFERENCES console_sessions(id) ON DELETE CASCADE
+	);`,
+	`CREATE INDEX idx_vault_session_leases_active
+		ON vault_session_leases(token_id, runtime_id, status, expires_at);`,
+}
+
 var indexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_connector_credential_resources_kind_name ON connector_credential_resources(connector_kind, resource_kind, name);`,
 	`CREATE INDEX IF NOT EXISTS idx_api_tokens_name ON api_tokens(name);`,
@@ -659,6 +800,11 @@ var migrations = []migration{
 			 );`,
 			`CREATE INDEX idx_audit_logs_project_created ON audit_logs(project_id, created_at);`,
 		},
+	},
+	{
+		version:     5,
+		description: "project vault foundation",
+		statements:  projectVaultTableStatements,
 	},
 }
 
