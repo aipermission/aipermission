@@ -70,6 +70,12 @@ func (s tokenHandlers) revokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "token revoke was canceled")
+		return
+	}
+	defer release()
 	item, err := runtime.tokens.Revoke(r.Context(), id)
 	if err != nil {
 		handleTokenError(w, err)
@@ -83,6 +89,13 @@ func (s tokenHandlers) revokeToken(w http.ResponseWriter, r *http.Request) {
 	}
 	if !settings.ReusableTokens {
 		item.TokenValue = ""
+	}
+	if runtime.vaultLeases != nil {
+		if err := invalidateVaultTokenSessions(r.Context(), runtime, id, "token revoked; send a fresh Vault request"); err != nil {
+			log.Printf("invalidate Vault token sessions failed token=%d error=%v", id, err)
+			writeInternalError(w)
+			return
+		}
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.revoked", map[string]any{
 		"token_id": item.ID,

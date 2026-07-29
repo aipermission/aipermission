@@ -10,7 +10,19 @@ import (
 
 const passwordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()-_=+"
 
+func ValidateGeneratorKind(kind string) error {
+	switch kind {
+	case "random_token", "hex_secret", "password", "long_hmac_secret", "uuid_v4":
+		return nil
+	default:
+		return ValidationError("unsupported generator kind")
+	}
+}
+
 func Generate(kind string) (string, map[string]any, error) {
+	if err := ValidateGeneratorKind(kind); err != nil {
+		return "", nil, err
+	}
 	switch kind {
 	case "random_token":
 		value, err := randomBytes(32)

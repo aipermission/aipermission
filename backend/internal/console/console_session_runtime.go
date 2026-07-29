@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
 )
 
@@ -32,12 +33,12 @@ func (s *managedConsoleSession) run() {
 		return
 	}
 	runtime, err := s.manager.openRuntime(s.ctx, RuntimeOpenRequest{
-		RuntimeID:   s.runtimeID,
-		Generation:  s.generation,
-		Rows:        s.rows,
-		Cols:        s.cols,
-		Params:      cloneParams(s.params),
-		Environment: s.environment,
+		RuntimeID:      s.runtimeID,
+		Generation:     s.generation,
+		Rows:           s.rows,
+		Cols:           s.cols,
+		Params:         cloneParams(s.params),
+		HasEnvironment: s.environment != nil || s.prepareEnvironment != nil,
 	})
 	if err != nil {
 		s.markStarted(err)
@@ -58,6 +59,14 @@ func (s *managedConsoleSession) run() {
 	s.mu.Lock()
 	s.stdin = stdin
 	s.mu.Unlock()
+
+	if s.environment != nil || s.prepareEnvironment != nil {
+		if err := s.applyEnvironment(runtime); err != nil {
+			s.markStarted(err)
+			s.fail(err.Error())
+			return
+		}
+	}
 
 	if runtime.Stdout == nil {
 		s.markStarted(fmt.Errorf("console transport did not provide stdout"))
@@ -85,13 +94,13 @@ func (s *managedConsoleSession) run() {
 	pipeCount := 1
 	go func() {
 		defer func() { pipeDone <- struct{}{} }()
-		s.pipe(runtime.Stdout)
+		s.pipe(runtime.Stdout, s.stdoutExactRedactor)
 	}()
 	if runtime.Stderr != nil {
 		pipeCount++
 		go func() {
 			defer func() { pipeDone <- struct{}{} }()
-			s.pipe(runtime.Stderr)
+			s.pipe(runtime.Stderr, s.stderrExactRedactor)
 		}()
 	}
 
@@ -117,6 +126,58 @@ func (s *managedConsoleSession) run() {
 	}
 }
 
+func (s *managedConsoleSession) applyEnvironment(runtime *RuntimeSession) error {
+	if runtime == nil || runtime.ApplyEnvironment == nil {
+		return fmt.Errorf("console transport does not support session environments")
+	}
+	preparation := EnvironmentPreparation{Environment: s.environment}
+	if s.prepareEnvironment != nil {
+		var err error
+		preparation, err = s.prepareEnvironment(s.ctx, runtime.PeerIdentity)
+		if err != nil {
+			return err
+		}
+	}
+	if preparation.Release != nil {
+		defer preparation.Release()
+	}
+	if preparation.Environment == nil || preparation.Environment.Len() == 0 {
+		return fmt.Errorf("session environment preparation returned no values")
+	}
+	redactors := make([]*sessionenv.Redactor, 0, 3)
+	for range 3 {
+		redactor, err := preparation.Environment.ExactValueRedactor()
+		if err != nil {
+			for _, item := range redactors {
+				_ = item.Close()
+			}
+			preparation.Environment.Destroy()
+			return fmt.Errorf("prepare console redaction: %w", err)
+		}
+		redactors = append(redactors, redactor)
+	}
+	s.mu.Lock()
+	s.exactRedactor = redactors[0]
+	s.stdoutExactRedactor = redactors[1]
+	s.stderrExactRedactor = redactors[2]
+	s.environment = preparation.Environment
+	s.mu.Unlock()
+	if err := runtime.ApplyEnvironment(s.ctx, preparation.Environment); err != nil {
+		return err
+	}
+	if preparation.PostValidate != nil {
+		if err := preparation.PostValidate(s.ctx); err != nil {
+			return err
+		}
+	}
+	if preparation.Finalize != nil {
+		if err := preparation.Finalize(s.ctx, s.handle()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func waitConsolePipes(done <-chan struct{}, count int) {
 	if done == nil || count < 1 {
 		return
@@ -132,12 +193,12 @@ func waitConsolePipes(done <-chan struct{}, count int) {
 	}
 }
 
-func (s *managedConsoleSession) pipe(reader io.Reader) {
+func (s *managedConsoleSession) pipe(reader io.Reader, redactor *sessionenv.Redactor) {
 	buffer := make([]byte, 4096)
 	for {
 		n, err := reader.Read(buffer)
 		if n > 0 {
-			s.appendOutput(string(buffer[:n]))
+			s.appendStreamOutput(string(buffer[:n]), redactor)
 		}
 		if err != nil {
 			return
@@ -168,14 +229,21 @@ func (s *managedConsoleSession) snapshot() (string, string) {
 	return s.status, s.transcript
 }
 
+func (s *managedConsoleSession) dimensions() (int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cols, s.rows
+}
+
 func (s *managedConsoleSession) writeInput(data string) error {
 	if data == "" {
 		return nil
 	}
 	s.mu.Lock()
 	stdin := s.stdin
+	status := s.status
 	s.mu.Unlock()
-	if stdin == nil {
+	if stdin == nil || status != "connected" {
 		return fmt.Errorf("console session is not ready")
 	}
 	_, err := io.WriteString(stdin, data)
@@ -288,11 +356,20 @@ func (s *managedConsoleSession) setStatus(status string, message string) {
 }
 
 func (s *managedConsoleSession) appendOutput(data string) {
+	s.mu.Lock()
+	redactor := s.stdoutExactRedactor
+	if redactor == nil {
+		redactor = s.exactRedactor
+	}
+	s.mu.Unlock()
+	s.appendStreamOutput(data, redactor)
+}
+
+func (s *managedConsoleSession) appendStreamOutput(data string, redactor *sessionenv.Redactor) {
 	if data == "" {
 		return
 	}
 	s.mu.Lock()
-	redactor := s.exactRedactor
 	redactionClosed := s.exactRedactionClosed
 	s.mu.Unlock()
 	if redactionClosed {
@@ -354,7 +431,7 @@ func (s *managedConsoleSession) appendDisplayOutput(data string) {
 	if data == "" {
 		return
 	}
-	data = s.manager.redactText(data)
+	data = s.redactForPersistence(data)
 	s.mu.Lock()
 	if strings.HasPrefix(data, "[AI command]") && s.transcript != "" && !strings.HasSuffix(s.transcript, "\n") && !strings.HasSuffix(s.transcript, "\r") {
 		data = "\r\n" + data
@@ -372,14 +449,37 @@ func (s *managedConsoleSession) appendDisplayOutput(data string) {
 	s.broadcast(ptyServerMessage{Type: "output", Status: "connected", Data: data, SessionID: s.id})
 }
 
-func (s *managedConsoleSession) closeExactRedactor() {
+func (s *managedConsoleSession) redactForPersistence(value string) string {
+	if value == "" {
+		return ""
+	}
 	s.mu.Lock()
 	redactor := s.exactRedactor
-	s.exactRedactor = nil
-	s.exactRedactionClosed = true
 	s.mu.Unlock()
 	if redactor != nil {
-		s.appendSafeOutput(s.manager.redactText(string(redactor.Close())))
+		value = string(redactor.Redact([]byte(value)))
+	}
+	return s.manager.redactText(value)
+}
+
+func (s *managedConsoleSession) closeExactRedactor() {
+	s.mu.Lock()
+	redactors := []*sessionenv.Redactor{s.stdoutExactRedactor, s.stderrExactRedactor, s.exactRedactor}
+	s.exactRedactor = nil
+	s.stdoutExactRedactor = nil
+	s.stderrExactRedactor = nil
+	s.exactRedactionClosed = true
+	s.mu.Unlock()
+	seen := map[*sessionenv.Redactor]bool{}
+	for index, redactor := range redactors {
+		if redactor == nil || seen[redactor] {
+			continue
+		}
+		seen[redactor] = true
+		output := redactor.Close()
+		if index < 2 && len(output) > 0 {
+			s.appendSafeOutput(s.manager.redactText(string(output)))
+		}
 	}
 }
 

@@ -2,10 +2,13 @@ package connectors
 
 import (
 	"context"
+	"errors"
 	"net"
 
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
+
+var ErrSessionEnvironmentUnsupported = errors.New("connector runtime does not support session environments")
 
 // Connector is the required contract for connector-shaped targets.
 //
@@ -118,9 +121,18 @@ type RuntimeCapability interface {
 }
 
 const (
-	NetworkTransportCapabilityName = "network_transport"
-	CommandTransportCapabilityName = "command_transport"
+	NetworkTransportCapabilityName   = "network_transport"
+	CommandTransportCapabilityName   = "command_transport"
+	SessionEnvironmentCapabilityName = "session_environment"
 )
+
+// SessionEnvironmentCapability declares that a connector-owned live runtime
+// can consume the gateway's framed secret environment envelope.
+type SessionEnvironmentCapability interface {
+	RuntimeCapability
+	SessionEnvironmentVersion() string
+	SessionEnvironmentPeerIdentityRequired() bool
+}
 
 // NetworkDialRequest describes a connector-owned network connection request.
 //

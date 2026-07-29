@@ -14,6 +14,7 @@ import (
 
 const (
 	MaxItems      = 32
+	MinValueBytes = 12
 	MaxValueBytes = 16 * 1024
 	MaxTotalBytes = 128 * 1024
 )
@@ -78,6 +79,10 @@ func NewEnvelope(inputs []EntryInput) (*Envelope, error) {
 		if len(input.Value) == 0 {
 			destroyEntries(entries)
 			return nil, fmt.Errorf("environment value for %s is empty", input.Name)
+		}
+		if len(input.Value) < MinValueBytes {
+			destroyEntries(entries)
+			return nil, fmt.Errorf("environment value for %s is shorter than the %d-byte injection minimum", input.Name, MinValueBytes)
 		}
 		if len(input.Value) > MaxValueBytes {
 			destroyEntries(entries)

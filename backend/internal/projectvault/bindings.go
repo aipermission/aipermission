@@ -185,6 +185,25 @@ func (s *Store) getDefaultBinding(ctx context.Context, id int64) (DefaultBinding
 	return item, nil
 }
 
+func (s *Store) GetDefaultBinding(ctx context.Context, id int64) (DefaultBinding, error) {
+	return s.getDefaultBinding(ctx, id)
+}
+
+func (s *Store) FindDefaultBinding(ctx context.Context, input DefaultBindingInput) (DefaultBinding, bool, error) {
+	item, err := scanDefaultBinding(s.db.QueryRowContext(ctx, defaultBindingSelect+`
+		WHERE b.vault_item_id = ? AND b.source_project_id = ?
+		  AND b.target_id = ? AND b.profile_id = ?`,
+		input.VaultItemID, input.SourceProjectID, input.TargetID, input.ProfileID,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return DefaultBinding{}, false, nil
+	}
+	if err != nil {
+		return DefaultBinding{}, false, fmt.Errorf("find vault default binding: %w", err)
+	}
+	return item, true, nil
+}
+
 func validateDefaultBindingReferences(ctx context.Context, tx *sql.Tx, input DefaultBindingInput) error {
 	var itemActive, projectActive, assigned, targetActive, profileActive int
 	err := tx.QueryRowContext(ctx, `

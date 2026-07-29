@@ -11,7 +11,11 @@ import (
 
 const restoreTerminalInputCommand = "stty sane 2>/dev/null || stty echo icanon opost 2>/dev/null || true\n"
 
-func (s *managedConsoleSession) execCommand(ctx context.Context, command string) (ExecResult, error) {
+func (s *managedConsoleSession) execCommand(
+	ctx context.Context,
+	command string,
+	authorizedWrite func(func() error) error,
+) (ExecResult, error) {
 	s.execMu.Lock()
 	defer s.execMu.Unlock()
 
@@ -61,16 +65,22 @@ func (s *managedConsoleSession) execCommand(ctx context.Context, command string)
 		Started:     started,
 	})
 
-	if err := s.writeInput(consoleExecPrelude()); err != nil {
-		s.clearActiveCommand(marker)
-		return ExecResult{}, err
+	writeCommand := func() error {
+		if err := s.writeInput(consoleExecPrelude()); err != nil {
+			return err
+		}
+		time.Sleep(120 * time.Millisecond)
+		return s.writeInput(consoleExecPayload(command, marker))
 	}
-	time.Sleep(120 * time.Millisecond)
-
-	payload := consoleExecPayload(command, marker)
-	if err := s.writeInput(payload); err != nil {
+	var writeErr error
+	if authorizedWrite != nil {
+		writeErr = authorizedWrite(writeCommand)
+	} else {
+		writeErr = writeCommand()
+	}
+	if writeErr != nil {
 		s.clearActiveCommand(marker)
-		return ExecResult{}, err
+		return ExecResult{}, writeErr
 	}
 	s.appendDisplayOutput(formatAutomationCommand(command))
 

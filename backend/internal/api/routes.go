@@ -25,6 +25,7 @@ type connectorHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type targetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
+type vaultActionApprovalHandlers struct{ *Server }
 type maintenanceConsoleHandlers struct{ *Server }
 
 func (s *Server) routes() {
@@ -50,6 +51,7 @@ func (s *Server) routes() {
 	connectorTargets := connectorTargetHandlers{s}
 	targets := targetHandlers{s}
 	mcp := mcpHandlers{s}
+	vaultApprovals := vaultActionApprovalHandlers{s}
 	maintenanceConsole := maintenanceConsoleHandlers{s}
 
 	s.mux.HandleFunc("GET /health", s.health)
@@ -136,12 +138,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/vault-items", vaultItems.createVaultItem)
 	s.mux.HandleFunc("GET /api/vault-items/{id}", vaultItems.getVaultItem)
 	s.mux.HandleFunc("PUT /api/vault-items/{id}", vaultItems.updateVaultItem)
+	s.mux.HandleFunc("POST /api/vault-items/{id}/generate-preview", vaultItems.generateVaultItemPreview)
 	s.mux.HandleFunc("POST /api/vault-items/{id}/value", vaultItems.replaceVaultItemValue)
 	s.mux.HandleFunc("POST /api/vault-items/{id}/reveal", vaultItems.revealVaultItem)
 	s.mux.HandleFunc("POST /api/vault-items/{id}/delete", vaultItems.deleteVaultItem)
 	s.mux.HandleFunc("GET /api/vault-default-bindings", vaultItems.listVaultDefaultBindings)
 	s.mux.HandleFunc("PUT /api/vault-default-bindings", vaultItems.saveVaultDefaultBinding)
 	s.mux.HandleFunc("POST /api/vault-default-bindings/{id}/delete", vaultItems.deleteVaultDefaultBinding)
+	s.mux.HandleFunc("GET /api/vault-session-options", vaultItems.vaultSessionOptions)
+	s.mux.HandleFunc("GET /api/vault-action-approvals", vaultApprovals.list)
+	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/run", vaultApprovals.run)
+	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/decline", vaultApprovals.decline)
 	s.mux.HandleFunc("GET /api/file-transfers", fileTransfers.listFileTransfers)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}", fileTransfers.getFileTransfer)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}/download", fileTransfers.downloadTransferredFile)
@@ -194,6 +201,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/mcp/connector-actions", mcp.mcpGetConnectorActions)
 	s.mux.HandleFunc("POST /api/mcp/connector-actions/call", mcp.mcpCallConnectorAction)
 	s.mux.HandleFunc("GET /api/mcp/connector-action-requests/{id}", mcp.mcpGetConnectorActionRequest)
+	s.mux.HandleFunc("GET /api/mcp/vault-items", mcp.mcpListVaultItems)
+	s.mux.HandleFunc("POST /api/mcp/vault-actions/call", mcp.mcpCallVaultAction)
+	s.mux.HandleFunc("GET /api/mcp/vault-action-requests/{id}", mcp.mcpGetVaultActionRequest)
+	s.mux.HandleFunc("POST /api/mcp/vault-action-requests/{id}/cancel", mcp.mcpCancelVaultActionRequest)
 	registerConnectorAdapterRoutes(s.mux, s)
 }
 

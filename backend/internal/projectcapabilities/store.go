@@ -16,7 +16,6 @@ const (
 
 	RuleAlwaysRun        = "always_run"
 	RuleApprovalRequired = "approval_required"
-	RuleBlocked          = "blocked"
 )
 
 var (
@@ -65,19 +64,19 @@ func Definitions() []Definition {
 			Name:         VaultMetadataRead,
 			Label:        "Read metadata",
 			Description:  "List secret names and bounded non-secret metadata for this project.",
-			AllowedRules: []string{RuleBlocked, RuleAlwaysRun},
+			AllowedRules: []string{RuleAlwaysRun},
 		},
 		{
 			Name:         VaultItemGenerate,
 			Label:        "Generate items",
 			Description:  "Generate and store a new secret value without returning it to the agent.",
-			AllowedRules: []string{RuleBlocked, RuleApprovalRequired},
+			AllowedRules: []string{RuleApprovalRequired, RuleAlwaysRun},
 		},
 		{
 			Name:         VaultSessionApply,
 			Label:        "Apply to sessions",
 			Description:  "Restart an eligible connector session with approved Vault items in its environment.",
-			AllowedRules: []string{RuleBlocked, RuleApprovalRequired},
+			AllowedRules: []string{RuleApprovalRequired, RuleAlwaysRun},
 		},
 	}
 }
@@ -170,12 +169,23 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 			return nil, err
 		}
 	}
-	createdAtByCapability, err := existingCreatedAt(ctx, tx, tokenID)
+	existing, err := existingCapabilityStates(ctx, tx, tokenID)
 	if err != nil {
 		return nil, err
 	}
+	if capabilitySetEqual(existing, normalized) {
+		if err := tx.Rollback(); err != nil {
+			return nil, fmt.Errorf("rollback unchanged project capabilities: %w", err)
+		}
+		return s.List(ctx, tokenID)
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, input := range normalized {
+		key := capabilityKey(input.ProjectID, input.Name)
+		current, exists := existing[key]
+		if exists && current.ExecutionRule == input.ExecutionRule && current.ExpiresAt == input.ExpiresAt {
+			continue
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO token_project_capability_revisions (
 				token_id, project_id, capability_name, revision, updated_at
@@ -192,7 +202,7 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 		return nil, fmt.Errorf("clear project capabilities: %w", err)
 	}
 	for _, input := range normalized {
-		createdAt := createdAtByCapability[capabilityKey(input.ProjectID, input.Name)]
+		createdAt := existing[capabilityKey(input.ProjectID, input.Name)].CreatedAt
 		if createdAt == "" {
 			createdAt = now
 		}
@@ -203,12 +213,7 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 			)
 			SELECT ?, ?, ?, ?, NULLIF(?, ''), r.revision, ?, ?
 			FROM token_project_capability_revisions r
-			WHERE r.token_id = ? AND r.project_id = ? AND r.capability_name = ?
-			ON CONFLICT(token_id, project_id, capability_name) DO UPDATE SET
-				execution_rule = excluded.execution_rule,
-				expires_at = excluded.expires_at,
-				revision = excluded.revision,
-				updated_at = excluded.updated_at`,
+			WHERE r.token_id = ? AND r.project_id = ? AND r.capability_name = ?`,
 			tokenID, input.ProjectID, input.Name, input.ExecutionRule, input.ExpiresAt, createdAt, now,
 			tokenID, input.ProjectID, input.Name,
 		); err != nil {
@@ -221,28 +226,77 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 	return s.List(ctx, tokenID)
 }
 
-func existingCreatedAt(ctx context.Context, tx *sql.Tx, tokenID int64) (map[string]string, error) {
+func (s *Store) ReplaceWithChange(ctx context.Context, tokenID int64, inputs []SetInput) ([]Capability, bool, error) {
+	before, err := s.List(ctx, tokenID)
+	if err != nil {
+		return nil, false, err
+	}
+	items, err := s.Replace(ctx, tokenID, inputs)
+	if err != nil {
+		return nil, false, err
+	}
+	return items, !capabilityListsEqual(before, items), nil
+}
+
+func capabilityListsEqual(left, right []Capability) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	values := make(map[string]Capability, len(left))
+	for _, item := range left {
+		values[capabilityKey(item.ProjectID, item.Name)] = item
+	}
+	for _, item := range right {
+		current, ok := values[capabilityKey(item.ProjectID, item.Name)]
+		if !ok || current.ExecutionRule != item.ExecutionRule || current.ExpiresAt != item.ExpiresAt {
+			return false
+		}
+	}
+	return true
+}
+
+type capabilityState struct {
+	ExecutionRule string
+	ExpiresAt     string
+	CreatedAt     string
+}
+
+func existingCapabilityStates(ctx context.Context, tx *sql.Tx, tokenID int64) (map[string]capabilityState, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT project_id, capability_name, created_at
+		SELECT project_id, capability_name, execution_rule, COALESCE(expires_at, ''), created_at
 		FROM token_project_capabilities
 		WHERE token_id = ?`, tokenID)
 	if err != nil {
 		return nil, fmt.Errorf("list existing project capabilities: %w", err)
 	}
-	values := map[string]string{}
+	values := map[string]capabilityState{}
 	for rows.Next() {
 		var projectID int64
-		var name, createdAt string
-		if err := rows.Scan(&projectID, &name, &createdAt); err != nil {
+		var name string
+		var state capabilityState
+		if err := rows.Scan(&projectID, &name, &state.ExecutionRule, &state.ExpiresAt, &state.CreatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		values[capabilityKey(projectID, name)] = createdAt
+		values[capabilityKey(projectID, name)] = state
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	return values, nil
+}
+
+func capabilitySetEqual(existing map[string]capabilityState, inputs []SetInput) bool {
+	if len(existing) != len(inputs) {
+		return false
+	}
+	for _, input := range inputs {
+		state, ok := existing[capabilityKey(input.ProjectID, input.Name)]
+		if !ok || state.ExecutionRule != input.ExecutionRule || state.ExpiresAt != input.ExpiresAt {
+			return false
+		}
+	}
+	return true
 }
 
 func capabilityKey(projectID int64, name string) string {
@@ -269,9 +323,6 @@ func normalizeInput(input SetInput) (SetInput, error) {
 	}
 	if !allowed {
 		return SetInput{}, ValidationError("execution rule is not allowed for this project capability")
-	}
-	if input.ExecutionRule == RuleBlocked && input.ExpiresAt != "" {
-		return SetInput{}, ValidationError("expires_at is not supported for blocked capabilities")
 	}
 	if input.ExpiresAt != "" {
 		expiresAt, err := time.Parse(time.RFC3339, input.ExpiresAt)

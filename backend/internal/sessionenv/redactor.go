@@ -19,17 +19,24 @@ type Redactor struct {
 
 func NewRedactor(patterns [][]byte) (*Redactor, error) {
 	unique := map[string]bool{}
-	values := make([][]byte, 0, len(patterns))
+	values := make([][]byte, 0, len(patterns)*3)
 	for _, pattern := range patterns {
 		if len(pattern) == 0 {
 			return nil, errors.New("redaction patterns cannot be empty")
 		}
-		key := string(pattern)
-		if unique[key] {
-			continue
+		variants := [][]byte{
+			pattern,
+			bytes.ReplaceAll(pattern, []byte("\n"), []byte("\r\n")),
+			bytes.ReplaceAll(pattern, []byte("\n"), []byte("\r")),
 		}
-		unique[key] = true
-		values = append(values, bytes.Clone(pattern))
+		for _, variant := range variants {
+			key := string(variant)
+			if unique[key] {
+				continue
+			}
+			unique[key] = true
+			values = append(values, bytes.Clone(variant))
+		}
 	}
 	return &Redactor{patterns: values}, nil
 }
@@ -70,6 +77,29 @@ func (r *Redactor) Close() []byte {
 	return output.Bytes()
 }
 
+// Redact applies the exact-value patterns to a complete value without changing
+// the state of the streaming redactor.
+func (r *Redactor) Redact(value []byte) []byte {
+	if r == nil || len(value) == 0 {
+		return bytes.Clone(value)
+	}
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return bytes.Clone(redactedValue)
+	}
+	patterns := make([][]byte, len(r.patterns))
+	for index, pattern := range r.patterns {
+		patterns[index] = bytes.Clone(pattern)
+	}
+	r.mu.Unlock()
+	defer destroyByteSlices(patterns)
+
+	redactor := &Redactor{patterns: patterns}
+	output := redactor.Write(value)
+	return append(output, redactor.Close()...)
+}
+
 func (r *Redactor) drain(output *bytes.Buffer, final bool) {
 	for len(r.pending) > 0 {
 		hasPotentialLonger := false
@@ -83,8 +113,13 @@ func (r *Redactor) drain(output *bytes.Buffer, final bool) {
 				}
 			}
 		}
-		if !final && hasPotentialLonger {
-			return
+		if hasPotentialLonger {
+			if !final {
+				return
+			}
+			output.Write(redactedValue)
+			r.pending = r.pending[:0]
+			continue
 		}
 		if exact {
 			output.Write(redactedValue)

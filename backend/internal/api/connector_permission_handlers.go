@@ -88,16 +88,30 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	permissions, err := store.ReplaceActionPermissions(r.Context(), tokenID, inputs)
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "connector permission update was canceled")
+		return
+	}
+	defer release()
+	permissions, changed, err := store.ReplaceActionPermissionsWithChange(r.Context(), tokenID, inputs)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.connector_permissions.updated", map[string]any{
-		"token_id":    tokenID,
-		"permissions": connectorPermissionResponses(permissions),
+	if changed {
+		if err := invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "connector action permission changed; send a fresh Vault request"); err != nil {
+			writeInternalError(w)
+			return
+		}
+		s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.connector_permissions.updated", map[string]any{
+			"token_id":    tokenID,
+			"permissions": connectorPermissionResponses(permissions),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": connectorPermissionResponses(permissions), "changed": changed,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"items": connectorPermissionResponses(permissions)})
 }
 
 func connectorPermissionInputs(r *http.Request, registry *connectors.Registry, store *connectortargets.Store, permissions []connectorPermissionInput) ([]connectortargets.SetActionPermissionInput, error) {

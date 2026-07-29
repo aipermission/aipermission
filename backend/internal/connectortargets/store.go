@@ -885,6 +885,48 @@ func (s *Store) ReplaceActionPermissions(ctx context.Context, tokenID int64, inp
 	return s.ListActionPermissions(ctx, tokenID)
 }
 
+func (s *Store) ReplaceActionPermissionsWithChange(ctx context.Context, tokenID int64, inputs []SetActionPermissionInput) ([]ActionPermission, bool, error) {
+	if err := s.validateActionPermissions(ctx, tokenID, inputs); err != nil {
+		return nil, false, err
+	}
+	before, err := s.ListActionPermissions(ctx, tokenID)
+	if err != nil {
+		return nil, false, err
+	}
+	if actionPermissionInputsEqual(before, inputs) {
+		return before, false, nil
+	}
+	items, err := s.ReplaceActionPermissions(ctx, tokenID, inputs)
+	if err != nil {
+		return nil, false, err
+	}
+	return items, true, nil
+}
+
+func actionPermissionInputsEqual(items []ActionPermission, inputs []SetActionPermissionInput) bool {
+	if len(items) != len(inputs) {
+		return false
+	}
+	type state struct {
+		rule      ActionPermissionRule
+		expiresAt string
+	}
+	values := make(map[string]state, len(items))
+	for _, item := range items {
+		key := fmt.Sprintf("%d:%d:%s", item.TargetID, item.ProfileID, item.ActionName)
+		values[key] = state{rule: item.ExecutionRule, expiresAt: item.ExpiresAt}
+	}
+	for _, input := range inputs {
+		key := fmt.Sprintf("%d:%d:%s", input.TargetID, input.ProfileID, strings.TrimSpace(input.ActionName))
+		current, ok := values[key]
+		if !ok || current.rule != input.ExecutionRule || current.expiresAt != actionPermissionExpiresAtValue(input) {
+			return false
+		}
+		delete(values, key)
+	}
+	return len(values) == 0
+}
+
 func (s *Store) ListActionPermissions(ctx context.Context, tokenID int64) ([]ActionPermission, error) {
 	return s.ListActiveActionPermissions(ctx, tokenID, time.Now().UTC())
 }
@@ -1324,8 +1366,16 @@ func validateActionPermissionInput(input SetActionPermissionInput) error {
 }
 
 func actionPermissionExpiresAt(input SetActionPermissionInput) any {
-	if input.ExpiresAt == nil {
+	value := actionPermissionExpiresAtValue(input)
+	if value == "" {
 		return nil
+	}
+	return value
+}
+
+func actionPermissionExpiresAtValue(input SetActionPermissionInput) string {
+	if input.ExpiresAt == nil {
+		return ""
 	}
 	return input.ExpiresAt.UTC().Format(time.RFC3339)
 }

@@ -344,6 +344,10 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	if status == "" {
 		status = connectors.ResultCompleted
 	}
+	item, err = s.captureConnectorActionSessionHandleIfReturned(ctx, runtime, item, result.Handles)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
 	if status == connectors.ResultRunning {
 		if !connectorActionSupportsRunning(prepared) {
 			finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
@@ -357,9 +361,6 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 				"action_name":    item.ActionName,
 			})
 			return finished, nil
-		}
-		if _, err := s.captureConnectorActionSessionHandle(ctx, runtime, item.ID, result.Handles); err != nil {
-			return connectortargets.ActionRequest{}, err
 		}
 		result.Handles.RequestID = item.ID
 		if result.Handles.FollowupTool == "" {

@@ -270,6 +270,42 @@ func (s *Store) ReplaceTokenScopes(ctx context.Context, tokenID int64, enabledPr
 	return s.ListTokenScopes(ctx, tokenID)
 }
 
+func (s *Store) ReplaceTokenScopesWithChange(ctx context.Context, tokenID int64, enabledProjectIDs []int64) ([]TokenScope, bool, error) {
+	var tokenExists int
+	if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM api_tokens WHERE id = ?`, tokenID).Scan(&tokenExists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, ValidationError("token not found")
+		}
+		return nil, false, err
+	}
+	before, err := s.ListTokenScopes(ctx, tokenID)
+	if err != nil {
+		return nil, false, err
+	}
+	desired := make(map[int64]bool, len(enabledProjectIDs))
+	for _, projectID := range enabledProjectIDs {
+		if projectID < 1 || desired[projectID] {
+			return nil, false, ValidationError("project ids must be unique positive integers")
+		}
+		desired[projectID] = true
+	}
+	unchanged := true
+	for _, item := range before {
+		if item.Enabled != desired[item.ProjectID] {
+			unchanged = false
+		}
+		delete(desired, item.ProjectID)
+	}
+	if unchanged && len(desired) == 0 {
+		return before, false, nil
+	}
+	items, err := s.ReplaceTokenScopes(ctx, tokenID, enabledProjectIDs)
+	if err != nil {
+		return nil, false, err
+	}
+	return items, true, nil
+}
+
 func (s *Store) TokenCanAccessProject(ctx context.Context, tokenID int64, projectID int64) (bool, error) {
 	var enabled int
 	err := s.db.QueryRowContext(ctx, `

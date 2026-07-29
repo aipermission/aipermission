@@ -1,12 +1,26 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
+
+type createConsoleSessionRequest struct {
+	RuntimeID     int64                           `json:"runtime_id"`
+	Name          string                          `json:"name"`
+	CloseExisting bool                            `json:"close_existing"`
+	Cols          int                             `json:"cols"`
+	Rows          int                             `json:"rows"`
+	Params        map[string]any                  `json:"params,omitempty"`
+	VaultItems    []projectvault.SessionSelection `json:"vault_items,omitempty"`
+}
 
 func (s consoleHandlers) listConsoleSessions(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
@@ -34,10 +48,14 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	var request console.CreateRequest
-	if err := decodeJSON(w, r, &request); err != nil {
+	var input createConsoleSessionRequest
+	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
+	}
+	request := console.CreateRequest{
+		RuntimeID: input.RuntimeID, Name: input.Name, CloseExisting: input.CloseExisting,
+		Cols: input.Cols, Rows: input.Rows, Params: input.Params,
 	}
 	principal, err := localExecutionPrincipal(runtime)
 	if err != nil {
@@ -46,6 +64,29 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 	}
 	request.Principal = principal
 	request.WaitForStart = true
+	var snapshot vaultEnvironmentSnapshot
+	if len(input.VaultItems) > 0 {
+		vaultStore, err := projectvault.NewStore(runtime.database, runtime.vault, runtime.workspaceUUID)
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		snapshot, err = buildVaultEnvironmentSnapshot(r.Context(), s.Server, runtime, input.RuntimeID, input.VaultItems)
+		if err != nil {
+			handleVaultItemError(w, err)
+			return
+		}
+		finalize := func(finalizeCtx context.Context, handle console.SessionHandle) error {
+			if err := vaultStore.RecordSessionItems(finalizeCtx, handle.ID, snapshot.Items); err != nil {
+				return err
+			}
+			return vaultStore.MarkSessionItemsUsed(finalizeCtx, snapshot.Items)
+		}
+		request.PrepareEnvironment = newVaultEnvironmentPreparer(
+			s.Server, runtime, snapshot, input.VaultItems, nil, finalize,
+		)
+		request.EnvironmentContentHash = snapshot.EnvironmentContentHash
+	}
 	item, err := runtime.consoleSessions.Create(r.Context(), request)
 	if errors.Is(err, console.ErrSessionLimit) {
 		writeError(w, http.StatusConflict, err.Error())
@@ -59,11 +100,55 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, item.RuntimeID, "console.session.created", map[string]any{
-		"session_id":     item.ID,
-		"name":           item.Name,
-		"close_existing": request.CloseExisting,
+		"session_id":               item.ID,
+		"name":                     item.Name,
+		"close_existing":           request.CloseExisting,
+		"vault_item_ids":           vaultSessionItemIDs(snapshot.Items),
+		"environment_content_hash": snapshot.EnvironmentContentHash,
 	})
 	writeJSON(w, http.StatusCreated, item)
+}
+
+func requireSessionEnvironmentCapability(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) error {
+	_, err := sessionEnvironmentCapabilityVersion(ctx, server, runtime, runtimeID)
+	return err
+}
+
+func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) (string, error) {
+	sessionCapability, err := sessionEnvironmentCapabilityFor(ctx, server, runtime, runtimeID)
+	if err != nil {
+		return "", err
+	}
+	version := strings.TrimSpace(sessionCapability.SessionEnvironmentVersion())
+	if version == "" {
+		return "", errors.New("this connector runtime has an invalid Vault session environment version")
+	}
+	return version, nil
+}
+
+func sessionEnvironmentCapabilityFor(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) (connectors.SessionEnvironmentCapability, error) {
+	surface, err := connectortargets.NewStore(runtime.database).GetRuntimeSurface(ctx, runtimeID)
+	if err != nil {
+		return nil, err
+	}
+	capabilities := connectorRuntimeCapabilitiesFor(surface.ConnectorKind, server, runtime)
+	if capabilities == nil {
+		return nil, connectors.ErrSessionEnvironmentUnsupported
+	}
+	capability := capabilities.RuntimeCapability(connectors.SessionEnvironmentCapabilityName)
+	sessionCapability, ok := capability.(connectors.SessionEnvironmentCapability)
+	if !ok {
+		return nil, connectors.ErrSessionEnvironmentUnsupported
+	}
+	return sessionCapability, nil
+}
+
+func vaultSessionItemIDs(items []projectvault.SessionItem) []int64 {
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ItemID)
+	}
+	return ids
 }
 
 func (s consoleHandlers) getConsoleSession(w http.ResponseWriter, r *http.Request) {

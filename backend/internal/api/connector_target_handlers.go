@@ -91,6 +91,8 @@ type profileSummary struct {
 	Public        map[string]any                `json:"public,omitempty"`
 	RiskLabel     string                        `json:"risk_label,omitempty"`
 	Actions       []connectors.ActionDefinition `json:"actions,omitempty"`
+	RuntimeID     int64                         `json:"runtime_id,omitempty"`
+	VaultSession  bool                          `json:"vault_session_supported"`
 	CreatedAt     string                        `json:"created_at"`
 	UpdatedAt     string                        `json:"updated_at"`
 }
@@ -264,6 +266,19 @@ func (s connectorTargetHandlers) listConnectorTargetInventory(w http.ResponseWri
 			}
 			summary := profileToSummary(profile)
 			summary.Actions = actions
+			if adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
+				surface, surfaceErr := store.GetRuntimeSurfaceByProfile(
+					r.Context(), target.ConnectorKind, target.ID, profile.ID, adapter.LiveConsoleCapabilityKind(),
+				)
+				switch {
+				case surfaceErr == nil:
+					summary.RuntimeID = surface.ID
+					summary.VaultSession = requireSessionEnvironmentCapability(r.Context(), s.Server, runtime, surface.ID) == nil
+				case !errors.Is(surfaceErr, connectortargets.ErrRuntimeSurfaceNotFound):
+					handleConnectorTargetError(w, surfaceErr)
+					return
+				}
+			}
 			summaries = append(summaries, summary)
 		}
 		response := connectorTargetToResponse(target, nil)
@@ -503,6 +518,12 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 	if request.ProjectID == 0 {
 		request.ProjectID = existing.ProjectID
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "connector target update was canceled")
+		return
+	}
+	defer release()
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -532,6 +553,13 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		}
 	}
 	if err := tx.Commit(); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := invalidateVaultSessionsForTargetProfile(
+		r.Context(), runtime, target.ID, 0,
+		"connector target changed; send a fresh Vault request",
+	); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -597,6 +625,12 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 	if !ok {
 		return
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "connector target update was canceled")
+		return
+	}
+	defer release()
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -633,6 +667,13 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	if err := tx.Commit(); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := invalidateVaultSessionsForTargetProfile(
+		r.Context(), runtime, target.ID, 0,
+		"connector target or credential profile changed; send a fresh Vault request",
+	); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -673,6 +714,12 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "connector target deletion was canceled")
+		return
+	}
+	defer release()
 	if adapter := connectorTargetDeleterFor(target.ConnectorKind); adapter != nil {
 		adapter.DeleteTarget(s, w, r, runtime, target)
 		return
@@ -840,6 +887,12 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 	if !ok {
 		return
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "connector credential profile update was canceled")
+		return
+	}
+	defer release()
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -866,6 +919,13 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		return
 	}
 	if err := tx.Commit(); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := invalidateVaultSessionsForTargetProfile(
+		r.Context(), runtime, target.ID, profile.ID,
+		"connector credential profile changed; send a fresh Vault request",
+	); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -909,6 +969,12 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "connector credential profile deletion was canceled")
+		return
+	}
+	defer release()
 	if err := s.cleanupProvisionedCredentialProfileIfNeeded(r.Context(), runtime, target, profile); err != nil {
 		handleConnectorTargetError(w, err)
 		return
@@ -921,6 +987,13 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 	}
 	if err := store.DeleteCredentialProfile(r.Context(), targetID, profileID); err != nil {
 		handleConnectorTargetError(w, err)
+		return
+	}
+	if err := invalidateVaultSessionsForTargetProfile(
+		r.Context(), runtime, targetID, profileID,
+		"connector credential profile was deleted; send a fresh Vault request",
+	); err != nil {
+		writeInternalError(w)
 		return
 	}
 	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, targetID, profileID, "connector credential profile was deleted; ask the AI to send a fresh request", true)

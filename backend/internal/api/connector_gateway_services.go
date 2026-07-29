@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"sort"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -65,6 +66,54 @@ func (runtime *databaseRuntime) ConnectorLocalExecutionPrincipal() (executionpri
 // connector adapters that pin external endpoint identity.
 func (s *Server) ConnectorTrustStorePath() string {
 	return s.connectorTrustStorePath()
+}
+
+func (s *Server) ConnectorChangeVaultPeerTrust(ctx context.Context, change func() error) error {
+	if change == nil {
+		return errors.New("connector peer trust change is required")
+	}
+	runtimes := s.unlockedRuntimeSnapshot()
+	if len(runtimes) == 0 {
+		return errors.New("database is locked")
+	}
+	sort.Slice(runtimes, func(i, j int) bool {
+		return runtimes[i].id < runtimes[j].id
+	})
+	releases := make([]func(), 0, len(runtimes))
+	for _, runtime := range runtimes {
+		release, err := runtime.vaultDelivery.acquire(ctx)
+		if err != nil {
+			for index := len(releases) - 1; index >= 0; index-- {
+				releases[index]()
+			}
+			return err
+		}
+		releases = append(releases, release)
+	}
+	defer func() {
+		for index := len(releases) - 1; index >= 0; index-- {
+			releases[index]()
+		}
+	}()
+	for _, runtime := range runtimes {
+		runtimeIDs, err := vaultAllRuntimeIDs(ctx, runtime)
+		if err != nil {
+			return err
+		}
+		runtime.vaultLeases.Clear()
+		if err := revokeAllPersistedVaultLeases(ctx, runtime); err != nil {
+			return err
+		}
+		if err := invalidateVaultRuntimeSessions(
+			ctx,
+			runtime,
+			runtimeIDs,
+			"connector peer trust changed; send a fresh Vault request",
+		); err != nil {
+			return err
+		}
+	}
+	return change()
 }
 
 func (s *Server) ConnectorActiveRuntimeAvailable(w http.ResponseWriter) bool {
@@ -129,6 +178,15 @@ func (s connectorTargetHandlers) ConnectorFinalizeDeletedTarget(ctx context.Cont
 	}
 	if staleReason == "" {
 		staleReason = "connector target was deleted; ask the AI to send a fresh request"
+	}
+	if err := invalidateVaultSessionsForTargetProfile(
+		ctx,
+		dbRuntime,
+		target.ID,
+		0,
+		"connector target was deleted; send a fresh Vault request",
+	); err != nil {
+		return 0, err
 	}
 	staleRequests, err := s.staleConnectorActionRequestsForTarget(ctx, dbRuntime, target.ID, 0, staleReason, true)
 	if err != nil {

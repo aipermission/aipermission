@@ -491,17 +491,17 @@ func (s *managedConsoleSession) insertManualCommand(command manualCommandRecord)
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	storedCommand := s.manager.redactText(command.Command)
-	storedReason := s.manager.redactText(manualCommandReason)
+	storedCommand := s.redactForPersistence(command.Command)
+	storedReason := s.redactForPersistence(manualCommandReason)
 	status := "untracked"
 	completedAt := sql.NullString{String: now, Valid: true}
 	if command.TrackOutput {
-		storedReason = s.manager.redactText(manualTrackedCommandReason)
+		storedReason = s.redactForPersistence(manualTrackedCommandReason)
 		status = "running"
 		completedAt = sql.NullString{}
 		s.closeStaleManualRunningRows(0, manualCaptureSuperseded)
 	}
-	trackingReason := s.manager.redactText(command.TrackingReason)
+	trackingReason := s.redactForPersistence(command.TrackingReason)
 	result, err := s.manager.db.ExecContext(context.Background(), `
 		INSERT INTO command_requests (runtime_id, source, command, encrypted_command, reason, status, tracking_reason, stdout, stderr, session_id, created_at, completed_at)
 		VALUES (?, 'manual', ?, '', ?, ?, ?, '', '', ?, ?, ?)`,
@@ -573,8 +573,8 @@ func (s *managedConsoleSession) updateManualActiveCommand(update *manualActiveCo
 	if update == nil || s == nil || s.manager == nil || s.manager.db == nil {
 		return
 	}
-	command := s.manager.redactText(update.Command)
-	trackingReason := s.manager.redactText(update.TrackingReason)
+	command := s.redactForPersistence(update.Command)
+	trackingReason := s.redactForPersistence(update.TrackingReason)
 	if update.Downgrade {
 		now := time.Now().UTC().Format(time.RFC3339)
 		_, err := s.manager.db.ExecContext(context.Background(), `
@@ -691,9 +691,9 @@ func (s *managedConsoleSession) finishManualOutputCapture(completion *manualOutp
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	stdout := s.manager.redactText(PlainOutput(completion.Stdout))
-	errorText := s.manager.redactText(completion.Error)
-	trackingReason := s.manager.redactText(completion.TrackingReason)
+	stdout := s.redactForPersistence(PlainOutput(completion.Stdout))
+	errorText := s.redactForPersistence(completion.Error)
+	trackingReason := s.redactForPersistence(completion.TrackingReason)
 	outputTruncated := 0
 	if completion.OutputTruncated {
 		outputTruncated = 1
@@ -748,7 +748,7 @@ func (s *managedConsoleSession) closeStaleManualRunningRows(exceptID int64, reas
 			AND session_id = ?
 			AND status = 'running'
 			AND (? = 0 OR id <> ?)`
-	if _, err := s.manager.db.ExecContext(context.Background(), query, s.manager.redactText(reason), now, s.id, exceptID, exceptID); err != nil {
+	if _, err := s.manager.db.ExecContext(context.Background(), query, s.redactForPersistence(reason), now, s.id, exceptID, exceptID); err != nil {
 		logConsolePersistError("manual_history_stale", s.id, err)
 	}
 	for _, id := range ids {

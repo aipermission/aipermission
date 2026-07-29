@@ -16,27 +16,30 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type Server struct {
-	config             config.Config
-	activeDataPath     string
-	activeDatabase     string
-	workspaces         map[string]*databaseRuntime
-	database           *sql.DB
-	vault              *vault.Vault
-	tokens             *tokens.Store
-	registry           *connectors.Registry
-	mux                *http.ServeMux
-	mu                 sync.RWMutex
-	lifecycleMu        sync.RWMutex
-	maintenanceConsole *maintenanceConsoleRuntime
-	backupOAuthMu      sync.Mutex
-	backupOAuthFlows   map[int64]backupOAuthFlow
-	authLimiter        *authRateLimiter
-	vaultRevealLimiter *windowRateLimiter
-	uiSessionMu        sync.RWMutex
-	uiSessions         map[string]uiSessionRecord
+	config               config.Config
+	activeDataPath       string
+	activeDatabase       string
+	workspaces           map[string]*databaseRuntime
+	database             *sql.DB
+	vault                *vault.Vault
+	tokens               *tokens.Store
+	registry             *connectors.Registry
+	mux                  *http.ServeMux
+	mu                   sync.RWMutex
+	lifecycleMu          sync.RWMutex
+	maintenanceConsole   *maintenanceConsoleRuntime
+	backupOAuthMu        sync.Mutex
+	backupOAuthFlows     map[int64]backupOAuthFlow
+	authLimiter          *authRateLimiter
+	vaultRevealLimiter   *windowRateLimiter
+	vaultGenerateLimiter *windowRateLimiter
+	vaultRequestLimiter  *windowRateLimiter
+	uiSessionMu          sync.RWMutex
+	uiSessions           map[string]uiSessionRecord
 }
 
 type databaseRuntime struct {
@@ -65,6 +68,8 @@ type databaseRuntime struct {
 	mcpStarted         bool
 	workspaceUUID      string
 	runtimeInstanceID  string
+	vaultLeases        *vaultsessions.Store
+	vaultDelivery      vaultDeliveryCoordinator
 	identityMu         sync.Mutex
 }
 
@@ -98,20 +103,22 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 	resolved := resolveServerOptions(options)
 	registry := resolved.registry
 	server := &Server{
-		config:             cfg,
-		activeDataPath:     cfg.DataPath,
-		activeDatabase:     activeID,
-		workspaces:         map[string]*databaseRuntime{},
-		database:           database,
-		vault:              secretVault,
-		tokens:             tokenStore,
-		registry:           registry,
-		mux:                http.NewServeMux(),
-		maintenanceConsole: newMaintenanceConsoleRuntime(),
-		backupOAuthFlows:   map[int64]backupOAuthFlow{},
-		authLimiter:        newAuthRateLimiter(),
-		vaultRevealLimiter: newWindowRateLimiter(8, time.Minute),
-		uiSessions:         map[string]uiSessionRecord{},
+		config:               cfg,
+		activeDataPath:       cfg.DataPath,
+		activeDatabase:       activeID,
+		workspaces:           map[string]*databaseRuntime{},
+		database:             database,
+		vault:                secretVault,
+		tokens:               tokenStore,
+		registry:             registry,
+		mux:                  http.NewServeMux(),
+		maintenanceConsole:   newMaintenanceConsoleRuntime(),
+		backupOAuthFlows:     map[int64]backupOAuthFlow{},
+		authLimiter:          newAuthRateLimiter(),
+		vaultRevealLimiter:   newWindowRateLimiter(8, time.Minute),
+		vaultGenerateLimiter: newWindowRateLimiter(10, time.Minute),
+		vaultRequestLimiter:  newWindowRateLimiter(30, time.Minute),
+		uiSessions:           map[string]uiSessionRecord{},
 	}
 	runtime := &databaseRuntime{
 		id:                 activeID,
@@ -127,10 +134,12 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		batchCancels:       map[int64]context.CancelFunc{},
 		transferControls:   map[int64]*transferControl{},
 		batchControls:      map[int64]*transferControl{},
+		vaultLeases:        vaultsessions.NewStore(),
 	}
 	runtime.workspaceUUID, _ = projectvault.EnsureWorkspaceUUID(context.Background(), database)
 	runtime.runtimeInstanceID, _ = executionprincipal.NewRuntimeInstanceID()
 	runtime.consoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
+	server.configureVaultSessionRuntime(runtime)
 	server.workspaces[activeID] = runtime
 	server.routes()
 	return server
@@ -139,17 +148,19 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 	resolved := resolveServerOptions(options)
 	server := &Server{
-		config:             cfg,
-		activeDataPath:     cfg.DataPath,
-		activeDatabase:     dbpkg.DefaultDatabaseID(cfg.DataPath),
-		workspaces:         map[string]*databaseRuntime{},
-		registry:           resolved.registry,
-		mux:                http.NewServeMux(),
-		maintenanceConsole: newMaintenanceConsoleRuntime(),
-		backupOAuthFlows:   map[int64]backupOAuthFlow{},
-		authLimiter:        newAuthRateLimiter(),
-		vaultRevealLimiter: newWindowRateLimiter(8, time.Minute),
-		uiSessions:         map[string]uiSessionRecord{},
+		config:               cfg,
+		activeDataPath:       cfg.DataPath,
+		activeDatabase:       dbpkg.DefaultDatabaseID(cfg.DataPath),
+		workspaces:           map[string]*databaseRuntime{},
+		registry:             resolved.registry,
+		mux:                  http.NewServeMux(),
+		maintenanceConsole:   newMaintenanceConsoleRuntime(),
+		backupOAuthFlows:     map[int64]backupOAuthFlow{},
+		authLimiter:          newAuthRateLimiter(),
+		vaultRevealLimiter:   newWindowRateLimiter(8, time.Minute),
+		vaultGenerateLimiter: newWindowRateLimiter(10, time.Minute),
+		vaultRequestLimiter:  newWindowRateLimiter(30, time.Minute),
+		uiSessions:           map[string]uiSessionRecord{},
 	}
 	server.routes()
 	return server
