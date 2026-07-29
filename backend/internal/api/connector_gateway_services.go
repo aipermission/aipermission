@@ -11,6 +11,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -56,6 +57,10 @@ func (runtime *databaseRuntime) ConnectorConsoleSessions() *console.Manager {
 	return runtime.consoleSessions
 }
 
+func (runtime *databaseRuntime) ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error) {
+	return localExecutionPrincipal(runtime)
+}
+
 // ConnectorTrustStorePath exposes the gateway-owned local trust store path to
 // connector adapters that pin external endpoint identity.
 func (s *Server) ConnectorTrustStorePath() string {
@@ -69,12 +74,12 @@ func (s *Server) ConnectorActiveRuntimeAvailable(w http.ResponseWriter) bool {
 
 // ConnectorRestartConsoleSession closes a persistent live session and cancels
 // its running connector requests.
-func (s *Server) ConnectorRestartConsoleSession(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64, runningRequestError string) (connectorapi.ConsoleRestartResult, error) {
+func (s *Server) ConnectorRestartConsoleSession(ctx context.Context, runtime connectorapi.GatewayRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (connectorapi.ConsoleRestartResult, error) {
 	dbRuntime, ok := runtime.(*databaseRuntime)
 	if !ok || dbRuntime == nil {
 		return connectorapi.ConsoleRestartResult{}, errInvalidConnectorRuntime
 	}
-	result, err := s.restartServerConsoleSession(ctx, dbRuntime, runtimeID, runningRequestError)
+	result, err := s.restartServerConsoleSession(ctx, dbRuntime, principal, runtimeID, runningRequestError)
 	if err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}

@@ -39,6 +39,12 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	request.Principal = principal
 	request.WaitForStart = true
 	item, err := runtime.consoleSessions.Create(r.Context(), request)
 	if errors.Is(err, console.ErrSessionLimit) {
@@ -91,7 +97,12 @@ func (s consoleHandlers) inputConsoleSession(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if err := runtime.consoleSessions.Input(r.Context(), id, request.Data); errors.Is(err, console.ErrInputTooLarge) {
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := runtime.consoleSessions.Input(r.Context(), principal, id, request.Data); errors.Is(err, console.ErrInputTooLarge) {
 		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 		return
 	} else if err != nil {
@@ -116,7 +127,12 @@ func (s consoleHandlers) closeConsoleSession(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	if err := runtime.consoleSessions.Close(r.Context(), id); err != nil {
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := runtime.consoleSessions.Close(r.Context(), principal, id); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -141,7 +157,12 @@ func (s consoleHandlers) restartTargetConsoleSession(w http.ResponseWriter, r *h
 	if !ok {
 		return
 	}
-	result, err := s.Server.restartServerConsoleSession(r.Context(), runtime, runtimeID, "console session restarted by local user before command completed")
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	result, err := s.Server.restartServerConsoleSession(r.Context(), runtime, principal, runtimeID, "console session restarted by local user before command completed")
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -168,7 +189,12 @@ func (s consoleHandlers) attachConsoleSession(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	if err := runtime.consoleSessions.Attach(w, r, id, s.upgradeWebSocket); errors.Is(err, console.ErrNotFound) {
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := runtime.consoleSessions.Attach(w, r, principal, id, s.upgradeWebSocket); errors.Is(err, console.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "console session not found")
 	} else if errors.Is(err, console.ErrClientLimit) {
 		writeError(w, http.StatusConflict, err.Error())

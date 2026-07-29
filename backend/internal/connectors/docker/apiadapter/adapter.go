@@ -58,15 +58,15 @@ func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile c
 	}
 }
 
-func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, rows int, cols int, params map[string]any) (*console.RuntimeSession, error) {
-	target, profile, surface, err := dockerTargetProfileByRuntimeID(ctx, runtime, runtimeID)
+func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+	target, profile, surface, err := dockerTargetProfileByRuntimeID(ctx, runtime, request.RuntimeID)
 	if err != nil {
 		return nil, err
 	}
 	if surface.ConnectorKind != dockerconnector.Kind || surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole {
 		return nil, connectortargets.ErrRuntimeSurfaceNotFound
 	}
-	containerRef := strings.TrimSpace(stringParam(params, "container"))
+	containerRef := strings.TrimSpace(stringParam(request.Params, "container"))
 	if containerRef == "" {
 		return nil, errors.New("docker container is required")
 	}
@@ -78,7 +78,7 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 		return nil, fmt.Errorf("%w: transport_target_ref is required", dockerconnector.ErrInvalidConfig)
 	}
 	command := dockerExecShellCommand(dockerCommand(target), containerRef)
-	return sshapiadapter.OpenLiveConsoleForTargetRef(ctx, server, runtime, transportRef, rows, cols, sshapiadapter.LiveConsoleOptions{
+	return sshapiadapter.OpenLiveConsoleForTargetRef(ctx, server, runtime, transportRef, request.Rows, request.Cols, sshapiadapter.LiveConsoleOptions{
 		ForceShellCommand: command,
 	})
 }

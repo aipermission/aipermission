@@ -10,6 +10,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
 const (
@@ -217,7 +218,12 @@ func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64
 	ctx, cancel := context.WithTimeout(context.Background(), mcpInitialExecTimeout)
 	defer cancel()
 
-	result, err := runtime.consoleSessions.Exec(ctx, runtimeID, command)
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, err.Error())
+		return
+	}
+	result, err := runtime.consoleSessions.Exec(ctx, principal, runtimeID, command)
 	if err != nil {
 		adapter := s.consoleErrorPresenter(context.Background(), runtime, runtimeID)
 		_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, connectorErrorMessage(adapter, "command execution failed", err))
@@ -225,7 +231,9 @@ func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64
 	}
 	if result.Running {
 		_ = s.setCommandRequestSession(context.Background(), runtime, requestID, result.SessionID)
-		s.finishActiveCommandRequest(runtime, requestID, runtimeID)
+		s.finishActiveCommandRequest(runtime, requestID, principal, console.SessionHandle{
+			ID: result.SessionID, RuntimeID: runtimeID, Generation: result.Generation,
+		})
 		return
 	}
 	status := "completed"

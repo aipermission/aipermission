@@ -816,6 +816,24 @@ var migrations = []migration{
 		description: "project vault foundation",
 		statements:  projectVaultTableStatements,
 	},
+	{
+		version:     6,
+		description: "principal-aware exact console sessions",
+		statements: []string{
+			`ALTER TABLE console_sessions ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;`,
+			`ALTER TABLE console_sessions ADD COLUMN principal_kind TEXT NOT NULL DEFAULT 'local_operator';`,
+			`ALTER TABLE console_sessions ADD COLUMN principal_token_id INTEGER;`,
+			`ALTER TABLE console_sessions ADD COLUMN workspace_id TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE console_sessions ADD COLUMN runtime_instance_id TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE console_sessions ADD COLUMN environment_content_hash TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE console_sessions ADD COLUMN approval_context_hash TEXT NOT NULL DEFAULT '';`,
+			`UPDATE console_sessions SET generation = id WHERE generation = 0;`,
+			`CREATE UNIQUE INDEX idx_console_sessions_runtime_generation ON console_sessions(runtime_id, generation);`,
+			`ALTER TABLE connector_action_requests ADD COLUMN session_id INTEGER;`,
+			`ALTER TABLE connector_action_requests ADD COLUMN session_generation INTEGER;`,
+			`CREATE INDEX idx_connector_action_requests_session ON connector_action_requests(session_id, session_generation);`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {

@@ -8,8 +8,8 @@ import (
 )
 
 func (s *Server) runtimeConsoleOpener(runtime *databaseRuntime) console.RuntimeOpener {
-	return func(ctx context.Context, runtimeID int64, rows int, cols int, params map[string]any) (*console.RuntimeSession, error) {
-		targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
+	return func(ctx context.Context, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+		targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, request.RuntimeID)
 		if err != nil {
 			return nil, err
 		}
@@ -21,6 +21,6 @@ func (s *Server) runtimeConsoleOpener(runtime *databaseRuntime) console.RuntimeO
 		if adapter == nil {
 			return nil, connectortargets.ErrInvalidTargetRef
 		}
-		return adapter.OpenLiveConsole(ctx, s, runtime, runtimeID, rows, cols, params)
+		return adapter.OpenLiveConsole(ctx, s, runtime, request)
 	}
 }

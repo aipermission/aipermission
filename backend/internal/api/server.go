@@ -11,7 +11,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -61,6 +63,9 @@ type databaseRuntime struct {
 	redactionLoaded    bool
 	mcpMu              sync.RWMutex
 	mcpStarted         bool
+	workspaceUUID      string
+	runtimeInstanceID  string
+	identityMu         sync.Mutex
 }
 
 type serverOptions struct {
@@ -123,6 +128,8 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		transferControls:   map[int64]*transferControl{},
 		batchControls:      map[int64]*transferControl{},
 	}
+	runtime.workspaceUUID, _ = projectvault.EnsureWorkspaceUUID(context.Background(), database)
+	runtime.runtimeInstanceID, _ = executionprincipal.NewRuntimeInstanceID()
 	runtime.consoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
 	server.workspaces[activeID] = runtime
 	server.routes()

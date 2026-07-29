@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	MaxItems      = 64
+	MaxItems      = 32
 	MaxValueBytes = 16 * 1024
-	MaxTotalBytes = 256 * 1024
+	MaxTotalBytes = 128 * 1024
 )
 
 var ErrDestroyed = errors.New("secret environment envelope is destroyed")

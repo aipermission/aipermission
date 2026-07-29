@@ -16,6 +16,10 @@ import (
 
 func (s *managedConsoleSession) run() {
 	defer func() {
+		s.closeExactRedactor()
+		if s.environment != nil {
+			s.environment.Destroy()
+		}
 		s.manager.remove(s.id)
 		if s.done != nil {
 			close(s.done)
@@ -27,7 +31,14 @@ func (s *managedConsoleSession) run() {
 		s.fail("console transport is not configured")
 		return
 	}
-	runtime, err := s.manager.openRuntime(s.ctx, s.runtimeID, s.rows, s.cols, cloneParams(s.params))
+	runtime, err := s.manager.openRuntime(s.ctx, RuntimeOpenRequest{
+		RuntimeID:   s.runtimeID,
+		Generation:  s.generation,
+		Rows:        s.rows,
+		Cols:        s.cols,
+		Params:      cloneParams(s.params),
+		Environment: s.environment,
+	})
 	if err != nil {
 		s.markStarted(err)
 		s.fail(err.Error())
@@ -70,9 +81,18 @@ func (s *managedConsoleSession) run() {
 		}
 	}
 
-	go s.pipe(runtime.Stdout)
+	pipeDone := make(chan struct{}, 2)
+	pipeCount := 1
+	go func() {
+		defer func() { pipeDone <- struct{}{} }()
+		s.pipe(runtime.Stdout)
+	}()
 	if runtime.Stderr != nil {
-		go s.pipe(runtime.Stderr)
+		pipeCount++
+		go func() {
+			defer func() { pipeDone <- struct{}{} }()
+			s.pipe(runtime.Stderr)
+		}()
 	}
 
 	waitDone := make(chan error, 1)
@@ -82,13 +102,33 @@ func (s *managedConsoleSession) run() {
 
 	select {
 	case err := <-waitDone:
+		waitConsolePipes(pipeDone, pipeCount)
+		s.closeExactRedactor()
 		if err != nil && !errors.Is(err, io.EOF) {
 			s.finish("closed", err.Error())
 			return
 		}
 		s.finish("closed", "")
 	case <-s.ctx.Done():
+		_ = runtime.close()
+		waitConsolePipes(pipeDone, pipeCount)
+		s.closeExactRedactor()
 		s.finish("closed", "")
+	}
+}
+
+func waitConsolePipes(done <-chan struct{}, count int) {
+	if done == nil || count < 1 {
+		return
+	}
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	for index := 0; index < count; index++ {
+		select {
+		case <-done:
+		case <-timer.C:
+			return
+		}
 	}
 }
 
@@ -252,6 +292,24 @@ func (s *managedConsoleSession) appendOutput(data string) {
 		return
 	}
 	s.mu.Lock()
+	redactor := s.exactRedactor
+	redactionClosed := s.exactRedactionClosed
+	s.mu.Unlock()
+	if redactionClosed {
+		return
+	}
+	if redactor != nil {
+		data = string(redactor.Write([]byte(data)))
+	}
+	data = s.manager.redactText(data)
+	s.appendSafeOutput(data)
+}
+
+func (s *managedConsoleSession) appendSafeOutput(data string) {
+	if data == "" {
+		return
+	}
+	s.mu.Lock()
 	automationActive := s.activeExec != nil
 	postAutomationFilter := !automationActive && time.Now().Before(s.filterUntil)
 	keepShellPrompt := postAutomationFilter
@@ -296,6 +354,7 @@ func (s *managedConsoleSession) appendDisplayOutput(data string) {
 	if data == "" {
 		return
 	}
+	data = s.manager.redactText(data)
 	s.mu.Lock()
 	if strings.HasPrefix(data, "[AI command]") && s.transcript != "" && !strings.HasSuffix(s.transcript, "\n") && !strings.HasSuffix(s.transcript, "\r") {
 		data = "\r\n" + data
@@ -311,6 +370,17 @@ func (s *managedConsoleSession) appendDisplayOutput(data string) {
 		go s.flushTranscript()
 	}
 	s.broadcast(ptyServerMessage{Type: "output", Status: "connected", Data: data, SessionID: s.id})
+}
+
+func (s *managedConsoleSession) closeExactRedactor() {
+	s.mu.Lock()
+	redactor := s.exactRedactor
+	s.exactRedactor = nil
+	s.exactRedactionClosed = true
+	s.mu.Unlock()
+	if redactor != nil {
+		s.appendSafeOutput(s.manager.redactText(string(redactor.Close())))
+	}
 }
 
 func (s *managedConsoleSession) flushTranscript() {

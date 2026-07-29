@@ -328,7 +328,11 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, item.ID); err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	result, err := s.executePreparedConnectorAction(ctx, runtime, prepared)
+	principal, err := tokenExecutionPrincipal(runtime, tokenID)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared)
 	if err != nil {
 		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
@@ -354,11 +358,14 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			})
 			return finished, nil
 		}
+		if _, err := s.captureConnectorActionSessionHandle(ctx, runtime, item.ID, result.Handles); err != nil {
+			return connectortargets.ActionRequest{}, err
+		}
 		result.Handles.RequestID = item.ID
 		if result.Handles.FollowupTool == "" {
 			result.Handles.FollowupTool = "get_connector_action_request"
 		}
-		go s.finishActiveConnectorActionRequest(runtime, item.ID, prepared)
+		go s.finishActiveConnectorActionRequest(runtime, item.ID, prepared, principal, result.Handles)
 		running, err := store.GetActionRequest(context.Background(), item.ID)
 		if err != nil {
 			return connectortargets.ActionRequest{}, err

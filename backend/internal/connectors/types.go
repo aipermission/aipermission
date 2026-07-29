@@ -106,10 +106,11 @@ type PreparedAction struct {
 
 // ActionHandles points callers at follow-up resources for asynchronous actions.
 type ActionHandles struct {
-	RequestID    int64  `json:"request_id,omitempty"`
-	SessionID    int64  `json:"session_id,omitempty"`
-	BatchID      int64  `json:"batch_id,omitempty"`
-	FollowupTool string `json:"followup_tool,omitempty"`
+	RequestID         int64  `json:"request_id,omitempty"`
+	SessionID         int64  `json:"session_id,omitempty"`
+	SessionGeneration int64  `json:"session_generation,omitempty"`
+	BatchID           int64  `json:"batch_id,omitempty"`
+	FollowupTool      string `json:"followup_tool,omitempty"`
 }
 
 // ActionResult is the connector execution result after core has allowed the

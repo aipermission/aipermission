@@ -3,6 +3,8 @@ package connectors
 import (
 	"context"
 	"net"
+
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
 
 // Connector is the required contract for connector-shaped targets.
@@ -182,8 +184,9 @@ type RuntimeContext struct {
 	Target  TargetView
 	Profile CredentialProfileView
 
-	Secrets SecretAccessor
-	Events  EventSink
+	Secrets   SecretAccessor
+	Events    EventSink
+	Principal executionprincipal.Principal
 	// Capabilities is reserved for gateway-owned runtime adapters that need
 	// live transports, file transfer, or other long-lived resources. Normal
 	// structured connectors should use Target, Profile, Secrets, and their own

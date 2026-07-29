@@ -12,6 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -136,7 +137,11 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
-	result, err := s.executePreparedConnectorAction(ctx, runtime, prepared)
+	principal, err := tokenExecutionPrincipal(runtime, call.TokenID)
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared)
 	if err != nil {
 		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
@@ -163,12 +168,16 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 				},
 			}, nil
 		}
+		request, err = s.captureConnectorActionSessionHandle(ctx, runtime, request.ID, result.Handles)
+		if err != nil {
+			return connectorActionCallResult{}, err
+		}
 		result.Handles.RequestID = request.ID
 		if result.Handles.FollowupTool == "" {
 			result.Handles.FollowupTool = "get_connector_action_request"
 		}
 		result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
-		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared)
+		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared, principal, result.Handles)
 		return connectorActionCallResult{Request: request, Permission: permission, Result: result}, nil
 	}
 	if status == connectors.ResultApprovalPending {
@@ -215,7 +224,11 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
-	result, err := s.executePreparedConnectorAction(ctx, runtime, prepared)
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared)
 	if err != nil {
 		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
@@ -241,9 +254,13 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 				},
 			}, nil
 		}
+		request, err = s.captureConnectorActionSessionHandle(ctx, runtime, request.ID, result.Handles)
+		if err != nil {
+			return connectorActionCallResult{}, err
+		}
 		result.Handles.RequestID = request.ID
 		result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
-		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared)
+		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared, principal, result.Handles)
 		return connectorActionCallResult{Request: request, Result: result}, nil
 	}
 	if status == connectors.ResultApprovalPending {
@@ -338,7 +355,10 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	return request, nil
 }
 
-func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, prepared actions.PreparedRequest) (connectors.ActionResult, error) {
+func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, prepared actions.PreparedRequest) (connectors.ActionResult, error) {
+	if err := principal.Validate(); err != nil {
+		return connectors.ActionResult{}, err
+	}
 	connector, ok := runtime.connectorRegistry().Get(prepared.Target.ConnectorKind)
 	if !ok {
 		return connectors.ActionResult{}, fmt.Errorf("connector not found: %s", prepared.Target.ConnectorKind)
@@ -358,21 +378,35 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 		Profile:      prepared.Profile,
 		Secrets:      connectorSecretAccessor{values: secrets},
 		Events:       noopConnectorEventSink{},
+		Principal:    principal,
 		Capabilities: connectorRuntimeCapabilitiesFor(prepared.Target.ConnectorKind, s, runtime),
 	}, prepared.Action)
 }
 
-func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest) {
+func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
 	adapter := connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
 	if adapter == nil || !adapter.SupportsRunning(prepared) {
 		return
 	}
-	adapter.FinishRunning(s, runtime, requestID, prepared)
+	adapter.FinishRunning(s, runtime, requestID, prepared, principal, handles)
 }
 
 func connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {
 	adapter := connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
 	return adapter != nil && adapter.SupportsRunning(prepared)
+}
+
+func (s *Server) captureConnectorActionSessionHandle(ctx context.Context, runtime *databaseRuntime, requestID int64, handles connectors.ActionHandles) (connectortargets.ActionRequest, error) {
+	request, err := connectortargets.NewStore(runtime.database).SetActionRequestSessionHandle(
+		ctx, requestID, handles.SessionID, handles.SessionGeneration,
+	)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, request.ID); err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	return request, nil
 }
 
 func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {

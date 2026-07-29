@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
 )
 
@@ -31,6 +33,7 @@ var ErrNotFound = errors.New("console session not found")
 var ErrSessionLimit = errors.New("active console session limit reached")
 var ErrClientLimit = errors.New("console session client limit reached")
 var ErrInputTooLarge = errors.New("console input is too large")
+var ErrUnauthorized = errors.New("execution principal is not authorized for this console session")
 
 type InactiveError struct {
 	Status string
@@ -45,28 +48,34 @@ func (e InactiveError) Error() string {
 }
 
 type Record struct {
-	ID         int64   `json:"id"`
-	RuntimeID  int64   `json:"runtime_id"`
-	TargetName string  `json:"target_name"`
-	Name       string  `json:"name"`
-	Status     string  `json:"status"`
-	Transcript string  `json:"transcript"`
-	Error      string  `json:"error"`
-	Cols       int     `json:"cols"`
-	Rows       int     `json:"rows"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
-	ClosedAt   *string `json:"closed_at"`
+	ID                     int64   `json:"id"`
+	RuntimeID              int64   `json:"runtime_id"`
+	Generation             int64   `json:"generation"`
+	TargetName             string  `json:"target_name"`
+	Name                   string  `json:"name"`
+	Status                 string  `json:"status"`
+	Transcript             string  `json:"transcript"`
+	Error                  string  `json:"error"`
+	Cols                   int     `json:"cols"`
+	Rows                   int     `json:"rows"`
+	CreatedAt              string  `json:"created_at"`
+	UpdatedAt              string  `json:"updated_at"`
+	ClosedAt               *string `json:"closed_at"`
+	EnvironmentContentHash string  `json:"environment_content_hash,omitempty"`
 }
 
 type CreateRequest struct {
-	RuntimeID     int64          `json:"runtime_id"`
-	Name          string         `json:"name"`
-	CloseExisting bool           `json:"close_existing"`
-	Cols          int            `json:"cols"`
-	Rows          int            `json:"rows"`
-	WaitForStart  bool           `json:"wait_for_start"`
-	Params        map[string]any `json:"params,omitempty"`
+	RuntimeID              int64                        `json:"runtime_id"`
+	Name                   string                       `json:"name"`
+	CloseExisting          bool                         `json:"close_existing"`
+	Cols                   int                          `json:"cols"`
+	Rows                   int                          `json:"rows"`
+	WaitForStart           bool                         `json:"wait_for_start"`
+	Params                 map[string]any               `json:"params,omitempty"`
+	Principal              executionprincipal.Principal `json:"-"`
+	Environment            *sessionenv.Envelope         `json:"-"`
+	EnvironmentContentHash string                       `json:"-"`
+	ApprovalContextHash    string                       `json:"-"`
 }
 
 type InputRequest struct {
@@ -75,6 +84,7 @@ type InputRequest struct {
 
 type ExecResult struct {
 	SessionID  int64
+	Generation int64
 	Command    string
 	Output     string
 	ExitCode   int
@@ -82,7 +92,26 @@ type ExecResult struct {
 	DurationMS int64
 }
 
-type RuntimeOpener func(context.Context, int64, int, int, map[string]any) (*RuntimeSession, error)
+type SessionHandle struct {
+	ID         int64 `json:"id"`
+	RuntimeID  int64 `json:"runtime_id"`
+	Generation int64 `json:"generation"`
+}
+
+func (h SessionHandle) Valid() bool {
+	return h.ID > 0 && h.RuntimeID > 0 && h.Generation > 0
+}
+
+type RuntimeOpenRequest struct {
+	RuntimeID   int64
+	Generation  int64
+	Rows        int
+	Cols        int
+	Params      map[string]any
+	Environment *sessionenv.Envelope
+}
+
+type RuntimeOpener func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error)
 
 type RuntimeSession struct {
 	Stdin                    io.WriteCloser
@@ -120,10 +149,30 @@ type Manager struct {
 	db          *sql.DB
 	openRuntime RuntimeOpener
 	redact      func(string) string
+	authorize   SessionAuthorizer
 
 	mu       sync.Mutex
 	sessions map[int64]*managedConsoleSession
 }
+
+type SessionAuthorization struct {
+	Handle                 SessionHandle
+	EnvironmentContentHash string
+	ApprovalContextHash    string
+}
+
+type SessionOperation string
+
+const (
+	OperationAttach    SessionOperation = "attach"
+	OperationInput     SessionOperation = "input"
+	OperationExecute   SessionOperation = "execute"
+	OperationObserve   SessionOperation = "observe"
+	OperationInterrupt SessionOperation = "interrupt"
+	OperationClose     SessionOperation = "close"
+)
+
+type SessionAuthorizer func(context.Context, executionprincipal.Principal, SessionAuthorization, SessionOperation) error
 
 func (m *Manager) redactText(value string) string {
 	if m == nil || m.redact == nil || value == "" {
@@ -144,13 +193,20 @@ func cloneParams(params map[string]any) map[string]any {
 }
 
 type managedConsoleSession struct {
-	id        int64
-	runtimeID int64
-	name      string
-	cols      int
-	rows      int
-	params    map[string]any
-	manager   *Manager
+	id                     int64
+	runtimeID              int64
+	generation             int64
+	name                   string
+	cols                   int
+	rows                   int
+	params                 map[string]any
+	principal              executionprincipal.Principal
+	environment            *sessionenv.Envelope
+	environmentContentHash string
+	approvalContextHash    string
+	exactRedactor          *sessionenv.Redactor
+	exactRedactionClosed   bool
+	manager                *Manager
 
 	ctx       context.Context
 	cancel    context.CancelFunc

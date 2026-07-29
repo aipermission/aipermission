@@ -5,11 +5,13 @@
 package apiadapter
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -24,11 +26,14 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sessionenvprotocol"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshconfig"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	vaultpkg "github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
 )
@@ -42,6 +47,8 @@ const (
 type LiveConsoleOptions struct {
 	ForceShellCommand        string
 	StartupInputAfterConnect string
+	Generation               int64
+	Environment              *sessionenv.Envelope
 }
 
 type adapter struct{}
@@ -327,16 +334,19 @@ func (adapter) LiveConsoleActionName() string {
 	return sshconnector.ActionExec
 }
 
-func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, rows int, cols int, _ map[string]any) (*console.RuntimeSession, error) {
+func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
 	gateway, err := serverFrom(server)
 	if err != nil {
 		return nil, err
 	}
-	target, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	target, privateKey, err := targetMaterial(ctx, runtime, request.RuntimeID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve ssh material: %w", err)
 	}
-	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey, rows, cols, LiveConsoleOptions{})
+	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey, request.Rows, request.Cols, LiveConsoleOptions{
+		Generation:  request.Generation,
+		Environment: request.Environment,
+	})
 }
 
 func OpenLiveConsoleForTargetRef(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, targetRef string, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
@@ -355,12 +365,15 @@ func OpenLiveConsoleForTargetRef(ctx context.Context, server connectorapi.Gatewa
 	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey, rows, cols, options)
 }
 
-func openLiveConsoleWithMaterial(_ context.Context, gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
+func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
 	if strings.TrimSpace(options.ForceShellCommand) != "" {
 		target.ForceShellCommand = strings.TrimSpace(options.ForceShellCommand)
 	}
 	if options.StartupInputAfterConnect != "" {
 		target.StartupInputAfterConnect = options.StartupInputAfterConnect
+	}
+	if options.Environment != nil && options.Environment.Len() > 0 && target.ForceShellCommand != "" {
+		return nil, errors.New("session environment is not supported with a forced shell command")
 	}
 	signer, err := ssh.ParsePrivateKey([]byte(privateKey.PrivateKey))
 	if err != nil {
@@ -415,12 +428,35 @@ func openLiveConsoleWithMaterial(_ context.Context, gateway connectorapi.Gateway
 		ssh.TTY_OP_ISPEED: 14400,
 		ssh.TTY_OP_OSPEED: 14400,
 	}
+	if options.Environment != nil && options.Environment.Len() > 0 {
+		modes[ssh.ECHO] = 0
+	}
 	if err := sshSession.RequestPty("xterm-256color", rows, cols, modes); err != nil {
 		_ = sshSession.Close()
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("request pty: %w", err)
 	}
-	if target.ForceShellCommand != "" {
+	runtimeStdout := io.Reader(stdout)
+	if options.Environment != nil && options.Environment.Len() > 0 {
+		protocol, err := sessionenvprotocol.New(options.Generation)
+		if err != nil {
+			_ = sshSession.Close()
+			_ = sshClient.Close()
+			return nil, err
+		}
+		if err := sshSession.Start(protocol.Command()); err != nil {
+			_ = sshSession.Close()
+			_ = sshClient.Close()
+			return nil, fmt.Errorf("start environment shell: %w", err)
+		}
+		bootstrap, err := protocol.Bootstrap(ctx, stdin, stdout, options.Environment)
+		if err != nil {
+			_ = sshSession.Close()
+			_ = sshClient.Close()
+			return nil, err
+		}
+		runtimeStdout = io.MultiReader(bytes.NewReader(bootstrap.Prelude), bootstrap.Reader)
+	} else if target.ForceShellCommand != "" {
 		if err := sshSession.Start(target.ForceShellCommand); err != nil {
 			_ = sshSession.Close()
 			_ = sshClient.Close()
@@ -433,7 +469,7 @@ func openLiveConsoleWithMaterial(_ context.Context, gateway connectorapi.Gateway
 	}
 	return &console.RuntimeSession{
 		Stdin:                    stdin,
-		Stdout:                   stdout,
+		Stdout:                   runtimeStdout,
 		Stderr:                   stderr,
 		Wait:                     sshSession.Wait,
 		Resize:                   func(cols int, rows int) error { return sshSession.WindowChange(rows, cols) },
@@ -543,30 +579,35 @@ func (adapter) RunningHint(request connectortargets.ActionRequest) string {
 	return ""
 }
 
-func (adapter) FinishRunning(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, requestID int64, prepared actions.PreparedRequest) {
+func (adapter) FinishRunning(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
 	if server == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), backgroundCommandTimeout)
 	defer cancel()
+	handle := console.SessionHandle{ID: handles.SessionID, RuntimeID: 0, Generation: handles.SessionGeneration}
 	runtimeID, resolveErr := runtimeIDForTargetRef(context.Background(), runtime, prepared.Action.TargetRef)
-	if resolveErr != nil {
+	if resolveErr != nil || handles.SessionID < 1 || handles.SessionGeneration < 1 {
+		if resolveErr == nil {
+			resolveErr = errors.New("running connector action did not return an exact console session handle")
+		}
 		_, _ = server.ConnectorFinishActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.ActionDefinition.OutputHint)
 		return
 	}
+	handle.RuntimeID = runtimeID
 	sessions, err := consoleSessions(runtime)
 	if err != nil {
 		_, _ = server.ConnectorFinishActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		return
 	}
-	result, err := sessions.WaitActive(ctx, runtimeID)
+	result, err := sessions.WaitActive(ctx, principal, handle)
 	status := connectors.ResultStatus("")
 	var output any
 	var displayText string
 	var errorText string
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			_ = sessions.InterruptActive(context.Background(), runtimeID)
+			_ = sessions.InterruptActive(context.Background(), principal, handle)
 			status = connectors.ResultError
 			errorText = "connector action timed out while running in background"
 		} else {
@@ -596,7 +637,7 @@ func (runtimeExecutor) ConnectorRuntimeCapability() string {
 	return sshconnector.RuntimeServiceName
 }
 
-func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, _ connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	if e.server == nil || e.runtime == nil {
 		return connectors.ActionResult{}, fmt.Errorf("ssh runtime is not available")
 	}
@@ -607,11 +648,11 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, _ connectors.Runt
 
 	switch action.ActionName {
 	case sshconnector.ActionExec:
-		return e.executeCommand(runtimeID, action)
+		return e.executeCommand(runtimeContext.Principal, runtimeID, action)
 	case sshconnector.ActionReadConsole:
-		return e.readConsole(ctx, runtimeID, action)
+		return e.readConsole(ctx, runtimeContext.Principal, runtimeID, action)
 	case sshconnector.ActionRestartConsoleSession:
-		return e.restartConsole(ctx, runtimeID)
+		return e.restartConsole(ctx, runtimeContext.Principal, runtimeID)
 	case sshconnector.ActionBrowseRemoteFiles:
 		return e.browseRemoteFiles(ctx, runtimeID, action)
 	case sshconnector.ActionStartFileDownload:
@@ -621,7 +662,7 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, _ connectors.Runt
 	}
 }
 
-func (e runtimeExecutor) executeCommand(runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
+func (e runtimeExecutor) executeCommand(principal executionprincipal.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	command := stringPayload(action.Payload, "command")
 	if command == "" {
 		return connectors.ActionResult{}, fmt.Errorf("command is required")
@@ -632,7 +673,7 @@ func (e runtimeExecutor) executeCommand(runtimeID int64, action connectors.Prepa
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), initialExecTimeout)
 	defer cancel()
-	result, err := sessions.Exec(ctx, runtimeID, command)
+	result, err := sessions.Exec(ctx, principal, runtimeID, command)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -652,7 +693,8 @@ func (e runtimeExecutor) executeCommand(runtimeID int64, action connectors.Prepa
 			"duration_ms": result.DurationMS,
 		},
 		Handles: connectors.ActionHandles{
-			SessionID: result.SessionID,
+			SessionID:         result.SessionID,
+			SessionGeneration: result.Generation,
 		},
 	}
 	if result.Running {
@@ -662,7 +704,7 @@ func (e runtimeExecutor) executeCommand(runtimeID int64, action connectors.Prepa
 	return response, nil
 }
 
-func (e runtimeExecutor) readConsole(ctx context.Context, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
+func (e runtimeExecutor) readConsole(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	tail := intPayload(action.Payload, "tail_bytes", 20000)
 	if tail < 1 {
 		tail = 20000
@@ -674,11 +716,8 @@ func (e runtimeExecutor) readConsole(ctx context.Context, runtimeID int64, actio
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	items, err := sessions.List(ctx, runtimeID)
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
-	if len(items) == 0 {
+	session, err := sessions.ActiveSnapshot(ctx, principal, runtimeID)
+	if errors.Is(err, console.ErrNotFound) {
 		return connectors.ActionResult{
 			Status: connectors.ResultCompleted,
 			Output: map[string]any{
@@ -687,7 +726,9 @@ func (e runtimeExecutor) readConsole(ctx context.Context, runtimeID int64, actio
 			},
 		}, nil
 	}
-	session := items[0]
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
 	transcript := console.PlainOutput(console.TailStringByBytes(session.Transcript, tail))
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
@@ -704,12 +745,12 @@ func (e runtimeExecutor) readConsole(ctx context.Context, runtimeID int64, actio
 	}, nil
 }
 
-func (e runtimeExecutor) restartConsole(ctx context.Context, runtimeID int64) (connectors.ActionResult, error) {
+func (e runtimeExecutor) restartConsole(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (connectors.ActionResult, error) {
 	gateway, err := serverFrom(e.server)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	result, err := gateway.ConnectorRestartConsoleSession(ctx, e.runtime, runtimeID, "console session restarted before connector action completed")
+	result, err := gateway.ConnectorRestartConsoleSession(ctx, e.runtime, principal, runtimeID, "console session restarted before connector action completed")
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -869,8 +910,12 @@ func (adapter) BeforeDeleteCredentialProfile(ctx context.Context, handler connec
 	if err != nil {
 		return err
 	}
+	principal, err := runtime.ConnectorLocalExecutionPrincipal()
+	if err != nil {
+		return err
+	}
 	for _, runtimeID := range runtimeIDs {
-		if _, err := gateway.ConnectorRestartConsoleSession(ctx, runtime, runtimeID, "SSH credential profile was deleted before command completed"); err != nil {
+		if _, err := gateway.ConnectorRestartConsoleSession(ctx, runtime, principal, runtimeID, "SSH credential profile was deleted before command completed"); err != nil {
 			return err
 		}
 	}
@@ -953,6 +998,11 @@ func (adapter) DeleteTarget(handler connectorapi.TargetLifecycleGateway, w http.
 		}
 	}
 	canceledCommands := int64(0)
+	principal, err := runtime.ConnectorLocalExecutionPrincipal()
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	for _, profile := range profiles {
 		runtimeIDs, err := existingLiveConsoleRuntimeIDsForProfile(r.Context(), runtime, target.ID, profile.ID)
 		if err != nil {
@@ -960,7 +1010,7 @@ func (adapter) DeleteTarget(handler connectorapi.TargetLifecycleGateway, w http.
 			return
 		}
 		for _, runtimeID := range runtimeIDs {
-			result, err := gateway.ConnectorRestartConsoleSession(r.Context(), runtime, runtimeID, "SSH connector target was deleted before command completed")
+			result, err := gateway.ConnectorRestartConsoleSession(r.Context(), runtime, principal, runtimeID, "SSH connector target was deleted before command completed")
 			if err != nil {
 				writeInternalError(w)
 				return

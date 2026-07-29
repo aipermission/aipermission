@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
 
 type consoleRestartResult struct {
@@ -9,7 +11,7 @@ type consoleRestartResult struct {
 	CanceledRunningRequests int64
 }
 
-func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *databaseRuntime, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
+func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
 	sessions, err := runtime.consoleSessions.List(ctx, runtimeID)
 	if err != nil {
 		return consoleRestartResult{}, err
@@ -25,7 +27,7 @@ func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *datab
 	if err != nil {
 		return consoleRestartResult{}, err
 	}
-	if err := runtime.consoleSessions.CloseRuntime(ctx, runtimeID); err != nil {
+	if err := runtime.consoleSessions.CloseRuntime(ctx, principal, runtimeID); err != nil {
 		return consoleRestartResult{}, err
 	}
 	return consoleRestartResult{
