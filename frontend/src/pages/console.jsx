@@ -1,6 +1,6 @@
 import { AlertTriangle, ChevronDown, ChevronRight, Circle, Clock, Database, FolderKanban, PanelLeftClose, PanelLeftOpen, RefreshCcw, TerminalSquare } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { apiGet, apiPost } from "../lib/api";
 import {
   connectorTargetKey,
