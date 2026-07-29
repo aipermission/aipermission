@@ -187,3 +187,33 @@ files or environment files.
 
 If a secret appears in output, do not repeat it. Summarize the finding and ask
 the operator how to rotate or redact it.
+
+## Project Vault Practice
+
+Use Project Vault only through its dedicated tools:
+
+1. Call `list_vault_items(project_ref)` to discover names and non-secret
+   metadata. Never ask the gateway to reveal values.
+2. Use `call_vault_action` with `generate_item` only when the operator asked for
+   a new secret. Use a stable, unique `idempotency_key`. Send `tags` as a string
+   array, `shared_project_ids` as an integer array, and `usage_notes` as an
+   array of `{location, notes}` objects containing non-secret context.
+3. Use `restart_session_with_environment` only for the exact target/profile and
+   item assignments needed for the task. This closes the target profile's
+   current console session and starts a replacement session; do not use it
+   during unrelated interactive work without warning the operator. Each item
+   entry may contain only `item_id`, `source_project_id`, and optional
+   `replace_existing`. Cross-project use is allowed only when the token can
+   access both the target and source projects.
+4. If the response is `approval_pending`, wait for local approval and poll
+   `get_vault_action_request`. Prompt approvals expire after 15 minutes. An
+   Always grant may return a terminal result immediately.
+5. Use `cancel_vault_action_request` when an approval is no longer needed.
+
+Vault actions follow the configured Disabled, Prompt, or Always project
+capability. A completed response contains metadata, never the secret. Do not
+try to recover a value by printing the environment. Prompt and Always sessions
+can still send a secret elsewhere, so use the narrowest item set and
+least-privilege service credentials.
+Lease expiry ends agent access to the exact session; it does not guarantee that
+the remote shell or detached child processes erased inherited values.

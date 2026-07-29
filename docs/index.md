@@ -11,6 +11,7 @@ Start here:
 - [Roadmap](ROADMAP.md)
 - [Project Principles](project-principles.md)
 - [Projects And Token Visibility](projects.md)
+- [Project Vault](project-vault.md)
 
 ## Architecture
 

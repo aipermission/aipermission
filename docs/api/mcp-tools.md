@@ -25,6 +25,10 @@ get_connector_help(target_ref)
 get_connector_actions(target_ref)
 call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
+list_vault_items(project_ref?)
+call_vault_action(project_ref, action_name, input, reason, idempotency_key)
+get_vault_action_request(request_id)
+cancel_vault_action_request(request_id)
 ```
 
 ## Connector Model
@@ -65,6 +69,62 @@ service.
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
 Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, or Kubernetes as special MCP
 modes; future connector kinds use the same tools and `target_ref` shape.
+
+Project Vault tools are a separate project-capability surface because they
+operate on project secret metadata and supported session environments rather
+than one connector action catalog. They still use the same local MCP runtime,
+approval, history, and audit boundaries.
+
+## Project Vault Tools
+
+`list_vault_items` returns bounded metadata for Vault items visible through the
+token's `vault.metadata.read` project capability. It never returns values.
+
+`call_vault_action` supports `generate_item` and
+`restart_session_with_environment`. Both use the configured project capability:
+Disabled rejects the call, Prompt creates a local approval request, and Always
+executes immediately through the same tracked request path. Supply a stable,
+unique `idempotency_key`; reusing one with different input returns a conflict.
+Retrying the same stored key remains recoverable even when volatile approval
+context has drifted; execution still revalidates the stored context and may
+mark it stale. New request creation is locally rate-limited. Prompt requests
+expire after 15 minutes. Action input is decoded against the documented action
+schema before the request is stored; unknown fields are rejected and are never
+copied verbatim into approval, history, or replay data.
+
+For `generate_item`, `tags` is an array of strings, `shared_project_ids` is an
+array of integer project ids, and `usage_notes` uses this shape:
+
+```json
+[
+  {
+    "location": "service or configuration location",
+    "notes": "bounded non-secret usage context"
+  }
+]
+```
+
+For `restart_session_with_environment`, each `items` entry accepts only
+`item_id`, `source_project_id`, and optional `replace_existing`. The token must
+be able to access both the target project and every selected source project.
+Cross-project application is intentional under those explicit scopes.
+
+`get_vault_action_request` polls one request owned by the token.
+`cancel_vault_action_request` cancels only an `approval_pending` request owned
+by that token. Terminal states include:
+
+```text
+completed
+failed
+declined
+canceled
+expired
+stale
+```
+
+Vault MCP responses contain names, ids, revisions, status, and non-secret
+result metadata only. Secret values, generated values, environment envelopes,
+and decrypted payloads are never returned. See [Project Vault](../project-vault.md).
 
 ## list_connector_targets
 

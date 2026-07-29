@@ -22,6 +22,8 @@ The gateway vault may store:
 - gateway-generated or explicitly imported SSH private keys
 - Postgres, ClickHouse, and other database credentials for connector profiles
 - connector-specific connection secrets
+- Project Vault values owned by one project and optionally shared with other
+  local projects
 
 The SQLite database is encrypted with SQLCipher. Secret payloads such as SSH private keys are also encrypted by the gateway vault layer. API token lookup uses hashes. Token values are shown once by default; if reusable token copy is enabled in Security, token values created after that setting is enabled are stored with vault encryption for local MCP setup.
 
@@ -117,12 +119,20 @@ MCP responses must never include:
 - database passwords
 - decrypted connection strings
 - vault encryption keys
+- Project Vault values, generated values, or session environment envelopes
 
 `list_connector_targets()` returns only metadata for target/profile/action
 grants the token may access.
 
 `call_connector_action()` uses credentials only inside the gateway at execution
 time.
+
+Project Vault metadata is exposed only through explicit project capabilities.
+`list_vault_items()` returns names and bounded metadata, never values.
+Generation and session application may use Prompt or an explicitly configured
+Always grant. Either mode grants the resulting remote process access to the
+selected values, so Always must be treated as an autonomous secret-use decision
+rather than as a redaction guarantee.
 
 SSH host key pins live in the local `known_hosts` file under the data path. That file is outside the encrypted database and contains remote host key metadata only, not SSH private keys.
 

@@ -172,6 +172,7 @@ Gateway responsibilities:
 - command/action history
 - connector runtimes
 - audit events
+- project-scoped Vault metadata, approvals, and exact-session secret application
 
 ## Local Runtime Model
 
@@ -264,10 +265,21 @@ get_connector_help(target_ref)
 get_connector_actions(target_ref)
 call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
+list_vault_items(project_ref?)
+call_vault_action(project_ref, action_name, input, reason, idempotency_key)
+get_vault_action_request(request_id)
+cancel_vault_action_request(request_id)
 ```
 
 SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, Kubernetes, and future integrations are exposed as
 connector actions instead of separate product-specific MCP tools.
+
+Project Vault is project-capability-scoped rather than connector-action-scoped.
+It lets an agent discover secret names and request generation or supported
+session application without receiving values. Prompt requires a fresh local
+decision; Always is an explicit autonomous grant that skips the dialog while
+retaining request tracking, drift validation, history, and audit. See [Project
+Vault](project-vault.md).
 
 ## Connector Action Flow
 

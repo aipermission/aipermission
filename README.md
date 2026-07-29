@@ -43,6 +43,7 @@ It is built for a very specific workflow:
 | per-token target/profile/action permissions | only approved connector targets and actions |
 | Run / Decline approval flow | action results, structured output, and SSH console output when relevant |
 | encrypted local database and backups | no SSH keys, database passwords, or API credentials |
+| project-scoped Vault values and session approval | secret names and approved session use, never raw values |
 
 > **Local-only security boundary:** run AIPermission on your own machine and keep Docker ports bound to `127.0.0.1`. The localhost port bind is the real security boundary. The web REST API uses a local browser session cookie after database unlock, but it is not a remote multi-user auth system and must not be exposed to LAN or the public internet. Do not change Compose port bindings to `0.0.0.0`; Docker NAT can make external traffic appear local to the container, and Host-header checks are only defense in depth.
 
@@ -121,6 +122,10 @@ Implemented:
   Redis, RabbitMQ, S3, Docker, Kubernetes, and future local integrations
 - local Projects for grouping connector targets, filtering History/Audit, and
   limiting which project target refs each MCP token can discover or call
+- [Project Vault](docs/project-vault.md) for encrypted project-scoped secret inventory, expiry/usage
+  metadata, local audited reveal, Prompt-or-Always generation, and controlled
+  environment application to exact supported connector sessions without
+  returning secret values through MCP
 - generic connector network transport so protocol connectors can use Direct or
   reviewed Over SSH TCP paths without importing SSH-specific code
 - generic connector command transport so structured connectors can run reviewed

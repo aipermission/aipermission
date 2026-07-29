@@ -5,6 +5,12 @@ aipermission uses two storage protection layers:
 1. Full SQLite database encryption with SQLCipher.
 2. Field-level secret payload encryption through the gateway vault.
 
+Project Vault values use both layers. Each value is encrypted with associated
+data bound to the workspace, item id, and value revision so ciphertext cannot be
+silently moved to a different item or revision. Metadata lists never decrypt
+values; explicit local reveal and approved session application are the only
+decryption paths.
+
 ## Current Model
 
 The SQLite file is encrypted with a SQLCipher-compatible driver. The backend does not open it automatically at startup; the web UI first checks unlock status.
@@ -116,6 +122,11 @@ The active backup model is a `.aipdb` file:
 - the backup opens with the database password used at download time
 
 The gateway vault derives its AES-GCM key from the gateway secret with HKDF-SHA256. The HKDF salt is public domain-separation data, not a second secret. The gateway vault secret is also stored in encrypted DB settings, so a single `.aipdb` file is enough to restore encrypted SSH key payloads on another machine.
+
+The same `.aipdb` relationship applies to Project Vault values. Restoring the
+encrypted database restores their ciphertext, metadata, revisions, and the
+gateway material needed to decrypt them after the correct database password is
+provided.
 
 Important: the gateway vault secret is sensitive. If it is lost, vault-encrypted payloads cannot be decrypted. If it is exposed together with database contents while the database password is known, vault-protected SSH key and reusable token payloads should be treated as compromised.
 
