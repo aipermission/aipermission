@@ -70,6 +70,7 @@ const clickHouseConnectorMetadataSource = readFileSync(join(currentDir, "..", "c
 const clickHouseConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "clickhouse", "model.js"), "utf8");
 const redisConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "redis", "form.jsx"), "utf8");
 const rabbitMQConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "rabbitmq", "form.jsx"), "utf8");
+const vaultPageSource = readFileSync(join(currentDir, "..", "pages", "vault.jsx"), "utf8");
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -91,7 +92,7 @@ function backendRegisteredConnectorKinds(source) {
 }
 
 test("App keeps the primary route surface available", () => {
-  for (const route of ["/console", "/projects", "/connectors", "/history", "/audit-logs", "/tokens", "/credentials", "/mcp-setup", "/security", "/settings"]) {
+  for (const route of ["/console", "/projects", "/vault", "/connectors", "/history", "/audit-logs", "/tokens", "/credentials", "/mcp-setup", "/security", "/settings"]) {
     assert.match(appSource, new RegExp(`path="${route}"`));
     assert.match(sidebarSource, new RegExp(`to: "${route}"`));
   }
@@ -99,6 +100,15 @@ test("App keeps the primary route surface available", () => {
   assert.match(appSource, /<Navigate to="\/connectors" replace/);
   assert.doesNotMatch(sidebarSource, /to: "\/servers"/);
   assert.match(shellSource, /Promise\.allSettled/);
+});
+
+test("Vault keeps values behind explicit local actions", () => {
+  assert.match(vaultPageSource, /\/api\/vault-items/);
+  assert.match(vaultPageSource, /\/reveal/);
+  assert.match(vaultPageSource, /navigator\.clipboard\.writeText/);
+  assert.match(vaultPageSource, /Replace local value/);
+  assert.match(vaultPageSource, /expected_value_version/);
+  assert.match(vaultPageSource, /expected_metadata_revision/);
 });
 
 test("Projects group connector targets and scope token visibility", () => {

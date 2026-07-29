@@ -14,6 +14,7 @@ import { MCPSetupPage } from "./pages/mcp-setup";
 import { TokensPage } from "./pages/tokens";
 import { ConnectorsPage } from "./pages/connectors";
 import { ProjectsPage } from "./pages/projects";
+import { VaultPage } from "./pages/vault";
 import { UnlockPage, UnlockShell } from "./pages/unlock";
 
 const ConsolePage = lazy(() => import("./pages/console").then((module) => ({ default: module.ConsolePage })));
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="/servers" element={<Navigate to="/connectors" replace />} />
           <Route path="/connectors" element={<ConnectorsPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/vault" element={<VaultPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />
           <Route path="/tokens" element={<TokensPage />} />
