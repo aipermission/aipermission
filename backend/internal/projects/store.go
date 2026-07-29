@@ -161,6 +161,18 @@ func (s *Store) Archive(ctx context.Context, id int64) error {
 	if item.TargetCount > 0 {
 		return ErrProjectNotEmpty
 	}
+	var vaultReferences int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM vault_items WHERE owner_project_id = ? AND status = 'active') +
+			(SELECT COUNT(*) FROM vault_item_projects vip JOIN vault_items vi ON vi.id = vip.vault_item_id WHERE vip.project_id = ? AND vi.status = 'active')`,
+		id, id,
+	).Scan(&vaultReferences); err != nil {
+		return fmt.Errorf("check project vault references: %w", err)
+	}
+	if vaultReferences > 0 {
+		return ErrProjectNotEmpty
+	}
 	result, err := s.db.ExecContext(ctx, `UPDATE projects SET status = 'archived', updated_at = ? WHERE id = ? AND status = 'active'`, time.Now().UTC().Format(time.RFC3339), id)
 	if err != nil {
 		return fmt.Errorf("archive project: %w", err)
