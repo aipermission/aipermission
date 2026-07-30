@@ -35,6 +35,8 @@ const connectorTokenPermissionPanelSource = readFileSync(join(currentDir, "..", 
 const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"), "utf8");
 const vaultPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "vault-permission-dialog.jsx"), "utf8");
 const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "connectors", "templates", "common.jsx"), "utf8");
+const kafkaConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "kafka", "console.jsx"), "utf8");
+const kafkaWriteDialogsSource = readFileSync(join(currentDir, "..", "connectors", "templates", "kafka", "write-dialogs.jsx"), "utf8");
 const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "connectors", "templates", "target-profile-save.js"), "utf8");
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
 const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "catalog.js"), "utf8");
@@ -435,6 +437,15 @@ test("Console exposes connector action approvals", () => {
   assert.match(connectorApprovalDialogSource, /Decline note/);
   assert.match(connectorActivityDialogSource, /Recent structured connector requests/);
   assert.match(connectorActivityDialogSource, /always-run requests/);
+});
+
+test("Kafka write dialogs guard stale detail and pending submissions", () => {
+  assert.match(kafkaConsoleSource, /detailMatchesSelection/);
+  assert.match(kafkaConsoleSource, /setDetailIdentity\(""\)/);
+  assert.match(kafkaConsoleSource, /await onRefreshActivity\?\.\(\)/);
+  assert.match(kafkaWriteDialogsSource, /max-h-\[calc\(100dvh-2rem\)\]/);
+  assert.match(kafkaWriteDialogsSource, /role="alert"/);
+  assert.match(kafkaWriteDialogsSource, /disabled=\{pending\}/);
 });
 
 test("SSH connector template owns SSH-specific operations", () => {
