@@ -7,6 +7,7 @@ import (
 	clickhouseconnector "github.com/aipermission/aipermission/backend/internal/connectors/clickhouse"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	_ "github.com/aipermission/aipermission/backend/internal/connectors/docker/apiadapter"
+	kafkaconnector "github.com/aipermission/aipermission/backend/internal/connectors/kafka"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	_ "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes/apiadapter"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
@@ -22,6 +23,7 @@ func RegisterAll(registry *connectors.Registry) error {
 	for _, connector := range []connectors.Connector{
 		clickhouseconnector.New(),
 		dockerconnector.New(),
+		kafkaconnector.New(),
 		kubernetesconnector.New(),
 		postgresconnector.New(),
 		rabbitmqconnector.New(),

@@ -145,6 +145,7 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 	connector connectors.Connector,
 	request connectorCredentialProfilePayload,
 	secretRequired bool,
+	previous *connectors.CredentialProfileView,
 ) (preparedConnectorCredentialProfileInput, bool) {
 	kind := strings.TrimSpace(request.Kind)
 	if !credentialKindSupported(connector, kind) {
@@ -168,6 +169,12 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, request.Secret, secretRequired); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return preparedConnectorCredentialProfileInput{}, false
+	}
+	if validator, ok := connector.(connectors.CredentialProfileValidator); ok {
+		if err := validator.ValidateCredentialProfile(kind, public, request.Secret, previous); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return preparedConnectorCredentialProfileInput{}, false
+		}
 	}
 	prepared := preparedConnectorCredentialProfileInput{
 		Kind:      kind,
@@ -359,7 +366,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	request.Target.Config = targetConfig
-	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request.Profile), true)
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request.Profile), true, nil)
 	if !ok {
 		return
 	}
@@ -621,7 +628,13 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 	if request.Target.ProjectID == 0 {
 		request.Target.ProjectID = existing.ProjectID
 	}
-	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request.Profile), request.Profile.Secret != nil)
+	existingProfile, err := store.GetCredentialProfile(r.Context(), id, profileID)
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	existingProfileView := connectortargets.CredentialProfileView(existingProfile)
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request.Profile), request.Profile.Secret != nil, &existingProfileView)
 	if !ok {
 		return
 	}
@@ -792,7 +805,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request), true)
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request), true, nil)
 	if !ok {
 		return
 	}
@@ -883,7 +896,8 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		}
 		request.Public = mergedPublic
 	}
-	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request), request.Secret != nil)
+	existingProfileView := connectortargets.CredentialProfileView(existingProfile)
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request), request.Secret != nil, &existingProfileView)
 	if !ok {
 		return
 	}

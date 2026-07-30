@@ -8,6 +8,7 @@ import (
 	clickhouseconnector "github.com/aipermission/aipermission/backend/internal/connectors/clickhouse"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
+	kafkaconnector "github.com/aipermission/aipermission/backend/internal/connectors/kafka"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
@@ -36,6 +37,13 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 	if docker.Label() != dockerconnector.Label {
 		t.Fatalf("docker label = %q", docker.Label())
+	}
+	kafka, ok := registry.Get(kafkaconnector.Kind)
+	if !ok {
+		t.Fatal("expected kafka connector")
+	}
+	if kafka.Label() != kafkaconnector.Label {
+		t.Fatalf("kafka label = %q", kafka.Label())
 	}
 	kubernetes, ok := registry.Get(kubernetesconnector.Kind)
 	if !ok {
@@ -83,7 +91,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 8 || infos[0].Kind != clickhouseconnector.Kind || infos[1].Kind != dockerconnector.Kind || infos[2].Kind != kubernetesconnector.Kind || infos[3].Kind != postgresconnector.Kind || infos[4].Kind != rabbitmqconnector.Kind || infos[5].Kind != redisconnector.Kind || infos[6].Kind != s3connector.Kind || infos[7].Kind != sshconnector.Kind {
+	if len(infos) != 9 || infos[0].Kind != clickhouseconnector.Kind || infos[1].Kind != dockerconnector.Kind || infos[2].Kind != kafkaconnector.Kind || infos[3].Kind != kubernetesconnector.Kind || infos[4].Kind != postgresconnector.Kind || infos[5].Kind != rabbitmqconnector.Kind || infos[6].Kind != redisconnector.Kind || infos[7].Kind != s3connector.Kind || infos[8].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -211,6 +219,28 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				kubernetesconnector.ActionDescribe:       {"resource_type": "deployment", "namespace": "production", "name": "api"},
 				kubernetesconnector.ActionLogs:           {"namespace": "production", "pod": "api-123", "container": "api", "tail": 100},
 				kubernetesconnector.ActionRolloutRestart: {"namespace": "production", "deployment": "api"},
+			}
+	case kafkaconnector.Kind:
+		return connectors.TargetView{
+				ID:            9,
+				Ref:           "kafka:9:90",
+				ConnectorKind: kafkaconnector.Kind,
+				Name:          "events",
+				Config:        map[string]any{"server_family": "redpanda", "connection_mode": "direct", "bootstrap_brokers": "127.0.0.1:9092", "tls_enabled": false},
+			}, connectors.CredentialProfileView{
+				ID:            90,
+				TargetID:      9,
+				ConnectorKind: kafkaconnector.Kind,
+				Kind:          "sasl",
+				Label:         "monitor",
+				Public:        map[string]any{"mechanism": "none"},
+			}, map[string]map[string]any{
+				kafkaconnector.ActionClusterInfo:           {},
+				kafkaconnector.ActionListTopics:            {"include_internal": false},
+				kafkaconnector.ActionDescribeTopic:         {"topic": "events"},
+				kafkaconnector.ActionListConsumerGroups:    {},
+				kafkaconnector.ActionDescribeConsumerGroup: {"group": "workers"},
+				kafkaconnector.ActionReadMessages:          {"topic": "events", "partition": 0, "start_position": "recent", "offset": "0", "max_records": 20, "max_bytes": 262144, "wait_seconds": 2},
 			}
 	case postgresconnector.Kind:
 		return connectors.TargetView{
