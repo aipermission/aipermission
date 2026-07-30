@@ -7,6 +7,8 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-07-30
+
 ### Added
 
 - Added Project Vault for encrypted project-scoped secret inventory, metadata,
