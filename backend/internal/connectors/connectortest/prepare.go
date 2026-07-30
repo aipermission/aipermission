@@ -81,6 +81,9 @@ func actionEqual(left connectors.ActionDefinition, right connectors.ActionDefini
 			return false
 		}
 	}
+	if !reflect.DeepEqual(left.SensitiveInputFields, right.SensitiveInputFields) {
+		return false
+	}
 	return schemasEqual(left.InputSchema, right.InputSchema)
 }
 

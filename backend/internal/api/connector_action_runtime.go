@@ -333,7 +333,7 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		Summary:              s.redactForPersistence(ctx, runtime, prepared.Action.Summary),
 		Preview:              s.redactConnectorActionPreview(ctx, runtime, prepared.Action.Preview, prepared.ActionDefinition.OutputHint),
 		Source:               prepared.Requested.Source,
-		Input:                s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input),
+		Input:                s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input, prepared.ActionDefinition.SensitiveInputFields),
 		EncryptedPayloadJSON: payload,
 		Reason:               s.redactForPersistence(ctx, runtime, prepared.Requested.Reason),
 		Status:               status,
@@ -512,11 +512,18 @@ func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *datab
 	return result
 }
 
-func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databaseRuntime, input map[string]any) map[string]any {
+func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databaseRuntime, input map[string]any, sensitiveInputFields []string) map[string]any {
 	if input == nil {
 		return map[string]any{}
 	}
-	redacted, ok := s.redactedConnectorValue(ctx, runtime, input, connectorSensitiveOutputFields()).(map[string]any)
+	fields := connectorSensitiveOutputFields()
+	for _, field := range sensitiveInputFields {
+		normalized := normalizeConnectorOutputField(field)
+		if normalized != "" {
+			fields[normalized] = true
+		}
+	}
+	redacted, ok := s.redactedConnectorValue(ctx, runtime, input, fields).(map[string]any)
 	if !ok || redacted == nil {
 		return map[string]any{}
 	}
@@ -595,13 +602,14 @@ func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Tok
 		return "", "", err
 	}
 	actionDefinition := map[string]any{
-		"name":         prepared.ActionDefinition.Name,
-		"label":        prepared.ActionDefinition.Label,
-		"description":  prepared.ActionDefinition.Description,
-		"category":     prepared.ActionDefinition.Category,
-		"risk":         prepared.ActionDefinition.Risk,
-		"input_schema": prepared.ActionDefinition.InputSchema,
-		"output_hint":  prepared.ActionDefinition.OutputHint,
+		"name":                   prepared.ActionDefinition.Name,
+		"label":                  prepared.ActionDefinition.Label,
+		"description":            prepared.ActionDefinition.Description,
+		"category":               prepared.ActionDefinition.Category,
+		"risk":                   prepared.ActionDefinition.Risk,
+		"input_schema":           prepared.ActionDefinition.InputSchema,
+		"sensitive_input_fields": prepared.ActionDefinition.SensitiveInputFields,
+		"output_hint":            prepared.ActionDefinition.OutputHint,
 	}
 	actionDefinitionHashMaterial, err := json.Marshal(actionDefinition)
 	if err != nil {

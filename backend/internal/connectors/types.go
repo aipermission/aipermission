@@ -65,13 +65,14 @@ type CredentialProfileView struct {
 // ActionDefinition is the machine-readable action contract returned by a
 // connector.
 type ActionDefinition struct {
-	Name        string     `json:"name"`
-	Label       string     `json:"label"`
-	Description string     `json:"description"`
-	Category    string     `json:"category,omitempty"`
-	Risk        RiskLevel  `json:"risk"`
-	InputSchema Schema     `json:"input_schema"`
-	OutputHint  OutputHint `json:"output_hint,omitempty"`
+	Name                 string     `json:"name"`
+	Label                string     `json:"label"`
+	Description          string     `json:"description"`
+	Category             string     `json:"category,omitempty"`
+	Risk                 RiskLevel  `json:"risk"`
+	InputSchema          Schema     `json:"input_schema"`
+	SensitiveInputFields []string   `json:"sensitive_input_fields,omitempty"`
+	OutputHint           OutputHint `json:"output_hint,omitempty"`
 }
 
 // ActionRequest is a side-effect-free request to prepare a target action.

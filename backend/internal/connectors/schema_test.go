@@ -148,4 +148,14 @@ func TestValidateActionDefinitionsRejectsInvalidContracts(t *testing.T) {
 	}}, "test"); err == nil || !strings.Contains(err.Error(), "description is required") {
 		t.Fatalf("expected missing description error, got %v", err)
 	}
+	if err := ValidateActionDefinitions([]ActionDefinition{{
+		Name:                 "run",
+		Label:                "Run",
+		Description:          "Run once.",
+		Risk:                 RiskWrite,
+		InputSchema:          Schema{Fields: []Field{{Name: "message", Label: "Message", Type: FieldString}}},
+		SensitiveInputFields: []string{"missing"},
+	}}, "test"); err == nil || !strings.Contains(err.Error(), "not in its input schema") {
+		t.Fatalf("expected unknown sensitive input field error, got %v", err)
+	}
 }

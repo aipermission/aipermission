@@ -165,6 +165,20 @@ func ValidateActionDefinitions(actions []ActionDefinition, usage string) error {
 		if err := ValidateNonSecretSchema(action.InputSchema, usage+" action "+action.Name+" input"); err != nil {
 			return err
 		}
+		inputFields := make(map[string]bool, len(action.InputSchema.Fields))
+		for _, field := range action.InputSchema.Fields {
+			inputFields[field.Name] = true
+		}
+		seenSensitiveFields := map[string]bool{}
+		for _, field := range action.SensitiveInputFields {
+			if !inputFields[field] {
+				return fmt.Errorf("%s action %q sensitive input field %q is not in its input schema", usage, action.Name, field)
+			}
+			if seenSensitiveFields[field] {
+				return fmt.Errorf("%s action %q contains duplicate sensitive input field %q", usage, action.Name, field)
+			}
+			seenSensitiveFields[field] = true
+		}
 	}
 	return nil
 }

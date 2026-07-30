@@ -186,6 +186,9 @@ func equalActionDefinition(left ActionDefinition, right ActionDefinition) bool {
 			return false
 		}
 	}
+	if !reflect.DeepEqual(left.SensitiveInputFields, right.SensitiveInputFields) {
+		return false
+	}
 	return equalSchemas(left.InputSchema, right.InputSchema)
 }
 

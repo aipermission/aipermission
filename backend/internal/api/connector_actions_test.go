@@ -146,6 +146,15 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	if actionHash == baseHash {
 		t.Fatalf("action definition drift should change approval hash")
 	}
+	sensitiveFieldsChanged := prepared
+	sensitiveFieldsChanged.ActionDefinition.SensitiveInputFields = []string{"sql"}
+	_, sensitiveFieldsHash, err := connectorApprovalContext(sensitiveFieldsChanged, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context with sensitive input field change: %v", err)
+	}
+	if sensitiveFieldsHash == baseHash {
+		t.Fatalf("sensitive input field drift should change approval hash")
+	}
 	profileChanged := prepared
 	profileChanged.Profile.SecretRevision = "secret-revision-b"
 	_, profileHash, err := connectorApprovalContext(profileChanged, token, permission, "2026-06-12T12:00:00Z")
@@ -342,18 +351,17 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("resolve target/profile: %v", err)
 	}
 	rawInput := map[string]any{
-		"sql":          "select 'password=super-secret' as value",
-		"access_token": "raw-access-token",
-		"nested":       map[string]any{"authorization": "Bearer raw-bearer-token"},
+		"sql":            "select 'password=super-secret' as value",
+		"access_token":   "raw-access-token",
+		"opaque_message": "arbitrary-publish-content",
+		"nested":         map[string]any{"authorization": "Bearer raw-bearer-token"},
 	}
 	prepared := actions.PreparedRequest{
 		Target:  targetView,
 		Profile: profileView,
 		ActionDefinition: connectors.ActionDefinition{
-			Name: postgresconnector.ActionQueryReadonly,
-			OutputHint: connectors.OutputHint{
-				SensitiveFields: []string{"access_token"},
-			},
+			Name:                 postgresconnector.ActionQueryReadonly,
+			SensitiveInputFields: []string{"access_token", "opaque_message"},
 		},
 		Action: connectors.PreparedAction{
 			ConnectorKind: postgresconnector.Kind,
@@ -386,12 +394,12 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	).Scan(&inputJSON, &reason, &encryptedPayload); err != nil {
 		t.Fatalf("read connector action request: %v", err)
 	}
-	for _, secret := range []string{"super-secret", "raw-access-token", "raw-bearer-token", "raw-reason-token", "reason-secret"} {
+	for _, secret := range []string{"super-secret", "raw-access-token", "arbitrary-publish-content", "raw-bearer-token", "raw-reason-token", "reason-secret"} {
 		if strings.Contains(inputJSON, secret) || strings.Contains(reason, secret) {
 			t.Fatalf("persisted connector request leaked %q: input=%s reason=%s", secret, inputJSON, reason)
 		}
 	}
-	if !strings.Contains(inputJSON, `"access_token":"[REDACTED]"`) || !strings.Contains(inputJSON, `"authorization":"[REDACTED]"`) || !strings.Contains(inputJSON, `password=[REDACTED]`) {
+	if !strings.Contains(inputJSON, `"access_token":"[REDACTED]"`) || !strings.Contains(inputJSON, `"opaque_message":"[REDACTED]"`) || !strings.Contains(inputJSON, `"authorization":"[REDACTED]"`) || !strings.Contains(inputJSON, `password=[REDACTED]`) {
 		t.Fatalf("input was not redacted as expected: %s", inputJSON)
 	}
 	var historyInputJSON string
@@ -411,12 +419,18 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if mcpResponse.Input["access_token"] != "[REDACTED]" || approvalResponse.Input["access_token"] != "[REDACTED]" {
 		t.Fatalf("response input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
 	}
+	if mcpResponse.Input["opaque_message"] != "[REDACTED]" || approvalResponse.Input["opaque_message"] != "[REDACTED]" {
+		t.Fatalf("action-declared sensitive input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
+	}
 	var decryptedPayload connectorActionExecutionEnvelope
 	if err := secretVault.DecryptJSON(encryptedPayload, &decryptedPayload); err != nil {
 		t.Fatalf("decrypt execution payload: %v", err)
 	}
 	if decryptedPayload.Input["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Input["sql"].(string), "super-secret") {
 		t.Fatalf("encrypted execution payload should preserve raw input: %#v", decryptedPayload)
+	}
+	if decryptedPayload.Input["opaque_message"] != "arbitrary-publish-content" {
+		t.Fatalf("encrypted execution payload should preserve action-sensitive input: %#v", decryptedPayload)
 	}
 	if decryptedPayload.Payload["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Payload["sql"].(string), "super-secret") {
 		t.Fatalf("encrypted execution payload should preserve raw action payload: %#v", decryptedPayload)
