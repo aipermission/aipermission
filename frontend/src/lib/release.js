@@ -1,6 +1,26 @@
-export const appVersion = "0.2.15";
+export const appVersion = "0.2.16";
 
 export const changelogEntries = [
+  {
+    version: "0.2.16",
+    label: "Project Vault",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Project Vault keeps project-scoped secret inventory, metadata, expiry, usage notes, and connector-session defaults inside the encrypted local database.",
+          "MCP tokens can receive explicit project capabilities for metadata listing, secret generation, and exact-session environment application without receiving raw values.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Vault session access is bound to the exact token, project, target, profile, runtime, session generation, peer identity, item revisions, and approval context.",
+          "One-time framed delivery, strict input normalization, bounded approvals, redaction, audit, history, and fail-closed invalidation protect the local secret boundary.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.15",
     label: "Security and dependency maintenance",
