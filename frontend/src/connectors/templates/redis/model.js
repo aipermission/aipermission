@@ -2,11 +2,14 @@ import { apiDelete, apiPost, apiPut } from "../../../lib/api";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
 
 const emptyRedisCredentialForm = { target_id: "", profile_label: "default", username: "", password: "", risk_label: "cache access" };
+const defaultServerFamily = "redis";
+export const connectorProductLabel = "Redis / Valkey";
 
 export function emptyForm() {
   return {
     connector_kind: "redis",
     name: "redis-cache",
+    server_family: defaultServerFamily,
     connection_mode: "direct",
     host: "127.0.0.1",
     port: 6379,
@@ -25,6 +28,7 @@ export function formFromTarget({ target, profile }) {
     connector_kind: "redis",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
     name: target.name || "",
+    server_family: target.config?.server_family || defaultServerFamily,
     connection_mode: target.config?.connection_mode || "direct",
     host: target.config?.host || "127.0.0.1",
     port: target.config?.port || 6379,
@@ -104,8 +108,10 @@ export function credentialFormProps({ targets, formState, setFormState, formMode
   };
 }
 
-export async function saveCredential({ operation, row, formState }) {
+export async function saveCredential({ operation, row, formState, targets = [] }) {
   const form = formState.form;
+  const target = row?.target || targets.find((item) => Number(item.id) === Number(form.target_id));
+  const product = serverProductLabel(target);
   if (operation === "create") {
     await apiPost(`/api/connector-targets/${form.target_id}/profiles`, {
       kind: "username_password",
@@ -114,10 +120,10 @@ export async function saveCredential({ operation, row, formState }) {
       secret: form.password ? { password: form.password } : {},
       risk_label: form.risk_label,
     });
-    return { message: "Redis credential created." };
+    return { message: `${product} credential created.` };
   }
   if (operation === "update") {
-    if (!row) throw new Error("Redis credential is not loaded.");
+    if (!row) throw new Error(`${connectorProductLabel} credential is not loaded.`);
     const payload = {
       kind: row.profile?.kind || "username_password",
       label: form.profile_label,
@@ -128,9 +134,9 @@ export async function saveCredential({ operation, row, formState }) {
       payload.secret = { password: form.password };
     }
     await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, payload);
-    return { message: "Redis credential updated." };
+    return { message: `${product} credential updated.` };
   }
-  throw new Error("Unsupported Redis credential operation.");
+  throw new Error(`Unsupported ${connectorProductLabel} credential operation.`);
 }
 
 export async function deleteCredential({ row }) {
@@ -145,12 +151,13 @@ export function credentialRows({ targets }) {
         row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
         connector_kind: target.connector_kind,
         resource_kind: "credential_profile",
-        connector_label: "Redis",
+        connector_label: serverProductLabel(target),
         id: profile.id,
         target_id: target.id,
         name: profile.label,
         kind: profile.kind,
         profile,
+        target,
         target_label: target.name,
         target_detail: targetEndpoint({ target }),
         metadata: credentialMetadata(profile),
@@ -187,12 +194,12 @@ export function targetEndpoint({ target }) {
 }
 
 export function targetDisplayName({ target }) {
-  if (!target) return "Redis target";
-  return target.target_name || target.name || "Redis target";
+  if (!target) return `${connectorProductLabel} target`;
+  return target.target_name || target.name || `${serverProductLabel(target)} target`;
 }
 
 export function targetSubtitle({ target }) {
-  return targetEndpoint({ target });
+  return `${serverProductLabel(target)} · ${targetEndpoint({ target })}`;
 }
 
 export function targetProfileLabel({ target }) {
@@ -208,14 +215,15 @@ export function recoverableRunningActions() {
 }
 
 export function deleteDialog({ target }) {
+  const product = serverProductLabel(target);
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
-    description: "Remove this Redis connector target, credential profiles, and token action permissions from aipermission.",
+    description: `Remove this ${product} connector target, credential profiles, and token action permissions from aipermission.`,
     details: [
       { label: "Connector", value: target?.name },
       { label: "Reference", value: target ? `${target.connector_kind}:${target.id}` : "" },
     ],
-    notice: "This removes the connector target and its credential profiles. It does not change the Redis server.",
+    notice: `This removes the connector target and its credential profiles. It does not change the ${product} server.`,
     actions: [
       { label: "Cancel", action: "close", variant: "outline" },
       { label: "Delete connector", pendingLabel: "Deleting...", removeKey: false },
@@ -247,7 +255,7 @@ async function createTarget({ form }) {
 
 async function updateTarget({ form, target }) {
   const profile = target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) || (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!target || !profile) throw new Error("Redis connector profile is not loaded.");
+  if (!target || !profile) throw new Error(`${connectorProductLabel} connector profile is not loaded.`);
   const profilePayload = {
     kind: profile.kind || "username_password",
     label: form.profile_label,
@@ -272,12 +280,24 @@ async function updateTarget({ form, target }) {
 
 function redisTargetConfigFromForm(form) {
   return {
+    server_family: form.server_family === "valkey" ? "valkey" : defaultServerFamily,
     connection_mode: form.connection_mode || "direct",
     host: form.host || "127.0.0.1",
     port: Number(form.port) || 6379,
     database: Number(form.database) || 0,
     transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref || "" : "",
   };
+}
+
+export function serverProductLabel(targetOrConfig) {
+  const config = targetOrConfig?.config || targetOrConfig || {};
+  return config.server_family === "valkey" ? "Valkey" : "Redis";
+}
+
+export function validateStringWrite({ key, value }) {
+  if (!String(key || "").trim()) return "Key is required.";
+  if (!String(value || "").trim()) return "Value is required.";
+  return "";
 }
 
 function credentialMetadata(profile) {
