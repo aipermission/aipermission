@@ -221,6 +221,9 @@ func executeDescribeConsumerGroup(ctx context.Context, client *kgo.Client, group
 			"end_offset":       strconv.FormatInt(item.End.Offset, 10),
 			"lag":              strconv.FormatInt(item.Lag, 10),
 		}
+		if item.Start.Err == nil {
+			row["earliest_offset"] = strconv.FormatInt(item.Start.Offset, 10)
+		}
 		if item.Member != nil {
 			row["member_id"] = item.Member.MemberID
 		}

@@ -13,14 +13,16 @@ import (
 const (
 	Kind    = "kafka"
 	Label   = "Kafka / Redpanda"
-	Version = "0.2"
+	Version = "0.3"
 
-	ActionClusterInfo           = "cluster_info"
-	ActionListTopics            = "list_topics"
-	ActionDescribeTopic         = "describe_topic"
-	ActionListConsumerGroups    = "list_consumer_groups"
-	ActionDescribeConsumerGroup = "describe_consumer_group"
-	ActionReadMessages          = "read_messages"
+	ActionClusterInfo            = "cluster_info"
+	ActionListTopics             = "list_topics"
+	ActionDescribeTopic          = "describe_topic"
+	ActionListConsumerGroups     = "list_consumer_groups"
+	ActionDescribeConsumerGroup  = "describe_consumer_group"
+	ActionReadMessages           = "read_messages"
+	ActionPublishMessage         = "publish_message"
+	ActionSetConsumerGroupOffset = "set_consumer_group_offset"
 )
 
 type Connector struct{}
@@ -72,27 +74,30 @@ func (*Connector) GetHelp(_ context.Context, target connectors.TargetView) (conn
 	family := familyLabel(stringValue(target.Config, "server_family", "kafka"))
 	return connectors.ConnectorHelp{
 		Title:       family + " connector",
-		Summary:     "Inspect cluster metadata, topics, consumer groups, lag, and bounded message samples without joining a consumer group or committing offsets.",
+		Summary:     "Inspect cluster metadata, topics, consumer groups, lag, and bounded message samples. Guarded write actions can publish one message or change one inactive consumer-group partition offset.",
 		Connector:   Label,
 		ConnectorID: Kind,
 		Usage: []string{
 			"Call list_topics before describe_topic or read_messages.",
 			"Use describe_consumer_group to inspect members, committed offsets, and lag.",
 			"read_messages uses explicit partition assignment and never commits consumer offsets.",
+			"publish_message writes one bounded message with all-in-sync-replica acknowledgements.",
+			"set_consumer_group_offset changes one partition only and rejects active consumer groups.",
 		},
 		Warnings: []string{
 			"Message keys, values, and headers can contain secrets or personal data. Read only what the operator approved.",
 			"Read results are bounded, but they are persisted in local encrypted history.",
+			"Prefer Prompt for publish_message and set_consumer_group_offset. Offset changes can replay or skip messages.",
 		},
 	}, nil
 }
 
 func (*Connector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
-	return readActionDefinitions(), nil
+	return actionDefinitions(), nil
 }
 
 func (*Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
-	action, ok := readActionDefinition(req.ActionName)
+	action, ok := actionDefinition(req.ActionName)
 	if !ok {
 		return connectors.PreparedAction{}, fmt.Errorf("unsupported Kafka action %q", req.ActionName)
 	}
@@ -100,10 +105,10 @@ func (*Connector) PrepareAction(_ context.Context, req connectors.ActionRequest)
 	if err != nil {
 		return connectors.PreparedAction{}, err
 	}
-	if err := canonicalizeReadInput(req.ActionName, input); err != nil {
+	if err := canonicalizeActionInput(req.ActionName, input); err != nil {
 		return connectors.PreparedAction{}, err
 	}
-	if err := validateReadInput(req.ActionName, input); err != nil {
+	if err := validateActionInput(req.ActionName, input); err != nil {
 		return connectors.PreparedAction{}, err
 	}
 	summary := action.Label
@@ -114,6 +119,14 @@ func (*Connector) PrepareAction(_ context.Context, req connectors.ActionRequest)
 		summary = "Describe consumer group " + stringValue(input, "group", "")
 	case ActionReadMessages:
 		summary = fmt.Sprintf("Read up to %d messages from %s partition %d", intValue(input, "max_records", 20), stringValue(input, "topic", ""), intValue(input, "partition", 0))
+	case ActionPublishMessage:
+		summary = fmt.Sprintf("Publish one message to %s partition %d", stringValue(input, "topic", ""), intValue(input, "partition", 0))
+	case ActionSetConsumerGroupOffset:
+		summary = fmt.Sprintf("Set %s/%s partition %d offset to %s", stringValue(input, "group", ""), stringValue(input, "topic", ""), intValue(input, "partition", 0), stringValue(input, "offset", ""))
+	}
+	preview := copyMap(input)
+	if req.ActionName == ActionPublishMessage {
+		preview = publishPreview(input)
 	}
 	return connectors.PreparedAction{
 		ConnectorKind: Kind,
@@ -123,7 +136,7 @@ func (*Connector) PrepareAction(_ context.Context, req connectors.ActionRequest)
 		Risk:          action.Risk,
 		Title:         action.Label,
 		Summary:       summary,
-		Preview:       copyMap(input),
+		Preview:       preview,
 		Payload:       copyMap(input),
 		ContextMaterial: map[string]any{
 			"target_config":   req.Target.Config,
@@ -157,6 +170,12 @@ func (c *Connector) ExecuteAction(ctx context.Context, runtime connectors.Runtim
 	if action.ConnectorKind != Kind {
 		return connectors.ActionResult{}, fmt.Errorf("prepared action connector kind %q is not %q", action.ConnectorKind, Kind)
 	}
+	if _, ok := actionDefinition(action.ActionName); !ok {
+		return connectors.ActionResult{}, fmt.Errorf("unsupported Kafka action %q", action.ActionName)
+	}
+	if err := validateActionInput(action.ActionName, action.Payload); err != nil {
+		return failedResult(fmt.Errorf("validate prepared Kafka action: %w", err)), nil
+	}
 	if action.ActionName == ActionReadMessages {
 		partition, err := checkedInt32(int64(intValue(action.Payload, "partition", 0)), "partition")
 		if err != nil {
@@ -171,6 +190,9 @@ func (c *Connector) ExecuteAction(ctx context.Context, runtime connectors.Runtim
 			MaxBytes:    intValue(action.Payload, "max_bytes", 262144),
 			WaitSeconds: intValue(action.Payload, "wait_seconds", 2),
 		})
+	}
+	if action.ActionName == ActionPublishMessage {
+		return executePublishMessage(ctx, runtime, action.Payload)
 	}
 	client, err := newClient(ctx, runtime)
 	if err != nil {
@@ -189,9 +211,10 @@ func (c *Connector) ExecuteAction(ctx context.Context, runtime connectors.Runtim
 		return executeListConsumerGroups(ctx, client)
 	case ActionDescribeConsumerGroup:
 		return executeDescribeConsumerGroup(ctx, client, stringValue(action.Payload, "group", ""))
-	default:
-		return connectors.ActionResult{}, fmt.Errorf("unsupported Kafka action %q", action.ActionName)
+	case ActionSetConsumerGroupOffset:
+		return executeSetConsumerGroupOffset(ctx, client, action.Payload)
 	}
+	return connectors.ActionResult{}, fmt.Errorf("unsupported Kafka action %q", action.ActionName)
 }
 
 func (c *Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeContext) (connectors.TestResult, error) {
@@ -211,7 +234,7 @@ func (c *Connector) TestConnection(ctx context.Context, runtime connectors.Runti
 	}, nil
 }
 
-func readActionDefinitions() []connectors.ActionDefinition {
+func actionDefinitions() []connectors.ActionDefinition {
 	return []connectors.ActionDefinition{
 		{Name: ActionClusterInfo, Label: "Cluster info", Description: "Read cluster id, controller, and bounded broker endpoint metadata.", Category: "cluster", Risk: connectors.RiskRead, InputSchema: connectors.Schema{}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: 200, MaxBytes: 262144}},
 		{Name: ActionListTopics, Label: "List topics", Description: "List visible topics with partition and replication metadata.", Category: "topics", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -237,11 +260,32 @@ func readActionDefinitions() []connectors.ActionDefinition {
 			{Name: "max_bytes", Label: "Maximum payload bytes", Type: connectors.FieldNumber, Default: 262144},
 			{Name: "wait_seconds", Label: "Wait seconds", Type: connectors.FieldNumber, Default: 2},
 		}}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: 100, MaxBytes: 524288}},
+		{Name: ActionPublishMessage, Label: "Publish message", Description: "Publish one bounded message to one explicit topic partition with all-in-sync-replica acknowledgements.", Category: "messages", Risk: connectors.RiskWrite, InputSchema: connectors.Schema{Fields: []connectors.Field{
+			{Name: "topic", Label: "Topic", Type: connectors.FieldString, Required: true},
+			{Name: "partition", Label: "Partition", Type: connectors.FieldNumber, Required: true, Default: 0},
+			{Name: "key", Label: "Key", Type: connectors.FieldMultiline, Default: ""},
+			{Name: "key_encoding", Label: "Key encoding", Type: connectors.FieldSelect, Required: true, Default: "utf8", Options: []connectors.FieldOption{
+				{Value: "utf8", Label: "UTF-8"},
+				{Value: "base64", Label: "Base64"},
+			}},
+			{Name: "value", Label: "Value", Type: connectors.FieldMultiline, Default: ""},
+			{Name: "value_encoding", Label: "Value encoding", Type: connectors.FieldSelect, Required: true, Default: "utf8", Options: []connectors.FieldOption{
+				{Value: "utf8", Label: "UTF-8"},
+				{Value: "base64", Label: "Base64"},
+			}},
+			{Name: "headers", Label: "Headers", Type: connectors.FieldJSON, Default: []any{}, Description: "Optional array of {key, value, encoding}; encoding is utf8 or base64."},
+		}}, SensitiveInputFields: []string{"key", "value", "headers"}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 65536}},
+		{Name: ActionSetConsumerGroupOffset, Label: "Set consumer group offset", Description: "Change one inactive consumer group's committed offset for one explicit topic partition.", Category: "consumer_groups", Risk: connectors.RiskDestructive, InputSchema: connectors.Schema{Fields: []connectors.Field{
+			{Name: "group", Label: "Consumer group", Type: connectors.FieldString, Required: true},
+			{Name: "topic", Label: "Topic", Type: connectors.FieldString, Required: true},
+			{Name: "partition", Label: "Partition", Type: connectors.FieldNumber, Required: true, Default: 0},
+			{Name: "offset", Label: "New offset", Type: connectors.FieldString, Required: true},
+		}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 65536}},
 	}
 }
 
-func readActionDefinition(name string) (connectors.ActionDefinition, bool) {
-	for _, action := range readActionDefinitions() {
+func actionDefinition(name string) (connectors.ActionDefinition, bool) {
+	for _, action := range actionDefinitions() {
 		if action.Name == name {
 			return action, true
 		}
@@ -249,9 +293,9 @@ func readActionDefinition(name string) (connectors.ActionDefinition, bool) {
 	return connectors.ActionDefinition{}, false
 }
 
-func validateReadInput(action string, input map[string]any) error {
+func validateActionInput(action string, input map[string]any) error {
 	switch action {
-	case ActionDescribeTopic, ActionReadMessages:
+	case ActionDescribeTopic, ActionReadMessages, ActionPublishMessage:
 		if strings.TrimSpace(stringValue(input, "topic", "")) == "" {
 			return fmt.Errorf("topic is required")
 		}
@@ -259,11 +303,20 @@ func validateReadInput(action string, input map[string]any) error {
 		if strings.TrimSpace(stringValue(input, "group", "")) == "" {
 			return fmt.Errorf("group is required")
 		}
+	case ActionSetConsumerGroupOffset:
+		if strings.TrimSpace(stringValue(input, "group", "")) == "" {
+			return fmt.Errorf("group is required")
+		}
+		if strings.TrimSpace(stringValue(input, "topic", "")) == "" {
+			return fmt.Errorf("topic is required")
+		}
 	}
-	if action == ActionReadMessages {
+	if action == ActionReadMessages || action == ActionPublishMessage || action == ActionSetConsumerGroupOffset {
 		if partition := intValue(input, "partition", 0); partition < 0 || partition > 1000000 {
 			return fmt.Errorf("partition must be between 0 and 1000000")
 		}
+	}
+	if action == ActionReadMessages {
 		if records := intValue(input, "max_records", 20); records < 1 || records > 100 {
 			return fmt.Errorf("max_records must be between 1 and 100")
 		}
@@ -277,33 +330,52 @@ func validateReadInput(action string, input map[string]any) error {
 			return fmt.Errorf("offset must be zero or greater")
 		}
 	}
+	if action == ActionPublishMessage {
+		if err := validatePublishInput(input); err != nil {
+			return err
+		}
+	}
+	if action == ActionSetConsumerGroupOffset && int64Value(input, "offset", -1) < 0 {
+		return fmt.Errorf("offset must be zero or greater")
+	}
 	return nil
 }
 
-func canonicalizeReadInput(action string, input map[string]any) error {
+func canonicalizeActionInput(action string, input map[string]any) error {
 	for _, field := range []string{"topic", "group"} {
 		if value, ok := input[field]; ok {
 			input[field] = strings.TrimSpace(fmt.Sprint(value))
 		}
 	}
-	if action != ActionReadMessages {
-		return nil
+	integerFields := []string{}
+	switch action {
+	case ActionReadMessages:
+		integerFields = []string{"partition", "max_records", "max_bytes", "wait_seconds"}
+	case ActionPublishMessage, ActionSetConsumerGroupOffset:
+		integerFields = []string{"partition"}
 	}
-	for _, field := range []string{"partition", "max_records", "max_bytes", "wait_seconds"} {
+	for _, field := range integerFields {
 		value, err := exactInt(input[field], field)
 		if err != nil {
 			return err
 		}
 		input[field] = value
 	}
-	if stringValue(input, "start_position", "recent") != "offset" {
+	if action == ActionReadMessages && stringValue(input, "start_position", "recent") != "offset" {
 		input["offset"] = "0"
-	} else {
+	} else if action == ActionReadMessages || action == ActionSetConsumerGroupOffset {
 		offset, err := exactInteger(input["offset"], "offset")
 		if err != nil {
 			return err
 		}
 		input["offset"] = strconv.FormatInt(offset, 10)
+	}
+	if action == ActionPublishMessage {
+		headers, err := canonicalPublishHeaders(input["headers"])
+		if err != nil {
+			return err
+		}
+		input["headers"] = headers
 	}
 	return nil
 }
@@ -351,6 +423,21 @@ func checkedInt32(value int64, field string) (int32, error) {
 		return 0, fmt.Errorf("%s exceeds the supported 32-bit integer range", field)
 	}
 	return int32(value), nil
+}
+
+func exactInt32(value any, field string) (int32, error) {
+	if text, ok := value.(string); ok {
+		parsed, err := strconv.ParseInt(strings.TrimSpace(text), 10, 32)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be an exact 32-bit base-10 integer", field)
+		}
+		return int32(parsed), nil
+	}
+	exact, err := exactInteger(value, field)
+	if err != nil {
+		return 0, err
+	}
+	return checkedInt32(exact, field)
 }
 
 func failedResult(err error) connectors.ActionResult {

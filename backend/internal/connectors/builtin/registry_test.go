@@ -235,12 +235,14 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				Label:         "monitor",
 				Public:        map[string]any{"mechanism": "none"},
 			}, map[string]map[string]any{
-				kafkaconnector.ActionClusterInfo:           {},
-				kafkaconnector.ActionListTopics:            {"include_internal": false},
-				kafkaconnector.ActionDescribeTopic:         {"topic": "events"},
-				kafkaconnector.ActionListConsumerGroups:    {},
-				kafkaconnector.ActionDescribeConsumerGroup: {"group": "workers"},
-				kafkaconnector.ActionReadMessages:          {"topic": "events", "partition": 0, "start_position": "recent", "offset": "0", "max_records": 20, "max_bytes": 262144, "wait_seconds": 2},
+				kafkaconnector.ActionClusterInfo:            {},
+				kafkaconnector.ActionListTopics:             {"include_internal": false},
+				kafkaconnector.ActionDescribeTopic:          {"topic": "events"},
+				kafkaconnector.ActionListConsumerGroups:     {},
+				kafkaconnector.ActionDescribeConsumerGroup:  {"group": "workers"},
+				kafkaconnector.ActionReadMessages:           {"topic": "events", "partition": 0, "start_position": "recent", "offset": "0", "max_records": 20, "max_bytes": 262144, "wait_seconds": 2},
+				kafkaconnector.ActionPublishMessage:         {"topic": "events", "partition": 0, "key": "", "key_encoding": "utf8", "value": "test", "value_encoding": "utf8", "headers": []any{}},
+				kafkaconnector.ActionSetConsumerGroupOffset: {"group": "workers", "topic": "events", "partition": 0, "offset": "0"},
 			}
 	case postgresconnector.Kind:
 		return connectors.TargetView{

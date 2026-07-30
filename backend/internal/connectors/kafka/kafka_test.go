@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
@@ -19,6 +20,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 func TestTargetAndCredentialSchemasExposeKafkaRedpandaAndSASL(t *testing.T) {
@@ -106,6 +108,12 @@ func TestKafkaIntegerConversionsRejectNarrowingOverflow(t *testing.T) {
 	if value, err := checkedInt32(1_048_576, "max_bytes"); err != nil || value != 1_048_576 {
 		t.Fatalf("checked int32 = %d, %v", value, err)
 	}
+	if _, err := exactInt32("2147483648", "partition"); err == nil {
+		t.Fatal("expected exact 32-bit string overflow error")
+	}
+	if value, err := exactInt32("2147483647", "partition"); err != nil || value != 2147483647 {
+		t.Fatalf("exact int32 = %d, %v", value, err)
+	}
 }
 
 func TestKafkaHelpUsesSharedConnectorIdentityFields(t *testing.T) {
@@ -115,6 +123,119 @@ func TestKafkaHelpUsesSharedConnectorIdentityFields(t *testing.T) {
 	}
 	if help.Connector != Label || help.ConnectorID != Kind {
 		t.Fatalf("help connector identity = %#v", help)
+	}
+}
+
+func TestPreparePublishMessageBoundsAndRedactsPreview(t *testing.T) {
+	request := connectors.ActionRequest{
+		Target:     connectors.TargetView{Ref: "kafka:1:2"},
+		Profile:    connectors.CredentialProfileView{ID: 2},
+		ActionName: ActionPublishMessage,
+		Input: map[string]any{
+			"topic": "events", "partition": 2,
+			"key": "account-42", "key_encoding": "utf8",
+			"value": `{"token":"publish-secret"}`, "value_encoding": "utf8",
+			"headers": []any{map[string]any{"key": "trace-id", "value": "abc", "encoding": "utf8"}},
+		},
+	}
+	prepared, err := New().PrepareAction(context.Background(), request)
+	if err != nil {
+		t.Fatalf("prepare publish: %v", err)
+	}
+	if prepared.Risk != connectors.RiskWrite || prepared.Payload["value"] != `{"token":"publish-secret"}` {
+		t.Fatalf("prepared publish = %#v", prepared)
+	}
+	previewJSON, _ := json.Marshal(prepared.Preview)
+	if strings.Contains(string(previewJSON), "account-42") || strings.Contains(string(previewJSON), "publish-secret") {
+		t.Fatalf("publish preview leaked message bytes: %s", previewJSON)
+	}
+	if prepared.Preview["value_bytes"] != len(`{"token":"publish-secret"}`) || prepared.Preview["headers_count"] != 1 {
+		t.Fatalf("publish preview = %#v", prepared.Preview)
+	}
+	if _, ok := prepared.Preview["key_sha256"]; ok {
+		t.Fatalf("publish preview must not expose a key digest: %#v", prepared.Preview)
+	}
+	if _, ok := prepared.Preview["value_sha256"]; ok {
+		t.Fatalf("publish preview must not expose a value digest: %#v", prepared.Preview)
+	}
+
+	request.Input["headers"] = []any{map[string]any{"key": "", "value": "x"}}
+	if _, err := New().PrepareAction(context.Background(), request); err == nil || !strings.Contains(err.Error(), "key is required") {
+		t.Fatalf("expected header validation error, got %v", err)
+	}
+	request.Input["headers"] = []any{map[string]any{"key": "trace-id", "encodng": "utf8", "value": "x"}}
+	if _, err := New().PrepareAction(context.Background(), request); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("expected unknown header field error, got %v", err)
+	}
+	request.Input["headers"] = []any{map[string]any{"key": "trace-id"}}
+	if _, err := New().PrepareAction(context.Background(), request); err == nil || !strings.Contains(err.Error(), "value is required") {
+		t.Fatalf("expected missing header value error, got %v", err)
+	}
+	request.Input["headers"] = []any{map[string]any{"key": " trace-id ", "value": "abc"}}
+	prepared, err = New().PrepareAction(context.Background(), request)
+	if err != nil {
+		t.Fatalf("prepare canonical headers: %v", err)
+	}
+	canonicalHeaders := prepared.Payload["headers"].([]map[string]any)
+	if !reflect.DeepEqual(canonicalHeaders, []map[string]any{{"key": "trace-id", "value": "abc", "encoding": "utf8"}}) {
+		t.Fatalf("canonical headers = %#v", canonicalHeaders)
+	}
+	request.Input["headers"] = []any{}
+	request.Input["value_encoding"] = "base64"
+	request.Input["value"] = "*not-base64*"
+	if _, err := New().PrepareAction(context.Background(), request); err == nil || !strings.Contains(err.Error(), "valid base64") {
+		t.Fatalf("expected base64 validation error, got %v", err)
+	}
+	request.Input["key"] = ""
+	request.Input["value_encoding"] = "utf8"
+	request.Input["value"] = strings.Repeat("x", maxPublishRecordBytes)
+	if _, err := New().PrepareAction(context.Background(), request); err != nil {
+		t.Fatalf("exact raw publish boundary should pass local validation: %v", err)
+	}
+	request.Input["value"] = strings.Repeat("x", maxPublishRecordBytes+1)
+	if _, err := New().PrepareAction(context.Background(), request); err == nil || !strings.Contains(err.Error(), "must not exceed") {
+		t.Fatalf("expected publish boundary error, got %v", err)
+	}
+}
+
+func TestExecuteActionRevalidatesPreparedWritePayload(t *testing.T) {
+	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{}, connectors.PreparedAction{
+		ConnectorKind: Kind,
+		ActionName:    ActionPublishMessage,
+		Payload: map[string]any{
+			"topic": "events", "partition": 1000001,
+			"key": "", "key_encoding": "utf8",
+			"value": "test", "value_encoding": "utf8",
+			"headers": []any{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute invalid prepared action: %v", err)
+	}
+	if result.Status != connectors.ResultFailed || !strings.Contains(result.Error, "partition must be between") {
+		t.Fatalf("invalid prepared action result = %#v", result)
+	}
+}
+
+func TestPrepareConsumerGroupOffsetUsesDestructiveRiskAndExactOffset(t *testing.T) {
+	request := connectors.ActionRequest{
+		Target:     connectors.TargetView{Ref: "kafka:1:2"},
+		Profile:    connectors.CredentialProfileView{ID: 2},
+		ActionName: ActionSetConsumerGroupOffset,
+		Input: map[string]any{
+			"group": "workers", "topic": "events", "partition": 1, "offset": "9007199254740993",
+		},
+	}
+	prepared, err := New().PrepareAction(context.Background(), request)
+	if err != nil {
+		t.Fatalf("prepare offset change: %v", err)
+	}
+	if prepared.Risk != connectors.RiskDestructive || prepared.Payload["offset"] != "9007199254740993" {
+		t.Fatalf("prepared offset change = %#v", prepared)
+	}
+	request.Input["offset"] = 1.5
+	if _, err := New().PrepareAction(context.Background(), request); err == nil || !strings.Contains(err.Error(), "must be a string") {
+		t.Fatalf("expected offset type error, got %v", err)
 	}
 }
 
@@ -336,6 +457,250 @@ func TestConnectionAndTopicMetadataAgainstKafkaProtocol(t *testing.T) {
 	output := result.Output.(map[string]any)
 	if output["partition_count"] != 3 {
 		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestPublishMessageUsesExplicitPartitionAndAllAcknowledgements(t *testing.T) {
+	cluster, err := kfake.NewCluster(kfake.NumBrokers(2), kfake.SeedTopics(2, "events"))
+	if err != nil {
+		t.Fatalf("new fake cluster: %v", err)
+	}
+	defer cluster.Close()
+	var observedProduce sync.Mutex
+	var produceAcks []int16
+	var produceTimeouts []int32
+	cluster.ControlKey(int16(kmsg.Produce), func(request kmsg.Request) (kmsg.Response, error, bool) {
+		cluster.KeepControl()
+		produce := request.(*kmsg.ProduceRequest)
+		observedProduce.Lock()
+		produceAcks = append(produceAcks, produce.Acks)
+		produceTimeouts = append(produceTimeouts, produce.TimeoutMillis)
+		observedProduce.Unlock()
+		return nil, nil, false
+	})
+	runtime := testRuntime(cluster.ListenAddrs(), &recordingDirectTransport{})
+	result, err := New().ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+		ConnectorKind: Kind,
+		ActionName:    ActionPublishMessage,
+		Payload: map[string]any{
+			"topic": "events", "partition": 1,
+			"key": "order-1", "key_encoding": "utf8",
+			"value": `{"ok":true}`, "value_encoding": "utf8",
+			"headers": []any{map[string]any{"key": "trace-id", "value": "abc", "encoding": "utf8"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute publish: %v", err)
+	}
+	if result.Status != connectors.ResultCompleted {
+		t.Fatalf("publish result = %#v", result)
+	}
+	output := result.Output.(map[string]any)
+	if output["partition"] != int32(1) || output["offset"] != "0" || output["headers_count"] != 1 {
+		t.Fatalf("publish output = %#v", output)
+	}
+	observedProduce.Lock()
+	if len(produceAcks) != 1 || produceAcks[0] != -1 || produceTimeouts[0] != 10000 {
+		t.Fatalf("produce requests must be one bounded all-ISR attempt: acks=%v timeouts=%v", produceAcks, produceTimeouts)
+	}
+	observedProduce.Unlock()
+
+	reader, err := kgo.NewClient(
+		kgo.SeedBrokers(cluster.ListenAddrs()...),
+		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{"events": {1: kgo.NewOffset().At(0)}}),
+	)
+	if err != nil {
+		t.Fatalf("new reader: %v", err)
+	}
+	defer reader.Close()
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	fetches := reader.PollFetches(readCtx)
+	if err := fetches.Err(); err != nil {
+		t.Fatalf("read published record: %v", err)
+	}
+	records := fetches.Records()
+	if len(records) != 1 || string(records[0].Key) != "order-1" || string(records[0].Value) != `{"ok":true}` {
+		t.Fatalf("published records = %#v", records)
+	}
+}
+
+func TestSetConsumerGroupOffsetRequiresInactiveGroupAndVerifiesCommit(t *testing.T) {
+	cluster, err := kfake.NewCluster(kfake.SeedTopics(1, "events"))
+	if err != nil {
+		t.Fatalf("new fake cluster: %v", err)
+	}
+	defer cluster.Close()
+	producer, err := kgo.NewClient(kgo.SeedBrokers(cluster.ListenAddrs()...))
+	if err != nil {
+		t.Fatalf("new producer: %v", err)
+	}
+	results := producer.ProduceSync(context.Background(),
+		&kgo.Record{Topic: "events", Value: []byte("one")},
+		&kgo.Record{Topic: "events", Value: []byte("two")},
+	)
+	producer.Close()
+	if err := results.FirstErr(); err != nil {
+		t.Fatalf("produce fixtures: %v", err)
+	}
+	adminClient, err := kgo.NewClient(kgo.SeedBrokers(cluster.ListenAddrs()...))
+	if err != nil {
+		t.Fatalf("new admin client: %v", err)
+	}
+	admin := kadm.NewClient(adminClient)
+	initial := kadm.Offsets{}
+	initial.Add(kadm.Offset{Topic: "events", Partition: 0, At: 0})
+	if err := admin.CommitAllOffsets(context.Background(), "workers", initial); err != nil {
+		t.Fatalf("seed group offset: %v", err)
+	}
+	adminClient.Close()
+
+	var committedLeaderEpochs []int32
+	cluster.ControlKey(int16(kmsg.OffsetCommit), func(request kmsg.Request) (kmsg.Response, error, bool) {
+		cluster.KeepControl()
+		commit := request.(*kmsg.OffsetCommitRequest)
+		for _, topic := range commit.Topics {
+			for _, partition := range topic.Partitions {
+				committedLeaderEpochs = append(committedLeaderEpochs, partition.LeaderEpoch)
+			}
+		}
+		return nil, nil, false
+	})
+	runtime := testRuntime(cluster.ListenAddrs(), &recordingDirectTransport{})
+	result, err := New().ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+		ConnectorKind: Kind,
+		ActionName:    ActionSetConsumerGroupOffset,
+		Payload: map[string]any{
+			"group": "workers", "topic": "events", "partition": 0, "offset": "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute offset change: %v", err)
+	}
+	if result.Status != connectors.ResultCompleted {
+		t.Fatalf("offset result = %#v", result)
+	}
+	output := result.Output.(map[string]any)
+	if output["previous_offset"] != "0" || output["new_offset"] != "1" || output["offset_commit_verified"] != true {
+		t.Fatalf("offset output = %#v", output)
+	}
+	if output["inactive_guard"] != "best_effort" || output["group_state_before"] != "Empty" || output["group_state_after"] != "Empty" {
+		t.Fatalf("offset output = %#v", output)
+	}
+	if !reflect.DeepEqual(committedLeaderEpochs, []int32{-1}) {
+		t.Fatalf("committed leader epochs = %v", committedLeaderEpochs)
+	}
+
+	outOfRange, err := New().ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+		ConnectorKind: Kind,
+		ActionName:    ActionSetConsumerGroupOffset,
+		Payload: map[string]any{
+			"group": "workers", "topic": "events", "partition": 0, "offset": "3",
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute out-of-range offset change: %v", err)
+	}
+	if outOfRange.Status != connectors.ResultFailed || !strings.Contains(outOfRange.Error, "between earliest offset") {
+		t.Fatalf("out-of-range result = %#v", outOfRange)
+	}
+	verifyClient, err := kgo.NewClient(kgo.SeedBrokers(cluster.ListenAddrs()...))
+	if err != nil {
+		t.Fatalf("new verify client: %v", err)
+	}
+	defer verifyClient.Close()
+	verified, err := kadm.NewClient(verifyClient).FetchOffsets(context.Background(), "workers")
+	if err != nil {
+		t.Fatalf("verify unchanged offset: %v", err)
+	}
+	actual, found := verified.Lookup("events", 0)
+	if !found || actual.At != 1 {
+		t.Fatalf("out-of-range action changed offset: %#v", actual)
+	}
+}
+
+func TestSetConsumerGroupOffsetRejectsActiveClassicGroup(t *testing.T) {
+	cluster, err := kfake.NewCluster(kfake.SeedTopics(1, "events"))
+	if err != nil {
+		t.Fatalf("new fake cluster: %v", err)
+	}
+	defer cluster.Close()
+	producer, err := kgo.NewClient(kgo.SeedBrokers(cluster.ListenAddrs()...))
+	if err != nil {
+		t.Fatalf("new producer: %v", err)
+	}
+	if err := producer.ProduceSync(context.Background(), &kgo.Record{Topic: "events", Value: []byte("one")}).FirstErr(); err != nil {
+		t.Fatalf("produce fixture: %v", err)
+	}
+	producer.Close()
+	consumer, err := kgo.NewClient(
+		kgo.SeedBrokers(cluster.ListenAddrs()...),
+		kgo.ConsumerGroup("active-workers"),
+		kgo.ConsumeTopics("events"),
+		kgo.DisableAutoCommit(),
+	)
+	if err != nil {
+		t.Fatalf("new group consumer: %v", err)
+	}
+	defer consumer.Close()
+	pollCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if fetches := consumer.PollFetches(pollCtx); fetches.Err() != nil || len(fetches.Records()) == 0 {
+		t.Fatalf("join active group: records=%d err=%v", len(fetches.Records()), fetches.Err())
+	}
+
+	result, err := New().ExecuteAction(context.Background(), testRuntime(cluster.ListenAddrs(), &recordingDirectTransport{}), connectors.PreparedAction{
+		ConnectorKind: Kind,
+		ActionName:    ActionSetConsumerGroupOffset,
+		Payload: map[string]any{
+			"group": "active-workers", "topic": "events", "partition": 0, "offset": "0",
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute active group offset change: %v", err)
+	}
+	if result.Status != connectors.ResultFailed || !strings.Contains(result.Error, "must be inactive") {
+		t.Fatalf("active group result = %#v", result)
+	}
+}
+
+func TestSetConsumerGroupOffsetRejectsModernConsumerProtocol(t *testing.T) {
+	cluster, err := kfake.NewCluster(
+		kfake.SeedTopics(1, "events"),
+		kfake.BrokerConfigs(map[string]string{"group.consumer.heartbeat.interval.ms": "100"}),
+	)
+	if err != nil {
+		t.Fatalf("new fake cluster: %v", err)
+	}
+	defer cluster.Close()
+	modernContext := context.WithValue(context.Background(), "opt_in_kafka_next_gen_balancer_beta", true)
+	consumer, err := kgo.NewClient(
+		kgo.SeedBrokers(cluster.ListenAddrs()...),
+		kgo.WithContext(modernContext),
+		kgo.ConsumerGroup("modern-workers"),
+		kgo.ConsumeTopics("events"),
+		kgo.DisableAutoCommit(),
+	)
+	if err != nil {
+		t.Fatalf("new modern group consumer: %v", err)
+	}
+	defer consumer.Close()
+	pollCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_ = consumer.PollFetches(pollCtx)
+
+	result, err := New().ExecuteAction(context.Background(), testRuntime(cluster.ListenAddrs(), &recordingDirectTransport{}), connectors.PreparedAction{
+		ConnectorKind: Kind,
+		ActionName:    ActionSetConsumerGroupOffset,
+		Payload: map[string]any{
+			"group": "modern-workers", "topic": "events", "partition": 0, "offset": "0",
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute modern group offset change: %v", err)
+	}
+	if result.Status != connectors.ResultFailed || !strings.Contains(result.Error, "modern consumer protocol") {
+		t.Fatalf("modern group result = %#v", result)
 	}
 }
 
