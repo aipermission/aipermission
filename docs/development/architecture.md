@@ -30,11 +30,12 @@ target + credential profile + action
   -> history + audit
 ```
 
-SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, and Kubernetes are
+SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, and Kubernetes are
 built-in connectors that share the same target/profile, permission, approval,
 history, and audit model. SSH owns a live terminal and file-transfer surface;
 Postgres and ClickHouse own structured database actions; Redis / Valkey owns bounded
-key-browser actions; RabbitMQ owns queue browsing and bounded message previews.
+key-browser actions; RabbitMQ owns queue browsing and bounded message previews;
+Kafka / Redpanda owns stream metadata, lag, and bounded partition reads.
 Future connectors should add their own execution surface without adding a new
 permission or audit pipeline.
 

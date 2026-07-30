@@ -44,6 +44,7 @@ Start here:
 - [Docker Runtime](setup/docker-runtime.md)
 - [Database Migration](setup/database-migration.md)
 - [MCP Client Setup](setup/mcp-client-setup.md)
+- [Kafka / Redpanda Connector](setup/kafka-redpanda.md)
 
 ## Providers
 

@@ -9,7 +9,7 @@ credentials, or other connector secrets.
 The gateway is intentionally local-only. Run it on the developer machine and
 keep the URL on `localhost`; remote systems are connector targets, not places
 to host the gateway for LAN or internet users. SSH, Postgres, ClickHouse,
-Redis / Valkey, RabbitMQ, S3, Docker, and Kubernetes are built-in connectors that use the same
+Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, and Kubernetes are built-in connectors that use the same
 target/profile/action permission model as future connectors.
 
 ![AIPermission demo: AI operates through approval-based connector access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
@@ -66,7 +66,7 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `cancel_vault_action_request`
 
 All integration work goes through connector targets. SSH, Postgres, ClickHouse,
-Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes, and future connectors share the same model: target,
+Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and future connectors share the same model: target,
 credential profile, connector action, token action permission, approval,
 history, and audit.
 
@@ -111,6 +111,12 @@ browser actions such as `overview`, `list_vhosts`, `list_queues`, `get_queue`,
 `list_bindings`, `peek_messages`, and `publish_message`. Message payload
 previews and published payloads can contain secrets or customer data; use short
 reasons and prefer approval-required access until the workflow is trusted.
+
+For Kafka or Redpanda, call `get_connector_actions(target_ref)` to discover
+cluster, topic, consumer-group, lag, and bounded message-read actions. Message
+reads use explicit partition assignment, never join a consumer group, and
+never commit offsets. Payloads can contain sensitive application data, so keep
+these reads in Prompt mode until the workflow is trusted.
 
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,

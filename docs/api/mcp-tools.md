@@ -2,7 +2,7 @@
 
 The MCP surface is connector-first. AIPermission does not expose separate
 product-specific MCP wrappers for SSH, database, cache, queue, or container
-products. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes,
+products. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes,
 and future integrations are reached through the same connector target/action
 pipeline.
 
@@ -67,7 +67,7 @@ runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
-Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, or Kubernetes as special MCP
+Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, or Kubernetes as special MCP
 modes; future connector kinds use the same tools and `target_ref` shape.
 
 Project Vault tools are a separate project-capability surface because they
@@ -228,6 +228,13 @@ queue listing, queue detail reads, binding listing, and bounded message peeking
 with `ack_requeue_true`, plus explicit `publish_message` writes. Message
 payload previews and published payloads may contain secrets or customer data;
 prefer approval-required access until the workflow is trusted.
+
+Kafka / Redpanda actions in 0.2.18 include cluster metadata, topic listing and
+description, consumer-group listing and lag description, and bounded message
+samples from an explicit topic partition. `read_messages` does not join a
+consumer group, commit offsets, or enable automatic topic creation. Message
+keys, values, and headers may contain secrets or customer data; keep the action
+in approval-required mode unless that read workflow is explicitly trusted.
 
 S3 actions include bucket metadata, bounded object listing, object metadata,
 bounded object download/upload, object rename, and explicit delete. Object

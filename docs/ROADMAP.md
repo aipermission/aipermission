@@ -2,7 +2,7 @@
 
 AIPermission has published its first public release candidate and is moving
 into the connector-native 0.2 line. The local-only permission gateway is usable
-today with built-in SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, and
+today with built-in SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, and
 Kubernetes connectors; the next releases focus on
 dogfooding polish, small safety improvements, clearer contributor paths, and
 additional connector kinds such as API, queues, and storage that share one
@@ -54,7 +54,7 @@ AIPermission is intentionally:
 - Local-only.
 - Single-user.
 - Developer-focused.
-- Connector-based, with built-in SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ,
+- Connector-based, with built-in SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda,
   S3, Docker, and Kubernetes.
 - Human-in-the-loop.
 

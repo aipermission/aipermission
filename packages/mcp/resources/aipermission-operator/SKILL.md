@@ -53,6 +53,10 @@ Peek a RabbitMQ queue after the operator approved payload inspection. Publish
 RabbitMQ messages only when the operator explicitly asked for a write.
 ```
 
+For Kafka / Redpanda, discover topics before describing partitions or reading
+messages. Keep message reads bounded, prefer Prompt because payloads can be
+sensitive, and remember that read actions never join groups or commit offsets.
+
 Avoid vague reasons:
 
 ```text

@@ -1,6 +1,26 @@
-export const appVersion = "0.2.17";
+export const appVersion = "0.2.18";
 
 export const changelogEntries = [
+  {
+    version: "0.2.18",
+    label: "Kafka / Redpanda read browser",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Kafka and Redpanda now share one connector kind with Direct and Over SSH transport, multiple bootstrap brokers, TLS/custom CA, and optional PLAIN or SCRAM SASL profiles.",
+          "The browser and generic MCP action catalog expose cluster metadata, topics, partitions, consumer groups, lag, and bounded message samples.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Message reads use explicit partition assignment with record, byte, and time bounds; they do not join consumer groups, commit offsets, or enable automatic topic creation.",
+          "Stable and development localhost stacks now use frontend-port-scoped UI cookies so they can remain unlocked independently.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.17",
     label: "Redis / Valkey compatibility",
