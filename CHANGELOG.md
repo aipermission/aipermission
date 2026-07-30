@@ -7,6 +7,8 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-07-31
+
 ### Added
 
 - Added Valkey compatibility to the built-in Redis connector, including

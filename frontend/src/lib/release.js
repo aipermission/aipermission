@@ -1,6 +1,25 @@
-export const appVersion = "0.2.16";
+export const appVersion = "0.2.17";
 
 export const changelogEntries = [
+  {
+    version: "0.2.17",
+    label: "Redis / Valkey compatibility",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "The built-in Redis connector now supports Valkey over both Direct and Over SSH profiles without introducing a duplicate connector kind or permission surface.",
+          "Server identity detection reports the configured and detected Redis-compatible product while preserving the existing key browser and MCP action catalog.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "RESP parsing now bounds line, bulk, array, nesting, aggregate-byte, and aggregate-value sizes before allocation.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.16",
     label: "Project Vault",
