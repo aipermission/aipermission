@@ -149,7 +149,8 @@ Implemented:
   explicit message publishing
 - built-in Kafka / Redpanda connector with Direct and Over SSH connection
   modes, TLS and SASL profiles, cluster/topic/group/lag inspection, and bounded
-  message samples that never join groups or commit offsets
+  message samples that never join groups or commit offsets, plus guarded
+  single-message publishing and inactive-group offset controls
   ([setup guide](docs/setup/kafka-redpanda.md))
 - built-in S3 connector with Direct and Over SSH connection modes,
   S3-compatible bucket browsing, object metadata, bounded object
@@ -230,7 +231,7 @@ To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
 `v`:
 
 ```bash
-AIPERMISSION_VERSION=0.2.18 docker compose -f docker-compose.release.yml up -d
+AIPERMISSION_VERSION=0.2.19 docker compose -f docker-compose.release.yml up -d
 ```
 
 On Windows, clone the repository with Git's default text handling or make sure
@@ -410,6 +411,13 @@ as `overview`, `list_vhosts`, `list_queues`, `get_queue`, `list_bindings`, and
 `peek_messages`, and `publish_message`. Treat message payload previews and
 message publishing as sensitive queue access; previews use bounded
 count/truncation limits and `ack_requeue_true`.
+
+For Kafka or Redpanda, discover cluster/topic/group reads, bounded partition
+samples, guarded single-message publishing, and classic consumer-group offset
+controls through the same generic tools. Publish request displays redact raw
+keys, values, and headers. Offset changes reject active and modern-protocol
+groups; failed publishes can have an unknown delivery outcome, so inspect
+before retrying.
 
 For S3, call `get_connector_actions(target_ref)` to discover actions such as
 `bucket_info`, `list_objects`, `get_object_metadata`, `download_object`,

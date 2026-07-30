@@ -113,10 +113,14 @@ previews and published payloads can contain secrets or customer data; use short
 reasons and prefer approval-required access until the workflow is trusted.
 
 For Kafka or Redpanda, call `get_connector_actions(target_ref)` to discover
-cluster, topic, consumer-group, lag, and bounded message-read actions. Message
-reads use explicit partition assignment, never join a consumer group, and
-never commit offsets. Payloads can contain sensitive application data, so keep
-these reads in Prompt mode until the workflow is trusted.
+cluster, topic, consumer-group, lag, bounded message-read, guarded publish, and
+single-partition offset actions. Message reads use explicit partition
+assignment, never join a consumer group, and never commit offsets. Publishing
+is a write action; consumer-group offset changes are destructive and reject
+active classic groups and modern consumer-protocol groups. Payloads can contain
+sensitive application data, and offset changes can replay or skip records, so
+keep these actions in Prompt mode unless direct execution is intentional. If a
+publish has an unknown delivery outcome, inspect before retrying.
 
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,

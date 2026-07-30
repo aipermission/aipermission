@@ -7,6 +7,30 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-07-31
+
+### Added
+
+- Added guarded Kafka / Redpanda `publish_message` writes with explicit
+  partition selection, bounded keys, values, and headers, all-in-sync-replica
+  acknowledgements, and no automatic topic creation.
+- Added destructive `set_consumer_group_offset` control for one explicit topic
+  partition, including a best-effort inactive-group guard, valid log-range
+  validation, post-commit verification, and post-commit group-state reporting.
+- Added local browser dialogs with explicit confirmation for publishing
+  messages and changing inactive consumer-group offsets. Browser actions use
+  the shared connector execution, history, and audit path; MCP calls continue
+  to use token permissions and Prompt/Always policy.
+
+### Security
+
+- Publish approval previews expose content lengths instead of raw message
+  bytes. Raw keys, values, and headers remain only in the encrypted execution
+  envelope and are redacted from displayed request input.
+- Offset changes require an inactive consumer group immediately before commit
+  and are classified destructive. Kafka cannot provide an atomic member-join
+  lock across that interval, so Prompt remains the recommended rule.
+
 ## [0.2.18] - 2026-07-31
 
 ### Added
