@@ -55,7 +55,7 @@ export function NetworkTransportFields({
   );
 }
 
-function sshProfileOptions(targets) {
+export function sshProfileOptions(targets) {
   return (targets || [])
     .filter((target) => target.connector_kind === "ssh")
     .flatMap((target) =>
