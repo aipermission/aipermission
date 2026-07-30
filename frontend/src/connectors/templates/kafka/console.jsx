@@ -1,4 +1,4 @@
-import { Activity, Database, Eye, RefreshCcw, Search, Users } from "lucide-react";
+import { Activity, Database, Eye, Gauge, RefreshCcw, Search, Send, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -7,9 +7,12 @@ import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost } from "../../../lib/api";
-import { connectorActionError, detailMatchesSelection, requestIsCurrent } from "./console-helpers";
+import { actionableOffsetPartitions, connectorActionError, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection, requestIsCurrent } from "./console-helpers";
+import { KafkaOffsetDialog, KafkaPublishDialog } from "./write-dialogs";
 
 const defaultRead = Object.freeze({ partition: "0", start_position: "recent", offset: "0", max_records: "20" });
+const defaultPublish = Object.freeze({ partition: "0", key: "", key_encoding: "utf8", value: "", value_encoding: "utf8", headers: "[]" });
+const defaultOffset = Object.freeze({ selection: "", offset: "" });
 
 export function KafkaConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
   const activeSession = session || { active: false, startedAt: "" };
@@ -23,6 +26,8 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   const [detailIdentity, setDetailIdentity] = useState("");
   const [messages, setMessages] = useState(null);
   const [readForm, setReadForm] = useState(defaultRead);
+  const [publishDialog, setPublishDialog] = useState({ open: false, form: defaultPublish, error: "" });
+  const [offsetDialog, setOffsetDialog] = useState({ open: false, form: defaultOffset, error: "" });
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const requestVersions = useRef(new Map());
   const currentTargetRef = useRef(target.ref);
@@ -41,6 +46,7 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
     return items.filter((item) => String(item.name || "").toLowerCase().includes(needle));
   }, [items, query]);
   const activeDetail = detailMatchesSelection(detailIdentity, view, selectedName) ? detail : null;
+  const offsetPartitions = actionableOffsetPartitions(activeDetail?.partitions);
 
   useEffect(() => {
     currentTargetRef.current = target.ref;
@@ -54,6 +60,8 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
     setDetailIdentity("");
     setMessages(null);
     setReadForm(defaultRead);
+    setPublishDialog({ open: false, form: defaultPublish, error: "" });
+    setOffsetDialog({ open: false, form: defaultOffset, error: "" });
     setState({ state: "idle", error: "", message: "" });
   }, [target.ref, activeSession.startedAt]);
 
@@ -135,6 +143,8 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   }
 
   async function loadDetail(name, detailView = view) {
+    setDetail(null);
+    setDetailIdentity("");
     const output = await runAction(
       detailView === "topics" ? "describe_topic" : "describe_consumer_group",
       detailView === "topics" ? { topic: name } : { group: name },
@@ -165,6 +175,84 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
     if (readForm.start_position === "offset") input.offset = readForm.offset;
     const output = await runAction("read_messages", input, `manual ${product} browser bounded message sample`, "reading", "messages");
     if (output) setMessages(output);
+  }
+
+  function openPublishDialog() {
+    const firstPartition = activeDetail?.partitions?.[0]?.partition ?? 0;
+    setState({ state: "idle", error: "", message: "" });
+    setPublishDialog({ open: true, form: { ...defaultPublish, partition: String(firstPartition) }, error: "" });
+  }
+
+  async function publishMessage() {
+    const form = publishDialog.form;
+    let headers;
+    try {
+      headers = JSON.parse(form.headers || "[]");
+    } catch {
+      setPublishDialog((current) => ({ ...current, error: "Headers must be valid JSON." }));
+      return;
+    }
+    if (!Array.isArray(headers)) {
+      setPublishDialog((current) => ({ ...current, error: "Headers must be a JSON array." }));
+      return;
+    }
+    setPublishDialog((current) => ({ ...current, error: "" }));
+    const output = await runAction("publish_message", {
+      topic: selectedName,
+      partition: Number(form.partition),
+      key: form.key,
+      key_encoding: form.key_encoding,
+      value: form.value,
+      value_encoding: form.value_encoding,
+      headers,
+    }, `manual ${product} browser message publish`, "writing", "publish");
+    if (!output) return;
+    setPublishDialog({ open: false, form: defaultPublish, error: "" });
+    await loadDetail(selectedName, "topics");
+  }
+
+  function openOffsetDialog() {
+    const first = offsetPartitions[0];
+    const selection = first ? offsetSelectionValue(first) : "";
+    const offset = first?.committed_offset === "-1" ? "" : String(first?.committed_offset || "");
+    setState({ state: "idle", error: "", message: "" });
+    setOffsetDialog({ open: true, form: { selection, offset }, error: "" });
+  }
+
+  async function setConsumerGroupOffset() {
+    const selected = parseOffsetSelection(offsetDialog.form.selection);
+    if (!selected) {
+      setOffsetDialog((current) => ({ ...current, error: "Choose one topic partition." }));
+      return;
+    }
+    if (!/^\d+$/.test(offsetDialog.form.offset.trim())) {
+      setOffsetDialog((current) => ({ ...current, error: "New offset must be a non-negative integer." }));
+      return;
+    }
+    setOffsetDialog((current) => ({ ...current, error: "" }));
+    const output = await runAction("set_consumer_group_offset", {
+      group: selectedName,
+      topic: selected.topic,
+      partition: selected.partition,
+      offset: offsetDialog.form.offset.trim(),
+    }, `manual ${product} browser consumer group offset change`, "writing", "offset");
+    if (!output) return;
+    setOffsetDialog({ open: false, form: defaultOffset, error: "" });
+    await loadDetail(selectedName, "groups");
+  }
+
+  function updatePublishForm(form) {
+    if (state.state !== "writing" && state.error) {
+      setState((current) => ({ ...current, error: "" }));
+    }
+    setPublishDialog((current) => ({ ...current, form, error: "" }));
+  }
+
+  function updateOffsetForm(form) {
+    if (state.state !== "writing" && state.error) {
+      setState((current) => ({ ...current, error: "" }));
+    }
+    setOffsetDialog((current) => ({ ...current, form, error: "" }));
   }
 
   if (!activeSession.active) {
@@ -232,7 +320,19 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
                 {selectedName ? (view === "topics" ? "Partitions, offsets, and bounded message samples" : "Members, assignments, committed offsets, and lag") : `Select one of the ${view} on the left.`}
               </p>
             </div>
-            {activeDetail ? <CopyButton value={JSON.stringify({ detail: activeDetail, messages }, null, 2)} variant="outline" className="h-8 px-2 text-xs">JSON</CopyButton> : null}
+            <div className="flex items-center gap-2">
+              {activeDetail && view === "topics" ? (
+                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={openPublishDialog} disabled={state.state !== "idle"}>
+                  <Send className="h-3.5 w-3.5" />Publish
+                </Button>
+              ) : null}
+              {activeDetail && view === "groups" && offsetPartitions.length > 0 ? (
+                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={openOffsetDialog} disabled={state.state !== "idle"}>
+                  <Gauge className="h-3.5 w-3.5" />Set offset
+                </Button>
+              ) : null}
+              {activeDetail ? <CopyButton value={JSON.stringify({ detail: activeDetail, messages }, null, 2)} variant="outline" className="h-8 px-2 text-xs">JSON</CopyButton> : null}
+            </div>
           </div>
           <div className="grid min-h-0 gap-4 overflow-y-auto p-4 lg:grid-cols-2 lg:overflow-hidden">
             <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
@@ -267,6 +367,7 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
           </div>
           <div className={`grid gap-2 border-t p-3 ${borderClass}`} aria-live="polite">
             <Notice tone="warn">Message values, keys, and headers can contain secrets. Samples are bounded and never commit consumer offsets.</Notice>
+            <Notice tone="warn">Publishing writes one message. Offset changes can replay or skip messages. Local browser writes require confirmation here; for MCP access, keep both actions on Prompt unless direct execution is intentional.</Notice>
             {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
             {state.message ? <Notice tone="good">{state.message}</Notice> : null}
           </div>
@@ -279,6 +380,30 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
           {String(target.config?.bootstrap_brokers || "").split(/[\s,]+/).filter(Boolean).join(", ")}
         </span>
       </div>
+      <KafkaPublishDialog
+        value={publishDialog}
+        theme={theme}
+        product={product}
+        topic={selectedName}
+        partitions={activeDetail?.partitions || []}
+        pending={state.state === "writing"}
+        actionError={state.error}
+        onChange={updatePublishForm}
+        onClose={() => setPublishDialog({ open: false, form: defaultPublish, error: "" })}
+        onConfirm={() => void publishMessage()}
+      />
+      <KafkaOffsetDialog
+        value={offsetDialog}
+        theme={theme}
+        product={product}
+        group={selectedName}
+        partitions={offsetPartitions}
+        pending={state.state === "writing"}
+        actionError={state.error}
+        onChange={updateOffsetForm}
+        onClose={() => setOffsetDialog({ open: false, form: defaultOffset, error: "" })}
+        onConfirm={() => void setConsumerGroupOffset()}
+      />
     </div>
   );
 }

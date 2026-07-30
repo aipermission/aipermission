@@ -1,8 +1,8 @@
 {
   "kind": "kafka",
   "label": "Kafka / Redpanda",
-  "summary": "Kafka-compatible cluster, topic, consumer group, lag, and bounded message inspection through direct or SSH-transported profiles.",
-  "version": "0.2",
+  "summary": "Kafka-compatible metadata, bounded message inspection, guarded single-message publish, and inactive-group offset control through direct or SSH-transported profiles.",
+  "version": "0.3",
   "icon": "database",
   "badge_tone": "warn"
 }
