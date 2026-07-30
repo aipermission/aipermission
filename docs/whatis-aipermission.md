@@ -14,7 +14,7 @@ Related central notes:
 operate on connector targets without receiving SSH private keys, SSH passwords,
 database credentials, API credentials, or other connector secrets.
 
-The current model ships with SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3,
+The current model ships with SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3,
 Docker, and Kubernetes connectors. SSH provides live terminal/file-transfer
 actions, Postgres and ClickHouse provide structured metadata and bounded
 read-only query actions, Redis / Valkey provides bounded
@@ -271,7 +271,7 @@ get_vault_action_request(request_id)
 cancel_vault_action_request(request_id)
 ```
 
-SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes, and future integrations are exposed as
+SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and future integrations are exposed as
 connector actions instead of separate product-specific MCP tools.
 
 Project Vault is project-capability-scoped rather than connector-action-scoped.

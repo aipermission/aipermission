@@ -57,7 +57,7 @@ AIPermission is intentionally designed as a local developer gateway.
 
 - The gateway runs on the developer's own machine.
 - Remote systems are connector targets reached from that local gateway.
-- SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, and Kubernetes are
+- SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, and Kubernetes are
   built-in connector types, not separate product modes.
 - The web UI, REST API, and MCP API are not designed to be shared on a LAN.
 - The project does not support running the gateway as a remote hosted service.
@@ -119,7 +119,7 @@ Implemented:
 - Go backend with SQLite storage
 - React web UI
 - connector target/profile/action pipeline for SSH, Postgres, ClickHouse,
-  Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes, and future local integrations
+  Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and future local integrations
 - local Projects for grouping connector targets, filtering History/Audit, and
   limiting which project target refs each MCP token can discover or call
 - [Project Vault](docs/project-vault.md) for encrypted project-scoped secret inventory, expiry/usage
@@ -147,6 +147,10 @@ Implemented:
 - built-in RabbitMQ connector with Direct and Over SSH connection modes, queue
   browsing, vhost metadata, binding inspection, bounded message peeking, and
   explicit message publishing
+- built-in Kafka / Redpanda connector with Direct and Over SSH connection
+  modes, TLS and SASL profiles, cluster/topic/group/lag inspection, and bounded
+  message samples that never join groups or commit offsets
+  ([setup guide](docs/setup/kafka-redpanda.md))
 - built-in S3 connector with Direct and Over SSH connection modes,
   S3-compatible bucket browsing, object metadata, bounded object
   upload/download, rename, and delete actions, plus MCP-friendly folder/prefix
@@ -175,7 +179,7 @@ Implemented:
 - persistent web console with live PTY streaming
 - UI bulk SSH command execution across selected connector targets with per-target history rows
 - MCP bridge with connector action tools for SSH, Postgres, ClickHouse, Redis / Valkey,
-  RabbitMQ, S3, Docker, Kubernetes, and future local integrations
+  RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and future local integrations
 - approval dialog with Run / Decline / note
 - approval-context snapshots that stale old pending connector actions after
   permission, connector target, credential profile, connector metadata, or
@@ -226,7 +230,7 @@ To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
 `v`:
 
 ```bash
-AIPERMISSION_VERSION=0.2.17 docker compose -f docker-compose.release.yml up -d
+AIPERMISSION_VERSION=0.2.18 docker compose -f docker-compose.release.yml up -d
 ```
 
 On Windows, clone the repository with Git's default text handling or make sure
@@ -375,7 +379,7 @@ get_connector_action_request(request_id)
 ```
 
 The MCP surface is connector-first. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ,
-S3, Docker, Kubernetes, and future integrations use the same
+Kafka / Redpanda, S3, Docker, Kubernetes, and future integrations use the same
 target/profile/action permission pipeline. `list_connector_targets` also applies the token's enabled project
 scope before returning target refs. It is
 permission-scoped, not a live health check. Current reachability is learned when

@@ -7,6 +7,28 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-07-31
+
+### Added
+
+- Added one built-in Kafka / Redpanda connector with Direct and Over SSH
+  connection modes, multiple bootstrap brokers, optional TLS/custom CA, and
+  optional PLAIN or SCRAM SASL credential profiles.
+- Added read-focused actions for cluster metadata, topics, partitions,
+  consumer groups, committed offsets, lag, and bounded message samples.
+- Added a structured Kafka / Redpanda browser for topic and consumer-group
+  inspection without joining a consumer group or committing offsets.
+
+### Fixed
+
+- Scoped local UI session and CSRF cookies by frontend port so development and
+  stable localhost stacks can remain unlocked independently.
+
+### Security
+
+- Message sampling uses explicit partition assignment, strict record/byte/time
+  bounds, no automatic topic creation, and no consumer offset commits.
+
 ## [0.2.17] - 2026-07-31
 
 ### Added
