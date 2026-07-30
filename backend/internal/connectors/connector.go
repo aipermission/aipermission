@@ -45,6 +45,14 @@ type TestableConnector interface {
 	TestConnection(ctx context.Context, runtime RuntimeContext) (TestResult, error)
 }
 
+// CredentialProfileValidator is an optional connector contract for semantic
+// validation that cannot be expressed by the primitive credential schema.
+// Previous is nil for creates. On updates, connectors may use its public
+// metadata to decide whether omitted secret material can safely be preserved.
+type CredentialProfileValidator interface {
+	ValidateCredentialProfile(kind string, public, secret map[string]any, previous *CredentialProfileView) error
+}
+
 // CredentialProvisioner is an optional connector contract for operator-driven
 // credential profile provisioning. Core owns profile persistence and vault
 // writes; the connector owns external service changes such as creating or

@@ -482,6 +482,13 @@ func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRu
 			out = append(out, s.redactForPersistence(ctx, runtime, item))
 		}
 		return out
+	case []map[string]any:
+		out := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			redacted, _ := s.redactedConnectorValue(ctx, runtime, item, sensitiveFields).(map[string]any)
+			out = append(out, redacted)
+		}
+		return out
 	case map[string]any:
 		out := make(map[string]any, len(typed))
 		for key, item := range typed {

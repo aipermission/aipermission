@@ -448,7 +448,7 @@ func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
 	}
 	redacted := server.redactConnectorActionResult(context.Background(), runtime, connectors.ActionResult{
 		Status:      connectors.ResultRunning,
-		Output:      map[string]any{"rows": []any{map[string]any{"session_token": "raw-token", "name": "safe"}}},
+		Output:      map[string]any{"rows": []map[string]any{{"session_token": "raw-token", "name": "safe"}}},
 		DisplayText: "Bearer raw-bearer-token",
 		Error:       "password=super-secret",
 	}, connectors.OutputHint{SensitiveFields: []string{"session_token"}})
@@ -489,8 +489,8 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 		request.ID,
 		connectors.ResultFailed,
 		map[string]any{
-			"rows": []any{
-				map[string]any{
+			"rows": []map[string]any{
+				{
 					"customer_secret": "visible-only-if-buggy",
 					"token":           "token-value",
 					"access_token":    "access-token-value",
