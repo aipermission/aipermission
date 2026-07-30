@@ -253,7 +253,7 @@ the service port, not ICMP ping:
 ```
 
 When `mode=over_ssh`, the TCP checks are dialed through the referenced SSH
-connector profile so the result matches what Redis, Postgres, RabbitMQ, or a
+connector profile so the result matches what Redis / Valkey, Postgres, RabbitMQ, or a
 future TCP-backed connector would see from that SSH target.
 
 `POST /api/connector-targets/{id}/operations/docker-check` runs a read-only,

@@ -57,7 +57,7 @@ AIPermission is intentionally designed as a local developer gateway.
 
 - The gateway runs on the developer's own machine.
 - Remote systems are connector targets reached from that local gateway.
-- SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, and Kubernetes are
+- SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, and Kubernetes are
   built-in connector types, not separate product modes.
 - The web UI, REST API, and MCP API are not designed to be shared on a LAN.
 - The project does not support running the gateway as a remote hosted service.
@@ -119,7 +119,7 @@ Implemented:
 - Go backend with SQLite storage
 - React web UI
 - connector target/profile/action pipeline for SSH, Postgres, ClickHouse,
-  Redis, RabbitMQ, S3, Docker, Kubernetes, and future local integrations
+  Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes, and future local integrations
 - local Projects for grouping connector targets, filtering History/Audit, and
   limiting which project target refs each MCP token can discover or call
 - [Project Vault](docs/project-vault.md) for encrypted project-scoped secret inventory, expiry/usage
@@ -141,8 +141,9 @@ Implemented:
 - built-in ClickHouse connector over the native protocol with Direct and Over
   SSH connection modes, database/table/column inspection, bounded read-only
   analytics SQL, query timeouts, and output caps
-- built-in Redis connector with Direct and Over SSH connection modes, bounded
-  key scanning, key inspection, string writes, TTL updates, and explicit deletes
+- built-in Redis / Valkey connector with Direct and Over SSH connection modes,
+  server identity detection, bounded key scanning, key inspection, string
+  writes, TTL updates, and explicit deletes
 - built-in RabbitMQ connector with Direct and Over SSH connection modes, queue
   browsing, vhost metadata, binding inspection, bounded message peeking, and
   explicit message publishing
@@ -173,7 +174,7 @@ Implemented:
 - global MCP Started/Stopped switch that preserves permissions while blocking live execution
 - persistent web console with live PTY streaming
 - UI bulk SSH command execution across selected connector targets with per-target history rows
-- MCP bridge with connector action tools for SSH, Postgres, ClickHouse, Redis,
+- MCP bridge with connector action tools for SSH, Postgres, ClickHouse, Redis / Valkey,
   RabbitMQ, S3, Docker, Kubernetes, and future local integrations
 - approval dialog with Run / Decline / note
 - approval-context snapshots that stale old pending connector actions after
@@ -373,7 +374,7 @@ call_connector_action(target_ref, action_name, input?, reason?)
 get_connector_action_request(request_id)
 ```
 
-The MCP surface is connector-first. SSH, Postgres, ClickHouse, Redis, RabbitMQ,
+The MCP surface is connector-first. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ,
 S3, Docker, Kubernetes, and future integrations use the same
 target/profile/action permission pipeline. `list_connector_targets` also applies the token's enabled project
 scope before returning target refs. It is
@@ -393,8 +394,12 @@ Use a dedicated read-only ClickHouse user and keep exploratory analytics on
 `approval_required`; connector validation is defense in depth, not a SQL
 sandbox or a replacement for database grants.
 
-For Redis, call `get_connector_actions(target_ref)` to discover actions such as
-`scan_keys`, `get_key`, `set_string`, `expire_key`, and `delete_keys`.
+For Redis or Valkey, call `get_connector_actions(target_ref)` to discover
+actions such as `scan_keys`, `get_key`, `set_string`, `expire_key`, and
+`delete_keys`. Both products use the existing `redis:<target_id>:<profile_id>`
+target ref and action catalog. The current connector is a standalone/single
+endpoint RESP2 integration; it does not route Redis Cluster `MOVED`/`ASK`
+responses, discover Sentinel primaries, or negotiate RESP3.
 
 For RabbitMQ, call `get_connector_actions(target_ref)` to discover actions such
 as `overview`, `list_vhosts`, `list_queues`, `get_queue`, `list_bindings`, and

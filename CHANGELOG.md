@@ -7,6 +7,22 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+### Added
+
+- Added Valkey compatibility to the built-in Redis connector, including
+  Redis/Valkey product selection, server identity detection, Direct and Over
+  SSH connections, and the existing bounded key browser/action surface.
+
+### Changed
+
+- Renamed the product-facing connector label to Redis / Valkey while preserving
+  the existing `redis` connector kind, target refs, permissions, and actions.
+
+### Security
+
+- Bounded RESP line, bulk, array, nesting, total-byte, and total-value parsing
+  before allocation so malformed Redis-compatible responses fail closed.
+
 ## [0.2.16] - 2026-07-30
 
 ### Added

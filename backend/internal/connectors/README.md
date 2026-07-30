@@ -1,7 +1,8 @@
 # Connectors
 
 `internal/connectors` defines the internal contract for connector-shaped
-targets. SSH, Postgres, ClickHouse, Redis, and future API integrations use the
+targets. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker,
+Kubernetes, and future API integrations use the
 same gateway pipeline:
 
 ```text
@@ -179,8 +180,10 @@ metadata icons during frontend tests.
 Built-in connectors may depend on runtime packages for their own transport.
 SSH uses SSH key, persistent terminal, and SFTP primitives. Postgres and
 ClickHouse use connector-owned database drivers plus shared SQL safety, bounded
-result, frontend model, and console primitives. Redis uses a bounded RESP client and
-the shared network transport capability. Those transport details stay inside
+result, frontend model, and console primitives. Redis / Valkey uses one bounded
+RESP2 client and the shared network transport capability. The configured server
+product is connector-owned target metadata; both products intentionally retain
+the `redis` connector kind, action names, and target-ref prefix. Those transport details stay inside
 the connector implementation; page-level UI, MCP tools, token permissions,
 history, and audit use the shared target/profile/action vocabulary.
 
