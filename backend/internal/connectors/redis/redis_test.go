@@ -30,6 +30,66 @@ func TestTargetSchemaExposesRedisAndValkeyProducts(t *testing.T) {
 	}
 }
 
+func TestRESPReaderRejectsOversizedOrMalformedFrames(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		want     string
+	}{
+		{
+			name:     "bulk string",
+			response: fmt.Sprintf("$%d\r\n", maxRESPBulkBytes+1),
+			want:     "bulk string exceeds",
+		},
+		{
+			name:     "array",
+			response: fmt.Sprintf("*%d\r\n", maxRESPArrayItems+1),
+			want:     "array exceeds",
+		},
+		{
+			name:     "negative bulk string",
+			response: "$-2\r\n",
+			want:     "invalid redis bulk string size",
+		},
+		{
+			name:     "negative array",
+			response: "*-2\r\n",
+			want:     "invalid redis array size",
+		},
+		{
+			name:     "line",
+			response: "+" + strings.Repeat("x", maxRESPLineBytes) + "\r\n",
+			want:     "response line exceeds",
+		},
+		{
+			name:     "nesting",
+			response: strings.Repeat("*1\r\n", maxRESPNestingDepth+2) + "+OK\r\n",
+			want:     "response nesting exceeds",
+		},
+		{
+			name: "total bytes",
+			response: "*9\r\n" + strings.Repeat(
+				fmt.Sprintf("$%d\r\n%s\r\n", maxRESPBulkBytes, strings.Repeat("x", maxRESPBulkBytes)),
+				9,
+			),
+			want: "response exceeds",
+		},
+		{
+			name:     "total values",
+			response: fmt.Sprintf("*%d\r\n", maxRESPArrayItems) + strings.Repeat("*1\r\n+OK\r\n", maxRESPArrayItems),
+			want:     "response exceeds",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := readRESPValue(bufio.NewReader(strings.NewReader(test.response)))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestGetHelpUsesConfiguredServerProduct(t *testing.T) {
 	help, err := Connector{}.GetHelp(context.Background(), connectors.TargetView{
 		Name:   "cache",

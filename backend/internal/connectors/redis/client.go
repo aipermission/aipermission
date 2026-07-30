@@ -7,11 +7,18 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 )
 
-const redisCommandTimeout = 10 * time.Second
+const (
+	redisCommandTimeout  = 10 * time.Second
+	maxRESPLineBytes     = 64 << 10
+	maxRESPBulkBytes     = 1 << 20
+	maxRESPResponseBytes = 8 << 20
+	maxRESPArrayItems    = 4096
+	maxRESPValues        = 8192
+	maxRESPNestingDepth  = 16
+)
 
 type respKind byte
 
@@ -29,6 +36,11 @@ type respValue struct {
 	number int64
 	array  []respValue
 	null   bool
+}
+
+type respReadBudget struct {
+	bytes  int
+	values int
 }
 
 type redisClient struct {
@@ -80,19 +92,32 @@ func (client *redisClient) Do(args ...string) (respValue, error) {
 }
 
 func readRESPValue(reader *bufio.Reader) (respValue, error) {
+	return readRESPValueAtDepth(reader, 0, &respReadBudget{})
+}
+
+func readRESPValueAtDepth(reader *bufio.Reader, depth int, budget *respReadBudget) (respValue, error) {
+	if depth > maxRESPNestingDepth {
+		return respValue{}, fmt.Errorf("redis response nesting exceeds %d levels", maxRESPNestingDepth)
+	}
+	if err := budget.consumeValue(); err != nil {
+		return respValue{}, err
+	}
 	prefix, err := reader.ReadByte()
 	if err != nil {
 		return respValue{}, err
 	}
+	if err := budget.consumeBytes(1); err != nil {
+		return respValue{}, err
+	}
 	switch respKind(prefix) {
 	case respSimpleString:
-		text, err := readRESPLine(reader)
+		text, err := readRESPLine(reader, budget)
 		return respValue{kind: respSimpleString, text: text}, err
 	case respError:
-		text, err := readRESPLine(reader)
+		text, err := readRESPLine(reader, budget)
 		return respValue{kind: respError, text: text}, err
 	case respInteger:
-		text, err := readRESPLine(reader)
+		text, err := readRESPLine(reader, budget)
 		if err != nil {
 			return respValue{}, err
 		}
@@ -102,7 +127,7 @@ func readRESPValue(reader *bufio.Reader) (respValue, error) {
 		}
 		return respValue{kind: respInteger, number: number}, nil
 	case respBulkString:
-		text, err := readRESPLine(reader)
+		text, err := readRESPLine(reader, budget)
 		if err != nil {
 			return respValue{}, err
 		}
@@ -110,8 +135,17 @@ func readRESPValue(reader *bufio.Reader) (respValue, error) {
 		if err != nil {
 			return respValue{}, err
 		}
-		if size < 0 {
+		if size == -1 {
 			return respValue{kind: respBulkString, null: true}, nil
+		}
+		if size < -1 {
+			return respValue{}, fmt.Errorf("invalid redis bulk string size %d", size)
+		}
+		if size > maxRESPBulkBytes {
+			return respValue{}, fmt.Errorf("redis bulk string exceeds %d bytes", maxRESPBulkBytes)
+		}
+		if err := budget.consumeBytes(size + 2); err != nil {
+			return respValue{}, err
 		}
 		buf := make([]byte, size+2)
 		if _, err := io.ReadFull(reader, buf); err != nil {
@@ -122,7 +156,7 @@ func readRESPValue(reader *bufio.Reader) (respValue, error) {
 		}
 		return respValue{kind: respBulkString, text: string(buf[:size])}, nil
 	case respArray:
-		text, err := readRESPLine(reader)
+		text, err := readRESPLine(reader, budget)
 		if err != nil {
 			return respValue{}, err
 		}
@@ -130,12 +164,18 @@ func readRESPValue(reader *bufio.Reader) (respValue, error) {
 		if err != nil {
 			return respValue{}, err
 		}
-		if count < 0 {
+		if count == -1 {
 			return respValue{kind: respArray, null: true}, nil
+		}
+		if count < -1 {
+			return respValue{}, fmt.Errorf("invalid redis array size %d", count)
+		}
+		if count > maxRESPArrayItems {
+			return respValue{}, fmt.Errorf("redis array exceeds %d items", maxRESPArrayItems)
 		}
 		items := make([]respValue, 0, count)
 		for i := 0; i < count; i++ {
-			item, err := readRESPValue(reader)
+			item, err := readRESPValueAtDepth(reader, depth+1, budget)
 			if err != nil {
 				return respValue{}, err
 			}
@@ -147,12 +187,44 @@ func readRESPValue(reader *bufio.Reader) (respValue, error) {
 	}
 }
 
-func readRESPLine(reader *bufio.Reader) (string, error) {
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return "", err
+func readRESPLine(reader *bufio.Reader, budget *respReadBudget) (string, error) {
+	line := make([]byte, 0, 128)
+	for {
+		fragment, err := reader.ReadSlice('\n')
+		if len(line)+len(fragment) > maxRESPLineBytes {
+			return "", fmt.Errorf("redis response line exceeds %d bytes", maxRESPLineBytes)
+		}
+		if consumeErr := budget.consumeBytes(len(fragment)); consumeErr != nil {
+			return "", consumeErr
+		}
+		line = append(line, fragment...)
+		if err == nil {
+			break
+		}
+		if err != bufio.ErrBufferFull {
+			return "", err
+		}
 	}
-	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
+	if !bytes.HasSuffix(line, []byte("\r\n")) {
+		return "", fmt.Errorf("invalid redis response line terminator")
+	}
+	return string(line[:len(line)-2]), nil
+}
+
+func (budget *respReadBudget) consumeBytes(count int) error {
+	if count < 0 || budget.bytes > maxRESPResponseBytes-count {
+		return fmt.Errorf("redis response exceeds %d bytes", maxRESPResponseBytes)
+	}
+	budget.bytes += count
+	return nil
+}
+
+func (budget *respReadBudget) consumeValue() error {
+	if budget.values >= maxRESPValues {
+		return fmt.Errorf("redis response exceeds %d values", maxRESPValues)
+	}
+	budget.values++
+	return nil
 }
 
 func respString(value respValue) string {
