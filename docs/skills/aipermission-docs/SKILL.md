@@ -138,7 +138,7 @@ Use the established aipermission naming:
 - `gateway` is the local backend that owns credentials, policy, execution, approvals, and audit.
 - `MCP client` means Cursor, Windsurf, or another AI tool integration.
 - `API token` means the gateway access token used by MCP/API clients.
-- `connector target` means a saved SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, Kubernetes, or future integration target.
+- `connector target` means a saved SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes, or future integration target.
 - `server` is acceptable only when specifically describing an SSH connector target.
 - `database` means a configured Postgres or ClickHouse connector target/profile.
 - `execution rule` means `always_run`, `approval_required`, or `blocked`.

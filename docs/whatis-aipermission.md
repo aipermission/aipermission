@@ -14,10 +14,10 @@ Related central notes:
 operate on connector targets without receiving SSH private keys, SSH passwords,
 database credentials, API credentials, or other connector secrets.
 
-The current model ships with SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3,
+The current model ships with SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3,
 Docker, and Kubernetes connectors. SSH provides live terminal/file-transfer
 actions, Postgres and ClickHouse provide structured metadata and bounded
-read-only query actions, Redis provides bounded
+read-only query actions, Redis / Valkey provides bounded
 key browsing plus explicit write/delete actions, RabbitMQ provides queue
 metadata, bindings, bounded message previews, and explicit message publishing,
 S3 provides S3-compatible bucket browsing, object metadata, bounded
@@ -99,7 +99,7 @@ for a database.
 This model also works well with AI client instructions or skills. For example,
 a developer can define a workflow like "check a new VPS before adding it to the
 cluster", "inspect container health across allowed SSH targets", "describe a
-readonly Postgres schema", "inspect Redis cache keys", or later "call this
+readonly Postgres schema", "inspect Redis or Valkey cache keys", or later "call this
 internal API operation through a stored credential profile." aipermission
 provides the execution layer without exposing credentials.
 
@@ -154,7 +154,7 @@ aipermission gateway
         | auth + permission check + approval flow
         v
 Connector target
-SSH server / Postgres database / ClickHouse analytics database / Redis cache / RabbitMQ broker / Docker host / future local integration
+SSH server / Postgres database / ClickHouse analytics database / Redis or Valkey cache / RabbitMQ broker / Docker host / future local integration
 ```
 
 The AI assistant does not receive SSH credentials or database passwords.
@@ -250,7 +250,7 @@ allowed connector targets:
 The AI assistant can see and use only connector targets in the token's enabled
 projects and actions allowed by that token. Project scope is checked before the
 target/profile/action grant. For example, if the token can access five SSH targets, one
-Postgres target, one Redis target, and one Docker profile scoped to a single
+Postgres target, one Redis/Valkey target, and one Docker profile scoped to a single
 container, `list_connector_targets` returns only those target/profile refs.
 
 If the same token exists in more than one unlocked database, MCP authentication returns a conflict. The gateway does not guess which workspace should receive the command.
@@ -271,7 +271,7 @@ get_vault_action_request(request_id)
 cancel_vault_action_request(request_id)
 ```
 
-SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, Kubernetes, and future integrations are exposed as
+SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes, and future integrations are exposed as
 connector actions instead of separate product-specific MCP tools.
 
 Project Vault is project-capability-scoped rather than connector-action-scoped.

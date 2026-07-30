@@ -11,7 +11,7 @@ Main target:
 The MVP is not a DevOps platform. It does not own production operations. It gives a developer a controlled, token-scoped, auditable execution channel for debugging, maintenance, incident triage, and temporary AI-assisted automation.
 
 The MVP does not introduce first-class management modules for every external
-system. It introduces one connector pipeline. SSH, Postgres, ClickHouse, Redis,
+system. It introduces one connector pipeline. SSH, Postgres, ClickHouse, Redis / Valkey,
 RabbitMQ, S3, Docker, Kubernetes, and future integrations are connector kinds that provide
 their own actions while sharing the same target/profile/action permission model.
 If an allowed SSH target has the needed CLI tools and access, the AI can operate
@@ -40,7 +40,7 @@ The gateway itself is local-only. It is not designed to run on a remote server f
   read-only query actions
 - built-in ClickHouse connector with native-protocol metadata inspection and
   bounded read-only analytics SQL
-- built-in Redis, RabbitMQ, S3, Docker, and Kubernetes connectors for scoped
+- built-in Redis / Valkey, RabbitMQ, S3, Docker, and Kubernetes connectors for scoped
   cache, queue, object storage, container runtime, and cluster visibility
   through the shared connector pipeline
 - API token creation and revocation

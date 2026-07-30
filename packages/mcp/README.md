@@ -8,8 +8,8 @@ credentials, or other connector secrets.
 
 The gateway is intentionally local-only. Run it on the developer machine and
 keep the URL on `localhost`; remote systems are connector targets, not places
-to host the gateway for LAN or internet users. SSH, Postgres, Redis, RabbitMQ,
-Docker, and Kubernetes are built-in connectors that use the same
+to host the gateway for LAN or internet users. SSH, Postgres, ClickHouse,
+Redis / Valkey, RabbitMQ, S3, Docker, and Kubernetes are built-in connectors that use the same
 target/profile/action permission model as future connectors.
 
 ![AIPermission demo: AI operates through approval-based connector access](https://raw.githubusercontent.com/aipermission/aipermission/main/docs/assets/demo/aipermission-demo.gif)
@@ -65,8 +65,8 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
 - `get_vault_action_request`
 - `cancel_vault_action_request`
 
-All integration work goes through connector targets. SSH, Postgres, Redis,
-RabbitMQ, Docker, Kubernetes, and future connectors share the same model: target,
+All integration work goes through connector targets. SSH, Postgres, ClickHouse,
+Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes, and future connectors share the same model: target,
 credential profile, connector action, token action permission, approval,
 history, and audit.
 
@@ -99,9 +99,12 @@ table, and bounded read-only query actions. Postgres targets can connect
 directly from the gateway or over an SSH connector profile when the database is
 reachable only from a remote server.
 
-For Redis, call `get_connector_actions(target_ref)` to discover bounded key
-browser actions such as `scan_keys`, `get_key`, `set_string`, `expire_key`, and
-`delete_keys`.
+For Redis or Valkey, call `get_connector_actions(target_ref)` to discover
+bounded key-browser actions such as `scan_keys`, `get_key`, `set_string`,
+`expire_key`, and `delete_keys`. Both products intentionally use the `redis`
+connector kind and target-ref prefix; no separate Valkey MCP tool family is
+required. The current connector uses RESP2 against one configured endpoint and
+does not provide Cluster or Sentinel routing.
 
 For RabbitMQ, call `get_connector_actions(target_ref)` to discover queue
 browser actions such as `overview`, `list_vhosts`, `list_queues`, `get_queue`,

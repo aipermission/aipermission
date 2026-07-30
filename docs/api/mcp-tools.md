@@ -2,7 +2,7 @@
 
 The MCP surface is connector-first. AIPermission does not expose separate
 product-specific MCP wrappers for SSH, database, cache, queue, or container
-products. SSH, Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, Kubernetes,
+products. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, Kubernetes,
 and future integrations are reached through the same connector target/action
 pipeline.
 
@@ -67,7 +67,7 @@ runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
-Postgres, ClickHouse, Redis, RabbitMQ, S3, Docker, or Kubernetes as special MCP
+Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker, or Kubernetes as special MCP
 modes; future connector kinds use the same tools and `target_ref` shape.
 
 Project Vault tools are a separate project-capability surface because they
@@ -215,8 +215,13 @@ run with ClickHouse `readonly=1`, and are capped by timeout, row count, cell
 size, and output bytes. Use a dedicated least-privilege ClickHouse user; these
 checks are defense in depth and do not replace database grants.
 
-Redis actions include bounded key scanning, key inspection, string writes, TTL
-updates, and explicit key deletes.
+Redis / Valkey actions include bounded key scanning, key inspection, string
+writes, TTL updates, and explicit key deletes. Redis and Valkey targets share
+the `redis` connector kind and target-ref prefix so clients must discover the
+configured and detected product from connector metadata rather than hardcode a
+second MCP mode. The current implementation uses RESP2 against one configured
+endpoint and does not implement Cluster `MOVED`/`ASK` routing, Sentinel
+discovery, or RESP3.
 
 RabbitMQ actions include overview metadata, visible vhost listing, bounded
 queue listing, queue detail reads, binding listing, and bounded message peeking

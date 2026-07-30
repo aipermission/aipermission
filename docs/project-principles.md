@@ -8,7 +8,7 @@ part of the security model, not marketing copy.
 - Local-only
 - Single-user
 - Developer-focused
-- Connector-based, with built-in SSH, Postgres, ClickHouse, Redis, RabbitMQ,
+- Connector-based, with built-in SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ,
   S3, Docker, and Kubernetes
 - Human-in-the-loop
 

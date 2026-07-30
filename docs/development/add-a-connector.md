@@ -355,23 +355,24 @@ that can produce/restore backup artifacts implements `BackupRestorer`. Core owns
 HTTP upload/download, confirmation, vault persistence, and audit; the connector
 owns only the external service-specific work.
 
-## Built-In Example: Redis
+## Built-In Example: Redis / Valkey
 
-The built-in Redis connector adds only Redis-specific behavior:
+The built-in Redis / Valkey connector adds only protocol/product-specific behavior:
 
-- target fields such as connection mode, host, port, database index, and
-  optional SSH transport target ref
+- target fields such as server product, connection mode, host, port, database
+  index, and optional SSH transport target ref
 - credential profile fields such as username/password or token
 - actions such as `ping`, `info`, `scan_keys`, `get_key`, `set_string`,
   `expire_key`, and `delete_keys`
-- connector help that explains safe key inspection
-- UI templates for Redis target rows, credential profiles, and key-browser
+- connector help that explains safe key inspection and the standalone RESP2
+  boundary
+- UI templates for Redis / Valkey target rows, credential profiles, and key-browser
   console output
 
-It should not add a Redis-specific token permission table, approval table,
+It should not add a Redis/Valkey-specific token permission table, approval table,
 history page, audit route, MCP tool family, or global UI page.
 
-Redis checklist:
+Redis / Valkey checklist:
 
 - `backend/internal/connectors/redis/redis.go`
 - `backend/internal/connectors/redis/client.go`
@@ -388,6 +389,13 @@ Redis checklist:
 - `frontend/src/connectors/templates/redis/console.jsx`
 - frontend smoke/runtime tests that assert the shipped connector folders
 - README, REST/MCP docs, and connector-specific safety notes
+
+Valkey compatibility remains inside this connector because both products use
+the same bounded action catalog and RESP2 transport. The user-selected
+`server_family` affects product labels and approval context, while the technical
+connector kind and target refs remain `redis`. Do not add a duplicate `valkey`
+connector folder, backend registry entry, generic route branch, permission
+table, or MCP wrapper merely to change the product identity.
 
 ## Built-In Example: RabbitMQ
 
