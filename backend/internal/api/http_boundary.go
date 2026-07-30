@@ -44,7 +44,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "ui session required")
 		return
 	}
-	if unlocked && requiresUICSRF(r.Method, r.URL.Path) && !hasValidUICSRF(r) {
+	if unlocked && requiresUICSRF(r.Method, r.URL.Path) && !s.hasValidUICSRF(r) {
 		writeError(w, http.StatusForbidden, "csrf token required")
 		return
 	}

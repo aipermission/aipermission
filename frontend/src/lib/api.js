@@ -1,3 +1,5 @@
+import { scopedUICookieName } from "./ui-cookie.js";
+
 const viteEnv = import.meta.env || {};
 
 export const apiUrl =
@@ -126,7 +128,7 @@ function browserOrigin() {
 }
 
 function csrfHeaders(base = {}) {
-  const token = readCookie("aipermission_csrf");
+  const token = readCookie(scopedUICookieName("aipermission_csrf"));
   if (!token) return base;
   return { ...base, "X-AIPermission-CSRF": token };
 }

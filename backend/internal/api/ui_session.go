@@ -41,7 +41,7 @@ func (s *Server) issueUISession(w http.ResponseWriter) error {
 	s.uiSessionMu.Unlock()
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     uiSessionCookieName,
+		Name:     s.uiSessionCookieName(),
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
@@ -55,7 +55,7 @@ func (s *Server) issueUISession(w http.ResponseWriter) error {
 		return err
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     uiCSRFCookieName,
+		Name:     s.uiCSRFCookieName(),
 		Value:    base64.RawURLEncoding.EncodeToString(csrfBytes),
 		Path:     "/",
 		Secure:   true,
@@ -72,7 +72,7 @@ func (s *Server) clearUISessions(w http.ResponseWriter) {
 	s.uiSessionMu.Unlock()
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     uiSessionCookieName,
+		Name:     s.uiSessionCookieName(),
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
@@ -82,7 +82,7 @@ func (s *Server) clearUISessions(w http.ResponseWriter) {
 		Expires:  time.Unix(0, 0).UTC(),
 	})
 	http.SetCookie(w, &http.Cookie{
-		Name:     uiCSRFCookieName,
+		Name:     s.uiCSRFCookieName(),
 		Value:    "",
 		Path:     "/",
 		Secure:   true,
@@ -93,7 +93,7 @@ func (s *Server) clearUISessions(w http.ResponseWriter) {
 }
 
 func (s *Server) hasValidUISession(r *http.Request) bool {
-	cookie, err := r.Cookie(uiSessionCookieName)
+	cookie, err := r.Cookie(s.uiSessionCookieName())
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
 		return false
 	}
@@ -121,8 +121,8 @@ func (s *Server) hasValidUISession(r *http.Request) bool {
 	return true
 }
 
-func hasValidUICSRF(r *http.Request) bool {
-	cookie, err := r.Cookie(uiCSRFCookieName)
+func (s *Server) hasValidUICSRF(r *http.Request) bool {
+	cookie, err := r.Cookie(s.uiCSRFCookieName())
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
 		return false
 	}
@@ -144,6 +144,37 @@ func (s *Server) pruneUISessionsLocked(now time.Time) {
 func hashUISessionToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func (s *Server) uiSessionCookieName() string {
+	return scopedUICookieName(uiSessionCookieName, s.config.FrontendPort)
+}
+
+func (s *Server) uiCSRFCookieName() string {
+	return scopedUICookieName(uiCSRFCookieName, s.config.FrontendPort)
+}
+
+func scopedUICookieName(base string, frontendPort string) string {
+	frontendPort = strings.TrimSpace(frontendPort)
+	if frontendPort == "" {
+		return base
+	}
+	var scope strings.Builder
+	for _, char := range frontendPort {
+		switch {
+		case char >= 'a' && char <= 'z',
+			char >= 'A' && char <= 'Z',
+			char >= '0' && char <= '9',
+			char == '-', char == '_':
+			scope.WriteRune(char)
+		default:
+			scope.WriteByte('_')
+		}
+	}
+	if scope.Len() == 0 {
+		return base
+	}
+	return base + "_" + scope.String()
 }
 
 func isUISessionExempt(path string) bool {
