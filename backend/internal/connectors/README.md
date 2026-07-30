@@ -84,6 +84,11 @@ masked even when their names are connector-specific. The gateway also masks a
 small default set such as `password`, `token`, `secret`, `api_key`, and
 `authorization`, but connector-specific names must be explicit.
 
+Use `ActionDefinition.SensitiveInputFields` for non-credential action inputs
+whose values may contain customer data or secrets, such as a message key,
+payload, or headers. Core persists and returns redacted input values while
+keeping the exact execution payload only in the encrypted request envelope.
+
 Approval-required requests hash the connector kind/version, action definition,
 target/profile public metadata, profile revision, encrypted secret revision,
 permission rule, token validity, and prepared payload. If any of that context

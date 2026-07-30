@@ -56,6 +56,14 @@ RabbitMQ messages only when the operator explicitly asked for a write.
 For Kafka / Redpanda, discover topics before describing partitions or reading
 messages. Keep message reads bounded, prefer Prompt because payloads can be
 sensitive, and remember that read actions never join groups or commit offsets.
+Use `publish_message` only for one explicitly requested topic partition. Treat
+`set_consumer_group_offset` as destructive because it can replay or skip
+records; keep both actions on Prompt unless direct execution is intentional.
+If a publish reports an unknown delivery outcome, inspect the topic before
+retrying. Offset changes support inactive classic groups and reject modern
+consumer-protocol groups. The inactive-group check is best effort because
+Kafka cannot atomically prevent a member joining between the final check and
+commit; inspect the returned post-commit state and warning.
 
 Avoid vague reasons:
 

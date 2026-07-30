@@ -229,12 +229,21 @@ with `ack_requeue_true`, plus explicit `publish_message` writes. Message
 payload previews and published payloads may contain secrets or customer data;
 prefer approval-required access until the workflow is trusted.
 
-Kafka / Redpanda actions in 0.2.18 include cluster metadata, topic listing and
-description, consumer-group listing and lag description, and bounded message
-samples from an explicit topic partition. `read_messages` does not join a
-consumer group, commit offsets, or enable automatic topic creation. Message
-keys, values, and headers may contain secrets or customer data; keep the action
-in approval-required mode unless that read workflow is explicitly trusted.
+Kafka / Redpanda actions include cluster metadata, topic listing and
+description, consumer-group listing and lag description, bounded message
+samples from an explicit topic partition, guarded single-message publishing,
+and one-partition consumer-group offset changes. `read_messages` does not join
+a consumer group, commit offsets, or enable automatic topic creation.
+`publish_message` is write risk and uses bounded content with all-in-sync-
+replica acknowledgements. `set_consumer_group_offset` is destructive, requires
+an inactive classic group immediately before the commit, rejects modern
+consumer-protocol groups, validates the log range, and verifies the commit.
+Kafka does not provide an atomic lock against a group member joining during
+that final interval, so the result reports a best-effort guard and post-commit
+state. Message content may be sensitive and offset changes can replay or skip
+records; prefer Prompt for both write actions.
+Publish request displays redact raw keys, values, and headers. A failed publish
+can have an unknown delivery outcome, so inspect before manually retrying.
 
 S3 actions include bucket metadata, bounded object listing, object metadata,
 bounded object download/upload, object rename, and explicit delete. Object

@@ -37,6 +37,9 @@ These rules are part of the connector contract:
 - Connector-specific structured output secrets must be listed in
   `OutputHint.SensitiveFields` so the shared redaction layer masks them in MCP
   responses, history, and audit.
+- Arbitrary action inputs that may contain sensitive content, such as message
+  keys, values, or headers, must be listed in
+  `ActionDefinition.SensitiveInputFields`.
 - Action input JSON is persisted and returned as a redacted display payload.
   The raw execution payload is kept only in the encrypted connector action
   payload. Never put API tokens, passwords, private keys, or tenant secrets in
@@ -165,11 +168,13 @@ For connector-specific output fields that contain sensitive material, set
 names in structured output before returning MCP responses or persisting
 history/audit payloads.
 
-The same redaction rule applies to action inputs and approval displays. The
-gateway persists redacted input JSON, while the raw prepared execution payload
-is encrypted separately for the action runner. Tests for a connector should
-prove that realistic secret-looking input/output values are masked in MCP
-responses and history.
+For action inputs such as message keys, payloads, or headers whose arbitrary
+content may itself be sensitive, list the corresponding schema field names in
+`ActionDefinition.SensitiveInputFields`. The gateway persists and displays
+redacted input JSON, while the raw prepared execution payload is encrypted
+separately for the action runner. Tests for a connector should prove that
+realistic secret-looking input/output values are masked in MCP responses and
+history.
 
 Approval-required actions store a context snapshot when the request is created.
 That snapshot includes token validity, permission rule, target/profile public
@@ -458,6 +463,8 @@ Add focused tests for:
 - action input schema rejection for secret fields
 - secret credential schema rejection when defaults are present
 - connector-specific `OutputHint.SensitiveFields` redaction
+- connector-specific `SensitiveInputFields` redaction while the encrypted
+  execution envelope preserves the exact input
 - `blocked`, `approval_required`, and `always_run` permission behavior
 - approval-required execution and stale-context behavior
 - stale request finalization when target/profile/action context changes or is

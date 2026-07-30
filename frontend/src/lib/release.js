@@ -1,6 +1,26 @@
-export const appVersion = "0.2.18";
+export const appVersion = "0.2.19";
 
 export const changelogEntries = [
+  {
+    version: "0.2.19",
+    label: "Guarded Kafka writes",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Kafka and Redpanda can publish one bounded message to an explicit partition with all-in-sync-replica acknowledgements and no automatic topic creation.",
+          "Inactive consumer-group offsets can be changed for one explicit partition with a best-effort inactivity guard, range checks, commit verification, local confirmation, history, and audit.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Publish previews show byte counts instead of raw message content; offset changes report their best-effort inactivity guard and post-commit state.",
+          "Publish is classified write and offset changes destructive. Prompt remains the recommended permission rule for both actions.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.18",
     label: "Kafka / Redpanda read browser",
