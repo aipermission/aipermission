@@ -14,8 +14,11 @@ import (
 
 const (
 	Kind    = "redis"
-	Label   = "Redis"
+	Label   = "Redis / Valkey"
 	Version = "0.2"
+
+	ServerFamilyRedis  = "redis"
+	ServerFamilyValkey = "valkey"
 
 	ActionPing       = "ping"
 	ActionInfo       = "info"
@@ -66,6 +69,17 @@ func (Connector) Version() string {
 func (Connector) TargetSchema() connectors.Schema {
 	return connectors.Schema{Fields: []connectors.Field{
 		{
+			Name:        "server_family",
+			Label:       "Server product",
+			Type:        connectors.FieldSelect,
+			Default:     ServerFamilyRedis,
+			Description: "Choose Redis or Valkey. Both use the same bounded RESP connector actions.",
+			Options: []connectors.FieldOption{
+				{Value: ServerFamilyRedis, Label: "Redis"},
+				{Value: ServerFamilyValkey, Label: "Valkey"},
+			},
+		},
+		{
 			Name:        "connection_mode",
 			Label:       "Connection mode",
 			Type:        connectors.FieldSelect,
@@ -83,7 +97,7 @@ func (Connector) TargetSchema() connectors.Schema {
 			Type:        connectors.FieldString,
 			Required:    true,
 			Default:     defaultRedisHost,
-			Description: "Redis host as seen by the selected connection mode. For Over SSH this is usually 127.0.0.1 on the remote server.",
+			Description: "Redis-compatible host as seen by the selected connection mode. For Over SSH this is usually 127.0.0.1 on the remote server.",
 		},
 		{
 			Name:        "port",
@@ -91,14 +105,14 @@ func (Connector) TargetSchema() connectors.Schema {
 			Type:        connectors.FieldNumber,
 			Required:    true,
 			Default:     defaultRedisPort,
-			Description: "Redis TCP port.",
+			Description: "Redis-compatible RESP TCP port.",
 		},
 		{
 			Name:        "database",
 			Label:       "Database",
 			Type:        connectors.FieldNumber,
 			Default:     0,
-			Description: "Redis logical database number.",
+			Description: "Logical database number.",
 		},
 		{
 			Name:        "transport_target_ref",
@@ -114,20 +128,20 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 		{
 			Kind:        "username_password",
 			Label:       "Username and password",
-			Description: "Redis ACL username and password stored through the encrypted vault layer. Leave both empty for local unauthenticated Redis.",
+			Description: "Redis or Valkey ACL username and password stored through the encrypted vault layer. Leave both empty for local unauthenticated access.",
 			Schema: connectors.Schema{Fields: []connectors.Field{
 				{
 					Name:        "username",
 					Label:       "Username",
 					Type:        connectors.FieldString,
-					Description: "Optional Redis ACL username.",
+					Description: "Optional Redis or Valkey ACL username.",
 				},
 				{
 					Name:        "password",
 					Label:       "Password",
 					Type:        connectors.FieldSecret,
 					Secret:      true,
-					Description: "Optional Redis password.",
+					Description: "Optional Redis or Valkey password.",
 				},
 			}},
 		},
@@ -135,13 +149,14 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 }
 
 func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (connectors.ConnectorHelp, error) {
-	title := "Redis target"
+	product := serverFamilyLabel(serverFamily(target))
+	title := product + " target"
 	if strings.TrimSpace(target.Name) != "" {
-		title = "Redis target: " + target.Name
+		title = product + " target: " + target.Name
 	}
 	return connectors.ConnectorHelp{
 		Title:       title,
-		Summary:     "Browse Redis keys and run bounded key operations through AIPermission approval rules.",
+		Summary:     "Browse Redis or Valkey keys and run bounded key operations through AIPermission approval rules.",
 		Connector:   Label,
 		ConnectorID: Kind,
 		Usage: []string{
@@ -151,9 +166,10 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use delete_keys carefully; it is destructive and should normally require approval.",
 		},
 		Warnings: []string{
-			"Redis values may contain secrets. Redaction is best-effort; avoid intentionally reading secrets unless the operator approved that access.",
+			"Redis and Valkey values may contain secrets. Redaction is best-effort; avoid intentionally reading secrets unless the operator approved that access.",
 			"scan_keys uses SCAN, not KEYS, and returns bounded batches.",
-			"Redis credential profiles decide what the Redis server itself allows.",
+			"Credential profiles decide what the Redis-compatible server itself allows.",
+			"Cluster-aware MOVED/ASK routing and Sentinel discovery are not supported in this connector version.",
 		},
 	}, nil
 }
@@ -163,7 +179,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{
 			Name:        ActionPing,
 			Label:       "Ping",
-			Description: "Check Redis connectivity and selected database access.",
+			Description: "Check Redis or Valkey connectivity and selected database access.",
 			Category:    "metadata",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{},
@@ -172,7 +188,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{
 			Name:        ActionInfo,
 			Label:       "Server info",
-			Description: "Read bounded Redis INFO metadata.",
+			Description: "Read bounded Redis or Valkey INFO metadata.",
 			Category:    "metadata",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -183,7 +199,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{
 			Name:        ActionScanKeys,
 			Label:       "Scan keys",
-			Description: "List Redis keys with SCAN using a bounded count.",
+			Description: "List keys with SCAN using a bounded count.",
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -196,7 +212,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{
 			Name:        ActionGetKey,
 			Label:       "Read key",
-			Description: "Read a bounded Redis key preview by type.",
+			Description: "Read a bounded key preview by type.",
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -209,7 +225,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{
 			Name:        ActionSetString,
 			Label:       "Set string",
-			Description: "Set a Redis string value with optional TTL.",
+			Description: "Set a string value with optional TTL.",
 			Category:    "write",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -222,7 +238,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{
 			Name:        ActionExpireKey,
 			Label:       "Set TTL",
-			Description: "Set or clear a Redis key TTL.",
+			Description: "Set or clear a key TTL.",
 			Category:    "write",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -234,7 +250,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{
 			Name:        ActionDeleteKeys,
 			Label:       "Delete keys",
-			Description: "Delete one or more Redis keys.",
+			Description: "Delete one or more keys.",
 			Category:    "destructive",
 			Risk:        connectors.RiskDestructive,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
@@ -247,26 +263,27 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 
 func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
 	input := copyMap(req.Input)
+	product := serverFamilyLabel(serverFamily(req.Target))
 	risk := connectors.RiskRead
 	title := ""
 	summary := ""
 	switch req.ActionName {
 	case ActionPing:
-		title = "Ping Redis"
-		summary = "Check Redis connectivity."
+		title = "Ping " + product
+		summary = "Check Redis-compatible connectivity."
 	case ActionInfo:
 		section := strings.TrimSpace(stringValue(input, "section"))
-		title = "Read Redis INFO"
+		title = "Read " + product + " INFO"
 		if section != "" {
-			title = "Read Redis INFO " + section
+			title += " " + section
 		}
-		summary = "Read bounded Redis metadata."
+		summary = "Read bounded Redis-compatible metadata."
 	case ActionScanKeys:
 		pattern := normalizeStringDefault(input, "pattern", "*")
 		limit := normalizeInt(input, "limit", defaultScanLimit, 1, maxScanLimit)
 		input["pattern"] = pattern
 		input["limit"] = limit
-		title = "Scan Redis keys"
+		title = "Scan " + product + " keys"
 		summary = fmt.Sprintf("Scan keys matching %q with limit %d.", pattern, limit)
 	case ActionGetKey:
 		key := strings.TrimSpace(stringValue(input, "key"))
@@ -276,7 +293,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["key"] = key
 		input["limit"] = normalizeInt(input, "limit", defaultValueLimit, 1, maxValueLimit)
 		input["max_bytes"] = normalizeInt(input, "max_bytes", defaultMaxValueBytes, 1, maxValueBytes)
-		title = "Read Redis key"
+		title = "Read " + product + " key"
 		summary = key
 	case ActionSetString:
 		risk = connectors.RiskWrite
@@ -289,7 +306,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		}
 		input["key"] = key
 		input["ttl_seconds"] = normalizeInt(input, "ttl_seconds", 0, 0, 31_536_000)
-		title = "Set Redis string"
+		title = "Set " + product + " string"
 		summary = key
 	case ActionExpireKey:
 		risk = connectors.RiskWrite
@@ -303,7 +320,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		}
 		input["key"] = key
 		input["ttl_seconds"] = ttl
-		title = "Set Redis TTL"
+		title = "Set " + product + " TTL"
 		summary = key
 	case ActionDeleteKeys:
 		risk = connectors.RiskDestructive
@@ -312,8 +329,8 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			return connectors.PreparedAction{}, err
 		}
 		input["keys"] = keys
-		title = "Delete Redis keys"
-		summary = fmt.Sprintf("Delete %d Redis key(s).", len(keys))
+		title = "Delete " + product + " keys"
+		summary = fmt.Sprintf("Delete %d %s key(s).", len(keys), product)
 	default:
 		return connectors.PreparedAction{}, ErrUnsupportedAction
 	}
@@ -333,6 +350,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		ContextMaterial: map[string]any{
 			"target":          req.Target.Name,
 			"profile":         req.Profile.Label,
+			"server_family":   serverFamily(req.Target),
 			"connection_mode": connectionMode(req.Target),
 			"database":        redisDatabase(req.Target),
 		},
@@ -375,13 +393,35 @@ func (connector Connector) TestConnection(ctx context.Context, runtime connector
 	if err != nil {
 		return connectors.TestResult{Status: classifyRedisTestError(err), Message: err.Error()}, nil
 	}
+	configuredFamily := serverFamily(runtime.Target)
+	details := map[string]any{
+		"response":                 respString(value),
+		"database":                 redisDatabase(runtime.Target),
+		"configured_server_family": configuredFamily,
+	}
+	detectedFamily := configuredFamily
+	message := serverFamilyLabel(configuredFamily) + " connection ok."
+	if identity, detectErr := detectRedisServer(client); detectErr == nil {
+		detectedFamily = identity.Family
+		for key, item := range identity.details() {
+			details[key] = item
+		}
+		details["server_family_match"] = detectedFamily == configuredFamily
+		message = serverFamilyLabel(detectedFamily) + " connection ok."
+		if detectedFamily != configuredFamily {
+			message = fmt.Sprintf(
+				"%s connection ok; target is configured as %s.",
+				serverFamilyLabel(detectedFamily),
+				serverFamilyLabel(configuredFamily),
+			)
+		}
+	} else {
+		details["server_detection"] = "unavailable"
+	}
 	return connectors.TestResult{
 		Status:  connectors.TestOK,
-		Message: "Redis connection ok.",
-		Details: map[string]any{
-			"response": respString(value),
-			"database": redisDatabase(runtime.Target),
-		},
+		Message: message,
+		Details: details,
 	}, nil
 }
 
@@ -458,10 +498,14 @@ func executeInfo(client *redisClient, input map[string]any) (connectors.ActionRe
 		return connectors.ActionResult{}, err
 	}
 	info := truncateString(respString(value), maxValueBytes)
-	parsed := parseRedisInfo(info)
+	document := parseRedisInfoDocument(info)
+	output := map[string]any{"section": section, "info": document.sections, "raw": info}
+	if identity, ok := redisServerIdentityFromFields(document.fields); ok {
+		output["server"] = identity.details()
+	}
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
-		Output:      map[string]any{"section": section, "info": parsed, "raw": info},
+		Output:      output,
 		DisplayText: info,
 	}, nil
 }
@@ -579,7 +623,7 @@ func executeSetString(client *redisClient, input map[string]any) (connectors.Act
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
 		Output:      map[string]any{"key": key, "response": respString(response)},
-		DisplayText: fmt.Sprintf("Set Redis key %q.", key),
+		DisplayText: fmt.Sprintf("Set key %q.", key),
 	}, nil
 }
 
@@ -602,7 +646,7 @@ func executeExpireKey(client *redisClient, input map[string]any) (connectors.Act
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
 		Output:      map[string]any{"key": key, "changed": value.number == 1, "ttl_seconds": ttl},
-		DisplayText: fmt.Sprintf("Updated TTL for Redis key %q.", key),
+		DisplayText: fmt.Sprintf("Updated TTL for key %q.", key),
 	}, nil
 }
 
@@ -622,8 +666,107 @@ func executeDeleteKeys(client *redisClient, input map[string]any) (connectors.Ac
 			"keys":    keys,
 			"deleted": value.number,
 		},
-		DisplayText: fmt.Sprintf("Deleted %d Redis key(s).", value.number),
+		DisplayText: fmt.Sprintf("Deleted %d key(s).", value.number),
 	}, nil
+}
+
+type redisServerIdentity struct {
+	Family               string
+	ServerName           string
+	Version              string
+	CompatibilityVersion string
+}
+
+func detectRedisServer(client *redisClient) (redisServerIdentity, error) {
+	value, err := client.Do("INFO", "server")
+	if err != nil {
+		return redisServerIdentity{}, err
+	}
+	identity, ok := redisServerIdentityFromInfo(respString(value))
+	if !ok {
+		return redisServerIdentity{}, fmt.Errorf("server identity is unavailable")
+	}
+	return identity, nil
+}
+
+func redisServerIdentityFromInfo(raw string) (redisServerIdentity, bool) {
+	return redisServerIdentityFromFields(parseRedisInfoDocument(raw).fields)
+}
+
+func redisServerIdentityFromFields(fields map[string]string) (redisServerIdentity, bool) {
+	serverName := strings.ToLower(strings.TrimSpace(fields["server_name"]))
+	valkeyVersion := strings.TrimSpace(fields["valkey_version"])
+	redisVersion := strings.TrimSpace(fields["redis_version"])
+	if serverName == ServerFamilyValkey || valkeyVersion != "" {
+		return redisServerIdentity{
+			Family:               ServerFamilyValkey,
+			ServerName:           firstNonEmpty(serverName, ServerFamilyValkey),
+			Version:              valkeyVersion,
+			CompatibilityVersion: redisVersion,
+		}, true
+	}
+	if serverName != "" || redisVersion != "" {
+		return redisServerIdentity{
+			Family:     ServerFamilyRedis,
+			ServerName: firstNonEmpty(serverName, ServerFamilyRedis),
+			Version:    redisVersion,
+		}, true
+	}
+	return redisServerIdentity{}, false
+}
+
+func (identity redisServerIdentity) details() map[string]any {
+	details := map[string]any{
+		"detected_server_family": identity.Family,
+		"server_name":            identity.ServerName,
+	}
+	if identity.Version != "" {
+		details["server_version"] = identity.Version
+	}
+	if identity.CompatibilityVersion != "" {
+		details["compatibility_version"] = identity.CompatibilityVersion
+	}
+	return details
+}
+
+type redisInfoDocument struct {
+	sections map[string]any
+	fields   map[string]string
+}
+
+func parseRedisInfoDocument(raw string) redisInfoDocument {
+	document := redisInfoDocument{
+		sections: map[string]any{},
+		fields:   map[string]string{},
+	}
+	current := "default"
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "# ") {
+			current = strings.TrimSpace(strings.TrimPrefix(line, "# "))
+			if _, ok := document.sections[current]; !ok {
+				document.sections[current] = map[string]string{}
+			}
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		document.fields[strings.ToLower(key)] = value
+		bucket, _ := document.sections[current].(map[string]string)
+		if bucket == nil {
+			bucket = map[string]string{}
+			document.sections[current] = bucket
+		}
+		bucket[key] = value
+	}
+	return document
 }
 
 func redisKeyType(client *redisClient, key string) (string, error) {
@@ -652,35 +795,6 @@ func redisScanCollection(client *redisClient, command string, key string, limit 
 		}
 	}
 	return items, nil
-}
-
-func parseRedisInfo(raw string) map[string]any {
-	sections := map[string]any{}
-	current := "default"
-	for _, line := range strings.Split(raw, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "# ") {
-			current = strings.TrimSpace(strings.TrimPrefix(line, "# "))
-			if _, ok := sections[current]; !ok {
-				sections[current] = map[string]string{}
-			}
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		bucket, _ := sections[current].(map[string]string)
-		if bucket == nil {
-			bucket = map[string]string{}
-			sections[current] = bucket
-		}
-		bucket[parts[0]] = parts[1]
-	}
-	return sections
 }
 
 func redisKeyDisplay(output map[string]any) string {
@@ -720,6 +834,20 @@ func connectionMode(target connectors.TargetView) string {
 		return "direct"
 	}
 	return mode
+}
+
+func serverFamily(target connectors.TargetView) string {
+	if strings.EqualFold(strings.TrimSpace(stringValue(target.Config, "server_family")), ServerFamilyValkey) {
+		return ServerFamilyValkey
+	}
+	return ServerFamilyRedis
+}
+
+func serverFamilyLabel(family string) string {
+	if family == ServerFamilyValkey {
+		return "Valkey"
+	}
+	return "Redis"
 }
 
 func redisHost(target connectors.TargetView) string {
@@ -882,6 +1010,15 @@ func min(left int, right int) int {
 		return left
 	}
 	return right
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 var _ connectors.Connector = Connector{}

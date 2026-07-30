@@ -6,13 +6,71 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
+func TestTargetSchemaExposesRedisAndValkeyProducts(t *testing.T) {
+	schema := Connector{}.TargetSchema()
+	if len(schema.Fields) == 0 || schema.Fields[0].Name != "server_family" {
+		t.Fatalf("server family field missing: %#v", schema.Fields)
+	}
+	field := schema.Fields[0]
+	if field.Default != ServerFamilyRedis {
+		t.Fatalf("default server family = %#v", field.Default)
+	}
+	if !reflect.DeepEqual(field.Options, []connectors.FieldOption{
+		{Value: ServerFamilyRedis, Label: "Redis"},
+		{Value: ServerFamilyValkey, Label: "Valkey"},
+	}) {
+		t.Fatalf("server family options = %#v", field.Options)
+	}
+}
+
+func TestGetHelpUsesConfiguredServerProduct(t *testing.T) {
+	help, err := Connector{}.GetHelp(context.Background(), connectors.TargetView{
+		Name:   "cache",
+		Config: map[string]any{"server_family": ServerFamilyValkey},
+	})
+	if err != nil {
+		t.Fatalf("get help: %v", err)
+	}
+	if help.Title != "Valkey target: cache" || help.Connector != Label {
+		t.Fatalf("help = %#v", help)
+	}
+}
+
+func TestExistingTargetWithoutServerFamilyDefaultsToRedis(t *testing.T) {
+	target := connectors.TargetView{Name: "existing-cache", Config: map[string]any{"connection_mode": "direct"}}
+	if family := serverFamily(target); family != ServerFamilyRedis {
+		t.Fatalf("server family = %q", family)
+	}
+	help, err := Connector{}.GetHelp(context.Background(), target)
+	if err != nil {
+		t.Fatalf("get help: %v", err)
+	}
+	if help.Title != "Redis target: existing-cache" {
+		t.Fatalf("help title = %q", help.Title)
+	}
+	prepared, err := Connector{}.PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     target,
+		Profile:    connectors.CredentialProfileView{Label: "default"},
+		ActionName: ActionPing,
+		Input:      map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("prepare action: %v", err)
+	}
+	if prepared.Title != "Ping Redis" || prepared.ContextMaterial["server_family"] != ServerFamilyRedis {
+		t.Fatalf("prepared = %#v", prepared)
+	}
+}
+
 func TestPrepareActionNormalizesRedisScan(t *testing.T) {
-	target := connectors.TargetView{ID: 1, Ref: "redis:1:2", ConnectorKind: Kind, Name: "cache", Config: map[string]any{"connection_mode": "direct"}}
+	target := connectors.TargetView{ID: 1, Ref: "redis:1:2", ConnectorKind: Kind, Name: "cache", Config: map[string]any{"server_family": ServerFamilyValkey, "connection_mode": "direct"}}
 	profile := connectors.CredentialProfileView{ID: 2, TargetID: 1, ConnectorKind: Kind, Kind: "username_password", Label: "default"}
 
 	prepared, err := Connector{}.PrepareAction(context.Background(), connectors.ActionRequest{
@@ -29,6 +87,12 @@ func TestPrepareActionNormalizesRedisScan(t *testing.T) {
 	}
 	if prepared.Risk != connectors.RiskRead {
 		t.Fatalf("risk = %q", prepared.Risk)
+	}
+	if prepared.Title != "Scan Valkey keys" {
+		t.Fatalf("title = %q", prepared.Title)
+	}
+	if prepared.ContextMaterial["server_family"] != ServerFamilyValkey {
+		t.Fatalf("context material = %#v", prepared.ContextMaterial)
 	}
 }
 
@@ -73,6 +137,281 @@ func TestExecuteActionScansBoundedKeys(t *testing.T) {
 	}
 }
 
+func TestConnectionDetectsValkeyServerIdentity(t *testing.T) {
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		switch command[0] {
+		case "PING":
+			return "+PONG\r\n"
+		case "INFO":
+			if !reflect.DeepEqual(command, []string{"INFO", "server"}) {
+				t.Fatalf("command = %#v", command)
+			}
+			return respBulk("# Server\r\nserver_name:valkey\r\nvalkey_version:8.1.3\r\nredis_version:7.2.4\r\n")
+		default:
+			t.Fatalf("unexpected command = %#v", command)
+			return ""
+		}
+	})
+	runtime.Target.Config["server_family"] = ServerFamilyValkey
+
+	result, err := Connector{}.TestConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("test connection: %v", err)
+	}
+	if result.Status != connectors.TestOK || result.Message != "Valkey connection ok." {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Details["detected_server_family"] != ServerFamilyValkey ||
+		result.Details["server_version"] != "8.1.3" ||
+		result.Details["compatibility_version"] != "7.2.4" {
+		t.Fatalf("details = %#v", result.Details)
+	}
+}
+
+func TestConnectionDetectsRedisServerIdentity(t *testing.T) {
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		switch command[0] {
+		case "PING":
+			return "+PONG\r\n"
+		case "INFO":
+			return respBulk("# Server\r\nredis_version:7.2.5\r\n")
+		default:
+			t.Fatalf("unexpected command = %#v", command)
+			return ""
+		}
+	})
+
+	result, err := Connector{}.TestConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("test connection: %v", err)
+	}
+	if result.Status != connectors.TestOK || result.Message != "Redis connection ok." {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Details["detected_server_family"] != ServerFamilyRedis || result.Details["server_version"] != "7.2.5" {
+		t.Fatalf("details = %#v", result.Details)
+	}
+	if result.Details["server_family_match"] != true {
+		t.Fatalf("details = %#v", result.Details)
+	}
+}
+
+func TestConnectionReportsConfiguredServerProductMismatch(t *testing.T) {
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		switch command[0] {
+		case "PING":
+			return "+PONG\r\n"
+		case "INFO":
+			return respBulk("# Server\r\nredis_version:7.2.5\r\n")
+		default:
+			t.Fatalf("unexpected command = %#v", command)
+			return ""
+		}
+	})
+	runtime.Target.Config["server_family"] = ServerFamilyValkey
+
+	result, err := Connector{}.TestConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("test connection: %v", err)
+	}
+	if result.Status != connectors.TestOK || result.Message != "Redis connection ok; target is configured as Valkey." {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Details["server_family_match"] != false ||
+		result.Details["configured_server_family"] != ServerFamilyValkey ||
+		result.Details["detected_server_family"] != ServerFamilyRedis {
+		t.Fatalf("details = %#v", result.Details)
+	}
+}
+
+func TestConnectionAllowsRestrictedProfileWithoutInfoPermission(t *testing.T) {
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		switch command[0] {
+		case "PING":
+			return "+PONG\r\n"
+		case "INFO":
+			return "-NOPERM this user has no permissions to run the 'info' command\r\n"
+		default:
+			t.Fatalf("unexpected command = %#v", command)
+			return ""
+		}
+	})
+	runtime.Target.Config["server_family"] = ServerFamilyValkey
+
+	result, err := Connector{}.TestConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("test connection: %v", err)
+	}
+	if result.Status != connectors.TestOK || result.Message != "Valkey connection ok." {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Details["server_detection"] != "unavailable" {
+		t.Fatalf("details = %#v", result.Details)
+	}
+}
+
+func TestValkeyConnectionUsesACLAndSelectedDatabase(t *testing.T) {
+	commands := [][]string{}
+	var commandsMu sync.Mutex
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		commandsMu.Lock()
+		commands = append(commands, append([]string(nil), command...))
+		commandsMu.Unlock()
+		switch command[0] {
+		case "AUTH", "SELECT":
+			return "+OK\r\n"
+		case "PING":
+			return "+PONG\r\n"
+		case "INFO":
+			return respBulk("# Server\r\nserver_name:valkey\r\nvalkey_version:8.1.3\r\nredis_version:7.2.4\r\n")
+		default:
+			t.Fatalf("unexpected command = %#v", command)
+			return ""
+		}
+	})
+	runtime.Target.Config["server_family"] = ServerFamilyValkey
+	runtime.Target.Config["database"] = 2
+	runtime.Profile.Public = map[string]any{"username": "app"}
+	runtime.Secrets = testSecrets{"password": "secret"}
+
+	result, err := Connector{}.TestConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("test connection: %v", err)
+	}
+	if result.Status != connectors.TestOK {
+		t.Fatalf("result = %#v", result)
+	}
+	want := [][]string{
+		{"AUTH", "app", "secret"},
+		{"SELECT", "2"},
+		{"PING"},
+		{"INFO", "server"},
+	}
+	commandsMu.Lock()
+	defer commandsMu.Unlock()
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestInfoActionReturnsValkeyIdentity(t *testing.T) {
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		if !reflect.DeepEqual(command, []string{"INFO", "server"}) {
+			t.Fatalf("command = %#v", command)
+		}
+		return respBulk("# Server\r\nserver_name:valkey\r\nvalkey_version:8.1.3\r\nredis_version:7.2.4\r\n")
+	})
+	result, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+		ActionName: ActionInfo,
+		Payload:    map[string]any{"section": "server"},
+	})
+	if err != nil {
+		t.Fatalf("execute info: %v", err)
+	}
+	output := result.Output.(map[string]any)
+	server := output["server"].(map[string]any)
+	if server["detected_server_family"] != ServerFamilyValkey || server["server_version"] != "8.1.3" {
+		t.Fatalf("server = %#v", server)
+	}
+	info := output["info"].(map[string]any)
+	serverSection := info["Server"].(map[string]string)
+	if serverSection["server_name"] != "valkey" || serverSection["valkey_version"] != "8.1.3" {
+		t.Fatalf("info = %#v", info)
+	}
+	if !strings.Contains(result.DisplayText, "server_name:valkey") {
+		t.Fatalf("display text = %q", result.DisplayText)
+	}
+}
+
+func TestValkeyCompatibleKeyActions(t *testing.T) {
+	t.Run("read string", func(t *testing.T) {
+		runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+			switch command[0] {
+			case "TYPE":
+				return "+string\r\n"
+			case "PTTL":
+				return ":60000\r\n"
+			case "GET":
+				return respBulk(`{"ok":true}`)
+			default:
+				t.Fatalf("unexpected command = %#v", command)
+				return ""
+			}
+		})
+		result, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+			ActionName: ActionGetKey,
+			Payload:    map[string]any{"key": "app:status", "limit": 10, "max_bytes": 1024},
+		})
+		if err != nil {
+			t.Fatalf("get key: %v", err)
+		}
+		output := result.Output.(map[string]any)
+		if output["type"] != "string" || output["value"] != `{"ok":true}` || output["ttl_ms"] != int64(60000) {
+			t.Fatalf("output = %#v", output)
+		}
+	})
+
+	t.Run("set string", func(t *testing.T) {
+		runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+			want := []string{"SET", "app:status", "ready", "EX", "60"}
+			if !reflect.DeepEqual(command, want) {
+				t.Fatalf("command = %#v, want %#v", command, want)
+			}
+			return "+OK\r\n"
+		})
+		result, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+			ActionName: ActionSetString,
+			Payload:    map[string]any{"key": "app:status", "value": "ready", "ttl_seconds": 60},
+		})
+		if err != nil {
+			t.Fatalf("set string: %v", err)
+		}
+		if result.Status != connectors.ResultCompleted {
+			t.Fatalf("result = %#v", result)
+		}
+	})
+
+	t.Run("update ttl", func(t *testing.T) {
+		runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+			want := []string{"EXPIRE", "app:status", "60"}
+			if !reflect.DeepEqual(command, want) {
+				t.Fatalf("command = %#v, want %#v", command, want)
+			}
+			return ":1\r\n"
+		})
+		result, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+			ActionName: ActionExpireKey,
+			Payload:    map[string]any{"key": "app:status", "ttl_seconds": 60},
+		})
+		if err != nil {
+			t.Fatalf("expire key: %v", err)
+		}
+		if result.Output.(map[string]any)["changed"] != true {
+			t.Fatalf("result = %#v", result)
+		}
+	})
+
+	t.Run("delete keys", func(t *testing.T) {
+		runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+			want := []string{"DEL", "app:one", "app:two"}
+			if !reflect.DeepEqual(command, want) {
+				t.Fatalf("command = %#v, want %#v", command, want)
+			}
+			return ":2\r\n"
+		})
+		result, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+			ActionName: ActionDeleteKeys,
+			Payload:    map[string]any{"keys": []any{"app:one", "app:two"}},
+		})
+		if err != nil {
+			t.Fatalf("delete keys: %v", err)
+		}
+		if result.Output.(map[string]any)["deleted"] != int64(2) {
+			t.Fatalf("result = %#v", result)
+		}
+	})
+}
+
 func testRuntimeWithScript(t *testing.T, handler func(*testing.T, []string) string) connectors.RuntimeContext {
 	t.Helper()
 	return connectors.RuntimeContext{
@@ -89,9 +428,12 @@ func testRuntimeWithScript(t *testing.T, handler func(*testing.T, []string) stri
 	}
 }
 
-type testSecrets struct{}
+type testSecrets map[string]string
 
-func (testSecrets) GetSecret(context.Context, string) (string, error) {
+func (secrets testSecrets) GetSecret(_ context.Context, name string) (string, error) {
+	if value, ok := secrets[name]; ok {
+		return value, nil
+	}
 	return "", fmt.Errorf("missing")
 }
 
@@ -133,4 +475,8 @@ func (transport scriptedTransport) DialConnectorTCP(context.Context, connectors.
 		}
 	}()
 	return client, nil
+}
+
+func respBulk(value string) string {
+	return fmt.Sprintf("$%d\r\n%s\r\n", len(value), value)
 }
