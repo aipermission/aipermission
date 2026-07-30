@@ -8,12 +8,15 @@ import { Checkbox, Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost } from "../../../lib/api";
+import { serverProductLabel, validateStringWrite } from "./model";
 
 const defaultPattern = "*";
 const defaultLimit = 100;
+const emptyConfirmDialog = Object.freeze({ open: false, type: "", title: "", description: "", details: [], tone: "warn", pending: false, error: "", onConfirm: null });
 
 export function RedisConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
   const activeSession = session || { active: false, startedAt: "" };
+  const product = serverProductLabel(target);
   const [pattern, setPattern] = useState(defaultPattern);
   const [cursor, setCursor] = useState("0");
   const [keys, setKeys] = useState([]);
@@ -26,7 +29,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   const [ttlDraft, setTTLDraft] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const [resultMode, setResultMode] = useState("value");
-  const [confirmDialog, setConfirmDialog] = useState({ open: false, type: "", title: "", description: "", details: [], tone: "warn", pending: false, onConfirm: null });
+  const [confirmDialog, setConfirmDialog] = useState(emptyConfirmDialog);
   const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
   const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
   const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
@@ -69,7 +72,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
       await onRefreshActivity?.();
       return item;
     } catch (error) {
-      setState({ state: "error", error: error.message || "Redis action failed.", message: "" });
+      setState({ state: "idle", error: error.message || `${product} action failed.`, message: "" });
       throw error;
     }
   }
@@ -81,7 +84,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
     const item = await runRedisAction({
       actionName: "scan_keys",
       input: { pattern: effectivePattern, cursor: startCursor, limit: defaultLimit },
-      reason: "manual Redis browser key scan",
+      reason: `manual ${product} browser key scan`,
       busy: "scanning",
     });
     const output = item.output || {};
@@ -107,7 +110,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
     const item = await runRedisAction({
       actionName: "get_key",
       input: { key, limit: 250, max_bytes: 262144 },
-      reason: "manual Redis browser key read",
+      reason: `manual ${product} browser key read`,
       busy: "reading",
     });
     const output = item.output || {};
@@ -119,13 +122,17 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   async function saveStringValue(event) {
     event?.preventDefault?.();
     const key = activeKey || newKey.trim();
-    if (!key) return;
     const value = activeKey ? valueDraft : newValue;
+    const validationError = validateStringWrite({ key, value });
+    if (validationError) {
+      setState({ state: "idle", error: validationError, message: "" });
+      return;
+    }
     const ttlSeconds = Number(ttlDraft) > 0 ? Number(ttlDraft) : 0;
     openConfirmDialog({
       type: "save-string",
-      title: activeKey ? "Save Redis string" : "Create Redis string key",
-      description: activeKey ? "This will overwrite the selected key as a Redis string." : "This will create a Redis string key.",
+      title: activeKey ? `Save ${product} string` : `Create ${product} string key`,
+      description: activeKey ? `This will overwrite the selected key as a ${product} string.` : `This will create a ${product} string key.`,
       tone: "warn",
       details: [
         { label: "Key", value: key },
@@ -135,7 +142,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
         await runRedisAction({
           actionName: "set_string",
           input: { key, value, ttl_seconds: ttlSeconds },
-          reason: "manual Redis browser string write",
+          reason: `manual ${product} browser string write`,
           busy: "writing",
         });
         setNewKey("");
@@ -152,7 +159,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
     const normalizedTTL = Number.isFinite(ttlSeconds) ? ttlSeconds : -1;
     openConfirmDialog({
       type: "ttl",
-      title: normalizedTTL < 0 ? "Persist Redis key" : "Update Redis TTL",
+      title: normalizedTTL < 0 ? `Persist ${product} key` : `Update ${product} TTL`,
       description: normalizedTTL < 0 ? "This removes the expiration from the selected key." : "This changes when the selected key expires.",
       tone: "warn",
       details: [
@@ -163,7 +170,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
         await runRedisAction({
           actionName: "expire_key",
           input: { key: activeKey, ttl_seconds: normalizedTTL },
-          reason: "manual Redis browser TTL update",
+          reason: `manual ${product} browser TTL update`,
           busy: "writing",
         });
         await loadKey(activeKey);
@@ -176,15 +183,15 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
     if (keysToDelete.length === 0) return;
     openConfirmDialog({
       type: "delete",
-      title: `Delete ${keysToDelete.length} Redis key${keysToDelete.length === 1 ? "" : "s"}`,
-      description: "This permanently deletes the selected Redis key data.",
+      title: `Delete ${keysToDelete.length} ${product} key${keysToDelete.length === 1 ? "" : "s"}`,
+      description: `This permanently deletes the selected ${product} key data.`,
       tone: "bad",
       details: keysToDelete.slice(0, 8).map((key) => ({ label: "Key", value: key })).concat(keysToDelete.length > 8 ? [{ label: "More", value: `${keysToDelete.length - 8} additional key(s)` }] : []),
       onConfirm: async () => {
         await runRedisAction({
           actionName: "delete_keys",
           input: { keys: keysToDelete },
-          reason: "manual Redis browser key delete",
+          reason: `manual ${product} browser key delete`,
           busy: "deleting",
         });
         setKeys((current) => current.filter((key) => !keysToDelete.includes(key)));
@@ -199,7 +206,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   }
 
   function openConfirmDialog({ type, title, description, details, tone, onConfirm }) {
-    setConfirmDialog({ open: true, type, title, description, details, tone, pending: false, onConfirm });
+    setConfirmDialog({ open: true, type, title, description, details, tone, pending: false, error: "", onConfirm });
   }
 
   async function confirmPendingAction() {
@@ -207,9 +214,9 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
     setConfirmDialog((current) => ({ ...current, pending: true }));
     try {
       await confirmDialog.onConfirm();
-      setConfirmDialog({ open: false, type: "", title: "", description: "", details: [], tone: "warn", pending: false, onConfirm: null });
-    } catch {
-      setConfirmDialog((current) => ({ ...current, pending: false }));
+      setConfirmDialog(emptyConfirmDialog);
+    } catch (error) {
+      setConfirmDialog((current) => ({ ...current, pending: false, error: error.message || `${product} action failed.` }));
     }
   }
 
@@ -224,11 +231,11 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
           <div className="grid max-w-lg gap-4">
             <Database className={`mx-auto h-10 w-10 ${mutedClass}`} />
             <div>
-              <h3 className="text-lg font-semibold">No active Redis session</h3>
-              <p className={`mt-2 text-sm ${mutedClass}`}>Start a structured session to browse Redis keys through the connector approval, history, and audit pipeline.</p>
+              <h3 className="text-lg font-semibold">No active {product} session</h3>
+              <p className={`mt-2 text-sm ${mutedClass}`}>Start a structured session to browse {product} keys through the connector approval, history, and audit pipeline.</p>
             </div>
             <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
-              Start Redis session
+              Start {product} session
             </Button>
           </div>
         </div>
@@ -293,7 +300,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
                 <span className="truncate font-mono text-xs" title={key}>{key}</span>
               </button>
             ))}
-            {keys.length === 0 ? <Notice>{state.state === "scanning" ? "Scanning Redis keys..." : "No keys loaded. Scan to browse this database."}</Notice> : null}
+            {keys.length === 0 ? <Notice>{state.state === "scanning" ? `Scanning ${product} keys...` : "No keys loaded. Scan to browse this database."}</Notice> : null}
           </div>
           <div className={`flex items-center justify-between gap-2 border-t p-3 ${borderClass}`}>
             <Button type="button" variant="outline" className="h-8 px-3 text-xs" disabled={cursor === "0" || state.state !== "idle"} onClick={() => scanKeys({ reset: false })}>
@@ -310,7 +317,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
           <div className={`flex flex-wrap items-center justify-between gap-3 border-b p-3 ${borderClass} ${subtlePanelClass}`}>
             <div className="min-w-0">
               <p className="text-sm font-semibold">{activeKey || "New string key"}</p>
-              <p className={`truncate text-xs ${mutedClass}`}>{keyResult ? keyMetaText(keyResult) : creatingKey ? "Create a Redis string value." : "Select a key from the browser."}</p>
+              <p className={`truncate text-xs ${mutedClass}`}>{keyResult ? keyMetaText(keyResult) : creatingKey ? `Create a ${product} string value.` : "Select a key from the browser."}</p>
             </div>
             <div className="flex items-center gap-2">
               {keyResult?.type ? <Badge tone={keyResult.type === "none" ? "neutral" : "good"}>{keyResult.type}</Badge> : null}
@@ -339,7 +346,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
                   <Save className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <Button type="button" className="h-8 px-3 text-xs" disabled={state.state !== "idle" || !canSaveString} onClick={saveStringValue} title={editableString ? "Save Redis string value" : "This Redis type is read-only in the MVP"}>
+              <Button type="button" className="h-8 px-3 text-xs" disabled={state.state !== "idle" || !canSaveString} onClick={saveStringValue} title={editableString ? `Save ${product} string value` : `This ${product} type is read-only in the MVP`}>
                 {activeKey ? <Save className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                 {activeKey ? (editableString ? "Save string" : "Read only") : "Create key"}
               </Button>
@@ -355,7 +362,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
             )}
           </div>
           <div className={`grid gap-2 border-t p-3 ${borderClass}`}>
-            {keyResult && keyResult.type !== "string" && resultMode === "value" ? <Notice tone="warn">This Redis type is read-only in the MVP. TTL changes are still available from the toolbar.</Notice> : null}
+            {keyResult && keyResult.type !== "string" && resultMode === "value" ? <Notice tone="warn">This {product} type is read-only in the MVP. TTL changes are still available from the toolbar.</Notice> : null}
             {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
             {state.message ? <Notice tone="good">{state.message}</Notice> : null}
           </div>
@@ -363,12 +370,12 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
       </div>
 
       <RedisEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      <RedisConfirmDialog value={confirmDialog} theme={theme} onClose={() => setConfirmDialog({ open: false, type: "", title: "", description: "", details: [], tone: "warn", pending: false, onConfirm: null })} onConfirm={confirmPendingAction} />
+      <RedisConfirmDialog value={confirmDialog} theme={theme} product={product} onClose={() => setConfirmDialog(emptyConfirmDialog)} onConfirm={confirmPendingAction} />
     </div>
   );
 }
 
-function RedisConfirmDialog({ value, theme, onClose, onConfirm }) {
+function RedisConfirmDialog({ value, theme, product, onClose, onConfirm }) {
   const danger = value.tone === "bad";
   const noticeTone = danger ? "bad" : "warn";
   const detailClass = theme === "light" ? "bg-stone-50" : "bg-stone-900/70 text-stone-100";
@@ -386,7 +393,8 @@ function RedisConfirmDialog({ value, theme, onClose, onConfirm }) {
       bodyClassName={theme === "light" ? "" : "bg-[#252526]"}
     >
       <div className="grid gap-4">
-        <Notice tone={noticeTone}>{danger ? "This operation cannot be undone." : "Review the Redis write before continuing."}</Notice>
+        <Notice tone={noticeTone}>{danger ? "This operation cannot be undone." : `Review the ${product} write before continuing.`}</Notice>
+        {value.error ? <Notice tone="bad">{value.error}</Notice> : null}
         {value.details?.length ? (
           <div className={`max-h-56 overflow-auto rounded-md border border-stone-300 p-3 text-sm ${detailClass}`}>
             {value.details.map((item, index) => (
@@ -424,7 +432,7 @@ function RedisEndpointFooter({ target, borderClass, mutedClass }) {
   return (
     <div className={`flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-xs ${borderClass}`}>
       <span className={`truncate font-mono ${mutedClass}`}>{target.ref}</span>
-      <span className={`truncate ${mutedClass}`}>{target.config?.host}:{target.config?.port} db {target.config?.database || 0}</span>
+      <span className={`truncate ${mutedClass}`}>{serverProductLabel(target)} · {target.config?.host}:{target.config?.port} db {target.config?.database || 0}</span>
     </div>
   );
 }
