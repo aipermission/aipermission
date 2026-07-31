@@ -916,6 +916,7 @@ POST /api/backup/providers/{id}/enable
 POST /api/backup/providers/{id}/test
 GET  /api/backup/providers/{id}/records
 POST /api/backup/providers/{id}/upload
+POST /api/backup/providers/{id}/prune
 GET  /api/backup/providers/{id}/records/{record_id}/download
 POST /api/backup/providers/{id}/records/{record_id}/restore
 ```
@@ -932,7 +933,10 @@ database_password=DATABASE_PASSWORD
 
 The multipart field name must be `sqlite`. JSON/base64 database import is not supported; use multipart so the backend can stream the uploaded file to a temporary encrypted import path.
 
-Import can run while locked. The backend validates the uploaded database with the provided password, stores it as a named local database, and unlocks it. Import never overwrites an existing database file; colliding names are made unique or rejected instead of replacing data.
+Import can run while locked. The backend validates the uploaded database with
+the provided password, stores it as a named local database, and unlocks it.
+Import never overwrites an existing database file. A colliding normalized name
+is rejected so the operator can choose another name explicitly.
 
 Older `.aipbackup` JSON export/restore endpoints are no longer registered in the public REST surface. Use `.aipdb` download/import instead.
 
@@ -956,21 +960,30 @@ filename, size, checksum, source installation, and timestamps. The service
 receives the encrypted database bytes and its own bearer token, but never the
 database password.
 
+`POST /api/backup/providers/{id}/prune` accepts `{"keep_latest": 10}` with a
+bounded value from 1 to 1000. It permanently removes only older versions from
+the provider's current database stream, reconciles local backup metadata, and
+writes an audit event with the retention count and number deleted.
+
 `GET /api/backup/providers/{id}/records/{record_id}/download` downloads a
 previously uploaded encrypted `.aipdb` backup record from the provider after
 checking the stored size and checksum metadata.
 
 `POST /api/backup/providers/{id}/records/{record_id}/restore` downloads the
 remote encrypted `.aipdb`, verifies the size/checksum metadata, validates the
-provided database password, and imports it as a new local database. Restore
+provided database password, and imports it under the requested new local
+database name. Restore
 never overwrites the currently open database.
 
 `POST /api/backup/remote/list` and `POST /api/backup/remote/restore` are also
 available before a local database has been created or unlocked. They accept the
 service URL and token only for that request and never persist or return them.
 Restore re-lists the selected immutable version, verifies its size and SHA-256,
-then validates the SQLCipher password and schema before installing it as a new
-local database. Plain HTTP service URLs are rejected except on loopback.
+then validates the SQLCipher password and schema before installing it under the
+user-supplied local database name. Plain HTTP service URLs are rejected except
+on loopback. Remote stream ids come from the stable random workspace UUID stored
+inside each encrypted database, not from its potentially duplicated display
+name.
 
 ## Console Sessions
 

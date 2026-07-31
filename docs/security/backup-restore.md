@@ -56,48 +56,55 @@ POST /api/backup/import
 
 Plain SQLite files, JSON/base64 database payloads, and `.aipbackup` files are not imported by the current UI flow. New backups should use `.aipdb`, and imports should use `multipart/form-data`.
 
-## Remote Backup Provider Metadata
+## Self-Hosted Remote Backup
 
-Settings can store optional remote backup provider metadata. The first provider
-type is Google Drive, but the storage model is provider-based so future Dropbox,
-S3-compatible, or self-hosted storage providers can share the same local UI and
-record shape.
+Settings can store an optional AIPermission Backup service URL, public stream
+metadata, and an encrypted service token. New providers are disabled by default.
+Testing a provider verifies authentication and protocol compatibility without
+enabling uploads.
 
-Provider metadata lives inside the unlocked SQLCipher database. Provider secrets,
-when present, are encrypted with the local gateway vault and are never returned
-by list/detail API responses.
+Enabling a provider requires the current database password. AIPermission
+verifies that password locally and applies a stronger remote-backup policy:
+at least 18 characters, uppercase and lowercase letters, numbers, sufficient
+character diversity, and rejection of common, repeated, sequential,
+product-related, and database-name-derived patterns. The stronger gate matters
+because theft of an encrypted remote backup permits offline password guessing.
+Changing the password while remote backup remains active applies the same gate.
 
-Google Drive uses an explicit local UI authorization flow. The user supplies a
-Google OAuth client id and client secret for the provider, opens the Google
-verification URL, and confirms the device code. Create that OAuth client in
-Google Cloud Console as an OAuth client for TVs and limited-input devices, and
-enable Google Drive API on that Google Cloud project. AIPermission stores the
-client secret and resulting token payload only as encrypted provider secret; it
-does not expose either value to MCP or to provider list/detail responses.
+The service token is encrypted with the local gateway vault and is never
+returned by list/detail responses. Archiving a provider clears its encrypted
+secret locally. The provider service receives only its own bearer token,
+already-encrypted `.aipdb` bytes, and bounded backup metadata. It never receives
+the database password, gateway vault key, decrypted contents, MCP tokens,
+connector credentials, SSH keys, or permission rules.
 
-See the [Google Drive backup provider guide](../providers/google-drive.md) for
-step-by-step setup.
+`Upload backup` creates a temporary consistent SQLCipher snapshot and uploads it
+unchanged as a new immutable version. The stable random workspace UUID stored
+inside the encrypted database is used as the stream id, so two unrelated local
+databases with the same display name remain isolated. Local metadata records the
+remote version id, filename, size, checksum, source installation, and timestamps.
+Download and restore re-check remote metadata and verify the received size and SHA-256.
+Restore then validates the user-provided SQLCipher password and schema and
+installs a new local database without overwriting the current one.
 
-After Google Drive is connected, `Upload backup` creates a temporary SQLCipher
-snapshot of the unlocked database and uploads the encrypted `.aipdb` blob to the
-configured Drive folder. The local database password is never uploaded. A local
-backup record stores the provider file id, filename, size, checksum, source
-machine, and timestamps.
+First-run restore is available while no local database is unlocked. The service
+URL and token are accepted only for the list or restore request and are never
+persisted. The selected stream identity cannot be changed during restore, while
+the user may choose a distinct local display name for the restored copy.
 
-Remote backup records can be downloaded back as encrypted `.aipdb` files or
-restored as a new local database. Restore downloads the remote blob, verifies
-stored size/checksum metadata, validates the user-provided database password,
-and imports the backup under a new local database name. Restore never overwrites
-the currently open database.
+Prune is an authenticated, explicit, stream-scoped destructive operation. The
+operator chooses how many newest versions to retain, with a minimum of one.
+Metadata deletion is transactional and remote blob cleanup is durably queued so
+an interrupted cleanup resumes instead of exposing a partially pruned listing.
 
-This does not make AIPermission a remote gateway. A remote backup provider stores
-encrypted `.aipdb` blobs as-is. It does not receive MCP tokens, connector
-credentials, SSH keys, database passwords, or the ability to decrypt a database.
+This does not make AIPermission a remote gateway. The separate backup service is
+a passive encrypted-blob store with no command execution, connector access,
+accounts, team model, or control plane. Continuous two-way sync and background
+uploads are intentionally outside the current model; every operation remains an
+explicit local user action.
 
-Continuous two-way sync is intentionally not part of the current model. Remote
-backup provider actions are explicit user-initiated storage operations, and
-restore still requires the database password before a local database can be
-opened.
+See the [AIPermission Backup guide](../providers/aipermission-backup.md) for
+deployment and restore instructions.
 
 ## Security Notes
 
@@ -107,3 +114,7 @@ opened.
 - Import must fail with the wrong database password.
 - Private keys must not appear in API responses after import.
 - Backup requires an unlocked database.
+- Remote backup requires the stronger database-password policy before it can be
+  enabled.
+- First-run remote restore keeps service credentials transient and validates the
+  encrypted database locally before installation.

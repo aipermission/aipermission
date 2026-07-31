@@ -299,7 +299,8 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.19"/);
+  assert.match(releaseSource, /appVersion = "0\.2\.20"/);
+  assert.match(releaseSource, /Self-hosted encrypted backups/);
   assert.match(releaseSource, /Guarded Kafka writes/);
   assert.match(releaseSource, /Kafka \/ Redpanda read browser/);
   assert.match(releaseSource, /Redis \/ Valkey compatibility/);

@@ -1,6 +1,35 @@
-export const appVersion = "0.2.19";
+export const appVersion = "0.2.20";
 
 export const changelogEntries = [
+  {
+    version: "0.2.20",
+    label: "Self-hosted encrypted backups",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "AIPermission can upload immutable encrypted .aipdb snapshots to the separate self-hosted AIPermission Backup service and list, download, or restore explicit versions.",
+          "A new machine can connect transiently to the backup service and restore a selected database stream before any local database exists.",
+          "Old remote versions can be pruned explicitly while retaining a chosen number of newest immutable backups.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Google Drive OAuth backup runtime support was removed in favor of the smaller self-hosted protocol; existing Google provider secrets are cleared and archived during migration.",
+          "Remote providers start disabled and require an explicit connection test plus local database-password verification before uploads are enabled.",
+          "Restore names are editable, while shortened stable stream identities distinguish unrelated databases that share a display name.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Remote backup requires a stronger database password because encrypted files outside the local machine permit offline password guessing.",
+          "The backup service receives encrypted database bytes and its own bearer token, never the database password, vault key, decrypted content, MCP tokens, or connector credentials.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.19",
     label: "Guarded Kafka writes",
