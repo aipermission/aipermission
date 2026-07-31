@@ -60,6 +60,12 @@ type ServiceStream struct {
 	LatestBackup *ServiceBackup `json:"latest_backup,omitempty"`
 }
 
+type ServicePruneResult struct {
+	StreamID     string `json:"stream_id"`
+	KeepLatest   int    `json:"keep_latest"`
+	DeletedCount int    `json:"deleted_count"`
+}
+
 type servicePage[T any] struct {
 	Items      []T    `json:"items"`
 	NextCursor string `json:"next_cursor"`
@@ -166,6 +172,22 @@ func (c *ServiceClient) ListBackups(ctx context.Context, streamID string) ([]Ser
 		}
 	}
 	return items, nil
+}
+
+func (c *ServiceClient) PruneBackups(ctx context.Context, streamID string, keepLatest int) (ServicePruneResult, error) {
+	if !validServiceIdentifier(streamID) || keepLatest < 1 || keepLatest > 1000 {
+		return ServicePruneResult{}, ValidationError("backup stream id or retention count is invalid")
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var response ServicePruneResult
+	if err := c.doJSON(requestCtx, http.MethodPost, "/v1/streams/"+url.PathEscape(streamID)+"/prune", map[string]int{"keep_latest": keepLatest}, true, &response); err != nil {
+		return ServicePruneResult{}, err
+	}
+	if response.StreamID != streamID || response.KeepLatest != keepLatest || response.DeletedCount < 0 {
+		return ServicePruneResult{}, errors.New("backup service returned invalid prune metadata")
+	}
+	return response, nil
 }
 
 func listServicePages[T any](ctx context.Context, client *ServiceClient, endpoint string) ([]T, error) {

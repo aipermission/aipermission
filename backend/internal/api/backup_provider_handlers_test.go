@@ -95,6 +95,10 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), record.ProviderFileID) || !strings.Contains(list.Body.String(), `"remote_sync":true`) {
 		t.Fatalf("record sync failed: %d %s", list.Code, list.Body.String())
 	}
+	prune := performJSON(handler, http.MethodPost, providerPath(created.ID, "/prune"), "", pruneBackupProviderRequest{KeepLatest: 1})
+	if prune.Code != http.StatusOK || !strings.Contains(prune.Body.String(), `"keep_latest":1`) {
+		t.Fatalf("prune failed: %d %s", prune.Code, prune.Body.String())
+	}
 	download := performJSON(handler, http.MethodGet, providerPath(created.ID, "/records/"+strconv.FormatInt(record.ID, 10)+"/download"), "", nil)
 	if download.Code != http.StatusOK || download.Body.Len() != int(record.SizeBytes) {
 		t.Fatalf("download failed: %d bytes=%d body=%s", download.Code, download.Body.Len(), download.Body.String())
@@ -281,6 +285,8 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 				items = append(items, service.item)
 			}
 			json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": ""})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/prune"):
+			json.NewEncoder(w).Encode(backups.ServicePruneResult{StreamID: service.item.StreamID, KeepLatest: 1})
 		case r.Method == http.MethodGet && service.item.ID != "" && strings.HasSuffix(r.URL.Path, "/backups/"+service.item.ID):
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Header().Set("Content-Disposition", `attachment; filename="test-database.aipdb"`)

@@ -460,6 +460,66 @@ func (s *Store) GetRecord(ctx context.Context, providerID int64, id int64) (Reco
 	return item, nil
 }
 
+func (s *Store) MarkMissingProviderRecordsDeleted(ctx context.Context, providerID int64, presentProviderFileIDs []string) error {
+	if providerID < 1 {
+		return ValidationError("provider_id is required")
+	}
+	present := make(map[string]struct{}, len(presentProviderFileIDs))
+	for _, id := range presentProviderFileIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return ValidationError("provider_file_id is required")
+		}
+		present[id] = struct{}{}
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT provider_file_id
+		FROM backup_records
+		WHERE provider_id = ? AND deleted_at IS NULL`, providerID)
+	if err != nil {
+		return fmt.Errorf("list provider records for reconciliation: %w", err)
+	}
+	var missing []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan provider record for reconciliation: %w", err)
+		}
+		if _, ok := present[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("iterate provider records for reconciliation: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close provider records for reconciliation: %w", err)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin provider record reconciliation: %w", err)
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, id := range missing {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE backup_records
+			SET deleted_at = ?, updated_at = ?
+			WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, now, now, providerID, id); err != nil {
+			return fmt.Errorf("mark missing provider record deleted: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit provider record reconciliation: %w", err)
+	}
+	return nil
+}
+
 func SupportedProviderType(providerType string) bool {
 	switch normalizeProviderType(providerType) {
 	case ServiceProviderType:

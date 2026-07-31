@@ -54,6 +54,8 @@ export function SettingsPage() {
   const [backupUploadTarget, setBackupUploadTarget] = useState(null);
   const [backupRecordsProvider, setBackupRecordsProvider] = useState(null);
   const [backupRecords, setBackupRecords] = useState({ state: "idle", data: [], error: null });
+  const [backupPruneTarget, setBackupPruneTarget] = useState(null);
+  const [backupPruneKeepLatest, setBackupPruneKeepLatest] = useState("10");
   const [restoreRecordTarget, setRestoreRecordTarget] = useState(null);
   const [restoreRecordForm, setRestoreRecordForm] = useState({ database_name: "", database_password: "" });
   const [backupProviderForm, setBackupProviderForm] = useState({
@@ -127,6 +129,7 @@ export function SettingsPage() {
   const databaseName = database.data?.database_name || "Unknown";
   const newPasswordValid = isValidDatabasePassword(passwordForm.new_password);
   const selectedLabel = labels.data.find((label) => String(label.id) === String(selectedLabelID));
+  const parsedBackupPruneKeepLatest = parseBackupKeepLatest(backupPruneKeepLatest);
 
   async function downloadDatabase() {
     await runBackupAction({
@@ -295,7 +298,8 @@ export function SettingsPage() {
   }
 
   function closeBackupRecordsDialog() {
-    if (backupProviderState.state?.startsWith("restoring-")) return;
+    if (backupProviderState.state?.startsWith("restoring-") || backupProviderState.state === "pruning") return;
+    setBackupPruneTarget(null);
     setBackupRecordsProvider(null);
     setBackupRecords({ state: "idle", data: [], error: null });
   }
@@ -303,6 +307,36 @@ export function SettingsPage() {
   async function refreshBackupRecords() {
     if (!backupRecordsProvider) return;
     await openBackupRecordsDialog(backupRecordsProvider);
+  }
+
+  function requestPruneBackupRecords() {
+    if (!backupRecordsProvider) return;
+    setBackupPruneTarget(backupRecordsProvider);
+    setBackupPruneKeepLatest("10");
+  }
+
+  function closePruneBackupRecordsDialog() {
+    if (backupProviderState.state === "pruning") return;
+    setBackupPruneTarget(null);
+  }
+
+  async function pruneBackupRecords(event) {
+    event.preventDefault();
+    const provider = backupPruneTarget;
+    const keepLatest = parseBackupKeepLatest(backupPruneKeepLatest);
+    if (!provider || keepLatest === null) return;
+    const result = await runBackupProviderAction({
+      pending: "pruning",
+      successMessage: (response) =>
+        response.deleted_count > 0
+          ? `Deleted ${response.deleted_count} old backup version${response.deleted_count === 1 ? "" : "s"}.`
+          : `No backups were older than the latest ${response.keep_latest}.`,
+      action: () => apiPost(`/api/backup/providers/${provider.id}/prune`, { keep_latest: keepLatest }),
+    });
+    if (result !== undefined) {
+      setBackupPruneTarget(null);
+      await openBackupRecordsDialog(provider);
+    }
   }
 
   async function downloadBackupRecord(record) {
@@ -1082,7 +1116,7 @@ export function SettingsPage() {
         title="Remote backup records"
         description={backupRecordsProvider ? `Backups uploaded through ${backupRecordsProvider.name}.` : "Remote backup records."}
         onClose={closeBackupRecordsDialog}
-        closeDisabled={backupProviderState.state?.startsWith("restoring-")}
+        closeDisabled={backupProviderState.state?.startsWith("restoring-") || backupProviderState.state === "pruning"}
         closeOnOverlay={false}
         size="wide"
         className="!max-w-4xl"
@@ -1095,10 +1129,22 @@ export function SettingsPage() {
             <p className="text-sm text-stone-500">
               {backupRecords.state === "ready" ? `${backupRecords.data.length} backup${backupRecords.data.length === 1 ? "" : "s"}` : "Loading backups..."}
             </p>
-            <Button type="button" variant="outline" className="h-9 px-3 text-xs" onClick={refreshBackupRecords} disabled={backupRecords.state === "loading"}>
-              <RotateCcw className="h-4 w-4" />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 px-3 text-xs"
+                onClick={requestPruneBackupRecords}
+                disabled={backupRecords.state !== "ready" || backupRecords.data.length === 0}
+              >
+                <Trash2 className="h-4 w-4" />
+                Prune
+              </Button>
+              <Button type="button" variant="outline" className="h-9 px-3 text-xs" onClick={refreshBackupRecords} disabled={backupRecords.state === "loading"}>
+                <RotateCcw className="h-4 w-4" />
+                Refresh
+              </Button>
+            </div>
           </div>
           {backupRecords.state === "error" ? <Notice tone="bad">{backupRecords.error}</Notice> : null}
           {backupProviderState.message ? <Notice tone="good">{backupProviderState.message}</Notice> : null}
@@ -1147,6 +1193,56 @@ export function SettingsPage() {
             )}
           </div>
         </div>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(backupPruneTarget)}
+        title="Prune old backup versions"
+        description={backupPruneTarget ? `Keep only the newest versions uploaded through ${backupPruneTarget.name}.` : "Prune old backup versions."}
+        onClose={closePruneBackupRecordsDialog}
+        closeDisabled={backupProviderState.state === "pruning"}
+        closeOnOverlay={false}
+        size="md"
+      >
+        <form className="grid gap-4" onSubmit={pruneBackupRecords}>
+          <Notice tone="warn">
+            Older remote versions will be permanently deleted from the self-hosted backup service. The newest versions are never removed by this action.
+          </Notice>
+          <Field>
+            Versions to keep
+            <Input
+              type="number"
+              min="1"
+              max="1000"
+              step="1"
+              value={backupPruneKeepLatest}
+              onChange={(event) => setBackupPruneKeepLatest(event.target.value)}
+              required
+            />
+          </Field>
+          <p className="text-xs text-stone-500">
+            {backupRecords.data.length > 0
+              ? `${Math.max(0, backupRecords.data.length - (parsedBackupPruneKeepLatest || 0))} of the ${backupRecords.data.length} currently listed backups would be deleted.`
+              : "No remote versions are currently listed."}
+          </p>
+          {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={closePruneBackupRecordsDialog} disabled={backupProviderState.state === "pruning"}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={
+                backupProviderState.state === "pruning" ||
+                parsedBackupPruneKeepLatest === null
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+              {backupProviderState.state === "pruning" ? "Pruning..." : "Prune old versions"}
+            </Button>
+          </div>
+        </form>
       </Dialog>
 
       <Dialog
@@ -1388,4 +1484,11 @@ function suggestedRestoreDatabaseName(record) {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return `${base || "restored-backup"}-restore`;
+}
+
+function parseBackupKeepLatest(value) {
+  const text = String(value || "").trim();
+  if (!/^\d+$/.test(text)) return null;
+  const parsed = Number(text);
+  return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 1000 ? parsed : null;
 }

@@ -102,6 +102,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/test", backup.testProvider)
 	s.mux.HandleFunc("GET /api/backup/providers/{id}/records", backup.listProviderRecords)
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/upload", backup.uploadProviderBackup)
+	s.mux.HandleFunc("POST /api/backup/providers/{id}/prune", backup.pruneProviderBackups)
 	s.mux.HandleFunc("GET /api/backup/providers/{id}/records/{record_id}/download", backup.downloadProviderRecord)
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/{record_id}/restore", backup.restoreProviderRecord)
 	s.mux.HandleFunc("POST /api/databases/rename", databases.renameDatabase)

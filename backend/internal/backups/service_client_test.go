@@ -77,6 +77,8 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 			w.Header().Set("X-AIPermission-SHA256", hex.EncodeToString(digest[:]))
 			w.Header().Set("Content-Disposition", `attachment; filename="project-a.aipdb"`)
 			w.Write(payload)
+		case r.URL.Path == "/v1/streams/stream-a/prune" && r.Method == http.MethodPost:
+			json.NewEncoder(w).Encode(ServicePruneResult{StreamID: "stream-a", KeepLatest: 2, DeletedCount: 3})
 		case r.URL.Path == "/redirect":
 			http.Redirect(w, r, serverURLForRedirect(r), http.StatusFound)
 		default:
@@ -102,6 +104,10 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 	created, err := client.Upload(context.Background(), "stream-a", "Project A", "install-a", input)
 	if err != nil || created.ID != "bkp_123" {
 		t.Fatalf("upload: item=%#v err=%v", created, err)
+	}
+	pruned, err := client.PruneBackups(context.Background(), "stream-a", 2)
+	if err != nil || pruned.DeletedCount != 3 {
+		t.Fatalf("prune: item=%#v err=%v", pruned, err)
 	}
 	output := filepath.Join(t.TempDir(), "output.aipdb")
 	downloaded, err := client.Download(context.Background(), "stream-a", "bkp_123", output, 1024)
