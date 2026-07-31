@@ -517,6 +517,9 @@ test("Settings and unlock expose the self-hosted encrypted backup flow", () => {
   assert.match(unlockSource, /\/api\/backup\/remote\/list/);
   assert.match(unlockSource, /\/api\/backup\/remote\/restore/);
   assert.match(unlockSource, /not saved in browser storage/i);
+  assert.match(unlockSource, /<optgroup/);
+  assert.match(unlockSource, /formatLocalTimestamp/);
+  assert.match(unlockSource, /Source:/);
   assert.match(shellSource, /\/api\/backup\/freshness/);
   assert.match(shellSource, /A newer encrypted backup is available/);
   assert.match(shellSource, /Backup freshness could not be checked/);

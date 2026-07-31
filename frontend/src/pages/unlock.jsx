@@ -7,7 +7,7 @@ import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
 import { appVersion } from "../lib/release";
-import { formatRelativeAge } from "../lib/date-time";
+import { formatLocalTimestamp, formatRelativeAge } from "../lib/date-time";
 import { formatBytes } from "../lib/file-transfer-utils";
 
 export function UnlockPage({ status, onUnlocked }) {
@@ -498,6 +498,8 @@ function RemoteRestorePanel({ onUnlocked }) {
   }
 
   const selectedStream = streams.find((stream) => stream.id === selectedStreamID);
+  const selectedVersion = versions.find((version) => version.id === selectedBackupID);
+  const versionGroups = groupBackupVersions(versions);
 
   return (
     <div className="grid gap-4">
@@ -564,14 +566,26 @@ function RemoteRestorePanel({ onUnlocked }) {
                 disabled={state.state === "loading_versions" || state.state === "restoring" || versions.length === 0}
               >
                 {versions.length === 0 ? <option value="">No backups available</option> : null}
-                {versions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {formatRelativeAge(version.created_at)} · {formatBytes(version.size_bytes)}
-                  </option>
+                {versionGroups.map((group) => (
+                  <optgroup key={group.source} label={`Source ${shortBackupSourceID(group.source)}`}>
+                    {group.items.map((version) => (
+                      <option key={version.id} value={version.id}>
+                        {formatRelativeAge(version.created_at)} · {formatLocalTimestamp(version.created_at)} · {formatBytes(version.size_bytes)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
           </div>
+          {selectedVersion ? (
+            <div className="grid gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600 sm:grid-cols-2">
+              <span className="truncate"><strong className="text-stone-900">File:</strong> {selectedVersion.filename}</span>
+              <span><strong className="text-stone-900">Created:</strong> {formatLocalTimestamp(selectedVersion.created_at)}</span>
+              <span className="truncate"><strong className="text-stone-900">Source:</strong> {shortBackupSourceID(selectedVersion.source_installation_id)}</span>
+              <span><strong className="text-stone-900">Size:</strong> {formatBytes(selectedVersion.size_bytes)}</span>
+            </div>
+          ) : null}
           {selectedStream ? (
             <div className="grid gap-2">
               <label className="text-sm font-semibold text-stone-800">New local database name</label>
@@ -610,6 +624,21 @@ function RemoteRestorePanel({ onUnlocked }) {
 function shortBackupStreamID(value) {
   const text = String(value || "");
   return text.length > 12 ? `${text.slice(0, 8)}...${text.slice(-4)}` : text;
+}
+
+function shortBackupSourceID(value) {
+  const text = String(value || "unknown installation");
+  return text.length > 18 ? `${text.slice(0, 10)}...${text.slice(-6)}` : text;
+}
+
+function groupBackupVersions(versions) {
+  const groups = new Map();
+  for (const version of versions) {
+    const source = version.source_installation_id || "unknown installation";
+    if (!groups.has(source)) groups.set(source, []);
+    groups.get(source).push(version);
+  }
+  return [...groups.entries()].map(([source, items]) => ({ source, items }));
 }
 
 function isMigrationRequiredError(error) {
