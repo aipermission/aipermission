@@ -196,10 +196,14 @@ Implemented:
 - first-run database password setup and unlock screen
 - local browser session cookie for the web REST API after unlock
 - encrypted database download/import (`.aipdb`)
-- remote encrypted-backup providers, with Google Drive as the first provider type
-  for encrypted `.aipdb` upload, download, and restore-as-new-local-database
-  after local user consent.
-  See the [Google Drive backup provider guide](docs/providers/google-drive.md).
+- a self-hosted encrypted-backup service for explicit immutable `.aipdb`
+  uploads, version listing, bounded prune, download, and first-run restore
+  without giving the service a database password or decrypted content.
+  The recommended topology shares that passive backup service between the
+  owner's trusted computers over a private local network. Cross-network access
+  should stay behind a VPN or private overlay network with HTTPS; do not expose
+  the raw backup port directly to the public internet.
+  See the [AIPermission Backup guide](docs/providers/aipermission-backup.md).
 - first-connect SSH host fingerprint approval with later `known_hosts` verification
 
 Out of scope for the current MVP:
@@ -231,7 +235,7 @@ To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
 `v`:
 
 ```bash
-AIPERMISSION_VERSION=0.2.19 docker compose -f docker-compose.release.yml up -d
+AIPERMISSION_VERSION=0.2.20 docker compose -f docker-compose.release.yml up -d
 ```
 
 On Windows, clone the repository with Git's default text handling or make sure

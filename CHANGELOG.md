@@ -7,6 +7,40 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-07-31
+
+### Added
+
+- Added the provider-neutral AIPermission Backup protocol client for immutable
+  encrypted `.aipdb` upload, version listing, download, and restore.
+- Added first-run remote restore so a new machine can select a database stream
+  and immutable backup version before any local database exists.
+- Added explicit stream pruning that retains a chosen number of newest
+  immutable versions and permanently removes only older versions.
+- Added a separate self-hosted backup service with bounded authenticated APIs,
+  atomic blob storage, checksums, non-root container hardening, and no gateway
+  or connector execution surface.
+
+### Changed
+
+- Replaced Google Drive OAuth backup runtime support with the self-hosted
+  AIPermission Backup provider. Existing Google provider secrets are cleared
+  and their records archived during database migration.
+- New remote providers start disabled and require an explicit protocol test and
+  database-password verification before uploads are enabled.
+- Restore now accepts an editable local database name and shows shortened
+  stable stream identities so same-named databases remain distinguishable.
+
+### Security
+
+- Remote backup requires a stronger database password because possession of an
+  encrypted remote file enables offline password guessing.
+- The backup service receives encrypted database bytes and its own bearer
+  token, never the database password, gateway vault key, decrypted contents,
+  MCP tokens, connector credentials, SSH keys, or permission rules.
+- First-run service URL, token, and database password remain transient request
+  values and are not persisted in browser storage or a local provider record.
+
 ## [0.2.19] - 2026-07-31
 
 ### Added
