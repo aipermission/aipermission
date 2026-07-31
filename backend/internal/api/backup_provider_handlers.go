@@ -37,6 +37,10 @@ type restoreBackupRecordRequest struct {
 	DatabasePassword string `json:"database_password"`
 }
 
+type pruneBackupProviderRequest struct {
+	KeepLatest int `json:"keep_latest"`
+}
+
 type backupProviderCatalogItem struct {
 	ProviderType string   `json:"provider_type"`
 	Label        string   `json:"label"`
@@ -80,7 +84,7 @@ func (s backupHandlers) providerCatalog(w http.ResponseWriter, _ *http.Request) 
 			ProviderType: backups.ServiceProviderType,
 			Label:        "AIPermission Backup",
 			Status:       "available",
-			Capabilities: []string{"encrypted_database_upload", "immutable_versions", "first_run_restore", "self_hosted"},
+			Capabilities: []string{"encrypted_database_upload", "immutable_versions", "prune_versions", "first_run_restore", "self_hosted"},
 		}},
 	})
 }
@@ -413,6 +417,37 @@ func (s backupHandlers) uploadProviderBackup(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusCreated, backupRecordToResponse(record))
 }
 
+func (s backupHandlers) pruneProviderBackups(w http.ResponseWriter, r *http.Request) {
+	runtime, provider, client, ok := s.activeBackupServiceProvider(w, r)
+	if !ok {
+		return
+	}
+	var request pruneBackupProviderRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	if request.KeepLatest < 1 || request.KeepLatest > 1000 {
+		writeError(w, http.StatusBadRequest, "keep_latest must be between 1 and 1000")
+		return
+	}
+	result, err := client.PruneBackups(r.Context(), stringFromMap(provider.Public, "stream_id"), request.KeepLatest)
+	if err != nil {
+		handleBackupServiceError(w, err)
+		return
+	}
+	store := backups.NewStore(runtime.database)
+	if err := syncBackupServiceRecords(r.Context(), runtime, store, provider); err != nil {
+		handleBackupServiceError(w, err)
+		return
+	}
+	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.pruned", map[string]any{
+		"provider_id": provider.ID, "provider_type": provider.ProviderType,
+		"stream_id": result.StreamID, "keep_latest": result.KeepLatest, "deleted_count": result.DeletedCount,
+	})
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s backupHandlers) downloadProviderRecord(w http.ResponseWriter, r *http.Request) {
 	runtime, provider, record, client, ok := s.resolveBackupServiceRecord(w, r)
 	if !ok {
@@ -608,10 +643,15 @@ func syncBackupServiceRecords(ctx context.Context, runtime *databaseRuntime, sto
 	if err != nil {
 		return err
 	}
+	presentIDs := make([]string, 0, len(items))
 	for _, item := range items {
 		if _, err := upsertServiceBackupRecord(ctx, runtime, store, provider, item); err != nil {
 			return err
 		}
+		presentIDs = append(presentIDs, item.ID)
+	}
+	if err := store.MarkMissingProviderRecordsDeleted(ctx, provider.ID, presentIDs); err != nil {
+		return err
 	}
 	return store.UpdateLastChecked(ctx, provider.ID, time.Now())
 }

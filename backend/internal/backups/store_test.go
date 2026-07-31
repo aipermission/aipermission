@@ -94,6 +94,35 @@ func TestUpsertRecordKeepsOneLocalRecordPerRemoteVersion(t *testing.T) {
 	}
 }
 
+func TestMarkMissingProviderRecordsDeletedReconcilesRemotePrune(t *testing.T) {
+	database := openStoreDatabase(t)
+	store := backups.NewStore(database)
+	provider, err := store.CreateProvider(context.Background(), backups.CreateProviderRequest{
+		ProviderType: backups.ServiceProviderType,
+		Name:         "Self-hosted backups",
+		Encrypted:    "encrypted-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"bkp_keep", "bkp_remove"} {
+		if _, err := store.UpsertRecord(context.Background(), backups.CreateRecordRequest{
+			ProviderID: provider.ID, DatabaseID: "database-a", DatabaseName: "Database A",
+			ProviderFileID: id, Filename: id + ".aipdb", SizeBytes: 100,
+			BackupCreatedAt: "2026-07-31T10:00:00Z", UploadedAt: "2026-07-31T10:00:00Z",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.MarkMissingProviderRecordsDeleted(context.Background(), provider.ID, []string{"bkp_keep"}); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.ListRecords(context.Background(), backups.ListRecordsFilter{ProviderID: provider.ID})
+	if err != nil || len(records) != 1 || records[0].ProviderFileID != "bkp_keep" {
+		t.Fatalf("unexpected reconciled records: %#v err=%v", records, err)
+	}
+}
+
 func openStoreDatabase(t *testing.T) *sql.DB {
 	t.Helper()
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "store.aipdb"), "StrongDatabasePassword123")
