@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -80,6 +81,21 @@ type backupRecordResponse struct {
 	DeletedAt       *string        `json:"deleted_at,omitempty"`
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
+}
+
+type backupFreshnessResponse struct {
+	ProviderID         int64  `json:"provider_id"`
+	ProviderName       string `json:"provider_name"`
+	RemoteNewer        bool   `json:"remote_newer"`
+	LatestRemoteID     string `json:"latest_remote_id,omitempty"`
+	LatestRemoteAt     string `json:"latest_remote_at,omitempty"`
+	LatestRemoteSource string `json:"latest_remote_source,omitempty"`
+	LatestKnownID      string `json:"latest_known_id,omitempty"`
+	LatestKnownAt      string `json:"latest_known_at,omitempty"`
+}
+
+type backupSyncResult struct {
+	Freshness backupFreshnessResponse
 }
 
 func (s backupHandlers) providerCatalog(w http.ResponseWriter, _ *http.Request) {
@@ -371,8 +387,9 @@ func (s backupHandlers) listProviderRecords(w http.ResponseWriter, r *http.Reque
 		handleBackupProviderError(w, err)
 		return
 	}
+	var syncResult backupSyncResult
 	if provider.Status == "active" {
-		if err := syncBackupServiceRecords(r.Context(), runtime, store, provider); err != nil {
+		if syncResult, err = syncBackupServiceRecords(r.Context(), runtime, store, provider); err != nil {
 			handleBackupServiceError(w, err)
 			return
 		}
@@ -386,7 +403,36 @@ func (s backupHandlers) listProviderRecords(w http.ResponseWriter, r *http.Reque
 	for _, item := range records {
 		responses = append(responses, backupRecordToResponse(item))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": responses, "remote_sync": provider.Status == "active"})
+	writeJSON(w, http.StatusOK, map[string]any{"items": responses, "remote_sync": provider.Status == "active", "freshness": syncResult.Freshness})
+}
+
+func (s backupHandlers) backupFreshness(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	store := backups.NewStore(runtime.database)
+	providers, err := store.ListProviders(r.Context())
+	if err != nil {
+		handleBackupProviderError(w, err)
+		return
+	}
+	warnings := make([]backupFreshnessResponse, 0)
+	checkErrors := make([]map[string]any, 0)
+	for _, provider := range providers {
+		if provider.Status != "active" || provider.ProviderType != backups.ServiceProviderType {
+			continue
+		}
+		result, syncErr := syncBackupServiceRecords(r.Context(), runtime, store, provider)
+		if syncErr != nil {
+			checkErrors = append(checkErrors, map[string]any{"provider_id": provider.ID, "provider_name": provider.Name})
+			continue
+		}
+		if result.Freshness.RemoteNewer {
+			warnings = append(warnings, result.Freshness)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": warnings, "check_errors": checkErrors})
 }
 
 func (s backupHandlers) uploadProviderBackup(w http.ResponseWriter, r *http.Request) {
@@ -411,6 +457,10 @@ func (s backupHandlers) uploadProviderBackup(w http.ResponseWriter, r *http.Requ
 	}
 	record, err := upsertServiceBackupRecord(r.Context(), runtime, backups.NewStore(runtime.database), provider, backup)
 	if err != nil {
+		handleBackupProviderError(w, err)
+		return
+	}
+	if err := backups.WriteServiceBaseline(r.Context(), runtime.database, stringFromMap(provider.Public, "base_url"), streamID, backup); err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
@@ -441,7 +491,7 @@ func (s backupHandlers) pruneProviderBackups(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	store := backups.NewStore(runtime.database)
-	if err := syncBackupServiceRecords(r.Context(), runtime, store, provider); err != nil {
+	if _, err := syncBackupServiceRecords(r.Context(), runtime, store, provider); err != nil {
 		handleBackupServiceError(w, err)
 		return
 	}
@@ -548,7 +598,11 @@ func (s backupHandlers) restoreProviderRecord(w http.ResponseWriter, r *http.Req
 		"provider_id": provider.ID, "record_id": record.ID, "filename": record.Filename,
 		"database_name": strings.TrimSpace(request.DatabaseName), "source_machine": record.SourceMachine,
 	})
-	s.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, copyBackupFile(tmpPath))
+	s.installImportedDatabaseWithMutator(w, r, request.DatabaseName, request.DatabasePassword, copyBackupFile(tmpPath), func(database *sql.DB) error {
+		return backups.WriteServiceBaseline(r.Context(), database, stringFromMap(provider.Public, "base_url"), stringFromMap(provider.Public, "stream_id"), backups.ServiceBackup{
+			ID: record.ProviderFileID, CreatedAt: record.BackupCreatedAt,
+		})
+	})
 }
 
 func (s backupHandlers) activeBackupServiceProvider(w http.ResponseWriter, r *http.Request) (*databaseRuntime, backups.Provider, *backups.ServiceClient, bool) {
@@ -693,26 +747,64 @@ func backupRecordToResponse(item backups.Record) backupRecordResponse {
 	}
 }
 
-func syncBackupServiceRecords(ctx context.Context, runtime *databaseRuntime, store *backups.Store, provider backups.Provider) error {
+func syncBackupServiceRecords(ctx context.Context, runtime *databaseRuntime, store *backups.Store, provider backups.Provider) (backupSyncResult, error) {
+	baseURL := stringFromMap(provider.Public, "base_url")
+	streamID := stringFromMap(provider.Public, "stream_id")
+	baseline, err := backups.ReadServiceBaseline(ctx, runtime.database, baseURL, streamID)
+	if err != nil {
+		return backupSyncResult{}, err
+	}
 	client, err := backupServiceClient(runtime, provider)
 	if err != nil {
-		return err
+		return backupSyncResult{}, err
 	}
-	items, err := client.ListBackups(ctx, stringFromMap(provider.Public, "stream_id"))
+	items, err := client.ListBackups(ctx, streamID)
 	if err != nil {
-		return err
+		return backupSyncResult{}, err
+	}
+	result := backupSyncResult{Freshness: backupFreshnessResponse{ProviderID: provider.ID, ProviderName: provider.Name}}
+	if baseline != nil {
+		result.Freshness.LatestKnownID = baseline.BackupID
+		result.Freshness.LatestKnownAt = baseline.CreatedAt
+	}
+	if len(items) > 0 {
+		result.Freshness.LatestRemoteID = items[0].ID
+		result.Freshness.LatestRemoteAt = items[0].CreatedAt
+		result.Freshness.LatestRemoteSource = items[0].SourceInstallationID
+		result.Freshness.RemoteNewer = remoteBackupIsNewer(items[0], baseline)
 	}
 	presentIDs := make([]string, 0, len(items))
 	for _, item := range items {
 		if _, err := upsertServiceBackupRecord(ctx, runtime, store, provider, item); err != nil {
-			return err
+			return backupSyncResult{}, err
 		}
 		presentIDs = append(presentIDs, item.ID)
 	}
 	if err := store.MarkMissingProviderRecordsDeleted(ctx, provider.ID, presentIDs); err != nil {
-		return err
+		return backupSyncResult{}, err
 	}
-	return store.UpdateLastChecked(ctx, provider.ID, time.Now())
+	if err := store.UpdateLastChecked(ctx, provider.ID, time.Now()); err != nil {
+		return backupSyncResult{}, err
+	}
+	return result, nil
+}
+
+func remoteBackupIsNewer(remote backups.ServiceBackup, baseline *backups.ServiceBaseline) bool {
+	if remote.ID == "" {
+		return false
+	}
+	if baseline == nil {
+		return true
+	}
+	if remote.ID == baseline.BackupID {
+		return false
+	}
+	remoteAt, remoteErr := time.Parse(time.RFC3339Nano, remote.CreatedAt)
+	knownAt, knownErr := time.Parse(time.RFC3339Nano, baseline.CreatedAt)
+	if remoteErr != nil || knownErr != nil {
+		return false
+	}
+	return !remoteAt.Before(knownAt)
 }
 
 func upsertServiceBackupRecord(ctx context.Context, runtime *databaseRuntime, store *backups.Store, provider backups.Provider, item backups.ServiceBackup) (backups.Record, error) {

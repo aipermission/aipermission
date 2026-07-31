@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Outlet, useLocation } from "react-router";
+import { Link, Outlet, useLocation } from "react-router";
 import { apiGet, apiPost, apiPut, apiUrl } from "../lib/api";
 import { AppSidebar } from "./app-sidebar";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
@@ -12,6 +12,7 @@ import { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog"
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
 import { reconcileVaultApprovalDialog } from "../lib/vault-approval-poll";
+import { formatRelativeAge } from "../lib/date-time";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
   function toggleTheme() {
@@ -28,6 +29,7 @@ export function Shell({ theme, setTheme }) {
   const [fileTransferBatches, setFileTransferBatches] = useState({ state: "loading", data: [], error: null });
   const [databaseStatus, setDatabaseStatus] = useState({ state: "loading", data: null, error: null });
   const [mcpRuntime, setMCPRuntime] = useState({ state: "loading", data: { enabled: false, start_enabled: false }, error: null });
+  const [backupFreshness, setBackupFreshness] = useState({ state: "loading", data: [], checkErrors: [], error: null });
   const [switchDialog, setSwitchDialog] = useState({ open: false, database_id: "", password: "", state: "idle", error: null });
   const [lockDialog, setLockDialog] = useState({ open: false, state: "idle", error: null });
   const [transferCenterOpen, setTransferCenterOpen] = useState(false);
@@ -148,6 +150,15 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
+  async function loadBackupFreshness() {
+    try {
+      const data = await apiGet("/api/backup/freshness");
+      setBackupFreshness({ state: "ready", data: data?.items || [], checkErrors: data?.check_errors || [], error: null });
+    } catch (error) {
+      setBackupFreshness({ state: "error", data: [], checkErrors: [], error: error.message });
+    }
+  }
+
   async function loadFileTransferBatches(options = {}) {
     try {
       const data = await apiGet("/api/file-transfer-batches?limit=30");
@@ -193,6 +204,10 @@ export function Shell({ theme, setTheme }) {
       clearInterval(timer);
     };
   }, [location.pathname]);
+
+  useEffect(() => {
+    void loadBackupFreshness();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -650,6 +665,40 @@ export function Shell({ theme, setTheme }) {
 
       <section className="lg:pl-72">
         <div className={`mx-auto grid gap-6 p-5 ${location.pathname === "/console" ? "max-w-none" : "max-w-7xl"}`}>
+          {backupFreshness.data.length > 0 ? (
+            <Notice tone="warn" className="flex flex-wrap items-center justify-between gap-3">
+              <span>
+                A newer encrypted backup is available
+                {backupFreshness.data.length === 1
+                  ? ` from ${formatRelativeAge(backupFreshness.data[0].latest_remote_at)}`
+                  : ` in ${backupFreshness.data.length} providers`}
+                . This local database may be stale.
+              </span>
+              <span className="flex items-center gap-3">
+                <Link className="font-semibold underline underline-offset-2" to="/settings">Review backups</Link>
+                <button type="button" className="font-semibold text-stone-600 hover:text-stone-950" onClick={() => setBackupFreshness((current) => ({ ...current, data: [] }))}>
+                  Dismiss
+                </button>
+              </span>
+            </Notice>
+          ) : null}
+          {backupFreshness.checkErrors.length > 0 || backupFreshness.error ? (
+            <Notice tone="warn" className="flex flex-wrap items-center justify-between gap-3">
+              <span>
+                Backup freshness could not be checked
+                {backupFreshness.checkErrors.length > 0
+                  ? ` for ${backupFreshness.checkErrors.length} provider${backupFreshness.checkErrors.length === 1 ? "" : "s"}`
+                  : ""}
+                . Review the provider connection before relying on the local copy.
+              </span>
+              <span className="flex items-center gap-3">
+                <Link className="font-semibold underline underline-offset-2" to="/settings">Review backups</Link>
+                <button type="button" className="font-semibold text-stone-600 hover:text-stone-950" onClick={() => setBackupFreshness((current) => ({ ...current, checkErrors: [], error: null }))}>
+                  Dismiss
+                </button>
+              </span>
+            </Notice>
+          ) : null}
           <Outlet
             context={{
               status,
