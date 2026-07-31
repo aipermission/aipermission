@@ -967,6 +967,12 @@ bounded value from 1 to 1000. It permanently removes only older versions from
 the provider's current database stream, reconciles local backup metadata, and
 writes an audit event with the retention count and number deleted.
 
+`POST /api/backup/providers/{id}/records/delete` accepts 1 to 100 unique local
+backup record ids. AIPermission resolves them to immutable remote version ids,
+verifies that every record belongs to the provider's current stream, and asks
+the backup service to delete that exact set. The service refuses to delete the
+final recovery version in a stream.
+
 `GET /api/backup/freshness` checks active self-hosted backup providers once and
 returns remote streams whose latest immutable version is newer than the version
 last uploaded or restored by the open local database. Remote metadata sync does
