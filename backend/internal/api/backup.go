@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"errors"
 	"io"
 	"net/http"
@@ -112,6 +113,10 @@ func (s backupHandlers) importDatabaseMultipart(w http.ResponseWriter, r *http.R
 }
 
 func (s backupHandlers) installImportedDatabase(w http.ResponseWriter, r *http.Request, databaseName string, databasePassword string, writeTemp func(string) error) {
+	s.installImportedDatabaseWithMutator(w, r, databaseName, databasePassword, writeTemp, nil)
+}
+
+func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter, r *http.Request, databaseName string, databasePassword string, writeTemp func(string) error, mutate func(*sql.DB) error) {
 	databaseName = strings.TrimSpace(databaseName)
 	if databaseName == "" {
 		writeError(w, http.StatusBadRequest, "database name is required")
@@ -166,6 +171,14 @@ func (s backupHandlers) installImportedDatabase(w http.ResponseWriter, r *http.R
 		_ = os.Remove(tmpPath)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if mutate != nil {
+		if err := mutate(testDB); err != nil {
+			_ = testDB.Close()
+			_ = os.Remove(tmpPath)
+			writeInternalError(w)
+			return
+		}
 	}
 	_ = testDB.Close()
 

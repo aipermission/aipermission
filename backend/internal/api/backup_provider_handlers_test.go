@@ -91,6 +91,14 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if record.ProviderFileID == "" || record.ChecksumSHA256 == "" || record.SizeBytes < 1 {
 		t.Fatalf("upload metadata incomplete: %#v", record)
 	}
+	provider, err := backups.NewStore(fixture.db).GetProvider(context.Background(), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := backups.ReadServiceBaseline(context.Background(), fixture.db, remote.server.URL, stringFromMap(provider.Public, "stream_id"))
+	if err != nil || baseline == nil || baseline.BackupID != record.ProviderFileID {
+		t.Fatalf("upload did not advance the encrypted local baseline: %#v err=%v", baseline, err)
+	}
 
 	list := performJSON(handler, http.MethodGet, providerPath(created.ID, "/records"), "", nil)
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), record.ProviderFileID) || !strings.Contains(list.Body.String(), `"remote_sync":true`) {
@@ -118,7 +126,10 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 		t.Fatal("selected delete performed a second remote request after the confirmed deletion")
 	}
 	list = performJSON(handler, http.MethodGet, providerPath(created.ID, "/records"), "", nil)
-	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), record.ProviderFileID) {
+	listed := decodeRouteResponse[struct {
+		Items []backupRecordResponse `json:"items"`
+	}](t, list.Body.Bytes())
+	if list.Code != http.StatusOK || len(listed.Items) != 0 {
 		t.Fatalf("deleted record was not reconciled: %d %s", list.Code, list.Body.String())
 	}
 
@@ -144,6 +155,25 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	}
 	if encrypted != "" {
 		t.Fatal("archived provider retained its encrypted token")
+	}
+}
+
+func TestRemoteBackupFreshnessUsesKnownVersionAndTimestamp(t *testing.T) {
+	remote := backups.ServiceBackup{ID: "bkp_new", CreatedAt: "2026-07-31T12:00:00Z"}
+	if !remoteBackupIsNewer(remote, nil) {
+		t.Fatal("a remote version without a local baseline should be reported")
+	}
+	baseline := &backups.ServiceBaseline{BackupID: "bkp_old", CreatedAt: "2026-07-31T11:00:00Z"}
+	if !remoteBackupIsNewer(remote, baseline) {
+		t.Fatal("newer remote version was not reported")
+	}
+	baseline = &backups.ServiceBaseline{BackupID: "bkp_new", CreatedAt: "2026-07-31T12:00:00Z"}
+	if remoteBackupIsNewer(remote, baseline) {
+		t.Fatal("the known remote version should not be reported as newer")
+	}
+	baseline = &backups.ServiceBaseline{BackupID: "bkp_future", CreatedAt: "2026-07-31T13:00:00Z"}
+	if remoteBackupIsNewer(remote, baseline) {
+		t.Fatal("an older remote version should not be reported as newer")
 	}
 }
 
@@ -236,6 +266,10 @@ func TestFirstRunRemoteRestoreKeepsCredentialsTransient(t *testing.T) {
 	if providerCount != 0 {
 		t.Fatal("first-run credentials were persisted as a provider")
 	}
+	baseline, err := backups.ReadServiceBaseline(context.Background(), server.activeRuntime().database, remote.server.URL, "workspace-restore")
+	if err != nil || baseline == nil || baseline.BackupID != "bkp_restore" {
+		t.Fatalf("restored database did not retain its remote baseline: %#v err=%v", baseline, err)
+	}
 }
 
 func newBackupAPITestFixture(t *testing.T, password string) backupAPITestFixture {
@@ -307,10 +341,11 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/prune"):
 			json.NewEncoder(w).Encode(backups.ServicePruneResult{StreamID: service.item.StreamID, KeepLatest: 1})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/backups/delete"):
+			streamID := service.item.StreamID
 			deletedID := service.item.ID
 			service.item = backups.ServiceBackup{}
 			service.data = nil
-			json.NewEncoder(w).Encode(backups.ServiceDeleteResult{StreamID: "stream-a", DeletedIDs: []string{deletedID}, DeletedCount: 1})
+			json.NewEncoder(w).Encode(backups.ServiceDeleteResult{StreamID: streamID, DeletedIDs: []string{deletedID}, DeletedCount: 1})
 		case r.Method == http.MethodGet && service.item.ID != "" && strings.HasSuffix(r.URL.Path, "/backups/"+service.item.ID):
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Header().Set("Content-Disposition", `attachment; filename="test-database.aipdb"`)

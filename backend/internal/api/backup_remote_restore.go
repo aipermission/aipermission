@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -122,7 +123,9 @@ func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *h
 		writeError(w, http.StatusBadGateway, "remote backup metadata changed while restoring; refresh versions and try again")
 		return
 	}
-	s.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, copyBackupFile(tmpPath))
+	s.installImportedDatabaseWithMutator(w, r, request.DatabaseName, request.DatabasePassword, copyBackupFile(tmpPath), func(database *sql.DB) error {
+		return backups.WriteServiceBaseline(r.Context(), database, request.BaseURL, stream.ID, version)
+	})
 }
 
 func findTransientRemoteBackup(r *http.Request, client *backups.ServiceClient, streamID, backupID string) (backups.ServiceStream, backups.ServiceBackup, error) {

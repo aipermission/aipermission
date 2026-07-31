@@ -95,6 +95,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/backup/remote/restore", backup.restoreTransientRemoteBackup)
 	s.mux.HandleFunc("GET /api/backup/providers/catalog", backup.providerCatalog)
 	s.mux.HandleFunc("GET /api/backup/providers", backup.listProviders)
+	s.mux.HandleFunc("GET /api/backup/freshness", backup.backupFreshness)
 	s.mux.HandleFunc("POST /api/backup/providers", backup.createProvider)
 	s.mux.HandleFunc("PUT /api/backup/providers/{id}", backup.updateProvider)
 	s.mux.HandleFunc("DELETE /api/backup/providers/{id}", backup.deleteProvider)

@@ -914,9 +914,11 @@ PUT  /api/backup/providers/{id}
 DELETE /api/backup/providers/{id}
 POST /api/backup/providers/{id}/enable
 POST /api/backup/providers/{id}/test
+GET  /api/backup/freshness
 GET  /api/backup/providers/{id}/records
 POST /api/backup/providers/{id}/upload
 POST /api/backup/providers/{id}/prune
+POST /api/backup/providers/{id}/records/delete
 GET  /api/backup/providers/{id}/records/{record_id}/download
 POST /api/backup/providers/{id}/records/{record_id}/restore
 ```
@@ -965,6 +967,13 @@ bounded value from 1 to 1000. It permanently removes only older versions from
 the provider's current database stream, reconciles local backup metadata, and
 writes an audit event with the retention count and number deleted.
 
+`GET /api/backup/freshness` checks active self-hosted backup providers once and
+returns remote streams whose latest immutable version is newer than the version
+last uploaded or restored by the open local database. Remote metadata sync does
+not advance this encrypted local baseline. Provider check failures are isolated
+in `check_errors` so one unavailable backup service does not hide warnings from
+other providers.
+
 `GET /api/backup/providers/{id}/records/{record_id}/download` downloads a
 previously uploaded encrypted `.aipdb` backup record from the provider after
 checking the stored size and checksum metadata.
@@ -972,8 +981,9 @@ checking the stored size and checksum metadata.
 `POST /api/backup/providers/{id}/records/{record_id}/restore` downloads the
 remote encrypted `.aipdb`, verifies the size/checksum metadata, validates the
 provided database password, and imports it under the requested new local
-database name. Restore
-never overwrites the currently open database.
+database name. Restore records the selected immutable remote version inside the
+restored encrypted database so later unlocks can detect newer remote backups.
+Restore never overwrites the currently open database.
 
 `POST /api/backup/remote/list` and `POST /api/backup/remote/restore` are also
 available before a local database has been created or unlocked. They accept the
