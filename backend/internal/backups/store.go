@@ -52,6 +52,7 @@ type Record struct {
 type CreateProviderRequest struct {
 	ProviderType string
 	Name         string
+	Status       string
 	Public       map[string]any
 	Encrypted    string
 }
@@ -131,13 +132,21 @@ func (s *Store) CreateProvider(ctx context.Context, request CreateProviderReques
 		return Provider{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	status := strings.TrimSpace(request.Status)
+	if status == "" {
+		status = "disabled"
+	}
+	if status != "active" && status != "disabled" {
+		return Provider{}, ValidationError("backup provider status must be active or disabled")
+	}
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO backup_providers (
 			provider_type, name, status, public_json, encrypted_secret_json, created_at, updated_at
 		)
-		VALUES (?, ?, 'active', ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		providerType,
 		name,
+		status,
 		publicJSON,
 		request.Encrypted,
 		now,
@@ -228,7 +237,7 @@ func (s *Store) UpdateProvider(ctx context.Context, id int64, request UpdateProv
 func (s *Store) ArchiveProvider(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE backup_providers
-		SET status = 'archived', updated_at = ?
+		SET status = 'archived', encrypted_secret_json = '', updated_at = ?
 		WHERE id = ? AND status != 'archived'`, time.Now().UTC().Format(time.RFC3339), id)
 	if err != nil {
 		return fmt.Errorf("archive backup provider: %w", err)
@@ -241,6 +250,29 @@ func (s *Store) ArchiveProvider(ctx context.Context, id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) HasActiveProvider(ctx context.Context) (bool, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM backup_providers
+		WHERE provider_type = ? AND status = 'active'`, ServiceProviderType).Scan(&count); err != nil {
+		return false, fmt.Errorf("count active backup providers: %w", err)
+	}
+	return count > 0, nil
+}
+
+func (s *Store) UpdateLastChecked(ctx context.Context, id int64, checkedAt time.Time) error {
+	value := checkedAt.UTC().Format(time.RFC3339)
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE backup_providers
+		SET last_checked_at = ?, updated_at = ?
+		WHERE id = ? AND status != 'archived'`, value, value, id)
+	if err != nil {
+		return fmt.Errorf("update backup provider check time: %w", err)
+	}
+	return requireAffectedProviderRow(result)
 }
 
 func requireAffectedProviderRow(result sql.Result) error {
@@ -295,6 +327,14 @@ func (s *Store) ListRecords(ctx context.Context, filter ListRecordsFilter) ([]Re
 }
 
 func (s *Store) CreateRecord(ctx context.Context, request CreateRecordRequest) (Record, error) {
+	return s.writeRecord(ctx, request, false)
+}
+
+func (s *Store) UpsertRecord(ctx context.Context, request CreateRecordRequest) (Record, error) {
+	return s.writeRecord(ctx, request, true)
+}
+
+func (s *Store) writeRecord(ctx context.Context, request CreateRecordRequest, upsert bool) (Record, error) {
 	if request.ProviderID < 1 {
 		return Record{}, ValidationError("provider_id is required")
 	}
@@ -327,13 +367,29 @@ func (s *Store) CreateRecord(ctx context.Context, request CreateRecordRequest) (
 		return Record{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(ctx, `
+	statement := `
 		INSERT INTO backup_records (
 			provider_id, database_id, database_name, provider_file_id, filename,
 			source_machine, size_bytes, checksum_sha256, backup_created_at, uploaded_at,
 			metadata_json, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if upsert {
+		statement += `
+		ON CONFLICT(provider_id, provider_file_id) DO UPDATE SET
+			database_id = excluded.database_id,
+			database_name = excluded.database_name,
+			filename = excluded.filename,
+			source_machine = excluded.source_machine,
+			size_bytes = excluded.size_bytes,
+			checksum_sha256 = excluded.checksum_sha256,
+			backup_created_at = excluded.backup_created_at,
+			uploaded_at = excluded.uploaded_at,
+			metadata_json = excluded.metadata_json,
+			deleted_at = NULL,
+			updated_at = excluded.updated_at`
+	}
+	result, err := s.db.ExecContext(ctx, statement,
 		request.ProviderID,
 		databaseID,
 		databaseName,
@@ -354,11 +410,31 @@ func (s *Store) CreateRecord(ctx context.Context, request CreateRecordRequest) (
 		}
 		return Record{}, fmt.Errorf("create backup record: %w", err)
 	}
+	if upsert {
+		return s.getRecordByProviderFileID(ctx, request.ProviderID, providerFileID)
+	}
 	id, err := result.LastInsertId()
 	if err != nil {
 		return Record{}, fmt.Errorf("read backup record id: %w", err)
 	}
 	return s.GetRecord(ctx, request.ProviderID, id)
+}
+
+func (s *Store) getRecordByProviderFileID(ctx context.Context, providerID int64, providerFileID string) (Record, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, provider_id, database_id, database_name, provider_file_id, filename,
+			source_machine, size_bytes, checksum_sha256, backup_created_at, uploaded_at,
+			metadata_json, deleted_at, created_at, updated_at
+		FROM backup_records
+		WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, providerID, providerFileID)
+	item, err := scanRecord(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Record{}, ErrRecordNotFound
+	}
+	if err != nil {
+		return Record{}, fmt.Errorf("get backup record by provider file: %w", err)
+	}
+	return item, nil
 }
 
 func (s *Store) GetRecord(ctx context.Context, providerID int64, id int64) (Record, error) {
@@ -386,7 +462,7 @@ func (s *Store) GetRecord(ctx context.Context, providerID int64, id int64) (Reco
 
 func SupportedProviderType(providerType string) bool {
 	switch normalizeProviderType(providerType) {
-	case "google_drive":
+	case ServiceProviderType:
 		return true
 	default:
 		return false

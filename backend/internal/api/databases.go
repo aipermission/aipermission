@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/backups"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 )
 
@@ -303,6 +304,18 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 	if runtime == nil || runtime.database == nil {
 		writeError(w, http.StatusLocked, "database is locked")
 		return
+	}
+	backupStore := backups.NewStore(runtime.database)
+	hasActiveRemoteBackup, err := backupStore.HasActiveProvider(r.Context())
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	if hasActiveRemoteBackup {
+		if err := validateRemoteBackupPassword(request.NewPassword, s.currentDatabaseNameLocked()); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	if err := dbpkg.ValidateEncrypted(runtime.path, request.CurrentPassword); err != nil {

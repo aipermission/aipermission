@@ -135,6 +135,7 @@ func (s backupHandlers) installImportedDatabase(w http.ResponseWriter, r *http.R
 		writeInternalError(w)
 		return
 	}
+	_ = os.Remove(tmpPath)
 	if err := writeTemp(tmpPath); err != nil {
 		_ = os.Remove(tmpPath)
 		writeInternalError(w)
