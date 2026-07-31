@@ -74,9 +74,12 @@ service. A provider can be disabled later without deleting its remote files.
 unchanged. Every remote version is immutable. **Backups** lists versions stored
 for the current database stream and lets the user download an encrypted file,
 restore it under an editable local database name, or explicitly prune versions
-older than the newest retained count. Restore re-lists the selected version,
-checks size and SHA-256 metadata, validates the SQLCipher password and schema,
-and never overwrites the currently open database.
+older than the newest retained count. Individual rows and checkbox selections
+can also delete exact historical versions. The service refuses any prune or
+delete operation that would remove the final recovery version in a stream.
+Restore re-lists the selected version, checks size and SHA-256 metadata,
+validates the SQLCipher password and schema, and never overwrites the currently
+open database.
 
 On a new machine with no local database:
 
@@ -84,7 +87,9 @@ On a new machine with no local database:
 2. Select **Restore Remote**.
 3. Enter the service URL and token.
 4. Select the database stream and immutable backup version. Streams with the
-   same display name remain distinguishable by their shortened stream id.
+   same display name remain distinguishable by their shortened stream id;
+   versions are grouped by source installation and show relative and exact
+   timestamps.
 5. Choose the new local database name.
 6. Enter that backup's database password and restore it.
 
@@ -101,13 +106,18 @@ machine should create future backups.
   storage operator has not replaced both a blob and its metadata.
 - Upload, download, and restore are explicit local user actions. There is no
   background sync in this release.
+- After unlock, AIPermission checks active providers once. If the latest remote
+  version is newer than the version last uploaded or restored by this encrypted
+  local database, the UI displays a stale-local-copy warning. Listing remote
+  metadata never advances that baseline.
 - Each database stores a stable random workspace UUID inside its encrypted
   database. That UUID is the remote stream identity, so unrelated databases
   named `Default` do not share versions. Restoring a backup preserves its UUID
   because it remains the same logical database lineage.
 - Prune is an explicit destructive action scoped to one stream. It always keeps
   at least the newest version and requires confirmation in the local UI.
+- Selected-version cleanup is also explicit, stream-scoped, limited to 100
+  unique versions per request, and confirmed in the local UI. Deleting the
+  final remaining version is rejected.
 - The service token grants access to encrypted backup blobs. Keep it outside
   source control and rotate it if exposed.
-- Individual version deletion and newer-remote-version warnings remain
-  follow-up work after the immutable MVP has been dogfooded.

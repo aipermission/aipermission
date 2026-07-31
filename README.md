@@ -197,7 +197,8 @@ Implemented:
 - local browser session cookie for the web REST API after unlock
 - encrypted database download/import (`.aipdb`)
 - a self-hosted encrypted-backup service for explicit immutable `.aipdb`
-  uploads, version listing, bounded prune, download, and first-run restore
+  uploads, version listing, selected-version cleanup, bounded prune, download,
+  first-run restore, and newer-remote-version warnings
   without giving the service a database password or decrypted content.
   The recommended topology shares that passive backup service between the
   owner's trusted computers over a private local network. Cross-network access
@@ -531,6 +532,15 @@ Changing the database password re-encrypts the current local database. Existing 
 The unlock screen can manage multiple named local databases. `New Database` creates a separate encrypted database for another project. Plain SQLite files are not supported as runtime databases or imports; AIPermission stores local state in SQLCipher-encrypted `.aipdb` databases.
 
 During one backend process, multiple named databases can stay unlocked. `Switch` changes the active UI database without closing already-unlocked workspaces, so MCP commands and persistent console sessions in another workspace can keep running.
+
+The optional self-hosted AIPermission Backup service stores immutable encrypted
+versions for the database's stable lineage id. Settings can download, restore,
+delete selected historical versions, or prune older versions while preserving a
+chosen newest count. The service always protects the final recovery version in
+a stream. After unlock, AIPermission checks active providers once and warns when
+the remote stream is newer than the version last uploaded or restored by this
+encrypted local database. See the
+[AIPermission Backup guide](docs/providers/aipermission-backup.md).
 
 If the same token exists in more than one unlocked database, MCP authentication returns a conflict instead of guessing which workspace to use. Revoke or rename/recreate duplicate token copies before using MCP.
 
