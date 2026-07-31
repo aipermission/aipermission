@@ -41,6 +41,10 @@ type pruneBackupProviderRequest struct {
 	KeepLatest int `json:"keep_latest"`
 }
 
+type deleteBackupRecordsRequest struct {
+	RecordIDs []int64 `json:"record_ids"`
+}
+
 type backupProviderCatalogItem struct {
 	ProviderType string   `json:"provider_type"`
 	Label        string   `json:"label"`
@@ -84,7 +88,7 @@ func (s backupHandlers) providerCatalog(w http.ResponseWriter, _ *http.Request) 
 			ProviderType: backups.ServiceProviderType,
 			Label:        "AIPermission Backup",
 			Status:       "available",
-			Capabilities: []string{"encrypted_database_upload", "immutable_versions", "prune_versions", "first_run_restore", "self_hosted"},
+			Capabilities: []string{"encrypted_database_upload", "immutable_versions", "prune_versions", "delete_versions", "first_run_restore", "self_hosted"},
 		}},
 	})
 }
@@ -444,6 +448,61 @@ func (s backupHandlers) pruneProviderBackups(w http.ResponseWriter, r *http.Requ
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.pruned", map[string]any{
 		"provider_id": provider.ID, "provider_type": provider.ProviderType,
 		"stream_id": result.StreamID, "keep_latest": result.KeepLatest, "deleted_count": result.DeletedCount,
+	})
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s backupHandlers) deleteProviderBackupRecords(w http.ResponseWriter, r *http.Request) {
+	runtime, provider, client, ok := s.activeBackupServiceProvider(w, r)
+	if !ok {
+		return
+	}
+	var request deleteBackupRecordsRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	if len(request.RecordIDs) < 1 || len(request.RecordIDs) > 100 {
+		writeError(w, http.StatusBadRequest, "record_ids must contain 1 to 100 backup record ids")
+		return
+	}
+	store := backups.NewStore(runtime.database)
+	seen := make(map[int64]struct{}, len(request.RecordIDs))
+	providerFileIDs := make([]string, 0, len(request.RecordIDs))
+	streamID := stringFromMap(provider.Public, "stream_id")
+	for _, recordID := range request.RecordIDs {
+		if recordID < 1 {
+			writeError(w, http.StatusBadRequest, "backup record ids must be positive")
+			return
+		}
+		if _, exists := seen[recordID]; exists {
+			writeError(w, http.StatusBadRequest, "backup record ids must be unique")
+			return
+		}
+		seen[recordID] = struct{}{}
+		record, err := store.GetRecord(r.Context(), provider.ID, recordID)
+		if err != nil {
+			handleBackupProviderError(w, err)
+			return
+		}
+		if stringFromMap(record.Metadata, "stream_id") != streamID {
+			writeError(w, http.StatusConflict, "backup record does not belong to the provider stream")
+			return
+		}
+		providerFileIDs = append(providerFileIDs, record.ProviderFileID)
+	}
+	result, err := client.DeleteBackups(r.Context(), streamID, providerFileIDs)
+	if err != nil {
+		handleBackupServiceError(w, err)
+		return
+	}
+	if err := store.MarkProviderRecordsDeleted(r.Context(), provider.ID, result.DeletedIDs); err != nil {
+		handleBackupProviderError(w, err)
+		return
+	}
+	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.records.deleted", map[string]any{
+		"provider_id": provider.ID, "provider_type": provider.ProviderType,
+		"stream_id": result.StreamID, "record_ids": request.RecordIDs, "deleted_count": result.DeletedCount,
 	})
 	writeJSON(w, http.StatusOK, result)
 }
