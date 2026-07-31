@@ -6,7 +6,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { CopyButton } from "../components/ui/copy-button";
 import { Dialog } from "../components/ui/dialog";
-import { Field, Input, Select } from "../components/ui/form";
+import { Checkbox, Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
 import { formatRelativeAge } from "../lib/date-time";
@@ -56,6 +56,8 @@ export function SettingsPage() {
   const [backupRecords, setBackupRecords] = useState({ state: "idle", data: [], error: null });
   const [backupPruneTarget, setBackupPruneTarget] = useState(null);
   const [backupPruneKeepLatest, setBackupPruneKeepLatest] = useState("10");
+  const [selectedBackupRecordIDs, setSelectedBackupRecordIDs] = useState([]);
+  const [backupDeleteRecords, setBackupDeleteRecords] = useState([]);
   const [restoreRecordTarget, setRestoreRecordTarget] = useState(null);
   const [restoreRecordForm, setRestoreRecordForm] = useState({ database_name: "", database_password: "" });
   const [backupProviderForm, setBackupProviderForm] = useState({
@@ -130,6 +132,7 @@ export function SettingsPage() {
   const newPasswordValid = isValidDatabasePassword(passwordForm.new_password);
   const selectedLabel = labels.data.find((label) => String(label.id) === String(selectedLabelID));
   const parsedBackupPruneKeepLatest = parseBackupKeepLatest(backupPruneKeepLatest);
+  const selectedBackupRecords = backupRecords.data.filter((record) => selectedBackupRecordIDs.includes(record.id));
 
   async function downloadDatabase() {
     await runBackupAction({
@@ -288,6 +291,7 @@ export function SettingsPage() {
 
   async function openBackupRecordsDialog(provider) {
     setBackupRecordsProvider(provider);
+    setSelectedBackupRecordIDs([]);
     setBackupRecords({ state: "loading", data: [], error: null });
     try {
       const data = await apiGet(`/api/backup/providers/${provider.id}/records`);
@@ -298,8 +302,10 @@ export function SettingsPage() {
   }
 
   function closeBackupRecordsDialog() {
-    if (backupProviderState.state?.startsWith("restoring-") || backupProviderState.state === "pruning") return;
+    if (backupProviderState.state?.startsWith("restoring-") || backupProviderState.state === "pruning" || backupProviderState.state === "deleting-records") return;
     setBackupPruneTarget(null);
+    setBackupDeleteRecords([]);
+    setSelectedBackupRecordIDs([]);
     setBackupRecordsProvider(null);
     setBackupRecords({ state: "idle", data: [], error: null });
   }
@@ -307,6 +313,48 @@ export function SettingsPage() {
   async function refreshBackupRecords() {
     if (!backupRecordsProvider) return;
     await openBackupRecordsDialog(backupRecordsProvider);
+  }
+
+  function toggleBackupRecordSelection(recordID) {
+    setSelectedBackupRecordIDs((current) => {
+      if (current.includes(recordID)) return current.filter((id) => id !== recordID);
+      if (current.length >= Math.max(0, backupRecords.data.length - 1)) return current;
+      return [...current, recordID];
+    });
+  }
+
+  function selectOlderBackupRecords() {
+    setSelectedBackupRecordIDs(backupRecords.data.slice(1, 101).map((record) => record.id));
+  }
+
+  function requestDeleteBackupRecords(records) {
+    if (!records.length || records.length >= backupRecords.data.length) return;
+    setBackupDeleteRecords(records);
+  }
+
+  function closeDeleteBackupRecordsDialog() {
+    if (backupProviderState.state === "deleting-records") return;
+    setBackupDeleteRecords([]);
+  }
+
+  async function deleteBackupRecords(event) {
+    event.preventDefault();
+    if (!backupRecordsProvider || !backupDeleteRecords.length) return;
+    const provider = backupRecordsProvider;
+    const result = await runBackupProviderAction({
+      pending: "deleting-records",
+      successMessage: (response) =>
+        `Deleted ${response.deleted_count} backup version${response.deleted_count === 1 ? "" : "s"}.`,
+      action: () =>
+        apiPost(`/api/backup/providers/${provider.id}/records/delete`, {
+          record_ids: backupDeleteRecords.map((record) => record.id),
+        }),
+    });
+    if (result !== undefined) {
+      setBackupDeleteRecords([]);
+      setSelectedBackupRecordIDs([]);
+      await openBackupRecordsDialog(provider);
+    }
   }
 
   function requestPruneBackupRecords() {
@@ -1116,7 +1164,7 @@ export function SettingsPage() {
         title="Remote backup records"
         description={backupRecordsProvider ? `Backups uploaded through ${backupRecordsProvider.name}.` : "Remote backup records."}
         onClose={closeBackupRecordsDialog}
-        closeDisabled={backupProviderState.state?.startsWith("restoring-") || backupProviderState.state === "pruning"}
+        closeDisabled={backupProviderState.state?.startsWith("restoring-") || backupProviderState.state === "pruning" || backupProviderState.state === "deleting-records"}
         closeOnOverlay={false}
         size="wide"
         className="!max-w-4xl"
@@ -1130,6 +1178,22 @@ export function SettingsPage() {
               {backupRecords.state === "ready" ? `${backupRecords.data.length} backup${backupRecords.data.length === 1 ? "" : "s"}` : "Loading backups..."}
             </p>
             <div className="flex items-center gap-2">
+              {selectedBackupRecordIDs.length > 0 ? (
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="h-9 px-3 text-xs"
+                  onClick={() => requestDeleteBackupRecords(selectedBackupRecords)}
+                  disabled={backupProviderState.state === "deleting-records"}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete selected ({selectedBackupRecordIDs.length})
+                </Button>
+              ) : backupRecords.data.length > 1 ? (
+                <Button type="button" variant="outline" className="h-9 px-3 text-xs" onClick={selectOlderBackupRecords}>
+                  Select older
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
@@ -1158,14 +1222,27 @@ export function SettingsPage() {
               <div className="divide-y divide-stone-200">
                 {backupRecords.data.map((record) => (
                   <div key={record.id} className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Checkbox
+                        checked={selectedBackupRecordIDs.includes(record.id)}
+                        onChange={() => toggleBackupRecordSelection(record.id)}
+                        disabled={
+                          backupRecords.data.length <= 1 ||
+                          (!selectedBackupRecordIDs.includes(record.id) && selectedBackupRecordIDs.length >= backupRecords.data.length - 1)
+                        }
+                        aria-label={`Select ${record.filename}`}
+                        className="mt-1 shrink-0"
+                      />
+                      <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-stone-950">{record.filename}</p>
                       <p className="mt-1 text-xs text-stone-500">
-                        {formatBytes(record.size_bytes)} · uploaded {formatTimestamp(record.uploaded_at)} · from {record.source_machine || "unknown machine"}
+                        {formatBytes(record.size_bytes)} · {formatRelativeAge(record.backup_created_at || record.uploaded_at)} · from {record.source_machine || "unknown machine"}
                       </p>
+                      <p className="mt-1 text-[11px] text-stone-400">{formatTimestamp(record.backup_created_at || record.uploaded_at)}</p>
                       <p className="mt-1 truncate font-mono text-[11px] text-stone-400">{record.checksum_sha256 || "no checksum"}</p>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 md:w-64">
+                    <div className="grid grid-cols-[1fr_1fr_auto] gap-2 md:w-72">
                       <Button
                         type="button"
                         variant="outline"
@@ -1186,6 +1263,16 @@ export function SettingsPage() {
                         <RotateCcw className="h-4 w-4 shrink-0" />
                         Restore
                       </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        className="h-9 w-9 px-0"
+                        onClick={() => requestDeleteBackupRecords([record])}
+                        disabled={backupRecords.data.length <= 1 || backupProviderState.state === "deleting-records"}
+                        title={backupRecords.data.length <= 1 ? "The last recovery version must remain" : "Delete backup version"}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -1193,6 +1280,48 @@ export function SettingsPage() {
             )}
           </div>
         </div>
+      </Dialog>
+
+      <Dialog
+        open={backupDeleteRecords.length > 0}
+        title={backupDeleteRecords.length === 1 ? "Delete backup version" : "Delete selected backup versions"}
+        description={
+          backupDeleteRecords.length === 1
+            ? "Permanently remove this encrypted remote version."
+            : `Permanently remove ${backupDeleteRecords.length} encrypted remote versions.`
+        }
+        onClose={closeDeleteBackupRecordsDialog}
+        closeDisabled={backupProviderState.state === "deleting-records"}
+        closeOnOverlay={false}
+        size="md"
+      >
+        <form className="grid gap-4" onSubmit={deleteBackupRecords}>
+          <Notice tone="warn">
+            This cannot be undone. AIPermission Backup will remove the selected immutable files and metadata. At least one recovery version always remains.
+          </Notice>
+          <div className="max-h-48 overflow-auto rounded-md border border-stone-200 bg-stone-50">
+            <div className="divide-y divide-stone-200">
+              {backupDeleteRecords.map((record) => (
+                <div key={record.id} className="px-3 py-2">
+                  <p className="truncate text-sm font-semibold text-stone-950">{record.filename}</p>
+                  <p className="mt-0.5 text-xs text-stone-500">
+                    {formatRelativeAge(record.backup_created_at || record.uploaded_at)} · {record.source_machine || "unknown machine"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+          {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={closeDeleteBackupRecordsDialog} disabled={backupProviderState.state === "deleting-records"}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="danger" disabled={backupProviderState.state === "deleting-records" || backupDeleteRecords.length === 0}>
+              <Trash2 className="h-4 w-4" />
+              {backupProviderState.state === "deleting-records" ? "Deleting..." : "Delete permanently"}
+            </Button>
+          </div>
+        </form>
       </Dialog>
 
       <Dialog
