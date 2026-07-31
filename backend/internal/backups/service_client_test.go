@@ -79,6 +79,8 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 			w.Write(payload)
 		case r.URL.Path == "/v1/streams/stream-a/prune" && r.Method == http.MethodPost:
 			json.NewEncoder(w).Encode(ServicePruneResult{StreamID: "stream-a", KeepLatest: 2, DeletedCount: 3})
+		case r.URL.Path == "/v1/streams/stream-a/backups/delete" && r.Method == http.MethodPost:
+			json.NewEncoder(w).Encode(ServiceDeleteResult{StreamID: "stream-a", DeletedIDs: []string{"bkp_123"}, DeletedCount: 1})
 		case r.URL.Path == "/redirect":
 			http.Redirect(w, r, serverURLForRedirect(r), http.StatusFound)
 		default:
@@ -108,6 +110,10 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 	pruned, err := client.PruneBackups(context.Background(), "stream-a", 2)
 	if err != nil || pruned.DeletedCount != 3 {
 		t.Fatalf("prune: item=%#v err=%v", pruned, err)
+	}
+	deleted, err := client.DeleteBackups(context.Background(), "stream-a", []string{"bkp_123"})
+	if err != nil || deleted.DeletedCount != 1 {
+		t.Fatalf("delete: item=%#v err=%v", deleted, err)
 	}
 	output := filepath.Join(t.TempDir(), "output.aipdb")
 	downloaded, err := client.Download(context.Background(), "stream-a", "bkp_123", output, 1024)

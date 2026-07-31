@@ -66,6 +66,12 @@ type ServicePruneResult struct {
 	DeletedCount int    `json:"deleted_count"`
 }
 
+type ServiceDeleteResult struct {
+	StreamID     string   `json:"stream_id"`
+	DeletedIDs   []string `json:"deleted_ids"`
+	DeletedCount int      `json:"deleted_count"`
+}
+
 type servicePage[T any] struct {
 	Items      []T    `json:"items"`
 	NextCursor string `json:"next_cursor"`
@@ -186,6 +192,43 @@ func (c *ServiceClient) PruneBackups(ctx context.Context, streamID string, keepL
 	}
 	if response.StreamID != streamID || response.KeepLatest != keepLatest || response.DeletedCount < 0 {
 		return ServicePruneResult{}, errors.New("backup service returned invalid prune metadata")
+	}
+	return response, nil
+}
+
+func (c *ServiceClient) DeleteBackups(ctx context.Context, streamID string, backupIDs []string) (ServiceDeleteResult, error) {
+	if !validServiceIdentifier(streamID) || len(backupIDs) < 1 || len(backupIDs) > 100 {
+		return ServiceDeleteResult{}, ValidationError("backup stream id or selected version ids are invalid")
+	}
+	seen := make(map[string]struct{}, len(backupIDs))
+	for _, id := range backupIDs {
+		if !validServiceIdentifier(id) {
+			return ServiceDeleteResult{}, ValidationError("selected backup version id is invalid")
+		}
+		if _, exists := seen[id]; exists {
+			return ServiceDeleteResult{}, ValidationError("selected backup version ids must be unique")
+		}
+		seen[id] = struct{}{}
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var response ServiceDeleteResult
+	payload := map[string][]string{"backup_ids": backupIDs}
+	if err := c.doJSON(requestCtx, http.MethodPost, "/v1/streams/"+url.PathEscape(streamID)+"/backups/delete", payload, true, &response); err != nil {
+		return ServiceDeleteResult{}, err
+	}
+	if response.StreamID != streamID || response.DeletedCount != len(backupIDs) || len(response.DeletedIDs) != len(backupIDs) {
+		return ServiceDeleteResult{}, errors.New("backup service returned invalid deletion metadata")
+	}
+	deleted := make(map[string]struct{}, len(response.DeletedIDs))
+	for _, id := range response.DeletedIDs {
+		if _, expected := seen[id]; !expected {
+			return ServiceDeleteResult{}, errors.New("backup service returned an unexpected deleted version id")
+		}
+		deleted[id] = struct{}{}
+	}
+	if len(deleted) != len(seen) {
+		return ServiceDeleteResult{}, errors.New("backup service returned duplicate deleted version ids")
 	}
 	return response, nil
 }

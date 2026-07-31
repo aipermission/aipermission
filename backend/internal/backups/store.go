@@ -520,6 +520,43 @@ func (s *Store) MarkMissingProviderRecordsDeleted(ctx context.Context, providerI
 	return nil
 }
 
+func (s *Store) MarkProviderRecordsDeleted(ctx context.Context, providerID int64, providerFileIDs []string) error {
+	if providerID < 1 || len(providerFileIDs) < 1 || len(providerFileIDs) > 100 {
+		return ValidationError("provider_id and 1 to 100 provider_file_ids are required")
+	}
+	seen := make(map[string]struct{}, len(providerFileIDs))
+	normalizedIDs := make([]string, 0, len(providerFileIDs))
+	for _, id := range providerFileIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return ValidationError("provider_file_id is required")
+		}
+		if _, exists := seen[id]; exists {
+			return ValidationError("provider_file_ids must be unique")
+		}
+		seen[id] = struct{}{}
+		normalizedIDs = append(normalizedIDs, id)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin provider record deletion: %w", err)
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, id := range normalizedIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE backup_records
+			SET deleted_at = ?, updated_at = ?
+			WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, now, now, providerID, id); err != nil {
+			return fmt.Errorf("mark provider record deleted: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit provider record deletion: %w", err)
+	}
+	return nil
+}
+
 func SupportedProviderType(providerType string) bool {
 	switch normalizeProviderType(providerType) {
 	case ServiceProviderType:

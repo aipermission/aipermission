@@ -33,10 +33,11 @@ type backupAPITestFixture struct {
 }
 
 type fakeBackupService struct {
-	server *httptest.Server
-	mu     sync.Mutex
-	item   backups.ServiceBackup
-	data   []byte
+	server    *httptest.Server
+	mu        sync.Mutex
+	item      backups.ServiceBackup
+	data      []byte
+	listCalls int
 }
 
 func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testing.T) {
@@ -102,6 +103,23 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	download := performJSON(handler, http.MethodGet, providerPath(created.ID, "/records/"+strconv.FormatInt(record.ID, 10)+"/download"), "", nil)
 	if download.Code != http.StatusOK || download.Body.Len() != int(record.SizeBytes) {
 		t.Fatalf("download failed: %d bytes=%d body=%s", download.Code, download.Body.Len(), download.Body.String())
+	}
+	remote.mu.Lock()
+	listCallsBeforeDelete := remote.listCalls
+	remote.mu.Unlock()
+	deleteRecords := performJSON(handler, http.MethodPost, providerPath(created.ID, "/records/delete"), "", deleteBackupRecordsRequest{RecordIDs: []int64{record.ID}})
+	if deleteRecords.Code != http.StatusOK || !strings.Contains(deleteRecords.Body.String(), `"deleted_count":1`) {
+		t.Fatalf("selected delete failed: %d %s", deleteRecords.Code, deleteRecords.Body.String())
+	}
+	remote.mu.Lock()
+	listCallsAfterDelete := remote.listCalls
+	remote.mu.Unlock()
+	if listCallsAfterDelete != listCallsBeforeDelete {
+		t.Fatal("selected delete performed a second remote request after the confirmed deletion")
+	}
+	list = performJSON(handler, http.MethodGet, providerPath(created.ID, "/records"), "", nil)
+	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), record.ProviderFileID) {
+		t.Fatalf("deleted record was not reconciled: %d %s", list.Code, list.Body.String())
 	}
 
 	disable := performJSON(handler, http.MethodPut, providerPath(created.ID, ""), "", map[string]any{
@@ -280,6 +298,7 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(service.item)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/backups"):
+			service.listCalls++
 			items := []backups.ServiceBackup{}
 			if service.item.ID != "" {
 				items = append(items, service.item)
@@ -287,6 +306,11 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 			json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": ""})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/prune"):
 			json.NewEncoder(w).Encode(backups.ServicePruneResult{StreamID: service.item.StreamID, KeepLatest: 1})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/backups/delete"):
+			deletedID := service.item.ID
+			service.item = backups.ServiceBackup{}
+			service.data = nil
+			json.NewEncoder(w).Encode(backups.ServiceDeleteResult{StreamID: "stream-a", DeletedIDs: []string{deletedID}, DeletedCount: 1})
 		case r.Method == http.MethodGet && service.item.ID != "" && strings.HasSuffix(r.URL.Path, "/backups/"+service.item.ID):
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Header().Set("Content-Disposition", `attachment; filename="test-database.aipdb"`)
