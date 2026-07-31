@@ -118,7 +118,7 @@ func isLifecycleMutation(path string) bool {
 	switch path {
 	case "/api/unlock/setup", "/api/unlock", "/api/lock",
 		"/api/databases/rename", "/api/databases/delete", "/api/databases/delete-locked", "/api/databases/switch", "/api/databases/change-password",
-		"/api/backup/import":
+		"/api/backup/import", "/api/backup/remote/restore":
 		return true
 	default:
 		return false

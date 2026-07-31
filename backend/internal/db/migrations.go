@@ -958,6 +958,15 @@ var migrations = []migration{
 				ON vault_session_items(binding_id, session_id);`,
 		},
 	},
+	{
+		version:     10,
+		description: "self-hosted encrypted backup provider",
+		statements: []string{
+			`UPDATE backup_providers
+			 SET status = 'archived', encrypted_secret_json = '', updated_at = datetime('now')
+			 WHERE provider_type = 'google_drive'`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {

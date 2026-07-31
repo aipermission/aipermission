@@ -905,17 +905,19 @@ permission checks no longer treat them as effective.
 ```txt
 GET  /api/backup/download
 POST /api/backup/import
+POST /api/backup/remote/list
+POST /api/backup/remote/restore
 GET  /api/backup/providers/catalog
 GET  /api/backup/providers
 POST /api/backup/providers
 PUT  /api/backup/providers/{id}
 DELETE /api/backup/providers/{id}
+POST /api/backup/providers/{id}/enable
+POST /api/backup/providers/{id}/test
 GET  /api/backup/providers/{id}/records
 POST /api/backup/providers/{id}/upload
 GET  /api/backup/providers/{id}/records/{record_id}/download
 POST /api/backup/providers/{id}/records/{record_id}/restore
-POST /api/backup/providers/{id}/google/device/start
-POST /api/backup/providers/{id}/google/device/poll
 ```
 
 `GET /api/backup/download` returns the active SQLCipher database as a binary `.aipdb` file. The backend creates a temporary SQLCipher snapshot and serves that snapshot instead of streaming the live database file directly.
@@ -934,16 +936,13 @@ Import can run while locked. The backend validates the uploaded database with th
 
 Older `.aipbackup` JSON export/restore endpoints are no longer registered in the public REST surface. Use `.aipdb` download/import instead.
 
-Backup provider endpoints store optional remote encrypted-backup provider
-metadata. Provider secrets are encrypted with the local gateway vault and are
-never returned by list/detail responses. The first provider type is
-`google_drive`; it supports a local UI initiated Google OAuth device flow using
-a user-provided OAuth client id stored in provider public metadata and a client
-secret stored only as encrypted provider secret. Use a Google Cloud OAuth client
-for TVs and limited-input devices with Google Drive API enabled. The resulting
-Google token payload is stored only as encrypted provider secret. Later provider
-types should use the same metadata and secret contract instead of adding one-off
-Settings storage.
+Backup provider endpoints store optional self-hosted encrypted-backup service
+metadata. Provider service tokens are encrypted with the local gateway vault and
+are never returned by list/detail responses. A provider is always created in the
+`disabled` state. `POST /api/backup/providers/{id}/enable` requires the current
+database password, applies the stronger remote-backup password policy, and checks
+the service protocol before enabling uploads. `POST .../{id}/test` checks the
+service without enabling it.
 
 Remote provider records are metadata only. A provider account stores encrypted
 `.aipdb` blobs as-is; it is not a remote gateway, does not receive MCP tokens,
@@ -953,9 +952,9 @@ the database password.
 `POST /api/backup/providers/{id}/upload` creates a temporary SQLCipher snapshot
 of the currently unlocked database, uploads that encrypted `.aipdb` file to the
 connected provider, and stores a local backup record with provider file id,
-filename, size, checksum, source machine, and timestamps. Google Drive uploads
-use the connected OAuth token, refresh it locally when possible, create the
-configured Drive folder when missing, and never upload the database password.
+filename, size, checksum, source installation, and timestamps. The service
+receives the encrypted database bytes and its own bearer token, but never the
+database password.
 
 `GET /api/backup/providers/{id}/records/{record_id}/download` downloads a
 previously uploaded encrypted `.aipdb` backup record from the provider after
@@ -965,6 +964,13 @@ checking the stored size and checksum metadata.
 remote encrypted `.aipdb`, verifies the size/checksum metadata, validates the
 provided database password, and imports it as a new local database. Restore
 never overwrites the currently open database.
+
+`POST /api/backup/remote/list` and `POST /api/backup/remote/restore` are also
+available before a local database has been created or unlocked. They accept the
+service URL and token only for that request and never persist or return them.
+Restore re-lists the selected immutable version, verifies its size and SHA-256,
+then validates the SQLCipher password and schema before installing it as a new
+local database. Plain HTTP service URLs are rejected except on loopback.
 
 ## Console Sessions
 

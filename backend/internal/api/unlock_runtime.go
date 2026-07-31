@@ -344,7 +344,8 @@ func rejectPlaintextDatabase(w http.ResponseWriter, path string) bool {
 
 func isAllowedWhileLocked(path string) bool {
 	switch path {
-	case "/health", "/api/status", "/api/unlock/status", "/api/unlock/setup", "/api/unlock", "/api/backup/import", "/api/databases/delete-locked":
+	case "/health", "/api/status", "/api/unlock/status", "/api/unlock/setup", "/api/unlock", "/api/backup/import",
+		"/api/backup/remote/list", "/api/backup/remote/restore", "/api/databases/delete-locked":
 		return true
 	default:
 		return false

@@ -207,6 +207,44 @@ func TestOpenEncryptedMigratesConnectorNativeBaseline(t *testing.T) {
 	}
 }
 
+func TestSelfHostedBackupMigrationArchivesGoogleProviderAndClearsSecret(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "backup-provider.db")
+	database, err := openEncrypted(path, "correct-password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 9; index++ {
+		if err := runSingleMigration(database, migrations[index]); err != nil {
+			t.Fatalf("apply migration %d: %v", migrations[index].version, err)
+		}
+	}
+	if _, err := database.Exec(`
+		INSERT INTO backup_providers (
+			provider_type, name, status, public_json, encrypted_secret_json, created_at, updated_at
+		) VALUES
+			('google_drive', 'Old Drive', 'active', '{}', 'encrypted-active-secret', datetime('now'), datetime('now')),
+			('google_drive', 'Archived Drive', 'archived', '{}', 'encrypted-archived-secret', datetime('now'), datetime('now'))`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	var count int
+	if err := reopened.QueryRow(`
+		SELECT COUNT(*) FROM backup_providers
+		WHERE provider_type = 'google_drive' AND status = 'archived' AND encrypted_secret_json = ''`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("all old providers should be archived with cleared secrets, got %d", count)
+	}
+}
+
 func TestVaultGlobalNameMigrationRejectsCrossProjectDuplicates(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault-duplicate.db")
 	database, err := openEncrypted(path, "correct-password", false)

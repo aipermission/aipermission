@@ -1,146 +1,305 @@
 package api
 
 import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/config"
+	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
-func TestBackupProviderRoutesStoreMetadataWithoutExposingSecrets(t *testing.T) {
-	fixture := newAPITestFixture(t)
+const backupAPITestPassword = "M7!river-Quartz_92fox"
+const backupAPITestToken = "backup-api-test-token-with-more-than-thirty-two-characters"
+
+type backupAPITestFixture struct {
+	server *Server
+	db     *sql.DB
+}
+
+type fakeBackupService struct {
+	server *httptest.Server
+	mu     sync.Mutex
+	item   backups.ServiceBackup
+	data   []byte
+}
+
+func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testing.T) {
+	remote := newFakeBackupService(t)
+	fixture := newBackupAPITestFixture(t, backupAPITestPassword)
 	handler := fixture.server.Handler()
 
-	catalogResponse := performJSON(handler, http.MethodGet, "/api/backup/providers/catalog", "", nil)
-	if catalogResponse.Code != http.StatusOK || !strings.Contains(catalogResponse.Body.String(), "google_drive") {
-		t.Fatalf("backup provider catalog failed: %d %s", catalogResponse.Code, catalogResponse.Body.String())
+	catalog := performJSON(handler, http.MethodGet, "/api/backup/providers/catalog", "", nil)
+	if catalog.Code != http.StatusOK || !strings.Contains(catalog.Body.String(), backups.ServiceProviderType) {
+		t.Fatalf("catalog failed: %d %s", catalog.Code, catalog.Body.String())
 	}
-
-	createResponse := performJSON(handler, http.MethodPost, "/api/backup/providers", "", map[string]any{
-		"provider_type": "google_drive",
-		"name":          "Personal Drive",
-		"public": map[string]any{
-			"folder_name": "AIPermission Backups",
-		},
-		"secret": map[string]any{
-			"client_secret": "secret-client-secret",
-		},
+	create := performJSON(handler, http.MethodPost, "/api/backup/providers", "", map[string]any{
+		"provider_type": backups.ServiceProviderType,
+		"name":          "Private backup service",
+		"public":        map[string]any{"base_url": remote.server.URL},
+		"secret":        map[string]any{"token": backupAPITestToken},
 	})
-	if createResponse.Code != http.StatusCreated {
-		t.Fatalf("create backup provider failed: %d %s", createResponse.Code, createResponse.Body.String())
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create failed: %d %s", create.Code, create.Body.String())
 	}
-	createBody := createResponse.Body.String()
-	if !strings.Contains(createBody, `"has_secret":true`) ||
-		!strings.Contains(createBody, `"has_oauth_client_secret":true`) ||
-		strings.Contains(createBody, `"has_oauth_token":true`) ||
-		strings.Contains(createBody, "secret-client-secret") {
-		t.Fatalf("backup provider response leaked or missed secret state: %s", createBody)
+	created := decodeRouteResponse[backupProviderResponse](t, create.Body.Bytes())
+	if created.Status != "disabled" || !created.HasSecret || strings.Contains(create.Body.String(), backupAPITestToken) {
+		t.Fatalf("provider did not start safely or leaked token: %s", create.Body.String())
 	}
-	created := decodeRouteResponse[backupProviderResponse](t, createResponse.Body.Bytes())
-
 	var encrypted string
 	if err := fixture.db.QueryRow(`SELECT encrypted_secret_json FROM backup_providers WHERE id = ?`, created.ID).Scan(&encrypted); err != nil {
-		t.Fatalf("read encrypted backup provider secret: %v", err)
+		t.Fatal(err)
 	}
-	if encrypted == "" || strings.Contains(encrypted, "secret-client-secret") {
-		t.Fatalf("backup provider secret was not encrypted: %q", encrypted)
-	}
-
-	listResponse := performJSON(handler, http.MethodGet, "/api/backup/providers", "", nil)
-	if listResponse.Code != http.StatusOK ||
-		!strings.Contains(listResponse.Body.String(), "Personal Drive") ||
-		strings.Contains(listResponse.Body.String(), "secret-client-secret") {
-		t.Fatalf("list backup providers failed or leaked secret: %d %s", listResponse.Code, listResponse.Body.String())
+	if encrypted == "" || strings.Contains(encrypted, backupAPITestToken) {
+		t.Fatalf("service token was not encrypted: %q", encrypted)
 	}
 
-	updateResponse := performJSON(handler, http.MethodPut, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10), "", map[string]any{
-		"name":   "Personal Drive Disabled",
-		"status": "disabled",
-		"public": map[string]any{
-			"folder_name": "AIPermission Backups",
-		},
+	testResponse := performJSON(handler, http.MethodPost, providerPath(created.ID, "/test"), "", map[string]any{})
+	if testResponse.Code != http.StatusOK || !strings.Contains(testResponse.Body.String(), `"protocol_version":"1"`) {
+		t.Fatalf("provider test failed: %d %s", testResponse.Code, testResponse.Body.String())
+	}
+	wrongPassword := performJSON(handler, http.MethodPost, providerPath(created.ID, "/enable"), "", enableBackupProviderRequest{CurrentPassword: "wrong-password"})
+	if wrongPassword.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong enable password should fail: %d %s", wrongPassword.Code, wrongPassword.Body.String())
+	}
+	enable := performJSON(handler, http.MethodPost, providerPath(created.ID, "/enable"), "", enableBackupProviderRequest{CurrentPassword: backupAPITestPassword})
+	if enable.Code != http.StatusOK || !strings.Contains(enable.Body.String(), `"status":"active"`) {
+		t.Fatalf("enable failed: %d %s", enable.Code, enable.Body.String())
+	}
+
+	upload := performJSON(handler, http.MethodPost, providerPath(created.ID, "/upload"), "", map[string]any{})
+	if upload.Code != http.StatusCreated {
+		t.Fatalf("upload failed: %d %s", upload.Code, upload.Body.String())
+	}
+	record := decodeRouteResponse[backupRecordResponse](t, upload.Body.Bytes())
+	if record.ProviderFileID == "" || record.ChecksumSHA256 == "" || record.SizeBytes < 1 {
+		t.Fatalf("upload metadata incomplete: %#v", record)
+	}
+
+	list := performJSON(handler, http.MethodGet, providerPath(created.ID, "/records"), "", nil)
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), record.ProviderFileID) || !strings.Contains(list.Body.String(), `"remote_sync":true`) {
+		t.Fatalf("record sync failed: %d %s", list.Code, list.Body.String())
+	}
+	download := performJSON(handler, http.MethodGet, providerPath(created.ID, "/records/"+strconv.FormatInt(record.ID, 10)+"/download"), "", nil)
+	if download.Code != http.StatusOK || download.Body.Len() != int(record.SizeBytes) {
+		t.Fatalf("download failed: %d bytes=%d body=%s", download.Code, download.Body.Len(), download.Body.String())
+	}
+
+	disable := performJSON(handler, http.MethodPut, providerPath(created.ID, ""), "", map[string]any{
+		"name": "Private backup service", "status": "disabled",
 	})
-	if updateResponse.Code != http.StatusOK || !strings.Contains(updateResponse.Body.String(), `"status":"disabled"`) || !strings.Contains(updateResponse.Body.String(), `"has_secret":true`) {
-		t.Fatalf("update backup provider failed: %d %s", updateResponse.Code, updateResponse.Body.String())
+	if disable.Code != http.StatusOK || !strings.Contains(disable.Body.String(), `"status":"disabled"`) {
+		t.Fatalf("disable failed: %d %s", disable.Code, disable.Body.String())
 	}
-	statusOnlyResponse := performJSON(handler, http.MethodPut, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10), "", map[string]any{
-		"name":   "Personal Drive Disabled",
-		"status": "active",
+	implicitEnable := performJSON(handler, http.MethodPut, providerPath(created.ID, ""), "", map[string]any{
+		"name": "Private backup service", "status": "active",
 	})
-	if statusOnlyResponse.Code != http.StatusOK || !strings.Contains(statusOnlyResponse.Body.String(), "AIPermission Backups") {
-		t.Fatalf("status-only backup provider update should preserve public metadata: %d %s", statusOnlyResponse.Code, statusOnlyResponse.Body.String())
+	if implicitEnable.Code != http.StatusConflict {
+		t.Fatalf("implicit enable should fail: %d %s", implicitEnable.Code, implicitEnable.Body.String())
 	}
 
-	recordsResponse := performJSON(handler, http.MethodGet, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10)+"/records", "", nil)
-	if recordsResponse.Code != http.StatusOK || !strings.Contains(recordsResponse.Body.String(), `"items":[]`) {
-		t.Fatalf("list backup records failed: %d %s", recordsResponse.Code, recordsResponse.Body.String())
+	deleted := performJSON(handler, http.MethodDelete, providerPath(created.ID, ""), "", nil)
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete failed: %d %s", deleted.Code, deleted.Body.String())
 	}
-	uploadNotConnected := performJSON(handler, http.MethodPost, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10)+"/upload", "", map[string]any{})
-	if uploadNotConnected.Code != http.StatusConflict || !strings.Contains(uploadNotConnected.Body.String(), "access token") {
-		t.Fatalf("upload without connected Google token should fail cleanly: %d %s", uploadNotConnected.Code, uploadNotConnected.Body.String())
+	if err := fixture.db.QueryRow(`SELECT encrypted_secret_json FROM backup_providers WHERE id = ?`, created.ID).Scan(&encrypted); err != nil {
+		t.Fatal(err)
 	}
-	googleStartMissingClient := performJSON(handler, http.MethodPost, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10)+"/google/device/start", "", map[string]any{})
-	if googleStartMissingClient.Code != http.StatusBadRequest || !strings.Contains(googleStartMissingClient.Body.String(), "client id") {
-		t.Fatalf("google device flow without client id should fail cleanly: %d %s", googleStartMissingClient.Code, googleStartMissingClient.Body.String())
-	}
-
-	deleteResponse := performJSON(handler, http.MethodDelete, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10), "", nil)
-	if deleteResponse.Code != http.StatusNoContent {
-		t.Fatalf("archive backup provider failed: %d %s", deleteResponse.Code, deleteResponse.Body.String())
-	}
-	listAfterDeleteResponse := performJSON(handler, http.MethodGet, "/api/backup/providers", "", nil)
-	if listAfterDeleteResponse.Code != http.StatusOK || strings.Contains(listAfterDeleteResponse.Body.String(), "Personal Drive Disabled") {
-		t.Fatalf("archived backup provider should not be listed: %d %s", listAfterDeleteResponse.Code, listAfterDeleteResponse.Body.String())
-	}
-	recordsAfterDeleteResponse := performJSON(handler, http.MethodGet, "/api/backup/providers/"+strconv.FormatInt(created.ID, 10)+"/records", "", nil)
-	if recordsAfterDeleteResponse.Code != http.StatusNotFound {
-		t.Fatalf("archived backup provider records should be hidden: %d %s", recordsAfterDeleteResponse.Code, recordsAfterDeleteResponse.Body.String())
+	if encrypted != "" {
+		t.Fatal("archived provider retained its encrypted token")
 	}
 }
 
-func TestBackupProviderRoutesRequireUnlockedDatabase(t *testing.T) {
-	locked := NewLockedServer(fixtureConfigForLockedTest(t))
-	if response := performJSON(locked.Handler(), http.MethodGet, "/api/backup/providers/catalog", "", nil); response.Code != http.StatusLocked {
-		t.Fatalf("locked backup provider catalog should fail, got %d %s", response.Code, response.Body.String())
-	}
-	if response := performJSON(locked.Handler(), http.MethodPost, "/api/backup/providers", "", map[string]any{"provider_type": "google_drive", "name": "Drive"}); response.Code != http.StatusLocked {
-		t.Fatalf("locked backup provider create should fail, got %d %s", response.Code, response.Body.String())
-	}
-}
-
-func TestBackupProviderRoutesReturnCleanValidationErrors(t *testing.T) {
-	fixture := newAPITestFixture(t)
-	handler := fixture.server.Handler()
-
-	first := performJSON(handler, http.MethodPost, "/api/backup/providers", "", map[string]any{
-		"provider_type": "google_drive",
-		"name":          "Personal Drive",
-	})
-	if first.Code != http.StatusCreated {
-		t.Fatalf("create backup provider failed: %d %s", first.Code, first.Body.String())
-	}
-	duplicate := performJSON(handler, http.MethodPost, "/api/backup/providers", "", map[string]any{
-		"provider_type": "google_drive",
-		"name":          "Personal Drive",
-	})
-	if duplicate.Code != http.StatusBadRequest || !strings.Contains(duplicate.Body.String(), "already exists") {
-		t.Fatalf("duplicate backup provider should fail cleanly: %d %s", duplicate.Code, duplicate.Body.String())
-	}
-	unsupported := performJSON(handler, http.MethodPost, "/api/backup/providers", "", map[string]any{
-		"provider_type": "dropbox",
-		"name":          "Dropbox",
+func TestBackupProviderRoutesRejectUnsupportedAndLockedRequests(t *testing.T) {
+	fixture := newBackupAPITestFixture(t, backupAPITestPassword)
+	unsupported := performJSON(fixture.server.Handler(), http.MethodPost, "/api/backup/providers", "", map[string]any{
+		"provider_type": "google_drive", "name": "Old provider",
 	})
 	if unsupported.Code != http.StatusBadRequest || !strings.Contains(unsupported.Body.String(), "unsupported") {
-		t.Fatalf("unsupported backup provider should fail cleanly: %d %s", unsupported.Code, unsupported.Body.String())
+		t.Fatalf("unsupported provider was accepted: %d %s", unsupported.Code, unsupported.Body.String())
 	}
-	missing := performJSON(handler, http.MethodPut, "/api/backup/providers/9999", "", map[string]any{
-		"name": "Missing",
+	locked := NewLockedServer(fixtureConfigForLockedTest(t))
+	if response := performJSON(locked.Handler(), http.MethodGet, "/api/backup/providers", "", nil); response.Code != http.StatusLocked {
+		t.Fatalf("locked provider list should fail: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestDatabasePasswordChangeRequiresRemoteBackupStrengthWhileProviderActive(t *testing.T) {
+	fixture := newBackupAPITestFixture(t, backupAPITestPassword)
+	store := backups.NewStore(fixture.db)
+	if _, err := store.CreateProvider(context.Background(), backups.CreateProviderRequest{
+		ProviderType: backups.ServiceProviderType, Name: "Active", Status: "active",
+		Public: map[string]any{"base_url": "https://backup.example.com"}, Encrypted: "ciphertext",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/databases/change-password", "", changeDatabasePasswordRequest{
+		CurrentPassword: backupAPITestPassword,
+		NewPassword:     "BasicPassword1234",
+		ConfirmPassword: "BasicPassword1234",
 	})
-	if missing.Code != http.StatusNotFound {
-		t.Fatalf("missing backup provider update should be 404: %d %s", missing.Code, missing.Body.String())
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "remote backup") {
+		t.Fatalf("weak remote backup password was accepted: %d %s", response.Code, response.Body.String())
 	}
-	deleteMissing := performJSON(handler, http.MethodDelete, "/api/backup/providers/9999", "", nil)
-	if deleteMissing.Code != http.StatusNotFound {
-		t.Fatalf("missing backup provider delete should be 404: %d %s", deleteMissing.Code, deleteMissing.Body.String())
+}
+
+func TestFirstRunRemoteRestoreKeepsCredentialsTransient(t *testing.T) {
+	remote := newFakeBackupService(t)
+	sourcePath := filepath.Join(t.TempDir(), "remote.aipdb")
+	sourceDatabase, err := dbpkg.OpenEncrypted(sourcePath, backupAPITestPassword)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if err := sourceDatabase.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(data)
+	remote.mu.Lock()
+	remote.data = data
+	remote.item = backups.ServiceBackup{
+		ID: "bkp_restore", StreamID: "workspace-restore", DatabaseName: "Recovered Project",
+		SourceInstallationID: "install-restore", Filename: "recovered-project.aipdb",
+		SizeBytes: int64(len(data)), SHA256: hex.EncodeToString(digest[:]), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	remote.mu.Unlock()
+
+	dataPath := filepath.Join(t.TempDir(), "aipermission.aipdb")
+	server := NewLockedServer(config.Config{
+		Host: "127.0.0.1", Port: "8080", DataPath: dataPath,
+		GatewaySecret: "first-run-test-gateway-secret", AllowedOrigins: []string{"http://localhost:3001"},
+	})
+	t.Cleanup(server.Close)
+	list := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/list", "", transientBackupServiceRequest{
+		BaseURL: remote.server.URL, Token: backupAPITestToken,
+	})
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "Recovered Project") || strings.Contains(list.Body.String(), backupAPITestToken) {
+		t.Fatalf("transient list failed or leaked token: %d %s", list.Code, list.Body.String())
+	}
+	versions := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/list", "", transientBackupServiceRequest{
+		BaseURL: remote.server.URL, Token: backupAPITestToken, StreamID: "workspace-restore",
+	})
+	if versions.Code != http.StatusOK || !strings.Contains(versions.Body.String(), "bkp_restore") || strings.Contains(versions.Body.String(), backupAPITestToken) {
+		t.Fatalf("transient version list failed or leaked token: %d %s", versions.Code, versions.Body.String())
+	}
+	restore := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/restore", "", transientBackupRestoreRequest{
+		BaseURL: remote.server.URL, Token: backupAPITestToken, StreamID: "workspace-restore",
+		BackupID: "bkp_restore", DatabasePassword: backupAPITestPassword,
+	})
+	if restore.Code != http.StatusOK || !strings.Contains(restore.Body.String(), `"state":"unlocked"`) {
+		t.Fatalf("transient restore failed: %d %s", restore.Code, restore.Body.String())
+	}
+	var providerCount int
+	if err := server.activeRuntime().database.QueryRow(`SELECT COUNT(*) FROM backup_providers`).Scan(&providerCount); err != nil {
+		t.Fatal(err)
+	}
+	if providerCount != 0 {
+		t.Fatal("first-run credentials were persisted as a provider")
+	}
+}
+
+func newBackupAPITestFixture(t *testing.T, password string) backupAPITestFixture {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "aipermission.aipdb")
+	database, err := dbpkg.OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secretVault, err := vault.New("backup-api-test-gateway-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(config.Config{
+		Host: "127.0.0.1", Port: "8080", DataPath: path,
+		GatewaySecret: "backup-api-test-gateway-secret", AllowedOrigins: []string{"http://localhost:3001"},
+	}, database, secretVault, tokens.NewStore(database))
+	authorizeTestUISession(srv)
+	t.Cleanup(func() { srv.Close() })
+	return backupAPITestFixture{server: srv, db: database}
+}
+
+func newFakeBackupService(t *testing.T) *fakeBackupService {
+	t.Helper()
+	service := &fakeBackupService{}
+	service.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+backupAPITestToken {
+			writeFakeServiceError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if r.URL.Path != "/v1/info" && r.Header.Get("X-AIPermission-Protocol-Version") != backups.ServiceProtocol {
+			writeFakeServiceError(w, http.StatusUpgradeRequired, "protocol_mismatch")
+			return
+		}
+		service.mu.Lock()
+		defer service.mu.Unlock()
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/info":
+			json.NewEncoder(w).Encode(backups.ServiceInfo{Service: "aipermission-backup", Version: "test", ProtocolVersion: backups.ServiceProtocol, MaxUploadBytes: maxImportBodyBytes})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/streams":
+			items := []backups.ServiceStream{}
+			if service.item.ID != "" {
+				items = append(items, backups.ServiceStream{ID: service.item.StreamID, DatabaseName: service.item.DatabaseName})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": ""})
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/streams/") && strings.HasSuffix(r.URL.Path, "/backups"):
+			data, err := io.ReadAll(r.Body)
+			if err != nil || len(data) == 0 {
+				writeFakeServiceError(w, http.StatusBadRequest, "invalid_backup")
+				return
+			}
+			digest := sha256.Sum256(data)
+			parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+			service.data = data
+			service.item = backups.ServiceBackup{
+				ID: "bkp_test", StreamID: parts[2], DatabaseName: r.Header.Get("X-AIPermission-Database-Name"),
+				SourceInstallationID: r.Header.Get("X-AIPermission-Source-Installation-ID"), Filename: "test-database.aipdb",
+				SizeBytes: int64(len(data)), SHA256: hex.EncodeToString(digest[:]), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(service.item)
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/backups"):
+			items := []backups.ServiceBackup{}
+			if service.item.ID != "" {
+				items = append(items, service.item)
+			}
+			json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": ""})
+		case r.Method == http.MethodGet && service.item.ID != "" && strings.HasSuffix(r.URL.Path, "/backups/"+service.item.ID):
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Content-Disposition", `attachment; filename="test-database.aipdb"`)
+			w.Header().Set("X-AIPermission-Backup-ID", service.item.ID)
+			w.Header().Set("X-AIPermission-SHA256", service.item.SHA256)
+			w.Write(service.data)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(service.server.Close)
+	return service
+}
+
+func providerPath(id int64, suffix string) string {
+	return "/api/backup/providers/" + strconv.FormatInt(id, 10) + suffix
+}
+
+func writeFakeServiceError(w http.ResponseWriter, status int, code string) {
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": code, "message": code}})
 }
