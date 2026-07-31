@@ -202,9 +202,9 @@ func TestFirstRunRemoteRestoreKeepsCredentialsTransient(t *testing.T) {
 	}
 	restore := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/restore", "", transientBackupRestoreRequest{
 		BaseURL: remote.server.URL, Token: backupAPITestToken, StreamID: "workspace-restore",
-		BackupID: "bkp_restore", DatabasePassword: backupAPITestPassword,
+		BackupID: "bkp_restore", DatabaseName: "Restored Copy", DatabasePassword: backupAPITestPassword,
 	})
-	if restore.Code != http.StatusOK || !strings.Contains(restore.Body.String(), `"state":"unlocked"`) {
+	if restore.Code != http.StatusOK || !strings.Contains(restore.Body.String(), `"state":"unlocked"`) || !strings.Contains(restore.Body.String(), `"database_id":"restored-copy"`) {
 		t.Fatalf("transient restore failed: %d %s", restore.Code, restore.Body.String())
 	}
 	var providerCount int

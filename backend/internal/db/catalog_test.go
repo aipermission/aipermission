@@ -3,8 +3,29 @@ package db
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestNewDatabasePathExactRejectsCollisions(t *testing.T) {
+	defaultPath := filepath.Join(t.TempDir(), "aipermission.db")
+	if err := os.WriteFile(defaultPath, []byte("encrypted default"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := NewDatabasePathExact(defaultPath, "Default"); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected logical default-name collision, got %v", err)
+	}
+	_, path, err := NewDatabasePathExact(defaultPath, "Recovered Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("encrypted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := NewDatabasePathExact(defaultPath, "Recovered Project"); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected exact-name collision, got %v", err)
+	}
+}
 
 func TestDatabasePathValidationAndDefaultAliases(t *testing.T) {
 	defaultPath := filepath.Join(t.TempDir(), "aipermission.db")

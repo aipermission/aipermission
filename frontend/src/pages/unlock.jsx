@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ExternalLink, LockKeyhole, Trash2, Upload } from "lucide-react";
+import { ChevronDown, CloudDownload, ExternalLink, LockKeyhole, RefreshCw, Trash2, Upload } from "lucide-react";
 import { apiPost, apiPostForm } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
@@ -7,6 +7,8 @@ import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
 import { appVersion } from "../lib/release";
+import { formatRelativeAge } from "../lib/date-time";
+import { formatBytes } from "../lib/file-transfer-utils";
 
 export function UnlockPage({ status, onUnlocked }) {
   const databases = status?.databases || [];
@@ -51,6 +53,7 @@ export function UnlockPage({ status, onUnlocked }) {
     ...(hasDatabase ? [["unlock", "Unlock Database"]] : []),
     ["create", hasDatabase ? "New Database" : "Create Database"],
     ["import", "Import Database"],
+    ["remote", "Restore Remote"],
   ];
   const createPasswordValid = isValidDatabasePassword(createForm.password);
 
@@ -364,6 +367,8 @@ export function UnlockPage({ status, onUnlocked }) {
           </Button>
         </form>
       ) : null}
+
+      {activeTab === "remote" ? <RemoteRestorePanel onUnlocked={onUnlocked} /> : null}
       <Dialog
         open={deleteDialog.open}
         title="Delete local database"
@@ -405,6 +410,206 @@ export function UnlockPage({ status, onUnlocked }) {
       </Dialog>
     </UnlockShell>
   );
+}
+
+function RemoteRestorePanel({ onUnlocked }) {
+  const [form, setForm] = useState({ base_url: "", token: "", database_name: "", database_password: "" });
+  const [state, setState] = useState({ state: "idle", error: null });
+  const [streams, setStreams] = useState([]);
+  const [selectedStreamID, setSelectedStreamID] = useState("");
+  const [versions, setVersions] = useState([]);
+  const [selectedBackupID, setSelectedBackupID] = useState("");
+
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+    if (field === "base_url" || field === "token") {
+      setForm((current) => ({ ...current, database_name: "" }));
+      setStreams([]);
+      setSelectedStreamID("");
+      setVersions([]);
+      setSelectedBackupID("");
+      setState({ state: "idle", error: null });
+    }
+  }
+
+  async function loadVersions(streamID, credentials = form, databaseName = "") {
+    setState({ state: "loading_versions", error: null });
+    setSelectedStreamID(streamID);
+    if (databaseName) setForm((current) => ({ ...current, database_name: databaseName }));
+    setSelectedBackupID("");
+    setVersions([]);
+    try {
+      const response = await apiPost("/api/backup/remote/list", {
+        base_url: credentials.base_url,
+        token: credentials.token,
+        stream_id: streamID,
+      });
+      const nextVersions = response?.items?.[0]?.backups || [];
+      setVersions(nextVersions);
+      setSelectedBackupID(nextVersions[0]?.id || "");
+      setState({ state: "ready", error: null });
+    } catch (error) {
+      setState({ state: "error", error: error.message });
+    }
+  }
+
+  async function connectService(event) {
+    event.preventDefault();
+    setState({ state: "connecting", error: null });
+    setStreams([]);
+    setSelectedStreamID("");
+    setVersions([]);
+    setSelectedBackupID("");
+    try {
+      const response = await apiPost("/api/backup/remote/list", {
+        base_url: form.base_url,
+        token: form.token,
+      });
+      const nextStreams = response?.items || [];
+      setStreams(nextStreams);
+      if (nextStreams.length === 0) {
+        setState({ state: "ready", error: null });
+        return;
+      }
+      await loadVersions(nextStreams[0].id, form, nextStreams[0].database_name);
+    } catch (error) {
+      setState({ state: "error", error: error.message });
+    }
+  }
+
+  async function restoreRemoteBackup(event) {
+    event.preventDefault();
+    if (!selectedStreamID || !selectedBackupID) return;
+    setState({ state: "restoring", error: null });
+    try {
+      await apiPost("/api/backup/remote/restore", {
+        base_url: form.base_url,
+        token: form.token,
+        stream_id: selectedStreamID,
+        backup_id: selectedBackupID,
+        database_name: form.database_name,
+        database_password: form.database_password,
+      });
+      setForm({ base_url: "", token: "", database_name: "", database_password: "" });
+      await onUnlocked();
+    } catch (error) {
+      setState({ state: "error", error: error.message });
+    }
+  }
+
+  const selectedStream = streams.find((stream) => stream.id === selectedStreamID);
+
+  return (
+    <div className="grid gap-4">
+      <div>
+        <h2 className="text-sm font-semibold text-stone-900">Restore from AIPermission Backup</h2>
+        <p className="mt-1 text-sm text-stone-500">Connect temporarily, choose a database stream and immutable version, then unlock the restored local copy.</p>
+      </div>
+      <Notice>
+        The service stores encrypted <code>.aipdb</code> bytes only. Its token is used for this restore request and is not saved in browser storage or a local database.
+      </Notice>
+      <form className="grid gap-4" onSubmit={connectService}>
+        <div className="grid gap-2">
+          <label className="text-sm font-semibold text-stone-800">Backup service URL</label>
+          <Input
+            type="url"
+            value={form.base_url}
+            onChange={(event) => updateField("base_url", event.target.value)}
+            placeholder="https://backups.example.com"
+            autoComplete="off"
+            required
+          />
+        </div>
+        <div className="grid gap-2">
+          <label className="text-sm font-semibold text-stone-800">Service token</label>
+          <Input
+            type="password"
+            value={form.token}
+            onChange={(event) => updateField("token", event.target.value)}
+            autoComplete="off"
+            required
+          />
+        </div>
+        <Button type="submit" variant="outline" disabled={state.state === "connecting" || state.state === "loading_versions" || state.state === "restoring"}>
+          <RefreshCw className={`h-4 w-4 ${state.state === "connecting" ? "animate-spin" : ""}`} />
+          {state.state === "connecting" ? "Connecting..." : streams.length > 0 ? "Refresh remote backups" : "Connect and list backups"}
+        </Button>
+      </form>
+
+      {streams.length > 0 ? (
+        <form className="grid gap-4 border-t border-stone-200 pt-4" onSubmit={restoreRemoteBackup}>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-semibold text-stone-800">
+              Database stream
+              <select
+                className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-emerald-800"
+                value={selectedStreamID}
+                onChange={(event) => {
+                  const stream = streams.find((item) => item.id === event.target.value);
+                  void loadVersions(event.target.value, form, stream?.database_name || "");
+                }}
+                disabled={state.state === "loading_versions" || state.state === "restoring"}
+              >
+                {streams.map((stream) => (
+                  <option key={stream.id} value={stream.id}>{stream.database_name} · {shortBackupStreamID(stream.id)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-stone-800">
+              Backup version
+              <select
+                className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-emerald-800"
+                value={selectedBackupID}
+                onChange={(event) => setSelectedBackupID(event.target.value)}
+                disabled={state.state === "loading_versions" || state.state === "restoring" || versions.length === 0}
+              >
+                {versions.length === 0 ? <option value="">No backups available</option> : null}
+                {versions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {formatRelativeAge(version.created_at)} · {formatBytes(version.size_bytes)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {selectedStream ? (
+            <div className="grid gap-2">
+              <label className="text-sm font-semibold text-stone-800">New local database name</label>
+              <Input
+                value={form.database_name}
+                onChange={(event) => updateField("database_name", event.target.value)}
+                required
+              />
+              <p className="text-xs text-stone-500">Remote stream {shortBackupStreamID(selectedStream.id)} remains unchanged; this name is only for the restored local copy.</p>
+            </div>
+          ) : null}
+          <div className="grid gap-2">
+            <label className="text-sm font-semibold text-stone-800">Backup database password</label>
+            <Input
+              type="password"
+              value={form.database_password}
+              onChange={(event) => updateField("database_password", event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
+          <Button type="submit" disabled={!selectedBackupID || !form.database_name.trim() || !form.database_password || state.state === "restoring" || state.state === "loading_versions"}>
+            <CloudDownload className="h-4 w-4" />
+            {state.state === "restoring" ? "Restoring..." : "Restore encrypted database"}
+          </Button>
+        </form>
+      ) : state.state === "ready" ? (
+        <Notice>No backup streams were found for this service token.</Notice>
+      ) : null}
+      {state.state === "loading_versions" ? <Notice>Loading immutable backup versions...</Notice> : null}
+      {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+    </div>
+  );
+}
+
+function shortBackupStreamID(value) {
+  const text = String(value || "");
+  return text.length > 12 ? `${text.slice(0, 8)}...${text.slice(-4)}` : text;
 }
 
 function isMigrationRequiredError(error) {
