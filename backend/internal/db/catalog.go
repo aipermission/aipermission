@@ -1,12 +1,15 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
+
+var ErrDatabaseExists = errors.New("database name already exists")
 
 type DatabaseInfo struct {
 	ID       string `json:"id"`
@@ -88,6 +91,31 @@ func NewDatabasePath(defaultPath string, name string) (string, string, error) {
 			id = nextID
 			break
 		}
+	}
+	return id, path, nil
+}
+
+func NewDatabasePathExact(defaultPath string, name string) (string, string, error) {
+	id := slugifyDatabaseName(name)
+	if id == "" {
+		return "", "", fmt.Errorf("database name is required")
+	}
+	items, err := ListDatabases(defaultPath, "")
+	if err != nil {
+		return "", "", err
+	}
+	for _, item := range items {
+		if slugifyDatabaseName(item.Name) == id {
+			return "", "", ErrDatabaseExists
+		}
+	}
+	dir := DatabasesDir(defaultPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", "", fmt.Errorf("create databases directory: %w", err)
+	}
+	path := filepath.Join(dir, id+".db")
+	if Exists(path) {
+		return "", "", ErrDatabaseExists
 	}
 	return id, path, nil
 }

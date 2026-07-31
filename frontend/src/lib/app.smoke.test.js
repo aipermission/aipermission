@@ -492,26 +492,30 @@ test("Settings page exposes a local-only maintenance console", () => {
   assert.match(settingsSource, /Avoid printing secrets/i);
 });
 
-test("Settings page exposes backup provider metadata management", () => {
+test("Settings and unlock expose the self-hosted encrypted backup flow", () => {
   assert.match(settingsSource, /Remote backup providers/);
   assert.match(settingsSource, /Add provider/);
   assert.match(settingsSource, /\/api\/backup\/providers\/catalog/);
   assert.match(settingsSource, /\/api\/backup\/providers/);
   assert.match(settingsSource, /Edit backup provider/);
   assert.match(settingsSource, /Archive backup provider/);
-  assert.match(settingsSource, /Connect Google Drive/);
+  assert.match(settingsSource, /Enable remote backups/);
+  assert.match(settingsSource, /\/enable/);
+  assert.match(settingsSource, /\/test/);
   assert.match(settingsSource, /Upload backup/);
   assert.match(settingsSource, /Estimated upload size/);
   assert.match(settingsSource, /Remote backup records/);
   assert.match(settingsSource, /Restore remote backup/);
   assert.match(settingsSource, /\/records\/\$\{record\.id\}\/restore/);
-  assert.match(settingsSource, /\/google\/device\/start/);
-  assert.match(settingsSource, /\/google\/device\/poll/);
   assert.match(settingsSource, /\/upload/);
-  assert.match(settingsSource, /client_id/);
-  assert.match(settingsSource, /client_secret/);
-  assert.match(settingsSource, /docs\/providers\/google-drive\.md/);
+  assert.match(settingsSource, /base_url/);
+  assert.match(settingsSource, /service token/i);
+  assert.match(settingsSource, /docs\/providers\/aipermission-backup\.md/);
   assert.match(settingsSource, /Remote providers store encrypted database files only/);
+  assert.match(unlockSource, /Restore from AIPermission Backup/);
+  assert.match(unlockSource, /\/api\/backup\/remote\/list/);
+  assert.match(unlockSource, /\/api\/backup\/remote\/restore/);
+  assert.match(unlockSource, /not saved in browser storage/i);
 });
 
 test("Unlock page shows the current app version", () => {

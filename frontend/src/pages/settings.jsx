@@ -9,10 +9,12 @@ import { Dialog } from "../components/ui/dialog";
 import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { isValidDatabasePassword } from "../lib/password";
+import { formatRelativeAge } from "../lib/date-time";
+import { formatBytes } from "../lib/file-transfer-utils";
 import { PtyConsole } from "../components/console/pty-console";
 
 const emptyState = { state: "idle", error: null, message: null };
-const googleDriveProviderGuideURL = "https://github.com/aipermission/aipermission/blob/main/docs/providers/google-drive.md";
+const backupServiceGuideURL = "https://github.com/aipermission/aipermission/blob/main/docs/providers/aipermission-backup.md";
 
 export function SettingsPage() {
   const [database, setDatabase] = useState({ state: "loading", data: null, error: null });
@@ -47,21 +49,18 @@ export function SettingsPage() {
   const [backupProviderDialogOpen, setBackupProviderDialogOpen] = useState(false);
   const [backupProviderArchiveTarget, setBackupProviderArchiveTarget] = useState(null);
   const [backupProviderEditingID, setBackupProviderEditingID] = useState(null);
-  const [googleAuthProvider, setGoogleAuthProvider] = useState(null);
-  const [googleDeviceFlow, setGoogleDeviceFlow] = useState(null);
-  const [googleAuthState, setGoogleAuthState] = useState(emptyState);
+  const [backupEnableTarget, setBackupEnableTarget] = useState(null);
+  const [backupEnablePassword, setBackupEnablePassword] = useState("");
   const [backupUploadTarget, setBackupUploadTarget] = useState(null);
   const [backupRecordsProvider, setBackupRecordsProvider] = useState(null);
   const [backupRecords, setBackupRecords] = useState({ state: "idle", data: [], error: null });
   const [restoreRecordTarget, setRestoreRecordTarget] = useState(null);
   const [restoreRecordForm, setRestoreRecordForm] = useState({ database_name: "", database_password: "" });
   const [backupProviderForm, setBackupProviderForm] = useState({
-    provider_type: "google_drive",
-    name: "Google Drive",
-    status: "active",
-    folder_name: "AIPermission Backups",
-    client_id: "",
-    client_secret: "",
+    provider_type: "aipermission_backup",
+    name: "AIPermission Backup",
+    base_url: "",
+    token: "",
   });
 
   async function loadDatabase() {
@@ -143,21 +142,17 @@ export function SettingsPage() {
       setBackupProviderForm({
         provider_type: provider.provider_type,
         name: provider.name,
-        status: provider.status,
-        folder_name: provider.public?.folder_name || "AIPermission Backups",
-        client_id: provider.public?.client_id || "",
-        client_secret: "",
+        base_url: provider.public?.base_url || "",
+        token: "",
       });
     } else {
-      const firstType = backupProviderCatalog.data[0]?.provider_type || "google_drive";
+      const firstType = backupProviderCatalog.data[0]?.provider_type || "aipermission_backup";
       setBackupProviderEditingID(null);
       setBackupProviderForm({
         provider_type: firstType,
         name: providerLabel(firstType, backupProviderCatalog.data),
-        status: "active",
-        folder_name: "AIPermission Backups",
-        client_id: "",
-        client_secret: "",
+        base_url: "",
+        token: "",
       });
     }
     setBackupProviderDialogOpen(true);
@@ -177,14 +172,12 @@ export function SettingsPage() {
     const payload = {
       provider_type: backupProviderForm.provider_type,
       name: backupProviderForm.name,
-      status: backupProviderForm.status,
       public: {
-        folder_name: backupProviderForm.folder_name,
-        client_id: backupProviderForm.client_id.trim(),
+        base_url: backupProviderForm.base_url.trim(),
       },
     };
-    if (backupProviderForm.client_secret.trim()) {
-      payload.secret = { client_secret: backupProviderForm.client_secret.trim() };
+    if (backupProviderForm.token.trim()) {
+      payload.secret = { token: backupProviderForm.token.trim() };
     }
     await runBackupProviderAction({
       pending: "saving",
@@ -199,6 +192,50 @@ export function SettingsPage() {
         await loadBackupProviders();
       },
     });
+  }
+
+  async function testBackupProvider(provider) {
+    await runBackupProviderAction({
+      pending: `testing-${provider.id}`,
+      successMessage: `${provider.name} is reachable and protocol-compatible.`,
+      action: () => apiPost(`/api/backup/providers/${provider.id}/test`, {}),
+    });
+    await loadBackupProviders();
+  }
+
+  async function disableBackupProvider(provider) {
+    await runBackupProviderAction({
+      pending: `disabling-${provider.id}`,
+      successMessage: `${provider.name} disabled.`,
+      action: () => apiPut(`/api/backup/providers/${provider.id}`, { name: provider.name, status: "disabled" }),
+    });
+    await loadBackupProviders();
+  }
+
+  function requestEnableBackupProvider(provider) {
+    setBackupEnableTarget(provider);
+    setBackupEnablePassword("");
+  }
+
+  function closeEnableBackupProviderDialog() {
+    if (backupProviderState.state === `enabling-${backupEnableTarget?.id}`) return;
+    setBackupEnableTarget(null);
+    setBackupEnablePassword("");
+  }
+
+  async function enableBackupProvider(event) {
+    event.preventDefault();
+    const provider = backupEnableTarget;
+    if (!provider) return;
+    const result = await runBackupProviderAction({
+      pending: `enabling-${provider.id}`,
+      successMessage: `${provider.name} enabled.`,
+      action: () => apiPost(`/api/backup/providers/${provider.id}/enable`, { current_password: backupEnablePassword }),
+    });
+    if (result !== undefined) {
+      closeEnableBackupProviderDialog();
+      await loadBackupProviders();
+    }
   }
 
   function closeBackupProviderArchiveDialog() {
@@ -309,64 +346,6 @@ export function SettingsPage() {
       setRestoreRecordTarget(null);
       window.setTimeout(() => window.location.reload(), 800);
     }
-  }
-
-  async function startGoogleProviderAuth(provider) {
-    setGoogleAuthProvider(provider);
-    setGoogleDeviceFlow(null);
-    if (!provider.public?.client_id?.trim()) {
-      setGoogleAuthState({
-        state: "needs_client_id",
-        error: null,
-        message: "Add a Google OAuth client ID to this provider before connecting.",
-      });
-      return;
-    }
-    if (!provider.has_oauth_client_secret) {
-      setGoogleAuthState({
-        state: "needs_client_secret",
-        error: null,
-        message: "Add the Google OAuth client secret to this provider before connecting.",
-      });
-      return;
-    }
-    setGoogleAuthState({ state: "starting", error: null, message: null });
-    try {
-      const data = await apiPost(`/api/backup/providers/${provider.id}/google/device/start`, {});
-      setGoogleDeviceFlow(data);
-      setGoogleAuthState({ state: "idle", error: null, message: null });
-    } catch (error) {
-      setGoogleAuthState({ state: "error", error: error.message, message: null });
-    }
-  }
-
-  async function finishGoogleProviderAuth() {
-    if (!googleAuthProvider) return;
-    setGoogleAuthState({ state: "polling", error: null, message: null });
-    try {
-      const data = await apiPost(`/api/backup/providers/${googleAuthProvider.id}/google/device/poll`, {});
-      if (data?.status === "authorization_pending" || data?.status === "slow_down") {
-        setGoogleAuthState({
-          state: "idle",
-          error: null,
-          message: "Google is still waiting for approval. Approve the code, then try Finish connection again.",
-        });
-        return;
-      }
-      setGoogleAuthProvider(null);
-      setGoogleDeviceFlow(null);
-      setGoogleAuthState({ state: "idle", error: null, message: "Google Drive connected." });
-      await loadBackupProviders();
-    } catch (error) {
-      setGoogleAuthState({ state: "error", error: error.message, message: null });
-    }
-  }
-
-  function closeGoogleAuthDialog() {
-    if (googleAuthState.state === "starting" || googleAuthState.state === "polling") return;
-    setGoogleAuthProvider(null);
-    setGoogleDeviceFlow(null);
-    setGoogleAuthState(emptyState);
   }
 
   async function renameDatabase(event) {
@@ -641,17 +620,13 @@ export function SettingsPage() {
                           {provider.status}
                         </span>
                       </div>
-                      <p className="mt-1 truncate text-xs text-stone-500">{provider.public?.folder_name || "AIPermission Backups"}</p>
+                      <p className="mt-1 truncate font-mono text-xs text-stone-500">{provider.public?.base_url || "Service URL not configured"}</p>
                       <p className="mt-1 text-xs text-stone-500">
-                        {provider.has_oauth_token
-                          ? "Google Drive connected"
-                          : provider.public?.client_id && provider.has_oauth_client_secret
-                            ? "Ready to connect Google Drive"
-                            : "Add Google OAuth client ID and client secret to connect"}
+                        {provider.last_checked_at ? `Last verified ${formatRelativeAge(provider.last_checked_at)}` : "Connection has not been verified yet"}
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      {provider.provider_type === "google_drive" && provider.has_oauth_token ? (
+                      {provider.status === "active" ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -663,7 +638,7 @@ export function SettingsPage() {
                           {backupProviderState.state === `uploading-${provider.id}` ? "Uploading..." : "Upload"}
                         </Button>
                       ) : null}
-                      {provider.provider_type === "google_drive" && provider.has_oauth_token ? (
+                      {provider.status === "active" ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -675,18 +650,40 @@ export function SettingsPage() {
                           Backups
                         </Button>
                       ) : null}
-                      {provider.provider_type === "google_drive" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 px-2 text-xs"
+                        onClick={() => testBackupProvider(provider)}
+                        disabled={backupProviderState.state === `testing-${provider.id}` || backupProviderState.state === "archiving"}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                        {backupProviderState.state === `testing-${provider.id}` ? "Testing..." : "Test"}
+                      </Button>
+                      {provider.status === "active" ? (
                         <Button
                           type="button"
                           variant="outline"
                           className="h-9 px-2 text-xs"
-                          onClick={() => startGoogleProviderAuth(provider)}
-                          disabled={backupProviderState.state === "archiving" || googleAuthState.state === "starting"}
+                          onClick={() => disableBackupProvider(provider)}
+                          disabled={backupProviderState.state === `disabling-${provider.id}` || backupProviderState.state === "archiving"}
                         >
                           <Cloud className="h-4 w-4" />
-                          {provider.has_secret ? "Reconnect" : "Connect"}
+                          {backupProviderState.state === `disabling-${provider.id}` ? "Disabling..." : "Disable"}
                         </Button>
-                      ) : null}
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 px-2 text-xs"
+                          onClick={() => requestEnableBackupProvider(provider)}
+                          disabled={backupProviderState.state === "archiving" || !provider.has_secret}
+                          title={provider.has_secret ? "Enable remote backups" : "Add a service token before enabling"}
+                        >
+                          <Cloud className="h-4 w-4" />
+                          Enable
+                        </Button>
+                      )}
                       <Button type="button" variant="outline" className="h-9 px-2 text-xs" onClick={() => openBackupProviderDialog(provider)}>
                         <Edit3 className="h-4 w-4" />
                         Edit
@@ -975,49 +972,31 @@ export function SettingsPage() {
             <Input value={backupProviderForm.name} onChange={(event) => updateBackupProviderField("name", event.target.value)} required />
           </Field>
           <Field>
-            Folder name
-            <Input value={backupProviderForm.folder_name} onChange={(event) => updateBackupProviderField("folder_name", event.target.value)} required />
+            Backup service URL
+            <Input
+              type="url"
+              value={backupProviderForm.base_url}
+              onChange={(event) => updateBackupProviderField("base_url", event.target.value)}
+              placeholder="https://backups.example.com"
+              required
+            />
           </Field>
-          {backupProviderForm.provider_type === "google_drive" ? (
-            <Field>
-              Google OAuth client ID
-              <Input
-                value={backupProviderForm.client_id}
-                onChange={(event) => updateBackupProviderField("client_id", event.target.value)}
-                placeholder="TVs and limited-input OAuth client ID"
-              />
-              <span className="text-xs font-normal text-stone-500">
-                Create this in Google Cloud Console as an OAuth client for TVs and limited-input devices, with Google Drive API enabled.{" "}
-                <a className="font-semibold text-emerald-700 underline-offset-2 hover:underline" href={googleDriveProviderGuideURL} target="_blank" rel="noreferrer">
-                  Setup guide
-                </a>
-              </span>
-            </Field>
-          ) : null}
-          {backupProviderForm.provider_type === "google_drive" ? (
-            <Field>
-              Google OAuth client secret
-              <Input
-                type="password"
-                value={backupProviderForm.client_secret}
-                onChange={(event) => updateBackupProviderField("client_secret", event.target.value)}
-                placeholder={backupProviderEditingID ? "Leave blank to keep existing secret" : "OAuth client secret"}
-                autoComplete="off"
-              />
-              <span className="text-xs font-normal text-stone-500">
-                Stored encrypted in the local database. This value is never returned by the API after save.{" "}
-                <a className="font-semibold text-emerald-700 underline-offset-2 hover:underline" href={googleDriveProviderGuideURL} target="_blank" rel="noreferrer">
-                  Setup guide
-                </a>
-              </span>
-            </Field>
-          ) : null}
           <Field>
-            Status
-            <Select value={backupProviderForm.status} onChange={(event) => updateBackupProviderField("status", event.target.value)}>
-              <option value="active">Active</option>
-              <option value="disabled">Disabled</option>
-            </Select>
+            Service token
+            <Input
+              type="password"
+              value={backupProviderForm.token}
+              onChange={(event) => updateBackupProviderField("token", event.target.value)}
+              placeholder={backupProviderEditingID ? "Leave blank to keep the existing token" : "At least 32 characters"}
+              autoComplete="off"
+              required={!backupProviderEditingID}
+            />
+            <span className="text-xs font-normal text-stone-500">
+              Stored encrypted in this local database and never returned by the API.{" "}
+              <a className="font-semibold text-emerald-700 underline-offset-2 hover:underline" href={backupServiceGuideURL} target="_blank" rel="noreferrer">
+                Setup guide
+              </a>
+            </span>
           </Field>
           {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
@@ -1069,7 +1048,7 @@ export function SettingsPage() {
       >
         <form className="grid gap-4" onSubmit={uploadBackupProvider}>
           <Notice>
-            AIPermission will upload an encrypted <code>.aipdb</code> snapshot. The database password is not sent to Google Drive.
+            AIPermission will upload an encrypted <code>.aipdb</code> snapshot. The database password and encryption key are never sent to the backup service.
           </Notice>
           <div className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm">
             <div className="flex items-center justify-between gap-3">
@@ -1140,25 +1119,25 @@ export function SettingsPage() {
                       </p>
                       <p className="mt-1 truncate font-mono text-[11px] text-stone-400">{record.checksum_sha256 || "no checksum"}</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 md:w-56">
+                    <div className="grid grid-cols-2 gap-2 md:w-64">
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-9 px-2 text-xs"
+                        className="h-9 px-3 text-xs"
                         onClick={() => downloadBackupRecord(record)}
                         disabled={backupProviderState.state === `downloading-record-${record.id}`}
                       >
-                        <Download className="h-4 w-4" />
+                        <Download className="h-4 w-4 shrink-0" />
                         {backupProviderState.state === `downloading-record-${record.id}` ? "Saving..." : "Download"}
                       </Button>
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-9 px-2 text-xs"
+                        className="h-9 px-3 text-xs"
                         onClick={() => requestRestoreBackupRecord(record)}
                         disabled={backupProviderState.state?.startsWith("restoring-")}
                       >
-                        <RotateCcw className="h-4 w-4" />
+                        <RotateCcw className="h-4 w-4 shrink-0" />
                         Restore
                       </Button>
                     </div>
@@ -1224,70 +1203,41 @@ export function SettingsPage() {
       </Dialog>
 
       <Dialog
-        open={Boolean(googleAuthProvider)}
-        title="Connect Google Drive"
-        description={googleAuthProvider ? `Authorize "${googleAuthProvider.name}" to store encrypted backups.` : "Authorize Google Drive."}
-        onClose={closeGoogleAuthDialog}
+        open={Boolean(backupEnableTarget)}
+        title="Enable remote backups"
+        description={backupEnableTarget ? `Verify this database before enabling ${backupEnableTarget.name}.` : "Enable remote backups."}
+        onClose={closeEnableBackupProviderDialog}
         size="md"
-        closeDisabled={googleAuthState.state === "starting" || googleAuthState.state === "polling"}
+        closeDisabled={backupProviderState.state === `enabling-${backupEnableTarget?.id}`}
         closeOnOverlay={false}
       >
-        <div className="grid gap-4">
-          <Notice>
-            AIPermission stores only encrypted <code>.aipdb</code> backup files in Google Drive. The OAuth token is encrypted in this local database and is never returned by the API.
+        <form className="grid gap-4" onSubmit={enableBackupProvider}>
+          <Notice tone="warn">
+            Encrypted database bytes will leave this machine. Remote backup requires a strong database password. The password itself is verified locally and is never sent to the backup service.
           </Notice>
-          {googleDeviceFlow ? (
-            <div className="grid gap-3">
-              <div className="rounded-md border border-stone-200 bg-stone-50 p-3">
-                <p className="text-xs font-semibold uppercase text-stone-500">User code</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <p className="font-mono text-lg font-bold tracking-wide text-stone-950">{googleDeviceFlow.user_code}</p>
-                  <CopyButton value={googleDeviceFlow.user_code} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5">
-                    Copy
-                  </CopyButton>
-                </div>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button asChild type="button" variant="outline">
-                  <a href={googleDeviceFlow.verification_url_complete || googleDeviceFlow.verification_url} target="_blank" rel="noreferrer">
-                    Open Google
-                  </a>
-                </Button>
-                <Button type="button" onClick={finishGoogleProviderAuth} disabled={googleAuthState.state === "polling"}>
-                  {googleAuthState.state === "polling" ? "Checking..." : "Finish connection"}
-                </Button>
-              </div>
-              <p className="text-xs text-stone-500">
-                The code expires in about {Math.max(1, Math.round((googleDeviceFlow.expires_in || 0) / 60))} minutes. If Google still shows pending, wait a few seconds and click Finish connection again.
-              </p>
-            </div>
-          ) : googleAuthState.state === "needs_client_id" || googleAuthState.state === "needs_client_secret" ? (
-            <div className="grid gap-3">
-              <Notice tone="warn">
-                Google Drive backup needs your own Google OAuth client ID and client secret first. Create an OAuth client for TVs and limited-input devices in Google Cloud Console, enable Google Drive API, then save both values on this provider.{" "}
-                <a className="font-semibold underline-offset-2 hover:underline" href={googleDriveProviderGuideURL} target="_blank" rel="noreferrer">
-                  Open setup guide
-                </a>
-              </Notice>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  const provider = googleAuthProvider;
-                  closeGoogleAuthDialog();
-                  if (provider) openBackupProviderDialog(provider);
-                }}
-              >
-                <Edit3 className="h-4 w-4" />
-                Edit provider
-              </Button>
-            </div>
-          ) : (
-            <Notice>{googleAuthState.state === "starting" ? "Starting Google authorization..." : "Start Google authorization from a provider row."}</Notice>
-          )}
-          {googleAuthState.message ? <Notice tone="good">{googleAuthState.message}</Notice> : null}
-          {googleAuthState.state === "error" ? <Notice tone="bad">{googleAuthState.error}</Notice> : null}
-        </div>
+          <Field>
+            Current database password
+            <Input
+              type="password"
+              value={backupEnablePassword}
+              onChange={(event) => setBackupEnablePassword(event.target.value)}
+              autoComplete="current-password"
+              autoFocus
+              required
+            />
+            <span className="text-xs font-normal text-stone-500">Use at least 18 characters with uppercase, lowercase, and numbers. Common or database-derived passwords are rejected.</span>
+          </Field>
+          {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={closeEnableBackupProviderDialog} disabled={backupProviderState.state === `enabling-${backupEnableTarget?.id}`}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!backupEnablePassword || backupProviderState.state === `enabling-${backupEnableTarget?.id}`}>
+              <Cloud className="h-4 w-4" />
+              {backupProviderState.state === `enabling-${backupEnableTarget?.id}` ? "Enabling..." : "Enable backups"}
+            </Button>
+          </div>
+        </form>
       </Dialog>
 
       <Dialog
@@ -1423,20 +1373,6 @@ function limitMaintenanceTranscript(value) {
   const maxLength = 200000;
   if (value.length <= maxLength) return value;
   return value.slice(value.length - maxLength);
-}
-
-function formatBytes(value) {
-  const bytes = Number(value || 0);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "Unknown";
-  const units = ["B", "KB", "MB", "GB"];
-  let size = bytes;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  const precision = size >= 10 || unitIndex === 0 ? 0 : 1;
-  return `${size.toFixed(precision)} ${units[unitIndex]}`;
 }
 
 function formatTimestamp(value) {

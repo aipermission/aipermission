@@ -125,8 +125,12 @@ func (s backupHandlers) installImportedDatabase(w http.ResponseWriter, r *http.R
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	targetID, targetPath, err := dbpkg.NewDatabasePath(s.config.DataPath, databaseName)
+	targetID, targetPath, err := dbpkg.NewDatabasePathExact(s.config.DataPath, databaseName)
 	if err != nil {
+		if errors.Is(err, dbpkg.ErrDatabaseExists) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

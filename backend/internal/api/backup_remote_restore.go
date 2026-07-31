@@ -21,6 +21,7 @@ type transientBackupRestoreRequest struct {
 	Token            string `json:"token"`
 	StreamID         string `json:"stream_id"`
 	BackupID         string `json:"backup_id"`
+	DatabaseName     string `json:"database_name"`
 	DatabasePassword string `json:"database_password"`
 }
 
@@ -88,6 +89,10 @@ func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *h
 		writeError(w, http.StatusBadRequest, "database password is required")
 		return
 	}
+	if strings.TrimSpace(request.DatabaseName) == "" {
+		writeError(w, http.StatusBadRequest, "database name is required")
+		return
+	}
 	client, err := backups.NewServiceClient(request.BaseURL, request.Token)
 	if err != nil {
 		handleBackupServiceError(w, err)
@@ -117,7 +122,7 @@ func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *h
 		writeError(w, http.StatusBadGateway, "remote backup metadata changed while restoring; refresh versions and try again")
 		return
 	}
-	s.installImportedDatabase(w, r, stream.DatabaseName, request.DatabasePassword, copyBackupFile(tmpPath))
+	s.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, copyBackupFile(tmpPath))
 }
 
 func findTransientRemoteBackup(r *http.Request, client *backups.ServiceClient, streamID, backupID string) (backups.ServiceStream, backups.ServiceBackup, error) {
