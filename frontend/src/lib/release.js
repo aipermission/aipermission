@@ -1,6 +1,26 @@
-export const appVersion = "0.2.20";
+export const appVersion = "0.2.21";
 
 export const changelogEntries = [
+  {
+    version: "0.2.21",
+    label: "Backup recovery cleanup",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Remote backup versions can be deleted individually or as an explicit selection, while the final recovery version remains protected.",
+          "Unlock now warns when the configured backup service contains a recovery version newer than the last locally reviewed upload or restore.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Restore versions are grouped by source installation and show relative plus exact timestamps for clearer recovery choices.",
+          "Remote freshness failures are visible instead of being mistaken for an up-to-date backup state.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.20",
     label: "Self-hosted encrypted backups",

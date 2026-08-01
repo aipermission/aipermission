@@ -7,6 +7,31 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.21] - 2026-08-01
+
+### Added
+
+- Added exact single and selected remote backup deletion from Settings, with
+  local record reconciliation after confirmed service deletion.
+- Added encrypted per-service recovery baselines and an unlock-time warning
+  when the remote backup service contains a newer recovery version.
+
+### Changed
+
+- Remote restore versions are grouped by source installation and show both
+  relative and exact timestamps for safer recovery selection.
+- Backup cleanup can combine explicit selection with the existing keep-last-N
+  retention workflow.
+
+### Security
+
+- The backup service refuses to delete the final recovery version in a stream.
+- Freshness baselines stay inside the encrypted local database and advance only
+  after a successful upload or restore; sync checks never mark unseen backups
+  as reviewed.
+- Failed remote freshness checks are shown explicitly instead of being treated
+  as an up-to-date result.
+
 ## [0.2.20] - 2026-07-31
 
 ### Added
