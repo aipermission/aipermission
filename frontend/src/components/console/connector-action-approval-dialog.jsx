@@ -10,9 +10,11 @@ import { formatLocalTimestamp, formatRelativeAge } from "../../lib/date-time";
 export function ConnectorActionApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }) {
   const requestAge = approval ? formatRelativeAge(approval.created_at) : "";
   const requestTimestamp = approval?.created_at ? formatLocalTimestamp(approval.created_at) : "";
-  const terminalError = action.state === "failed";
+  const terminalError = action.state === "failed" || action.state === "load_error";
   const stale = action.state === "stale";
   const inputText = approval ? JSON.stringify(approval.input || {}, null, 2) : "";
+  const previewText = approval ? JSON.stringify(approval.preview || {}, null, 2) : "";
+  const hasPreview = Boolean(approval && Object.keys(approval.preview || {}).length);
   const targetLabel = approval ? `${approval.target_name} · ${approval.profile_label}` : "";
   return (
     <Dialog
@@ -37,17 +39,28 @@ export function ConnectorActionApprovalDialog({ approval, note, action, onNoteCh
               <p className="text-xs font-semibold uppercase text-stone-500">Target</p>
               <p className="mt-1 text-sm font-semibold text-stone-900">{targetLabel}</p>
               <p className="mt-1 font-mono text-xs text-stone-500">{approval.target_ref}</p>
+              {approval.title ? <p className="mt-3 text-sm font-semibold text-stone-900">{approval.title}</p> : null}
+              {approval.summary ? <p className="mt-1 text-sm text-stone-700">{approval.summary}</p> : null}
               {approval.reason ? <p className="mt-2 text-sm text-stone-700">{approval.reason}</p> : null}
             </div>
             <Notice tone="warn" className="py-2 text-xs">
               Review this as a structured connector action. Input, output, notes, and audit records may be persisted in the encrypted local database; redaction is best-effort.
             </Notice>
-            <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase text-stone-500">Input</span>
-                <CopyButton value={inputText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" />
+            <div className="grid min-h-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2">
+              <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase text-stone-500">Approval preview</span>
+                  <CopyButton value={previewText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" />
+                </div>
+                {action.state === "loading" ? <Notice>Loading the exact approval preview...</Notice> : hasPreview ? <TerminalBlock>{previewText}</TerminalBlock> : <Notice>No structured preview was provided.</Notice>}
               </div>
-              <TerminalBlock>{inputText}</TerminalBlock>
+              <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase text-stone-500">Redacted input</span>
+                  <CopyButton value={inputText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" />
+                </div>
+                {action.state === "loading" ? <Notice>Loading redacted input...</Notice> : <TerminalBlock>{inputText}</TerminalBlock>}
+              </div>
             </div>
           </div>
           <div className="grid gap-3 border-t border-stone-200 bg-white p-5 shadow-[0_-8px_18px_rgba(15,23,42,0.06)]">

@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -182,6 +183,38 @@ func TestServicePrepareUsesRegisteredThirdConnector(t *testing.T) {
 	}
 	if connector.seen.Target.ConnectorKind != "memory" || connector.seen.Profile.Label != "readonly" {
 		t.Fatalf("connector did not receive resolved target/profile: %#v", connector.seen)
+	}
+}
+
+func TestServicePrepareRejectsOversizedPreview(t *testing.T) {
+	registry := connectors.NewRegistry()
+	connector := &prepareConnector{
+		kind: "memory",
+		prepared: &connectors.PreparedAction{
+			ConnectorKind: "memory",
+			TargetRef:     "memory:21:34",
+			ProfileID:     34,
+			ActionName:    "query_readonly",
+			Risk:          connectors.RiskRead,
+			Title:         "Prepared",
+			Preview:       map[string]any{"body": strings.Repeat("x", maxPreparedActionPreviewBytes)},
+		},
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target:  connectors.TargetView{ID: 21, Ref: "memory:21:34", ConnectorKind: "memory", Name: "Memory"},
+		profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory", Kind: "local", Label: "default"},
+	})
+
+	_, err := service.Prepare(context.Background(), PrepareRequest{
+		TargetRef:  "memory:21:34",
+		ActionName: "query_readonly",
+		Input:      map[string]any{"sql": "select 1"},
+	})
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("preview exceeds %d bytes", maxPreparedActionPreviewBytes)) {
+		t.Fatalf("expected bounded preview rejection, got %v", err)
 	}
 }
 
@@ -399,6 +432,16 @@ func TestServicePrepareRejectsSecretLikePreparedPayloadFields(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "store secrets in credential profiles") {
 		t.Fatalf("expected secret payload field rejection, got %v", err)
+	}
+
+	prepared.Payload = nil
+	prepared.Preview = map[string]any{"smtp_password": "leaked"}
+	_, err = service.Prepare(context.Background(), PrepareRequest{
+		TargetRef:  "api:1:2",
+		ActionName: "call_action",
+	})
+	if err == nil || !strings.Contains(err.Error(), "preview field") {
+		t.Fatalf("expected secret preview field rejection, got %v", err)
 	}
 }
 

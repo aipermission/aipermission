@@ -40,9 +40,10 @@ type connectorActionCallResult struct {
 }
 
 type connectorActionExecutionEnvelope struct {
-	Input   map[string]any `json:"input"`
-	Payload map[string]any `json:"payload"`
-	Reason  string         `json:"reason,omitempty"`
+	Input           map[string]any `json:"input"`
+	Payload         map[string]any `json:"payload"`
+	ApprovalPreview map[string]any `json:"approval_preview,omitempty"`
+	Reason          string         `json:"reason,omitempty"`
 }
 
 type connectorSecretAccessor struct {
@@ -316,9 +317,10 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	approvalHash string,
 ) (connectortargets.ActionRequest, error) {
 	payload, err := runtime.vault.EncryptJSON(connectorActionExecutionEnvelope{
-		Input:   prepared.Requested.Input,
-		Payload: prepared.Action.Payload,
-		Reason:  prepared.Requested.Reason,
+		Input:           prepared.Requested.Input,
+		Payload:         prepared.Action.Payload,
+		ApprovalPreview: prepared.Action.Preview,
+		Reason:          prepared.Requested.Reason,
 	})
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
@@ -331,7 +333,7 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		ActionName:           prepared.Action.ActionName,
 		Title:                s.redactForPersistence(ctx, runtime, prepared.Action.Title),
 		Summary:              s.redactForPersistence(ctx, runtime, prepared.Action.Summary),
-		Preview:              s.redactConnectorActionPreview(ctx, runtime, prepared.Action.Preview, prepared.ActionDefinition.OutputHint),
+		Preview:              s.redactConnectorActionPreview(ctx, runtime, prepared.Action.Preview, prepared.ActionDefinition.SensitiveInputFields, prepared.ActionDefinition.OutputHint),
 		Source:               prepared.Requested.Source,
 		Input:                s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input, prepared.ActionDefinition.SensitiveInputFields),
 		EncryptedPayloadJSON: payload,
@@ -530,11 +532,17 @@ func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databa
 	return redacted
 }
 
-func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *databaseRuntime, preview map[string]any, hints ...connectors.OutputHint) map[string]any {
+func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *databaseRuntime, preview map[string]any, sensitiveFields []string, hints ...connectors.OutputHint) map[string]any {
 	if preview == nil {
 		return map[string]any{}
 	}
-	redacted, ok := s.redactedConnectorValue(ctx, runtime, preview, connectorSensitiveOutputFields(hints...)).(map[string]any)
+	fields := connectorSensitiveOutputFields(hints...)
+	for _, field := range sensitiveFields {
+		if normalized := normalizeConnectorOutputField(field); normalized != "" {
+			fields[normalized] = true
+		}
+	}
+	redacted, ok := s.redactedConnectorValue(ctx, runtime, preview, fields).(map[string]any)
 	if !ok || redacted == nil {
 		return map[string]any{}
 	}

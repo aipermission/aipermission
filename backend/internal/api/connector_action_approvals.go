@@ -92,7 +92,12 @@ func (s connectorActionApprovalHandlers) getConnectorActionApproval(w http.Respo
 		writeInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, connectorActionApprovalItemFromRequest(item))
+	approval, err := connectorActionApprovalItemForResponse(runtime, item)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, approval)
 }
 
 func (s connectorActionApprovalHandlers) runConnectorActionApproval(w http.ResponseWriter, r *http.Request) {
@@ -471,4 +476,19 @@ func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest)
 		response.AssistantHint = connectorActionApprovalHint
 	}
 	return response
+}
+
+func connectorActionApprovalItemForResponse(runtime *databaseRuntime, item connectortargets.ActionRequest) (connectorActionApprovalItem, error) {
+	response := connectorActionApprovalItemFromRequest(item)
+	if item.Status != connectors.ResultApprovalPending || item.EncryptedPayloadJSON == "" {
+		return response, nil
+	}
+	var envelope connectorActionExecutionEnvelope
+	if err := runtime.vault.DecryptJSON(item.EncryptedPayloadJSON, &envelope); err != nil {
+		return connectorActionApprovalItem{}, fmt.Errorf("decrypt connector approval preview: %w", err)
+	}
+	if envelope.ApprovalPreview != nil {
+		response.Preview = cloneMapAny(envelope.ApprovalPreview)
+	}
+	return response, nil
 }
