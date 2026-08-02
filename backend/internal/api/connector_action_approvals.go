@@ -339,7 +339,8 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	}
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared)
 	if err != nil {
-		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		failureOutput := connectorActionFailureOutput(err)
+		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultFailed, failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
 			return connectortargets.ActionRequest{}, finishErr
 		}

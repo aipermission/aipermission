@@ -55,7 +55,7 @@ func (s connectorActionHandlers) runLocalConnectorAction(w http.ResponseWriter, 
 			handleConnectorTargetError(w, err)
 			return
 		}
-		writeError(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), runtime, err.Error()))
+		writeErrorWithCode(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), runtime, err.Error()), connectors.ErrorCode(err))
 		return
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector_action.manual."+string(result.Result.Status), map[string]any{

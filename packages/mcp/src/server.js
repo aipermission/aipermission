@@ -162,7 +162,9 @@ async function apiRequest(path, options) {
   const text = await response.text();
   const data = parseResponseBody(text);
   if (!response.ok) {
-    throw new Error(data?.error || `AIPermission API request failed with ${response.status}`);
+    const error = new Error(data?.error || `AIPermission API request failed with ${response.status}`);
+    if (data?.code) error.code = data.code;
+    throw error;
   }
   return data;
 }

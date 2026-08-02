@@ -18,6 +18,16 @@ test("errorResult returns an MCP tool error envelope", () => {
   });
 });
 
+test("errorResult preserves a stable gateway error code", () => {
+  const error = Object.assign(new Error("Permanent delete is unsupported."), { code: "permanent_delete_unsupported" });
+  const result = errorResult(error);
+  assert.deepEqual(JSON.parse(result.content[0].text), {
+    status: "error",
+    code: "permanent_delete_unsupported",
+    error: "Permanent delete is unsupported.",
+  });
+});
+
 test("jsonToolResult converts thrown errors to error envelopes", async () => {
   const result = await jsonToolResult(async () => {
     throw new Error("invalid or revoked API token");

@@ -144,11 +144,12 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	}
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared)
 	if err != nil {
-		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		failureOutput := connectorActionFailureOutput(err)
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
 			return connectorActionCallResult{}, finishErr
 		}
-		return connectorActionCallResult{Request: finished, Permission: permission, Result: connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error}}, nil
+		return connectorActionCallResult{Request: finished, Permission: permission, Result: connectors.ActionResult{Status: connectors.ResultFailed, Output: finished.Output, Error: finished.Error}}, nil
 	}
 	status := result.Status
 	if status == "" {
@@ -231,11 +232,12 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 	}
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared)
 	if err != nil {
-		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		failureOutput := connectorActionFailureOutput(err)
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
 			return connectorActionCallResult{}, finishErr
 		}
-		return connectorActionCallResult{Request: finished, Result: connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error}}, nil
+		return connectorActionCallResult{Request: finished, Result: connectors.ActionResult{Status: connectors.ResultFailed, Output: finished.Output, Error: finished.Error}}, nil
 	}
 	status := result.Status
 	if status == "" {
@@ -355,6 +357,14 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		return s.finishConnectorActionRequest(ctx, runtime, request.ID, status, nil, "", errorText, prepared.ActionDefinition.OutputHint)
 	}
 	return request, nil
+}
+
+func connectorActionFailureOutput(err error) any {
+	code := connectors.ErrorCode(err)
+	if code == "" {
+		return nil
+	}
+	return map[string]any{"code": code}
 }
 
 func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, prepared actions.PreparedRequest) (connectors.ActionResult, error) {

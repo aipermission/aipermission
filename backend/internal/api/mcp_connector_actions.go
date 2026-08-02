@@ -199,7 +199,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := validateTextLimit("reason", request.Reason, maxReasonBytes); err != nil {
-		writeError(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()))
+		writeErrorWithCode(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()), connectors.ErrorCode(err))
 		return
 	}
 	result, err := s.callConnectorAction(r.Context(), auth.runtime, connectorActionCall{
@@ -215,7 +215,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 			handleConnectorTargetError(w, err)
 			return
 		}
-		writeError(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()))
+		writeErrorWithCode(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()), connectors.ErrorCode(err))
 		return
 	}
 	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, "mcp.connector_action."+string(result.Result.Status), map[string]any{
