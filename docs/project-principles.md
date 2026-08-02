@@ -8,8 +8,8 @@ part of the security model, not marketing copy.
 - Local-only
 - Single-user
 - Developer-focused
-- Connector-based, with built-in SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda,
-  S3, Docker, and Kubernetes
+- Connector-based, with built-in SSH, Postgres, ClickHouse, Redis / Valkey,
+  RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and Mail
 - Human-in-the-loop
 
 ## AIPermission Intentionally Rejects

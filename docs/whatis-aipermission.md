@@ -15,7 +15,7 @@ operate on connector targets without receiving SSH private keys, SSH passwords,
 database credentials, API credentials, or other connector secrets.
 
 The current model ships with SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3,
-Docker, and Kubernetes connectors. SSH provides live terminal/file-transfer
+Docker, Kubernetes, and Mail connectors. SSH provides live terminal/file-transfer
 actions, Postgres and ClickHouse provide structured metadata and bounded
 read-only query actions, Redis / Valkey provides bounded
 key browsing plus explicit write/delete actions, RabbitMQ provides queue
@@ -24,6 +24,8 @@ S3 provides S3-compatible bucket browsing, object metadata, bounded
 upload/download, rename, and delete actions, and Docker provides scoped
 container/image/network/volume inventory, logs, redacted inspect metadata,
 scoped container exec, live container console, and explicit lifecycle actions.
+Mail provides bounded IMAP reads, explicit read/unread and folder mutations,
+and guarded SMTP send/reply actions without exposing mailbox credentials.
 They use the same
 target, credential profile,
 token permission, approval, history, and audit pipeline.
@@ -271,7 +273,7 @@ get_vault_action_request(request_id)
 cancel_vault_action_request(request_id)
 ```
 
-SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and future integrations are exposed as
+SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail, and future integrations are exposed as
 connector actions instead of separate product-specific MCP tools.
 
 Project Vault is project-capability-scoped rather than connector-action-scoped.

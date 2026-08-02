@@ -256,7 +256,7 @@ Template slots:
 | `ToolbarActions` | optional | Connector-specific Console toolbar actions, such as Files or Bulk for SSH. |
 | `Operations` | optional | Connector-specific dialogs/operations launched from list rows. |
 
-Allowed metadata icons are `database`, `key`, and `server`. Add another icon
+Allowed metadata icons are `database`, `key`, `mail`, and `server`. Add another icon
 only when the shared template registry and docs are updated together.
 
 `model.js` is the connector UI contract. Keep these exports small and
@@ -280,6 +280,11 @@ connector-local:
 | `credentialHint`, `canEdit`, `canDelete` | yes | Generic row affordances. |
 | `operationFromError` | optional | Convert connector-specific API errors into connector-owned retry operations. |
 | `hostKeyActionFromError`, `resumeHostKeyAction` | optional SSH-only | SSH uses these for host-key approval retry. Non-SSH connectors should not add no-op host-key stubs. |
+
+Connection tests should return stable generic statuses: `ok`, `failed_config`,
+`failed_network`, `failed_tls`, `failed_auth`, `failed_permission`, or
+`unknown_error`. Invalid target/profile metadata is `failed_config`; do not
+mislabel deterministic validation failures as unknown network errors.
 
 Connector templates may add optional exports for connector-owned operations,
 but generic Test/Edit/Delete and permission/history behavior must stay in the
@@ -419,6 +424,31 @@ path as Redis:
 
 It should not add RabbitMQ-specific permission tables, approval tables, history
 pages, audit routes, MCP tool families, or global UI pages.
+
+## Built-In Example: Mail
+
+Mail is a normal structured connector. Its target owns IMAP/SMTP endpoints,
+TLS modes, Direct or Over SSH transport, and optional recipient-domain policy.
+Its credential profile owns mailbox identity, encrypted app passwords, and
+read/mutation folder policy. Protocol code and the mailbox workspace stay in
+the Mail connector directories.
+
+Mail demonstrates several connector rules:
+
+- reads use bounded IMAP UID references and peek semantics;
+- `mark_read` and `mark_unread` are explicit write actions;
+- move/archive/delete revalidate UIDVALIDITY and folder policy at execution;
+- outbound bodies and recipients are sensitive action input, while the generic
+  approval preview deliberately shows the complete bounded message;
+- SMTP unknown-delivery state is connector output, not a connector-specific
+  retry pipeline;
+- hostile incoming content is normalized to safe text and remains labeled as
+  untrusted data;
+- no Mail-specific permission, approval, history, audit, REST, or MCP tool
+  family is introduced.
+
+Use [Mail Connector](../setup/mail.md) for the operator-facing protocol and
+security boundary.
 
 ## Postgres Safety Boundary
 

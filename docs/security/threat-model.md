@@ -194,6 +194,31 @@ Mitigations:
 - `always_run` should be temporary and scoped to trusted maintenance windows
 - revoke tokens or remove permissions when work is done
 
+### Hostile Mail Content
+
+Risk: an email subject or body contains prompt injection that tells an AI agent
+to disclose secrets, invoke another connector, run commands, or send a reply.
+
+Mitigations:
+
+- Mail content is documented and presented as untrusted external data
+- read actions use IMAP peek semantics and do not silently mark messages read
+- read/unread, move, archive, delete, send, and reply are explicit actions with
+  independent token rules
+- incoming HTML is converted to safe text; remote resources and active content
+  are not loaded
+- attachment content download is not exposed by the initial connector
+- outgoing formatted content is allowlist-sanitized before approval and again
+  before execution
+- recipient-domain policy can constrain outbound delivery
+- operator instructions prohibit cross-connector actions based solely on mail
+  instructions and prohibit automatic retry after `submission_unknown`
+
+Known risk: an AI granted Always access can still reason over hostile message
+content and choose an allowed action. Prompt is recommended for message bodies,
+outbound mail, and mailbox mutations until the workflow is narrowly understood.
+Redaction does not turn message content into trusted instructions.
+
 ### Cross-Project Token Discovery
 
 Risk: a token configured for one local project discovers or invokes connector

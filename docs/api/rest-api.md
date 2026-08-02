@@ -10,9 +10,14 @@ Errors use a JSON object:
 
 ```json
 {
-  "error": "message"
+  "error": "message",
+  "code": "stable_machine_readable_code"
 }
 ```
+
+`code` is optional and appears when the endpoint can classify the failure with a
+stable machine-readable value. Clients should branch on `code` when present and
+must not parse the human-readable `error` string.
 
 Request bodies reject unknown fields where structured decoding is used.
 
@@ -140,9 +145,9 @@ catalog is stable for a connector kind; the target/profile actions route below
 returns that same action shape with the selected target/profile context.
 
 `GET /api/targets` returns the unified target/profile list used by the console
-and permission UI. It includes SSH targets represented as connector refs such as
-`ssh:3:5` plus structured connector profiles such as `postgres:7:11`. Secret
-payloads are never included.
+and permission UI. Every target/profile pair uses the same connector-ref shape,
+including `ssh:3:5`, `postgres:7:11`, and `mail:13:8`. Secret payloads are never
+included.
 
 `GET /api/connector-targets/inventory` returns active targets, active profiles,
 and connector action definitions in one response for permission-management UI.
@@ -244,6 +249,7 @@ the service port, not ICMP ping:
 
 ```json
 {
+  "project_id": 2,
   "host": "127.0.0.1",
   "port": 5432,
   "mode": "over_ssh",
@@ -254,7 +260,8 @@ the service port, not ICMP ping:
 
 When `mode=over_ssh`, the TCP checks are dialed through the referenced SSH
 connector profile so the result matches what Redis / Valkey, Postgres, RabbitMQ, or a
-future TCP-backed connector would see from that SSH target.
+future TCP-backed connector would see from that SSH target. `project_id` is
+required, and the transport target must belong to that same project.
 
 `POST /api/connector-targets/{id}/operations/docker-check` runs a read-only,
 on-demand Docker status command through the SSH connector adapter. It does not
@@ -1113,7 +1120,7 @@ normalized into unified history/audit, but local UI activity is not an MCP
 token approval request. `runtime_id` on these endpoints is the SSH
 connector-profile runtime id kept for the live-console/file-transfer API
 payloads, not a generic connector target id. Use `connector_kind` to filter by
-connector type (`ssh`, `postgres`, and future connectors). `activity_type` is a
+connector type (`ssh`, `postgres`, `mail`, and future connectors). `activity_type` is a
 technical shape filter for API clients that need command/action/file-transfer
 payloads. Use `target_id` to filter one connector target, and `profile_id` when
 the target has multiple credential profiles such as `admin` and `readonly`:
@@ -1121,6 +1128,7 @@ the target has multiple credential profiles such as `admin` and `readonly`:
 ```txt
 GET /api/history?limit=50&offset=0&connector_kind=ssh&activity_type=file_transfer&status=completed&q=backup
 GET /api/history?connector_kind=postgres&target_id=7&profile_id=11
+GET /api/history?connector_kind=mail&target_id=13&profile_id=8&status=completed
 ```
 
 `POST /api/connector-actions/local-run` is the unlocked web UI path for local
@@ -1192,7 +1200,10 @@ Deleting a label removes its history-entry relationships. The history records re
 
 Approval-required connector actions use connector action request endpoints.
 `GET /api/connector-action-approvals?status=approval_pending` lists pending
-connector requests for the local UI.
+connector requests for the local UI. For a pending request only, the response
+transiently decrypts the exact bounded prepared preview from its encrypted
+execution envelope so the operator can review what will run. The stored
+preview and normal history, audit, and MCP fields remain redacted.
 
 Run changes an `approval_pending` connector action to `running`, validates the
 current token/target/profile/action permission and approval-context hash, then

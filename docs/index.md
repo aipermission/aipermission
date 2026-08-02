@@ -45,6 +45,7 @@ Start here:
 - [Database Migration](setup/database-migration.md)
 - [MCP Client Setup](setup/mcp-client-setup.md)
 - [Kafka / Redpanda Connector](setup/kafka-redpanda.md)
+- [Mail Connector](setup/mail.md)
 
 ## Providers
 

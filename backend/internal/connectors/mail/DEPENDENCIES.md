@@ -18,6 +18,15 @@ distribution. Production protocol debug writers stay disabled. All reads,
 decodes, result serialization, and command lifetimes remain bounded by the
 connector rather than relying on library defaults.
 
+`go-imap` v1 is used deliberately for this release because it is the latest
+stable v1 API and the connector depends on its established client behavior.
+The actively developed v2 line remains pre-stable. Maintainers must review the
+upstream v1 branch and security advisories during dependency maintenance, apply
+relevant post-tag fixes through a reviewed upgrade when necessary, and keep
+`govulncheck` in the release gate. Migration to v2 should happen only after a
+stable v2 release exists and focused tests cover capability refresh, UID search,
+BODY.PEEK, STARTTLS, mutation, and cancellation behavior against the new API.
+
 The release candidate was dogfooded against a real Dovecot-compatible IMAP
 service and authenticated SMTP submission service. Connection tests, folder
 ordering, unread-preserving reads, compose/reply, Prompt, and Always paths were

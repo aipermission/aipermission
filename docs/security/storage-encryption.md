@@ -105,8 +105,11 @@ The user loses:
 Unified history, audit logs, closed console sessions, and consumed messages can
 also be cleaned by configurable retention settings. History retention covers
 connector action requests, live-console command rows, file transfer metadata,
-and the normalized history projection. Retention values are stored inside the
-encrypted database; `0` disables automatic cleanup for that category.
+and the normalized history projection. Connector action data can include
+bounded fetched mail bodies and encrypted outbound approval payloads; those
+values also travel with encrypted `.aipdb` backups until retention cleanup.
+Retention values are stored inside the encrypted database; `0` disables
+automatic cleanup for that category.
 
 Connector targets are not changed. For SSH targets, existing public key lines
 may remain in remote `authorized_keys` files; the user can remove them manually

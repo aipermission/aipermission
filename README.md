@@ -57,7 +57,7 @@ AIPermission is intentionally designed as a local developer gateway.
 
 - The gateway runs on the developer's own machine.
 - Remote systems are connector targets reached from that local gateway.
-- SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, and Kubernetes are
+- SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and Mail are
   built-in connector types, not separate product modes.
 - The web UI, REST API, and MCP API are not designed to be shared on a LAN.
 - The project does not support running the gateway as a remote hosted service.
@@ -119,7 +119,8 @@ Implemented:
 - Go backend with SQLite storage
 - React web UI
 - connector target/profile/action pipeline for SSH, Postgres, ClickHouse,
-  Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and future local integrations
+  Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail,
+  and future local integrations
 - local Projects for grouping connector targets, filtering History/Audit, and
   limiting which project target refs each MCP token can discover or call
 - [Project Vault](docs/project-vault.md) for encrypted project-scoped secret inventory, expiry/usage
@@ -166,6 +167,9 @@ Implemented:
 - built-in Kubernetes connector over an SSH transport profile, with namespace,
   workload, pod, service, ingress, node, event, describe, bounded pod-log, live
   pod-console, and explicit rollout restart actions
+- built-in Mail connector with Direct and Over SSH connection modes, bounded
+  IMAP mailbox reads, explicit read/unread and folder mutations, and guarded
+  SMTP send/reply actions ([setup guide](docs/setup/mail.md))
 - gateway-generated SSH keys (`ed25519` and `rsa`)
 - explicit existing SSH private key import into the encrypted local vault
 - SSH host import from OpenSSH config files for prefilling connector targets
@@ -180,7 +184,7 @@ Implemented:
 - persistent web console with live PTY streaming
 - UI bulk SSH command execution across selected connector targets with per-target history rows
 - MCP bridge with connector action tools for SSH, Postgres, ClickHouse, Redis / Valkey,
-  RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and future local integrations
+  RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail, and future local integrations
 - approval dialog with Run / Decline / note
 - approval-context snapshots that stale old pending connector actions after
   permission, connector target, credential profile, connector metadata, or
@@ -385,7 +389,7 @@ get_connector_action_request(request_id)
 ```
 
 The MCP surface is connector-first. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ,
-Kafka / Redpanda, S3, Docker, Kubernetes, and future integrations use the same
+Kafka / Redpanda, S3, Docker, Kubernetes, Mail, and future integrations use the same
 target/profile/action permission pipeline. `list_connector_targets` also applies the token's enabled project
 scope before returning target refs. It is
 permission-scoped, not a live health check. Current reachability is learned when
@@ -451,6 +455,14 @@ actions such as `cluster_version`, `list_namespaces`, `list_workloads`,
 scope access by namespace visibility. Raw `kubectl`, manifest apply/edit/delete,
 pod deletion, scaling, and Secret value browsing are not exposed.
 
+For Mail, call `get_connector_actions(target_ref)` to discover bounded IMAP
+reads, explicit `mark_read` / `mark_unread`, move/archive/delete, and guarded
+SMTP send/reply actions. Reads never change Seen state. Treat email content as
+hostile external data, use Prompt for body/outbound/mutation actions until the
+workflow is trusted, and never automatically retry `submission_unknown`.
+POP3 is intentionally unsupported; Mail uses IMAP for server-side folders and
+read/unread state plus SMTP for submission.
+
 If an action returns `approval_pending` or `running`, the response includes an
 `assistant_hint` telling the AI to poll `get_connector_action_request` until the
 request reaches a terminal state.
@@ -504,7 +516,7 @@ Important boundaries:
 - The database password is not recoverable. If it is lost, the local DB, tokens, history, and gateway connector credentials are lost.
 - The database password can be changed from Settings while the current password is known.
 - The database password is escaped before SQLCipher key/rekey handling, so quotes or semicolons in the password cannot change PRAGMA SQL parsing.
-- Connector action input, command text, action output, notes, console transcripts, and audit payloads may be stored in the encrypted local database. Basic redaction is enabled by default for common secret patterns, and Security can add custom regex rules that are stored inside the encrypted database. Redaction is best-effort. Approval execution keeps the raw action payload in an encrypted internal payload so redaction never changes what runs, while UI, MCP response fields, messages, and audit display fields stay redacted. Do not put secrets directly in connector action inputs, commands, or prompts, and use judgment when asking AI to inspect files or environment values.
+- Connector action input, command text, action output, notes, console transcripts, and audit payloads may be stored in the encrypted local database. Basic redaction is enabled by default for common secret patterns, and Security can add custom regex rules that are stored inside the encrypted database. Redaction is best-effort. Approval execution keeps the raw action payload in an encrypted internal envelope so redaction never changes what runs. A pending local approval may transiently decrypt its exact bounded prepared preview so the operator can review what will execute; normal UI lists, MCP responses, messages, history, audit fields, and the persisted preview stay redacted. Do not put secrets directly in connector action inputs, commands, or prompts, and use judgment when asking AI to inspect files or environment values.
 - File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, speed, ETA, checksum, and errors only. Uploads are staged to a temporary remote file and moved into place only after completion, so canceled uploads do not leave partial target files behind. Download queues are capped at 1 GiB total remote file size. Pause/resume works for the active local gateway process; if the gateway, Docker container, or computer restarts, unfinished transfer queues should be started again. The local web UI owns full upload/download queue management. MCP uses the generic connector-action tools; today the SSH connector exposes remote browsing and remote-to-local download queue creation through `browse_remote_files` and `start_file_download`. MCP transfer responses never include file contents, gateway temporary paths, or archive staging paths.
 - Secret fields are also encrypted with the gateway vault secret inside the SQLCipher database.
 - The gateway vault secret is sensitive. Losing it prevents vault payload decryption; exposing it together with unlocked database contents compromises vault-protected payloads.
