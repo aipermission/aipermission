@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, CircleCheck, CircleX, Edit3, FolderKanban, Plus, PlugZap, RefreshCcw, Search, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
@@ -33,6 +33,7 @@ export function ConnectorsPage() {
   const [toast, setToast] = useState("");
   const [connectorSearch, setConnectorSearch] = useState("");
   const [collapsedProjects, setCollapsedProjects] = useState({});
+  const testCooldownTimers = useRef(new Map());
   const catalogWarnings = useMemo(() => connectorCatalogWarnings(catalog), [catalog]);
   const availableConnectorKinds = useMemo(() => {
     if (catalog.state !== "ready") return [];
@@ -64,6 +65,10 @@ export function ConnectorsPage() {
   useEffect(() => {
     void loadCatalog();
     void refreshConnectors();
+    return () => {
+      for (const timer of testCooldownTimers.current.values()) window.clearTimeout(timer);
+      testCooldownTimers.current.clear();
+    };
   }, []);
 
   useEffect(() => {
@@ -228,10 +233,7 @@ export function ConnectorsPage() {
 
   async function completeConnectorOperation(result, operation) {
     if (result?.testKey) {
-      setTests((current) => ({
-        ...current,
-        [result.testKey]: { state: result.test.ok ? "ok" : "error", error: result.test.error, data: result.test.data },
-      }));
+      setConnectorTestResult(result.testKey, { state: result.test.ok ? "ok" : "error", error: result.test.error, data: result.test.data });
       return;
     }
     const kind = operation?.connector_kind || operation?.kind || form.connector_kind;
@@ -239,6 +241,20 @@ export function ConnectorsPage() {
     setForm({ ...emptyConnectorForm(kind, { firstCredentialID }), project_id: defaultProjectID });
     setState({ state: "idle", error: null, message: result?.message || "Connector updated." });
     await refreshConnectors();
+  }
+
+  function setConnectorTestResult(testKey, value) {
+    const completedAt = Date.now();
+    setTests((current) => ({ ...current, [testKey]: { ...value, cooldown: true, completedAt } }));
+    window.clearTimeout(testCooldownTimers.current.get(testKey));
+    const timer = window.setTimeout(() => {
+      testCooldownTimers.current.delete(testKey);
+      setTests((current) => {
+        if (current[testKey]?.completedAt !== completedAt) return current;
+        return { ...current, [testKey]: { ...current[testKey], cooldown: false } };
+      });
+    }, 1500);
+    testCooldownTimers.current.set(testKey, timer);
   }
 
   async function testConnector(target, profile = selectedProfileForTarget(target)) {
@@ -255,14 +271,14 @@ export function ConnectorsPage() {
     setTests((current) => ({ ...current, [testKey]: { state: "testing", error: null, data: null } }));
     try {
       const result = await model.test({ target, profile });
-      setTests((current) => ({ ...current, [testKey]: { state: result.ok ? "ok" : "error", error: result.error, data: result.data } }));
+      setConnectorTestResult(testKey, { state: result.ok ? "ok" : "error", error: result.error, data: result.data });
     } catch (error) {
       const operation = model.operationFromError?.(error, { operation: "test", target, profile, testKey });
       if (openConnectorOperation(operation)) {
         setTests((current) => ({ ...current, [testKey]: { state: "idle", error: null, data: null } }));
         return;
       }
-      setTests((current) => ({ ...current, [testKey]: { state: "error", error: error.message, data: null } }));
+      setConnectorTestResult(testKey, { state: "error", error: error.message, data: null });
     }
   }
 
@@ -352,7 +368,7 @@ export function ConnectorsPage() {
               form={form}
               mode={drawer.mode}
               credentials={credentials.data}
-              targets={targets.data}
+              targets={targets.data.filter((target) => String(target.project_id || "") === String(form.project_id || ""))}
               activeCredential={activeCredential}
               onChange={updateForm}
             />
@@ -541,7 +557,7 @@ function ConnectorTargetRow(props) {
       </td>
       <td className="px-4 py-4">
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Test connection" disabled={!profile || test?.state === "testing"} onClick={() => onTestConnector(target, profile)}>
+          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Test connection" disabled={!profile || test?.state === "testing" || test?.cooldown} onClick={() => onTestConnector(target, profile)}>
             <PlugZap className="h-4 w-4" />
           </Button>
           <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Edit connector" disabled={!canEdit} onClick={() => canEdit && onEdit(target, profile)}>
@@ -593,10 +609,14 @@ function ConnectorTestState({ value }) {
       </span>
     );
   }
+  const error = value.error || value.data?.message || "Connection test failed";
   return (
-    <span className="flex items-center gap-1 text-xs text-red-800 dark-status-bad" title={value.error || value.data?.message || "Connection test failed"}>
-      <CircleX className="h-3.5 w-3.5 shrink-0" />
-      Failed
+    <span className="grid max-w-56 gap-0.5 text-xs text-red-800 dark-status-bad" title={error}>
+      <span className="flex items-center gap-1 font-medium">
+        <CircleX className="h-3.5 w-3.5 shrink-0" />
+        Failed
+      </span>
+      <span className="line-clamp-2 leading-4">{error}</span>
     </span>
   );
 }
