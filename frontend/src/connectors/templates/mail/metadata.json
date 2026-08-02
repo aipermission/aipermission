@@ -1,0 +1,8 @@
+{
+  "kind": "mail",
+  "label": "Mail",
+  "summary": "Bounded IMAP browsing, explicit read state changes, guarded mailbox moves, and SMTP send/reply actions.",
+  "version": "0.2",
+  "icon": "mail",
+  "badge_tone": "warn"
+}
