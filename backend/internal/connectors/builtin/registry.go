@@ -10,6 +10,7 @@ import (
 	kafkaconnector "github.com/aipermission/aipermission/backend/internal/connectors/kafka"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	_ "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes/apiadapter"
+	mailconnector "github.com/aipermission/aipermission/backend/internal/connectors/mail"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
@@ -25,6 +26,7 @@ func RegisterAll(registry *connectors.Registry) error {
 		dockerconnector.New(),
 		kafkaconnector.New(),
 		kubernetesconnector.New(),
+		mailconnector.New(),
 		postgresconnector.New(),
 		rabbitmqconnector.New(),
 		redisconnector.New(),

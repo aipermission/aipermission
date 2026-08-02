@@ -10,6 +10,7 @@ import (
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	kafkaconnector "github.com/aipermission/aipermission/backend/internal/connectors/kafka"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
+	mailconnector "github.com/aipermission/aipermission/backend/internal/connectors/mail"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
@@ -48,6 +49,13 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	kubernetes, ok := registry.Get(kubernetesconnector.Kind)
 	if !ok {
 		t.Fatal("expected kubernetes connector")
+	}
+	mail, ok := registry.Get(mailconnector.Kind)
+	if !ok {
+		t.Fatal("expected mail connector")
+	}
+	if mail.Label() != mailconnector.Label {
+		t.Fatalf("mail label = %q", mail.Label())
 	}
 	if kubernetes.Label() != kubernetesconnector.Label {
 		t.Fatalf("kubernetes label = %q", kubernetes.Label())
@@ -91,7 +99,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 9 || infos[0].Kind != clickhouseconnector.Kind || infos[1].Kind != dockerconnector.Kind || infos[2].Kind != kafkaconnector.Kind || infos[3].Kind != kubernetesconnector.Kind || infos[4].Kind != postgresconnector.Kind || infos[5].Kind != rabbitmqconnector.Kind || infos[6].Kind != redisconnector.Kind || infos[7].Kind != s3connector.Kind || infos[8].Kind != sshconnector.Kind {
+	if len(infos) != 10 || infos[0].Kind != clickhouseconnector.Kind || infos[1].Kind != dockerconnector.Kind || infos[2].Kind != kafkaconnector.Kind || infos[3].Kind != kubernetesconnector.Kind || infos[4].Kind != mailconnector.Kind || infos[5].Kind != postgresconnector.Kind || infos[6].Kind != rabbitmqconnector.Kind || infos[7].Kind != redisconnector.Kind || infos[8].Kind != s3connector.Kind || infos[9].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -243,6 +251,42 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				kafkaconnector.ActionReadMessages:           {"topic": "events", "partition": 0, "start_position": "recent", "offset": "0", "max_records": 20, "max_bytes": 262144, "wait_seconds": 2},
 				kafkaconnector.ActionPublishMessage:         {"topic": "events", "partition": 0, "key": "", "key_encoding": "utf8", "value": "test", "value_encoding": "utf8", "headers": []any{}},
 				kafkaconnector.ActionSetConsumerGroupOffset: {"group": "workers", "topic": "events", "partition": 0, "offset": "0"},
+			}
+	case mailconnector.Kind:
+		messageRef := map[string]any{"folder": "INBOX", "uidvalidity": 42, "uid": 7}
+		return connectors.TargetView{
+				ID:            10,
+				Ref:           "mail:10:100",
+				ConnectorKind: mailconnector.Kind,
+				Name:          "support-mailbox",
+				Config: map[string]any{
+					"connection_mode": "direct", "imap_host": "imap.example.com", "imap_port": 993, "imap_tls_mode": "implicit_tls",
+					"smtp_host": "smtp.example.com", "smtp_port": 465, "smtp_tls_mode": "implicit_tls", "allowed_recipient_domains": []any{"example.com"},
+				},
+			}, connectors.CredentialProfileView{
+				ID:            100,
+				TargetID:      10,
+				ConnectorKind: mailconnector.Kind,
+				Kind:          "password",
+				Label:         "support",
+				Public: map[string]any{
+					"mailbox_address": "support@example.com", "imap_enabled": true, "smtp_auth_mode": "reuse_imap",
+					"allowed_read_folders": []any{"INBOX", "Archive", "Trash"}, "allowed_mutation_source_folders": []any{"INBOX"},
+					"allowed_mutation_destination_folders": []any{"Archive", "Trash"}, "archive_folder": "Archive", "trash_folder": "Trash",
+				},
+			}, map[string]map[string]any{
+				mailconnector.ActionListFolders:     {},
+				mailconnector.ActionCheckMailbox:    {"folder": "INBOX", "limit": 20},
+				mailconnector.ActionSearchMessages:  {"folder": "INBOX", "unread_only": true, "subject": "status", "limit": 20},
+				mailconnector.ActionGetMessage:      {"message_ref": messageRef},
+				mailconnector.ActionListAttachments: {"message_ref": messageRef},
+				mailconnector.ActionMarkRead:        {"message_ref": messageRef},
+				mailconnector.ActionMarkUnread:      {"message_ref": messageRef},
+				mailconnector.ActionMoveMessage:     {"message_ref": messageRef, "destination_folder": "Archive"},
+				mailconnector.ActionArchiveMessage:  {"message_ref": messageRef},
+				mailconnector.ActionSendMessage:     {"to": []any{"operator@example.com"}, "subject": "Status", "text_body": "All systems operational."},
+				mailconnector.ActionReplyMessage:    {"message_ref": messageRef, "to": []any{"operator@example.com"}, "subject": "Re: Status", "text_body": "Acknowledged."},
+				mailconnector.ActionDeleteMessage:   {"message_ref": messageRef},
 			}
 	case postgresconnector.Kind:
 		return connectors.TargetView{
