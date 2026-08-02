@@ -1,4 +1,4 @@
-import { Database, KeyRound, Server } from "lucide-react";
+import { Database, KeyRound, Mail, Server } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { CopyButton } from "../../components/ui/copy-button";
 import { TerminalBlock } from "../../components/ui/terminal-block";
@@ -9,6 +9,7 @@ export { connectorBadgeTone, connectorKindLabel, connectorSummary } from "./cata
 const connectorIcons = Object.freeze({
   database: Database,
   key: KeyRound,
+  mail: Mail,
   server: Server,
 });
 
