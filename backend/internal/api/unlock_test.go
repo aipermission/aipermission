@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
@@ -65,6 +66,16 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	if !server.isUnlocked() {
 		t.Fatalf("server should be unlocked after setup")
 	}
+	runtime := server.activeRuntime()
+	connectorStore := connectortargets.NewStore(runtime.database)
+	target, profile := createAPITestPostgresTargetProfile(t, connectorStore, runtime.vault)
+	if _, err := connectorStore.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,
+		ActionName: "retention_fixture", Source: commandRequestSourceManual, Status: connectors.ResultCompleted,
+		Input: map[string]any{"body": "retained-correspondence-fixture"}, Preview: map[string]any{"subject": "retained approval preview"},
+	}); err != nil {
+		t.Fatalf("insert retained connector action fixture: %v", err)
+	}
 
 	if response := performJSON(handler, http.MethodPost, "/api/databases/switch", "", switchDatabaseRequest{DatabaseID: "project-one"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"current"`) {
 		t.Fatalf("switching to current database failed: %d %s", response.Code, response.Body.String())
@@ -109,6 +120,18 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	}
 	if err := dbpkg.ValidateEncrypted(downloadedPath, "ChangedPassword123"); err != nil {
 		t.Fatalf("downloaded backup should be a valid encrypted snapshot: %v", err)
+	}
+	downloadedDB, err := dbpkg.OpenEncrypted(downloadedPath, "ChangedPassword123")
+	if err != nil {
+		t.Fatalf("open downloaded backup: %v", err)
+	}
+	defer downloadedDB.Close()
+	var retainedInput, retainedPreview string
+	if err := downloadedDB.QueryRow(`SELECT input_json, preview_json FROM connector_action_requests WHERE action_name = 'retention_fixture'`).Scan(&retainedInput, &retainedPreview); err != nil {
+		t.Fatalf("read retained connector action from backup: %v", err)
+	}
+	if !strings.Contains(retainedInput, "retained-correspondence-fixture") || !strings.Contains(retainedPreview, "retained approval preview") {
+		t.Fatalf("downloaded backup lost retained action content: input=%s preview=%s", retainedInput, retainedPreview)
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/backup/export", "", map[string]any{"passphrase": "backup-passphrase"}); response.Code != http.StatusNotFound {
 		t.Fatalf("removed export endpoint should not be registered, got %d %s", response.Code, response.Body.String())
