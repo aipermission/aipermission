@@ -1,6 +1,26 @@
-export const appVersion = "0.2.21";
+export const appVersion = "0.2.22";
 
 export const changelogEntries = [
+  {
+    version: "0.2.22",
+    label: "Controlled Mail workflows",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Mail connectors can browse bounded IMAP folders, search and read messages, manage read state and safe folder moves, and compose or reply through SMTP.",
+          "Direct TLS and generic Over SSH transport are supported with separate IMAP and SMTP connection diagnostics.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Mail content is treated as bounded untrusted data, outbound approvals show the complete sanitized message projection, and authentication requires verified TLS.",
+          "Pending connector approvals now become stale when a dependent transport target or credential revision changes.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.21",
     label: "Backup recovery cleanup",

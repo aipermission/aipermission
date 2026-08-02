@@ -7,6 +7,31 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.22] - 2026-08-03
+
+### Added
+
+- Added an isolated IMAP and SMTP Mail connector with bounded folder browsing,
+  message search and reading, read-state changes, safe moves, archive and Trash
+  workflows, compose, and reply.
+- Added direct TLS and generic Over SSH transport support with independent IMAP
+  and SMTP connection diagnostics.
+
+### Changed
+
+- Connector approval snapshots now bind generic execution context and dependent
+  transport target/profile revisions, requiring fresh approval after drift.
+- Mail content is rendered as bounded untrusted data, with complete outbound
+  approval projections and explicit protocol/result limits.
+
+### Security
+
+- Mail authentication requires verified TLS; plaintext IMAP/SMTP transports,
+  POP3, and attachment download are intentionally unsupported.
+- Recipient, folder, message-reference, MIME, response-size, and timeout
+  boundaries are revalidated during execution, while BCC remains envelope-only.
+- SMTP acceptance uncertainty is reported without unsafe automatic retry hints.
+
 ## [0.2.21] - 2026-08-01
 
 ### Added
