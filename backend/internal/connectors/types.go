@@ -42,10 +42,20 @@ type ConnectorHelp struct {
 // TargetView is the public, non-secret view of a configured target.
 type TargetView struct {
 	ID            int64          `json:"id"`
+	ProjectID     int64          `json:"project_id"`
 	Ref           string         `json:"ref"`
 	ConnectorKind string         `json:"connector_kind"`
 	Name          string         `json:"name"`
 	Config        map[string]any `json:"config,omitempty"`
+	UpdatedAt     string         `json:"updated_at,omitempty"`
+}
+
+// ApprovalDependency identifies another connector target/profile whose current
+// public configuration and credential revision affect action execution.
+// Dependencies are resolved by core and bound into pending approval snapshots.
+type ApprovalDependency struct {
+	TargetRef string `json:"target_ref"`
+	Purpose   string `json:"purpose"`
 }
 
 // CredentialProfileView is the public, non-secret view of a credential profile
@@ -102,7 +112,8 @@ type PreparedAction struct {
 	Preview map[string]any `json:"preview,omitempty"`
 	Payload map[string]any `json:"payload,omitempty"`
 
-	ContextMaterial map[string]any `json:"context_material,omitempty"`
+	ContextMaterial map[string]any       `json:"context_material,omitempty"`
+	Dependencies    []ApprovalDependency `json:"dependencies,omitempty"`
 }
 
 // ActionHandles points callers at follow-up resources for asynchronous actions.
@@ -139,6 +150,7 @@ const (
 	TestFailedNetwork    TestStatus = "failed_network"
 	TestFailedTLS        TestStatus = "failed_tls"
 	TestFailedPermission TestStatus = "failed_permission"
+	TestFailedConfig     TestStatus = "failed_config"
 	TestUnknownError     TestStatus = "unknown_error"
 )
 

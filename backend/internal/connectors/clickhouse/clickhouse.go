@@ -336,7 +336,7 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB, e
 	if transport == nil {
 		return nil, ErrMissingTransport
 	}
-	dialRequest := connectors.NetworkDialRequest{Mode: connectionMode(runtime.Target), Host: host, Port: port, TransportTargetRef: targetString(runtime.Target.Config, "transport_target_ref")}
+	dialRequest := connectors.NetworkDialRequest{SourceTargetRef: runtime.Target.Ref, SourceProjectID: runtime.Target.ProjectID, Mode: connectionMode(runtime.Target), Host: host, Port: port, TransportTargetRef: targetString(runtime.Target.Config, "transport_target_ref")}
 	tlsConfig := clickHouseTLSConfig(runtime.Target)
 	options := &clickhouse.Options{
 		Protocol: clickhouse.Native,

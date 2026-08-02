@@ -83,6 +83,9 @@ func TestStoreCreatesAndResolvesConnectorTargetProfile(t *testing.T) {
 	if resolvedTarget.ConnectorKind != "postgres" || resolvedTarget.Name != "main-db" {
 		t.Fatalf("unexpected target: %#v", resolvedTarget)
 	}
+	if resolvedTarget.ProjectID != target.ProjectID {
+		t.Fatalf("resolved target project = %d, want %d", resolvedTarget.ProjectID, target.ProjectID)
+	}
 	if resolvedTarget.Config["host"] != "10.0.0.15" || resolvedTarget.Config["port"].(float64) != 5432 {
 		t.Fatalf("unexpected target config: %#v", resolvedTarget.Config)
 	}
@@ -94,6 +97,71 @@ func TestStoreCreatesAndResolvesConnectorTargetProfile(t *testing.T) {
 	}
 	if _, exists := resolvedProfile.Public["password"]; exists {
 		t.Fatalf("secret should not be exposed in public metadata: %#v", resolvedProfile.Public)
+	}
+}
+
+func TestStoreValidatesTransportProjectBoundary(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+
+	source, sourceProfile := createPostgresTargetProfile(t, ctx, store)
+	transport, err := store.CreateTarget(ctx, CreateTargetInput{
+		ProjectID:     source.ProjectID,
+		ConnectorKind: "ssh",
+		Name:          "same-project-transport",
+		Config:        map[string]any{"host": "127.0.0.1"},
+	})
+	if err != nil {
+		t.Fatalf("create transport target: %v", err)
+	}
+	transportProfile, err := store.CreateCredentialProfile(ctx, CreateCredentialProfileInput{
+		TargetID:            transport.ID,
+		ConnectorKind:       "ssh",
+		Kind:                "private_key",
+		Label:               "root",
+		Public:              map[string]any{"username": "root"},
+		EncryptedSecretJSON: "encrypted-secret",
+	})
+	if err != nil {
+		t.Fatalf("create transport profile: %v", err)
+	}
+	transportRef := ConnectorTargetRef("ssh", transport.ID, transportProfile.ID)
+	if err := store.ValidateTransportTarget(ctx, ConnectorTargetRef("postgres", source.ID, sourceProfile.ID), transportRef); err != nil {
+		t.Fatalf("validate same-project transport: %v", err)
+	}
+
+	result, err := database.ExecContext(ctx, `INSERT INTO projects (name, slug, status, created_at, updated_at) VALUES ('Other', 'other', 'active', datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatalf("create second project: %v", err)
+	}
+	otherProjectID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("second project id: %v", err)
+	}
+	otherTarget, err := store.CreateTarget(ctx, CreateTargetInput{
+		ProjectID:     otherProjectID,
+		ConnectorKind: "ssh",
+		Name:          "cross-project-transport",
+		Config:        map[string]any{"host": "127.0.0.1"},
+	})
+	if err != nil {
+		t.Fatalf("create cross-project target: %v", err)
+	}
+	otherProfile, err := store.CreateCredentialProfile(ctx, CreateCredentialProfileInput{
+		TargetID:            otherTarget.ID,
+		ConnectorKind:       "ssh",
+		Kind:                "private_key",
+		Label:               "root",
+		Public:              map[string]any{"username": "root"},
+		EncryptedSecretJSON: "encrypted-secret",
+	})
+	if err != nil {
+		t.Fatalf("create cross-project profile: %v", err)
+	}
+	err = store.ValidateTransportProject(ctx, source.ProjectID, ConnectorTargetRef("ssh", otherTarget.ID, otherProfile.ID))
+	if err == nil || err.Error() != "transport target must belong to the same project" {
+		t.Fatalf("cross-project transport error = %v", err)
 	}
 }
 

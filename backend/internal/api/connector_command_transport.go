@@ -55,6 +55,12 @@ func (transport connectorCommandTransport) RunConnectorCommand(ctx context.Conte
 		if !ok {
 			return connectors.CommandRunResult{}, connectortargets.ErrInvalidTargetRef
 		}
+		if transport.runtime == nil || transport.runtime.database == nil {
+			return connectors.CommandRunResult{}, fmt.Errorf("database runtime is not available")
+		}
+		if err := connectortargets.NewStore(transport.runtime.database).ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef); err != nil {
+			return connectors.CommandRunResult{}, err
+		}
 		adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CommandTransportAdapter)
 		if adapter == nil {
 			return connectors.CommandRunResult{}, fmt.Errorf("%s connector does not expose command transport", kind)

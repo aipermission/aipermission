@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const approvalContextSchemaVersion = "connector-action-v1"
+const approvalContextSchemaVersion = "connector-action-v2"
 
 func sha256Hex(value string) string {
 	sum := sha256.Sum256([]byte(value))

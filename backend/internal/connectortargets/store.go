@@ -1400,6 +1400,32 @@ func ParseConnectorTargetRef(ref string) (string, int64, int64, bool) {
 	return parts[0], targetID, profileID, true
 }
 
+// ValidateTransportProject ensures a connector can only route through a
+// transport target in the same project. This keeps project boundaries in the
+// shared transport pipeline instead of duplicating policy in each connector.
+func (s *Store) ValidateTransportProject(ctx context.Context, projectID int64, transportTargetRef string) error {
+	resolvedProjectID, err := s.resolveProjectID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	transportTarget, _, err := s.ResolveConnectorActionTarget(ctx, transportTargetRef)
+	if err != nil {
+		return err
+	}
+	if transportTarget.ProjectID != resolvedProjectID {
+		return ValidationError("transport target must belong to the same project")
+	}
+	return nil
+}
+
+func (s *Store) ValidateTransportTarget(ctx context.Context, sourceTargetRef string, transportTargetRef string) error {
+	sourceTarget, _, err := s.ResolveConnectorActionTarget(ctx, sourceTargetRef)
+	if err != nil {
+		return err
+	}
+	return s.ValidateTransportProject(ctx, sourceTarget.ProjectID, transportTargetRef)
+}
+
 func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef string) (connectors.TargetView, connectors.CredentialProfileView, error) {
 	if s == nil || s.db == nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, fmt.Errorf("connector target store is not configured")
@@ -1414,7 +1440,7 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 	var profilePublicJSON string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
-			t.id, t.connector_kind, t.name, t.config_json,
+			t.id, t.project_id, t.connector_kind, t.name, t.config_json, t.updated_at,
 			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json,
 			p.encrypted_secret_json, p.risk_label, p.updated_at
 		FROM connector_targets t
@@ -1431,9 +1457,11 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 		connectorKind,
 	).Scan(
 		&target.ID,
+		&target.ProjectID,
 		&target.ConnectorKind,
 		&target.Name,
 		&targetConfigJSON,
+		&target.UpdatedAt,
 		&profile.ID,
 		&profile.TargetID,
 		&profile.ConnectorKind,

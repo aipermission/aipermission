@@ -375,6 +375,7 @@ func (client *kubeClient) baseCommand() string {
 
 func (client *kubeClient) run(ctx context.Context, command string, timeoutSeconds int) (connectors.CommandRunResult, error) {
 	return client.transport.RunConnectorCommand(ctx, connectors.CommandRunRequest{
+		SourceTargetRef:    client.runtime.Target.Ref,
 		Mode:               connectionMode(client.runtime.Target),
 		TransportTargetRef: strings.TrimSpace(stringValue(client.runtime.Target.Config, "transport_target_ref")),
 		Command:            command,

@@ -53,7 +53,7 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
         <Field>
           <span className="flex items-center justify-between gap-2">
             <span>Endpoint host</span>
-            <HostPingButton host={form.host} port={form.port} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} />
+            <HostPingButton host={form.host} port={form.port} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} projectID={form.project_id} />
           </span>
           <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
         </Field>

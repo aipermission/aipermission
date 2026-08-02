@@ -667,6 +667,8 @@ func newRabbitClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 	host := rabbitHost(runtime.Target)
 	port := rabbitPort(runtime.Target)
 	request := connectors.NetworkDialRequest{
+		SourceTargetRef:    runtime.Target.Ref,
+		SourceProjectID:    runtime.Target.ProjectID,
 		Mode:               connectionMode(runtime.Target),
 		Host:               host,
 		Port:               port,

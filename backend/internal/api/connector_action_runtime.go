@@ -633,6 +633,34 @@ func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Tok
 	if err != nil {
 		return "", "", err
 	}
+	contextMaterial, err := json.Marshal(prepared.Action.ContextMaterial)
+	if err != nil {
+		return "", "", err
+	}
+	dependencies := make([]map[string]any, 0, len(prepared.Dependencies))
+	for _, dependency := range prepared.Dependencies {
+		dependencies = append(dependencies, map[string]any{
+			"purpose": dependency.Purpose,
+			"target": map[string]any{
+				"id":             dependency.Target.ID,
+				"project_id":     dependency.Target.ProjectID,
+				"ref":            dependency.Target.Ref,
+				"connector_kind": dependency.Target.ConnectorKind,
+				"name":           dependency.Target.Name,
+				"config":         dependency.Target.Config,
+				"updated_at":     dependency.Target.UpdatedAt,
+			},
+			"profile": map[string]any{
+				"id":              dependency.Profile.ID,
+				"kind":            dependency.Profile.Kind,
+				"label":           dependency.Profile.Label,
+				"risk_label":      dependency.Profile.RiskLabel,
+				"updated_at":      dependency.Profile.UpdatedAt,
+				"secret_revision": dependency.Profile.SecretRevision,
+				"public":          dependency.Profile.Public,
+			},
+		})
+	}
 	snapshot := map[string]any{
 		"schema_version": approvalContextSchemaVersion,
 		"captured_at":    capturedAt,
@@ -664,6 +692,7 @@ func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Tok
 			"connector_kind": prepared.Target.ConnectorKind,
 			"name":           prepared.Target.Name,
 			"config":         prepared.Target.Config,
+			"updated_at":     prepared.Target.UpdatedAt,
 		},
 		"profile": map[string]any{
 			"id":              prepared.Profile.ID,
@@ -680,7 +709,9 @@ func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Tok
 			"definition":      actionDefinition,
 			"definition_hash": sha256Hex(string(actionDefinitionHashMaterial)),
 			"payload_hash":    sha256Hex(string(payloadHashMaterial)),
+			"context_hash":    sha256Hex(string(contextMaterial)),
 		},
+		"dependencies": dependencies,
 	}
 	hash, err := hashGenericApprovalContext(snapshot)
 	if err != nil {
@@ -717,7 +748,7 @@ func connectorApprovalDriftReason(previousContext string, currentContext string)
 	if err := json.Unmarshal([]byte(currentContext), &current); err != nil {
 		return "unknown"
 	}
-	for _, area := range []string{"connector", "token", "permission", "project", "target", "profile"} {
+	for _, area := range []string{"connector", "token", "permission", "project", "target", "profile", "dependencies"} {
 		if !reflect.DeepEqual(previous[area], current[area]) {
 			return area
 		}
@@ -727,6 +758,9 @@ func connectorApprovalDriftReason(previousContext string, currentContext string)
 	}
 	if !reflect.DeepEqual(approvalActionValue(previous, "payload_hash"), approvalActionValue(current, "payload_hash")) {
 		return "payload"
+	}
+	if !reflect.DeepEqual(approvalActionValue(previous, "context_hash"), approvalActionValue(current, "context_hash")) {
+		return "action_context"
 	}
 	if !reflect.DeepEqual(previous["action"], current["action"]) {
 		return "action"

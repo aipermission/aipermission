@@ -47,6 +47,8 @@ func newClient(ctx context.Context, runtime connectors.RuntimeContext, extraOpti
 				return nil, err
 			}
 			connection, err := transport.DialConnectorTCP(dialCtx, connectors.NetworkDialRequest{
+				SourceTargetRef:    runtime.Target.Ref,
+				SourceProjectID:    runtime.Target.ProjectID,
 				Mode:               config.ConnectionMode,
 				Host:               host,
 				Port:               port,

@@ -53,6 +53,7 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
             port={firstBrokerPort(form.bootstrap_brokers)}
             mode={form.connection_mode}
             transportTargetRef={form.transport_target_ref}
+            projectID={form.project_id}
           />
         </span>
         <Textarea

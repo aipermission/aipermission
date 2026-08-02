@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/history"
@@ -101,6 +103,37 @@ func validateConnectorTargetSchema(connector connectors.Connector) error {
 	return connectors.ValidateNonSecretSchema(connector.TargetSchema(), connector.Kind()+" target")
 }
 
+func validateConnectorTargetConfig(connector connectors.Connector, config map[string]any) error {
+	validator, ok := connector.(connectors.TargetConfigValidator)
+	if !ok {
+		return nil
+	}
+	return validator.ValidateTargetConfig(config)
+}
+
+func validateConnectorTransportConfig(ctx context.Context, store *connectortargets.Store, projectID int64, config map[string]any) error {
+	mode, _ := config["connection_mode"].(string)
+	if strings.TrimSpace(mode) != "over_ssh" {
+		return nil
+	}
+	transportTargetRef, _ := config["transport_target_ref"].(string)
+	transportTargetRef = strings.TrimSpace(transportTargetRef)
+	if transportTargetRef == "" {
+		return connectortargets.ValidationError("transport target ref is required for over_ssh")
+	}
+	if err := store.ValidateTransportProject(ctx, projectID, transportTargetRef); err != nil {
+		return err
+	}
+	kind, _, _, ok := connectortargets.ParseConnectorTargetRef(transportTargetRef)
+	if !ok {
+		return connectortargets.ErrInvalidTargetRef
+	}
+	if adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter); adapter == nil {
+		return connectortargets.ValidationError(fmt.Sprintf("%s connector does not expose reviewed TCP transport", kind))
+	}
+	return nil
+}
+
 type preparedConnectorCredentialProfileInput struct {
 	Kind                string
 	Label               string
@@ -146,6 +179,7 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 	request connectorCredentialProfilePayload,
 	secretRequired bool,
 	previous *connectors.CredentialProfileView,
+	previousEncryptedSecret string,
 ) (preparedConnectorCredentialProfileInput, bool) {
 	kind := strings.TrimSpace(request.Kind)
 	if !credentialKindSupported(connector, kind) {
@@ -157,7 +191,12 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 		writeError(w, http.StatusBadRequest, "unsupported credential kind")
 		return preparedConnectorCredentialProfileInput{}, false
 	}
-	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, request.Public, request.Secret, secretRequired); err != nil {
+	secret, err := mergeConnectorCredentialSecrets(runtime, previousEncryptedSecret, request.Secret)
+	if err != nil {
+		writeInternalError(w)
+		return preparedConnectorCredentialProfileInput{}, false
+	}
+	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, request.Public, secret, secretRequired); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return preparedConnectorCredentialProfileInput{}, false
 	}
@@ -166,12 +205,12 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 		handleConnectorTargetError(w, err)
 		return preparedConnectorCredentialProfileInput{}, false
 	}
-	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, request.Secret, secretRequired); err != nil {
+	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, secret, secretRequired); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return preparedConnectorCredentialProfileInput{}, false
 	}
 	if validator, ok := connector.(connectors.CredentialProfileValidator); ok {
-		if err := validator.ValidateCredentialProfile(kind, public, request.Secret, previous); err != nil {
+		if err := validator.ValidateCredentialProfile(kind, public, secret, previous); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return preparedConnectorCredentialProfileInput{}, false
 		}
@@ -183,7 +222,6 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 		RiskLabel: request.RiskLabel,
 	}
 	if secretRequired {
-		secret := request.Secret
 		if secret == nil {
 			secret = map[string]any{}
 		}
@@ -197,7 +235,7 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 		return prepared, true
 	}
 	if request.Secret != nil {
-		encrypted, err := runtime.vault.EncryptJSON(request.Secret)
+		encrypted, err := runtime.vault.EncryptJSON(secret)
 		if err != nil {
 			writeInternalError(w)
 			return preparedConnectorCredentialProfileInput{}, false
@@ -206,6 +244,26 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 		prepared.EncryptedSecretPtr = &prepared.EncryptedSecretJSON
 	}
 	return prepared, true
+}
+
+func mergeConnectorCredentialSecrets(runtime *databaseRuntime, previousEncrypted string, updates map[string]any) (map[string]any, error) {
+	if updates == nil && previousEncrypted == "" {
+		return nil, nil
+	}
+	merged := map[string]any{}
+	if previousEncrypted != "" {
+		if err := runtime.vault.DecryptJSON(previousEncrypted, &merged); err != nil {
+			return nil, err
+		}
+	}
+	for key, value := range updates {
+		if value == nil {
+			delete(merged, key)
+			continue
+		}
+		merged[key] = value
+	}
+	return merged, nil
 }
 
 func (s connectorTargetHandlers) listConnectorTargets(w http.ResponseWriter, r *http.Request) {
@@ -321,7 +379,16 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	request.Config = config
-	target, err := connectortargets.NewStore(runtime.database).CreateTarget(r.Context(), connectortargets.CreateTargetInput{
+	if err := validateConnectorTargetConfig(connector, request.Config); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	store := connectortargets.NewStore(runtime.database)
+	if err := validateConnectorTransportConfig(r.Context(), store, request.ProjectID, request.Config); err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	target, err := store.CreateTarget(r.Context(), connectortargets.CreateTargetInput{
 		ProjectID:     request.ProjectID,
 		ConnectorKind: strings.TrimSpace(request.ConnectorKind),
 		Name:          request.Name,
@@ -366,7 +433,15 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	request.Target.Config = targetConfig
-	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request.Profile), true, nil)
+	if err := validateConnectorTargetConfig(connector, request.Target.Config); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.Target.ProjectID, request.Target.Config); err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request.Profile), true, nil, "")
 	if !ok {
 		return
 	}
@@ -456,6 +531,14 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		return
 	}
 	request.Config = config
+	if err := validateConnectorTargetConfig(connector, request.Config); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, request.Config); err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
 	if adapter := connectorDraftTesterFor(request.ConnectorKind); adapter != nil {
 		adapter.TestDraft(s, w, r, runtime, request)
 		return
@@ -522,8 +605,16 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	request.Config = config
+	if err := validateConnectorTargetConfig(connector, request.Config); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if request.ProjectID == 0 {
 		request.ProjectID = existing.ProjectID
+	}
+	if err := validateConnectorTransportConfig(r.Context(), store, request.ProjectID, request.Config); err != nil {
+		handleConnectorTargetError(w, err)
+		return
 	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())
 	if err != nil {
@@ -625,8 +716,16 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	request.Target.Config = targetConfig
+	if err := validateConnectorTargetConfig(connector, request.Target.Config); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if request.Target.ProjectID == 0 {
 		request.Target.ProjectID = existing.ProjectID
+	}
+	if err := validateConnectorTransportConfig(r.Context(), store, request.Target.ProjectID, request.Target.Config); err != nil {
+		handleConnectorTargetError(w, err)
+		return
 	}
 	existingProfile, err := store.GetCredentialProfile(r.Context(), id, profileID)
 	if err != nil {
@@ -634,7 +733,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	existingProfileView := connectortargets.CredentialProfileView(existingProfile)
-	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request.Profile), request.Profile.Secret != nil, &existingProfileView)
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request.Profile), request.Profile.Secret != nil, &existingProfileView, existingProfile.EncryptedSecretJSON)
 	if !ok {
 		return
 	}
@@ -805,7 +904,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request), true, nil)
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, createProfileAdapterRequest(request), true, nil, "")
 	if !ok {
 		return
 	}
@@ -897,7 +996,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		request.Public = mergedPublic
 	}
 	existingProfileView := connectortargets.CredentialProfileView(existingProfile)
-	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request), request.Secret != nil, &existingProfileView)
+	preparedProfile, ok := s.prepareConnectorCredentialProfileInput(w, r, runtime, connector, updateProfileAdapterRequest(request), request.Secret != nil, &existingProfileView, existingProfile.EncryptedSecretJSON)
 	if !ok {
 		return
 	}

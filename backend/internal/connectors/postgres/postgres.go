@@ -907,6 +907,8 @@ func postgresNetworkTransport(runtime connectors.RuntimeContext) (connectors.Net
 
 func postgresNetworkDialRequest(target connectors.TargetView) connectors.NetworkDialRequest {
 	return connectors.NetworkDialRequest{
+		SourceTargetRef:    target.Ref,
+		SourceProjectID:    target.ProjectID,
 		Mode:               connectionMode(target),
 		Host:               targetString(target.Config, "host"),
 		Port:               targetPort(target.Config),

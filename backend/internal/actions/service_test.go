@@ -14,6 +14,7 @@ import (
 type fakeResolver struct {
 	target  connectors.TargetView
 	profile connectors.CredentialProfileView
+	refs    map[string]ResolvedTarget
 	err     error
 	seenRef string
 }
@@ -22,6 +23,9 @@ func (r *fakeResolver) ResolveActionTarget(_ context.Context, targetRef string) 
 	r.seenRef = targetRef
 	if r.err != nil {
 		return ResolvedTarget{}, r.err
+	}
+	if resolved, ok := r.refs[targetRef]; ok {
+		return resolved, nil
 	}
 	return ResolvedTarget{Target: r.target, Profile: r.profile}, nil
 }
@@ -134,6 +138,79 @@ func TestServicePrepareResolvesTargetAndConnector(t *testing.T) {
 	}
 }
 
+func TestServicePrepareResolvesOverSSHApprovalDependency(t *testing.T) {
+	registry := connectors.NewRegistry()
+	connector := &prepareConnector{kind: "memory"}
+	if err := registry.Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	resolver := &fakeResolver{refs: map[string]ResolvedTarget{
+		"memory:21:34": {
+			Target: connectors.TargetView{
+				ID:            21,
+				ProjectID:     8,
+				Ref:           "memory:21:34",
+				ConnectorKind: "memory",
+				Config: map[string]any{
+					"connection_mode":      "over_ssh",
+					"transport_target_ref": "ssh:7:11",
+				},
+			},
+			Profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory", Kind: "local"},
+		},
+		"ssh:7:11": {
+			Target:  connectors.TargetView{ID: 7, ProjectID: 8, Ref: "ssh:7:11", ConnectorKind: "ssh", UpdatedAt: "2026-08-03T10:00:00Z"},
+			Profile: connectors.CredentialProfileView{ID: 11, TargetID: 7, ConnectorKind: "ssh", Kind: "private_key", SecretRevision: "ssh-secret-a"},
+		},
+	}}
+
+	prepared, err := NewService(registry, resolver).Prepare(context.Background(), PrepareRequest{
+		TargetRef:  "memory:21:34",
+		ActionName: "query_readonly",
+		Input:      map[string]any{"sql": "select 1"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if len(prepared.Dependencies) != 1 {
+		t.Fatalf("dependencies = %#v", prepared.Dependencies)
+	}
+	dependency := prepared.Dependencies[0]
+	if dependency.Purpose != "network_transport" || dependency.Target.Ref != "ssh:7:11" || dependency.Profile.SecretRevision != "ssh-secret-a" {
+		t.Fatalf("dependency = %#v", dependency)
+	}
+}
+
+func TestServicePrepareRejectsCrossProjectApprovalDependency(t *testing.T) {
+	registry := connectors.NewRegistry()
+	connector := &prepareConnector{kind: "memory"}
+	if err := registry.Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	resolver := &fakeResolver{refs: map[string]ResolvedTarget{
+		"memory:21:34": {
+			Target: connectors.TargetView{
+				ID: 21, ProjectID: 8, Ref: "memory:21:34", ConnectorKind: "memory",
+				Config: map[string]any{"connection_mode": "over_ssh", "transport_target_ref": "ssh:7:11"},
+			},
+			Profile: connectors.CredentialProfileView{ID: 34, TargetID: 21},
+		},
+		"ssh:7:11": {
+			Target:  connectors.TargetView{ID: 7, ProjectID: 9, Ref: "ssh:7:11", ConnectorKind: "ssh"},
+			Profile: connectors.CredentialProfileView{ID: 11, TargetID: 7},
+		},
+	}}
+
+	_, err := NewService(registry, resolver).Prepare(context.Background(), PrepareRequest{
+		TargetRef:  "memory:21:34",
+		ActionName: "query_readonly",
+		Input:      map[string]any{"sql": "select 1"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "same project") {
+		t.Fatalf("expected cross-project dependency rejection, got %v", err)
+	}
+}
+
 func TestServicePrepareUsesRegisteredThirdConnector(t *testing.T) {
 	registry := connectors.NewRegistry()
 	connector := &prepareConnector{
@@ -215,6 +292,41 @@ func TestServicePrepareRejectsOversizedPreview(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("preview exceeds %d bytes", maxPreparedActionPreviewBytes)) {
 		t.Fatalf("expected bounded preview rejection, got %v", err)
+	}
+}
+
+func TestServicePrepareRejectsSecretOrOversizedContextMaterial(t *testing.T) {
+	for name, contextMaterial := range map[string]map[string]any{
+		"secret":    {"api_token": "do-not-store"},
+		"oversized": {"metadata": strings.Repeat("x", maxPreparedActionPreviewBytes)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			registry := connectors.NewRegistry()
+			connector := &prepareConnector{
+				kind: "memory",
+				prepared: &connectors.PreparedAction{
+					ConnectorKind:   "memory",
+					TargetRef:       "memory:21:34",
+					ProfileID:       34,
+					ActionName:      "query_readonly",
+					Risk:            connectors.RiskRead,
+					ContextMaterial: contextMaterial,
+				},
+			}
+			if err := registry.Register(connector); err != nil {
+				t.Fatalf("register connector: %v", err)
+			}
+			service := NewService(registry, &fakeResolver{
+				target:  connectors.TargetView{ID: 21, Ref: "memory:21:34", ConnectorKind: "memory"},
+				profile: connectors.CredentialProfileView{ID: 34, TargetID: 21},
+			})
+			_, err := service.Prepare(context.Background(), PrepareRequest{
+				TargetRef: "memory:21:34", ActionName: "query_readonly", Input: map[string]any{"sql": "select 1"},
+			})
+			if err == nil || (!strings.Contains(err.Error(), "must not contain credentials") && !strings.Contains(err.Error(), "context exceeds")) {
+				t.Fatalf("expected context rejection, got %v", err)
+			}
+		})
 	}
 }
 
@@ -435,7 +547,7 @@ func TestServicePrepareRejectsSecretLikePreparedPayloadFields(t *testing.T) {
 	}
 
 	prepared.Payload = nil
-	prepared.Preview = map[string]any{"smtp_password": "leaked"}
+	prepared.Preview = map[string]any{"credential_password": "leaked"}
 	_, err = service.Prepare(context.Background(), PrepareRequest{
 		TargetRef:  "api:1:2",
 		ActionName: "call_action",

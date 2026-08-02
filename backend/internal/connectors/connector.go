@@ -53,6 +53,14 @@ type CredentialProfileValidator interface {
 	ValidateCredentialProfile(kind string, public, secret map[string]any, previous *CredentialProfileView) error
 }
 
+// TargetConfigValidator is an optional connector contract for semantic target
+// validation that cannot be expressed by primitive schema fields. Core invokes
+// it on create, update, and draft-test paths before configuration is persisted
+// or used for a connection test.
+type TargetConfigValidator interface {
+	ValidateTargetConfig(config map[string]any) error
+}
+
 // CredentialProvisioner is an optional connector contract for operator-driven
 // credential profile provisioning. Core owns profile persistence and vault
 // writes; the connector owns external service changes such as creating or
@@ -149,6 +157,8 @@ type SessionEnvironmentCapability interface {
 // transport such as SSH. The connector remains responsible for its protocol;
 // the gateway only opens the TCP pipe.
 type NetworkDialRequest struct {
+	SourceTargetRef    string
+	SourceProjectID    int64
 	Mode               string
 	Host               string
 	Port               int
@@ -170,6 +180,7 @@ type NetworkTransport interface {
 // The caller connector still owns the command shape, output parsing, and
 // safety limits; the gateway only routes the command to the selected transport.
 type CommandRunRequest struct {
+	SourceTargetRef    string
 	Mode               string
 	TransportTargetRef string
 	Command            string

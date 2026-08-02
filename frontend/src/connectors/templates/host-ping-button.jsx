@@ -6,11 +6,11 @@ import { Dialog } from "../../components/ui/dialog";
 import { Notice } from "../../components/ui/notice";
 import { apiPost } from "../../lib/api";
 
-export function HostPingButton({ host, port, mode = "direct", transportTargetRef = "", label = "Ping host" }) {
+export function HostPingButton({ host, port, mode = "direct", transportTargetRef = "", projectID = 0, label = "Ping host" }) {
   const [dialog, setDialog] = useState({ open: false, state: "idle", result: null, error: "" });
   const normalizedMode = mode || "direct";
   const numericPort = Number(port);
-  const disabledReason = pingDisabledReason({ host, port: numericPort, mode: normalizedMode, transportTargetRef });
+  const disabledReason = pingDisabledReason({ host, port: numericPort, mode: normalizedMode, transportTargetRef, projectID });
 
   async function runPing(event) {
     event.preventDefault();
@@ -19,6 +19,7 @@ export function HostPingButton({ host, port, mode = "direct", transportTargetRef
     setDialog({ open: true, state: "running", result: null, error: "" });
     try {
       const result = await apiPost("/api/connector-targets/ping", {
+        project_id: Number(projectID) || 0,
         host,
         port: numericPort,
         mode: normalizedMode,
@@ -101,10 +102,11 @@ export function HostPingButton({ host, port, mode = "direct", transportTargetRef
   );
 }
 
-function pingDisabledReason({ host, port, mode, transportTargetRef }) {
+function pingDisabledReason({ host, port, mode, transportTargetRef, projectID }) {
   if (!String(host || "").trim()) return "Enter a host first.";
   if (!Number.isInteger(port) || port < 1 || port > 65535) return "Enter a valid port first.";
   if (mode === "over_ssh" && !String(transportTargetRef || "").trim()) return "Select an SSH transport profile first.";
+  if (mode === "over_ssh" && (!Number.isInteger(Number(projectID)) || Number(projectID) < 1)) return "Select a project before testing an SSH transport.";
   return "";
 }
 

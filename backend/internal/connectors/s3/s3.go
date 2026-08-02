@@ -781,6 +781,8 @@ func newS3Client(ctx context.Context, runtime connectors.RuntimeContext) (*s3Cli
 		return nil, fmt.Errorf("%w: bucket is required", ErrInvalidConfig)
 	}
 	request := connectors.NetworkDialRequest{
+		SourceTargetRef:    runtime.Target.Ref,
+		SourceProjectID:    runtime.Target.ProjectID,
 		Mode:               connectionMode(runtime.Target),
 		Host:               client.host,
 		Port:               client.port,

@@ -72,6 +72,21 @@ func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	}
 }
 
+func TestConnectorNetworkTransportFailsClosedWithoutSourceIdentity(t *testing.T) {
+	database := openAPITestDB(t)
+	transport := connectorNetworkTransport{runtime: &databaseRuntime{database: database}}
+
+	_, err := transport.DialConnectorTCP(context.Background(), connectors.NetworkDialRequest{
+		Mode:               "over_ssh",
+		Host:               "127.0.0.1",
+		Port:               5432,
+		TransportTargetRef: "ssh:1:1",
+	})
+	if err == nil || !strings.Contains(err.Error(), "source target or project identity is required") {
+		t.Fatalf("expected missing source identity error, got %v", err)
+	}
+}
+
 func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T) {
 	prepared := actions.PreparedRequest{
 		Target: connectors.TargetView{
@@ -163,6 +178,33 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	}
 	if profileHash == baseHash {
 		t.Fatalf("credential profile revision drift should change approval hash")
+	}
+	withDependency := prepared
+	withDependency.Dependencies = []actions.ResolvedDependency{{
+		Purpose: "network_transport",
+		Target: connectors.TargetView{
+			ID: 7, ProjectID: 4, Ref: "ssh:7:11", ConnectorKind: "ssh", Name: "gateway", UpdatedAt: "2026-06-12T11:58:00Z",
+		},
+		Profile: connectors.CredentialProfileView{
+			ID: 11, TargetID: 7, ConnectorKind: "ssh", Kind: "private_key", Label: "root", UpdatedAt: "2026-06-12T11:58:00Z", SecretRevision: "ssh-secret-a",
+		},
+	}}
+	dependencyContext, dependencyHash, err := connectorApprovalContext(withDependency, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context with dependency: %v", err)
+	}
+	dependencyChanged := withDependency
+	dependencyChanged.Dependencies = append([]actions.ResolvedDependency(nil), withDependency.Dependencies...)
+	dependencyChanged.Dependencies[0].Profile.SecretRevision = "ssh-secret-b"
+	dependencyChangedContext, dependencyChangedHash, err := connectorApprovalContext(dependencyChanged, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context with dependency revision change: %v", err)
+	}
+	if dependencyChangedHash == dependencyHash {
+		t.Fatalf("approval dependency revision drift should change approval hash")
+	}
+	if drift := connectorApprovalDriftReason(dependencyContext, dependencyChangedContext); drift != "dependencies" {
+		t.Fatalf("approval dependency drift reason = %q", drift)
 	}
 	tokenRenamed := token
 	tokenRenamed.Name = "renamed-token-label"
@@ -1151,6 +1193,13 @@ func insertAPITestToken(t *testing.T, database *sql.DB) int64 {
 const localActionTestConnectorKind = "localtest"
 
 type localActionTestConnector struct{}
+
+func (localActionTestConnector) ValidateTargetConfig(config map[string]any) error {
+	if value, _ := config["semantic_error"].(bool); value {
+		return fmt.Errorf("semantic validation fixture")
+	}
+	return nil
+}
 
 func (localActionTestConnector) Kind() string {
 	return localActionTestConnectorKind
