@@ -36,6 +36,7 @@ const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "com
 const vaultPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "vault-permission-dialog.jsx"), "utf8");
 const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "connectors", "templates", "common.jsx"), "utf8");
 const kafkaConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "kafka", "console.jsx"), "utf8");
+const mailConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "mail", "console.jsx"), "utf8");
 const kafkaWriteDialogsSource = readFileSync(join(currentDir, "..", "connectors", "templates", "kafka", "write-dialogs.jsx"), "utf8");
 const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "connectors", "templates", "target-profile-save.js"), "utf8");
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
@@ -390,6 +391,13 @@ test("Console exposes connector action approvals", () => {
   assert.match(consolePageSource, /SelectedConnectorConsoleTemplate/);
   assert.match(consolePageSource, /selectedConnectorTemplate\?\.Console/);
   assert.match(consolePageSource, /useConnectorPermissions/);
+  assert.match(mailConsoleSource, /pendingActions/);
+  assert.match(mailConsoleSource, /outboundPending/);
+  assert.match(mailConsoleSource, /generation !== requestGeneration\.current/);
+  assert.match(mailConsoleSource, /submission_status === "submission_unknown"/);
+  assert.match(mailConsoleSource, /reconcilePendingAction/);
+  assert.match(mailConsoleSource, /case "get_message"/);
+  assert.match(mailConsoleSource, /case "move_message"/);
   assert.match(postgresSQLConsoleSource, /PostgresConnectorToolbarActionsTemplate/);
   assert.match(postgresSQLConsoleSource, /browserLabel: "Schema"/);
   assert.match(postgresSQLConsoleSource, /Search \$\{namespaceLabel\.toLowerCase\(\)\}s or tables/);
@@ -438,6 +446,8 @@ test("Console exposes connector action approvals", () => {
   assert.match(consolePageSource, /declineConnectorActionApproval/);
   assert.match(connectorApprovalDialogSource, /structured connector action/);
   assert.match(connectorApprovalDialogSource, /Decline note/);
+  assert.match(connectorApprovalDialogSource, /approval\.preview/);
+  assert.match(connectorApprovalDialogSource, /Approval preview/);
   assert.match(connectorActivityDialogSource, /Recent structured connector requests/);
   assert.match(connectorActivityDialogSource, /always-run requests/);
 });

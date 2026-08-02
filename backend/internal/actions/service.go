@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,11 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
+
+// A connector may intentionally preview two separately bounded 64 KiB bodies.
+// JSON escaping can expand those strings by up to 6x, so the generic envelope
+// must bound the encoded preview rather than assume source byte size.
+const maxPreparedActionPreviewBytes = 1 << 20
 
 var (
 	ErrTargetNotFound       = errors.New("target not found")
@@ -166,6 +172,16 @@ func validatePreparedAction(prepared connectors.PreparedAction, resolved Resolve
 	}
 	if field, ok := secretPayloadField(prepared.Payload); ok {
 		return fmt.Errorf("prepared action payload field %q must not contain secrets; store secrets in credential profiles instead", field)
+	}
+	if field, ok := secretPayloadField(prepared.Preview); ok {
+		return fmt.Errorf("prepared action preview field %q must not contain credentials; show only intentional action content", field)
+	}
+	previewJSON, err := json.Marshal(prepared.Preview)
+	if err != nil {
+		return fmt.Errorf("prepared action preview must be valid JSON: %w", err)
+	}
+	if len(previewJSON) > maxPreparedActionPreviewBytes {
+		return fmt.Errorf("prepared action preview exceeds %d bytes", maxPreparedActionPreviewBytes)
 	}
 	return nil
 }

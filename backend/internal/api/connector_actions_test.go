@@ -343,6 +343,11 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
+	if _, err := insertRedactionRule(t.Context(), runtime, redactionRuleRequest{
+		Name: "approval preview token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
+	}); err != nil {
+		t.Fatalf("insert custom redaction rule: %v", err)
+	}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
@@ -361,13 +366,14 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		Profile: profileView,
 		ActionDefinition: connectors.ActionDefinition{
 			Name:                 postgresconnector.ActionQueryReadonly,
-			SensitiveInputFields: []string{"access_token", "opaque_message"},
+			SensitiveInputFields: []string{"access_token", "opaque_message", "client-secret"},
 		},
 		Action: connectors.PreparedAction{
 			ConnectorKind: postgresconnector.Kind,
 			TargetRef:     targetView.Ref,
 			ProfileID:     profile.ID,
 			ActionName:    postgresconnector.ActionQueryReadonly,
+			Preview:       map[string]any{"body": "password=visible-for-approval internal_abc123", "opaque_message": "exact-sensitive-preview", "client_secret": "hyphen-normalized-preview-secret"},
 			Payload:       rawInput,
 		},
 		Requested: actions.PrepareRequest{
@@ -384,14 +390,15 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("insert connector action request: %v", err)
 	}
 	var inputJSON string
+	var previewJSON string
 	var reason string
 	var encryptedPayload string
 	if err := database.QueryRow(`
-		SELECT input_json, reason, encrypted_payload_json
+			SELECT input_json, preview_json, reason, encrypted_payload_json
 		FROM connector_action_requests
 		WHERE id = ?`,
 		request.ID,
-	).Scan(&inputJSON, &reason, &encryptedPayload); err != nil {
+	).Scan(&inputJSON, &previewJSON, &reason, &encryptedPayload); err != nil {
 		t.Fatalf("read connector action request: %v", err)
 	}
 	for _, secret := range []string{"super-secret", "raw-access-token", "arbitrary-publish-content", "raw-bearer-token", "raw-reason-token", "reason-secret"} {
@@ -401,6 +408,15 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	}
 	if !strings.Contains(inputJSON, `"access_token":"[REDACTED]"`) || !strings.Contains(inputJSON, `"opaque_message":"[REDACTED]"`) || !strings.Contains(inputJSON, `"authorization":"[REDACTED]"`) || !strings.Contains(inputJSON, `password=[REDACTED]`) {
 		t.Fatalf("input was not redacted as expected: %s", inputJSON)
+	}
+	if strings.Contains(previewJSON, "visible-for-approval") || strings.Contains(previewJSON, "internal_abc123") {
+		t.Fatalf("persisted display preview leaked exact approval content: %s", previewJSON)
+	}
+	if strings.Contains(previewJSON, "exact-sensitive-preview") || !strings.Contains(previewJSON, `"opaque_message":"[REDACTED]"`) {
+		t.Fatalf("persisted display preview did not apply sensitive input fields: %s", previewJSON)
+	}
+	if strings.Contains(previewJSON, "hyphen-normalized-preview-secret") || !strings.Contains(previewJSON, `"client_secret":"[REDACTED]"`) {
+		t.Fatalf("persisted display preview did not normalize declared sensitive fields: %s", previewJSON)
 	}
 	var historyInputJSON string
 	if err := database.QueryRow(`
@@ -422,6 +438,23 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if mcpResponse.Input["opaque_message"] != "[REDACTED]" || approvalResponse.Input["opaque_message"] != "[REDACTED]" {
 		t.Fatalf("action-declared sensitive input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
 	}
+	exactApproval, err := connectorActionApprovalItemForResponse(runtime, request)
+	if err != nil {
+		t.Fatalf("build exact approval response: %v", err)
+	}
+	if exactApproval.Preview["body"] != "password=visible-for-approval internal_abc123" {
+		t.Fatalf("pending approval preview must match the exact prepared action: %#v", exactApproval.Preview)
+	}
+	if exactApproval.Preview["opaque_message"] != "exact-sensitive-preview" {
+		t.Fatalf("exact approval preview must preserve sensitive content inside the encrypted envelope: %#v", exactApproval.Preview)
+	}
+	if exactApproval.Preview["client_secret"] != "hyphen-normalized-preview-secret" {
+		t.Fatalf("exact approval preview must preserve normalized sensitive content inside the encrypted envelope: %#v", exactApproval.Preview)
+	}
+	redactedApproval := connectorActionApprovalItemFromRequest(request)
+	if redactedApproval.Preview["body"] == "password=visible-for-approval internal_abc123" {
+		t.Fatalf("approval list projection exposed exact preview: %#v", redactedApproval.Preview)
+	}
 	var decryptedPayload connectorActionExecutionEnvelope
 	if err := secretVault.DecryptJSON(encryptedPayload, &decryptedPayload); err != nil {
 		t.Fatalf("decrypt execution payload: %v", err)
@@ -434,6 +467,9 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	}
 	if decryptedPayload.Payload["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Payload["sql"].(string), "super-secret") {
 		t.Fatalf("encrypted execution payload should preserve raw action payload: %#v", decryptedPayload)
+	}
+	if decryptedPayload.ApprovalPreview["body"] != "password=visible-for-approval internal_abc123" {
+		t.Fatalf("encrypted approval preview changed: %#v", decryptedPayload.ApprovalPreview)
 	}
 	if !strings.Contains(decryptedPayload.Reason, "raw-reason-token") || !strings.Contains(decryptedPayload.Reason, "reason-secret") {
 		t.Fatalf("encrypted execution payload should preserve raw reason: %#v", decryptedPayload)
@@ -603,6 +639,24 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	listResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?status=approval_pending", "", nil)
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list connector approvals failed: %d %s", listResponse.Code, listResponse.Body.String())
+	}
+	detailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10), "", nil)
+	if detailResponse.Code != http.StatusOK || !strings.Contains(detailResponse.Body.String(), "select 1") {
+		t.Fatalf("approval detail must expose exact pending preview: %d %s", detailResponse.Code, detailResponse.Body.String())
+	}
+	var encryptedPayload string
+	if err := fixture.db.QueryRow(`SELECT encrypted_payload_json FROM connector_action_requests WHERE id = ?`, result.Request.ID).Scan(&encryptedPayload); err != nil {
+		t.Fatalf("read encrypted approval payload: %v", err)
+	}
+	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = 'invalid' WHERE id = ?`, result.Request.ID); err != nil {
+		t.Fatalf("corrupt encrypted approval payload: %v", err)
+	}
+	redactedListResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?status=approval_pending", "", nil)
+	if redactedListResponse.Code != http.StatusOK {
+		t.Fatalf("approval list must not decrypt exact pending payloads: %d %s", redactedListResponse.Code, redactedListResponse.Body.String())
+	}
+	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = ? WHERE id = ?`, encryptedPayload, result.Request.ID); err != nil {
+		t.Fatalf("restore encrypted approval payload: %v", err)
 	}
 	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/decline", "", declineConnectorActionApprovalRequest{UserNote: "not now"})
 	if declineResponse.Code != http.StatusOK || !strings.Contains(declineResponse.Body.String(), `"status":"declined"`) {
