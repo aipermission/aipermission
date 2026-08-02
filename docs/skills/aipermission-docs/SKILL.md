@@ -122,6 +122,8 @@ When updating docs, check whether the change touches:
 - audit log contents
 - backup download/import behavior
 - Postgres connector behavior and query boundaries
+- Mail connector IMAP/SMTP setup, explicit read/unread behavior, hostile-content
+  boundary, and `submission_unknown` retry warning
 - security boundary: credentials never leave gateway
 - developer-tool positioning vs DevOps-platform positioning
 - local-only gateway positioning vs remote-hosted/LAN-shared positioning
@@ -138,7 +140,7 @@ Use the established aipermission naming:
 - `gateway` is the local backend that owns credentials, policy, execution, approvals, and audit.
 - `MCP client` means Cursor, Windsurf, or another AI tool integration.
 - `API token` means the gateway access token used by MCP/API clients.
-- `connector target` means a saved SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, or future integration target.
+- `connector target` means a saved SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail, or future integration target.
 - `server` is acceptable only when specifically describing an SSH connector target.
 - `database` means a configured Postgres or ClickHouse connector target/profile.
 - `execution rule` means `always_run`, `approval_required`, or `blocked`.
@@ -157,6 +159,7 @@ Always preserve these rules:
 - Prefer the Dokploy-style SSH key model: gateway generates SSH keypairs and users paste the public key install command on their VPS.
 - Do not document SSH password collection as the preferred MVP path.
 - Database credentials never leave the gateway.
+- Mail IMAP/SMTP passwords and app passwords never leave the gateway.
 - MCP responses never include credentials.
 - API tokens are not SSH or DB credentials.
 - API tokens are masked in the UI and can be copied again for local MCP setup.

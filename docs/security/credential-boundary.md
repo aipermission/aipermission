@@ -10,7 +10,8 @@ strings.
 
 Connector targets use credential profiles. SSH profiles can reference
 gateway-generated or explicitly imported key material. Postgres and ClickHouse
-profiles store database connection secrets. Future connectors define their own
+profiles store database connection secrets. Mail profiles store IMAP/SMTP
+passwords or provider app passwords. Future connectors define their own
 credential schemas, but the boundary remains the same: credentials stay in the encrypted
 local gateway and are used only during approved or permitted connector action
 execution.
@@ -21,6 +22,7 @@ The gateway vault may store:
 
 - gateway-generated or explicitly imported SSH private keys
 - Postgres, ClickHouse, and other database credentials for connector profiles
+- Mail IMAP/SMTP passwords or provider app passwords
 - connector-specific connection secrets
 - Project Vault values owned by one project and optionally shared with other
   local projects
@@ -98,6 +100,12 @@ encrypted local history/audit records. Users should not put secret values
 directly into connector action inputs or command strings and should be careful
 when asking AI to print files or environment variables that may contain
 secrets.
+
+Mail subjects, addresses, bounded bodies, outgoing drafts, and approval
+previews are not connector credentials, but they can contain sensitive personal
+or customer data. Authorized Mail actions may persist that data in encrypted
+history and encrypted `.aipdb` backups. Use finite retention and avoid asking
+agents to reproduce message content unless it is needed for the task.
 
 Basic redaction is enabled by default for common secret patterns before history, transcripts, messages, MCP response fields, and audit payloads are persisted or returned. Redaction is best-effort and can be extended with custom regex rules in Security.
 

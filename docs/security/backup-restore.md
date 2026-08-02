@@ -118,3 +118,7 @@ deployment and restore instructions.
   enabled.
 - First-run remote restore keeps service credentials transient and validates the
   encrypted database locally before installation.
+- Mail action history can include bounded incoming bodies, outgoing drafts,
+  recipients, subjects, and approval previews. These records remain encrypted
+  but travel with `.aipdb` backups; configure finite history retention for
+  sensitive mailboxes.

@@ -1,8 +1,8 @@
 # Connectors
 
 `internal/connectors` defines the internal contract for connector-shaped
-targets. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, S3, Docker,
-Kubernetes, and future API integrations use the
+targets. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda,
+Mail, S3, Docker, Kubernetes, and future API integrations use the
 same gateway pipeline:
 
 ```text

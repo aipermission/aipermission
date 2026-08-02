@@ -90,6 +90,12 @@ Known risks:
 - UI session and CSRF cookies use `Secure`, `SameSite=Strict`, and local-only browser/session checks. The supported gateway URL remains local HTTP on `localhost`; HTTPS reverse-proxy/LAN deployment is unsupported and should not be used to reinterpret these cookies as remote auth.
 - The gateway vault secret protects encrypted connector credential resources and reusable token payloads inside the SQLCipher database. If that secret is lost, those payloads cannot be decrypted; if it is exposed together with the unlocked database contents, vault-protected payloads should be treated as compromised.
 - `always_run` should be used only for trusted, temporary maintenance flows.
+- Mail subjects, addresses, folder names, bodies, filenames, and SMTP server
+  status are hostile external input. Mail reads are bounded and labeled
+  untrusted, formatted content is sanitized, remote images are not rendered,
+  and mail-triggered cross-connector actions require an independent operator
+  instruction. See [Mail Connector](docs/setup/mail.md) and the
+  [threat model](docs/security/threat-model.md#hostile-mail-content).
 - The frontend CSP is intentionally compatible with the current Vite/React build and nginx deployment; future hardening can remove any remaining inline-style allowances when the UI build supports it cleanly.
 
 Expected CodeQL notes:

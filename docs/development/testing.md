@@ -81,6 +81,27 @@ Then verify:
     active queue, and History can show completed transfer metadata through the
     unified connector activity stream. Multi-file downloads should save as a zip.
 22. Settings can download an `.aipdb` backup and import it as a named database.
+23. A Mail profile can test implicit TLS and STARTTLS without sending a message;
+    IMAP-only mode keeps SMTP unavailable and separate SMTP credentials stay
+    encrypted.
+24. Mail folder listing preserves configured policy order, maps configured Sent,
+    Archive, and Trash roles, and labels folder/message/server content as
+    untrusted external data.
+25. Mail unread search and message reads leave the IMAP Seen flag unchanged;
+    explicit mark read/unread, move, archive, and Trash moves affect only the
+    exact UID/UIDVALIDITY reference.
+26. Mail compose/reply approval shows every recipient including BCC, complete
+    bounded text, safe formatted projection, and a captured source reference.
+    Verify rejected recipients and unknown final SMTP responses are not retried
+    automatically.
+27. Over-SSH Mail test and host reachability reject a missing or cross-project
+    transport before network access.
+28. Mail protocol tests lock context-driven connection cancellation, the total
+    SMTP deadline, single-part `BODY.PEEK[TEXT]`, MIME traversal/result bounds,
+    RFC recipient parsing, classified error redaction, and unknown final SMTP
+    response semantics. The IMAP library parses envelope/BODYSTRUCTURE data
+    inside the 4 MiB connection budget; 10-level/100-part caps apply while the
+    connector traverses the parsed tree.
 
 ## npm Publish Checks
 
