@@ -431,6 +431,8 @@ func openRedisClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 		return nil, ErrMissingTransport
 	}
 	conn, err := transport.DialConnectorTCP(ctx, connectors.NetworkDialRequest{
+		SourceTargetRef:    runtime.Target.Ref,
+		SourceProjectID:    runtime.Target.ProjectID,
 		Mode:               connectionMode(runtime.Target),
 		Host:               redisHost(runtime.Target),
 		Port:               redisPort(runtime.Target),

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 )
 
 type connectorTargetHostPingRequest struct {
+	ProjectID          int64  `json:"project_id"`
 	Host               string `json:"host"`
 	Port               int    `json:"port"`
 	Mode               string `json:"mode,omitempty"`
@@ -68,8 +70,19 @@ func (s connectorTargetHandlers) pingConnectorTargetHost(w http.ResponseWriter, 
 	switch request.Mode {
 	case "direct":
 	case "over_ssh":
+		if request.ProjectID < 1 {
+			writeError(w, http.StatusBadRequest, "project_id is required for over_ssh")
+			return
+		}
 		if request.TransportTargetRef == "" {
 			writeError(w, http.StatusBadRequest, "transport target ref is required for over_ssh")
+			return
+		}
+		if err := validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, map[string]any{
+			"connection_mode":      request.Mode,
+			"transport_target_ref": request.TransportTargetRef,
+		}); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	default:
@@ -90,6 +103,7 @@ func (s connectorTargetHandlers) pingConnectorTargetHost(w http.ResponseWriter, 
 		attemptStarted := time.Now()
 		ctx, cancel := context.WithTimeout(r.Context(), connectorHostPingTimeout)
 		conn, err := transport.DialConnectorTCP(ctx, connectors.NetworkDialRequest{
+			SourceProjectID:    request.ProjectID,
 			Mode:               request.Mode,
 			Host:               request.Host,
 			Port:               request.Port,
@@ -130,6 +144,7 @@ func (s connectorTargetHandlers) pingConnectorTargetHost(w http.ResponseWriter, 
 		Message:            connectorHostPingMessage(received, attemptCount),
 	}
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.host.ping", map[string]any{
+		"project_id":           request.ProjectID,
 		"host":                 request.Host,
 		"port":                 request.Port,
 		"mode":                 request.Mode,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -55,6 +56,15 @@ type PreparedRequest struct {
 	ActionDefinition connectors.ActionDefinition
 	Action           connectors.PreparedAction
 	Requested        PrepareRequest
+	Dependencies     []ResolvedDependency
+}
+
+// ResolvedDependency is a non-secret target/profile snapshot whose state can
+// affect execution of the prepared action.
+type ResolvedDependency struct {
+	Purpose string
+	Target  connectors.TargetView
+	Profile connectors.CredentialProfileView
 }
 
 // Service owns the generic target -> connector -> prepared action boundary.
@@ -127,6 +137,10 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 	if err := validatePreparedAction(prepared, resolved, actionDefinition, request); err != nil {
 		return PreparedRequest{}, err
 	}
+	dependencies, err := s.resolveApprovalDependencies(ctx, resolved.Target, prepared.Dependencies)
+	if err != nil {
+		return PreparedRequest{}, err
+	}
 
 	return PreparedRequest{
 		Target:           resolved.Target,
@@ -135,7 +149,56 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 		ActionDefinition: actionDefinition,
 		Action:           prepared,
 		Requested:        request,
+		Dependencies:     dependencies,
 	}, nil
+}
+
+func (s *Service) resolveApprovalDependencies(ctx context.Context, target connectors.TargetView, declared []connectors.ApprovalDependency) ([]ResolvedDependency, error) {
+	dependencies := append([]connectors.ApprovalDependency(nil), declared...)
+	if stringMapValue(target.Config, "connection_mode") == "over_ssh" {
+		dependencies = append(dependencies, connectors.ApprovalDependency{
+			TargetRef: stringMapValue(target.Config, "transport_target_ref"),
+			Purpose:   "network_transport",
+		})
+	}
+	for index := range dependencies {
+		dependencies[index].TargetRef = strings.TrimSpace(dependencies[index].TargetRef)
+		dependencies[index].Purpose = strings.TrimSpace(dependencies[index].Purpose)
+	}
+	sort.Slice(dependencies, func(i, j int) bool {
+		if dependencies[i].Purpose != dependencies[j].Purpose {
+			return dependencies[i].Purpose < dependencies[j].Purpose
+		}
+		return dependencies[i].TargetRef < dependencies[j].TargetRef
+	})
+	seen := map[string]bool{}
+	resolved := make([]ResolvedDependency, 0, len(dependencies))
+	for _, dependency := range dependencies {
+		if dependency.TargetRef == "" || !connectors.ValidIdentifier(dependency.Purpose) {
+			return nil, fmt.Errorf("prepared action has an invalid approval dependency")
+		}
+		key := dependency.Purpose + "\x00" + dependency.TargetRef
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		item, err := s.targets.ResolveActionTarget(ctx, dependency.TargetRef)
+		if err != nil {
+			return nil, fmt.Errorf("resolve %s approval dependency: %w", dependency.Purpose, err)
+		}
+		if target.ProjectID > 0 && item.Target.ProjectID != target.ProjectID {
+			return nil, fmt.Errorf("%s approval dependency must belong to the same project", dependency.Purpose)
+		}
+		resolved = append(resolved, ResolvedDependency{Purpose: dependency.Purpose, Target: item.Target, Profile: item.Profile})
+	}
+	return resolved, nil
+}
+
+func stringMapValue(values map[string]any, key string) string {
+	if values == nil || values[key] == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(values[key]))
 }
 
 func connectorActionDefinition(ctx context.Context, connector connectors.Connector, target connectors.TargetView, profile connectors.CredentialProfileView, actionName string) (connectors.ActionDefinition, error) {
@@ -176,12 +239,22 @@ func validatePreparedAction(prepared connectors.PreparedAction, resolved Resolve
 	if field, ok := secretPayloadField(prepared.Preview); ok {
 		return fmt.Errorf("prepared action preview field %q must not contain credentials; show only intentional action content", field)
 	}
+	if field, ok := secretPayloadField(prepared.ContextMaterial); ok {
+		return fmt.Errorf("prepared action context field %q must not contain credentials; bind only non-secret execution context", field)
+	}
 	previewJSON, err := json.Marshal(prepared.Preview)
 	if err != nil {
 		return fmt.Errorf("prepared action preview must be valid JSON: %w", err)
 	}
 	if len(previewJSON) > maxPreparedActionPreviewBytes {
 		return fmt.Errorf("prepared action preview exceeds %d bytes", maxPreparedActionPreviewBytes)
+	}
+	contextJSON, err := json.Marshal(prepared.ContextMaterial)
+	if err != nil {
+		return fmt.Errorf("prepared action context must be valid JSON: %w", err)
+	}
+	if len(contextJSON) > maxPreparedActionPreviewBytes {
+		return fmt.Errorf("prepared action context exceeds %d bytes", maxPreparedActionPreviewBytes)
 	}
 	return nil
 }

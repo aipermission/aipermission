@@ -52,6 +52,21 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 		if !ok {
 			return nil, connectortargets.ErrInvalidTargetRef
 		}
+		if transport.runtime == nil || transport.runtime.database == nil {
+			return nil, fmt.Errorf("database runtime is not available")
+		}
+		store := connectortargets.NewStore(transport.runtime.database)
+		var projectErr error
+		if strings.TrimSpace(request.SourceTargetRef) != "" {
+			projectErr = store.ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef)
+		} else if request.SourceProjectID > 0 {
+			projectErr = store.ValidateTransportProject(ctx, request.SourceProjectID, targetRef)
+		} else {
+			return nil, fmt.Errorf("source target or project identity is required for over_ssh")
+		}
+		if projectErr != nil {
+			return nil, projectErr
+		}
 		adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
 		if adapter == nil {
 			return nil, fmt.Errorf("%s connector does not expose TCP transport", kind)

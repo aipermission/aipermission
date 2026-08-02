@@ -273,6 +273,16 @@ func TestConnectorTargetHostPingRouteChecksTCPReachability(t *testing.T) {
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("missing host should be rejected, got %d %s", bad.Code, bad.Body.String())
 	}
+
+	missingProject := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectorTargetHostPingRequest{
+		Host:               "127.0.0.1",
+		Port:               port,
+		Mode:               "over_ssh",
+		TransportTargetRef: "ssh:1:1",
+	})
+	if missingProject.Code != http.StatusBadRequest || !strings.Contains(missingProject.Body.String(), "project_id is required") {
+		t.Fatalf("over-SSH ping without project should be rejected, got %d %s", missingProject.Code, missingProject.Body.String())
+	}
 }
 
 func TestUnifiedTargetListIncludesSSHAndConnectorProfiles(t *testing.T) {
