@@ -336,6 +336,20 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 		!strings.Contains(incompleteHandle.Result.Error, "incomplete session handle") {
 		t.Fatalf("incomplete session handle should fail terminally: %#v", incompleteHandle)
 	}
+
+	classifiedFailure, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo",
+		Input:      map[string]any{"value": "classified-error"},
+		Reason:     "preserve a stable connector error code",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, _ := classifiedFailure.Request.Output.(map[string]any)
+	if classifiedFailure.Request.Status != connectors.ResultFailed || output["code"] != "fixture_failure" || classifiedFailure.Result.Output.(map[string]any)["code"] != "fixture_failure" {
+		t.Fatalf("classified connector error code was not persisted: %#v", classifiedFailure)
+	}
 }
 
 func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
@@ -1201,6 +1215,9 @@ func (localActionTestConnector) PrepareAction(_ context.Context, req connectors.
 }
 
 func (localActionTestConnector) ExecuteAction(_ context.Context, _ connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	if action.Payload["value"] == "classified-error" {
+		return connectors.ActionResult{}, connectors.ClassifyError("fixture_failure", fmt.Errorf("fixture failed"))
+	}
 	result := connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
 		Output:      map[string]any{"echo": action.Payload["value"]},

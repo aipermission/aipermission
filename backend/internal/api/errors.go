@@ -12,10 +12,15 @@ const maxJSONBodyBytes = 32 << 20
 
 type errorResponse struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, errorResponse{Error: message})
+}
+
+func writeErrorWithCode(w http.ResponseWriter, status int, message, code string) {
+	writeJSON(w, status, errorResponse{Error: message, Code: code})
 }
 
 func writeInternalError(w http.ResponseWriter) {

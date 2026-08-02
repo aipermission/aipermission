@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actionableOffsetPartitions, connectorActionError, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection, requestIsCurrent } from "../connectors/templates/kafka/console-helpers.js";
+import { connectorActionError, connectorActionPending } from "../connectors/templates/_shared/action-result.js";
+import { actionableOffsetPartitions, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection, requestIsCurrent } from "../connectors/templates/kafka/console-helpers.js";
 import { credentialPayload } from "../connectors/templates/kafka/model-helpers.js";
 
 test("Kafka action helpers surface failed HTTP 200 responses", () => {
   assert.equal(connectorActionError({ status: "failed", error: "broker denied access" }), "broker denied access");
   assert.equal(connectorActionError({ status: "completed", output: {} }), "");
+  assert.equal(connectorActionError({ status: "running", display_text: "still running" }), "");
+  assert.equal(connectorActionPending({ status: "running" }), true);
+  assert.equal(connectorActionError(null, "missing result"), "missing result");
 });
 
 test("Kafka action helpers reject stale target and channel responses", () => {

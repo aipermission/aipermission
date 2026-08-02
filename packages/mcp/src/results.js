@@ -12,12 +12,13 @@ export function textResult(value) {
 
 export function errorResult(error) {
   const message = error instanceof Error ? error.message : String(error || "Unknown aipermission MCP error");
+  const code = error instanceof Error && typeof error.code === "string" ? error.code : "";
   return {
     isError: true,
     content: [
       {
         type: "text",
-        text: JSON.stringify({ status: "error", error: message }, null, 2),
+        text: JSON.stringify({ status: "error", ...(code ? { code } : {}), error: message }, null, 2),
       },
     ],
   };

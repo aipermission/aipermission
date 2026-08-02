@@ -7,7 +7,8 @@ import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost } from "../../../lib/api";
-import { actionableOffsetPartitions, connectorActionError, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection, requestIsCurrent } from "./console-helpers";
+import { connectorActionError, connectorActionPending } from "../_shared/action-result";
+import { actionableOffsetPartitions, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection, requestIsCurrent } from "./console-helpers";
 import { KafkaOffsetDialog, KafkaPublishDialog } from "./write-dialogs";
 
 const defaultRead = Object.freeze({ partition: "0", start_position: "recent", offset: "0", max_records: "20" });
@@ -86,16 +87,17 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
       const actionError = connectorActionError(item, `${product} action failed.`);
       if (actionError) throw new Error(actionError);
       const message = item.display_text || "";
+      const pending = connectorActionPending(item);
       try {
         await onRefreshActivity?.();
       } catch (refreshError) {
         if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
-        setState({ state: "idle", error: `Action completed, but activity refresh failed: ${refreshError.message || "unknown error"}`, message });
-        return item.output || {};
+        setState({ state: "idle", error: `Action ${pending ? "is pending" : "completed"}, but activity refresh failed: ${refreshError.message || "unknown error"}`, message });
+        return pending ? null : item.output || {};
       }
       if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
-      setState({ state: "idle", error: "", message });
-      return item.output || {};
+      setState({ state: "idle", error: "", message: message || (pending ? `${product} action is awaiting approval.` : "") });
+      return pending ? null : item.output || {};
     } catch (error) {
       if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
       setState({ state: "idle", error: error.message || `${product} action failed.`, message: "" });
