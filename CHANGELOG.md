@@ -32,6 +32,12 @@ and this project uses semantic versioning once public releases begin.
   boundaries are revalidated during execution, while BCC remains envelope-only.
 - SMTP acceptance uncertainty is reported without unsafe automatic retry hints.
 
+### Maintenance
+
+- Updated the pinned unprivileged nginx runtime image, Go compression library,
+  Lucide icon package, and Playwright test package through maintainer-authored
+  dependency commits.
+
 ## [0.2.21] - 2026-08-01
 
 ### Added
