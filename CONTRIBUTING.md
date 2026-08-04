@@ -36,9 +36,17 @@ Run frontend tests and build:
 
 ```bash
 npx playwright install chromium --with-deps
+npm run lint --workspace frontend
+npm run format:check --workspace frontend
 npm test --workspace frontend
 npm run build --workspace frontend
 ```
+
+Use `npm run format --workspace frontend` to apply the repository Prettier
+rules. Existing React hook dependency warnings are recorded in
+`frontend/eslint-suppressions.json`; new warnings still fail lint. Fix stale
+entries in code, then run `npm run lint:suppressions --workspace frontend` to
+prune the baseline instead of adding inline suppressions.
 
 Run Playwright when a change touches route-level UI, approval dialogs, console,
 or connector template rendering:

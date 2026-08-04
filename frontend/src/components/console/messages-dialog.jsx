@@ -86,10 +86,6 @@ export function MessagesDialog({ open, target, tokens, tokenID, state, text, onT
   );
 }
 
-function isUnreadMessage(message) {
-  return message.direction === "ai_to_user" && !message.consumed_at;
-}
-
 function formatMessageTime(value) {
   if (!value) return "";
   const date = new Date(value);

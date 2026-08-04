@@ -138,7 +138,7 @@ export async function deleteCredential({ row }) {
 export function credentialRows({ targets }) {
   return targets.flatMap((target) =>
     (target.profiles || [])
-      .filter((profile) => target.connector_kind === "mail")
+      .filter((_profile) => target.connector_kind === "mail")
       .map((profile) => ({
         row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
         connector_kind: target.connector_kind,

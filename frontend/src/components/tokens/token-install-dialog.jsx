@@ -21,7 +21,7 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
   const manualConfig = provider === "manual";
   const customConfig = provider === "custom";
   const targetName = token ? installTargetName(token.name) : "aipermission-default";
-  const command = token ? installCommand(provider, targetName, token.token) : "";
+  const command = token ? installCommand(provider, targetName) : "";
   const manualJSON = token ? manualConfigJSON(targetName, token.token) : "";
   const copyValue = manualConfig ? manualJSON : command;
   const providerLabel = installProviders.find((item) => item.id === provider)?.label || "Manual";
@@ -92,7 +92,7 @@ function installTargetName(value) {
   return `aipermission-${slug || "default"}`;
 }
 
-function installCommand(provider, name, token) {
+function installCommand(provider, name) {
   const printFlag = provider === "custom" ? " \\\n  --print" : "";
   return `npx -y @aipermission/mcp init \\
   --provider ${provider} \\

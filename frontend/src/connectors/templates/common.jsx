@@ -2,7 +2,7 @@ import { Database, KeyRound, Mail, Server } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { CopyButton } from "../../components/ui/copy-button";
 import { TerminalBlock } from "../../components/ui/terminal-block";
-import { connectorBadgeTone, connectorKindLabel, connectorSummary, connectorTemplateMetadata } from "./catalog";
+import { connectorKindLabel, connectorTemplateMetadata } from "./catalog";
 
 export { connectorBadgeTone, connectorKindLabel, connectorSummary } from "./catalog";
 
