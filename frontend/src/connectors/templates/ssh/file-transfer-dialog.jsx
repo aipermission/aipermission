@@ -1,11 +1,4 @@
-import {
-  Download,
-  FolderOpen,
-  Pause,
-  Play,
-  RefreshCcw,
-  Upload,
-} from "lucide-react";
+import { Download, FolderOpen, Pause, Play, RefreshCcw, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiDownload, apiGet, apiPost, apiPostForm } from "../../../lib/api";
 import { Button } from "../../../components/ui/button";
@@ -344,9 +337,10 @@ export function FileTransferDialog({ open, server, onClose }) {
   }
 
   function openBrowser(purpose) {
-    const nextPath = purpose === "download"
-      ? rememberedDownloadPath(server, defaultRemoteDir)
-      : normalizeRemoteDirectoryInput(remoteDir || defaultRemoteDir);
+    const nextPath =
+      purpose === "download"
+        ? rememberedDownloadPath(server, defaultRemoteDir)
+        : normalizeRemoteDirectoryInput(remoteDir || defaultRemoteDir);
     setBrowser({ open: true, purpose, path: nextPath, state: "loading", data: null, error: null });
     void loadBrowser(nextPath, purpose, { fallbackToDefault: purpose === "download" });
   }
@@ -403,15 +397,28 @@ export function FileTransferDialog({ open, server, onClose }) {
         <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.4fr)]">
           <section className="grid min-h-0 content-start gap-4">
             <Notice tone="warn">
-              File transfers use SFTP over the server's existing gateway key. AIPermission stores transfer history metadata only; file contents use short-lived local staging files under the data directory.
+              File transfers use SFTP over the server's existing gateway key. AIPermission stores transfer history metadata only; file
+              contents use short-lived local staging files under the data directory.
             </Notice>
             {notice ? <Notice tone={notice.includes("canceled") ? "warn" : "good"}>{notice}</Notice> : null}
             <div className="grid grid-cols-2 gap-2 rounded-md border border-stone-200 bg-stone-50 p-1">
-              <Button type="button" variant={mode === "upload" ? "default" : "ghost"} className="h-9" onClick={() => switchMode("upload")} disabled={Boolean(batch.item)}>
+              <Button
+                type="button"
+                variant={mode === "upload" ? "default" : "ghost"}
+                className="h-9"
+                onClick={() => switchMode("upload")}
+                disabled={Boolean(batch.item)}
+              >
                 <Upload className="h-4 w-4" />
                 Upload
               </Button>
-              <Button type="button" variant={mode === "download" ? "default" : "ghost"} className="h-9" onClick={() => switchMode("download")} disabled={Boolean(batch.item)}>
+              <Button
+                type="button"
+                variant={mode === "download" ? "default" : "ghost"}
+                className="h-9"
+                onClick={() => switchMode("download")}
+                disabled={Boolean(batch.item)}
+              >
                 <Download className="h-4 w-4" />
                 Download
               </Button>
@@ -440,13 +447,25 @@ export function FileTransferDialog({ open, server, onClose }) {
                       placeholder={defaultRemoteDir}
                       disabled={Boolean(activeBatch)}
                     />
-                    <Button type="button" variant="outline" className="h-10" onClick={() => openBrowser("upload")} disabled={!server || Boolean(activeBatch)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10"
+                      onClick={() => openBrowser("upload")}
+                      disabled={!server || Boolean(activeBatch)}
+                    >
                       <FolderOpen className="h-4 w-4" />
                       Browse
                     </Button>
                   </div>
                 </Field>
-                <Button type="button" variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()} disabled={Boolean(activeBatch)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={Boolean(activeBatch)}
+                >
                   <Upload className="h-4 w-4" />
                   Add files
                 </Button>
@@ -454,11 +473,20 @@ export function FileTransferDialog({ open, server, onClose }) {
               </div>
             ) : (
               <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-                <Button type="button" variant="outline" className="w-full" onClick={() => openBrowser("download")} disabled={!server || Boolean(activeBatch)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => openBrowser("download")}
+                  disabled={!server || Boolean(activeBatch)}
+                >
                   <FolderOpen className="h-4 w-4" />
                   Add remote files
                 </Button>
-                <p className="text-xs text-stone-500">The browser opens at the last folder used for this server, or `/home` when no folder is remembered. Multiple downloads are saved as one temporary zip archive.</p>
+                <p className="text-xs text-stone-500">
+                  The browser opens at the last folder used for this server, or `/home` when no folder is remembered. Multiple downloads are
+                  saved as one temporary zip archive.
+                </p>
               </div>
             )}
 
@@ -469,9 +497,17 @@ export function FileTransferDialog({ open, server, onClose }) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-stone-900">Queue</p>
-                <p className="text-xs text-stone-500">{activeBatch ? "Transfer is running from this queue." : `${queue.length} item${queue.length === 1 ? "" : "s"} ready.`}</p>
+                <p className="text-xs text-stone-500">
+                  {activeBatch ? "Transfer is running from this queue." : `${queue.length} item${queue.length === 1 ? "" : "s"} ready.`}
+                </p>
               </div>
-              <Button type="button" variant="outline" className="h-9" onClick={() => refreshBatch()} disabled={!batch.item || batch.state === "loading"}>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9"
+                onClick={() => refreshBatch()}
+                disabled={!batch.item || batch.state === "loading"}
+              >
                 <RefreshCcw className="h-4 w-4" />
                 Refresh
               </Button>

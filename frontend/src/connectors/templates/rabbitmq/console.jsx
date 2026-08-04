@@ -33,10 +33,17 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
   const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
   const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
   const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400" : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
+  const inputClass =
+    theme === "light"
+      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
+      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
   const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass = theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
-  const activeItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
+  const activeRowClass =
+    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const activeItems = useMemo(
+    () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
+    [approvals?.data, target.ref],
+  );
   const latestAction = activeItems[0] || null;
   const filteredQueues = useMemo(() => filterQueues(queues, pattern), [queues, pattern]);
 
@@ -109,10 +116,21 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
     setCustomRoutingKey(false);
     setPublishRoutingKey(queueName);
     setMessages([]);
-    const detailItem = await runRabbitAction({ actionName: "get_queue", input: { vhost, queue: queueName }, reason: "manual RabbitMQ browser queue detail", busy: "reading" });
+    const detailItem = await runRabbitAction({
+      actionName: "get_queue",
+      input: { vhost, queue: queueName },
+      reason: "manual RabbitMQ browser queue detail",
+      busy: "reading",
+    });
     setQueueDetail(detailItem.output || null);
     try {
-      const bindingItem = await runRabbitAction({ actionName: "list_bindings", input: { vhost, queue: queueName, limit: 250 }, reason: "manual RabbitMQ browser queue bindings", busy: "reading", suppressError: true });
+      const bindingItem = await runRabbitAction({
+        actionName: "list_bindings",
+        input: { vhost, queue: queueName, limit: 250 },
+        reason: "manual RabbitMQ browser queue bindings",
+        busy: "reading",
+        suppressError: true,
+      });
       setBindings(Array.isArray(bindingItem.output?.bindings) ? bindingItem.output.bindings : []);
     } catch {
       setBindings([]);
@@ -185,7 +203,9 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
             <Database className={`mx-auto h-10 w-10 ${mutedClass}`} />
             <div>
               <h3 className="text-lg font-semibold">No active RabbitMQ session</h3>
-              <p className={`mt-2 text-sm ${mutedClass}`}>Start a structured session to browse queues through the connector approval, history, and audit pipeline.</p>
+              <p className={`mt-2 text-sm ${mutedClass}`}>
+                Start a structured session to browse queues through the connector approval, history, and audit pipeline.
+              </p>
             </div>
             <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
               Start RabbitMQ session
@@ -200,16 +220,31 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
   return (
     <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
       <div className="grid min-h-0 gap-4 overflow-hidden p-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <section className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+        <section
+          className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
+        >
           <div className={`border-b p-3 ${borderClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold">Queues</p>
-                <p className={`text-xs ${mutedClass}`}>{filteredQueues.length} shown · {queues.length} loaded</p>
+                <p className={`text-xs ${mutedClass}`}>
+                  {filteredQueues.length} shown · {queues.length} loaded
+                </p>
               </div>
               <div className="flex items-center gap-2">
-                {latestAction ? <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>{latestAction.action_name}</Badge> : null}
-                <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Refresh queues" onClick={refreshQueues} disabled={state.state !== "idle"}>
+                {latestAction ? (
+                  <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>
+                    {latestAction.action_name}
+                  </Badge>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-8 px-0"
+                  title="Refresh queues"
+                  onClick={refreshQueues}
+                  disabled={state.state !== "idle"}
+                >
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -224,7 +259,12 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
           >
             <div className="relative">
               <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${mutedClass}`} />
-              <Input className={`pl-9 ${inputClass}`} value={pattern} onChange={(event) => setPattern(event.target.value)} placeholder="Filter queues" />
+              <Input
+                className={`pl-9 ${inputClass}`}
+                value={pattern}
+                onChange={(event) => setPattern(event.target.value)}
+                placeholder="Filter queues"
+              />
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <Input className={inputClass} value={vhost} onChange={(event) => setVhost(event.target.value)} placeholder="vhost" />
@@ -241,13 +281,18 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
                 className={`mb-1 grid w-full gap-1 rounded-md border px-3 py-2 text-left text-sm transition ${activeQueue === queue.name ? activeRowClass : `${borderClass} ${rowHoverClass}`}`}
                 onClick={() => selectQueue(queue.name)}
               >
-                <span className="truncate font-mono text-xs font-semibold" title={queue.name}>{queue.name}</span>
+                <span className="truncate font-mono text-xs font-semibold" title={queue.name}>
+                  {queue.name}
+                </span>
                 <span className={`text-xs ${activeQueue === queue.name ? "" : mutedClass}`}>
-                  ready {numberText(queue.messages_ready)} · unacked {numberText(queue.messages_unacknowledged)} · consumers {numberText(queue.consumers)}
+                  ready {numberText(queue.messages_ready)} · unacked {numberText(queue.messages_unacknowledged)} · consumers{" "}
+                  {numberText(queue.consumers)}
                 </span>
               </button>
             ))}
-            {filteredQueues.length === 0 ? <Notice>{state.state === "loading" ? "Loading RabbitMQ queues..." : "No queues found for this vhost/filter."}</Notice> : null}
+            {filteredQueues.length === 0 ? (
+              <Notice>{state.state === "loading" ? "Loading RabbitMQ queues..." : "No queues found for this vhost/filter."}</Notice>
+            ) : null}
           </div>
           <div className={`border-t p-3 ${borderClass}`}>
             <QueueTotalsStrip queues={queues} mutedClass={mutedClass} />
@@ -267,8 +312,19 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {detailMode === "inspect" && queueDetail?.state ? <Badge tone={queueDetail.state === "running" ? "good" : "warn"}>{queueDetail.state}</Badge> : null}
-              {detailMode === "inspect" && queueDetail ? <CopyButton value={JSON.stringify({ queue: queueDetail, bindings, messages }, null, 2)} variant="outline" className="h-8 px-2 text-xs" title="Copy queue JSON">JSON</CopyButton> : null}
+              {detailMode === "inspect" && queueDetail?.state ? (
+                <Badge tone={queueDetail.state === "running" ? "good" : "warn"}>{queueDetail.state}</Badge>
+              ) : null}
+              {detailMode === "inspect" && queueDetail ? (
+                <CopyButton
+                  value={JSON.stringify({ queue: queueDetail, bindings, messages }, null, 2)}
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                  title="Copy queue JSON"
+                >
+                  JSON
+                </CopyButton>
+              ) : null}
             </div>
           </div>
           <div className={`flex flex-wrap items-center justify-between gap-2 border-b p-3 ${borderClass}`}>
@@ -301,11 +357,22 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
                     onChange={(event) => setPeekCount(event.target.value)}
                     aria-label="Peek count"
                   />
-                  <Button type="button" className="h-8 px-3 text-xs" disabled={!activeQueue || state.state !== "idle"} onClick={peekMessages}>
+                  <Button
+                    type="button"
+                    className="h-8 px-3 text-xs"
+                    disabled={!activeQueue || state.state !== "idle"}
+                    onClick={peekMessages}
+                  >
                     <Eye className="h-3.5 w-3.5" />
                     Peek
                   </Button>
-                  <Button type="button" variant="outline" className="h-8 px-3 text-xs" disabled={state.state !== "idle"} onClick={startPublish}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 px-3 text-xs"
+                    disabled={state.state !== "idle"}
+                    onClick={startPublish}
+                  >
                     <Send className="h-3.5 w-3.5" />
                     Publish
                   </Button>
@@ -320,10 +387,28 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
                   This creates a new RabbitMQ message. With the default exchange, set Routing key to the destination queue name.
                 </Notice>
                 <div className="grid gap-2 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-                  <FieldBlock label="Exchange" help="amq.default is RabbitMQ's default exchange. It routes directly to the queue named by the routing key." mutedClass={mutedClass}>
-                    <Input className={inputClass} value={publishExchange} onChange={(event) => setPublishExchange(event.target.value)} placeholder="amq.default" aria-label="Publish exchange" />
+                  <FieldBlock
+                    label="Exchange"
+                    help="amq.default is RabbitMQ's default exchange. It routes directly to the queue named by the routing key."
+                    mutedClass={mutedClass}
+                  >
+                    <Input
+                      className={inputClass}
+                      value={publishExchange}
+                      onChange={(event) => setPublishExchange(event.target.value)}
+                      placeholder="amq.default"
+                      aria-label="Publish exchange"
+                    />
                   </FieldBlock>
-                  <FieldBlock label="Routing key" help={activeQueue ? `Use ${activeQueue} to publish to the selected queue via amq.default.` : "Usually the queue name when using amq.default."} mutedClass={mutedClass}>
+                  <FieldBlock
+                    label="Routing key"
+                    help={
+                      activeQueue
+                        ? `Use ${activeQueue} to publish to the selected queue via amq.default.`
+                        : "Usually the queue name when using amq.default."
+                    }
+                    mutedClass={mutedClass}
+                  >
                     <div className={`grid gap-2 ${customRoutingKey ? "md:grid-cols-2" : ""}`}>
                       <RoutingKeyPicker
                         queues={queues}
@@ -347,19 +432,50 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
                         activeRowClass={activeRowClass}
                       />
                       {customRoutingKey ? (
-                        <Input className={inputClass} value={publishRoutingKey} onChange={(event) => setPublishRoutingKey(event.target.value)} placeholder="Custom routing key" aria-label="Custom routing key" />
+                        <Input
+                          className={inputClass}
+                          value={publishRoutingKey}
+                          onChange={(event) => setPublishRoutingKey(event.target.value)}
+                          placeholder="Custom routing key"
+                          aria-label="Custom routing key"
+                        />
                       ) : null}
                     </div>
                   </FieldBlock>
                 </div>
-                <FieldBlock label="Properties JSON" help="Optional AMQP properties. content_type helps consumers parse JSON payloads." mutedClass={mutedClass}>
-                  <Input className={inputClass} value={publishProperties} onChange={(event) => setPublishProperties(event.target.value)} placeholder='{"content_type":"application/json"}' aria-label="Publish properties JSON" />
+                <FieldBlock
+                  label="Properties JSON"
+                  help="Optional AMQP properties. content_type helps consumers parse JSON payloads."
+                  mutedClass={mutedClass}
+                >
+                  <Input
+                    className={inputClass}
+                    value={publishProperties}
+                    onChange={(event) => setPublishProperties(event.target.value)}
+                    placeholder='{"content_type":"application/json"}'
+                    aria-label="Publish properties JSON"
+                  />
                 </FieldBlock>
-                <FieldBlock label="Payload" help="Message body to publish. Keep secrets out unless this write was explicitly approved." mutedClass={mutedClass} grow>
-                  <Textarea className={`h-full min-h-0 resize-none font-mono text-xs ${inputClass}`} value={publishPayload} onChange={(event) => setPublishPayload(event.target.value)} placeholder='{"type":"test","ok":true}' aria-label="Publish payload" />
+                <FieldBlock
+                  label="Payload"
+                  help="Message body to publish. Keep secrets out unless this write was explicitly approved."
+                  mutedClass={mutedClass}
+                  grow
+                >
+                  <Textarea
+                    className={`h-full min-h-0 resize-none font-mono text-xs ${inputClass}`}
+                    value={publishPayload}
+                    onChange={(event) => setPublishPayload(event.target.value)}
+                    placeholder='{"type":"test","ok":true}'
+                    aria-label="Publish payload"
+                  />
                 </FieldBlock>
                 <div className="flex justify-end">
-                  <Button type="submit" className="h-9 px-4 text-sm" disabled={state.state !== "idle" || !publishRoutingKey.trim() || !publishPayload}>
+                  <Button
+                    type="submit"
+                    className="h-9 px-4 text-sm"
+                    disabled={state.state !== "idle" || !publishRoutingKey.trim() || !publishPayload}
+                  >
                     <Send className="h-4 w-4" />
                     Publish message
                   </Button>
@@ -369,17 +485,24 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
               <div className="grid h-full min-h-0 gap-4 overflow-hidden lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
                 <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
                   <p className={`text-xs font-semibold uppercase ${mutedClass}`}>Queue and bindings</p>
-                  <TerminalBlock surface="log" className="min-h-0 text-xs">{queueDetail ? JSON.stringify({ queue: queueDetail, bindings }, null, 2) : "No queue selected."}</TerminalBlock>
+                  <TerminalBlock surface="log" className="min-h-0 text-xs">
+                    {queueDetail ? JSON.stringify({ queue: queueDetail, bindings }, null, 2) : "No queue selected."}
+                  </TerminalBlock>
                 </div>
                 <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
                   <p className={`text-xs font-semibold uppercase ${mutedClass}`}>Messages</p>
-                  <TerminalBlock surface="log" className="min-h-0 text-xs">{messages.length ? formatMessages(messages) : "No messages peeked in this session."}</TerminalBlock>
+                  <TerminalBlock surface="log" className="min-h-0 text-xs">
+                    {messages.length ? formatMessages(messages) : "No messages peeked in this session."}
+                  </TerminalBlock>
                 </div>
               </div>
             )}
           </div>
           <div className={`grid gap-3 border-t p-3 ${borderClass}`}>
-            <Notice tone="warn">Peek uses ack_requeue_true with bounded count and payload truncation. Avoid reading payloads unless the operator approved that access.</Notice>
+            <Notice tone="warn">
+              Peek uses ack_requeue_true with bounded count and payload truncation. Avoid reading payloads unless the operator approved that
+              access.
+            </Notice>
             <Notice tone="warn">Publish creates a new RabbitMQ message and uses the write permission for this connector action.</Notice>
             {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
             {state.message ? <Notice tone="good">{state.message}</Notice> : null}
@@ -399,7 +522,7 @@ function QueueTotalsStrip({ queues, mutedClass }) {
       messages: acc.messages + numericValue(queue.messages),
       consumers: acc.consumers + numericValue(queue.consumers),
     }),
-    { ready: 0, unacked: 0, messages: 0, consumers: 0 }
+    { ready: 0, unacked: 0, messages: 0, consumers: 0 },
   );
   return (
     <div className="grid gap-1 text-xs">
@@ -411,7 +534,19 @@ function QueueTotalsStrip({ queues, mutedClass }) {
   );
 }
 
-function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, inputClass, borderClass, mutedClass, subtlePanelClass, rowHoverClass, activeRowClass }) {
+function RoutingKeyPicker({
+  queues,
+  value,
+  custom,
+  onQueue,
+  onCustom,
+  inputClass,
+  borderClass,
+  mutedClass,
+  subtlePanelClass,
+  rowHoverClass,
+  activeRowClass,
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -427,7 +562,7 @@ function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, inputClass
       { kind: "custom", label: "Custom routing key", help: "Type an exchange-specific routing key manually." },
       ...visibleQueues.map((queueName) => ({ kind: "queue", label: queueName, help: "Queue routing key via amq.default" })),
     ],
-    [visibleQueues]
+    [visibleQueues],
   );
 
   useEffect(() => {
@@ -509,7 +644,10 @@ function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, inputClass
         aria-label="Search queue routing keys"
       />
       {open ? (
-        <div className={`absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-64 overflow-auto rounded-md border p-1 shadow-xl ${borderClass} ${subtlePanelClass}`} role="listbox">
+        <div
+          className={`absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-64 overflow-auto rounded-md border p-1 shadow-xl ${borderClass} ${subtlePanelClass}`}
+          role="listbox"
+        >
           {options.map((option, index) => (
             <button
               key={`${option.kind}:${option.label}`}
@@ -553,19 +691,29 @@ function RabbitEndpointFooter({ target, borderClass, mutedClass }) {
   return (
     <div className={`flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-xs ${borderClass}`}>
       <span className={`truncate font-mono ${mutedClass}`}>{target.ref}</span>
-      <span className={`truncate ${mutedClass}`}>{target.config?.scheme || "http"}://{target.config?.host}:{target.config?.port || 15672} · vhost {target.config?.vhost || "/"}</span>
+      <span className={`truncate ${mutedClass}`}>
+        {target.config?.scheme || "http"}://{target.config?.host}:{target.config?.port || 15672} · vhost {target.config?.vhost || "/"}
+      </span>
     </div>
   );
 }
 
 function filterQueues(queues, pattern) {
-  const needle = String(pattern || "").trim().toLowerCase();
+  const needle = String(pattern || "")
+    .trim()
+    .toLowerCase();
   if (!needle) return queues;
-  return queues.filter((queue) => String(queue.name || "").toLowerCase().includes(needle));
+  return queues.filter((queue) =>
+    String(queue.name || "")
+      .toLowerCase()
+      .includes(needle),
+  );
 }
 
 function uniqueQueueNames(queues) {
-  return Array.from(new Set((queues || []).map((queue) => String(queue.name || "").trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right));
+  return Array.from(new Set((queues || []).map((queue) => String(queue.name || "").trim()).filter(Boolean))).sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 function queueMetaText(queue) {
@@ -582,7 +730,7 @@ function formatMessages(messages) {
       properties: message.properties,
     })),
     null,
-    2
+    2,
   );
 }
 

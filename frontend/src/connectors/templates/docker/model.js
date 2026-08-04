@@ -1,7 +1,14 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
 
-const emptyDockerCredentialForm = { target_id: "", profile_label: "all-containers", scope_mode: "all", allowed_containers: "", allowed_patterns: "", risk_label: "container access" };
+const emptyDockerCredentialForm = {
+  target_id: "",
+  profile_label: "all-containers",
+  scope_mode: "all",
+  allowed_containers: "",
+  allowed_patterns: "",
+  risk_label: "container access",
+};
 
 export function emptyForm() {
   return {
@@ -146,7 +153,7 @@ export function credentialRows({ targets }) {
         target_detail: targetEndpoint({ target }),
         metadata: credentialMetadata(profile),
         delete_disabled: "",
-      }))
+      })),
   );
 }
 
@@ -229,7 +236,7 @@ export function deleteDialog({ target }) {
 
 async function createTarget({ form }) {
   await createTargetWithProfile({
-	projectID: form.project_id,
+    projectID: form.project_id,
     targetPayload: {
       connector_kind: "docker",
       name: form.name,
@@ -240,10 +247,12 @@ async function createTarget({ form }) {
 }
 
 async function updateTarget({ form, target }) {
-  const profile = target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+  const profile =
+    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
+    (target?.profiles?.length === 1 ? target.profiles[0] : null);
   if (!target || !profile) throw new Error("Docker connector profile is not loaded.");
   await updateTargetWithProfile({
-	projectID: form.project_id,
+    projectID: form.project_id,
     targetID: target.id,
     profileID: profile.id,
     targetPayload: {
@@ -282,7 +291,8 @@ function credentialMetadata(profile) {
   const patterns = splitLines(profile.public?.allowed_patterns || "");
   const items = [`scope: ${scope}`];
   if (names.length > 0) items.push(`names: ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`);
-  if (patterns.length > 0) items.push(`patterns: ${patterns.slice(0, 3).join(", ")}${patterns.length > 3 ? ` +${patterns.length - 3}` : ""}`);
+  if (patterns.length > 0)
+    items.push(`patterns: ${patterns.slice(0, 3).join(", ")}${patterns.length > 3 ? ` +${patterns.length - 3}` : ""}`);
   if (profile.risk_label) items.push(`risk: ${profile.risk_label}`);
   return items;
 }

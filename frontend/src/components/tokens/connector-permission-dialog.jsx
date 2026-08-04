@@ -46,8 +46,11 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   }, [load.targets, load.actionsByProfile]);
 
   const rows = useMemo(
-    () => profileGroups.flatMap((group) => group.actions.map((action) => ({ ...group, action, key: permissionKey(group.target.id, group.profile.id, action.name) }))),
-    [profileGroups]
+    () =>
+      profileGroups.flatMap((group) =>
+        group.actions.map((action) => ({ ...group, action, key: permissionKey(group.target.id, group.profile.id, action.name) })),
+      ),
+    [profileGroups],
   );
 
   useEffect(() => {
@@ -67,7 +70,7 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
       ]);
       const targets = targetList.items || [];
       const actionEntries = targets.flatMap((target) =>
-        (target.profiles || []).map((profile) => [profileActionKey(target.id, profile.id), profile.actions || []])
+        (target.profiles || []).map((profile) => [profileActionKey(target.id, profile.id), profile.actions || []]),
       );
       const actionsByProfile = Object.fromEntries(actionEntries);
       const permissionItems = permissions.items || [];
@@ -81,15 +84,14 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
       });
       setDraft(
         Object.fromEntries(
-          permissionItems
-            .map((permission) => [
-              permissionKey(permission.target_id, permission.profile_id, permission.action_name),
-              {
-                execution_rule: permission.execution_rule,
-                expires_at: permission.expires_at || "",
-              },
-            ])
-        )
+          permissionItems.map((permission) => [
+            permissionKey(permission.target_id, permission.profile_id, permission.action_name),
+            {
+              execution_rule: permission.execution_rule,
+              expires_at: permission.expires_at || "",
+            },
+          ]),
+        ),
       );
     } catch (error) {
       setLoad({ ...emptyLoad, state: "error", error: error.message });
@@ -100,7 +102,9 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   function setRule(key, rule) {
     setDraft((current) => ({
       ...current,
-      [key]: rule ? { execution_rule: rule, expires_at: rule === "blocked" ? "" : current[key]?.expires_at || "" } : { execution_rule: "", expires_at: "" },
+      [key]: rule
+        ? { execution_rule: rule, expires_at: rule === "blocked" ? "" : current[key]?.expires_at || "" }
+        : { execution_rule: "", expires_at: "" },
     }));
   }
 
@@ -132,7 +136,9 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
           };
         })
         .filter(Boolean);
-      const result = await apiPut(`/api/tokens/${token.id}/connector-permissions`, { permissions: [...preserved, ...connectorPermissions] });
+      const result = await apiPut(`/api/tokens/${token.id}/connector-permissions`, {
+        permissions: [...preserved, ...connectorPermissions],
+      });
       setLoad((current) => ({ ...current, permissions: result.items || [] }));
       await onSaved?.();
       setSave({ state: "ready", error: null });
@@ -156,13 +162,16 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
     >
       <form className="grid gap-4" onSubmit={savePermissions}>
         <Notice>
-          Security note: each connector grant binds one target, one credential profile, and one action. Prefer Prompt until you trust the workflow.
+          Security note: each connector grant binds one target, one credential profile, and one action. Prefer Prompt until you trust the
+          workflow.
         </Notice>
         {load.state === "loading" ? <Notice>Loading connector targets...</Notice> : null}
         {load.state === "error" ? <Notice tone="bad">{load.error}</Notice> : null}
         {save.state === "error" ? <Notice tone="bad">{save.error}</Notice> : null}
         {save.state === "ready" ? <Notice tone="good">Connector permissions saved.</Notice> : null}
-        {load.state === "ready" && rows.length === 0 ? <Notice>Create a connector target before granting action permissions.</Notice> : null}
+        {load.state === "ready" && rows.length === 0 ? (
+          <Notice>Create a connector target before granting action permissions.</Notice>
+        ) : null}
 
         {load.state === "ready" && rows.length > 0 ? (
           <div
@@ -189,7 +198,9 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
                     >
                       <div className="flex min-w-0 items-center justify-between gap-2">
                         <span className="truncate text-sm font-semibold">{group.target.name}</span>
-                        <Badge tone={activeCount > 0 ? "good" : "neutral"}>{activeCount}/{group.actions.length}</Badge>
+                        <Badge tone={activeCount > 0 ? "good" : "neutral"}>
+                          {activeCount}/{group.actions.length}
+                        </Badge>
                       </div>
                       <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
                         <Badge tone="neutral">{connectorLabel(load.catalog, group.target.connector_kind)}</Badge>
@@ -251,7 +262,9 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-stone-500">{selectedCount} connector action grant{selectedCount === 1 ? "" : "s"} selected.</p>
+          <p className="text-sm text-stone-500">
+            {selectedCount} connector action grant{selectedCount === 1 ? "" : "s"} selected.
+          </p>
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Close
@@ -279,5 +292,6 @@ function connectorLabel(catalog, kind) {
 }
 
 function activeRuleCount(group, draft) {
-  return group.actions.filter((action) => Boolean(draft[permissionKey(group.target.id, group.profile.id, action.name)]?.execution_rule)).length;
+  return group.actions.filter((action) => Boolean(draft[permissionKey(group.target.id, group.profile.id, action.name)]?.execution_rule))
+    .length;
 }

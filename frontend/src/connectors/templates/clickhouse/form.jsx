@@ -7,7 +7,8 @@ export function ClickHouseConnectorFormTemplate({ form, mode = "create", targets
   return (
     <>
       <Notice tone="good">
-        Use a dedicated read-only ClickHouse user. Query validation and execution limits are defense in depth, not a replacement for database permissions.
+        Use a dedicated read-only ClickHouse user. Query validation and execution limits are defense in depth, not a replacement for
+        database permissions.
       </Notice>
       <Field>
         Connector name

@@ -35,7 +35,16 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
         onChange({ open: true, connector_kind: "ssh", type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
         return;
       }
-      onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, profile, state: "error", data: null, error: error.message });
+      onChange({
+        open: true,
+        connector_kind: "ssh",
+        type: "docker-check",
+        target,
+        profile,
+        state: "error",
+        data: null,
+        error: error.message,
+      });
     }
   }
 
@@ -61,7 +70,17 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
         onChange({ open: true, connector_kind: "ssh", type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
         return;
       }
-      onChange((current) => ({ open: true, connector_kind: "ssh", type: "docker-logs", target, profile, container, state: "error", data: current?.data, error: error.message }));
+      onChange((current) => ({
+        open: true,
+        connector_kind: "ssh",
+        type: "docker-logs",
+        target,
+        profile,
+        container,
+        state: "error",
+        data: current?.data,
+        error: error.message,
+      }));
     }
   }
 
@@ -93,8 +112,16 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
   return (
     <>
       <ServerInstallDialog value={operation.type === "install" ? operation : { open: false }} credentials={credentials} onClose={close} />
-      <HostKeyApprovalDialog value={operation.type === "host-key" ? operation : { open: false }} onApprove={approveHostKey} onClose={close} />
-      <DockerCheckDialog value={operation.type === "docker-check" ? operation : { open: false }} onReadLogs={readDockerLogs} onClose={close} />
+      <HostKeyApprovalDialog
+        value={operation.type === "host-key" ? operation : { open: false }}
+        onApprove={approveHostKey}
+        onClose={close}
+      />
+      <DockerCheckDialog
+        value={operation.type === "docker-check" ? operation : { open: false }}
+        onReadLogs={readDockerLogs}
+        onClose={close}
+      />
       <DockerLogsDialog value={operation.type === "docker-logs" ? operation : { open: false }} onRefresh={readDockerLogs} onClose={close} />
     </>
   );
@@ -107,7 +134,11 @@ function HostKeyApprovalDialog({ value, onApprove, onClose }) {
     <Dialog
       open={value.open}
       title={changed ? "SSH host fingerprint changed" : "Approve SSH host fingerprint"}
-      description={changed ? "The target is sending a different identity than the one previously trusted." : "First SSH connection requires you to trust the target identity."}
+      description={
+        changed
+          ? "The target is sending a different identity than the one previously trusted."
+          : "First SSH connection requires you to trust the target identity."
+      }
       onClose={onClose}
       size={changed ? "lg" : "md"}
     >
@@ -115,11 +146,13 @@ function HostKeyApprovalDialog({ value, onApprove, onClose }) {
         <div className="grid gap-4">
           {changed ? (
             <Notice tone="bad">
-              This can happen after a rebuild or IP reuse, but it can also indicate a man-in-the-middle attack. Verify the new fingerprint from your provider console before replacing the trusted key.
+              This can happen after a rebuild or IP reuse, but it can also indicate a man-in-the-middle attack. Verify the new fingerprint
+              from your provider console before replacing the trusted key.
             </Notice>
           ) : (
             <Notice tone="warn">
-              Verify this fingerprint from your provider console or from a trusted terminal before approving. AIPermission will reject future changes for this SSH host.
+              Verify this fingerprint from your provider console or from a trusted terminal before approving. AIPermission will reject
+              future changes for this SSH host.
             </Notice>
           )}
           <div className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm">
@@ -132,7 +165,9 @@ function HostKeyApprovalDialog({ value, onApprove, onClose }) {
               <div className="grid gap-1">
                 <p className="text-xs font-semibold uppercase text-stone-500">Previously trusted</p>
                 {hostKey.existing_fingerprints.map((fingerprint) => (
-                  <code className="break-all rounded bg-white p-2 text-xs text-stone-800" key={fingerprint}>{fingerprint}</code>
+                  <code className="break-all rounded bg-white p-2 text-xs text-stone-800" key={fingerprint}>
+                    {fingerprint}
+                  </code>
                 ))}
               </div>
             ) : null}
@@ -199,7 +234,9 @@ function DockerCheckDialog({ value, onReadLogs, onClose }) {
         <div className="grid gap-4">
           {value.state === "loading" ? <Notice>Checking Docker on the target...</Notice> : null}
           {value.state === "error" ? <Notice tone="bad">{value.error}</Notice> : null}
-          {data && !data.available ? <Notice tone="warn">Docker is not installed or the docker command is not available on this target.</Notice> : null}
+          {data && !data.available ? (
+            <Notice tone="warn">Docker is not installed or the docker command is not available on this target.</Notice>
+          ) : null}
           {data?.available && !data.ok ? (
             <Notice tone="bad">
               Docker is available, but the status command failed. Check Docker daemon access, permissions, or service state on the target.
@@ -234,10 +271,22 @@ function DockerCheckDialog({ value, onReadLogs, onClose }) {
                           <td className="truncate px-3 py-2 font-mono text-xs text-stone-600">{container.ports || "-"}</td>
                           <td className="px-3 py-2">
                             <div className="flex justify-end gap-2">
-                              <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Details" onClick={() => setDetailContainer(container)}>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-8 w-8 px-0"
+                                title="Details"
+                                onClick={() => setDetailContainer(container)}
+                              >
                                 <Info className="h-4 w-4" />
                               </Button>
-                              <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Logs" onClick={() => onReadLogs(value.target, container, undefined, value.profile)}>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-8 w-8 px-0"
+                                title="Logs"
+                                onClick={() => onReadLogs(value.target, container, undefined, value.profile)}
+                              >
                                 <FileText className="h-4 w-4" />
                               </Button>
                             </div>
@@ -330,11 +379,16 @@ function DockerLogsDialog({ value, onRefresh, onClose }) {
       bodyClassName="min-h-0 overflow-hidden"
     >
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-        <form className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500" onSubmit={refreshLogs}>
+        <form
+          className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500"
+          onSubmit={refreshLogs}
+        >
           <span className="min-w-0 flex-1 truncate">
             {value.state === "loading" ? "Loading logs..." : null}
             {value.state === "error" ? value.error : null}
-            {value.state !== "loading" && value.data ? `exit ${value.data.exit_code} · ${value.data.duration_ms}ms${value.data.ok ? "" : " · command failed"}` : null}
+            {value.state !== "loading" && value.data
+              ? `exit ${value.data.exit_code} · ${value.data.duration_ms}ms${value.data.ok ? "" : " · command failed"}`
+              : null}
             {value.state === "idle" ? "No log request yet." : null}
           </span>
           <div className="flex items-center gap-2">

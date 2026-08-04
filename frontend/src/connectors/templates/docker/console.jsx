@@ -8,7 +8,19 @@ import { Input } from "../../../components/ui/form";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost } from "../../../lib/api";
 
-export function DockerConnectorConsoleTemplate({ children, target, approvals, theme, session, selectedSessionLive, selectedRuntimeTarget, onNewLiveSession, onSelectLiveSessionName, onEndLiveSession, onRefreshActivity }) {
+export function DockerConnectorConsoleTemplate({
+  children,
+  target,
+  approvals,
+  theme,
+  session,
+  selectedSessionLive,
+  selectedRuntimeTarget,
+  onNewLiveSession,
+  onSelectLiveSessionName,
+  onEndLiveSession,
+  onRefreshActivity,
+}) {
   const [resourceView, setResourceView] = useState("containers");
   const [containers, setContainers] = useState([]);
   const [resources, setResources] = useState({ images: [], networks: [], volumes: [] });
@@ -21,27 +33,50 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
   const [resultSearch, setResultSearch] = useState("");
   const [pendingConsoleName, setPendingConsoleName] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: "", description: "", details: [], actionName: "", pending: false });
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: "",
+    description: "",
+    details: [],
+    actionName: "",
+    pending: false,
+  });
   const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
   const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
   const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
   const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400" : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
+  const inputClass =
+    theme === "light"
+      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
+      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
   const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass = theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
-  const activeItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
+  const activeRowClass =
+    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const activeItems = useMemo(
+    () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
+    [approvals?.data, target.ref],
+  );
   const latestAction = activeItems[0] || null;
   const selectedContainer = containers.find((container) => container.id === selectedID || container.name === selectedID) || null;
   const selectedContainerRef = selectedContainer ? selectedContainer.name || selectedContainer.id : "";
   const expectedConsoleSessionName = selectedContainerRef ? dockerConsoleSessionName(target, selectedContainerRef) : "";
   const selectedContainerConsoleLive = Boolean(selectedSessionLive && session?.name === expectedConsoleSessionName);
   const activeResourceList = resourceView === "containers" ? containers : resources[resourceView] || [];
-  const selectedResource = resourceView === "containers" ? selectedContainer : activeResourceList.find((item) => resourceKey(resourceView, item) === selectedResourceID) || null;
+  const selectedResource =
+    resourceView === "containers"
+      ? selectedContainer
+      : activeResourceList.find((item) => resourceKey(resourceView, item) === selectedResourceID) || null;
   const showingInspect = viewMode === "inspect";
   const filteredItems = useMemo(() => {
     const query = filter.trim().toLowerCase();
     if (!query) return activeResourceList;
-    return activeResourceList.filter((item) => resourceSearchValues(resourceView, item).some((value) => String(value || "").toLowerCase().includes(query)));
+    return activeResourceList.filter((item) =>
+      resourceSearchValues(resourceView, item).some((value) =>
+        String(value || "")
+          .toLowerCase()
+          .includes(query),
+      ),
+    );
   }, [activeResourceList, filter, resourceView]);
 
   useEffect(() => {
@@ -101,7 +136,9 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
     });
     const next = item.output?.containers || [];
     setContainers(next);
-    setSelectedID((current) => (current && next.some((container) => container.id === current || container.name === current) ? current : ""));
+    setSelectedID((current) =>
+      current && next.some((container) => container.id === current || container.name === current) ? current : "",
+    );
   }
 
   async function refreshResource(kind = resourceView) {
@@ -255,7 +292,9 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
   return (
     <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
       <div className="grid h-full min-h-0 gap-4 overflow-hidden p-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <section className={`grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+        <section
+          className={`grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
+        >
           <div className={`border-b p-3 ${borderClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -263,8 +302,19 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
                 <p className={`text-xs ${mutedClass}`}>{activeResourceList.length} visible in this profile scope</p>
               </div>
               <div className="flex items-center gap-2">
-                {latestAction ? <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>{latestAction.action_name}</Badge> : null}
-                <Button type="button" variant="outline" className="h-8 w-8 px-0" title={`Refresh ${resourceLabel(resourceView).toLowerCase()}`} onClick={() => refreshResource(resourceView)} disabled={state.state !== "idle"}>
+                {latestAction ? (
+                  <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>
+                    {latestAction.action_name}
+                  </Badge>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-8 px-0"
+                  title={`Refresh ${resourceLabel(resourceView).toLowerCase()}`}
+                  onClick={() => refreshResource(resourceView)}
+                  disabled={state.state !== "idle"}
+                >
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -283,15 +333,25 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
             ))}
           </div>
           <div className={`border-b p-3 ${borderClass}`}>
-            <Input className={inputClass} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={`Search ${resourceLabel(resourceView).toLowerCase()}`} />
+            <Input
+              className={inputClass}
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder={`Search ${resourceLabel(resourceView).toLowerCase()}`}
+            />
           </div>
           <div className="min-h-0 overflow-auto">
             {filteredItems.length === 0 ? (
-              <div className={`p-4 text-sm ${mutedClass}`}>No {resourceLabel(resourceView).toLowerCase()} matched this scope or search.</div>
+              <div className={`p-4 text-sm ${mutedClass}`}>
+                No {resourceLabel(resourceView).toLowerCase()} matched this scope or search.
+              </div>
             ) : (
               filteredItems.map((item) => {
                 const key = resourceKey(resourceView, item);
-                const active = resourceView === "containers" ? selectedContainer && (selectedContainer.id === item.id || selectedContainer.name === item.name) : selectedResourceID === key;
+                const active =
+                  resourceView === "containers"
+                    ? selectedContainer && (selectedContainer.id === item.id || selectedContainer.name === item.name)
+                    : selectedResourceID === key;
                 return (
                   <button
                     type="button"
@@ -312,13 +372,17 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
           </div>
         </section>
 
-        <section className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+        <section
+          className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
+        >
           <div>
             <div className={`border-b p-3 ${borderClass}`}>
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-sm font-semibold">{selectedResource ? resourcePrimary(resourceView, selectedResource) : `Select ${resourceSingular(resourceView)}`}</p>
+                    <p className="truncate text-sm font-semibold">
+                      {selectedResource ? resourcePrimary(resourceView, selectedResource) : `Select ${resourceSingular(resourceView)}`}
+                    </p>
                     {state.state !== "idle" ? (
                       <span className={`inline-flex shrink-0 items-center gap-1 text-xs ${mutedClass}`}>
                         <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -326,11 +390,20 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
                       </span>
                     ) : null}
                   </div>
-                  <p className={`truncate text-xs ${mutedClass}`}>{selectedResource ? resourceSecondary(resourceView, selectedResource) : resourcePlaceholder(resourceView)}</p>
+                  <p className={`truncate text-xs ${mutedClass}`}>
+                    {selectedResource ? resourceSecondary(resourceView, selectedResource) : resourcePlaceholder(resourceView)}
+                  </p>
                 </div>
                 {resourceView === "containers" && selectedContainer ? (
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={showingInspect ? () => readLogs() : () => inspectContainer()} disabled={state.state !== "idle"} title={showingInspect ? "Show container logs" : "Inspect container"}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-2 text-xs"
+                      onClick={showingInspect ? () => readLogs() : () => inspectContainer()}
+                      disabled={state.state !== "idle"}
+                      title={showingInspect ? "Show container logs" : "Inspect container"}
+                    >
                       {showingInspect ? <RefreshCcw className="h-3.5 w-3.5" /> : <FileJson className="h-3.5 w-3.5" />}
                       {showingInspect ? "Logs" : "Inspect"}
                     </Button>
@@ -338,23 +411,65 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
                       <>
                         <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
                           Tail
-                          <Input className={`h-8 w-24 ${inputClass}`} type="number" min="1" max="2000" value={tail} onChange={(event) => setTail(event.target.value)} />
+                          <Input
+                            className={`h-8 w-24 ${inputClass}`}
+                            type="number"
+                            min="1"
+                            max="2000"
+                            value={tail}
+                            onChange={(event) => setTail(event.target.value)}
+                          />
                         </label>
-                        <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => readLogs()} disabled={state.state !== "idle"} title="Refresh logs">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 w-8 px-0"
+                          onClick={() => readLogs()}
+                          disabled={state.state !== "idle"}
+                          title="Refresh logs"
+                        >
                           <RefreshCcw className="h-3.5 w-3.5" />
                         </Button>
                       </>
                     ) : null}
-                    <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openContainerConsole()} disabled={state.state !== "idle"} title="Open live console inside this container">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 w-8 px-0"
+                      onClick={() => openContainerConsole()}
+                      disabled={state.state !== "idle"}
+                      title="Open live console inside this container"
+                    >
                       <TerminalSquare className="h-3.5 w-3.5" />
                     </Button>
-                    <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("start_container")} disabled={state.state !== "idle"} title="Start container">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 w-8 px-0"
+                      onClick={() => openLifecycle("start_container")}
+                      disabled={state.state !== "idle"}
+                      title="Start container"
+                    >
                       <Play className="h-3.5 w-3.5" />
                     </Button>
-                    <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("stop_container")} disabled={state.state !== "idle"} title="Stop container">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 w-8 px-0"
+                      onClick={() => openLifecycle("stop_container")}
+                      disabled={state.state !== "idle"}
+                      title="Stop container"
+                    >
                       <Square className="h-3.5 w-3.5" />
                     </Button>
-                    <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openLifecycle("restart_container")} disabled={state.state !== "idle"} title="Restart container">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 w-8 px-0"
+                      onClick={() => openLifecycle("restart_container")}
+                      disabled={state.state !== "idle"}
+                      title="Restart container"
+                    >
                       <RotateCcw className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -369,9 +484,19 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
           </div>
           <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-3">
             {!selectedResource ? (
-              <div className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>{resourcePlaceholder(resourceView)}</div>
+              <div
+                className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}
+              >
+                {resourcePlaceholder(resourceView)}
+              </div>
             ) : resourceView !== "containers" ? (
-              <DockerResourceDetail resourceView={resourceView} item={selectedResource} search={resultSearch} onSearch={setResultSearch} inputClass={inputClass} />
+              <DockerResourceDetail
+                resourceView={resourceView}
+                item={selectedResource}
+                search={resultSearch}
+                onSearch={setResultSearch}
+                inputClass={inputClass}
+              />
             ) : viewMode === "console" ? (
               <DockerContainerConsolePanel
                 target={target}
@@ -390,7 +515,9 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
                 {children}
               </DockerContainerConsolePanel>
             ) : state.state !== "idle" && !result ? (
-              <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>
+              <div
+                className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}
+              >
                 <span className="inline-flex items-center gap-2">
                   <LoaderCircle className="h-4 w-4 animate-spin" />
                   Loading {showingInspect ? "inspect metadata" : "logs"} for {selectedContainer.name || selectedContainer.id}...
@@ -399,7 +526,11 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
             ) : result ? (
               <DockerResultView item={result} search={resultSearch} onSearch={setResultSearch} inputClass={inputClass} />
             ) : (
-              <div className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>Logs will appear here after the container is loaded.</div>
+              <div
+                className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}
+              >
+                Logs will appear here after the container is loaded.
+              </div>
             )}
           </div>
         </section>
@@ -423,7 +554,12 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
             ))}
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setConfirmDialog({ open: false, title: "", description: "", details: [], actionName: "", pending: false })} disabled={confirmDialog.pending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmDialog({ open: false, title: "", description: "", details: [], actionName: "", pending: false })}
+              disabled={confirmDialog.pending}
+            >
               Cancel
             </Button>
             <Button type="button" onClick={confirmLifecycle} disabled={confirmDialog.pending}>
@@ -437,11 +573,27 @@ export function DockerConnectorConsoleTemplate({ children, target, approvals, th
   );
 }
 
-function DockerContainerConsolePanel({ children, target, container, containerRef, selectedRuntimeTarget, session, sessionLive, pending, theme, mutedClass, borderClass, onStart, onEnd }) {
+function DockerContainerConsolePanel({
+  children,
+  target,
+  container,
+  containerRef,
+  selectedRuntimeTarget,
+  session,
+  sessionLive,
+  pending,
+  theme,
+  mutedClass,
+  borderClass,
+  onStart,
+  onEnd,
+}) {
   const light = theme === "light";
   if (!container) {
     return (
-      <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>
+      <div
+        className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}
+      >
         Select a container, then open a live console inside it.
       </div>
     );
@@ -470,7 +622,9 @@ function DockerContainerConsolePanel({ children, target, container, containerRef
         <div className="grid max-w-md gap-3">
           <LoaderCircle className="mx-auto h-6 w-6 animate-spin text-emerald-500" />
           <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>Connecting container console</h3>
-          <p className={`text-sm leading-6 ${mutedClass}`}>Opening an interactive shell inside <span className="font-mono">{containerRef}</span>.</p>
+          <p className={`text-sm leading-6 ${mutedClass}`}>
+            Opening an interactive shell inside <span className="font-mono">{containerRef}</span>.
+          </p>
         </div>
       </div>
     );
@@ -478,16 +632,25 @@ function DockerContainerConsolePanel({ children, target, container, containerRef
   return (
     <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center ${borderClass}`}>
       <div className="grid max-w-md gap-4">
-        <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${light ? "border-stone-200 bg-stone-100" : "border-stone-600 bg-stone-800"}`}>
+        <div
+          className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${light ? "border-stone-200 bg-stone-100" : "border-stone-600 bg-stone-800"}`}
+        >
           <TerminalSquare className={`h-6 w-6 ${light ? "text-stone-600" : "text-stone-300"}`} />
         </div>
         <div className="grid gap-2">
           <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>No active container console</h3>
           <p className={`text-sm leading-6 ${mutedClass}`}>
-            Start an interactive shell inside <span className="font-mono">{containerRef}</span>. It uses the same live terminal as SSH console.
+            Start an interactive shell inside <span className="font-mono">{containerRef}</span>. It uses the same live terminal as SSH
+            console.
           </p>
-          {lastSessionForOtherContainer ? <p className="text-xs text-amber-500">Starting this console will close the current Docker console session for this profile.</p> : null}
-          {!selectedRuntimeTarget ? <p className="text-xs text-red-500">This Docker profile does not have a live runtime surface yet. Save the connector once, then retry.</p> : null}
+          {lastSessionForOtherContainer ? (
+            <p className="text-xs text-amber-500">Starting this console will close the current Docker console session for this profile.</p>
+          ) : null}
+          {!selectedRuntimeTarget ? (
+            <p className="text-xs text-red-500">
+              This Docker profile does not have a live runtime surface yet. Save the connector once, then retry.
+            </p>
+          ) : null}
         </div>
         <Button type="button" className="mx-auto" onClick={onStart} disabled={!selectedRuntimeTarget}>
           <RefreshCcw className="h-4 w-4" />
@@ -519,7 +682,12 @@ function DockerResultView({ item, search, onSearch, inputClass }) {
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">Docker inspect raw data</p>
           <div className="flex min-w-0 items-center justify-end gap-2">
-            <Input className={`h-8 w-56 text-xs ${inputClass || ""}`} value={search} onChange={(event) => onSearch?.(event.target.value)} placeholder="Search raw data" />
+            <Input
+              className={`h-8 w-56 text-xs ${inputClass || ""}`}
+              value={search}
+              onChange={(event) => onSearch?.(event.target.value)}
+              placeholder="Search raw data"
+            />
             <CopyButton value={rawValue} variant="outline" className="h-8 px-2 text-xs" />
           </div>
         </div>
@@ -533,11 +701,26 @@ function DockerResultView({ item, search, onSearch, inputClass }) {
   }
   return (
     <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
-      <DockerResultHeader title={title} subtitle={subtitle} copyValue={copyValue} search={search} onSearch={onSearch} inputClass={inputClass} />
+      <DockerResultHeader
+        title={title}
+        subtitle={subtitle}
+        copyValue={copyValue}
+        search={search}
+        onSearch={onSearch}
+        inputClass={inputClass}
+      />
       <TerminalBlock
-        className={isLogs ? "h-full min-h-0 max-h-full overflow-auto whitespace-pre text-xs" : "min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]"}
+        className={
+          isLogs
+            ? "h-full min-h-0 max-h-full overflow-auto whitespace-pre text-xs"
+            : "min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]"
+        }
         surface={isLogs ? "log" : "dark"}
-        style={isLogs ? { whiteSpace: "pre", overflowWrap: "normal", wordBreak: "normal" } : { whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word" }}
+        style={
+          isLogs
+            ? { whiteSpace: "pre", overflowWrap: "normal", wordBreak: "normal" }
+            : { whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word" }
+        }
       >
         <HighlightedText text={text} query={search} />
       </TerminalBlock>
@@ -553,7 +736,14 @@ function DockerResultHeader({ title, subtitle, copyValue, search, onSearch, inpu
         {subtitle ? <p className="truncate text-xs text-stone-500">{subtitle}</p> : null}
       </div>
       <div className="flex min-w-0 items-center justify-end gap-2">
-        {onSearch ? <Input className={`h-8 w-56 text-xs ${inputClass || ""}`} value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search logs" /> : null}
+        {onSearch ? (
+          <Input
+            className={`h-8 w-56 text-xs ${inputClass || ""}`}
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Search logs"
+          />
+        ) : null}
         {copyValue ? <CopyButton value={copyValue} variant="outline" className="h-8 px-2 text-xs" /> : null}
       </div>
     </div>
@@ -575,7 +765,7 @@ function HighlightedText({ text, query }) {
     parts.push(
       <mark key={`m-${key++}`} className="rounded bg-yellow-300 px-0.5 text-stone-950">
         {value.slice(matchIndex, matchIndex + needle.length)}
-      </mark>
+      </mark>,
     );
     index = matchIndex + needle.length;
     matchIndex = lowerValue.indexOf(lowerNeedle, index);
@@ -619,7 +809,12 @@ function DockerInspectSummary({ output }) {
   const rows = [
     ["Name", stripSlash(inspect.Name) || container.name],
     ["Image", config.Image || container.image || inspect.Image],
-    ["State", [state.Status || container.state, state.Running === true ? "running" : "", state.Restarting === true ? "restarting" : ""].filter(Boolean).join(" / ")],
+    [
+      "State",
+      [state.Status || container.state, state.Running === true ? "running" : "", state.Restarting === true ? "restarting" : ""]
+        .filter(Boolean)
+        .join(" / "),
+    ],
     ["Status", container.status],
     ["Created", inspect.Created],
     ["Started", state.StartedAt],
@@ -634,7 +829,13 @@ function DockerInspectSummary({ output }) {
     ["Network mode", hostConfig.NetworkMode],
     ["Networks", networks],
     ["Ports", ports],
-    ["Mounts", mounts.map((mount) => `${mount.Type || "mount"} ${mount.Source || ""} -> ${mount.Destination || ""}`).filter(Boolean).join("\n")],
+    [
+      "Mounts",
+      mounts
+        .map((mount) => `${mount.Type || "mount"} ${mount.Source || ""} -> ${mount.Destination || ""}`)
+        .filter(Boolean)
+        .join("\n"),
+    ],
     ["Labels", Object.keys(labels).length ? `${Object.keys(labels).length} labels` : ""],
   ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
 
@@ -672,7 +873,12 @@ function DockerResourceDetail({ resourceView, item, search, onSearch, inputClass
         <div className="mb-2 flex items-center justify-between gap-3">
           <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">{resourceSingular(resourceView)} raw data</p>
           <div className="flex min-w-0 items-center justify-end gap-2">
-            <Input className={`h-8 w-56 text-xs ${inputClass || ""}`} value={search} onChange={(event) => onSearch?.(event.target.value)} placeholder="Search raw data" />
+            <Input
+              className={`h-8 w-56 text-xs ${inputClass || ""}`}
+              value={search}
+              onChange={(event) => onSearch?.(event.target.value)}
+              placeholder="Search raw data"
+            />
             <CopyButton value={rawValue} variant="outline" className="h-8 px-2 text-xs" />
           </div>
         </div>
@@ -834,8 +1040,10 @@ function resourceSecondary(kind, item = {}) {
 }
 
 function resourceTertiary(kind, item = {}) {
-  if (kind === "containers") return [item.status, item.compose_service ? `service ${item.compose_service}` : ""].filter(Boolean).join(" · ");
-  if (kind === "images") return [item.created_since || item.created_at, item.containers ? `${item.containers} containers` : ""].filter(Boolean).join(" · ");
+  if (kind === "containers")
+    return [item.status, item.compose_service ? `service ${item.compose_service}` : ""].filter(Boolean).join(" · ");
+  if (kind === "images")
+    return [item.created_since || item.created_at, item.containers ? `${item.containers} containers` : ""].filter(Boolean).join(" · ");
   if (kind === "networks") return item.containers ? `${item.containers} visible containers` : item.labels || "";
   if (kind === "volumes") return item.containers ? `${item.containers} visible containers` : item.labels || "";
   return "";

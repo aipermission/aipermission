@@ -20,7 +20,10 @@ export function ProjectsPage() {
     void loadProjects();
   }, []);
 
-  const totalTargets = useMemo(() => projects.data.reduce((total, project) => total + Number(project.target_count || 0), 0), [projects.data]);
+  const totalTargets = useMemo(
+    () => projects.data.reduce((total, project) => total + Number(project.target_count || 0), 0),
+    [projects.data],
+  );
 
   async function loadProjects() {
     setProjects((current) => ({ ...current, state: "loading", error: null }));
@@ -122,13 +125,28 @@ export function ProjectsPage() {
                   </span>
                 </td>
                 <td className="truncate px-4 py-3 font-mono text-xs text-stone-500">{project.slug}</td>
-                <td className="px-4 py-3"><Badge tone={project.target_count > 0 ? "good" : "neutral"}>{project.target_count}</Badge></td>
+                <td className="px-4 py-3">
+                  <Badge tone={project.target_count > 0 ? "good" : "neutral"}>{project.target_count}</Badge>
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Rename project" onClick={() => openEdit(project)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 w-9 px-0"
+                      title="Rename project"
+                      onClick={() => openEdit(project)}
+                    >
                       <Edit3 className="h-4 w-4" />
                     </Button>
-                    <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Archive project" disabled={project.slug === "ungrouped" || project.target_count > 0} onClick={() => setRemove({ open: true, project })}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 w-9 px-0"
+                      title="Archive project"
+                      disabled={project.slug === "ungrouped" || project.target_count > 0}
+                      onClick={() => setRemove({ open: true, project })}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -137,30 +155,61 @@ export function ProjectsPage() {
             ))}
           </tbody>
         </table>
-        {projects.state === "loading" ? <div className="p-4"><Notice>Loading projects...</Notice></div> : null}
+        {projects.state === "loading" ? (
+          <div className="p-4">
+            <Notice>Loading projects...</Notice>
+          </div>
+        ) : null}
       </div>
 
-      <Drawer open={editor.open} title={editor.mode === "edit" ? "Rename project" : "Add project"} description="Project names organize one developer's local connector workspace." onClose={() => setEditor(emptyEditor)}>
+      <Drawer
+        open={editor.open}
+        title={editor.mode === "edit" ? "Rename project" : "Add project"}
+        description="Project names organize one developer's local connector workspace."
+        onClose={() => setEditor(emptyEditor)}
+      >
         <form className="grid gap-4" onSubmit={saveProject}>
           <Field>
             Project name
-            <Input autoFocus value={editor.name} maxLength={80} onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))} placeholder="My Project" />
+            <Input
+              autoFocus
+              value={editor.name}
+              maxLength={80}
+              onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))}
+              placeholder="My Project"
+            />
           </Field>
           {action.error && editor.open ? <Notice tone="bad">{action.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={() => setEditor(emptyEditor)}>Cancel</Button>
-            <Button type="submit" disabled={!editor.name.trim() || action.state === "saving"}>{action.state === "saving" ? "Saving..." : "Save project"}</Button>
+            <Button type="button" variant="outline" onClick={() => setEditor(emptyEditor)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!editor.name.trim() || action.state === "saving"}>
+              {action.state === "saving" ? "Saving..." : "Save project"}
+            </Button>
           </div>
         </form>
       </Drawer>
 
-      <Dialog open={remove.open} title="Archive project" description="Only empty projects can be archived." onClose={() => setRemove({ open: false, project: null })} size="md">
+      <Dialog
+        open={remove.open}
+        title="Archive project"
+        description="Only empty projects can be archived."
+        onClose={() => setRemove({ open: false, project: null })}
+        size="md"
+      >
         <div className="grid gap-4">
-          <Notice tone="warn">Archive {remove.project?.name}? Its stable project identity will no longer be available for new connector assignments.</Notice>
+          <Notice tone="warn">
+            Archive {remove.project?.name}? Its stable project identity will no longer be available for new connector assignments.
+          </Notice>
           {action.error && remove.open ? <Notice tone="bad">{action.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={() => setRemove({ open: false, project: null })}>Cancel</Button>
-            <Button type="button" onClick={archiveProject} disabled={action.state === "deleting"}>{action.state === "deleting" ? "Archiving..." : "Archive project"}</Button>
+            <Button type="button" variant="outline" onClick={() => setRemove({ open: false, project: null })}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={archiveProject} disabled={action.state === "deleting"}>
+              {action.state === "deleting" ? "Archiving..." : "Archive project"}
+            </Button>
           </div>
         </div>
       </Dialog>

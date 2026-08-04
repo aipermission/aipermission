@@ -100,7 +100,14 @@ function ActivityBlock({ title, value }) {
 }
 
 function ActivityBadge({ status }) {
-  const tone = status === "completed" ? "good" : status === "failed" || status === "error" || status === "stale" ? "bad" : status === "approval_pending" || status === "running" ? "warn" : "neutral";
+  const tone =
+    status === "completed"
+      ? "good"
+      : status === "failed" || status === "error" || status === "stale"
+        ? "bad"
+        : status === "approval_pending" || status === "running"
+          ? "warn"
+          : "neutral";
   return <Badge tone={tone}>{status}</Badge>;
 }
 

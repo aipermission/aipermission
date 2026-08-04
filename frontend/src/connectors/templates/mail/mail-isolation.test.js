@@ -7,10 +7,21 @@ import { fileURLToPath } from "node:url";
 const sourceRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const mailRoot = dirname(fileURLToPath(import.meta.url));
 const mailIdentifiers = [
-  "imap_", "smtp_", '"list_folders"', '"check_mailbox"', '"search_messages"',
-  '"get_message"', '"list_attachments"', '"mark_read"', '"mark_unread"',
-  '"move_message"', '"archive_message"', '"send_message"', '"reply_message"',
-  '"delete_message"', "templates/mail/",
+  "imap_",
+  "smtp_",
+  '"list_folders"',
+  '"check_mailbox"',
+  '"search_messages"',
+  '"get_message"',
+  '"list_attachments"',
+  '"mark_read"',
+  '"mark_unread"',
+  '"move_message"',
+  '"archive_message"',
+  '"send_message"',
+  '"reply_message"',
+  '"delete_message"',
+  "templates/mail/",
 ];
 
 test("shared frontend runtime contains no Mail-specific connector branches", () => {
@@ -18,7 +29,10 @@ test("shared frontend runtime contains no Mail-specific connector branches", () 
   for (const path of sourceFiles(sourceRoot)) {
     if (path.startsWith(`${mailRoot}/`) || path.endsWith(".test.js")) continue;
     const source = readFileSync(path, "utf8");
-    const hasKindBranch = /(?:connector_kind|connectorKind|kind)\s*={2,3}\s*["']mail["']|["']mail["']\s*={2,3}\s*(?:connector_kind|connectorKind|kind)|(?:connector_kind|connectorKind|kind)\.includes\(["']mail["']\)|case\s+["']mail["']\s*:/.test(source);
+    const hasKindBranch =
+      /(?:connector_kind|connectorKind|kind)\s*={2,3}\s*["']mail["']|["']mail["']\s*={2,3}\s*(?:connector_kind|connectorKind|kind)|(?:connector_kind|connectorKind|kind)\.includes\(["']mail["']\)|case\s+["']mail["']\s*:/.test(
+        source,
+      );
     const hasSpecificIdentifier = mailIdentifiers.some((identifier) => source.toLowerCase().includes(identifier));
     if (hasKindBranch || hasSpecificIdentifier) {
       violations.push(relative(sourceRoot, path));

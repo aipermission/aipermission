@@ -25,7 +25,8 @@ const config = {
   defaultDatabase: "default",
   keywords: ["prewhere", "sample", "final", "settings", "global", "array", "tuple"],
   describeInput: (reference) => ({ database: reference.schema || "", table: reference.table }),
-  tableQuery: (table, maxRows) => `SELECT *\nFROM ${quoteClickHouseIdentifier(table.schema)}.${quoteClickHouseIdentifier(table.table)}\nLIMIT ${maxRows};`,
+  tableQuery: (table, maxRows) =>
+    `SELECT *\nFROM ${quoteClickHouseIdentifier(table.schema)}.${quoteClickHouseIdentifier(table.table)}\nLIMIT ${maxRows};`,
 };
 
 export function ClickHouseConnectorConsoleTemplate(props) {

@@ -1,6 +1,29 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { Command, Database, ExternalLink, FolderKanban, GitFork, History, Home, KeyRound, ListTree, LockKeyhole, Moon, Package, PlugZap, Power, PowerOff, Settings, Shield, ShieldCheck, Sun, TicketCheck, UploadCloud, Vault } from "lucide-react";
+import {
+  Command,
+  Database,
+  ExternalLink,
+  FolderKanban,
+  GitFork,
+  History,
+  Home,
+  KeyRound,
+  ListTree,
+  LockKeyhole,
+  Moon,
+  Package,
+  PlugZap,
+  Power,
+  PowerOff,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Sun,
+  TicketCheck,
+  UploadCloud,
+  Vault,
+} from "lucide-react";
 import { appVersion, changelogEntries } from "../lib/release";
 import { Badge, CountBadge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -25,7 +48,19 @@ const navItems = [
 const githubUrl = "https://github.com/aipermission/aipermission";
 const npmUrl = "https://www.npmjs.com/package/@aipermission/mcp";
 
-export function AppSidebar({ pathname, consoleAttentionCount, activeTransferCount, gatewayState, mcpRuntime, theme, onSetTheme, onSetMCPRuntimeEnabled, onOpenTransferCenter, onSwitchDatabase, onLockDatabase }) {
+export function AppSidebar({
+  pathname,
+  consoleAttentionCount,
+  activeTransferCount,
+  gatewayState,
+  mcpRuntime,
+  theme,
+  onSetTheme,
+  onSetMCPRuntimeEnabled,
+  onOpenTransferCenter,
+  onSwitchDatabase,
+  onLockDatabase,
+}) {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [mcpAction, setMCPAction] = useState({ state: "idle", error: null });
   const [updateState, setUpdateState] = useState({ state: "idle", data: null, error: null });
@@ -110,14 +145,16 @@ export function AppSidebar({ pathname, consoleAttentionCount, activeTransferCoun
               <UploadCloud className="h-4 w-4 shrink-0" />
               <span className="truncate">Transfers</span>
             </span>
-            {activeTransferCount > 0 ? <CountBadge>{activeTransferCount}</CountBadge> : <span className="shrink-0 text-xs text-stone-500">idle</span>}
+            {activeTransferCount > 0 ? (
+              <CountBadge>{activeTransferCount}</CountBadge>
+            ) : (
+              <span className="shrink-0 text-xs text-stone-500">idle</span>
+            )}
           </button>
           <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark-panel-subtle">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-stone-500">Gateway</span>
-              <Badge tone={gatewayState === "running" ? "good" : gatewayState === "unreachable" ? "bad" : "warn"}>
-                {gatewayState}
-              </Badge>
+              <Badge tone={gatewayState === "running" ? "good" : gatewayState === "unreachable" ? "bad" : "warn"}>{gatewayState}</Badge>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-stone-500">MCP</span>

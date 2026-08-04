@@ -14,8 +14,14 @@ const nginxSource = readFileSync(join(currentDir, "..", "..", "nginx.conf"), "ut
 const sidebarSource = readFileSync(join(currentDir, "..", "components", "app-sidebar.jsx"), "utf8");
 const unlockSource = readFileSync(join(currentDir, "..", "pages", "unlock.jsx"), "utf8");
 const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
-const connectorApprovalDialogSource = readFileSync(join(currentDir, "..", "components", "console", "connector-action-approval-dialog.jsx"), "utf8");
-const connectorActivityDialogSource = readFileSync(join(currentDir, "..", "components", "console", "connector-activity-dialog.jsx"), "utf8");
+const connectorApprovalDialogSource = readFileSync(
+  join(currentDir, "..", "components", "console", "connector-action-approval-dialog.jsx"),
+  "utf8",
+);
+const connectorActivityDialogSource = readFileSync(
+  join(currentDir, "..", "components", "console", "connector-activity-dialog.jsx"),
+  "utf8",
+);
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
 const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
@@ -26,13 +32,25 @@ const projectsSource = readFileSync(join(currentDir, "..", "pages", "projects.js
 const tokensSource = readFileSync(join(currentDir, "..", "pages", "tokens.jsx"), "utf8");
 const credentialsSource = readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8");
 const fileTransferDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-dialog.jsx"), "utf8");
-const fileTransferBrowserSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-browser-dialog.jsx"), "utf8");
-const fileTransferConfirmSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-confirm-dialogs.jsx"), "utf8");
+const fileTransferBrowserSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-browser-dialog.jsx"),
+  "utf8",
+);
+const fileTransferConfirmSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-confirm-dialogs.jsx"),
+  "utf8",
+);
 const bulkCommandDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "bulk-command-dialog.jsx"), "utf8");
 const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
 const tokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "token-permission-panel.jsx"), "utf8");
-const connectorTokenPermissionPanelSource = readFileSync(join(currentDir, "..", "components", "console", "connector-token-permission-panel.jsx"), "utf8");
-const connectorPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"), "utf8");
+const connectorTokenPermissionPanelSource = readFileSync(
+  join(currentDir, "..", "components", "console", "connector-token-permission-panel.jsx"),
+  "utf8",
+);
+const connectorPermissionDialogSource = readFileSync(
+  join(currentDir, "..", "components", "tokens", "connector-permission-dialog.jsx"),
+  "utf8",
+);
 const vaultPermissionDialogSource = readFileSync(join(currentDir, "..", "components", "tokens", "vault-permission-dialog.jsx"), "utf8");
 const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "connectors", "templates", "common.jsx"), "utf8");
 const kafkaConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "kafka", "console.jsx"), "utf8");
@@ -42,14 +60,23 @@ const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "co
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
 const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "catalog.js"), "utf8");
 const connectorHostPingSource = readFileSync(join(currentDir, "..", "connectors", "templates", "host-ping-button.jsx"), "utf8");
-const backendConnectorRegistrySource = readFileSync(join(currentDir, "..", "..", "..", "backend", "internal", "connectors", "builtin", "registry.go"), "utf8");
+const backendConnectorRegistrySource = readFileSync(
+  join(currentDir, "..", "..", "..", "backend", "internal", "connectors", "builtin", "registry.go"),
+  "utf8",
+);
 const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
   .map((entry) => entry.name)
   .sort();
 const sshConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "form.jsx"), "utf8");
-const sshCredentialFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "credential-form.jsx"), "utf8");
-const sshCredentialRowActionsTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "credential-row-actions.jsx"), "utf8");
+const sshCredentialFormTemplateSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "ssh", "credential-form.jsx"),
+  "utf8",
+);
+const sshCredentialRowActionsTemplateSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "ssh", "credential-row-actions.jsx"),
+  "utf8",
+);
 const sshConnectorListItemTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "list-item.jsx"), "utf8");
 const sshConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "console.jsx"), "utf8");
 const sshConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "index.jsx"), "utf8");
@@ -57,28 +84,58 @@ const sshConnectorMetadataSource = readFileSync(join(currentDir, "..", "connecto
 const sshConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "model.js"), "utf8");
 const sshConnectorOperationsSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "operations.jsx"), "utf8");
 const postgresConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "form.jsx"), "utf8");
-const postgresCredentialFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "credential-form.jsx"), "utf8");
-const postgresConnectorListItemTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "list-item.jsx"), "utf8");
-const postgresConnectorConsoleTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "console.jsx"), "utf8");
+const postgresCredentialFormTemplateSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "postgres", "credential-form.jsx"),
+  "utf8",
+);
+const postgresConnectorListItemTemplateSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "postgres", "list-item.jsx"),
+  "utf8",
+);
+const postgresConnectorConsoleTemplateSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "postgres", "console.jsx"),
+  "utf8",
+);
 const sharedSQLConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "sql-console.jsx"), "utf8");
-const sharedNetworkTransportSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "network-transport-fields.jsx"), "utf8");
-const sharedDatabaseConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "database-connector-model.js"), "utf8");
+const sharedNetworkTransportSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "_shared", "network-transport-fields.jsx"),
+  "utf8",
+);
+const sharedDatabaseConnectorModelSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "_shared", "database-connector-model.js"),
+  "utf8",
+);
 const postgresSQLConsoleSource = `${postgresConnectorConsoleTemplateSource}\n${sharedSQLConsoleSource}`;
 const postgresConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "index.jsx"), "utf8");
-const postgresConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"), "utf8");
+const postgresConnectorMetadataSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"),
+  "utf8",
+);
 const postgresConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "model.js"), "utf8");
-const postgresConnectorOperationsSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "operations.jsx"), "utf8");
+const postgresConnectorOperationsSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "postgres", "operations.jsx"),
+  "utf8",
+);
 const clickHouseConnectorFormSource = readFileSync(join(currentDir, "..", "connectors", "templates", "clickhouse", "form.jsx"), "utf8");
-const clickHouseConnectorConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "clickhouse", "console.jsx"), "utf8");
+const clickHouseConnectorConsoleSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "clickhouse", "console.jsx"),
+  "utf8",
+);
 const clickHouseConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "clickhouse", "index.jsx"), "utf8");
-const clickHouseConnectorMetadataSource = readFileSync(join(currentDir, "..", "connectors", "templates", "clickhouse", "metadata.json"), "utf8");
+const clickHouseConnectorMetadataSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "clickhouse", "metadata.json"),
+  "utf8",
+);
 const clickHouseConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "clickhouse", "model.js"), "utf8");
 const redisConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "redis", "form.jsx"), "utf8");
 const rabbitMQConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "rabbitmq", "form.jsx"), "utf8");
 const vaultPageSource = readFileSync(join(currentDir, "..", "pages", "vault.jsx"), "utf8");
 const vaultSessionDialogSource = readFileSync(join(currentDir, "..", "components", "console", "vault-session-dialog.jsx"), "utf8");
 const ptyConsoleSource = readFileSync(join(currentDir, "..", "components", "console", "pty-console.jsx"), "utf8");
-const vaultActionApprovalDialogSource = readFileSync(join(currentDir, "..", "components", "vault", "vault-action-approval-dialog.jsx"), "utf8");
+const vaultActionApprovalDialogSource = readFileSync(
+  join(currentDir, "..", "components", "vault", "vault-action-approval-dialog.jsx"),
+  "utf8",
+);
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -100,7 +157,19 @@ function backendRegisteredConnectorKinds(source) {
 }
 
 test("App keeps the primary route surface available", () => {
-  for (const route of ["/console", "/projects", "/vault", "/connectors", "/history", "/audit-logs", "/tokens", "/credentials", "/mcp-setup", "/security", "/settings"]) {
+  for (const route of [
+    "/console",
+    "/projects",
+    "/vault",
+    "/connectors",
+    "/history",
+    "/audit-logs",
+    "/tokens",
+    "/credentials",
+    "/mcp-setup",
+    "/security",
+    "/settings",
+  ]) {
     assert.match(appSource, new RegExp(`path="${route}"`));
     assert.match(sidebarSource, new RegExp(`to: "${route}"`));
   }
@@ -528,7 +597,7 @@ test("Settings and unlock expose the self-hosted encrypted backup flow", () => {
   assert.match(unlockSource, /Restore from AIPermission Backup/);
   assert.match(unlockSource, /\/api\/backup\/remote\/list/);
   assert.match(unlockSource, /\/api\/backup\/remote\/restore/);
-  assert.match(unlockSource, /not saved in browser storage/i);
+  assert.match(unlockSource, /not\s+saved in browser\s+storage/i);
   assert.match(unlockSource, /<optgroup/);
   assert.match(unlockSource, /formatLocalTimestamp/);
   assert.match(unlockSource, /Source:/);
@@ -667,7 +736,7 @@ test("Credentials page supports explicit private key import", () => {
   assert.match(sshCredentialFormTemplateSource, /Choose key file/);
   assert.match(sshCredentialFormTemplateSource, /type="file" onChange=\{onReadImportFile\}/);
   assert.match(sshCredentialFormTemplateSource, /privateKeyPlaceholder/);
-  assert.match(sshCredentialFormTemplateSource, /The passphrase is not saved/);
+  assert.match(sshCredentialFormTemplateSource, /The passphrase is not\s+saved/);
   assert.match(sshCredentialRowActionsTemplateSource, /install_command/);
   assert.match(credentialsSource, /CredentialRowActionsTemplate \? <CredentialRowActionsTemplate row=\{row\}/);
   assert.doesNotMatch(credentialsSource, /CopyButton/);

@@ -12,12 +12,19 @@ export function KubernetesCredentialFormTemplate({ targets, form, formMode = "cr
         <Notice tone="warn">Create a Kubernetes connector target before adding a namespace scope.</Notice>
       ) : (
         <Notice tone="good">
-          {editing ? "Update this Kubernetes namespace scope. Token permissions bound to this profile will use the new scope immediately." : "Create a namespace scope, then bind tokens to this profile from Console or Tokens."}
+          {editing
+            ? "Update this Kubernetes namespace scope. Token permissions bound to this profile will use the new scope immediately."
+            : "Create a namespace scope, then bind tokens to this profile from Console or Tokens."}
         </Notice>
       )}
       <Field>
         Connector target
-        <Select value={form.target_id} onChange={(event) => onChange({ ...form, target_id: event.target.value })} disabled={editing} required>
+        <Select
+          value={form.target_id}
+          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
+          disabled={editing}
+          required
+        >
           <option value="" disabled>
             Select Kubernetes target
           </option>
@@ -48,7 +55,12 @@ export function KubernetesCredentialFormTemplate({ targets, form, formMode = "cr
       {form.scope_mode === "selected" ? (
         <Field>
           Namespaces
-          <Textarea rows={6} value={form.namespaces} onChange={(event) => onChange({ ...form, namespaces: event.target.value })} placeholder={"production\nmonitoring\nbackend"} />
+          <Textarea
+            rows={6}
+            value={form.namespaces}
+            onChange={(event) => onChange({ ...form, namespaces: event.target.value })}
+            placeholder={"production\nmonitoring\nbackend"}
+          />
         </Field>
       ) : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}

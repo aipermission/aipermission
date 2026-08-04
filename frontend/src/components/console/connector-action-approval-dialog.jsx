@@ -44,7 +44,8 @@ export function ConnectorActionApprovalDialog({ approval, note, action, onNoteCh
               {approval.reason ? <p className="mt-2 text-sm text-stone-700">{approval.reason}</p> : null}
             </div>
             <Notice tone="warn" className="py-2 text-xs">
-              Review this as a structured connector action. Input, output, notes, and audit records may be persisted in the encrypted local database; redaction is best-effort.
+              Review this as a structured connector action. Input, output, notes, and audit records may be persisted in the encrypted local
+              database; redaction is best-effort.
             </Notice>
             <div className="grid min-h-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2">
               <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
@@ -52,7 +53,13 @@ export function ConnectorActionApprovalDialog({ approval, note, action, onNoteCh
                   <span className="text-xs font-semibold uppercase text-stone-500">Approval preview</span>
                   <CopyButton value={previewText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" />
                 </div>
-                {action.state === "loading" ? <Notice>Loading the exact approval preview...</Notice> : hasPreview ? <TerminalBlock>{previewText}</TerminalBlock> : <Notice>No structured preview was provided.</Notice>}
+                {action.state === "loading" ? (
+                  <Notice>Loading the exact approval preview...</Notice>
+                ) : hasPreview ? (
+                  <TerminalBlock>{previewText}</TerminalBlock>
+                ) : (
+                  <Notice>No structured preview was provided.</Notice>
+                )}
               </div>
               <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
                 <div className="flex items-center justify-between gap-2">

@@ -43,7 +43,9 @@ export function SSHConnectorToolbarActionsTemplate({
       >
         <MessageSquare className="h-3.5 w-3.5" />
         Messages
-        {selectedUnreadMessages.length > 0 ? <CountBadge className="absolute -right-1 -top-1">{selectedUnreadMessages.length}</CountBadge> : null}
+        {selectedUnreadMessages.length > 0 ? (
+          <CountBadge className="absolute -right-1 -top-1">{selectedUnreadMessages.length}</CountBadge>
+        ) : null}
       </Button>
       <Button
         type="button"

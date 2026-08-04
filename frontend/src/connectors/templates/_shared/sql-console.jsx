@@ -35,7 +35,10 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
   const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
   const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
   const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400" : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
+  const inputClass =
+    theme === "light"
+      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
+      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
   const hoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
   const activeSession = session || { active: false, startedAt: "" };
   const rawItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
@@ -191,11 +194,24 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
             <p className={`truncate text-xs ${mutedClass}`}>{metadataStatusText(metadata, connector)}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <CopyButton value={sql} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy SQL" disabled={!sql.trim()}>
+            <CopyButton
+              value={sql}
+              variant="outline"
+              className="h-8 px-2 text-xs"
+              iconClassName="h-3.5 w-3.5"
+              title="Copy SQL"
+              disabled={!sql.trim()}
+            >
               SQL
             </CopyButton>
             {recentQueries.length > 0 ? (
-              <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => loadRecentQuery(recentQueries[0])} title="Load the most recent query">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-2 text-xs"
+                onClick={() => loadRecentQuery(recentQueries[0])}
+                title="Load the most recent query"
+              >
                 Last query
               </Button>
             ) : null}
@@ -224,7 +240,11 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
             keywords={connector.keywords}
             disabled={!activeSession.active || runState.state === "running"}
           />
-          <Button type="submit" className="h-full min-h-10 px-5" disabled={!activeSession.active || !sql.trim() || runState.state === "running"}>
+          <Button
+            type="submit"
+            className="h-full min-h-10 px-5"
+            disabled={!activeSession.active || !sql.trim() || runState.state === "running"}
+          >
             {runState.state === "running" ? "Running" : "Run SQL (Ctrl+Enter)"}
           </Button>
         </div>
@@ -247,12 +267,16 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
         ) : null}
       </form>
 
-      <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden p-4 ${resultView ? "grid-cols-1" : "lg:grid-cols-[320px_minmax(0,1fr)]"}`}>
+      <div
+        className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden p-4 ${resultView ? "grid-cols-1" : "lg:grid-cols-[320px_minmax(0,1fr)]"}`}
+      >
         {!resultView ? (
           <section className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass}`}>
             <div className={`border-b px-4 py-3 ${borderClass} ${subtlePanelClass}`}>
               <div className="flex items-center justify-between gap-3">
-                <h4 className="text-sm font-semibold">{leftPanel === "browser" ? `${connector.browserLabel} browser` : "Session requests"}</h4>
+                <h4 className="text-sm font-semibold">
+                  {leftPanel === "browser" ? `${connector.browserLabel} browser` : "Session requests"}
+                </h4>
                 <div className={`inline-flex rounded-md border p-0.5 text-xs ${borderClass}`}>
                   {["browser", "requests"].map((mode) => (
                     <button
@@ -274,7 +298,9 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
                     : "Session ended. Start a new session to watch new requests here."}
               </p>
             </div>
-            <div className={`min-h-0 overflow-hidden ${leftPanel === "requests" ? `divide-y ${theme === "light" ? "divide-stone-200" : "divide-stone-700"}` : ""}`}>
+            <div
+              className={`min-h-0 overflow-hidden ${leftPanel === "requests" ? `divide-y ${theme === "light" ? "divide-stone-200" : "divide-stone-700"}` : ""}`}
+            >
               {leftPanel === "browser" ? (
                 <SQLSchemaBrowser
                   rows={browserTables}
@@ -303,11 +329,17 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
                           <span className="truncate font-mono text-xs font-semibold">{item.action_name}</span>
                           <ActivityStatusBadge status={item.status} />
                         </span>
-                        <span className={`truncate text-xs ${active ? "text-emerald-100" : mutedClass}`}>{item.reason || formatConnectorTime(item.created_at)}</span>
+                        <span className={`truncate text-xs ${active ? "text-emerald-100" : mutedClass}`}>
+                          {item.reason || formatConnectorTime(item.created_at)}
+                        </span>
                       </button>
                     );
                   })}
-                    {items.length === 0 ? <p className={`px-4 py-5 text-sm ${mutedClass}`}>{activeSession.active ? "No requests in this session yet." : `No active ${connector.label} session.`}</p> : null}
+                  {items.length === 0 ? (
+                    <p className={`px-4 py-5 text-sm ${mutedClass}`}>
+                      {activeSession.active ? "No requests in this session yet." : `No active ${connector.label} session.`}
+                    </p>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -328,14 +360,29 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
                   <ActivityStatusBadge status={selected.status} />
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                  {selected.reason ? <p className={`min-w-0 flex-1 truncate text-xs ${mutedClass}`}>Reason: {selected.reason}</p> : <span />}
+                  {selected.reason ? (
+                    <p className={`min-w-0 flex-1 truncate text-xs ${mutedClass}`}>Reason: {selected.reason}</p>
+                  ) : (
+                    <span />
+                  )}
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
                     {selectedSQL ? (
                       <>
-                        <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => loadRecentQuery({ sql: selectedSQL })}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 px-2 text-xs"
+                          onClick={() => loadRecentQuery({ sql: selectedSQL })}
+                        >
                           Load SQL
                         </Button>
-                        <CopyButton value={selectedSQL} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy request SQL">
+                        <CopyButton
+                          value={selectedSQL}
+                          variant="outline"
+                          className="h-8 px-2 text-xs"
+                          iconClassName="h-3.5 w-3.5"
+                          title="Copy request SQL"
+                        >
                           SQL
                         </CopyButton>
                       </>
@@ -352,7 +399,12 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
                     <ActivityBlock title="Output" value={selected.output ?? selected.display_text ?? {}} />
                   </>
                 ) : (
-                  <SQLOutputBlock title="Rows" value={selected.output ?? selected.display_text ?? {}} theme={theme} filenamePrefix={connector.filenamePrefix} />
+                  <SQLOutputBlock
+                    title="Rows"
+                    value={selected.output ?? selected.display_text ?? {}}
+                    theme={theme}
+                    filenamePrefix={connector.filenamePrefix}
+                  />
                 )}
               </div>
             </>
@@ -379,12 +431,16 @@ function SQLNoSessionPlaceholder({ config, target, theme, onNewSession }) {
   return (
     <div className={`grid h-full min-h-0 place-items-center p-6 ${light ? "text-stone-700" : "text-stone-200"}`}>
       <div className="grid max-w-md gap-4 text-center">
-        <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${light ? "border-stone-200 bg-stone-100" : "border-stone-600 bg-stone-800"}`}>
+        <div
+          className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${light ? "border-stone-200 bg-stone-100" : "border-stone-600 bg-stone-800"}`}
+        >
           <TerminalSquare className={`h-6 w-6 ${light ? "text-stone-600" : "text-stone-300"}`} />
         </div>
         <div className="grid gap-2">
           <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>No active {config.label} session</h3>
-          <p className={`text-sm leading-6 ${light ? "text-stone-600" : "text-stone-400"}`}>Start a {config.label} session before running SQL against {target.name}.</p>
+          <p className={`text-sm leading-6 ${light ? "text-stone-600" : "text-stone-400"}`}>
+            Start a {config.label} session before running SQL against {target.name}.
+          </p>
         </div>
         <Button type="button" className="mx-auto" onClick={() => onNewSession?.()}>
           <RefreshCcw className="h-4 w-4" />
@@ -434,7 +490,7 @@ function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, tables, keyw
       if (canceled || !containerRef.current) return;
       setMonaco(monacoInstance);
       providerRef.current = monacoInstance.languages.registerCompletionItemProvider("sql", {
-        triggerCharacters: [".", " ", "\""],
+        triggerCharacters: [".", " ", '"'],
         provideCompletionItems(model, position) {
           return { suggestions: sqlCompletionItems(monacoInstance, tablesRef.current, keywordsRef.current, model, position) };
         },
@@ -512,7 +568,12 @@ function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, tables, keyw
     window.setTimeout(() => editorRef.current?.focus(), 0);
   }, [focusSignal]);
 
-  return <div ref={containerRef} className={`min-h-28 overflow-visible rounded-md border ${theme === "light" ? "border-stone-300 bg-stone-50" : "border-stone-700 bg-[#252526]"}`} />;
+  return (
+    <div
+      ref={containerRef}
+      className={`min-h-28 overflow-visible rounded-md border ${theme === "light" ? "border-stone-300 bg-stone-50" : "border-stone-700 bg-[#252526]"}`}
+    />
+  );
 }
 
 export function SQLConnectorToolbarActions({ label, theme, structuredSession, onNewStructuredSession, onEndStructuredSession }) {
@@ -520,11 +581,25 @@ export function SQLConnectorToolbarActions({ label, theme, structuredSession, on
   const active = Boolean(structuredSession?.active);
   return (
     <>
-      <Button type="button" variant="ghost" className={buttonClass} onClick={onNewStructuredSession} disabled={active} title={`Start a fresh ${label} activity session`}>
+      <Button
+        type="button"
+        variant="ghost"
+        className={buttonClass}
+        onClick={onNewStructuredSession}
+        disabled={active}
+        title={`Start a fresh ${label} activity session`}
+      >
         <RefreshCcw className="h-3.5 w-3.5" />
         New Session
       </Button>
-      <Button type="button" variant="ghost" className={buttonClass} onClick={onEndStructuredSession} disabled={!active} title={`End the current ${label} activity session`}>
+      <Button
+        type="button"
+        variant="ghost"
+        className={buttonClass}
+        onClick={onEndStructuredSession}
+        disabled={!active}
+        title={`End the current ${label} activity session`}
+      >
         <XCircle className="h-3.5 w-3.5" />
         End Session
       </Button>
@@ -573,9 +648,15 @@ function SQLSchemaBrowser({ rows, search, onSearch, onPrepareQuery, metadata, th
         placeholder={`Search ${namespaceLabel.toLowerCase()}s or tables`}
       />
       <div className="min-h-0 overflow-y-auto">
-        {metadata.state === "loading" ? <p className={`px-1 py-3 text-sm ${mutedClass}`}>Loading {namespaceLabel.toLowerCase()} metadata...</p> : null}
-        {metadata.state === "error" ? <Notice tone="bad">{metadata.error || `${namespaceLabel} metadata could not be loaded.`}</Notice> : null}
-        {metadata.state !== "loading" && grouped.length === 0 ? <p className={`px-1 py-3 text-sm ${mutedClass}`}>No tables found for this profile.</p> : null}
+        {metadata.state === "loading" ? (
+          <p className={`px-1 py-3 text-sm ${mutedClass}`}>Loading {namespaceLabel.toLowerCase()} metadata...</p>
+        ) : null}
+        {metadata.state === "error" ? (
+          <Notice tone="bad">{metadata.error || `${namespaceLabel} metadata could not be loaded.`}</Notice>
+        ) : null}
+        {metadata.state !== "loading" && grouped.length === 0 ? (
+          <p className={`px-1 py-3 text-sm ${mutedClass}`}>No tables found for this profile.</p>
+        ) : null}
         {grouped.map((group) => (
           <div key={group.schema} className="mb-3">
             <p className={`mb-1 truncate px-1 text-[11px] font-semibold uppercase tracking-wide ${mutedClass}`}>{group.schema}</p>
@@ -617,7 +698,10 @@ function SQLSchemaBrowser({ rows, search, onSearch, onPrepareQuery, metadata, th
                       <div className={`grid gap-1 px-8 pb-2 text-[11px] ${mutedClass}`}>
                         {columns.length > 0 ? (
                           columns.map((column) => (
-                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded px-2 py-1 font-mono" key={`${key}.${column.name}`}>
+                            <div
+                              className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded px-2 py-1 font-mono"
+                              key={`${key}.${column.name}`}
+                            >
                               <span className="truncate">{column.name}</span>
                               {column.dataType ? <span className="truncate opacity-75">{column.dataType}</span> : null}
                             </div>
@@ -660,28 +744,57 @@ function SQLOutputBlock({ title, value, theme, filenamePrefix }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase text-stone-500">{title}</p>
           <div className="flex flex-wrap justify-end gap-2">
-            <CopyButton value={tableText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy rows as TSV">
+            <CopyButton
+              value={tableText}
+              variant="outline"
+              className="h-8 px-2 text-xs"
+              iconClassName="h-3.5 w-3.5"
+              title="Copy rows as TSV"
+            >
               TSV
             </CopyButton>
-            <CopyButton value={formatJSON(jsonValue)} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy result JSON">
+            <CopyButton
+              value={formatJSON(jsonValue)}
+              variant="outline"
+              className="h-8 px-2 text-xs"
+              iconClassName="h-3.5 w-3.5"
+              title="Copy result JSON"
+            >
               JSON
             </CopyButton>
-            <Button type="button" variant="outline" className="h-8 px-2 text-xs" title="Download rows as CSV" onClick={() => downloadText(csvText, `${filenamePrefix}.csv`, "text/csv")}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 px-2 text-xs"
+              title="Download rows as CSV"
+              onClick={() => downloadText(csvText, `${filenamePrefix}.csv`, "text/csv")}
+            >
               <Download className="h-3.5 w-3.5" />
               CSV
             </Button>
-            <Button type="button" variant="outline" className="h-8 px-2 text-xs" title="Download result JSON" onClick={() => downloadJSON(jsonValue, `${filenamePrefix}.json`)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 px-2 text-xs"
+              title="Download result JSON"
+              onClick={() => downloadJSON(jsonValue, `${filenamePrefix}.json`)}
+            >
               <Download className="h-3.5 w-3.5" />
               JSON
             </Button>
           </div>
         </div>
-        <div className={`min-h-0 overflow-auto rounded-md border font-mono text-xs ${theme === "light" ? "border-stone-200 bg-white" : "border-stone-700 bg-[#1a1a1a]"}`}>
+        <div
+          className={`min-h-0 overflow-auto rounded-md border font-mono text-xs ${theme === "light" ? "border-stone-200 bg-white" : "border-stone-700 bg-[#1a1a1a]"}`}
+        >
           <table className="min-w-full border-separate border-spacing-0 select-text">
             <thead className={theme === "light" ? "bg-stone-100 text-stone-600" : "bg-stone-900 text-stone-300"}>
               <tr>
                 {columns.map((column) => (
-                  <th key={column} className={`sticky top-0 border-b px-3 py-2 text-left font-semibold ${theme === "light" ? "border-stone-200 bg-stone-100" : "border-stone-700 bg-stone-900"}`}>
+                  <th
+                    key={column}
+                    className={`sticky top-0 border-b px-3 py-2 text-left font-semibold ${theme === "light" ? "border-stone-200 bg-stone-100" : "border-stone-700 bg-stone-900"}`}
+                  >
                     {column}
                   </th>
                 ))}
@@ -691,7 +804,10 @@ function SQLOutputBlock({ title, value, theme, filenamePrefix }) {
               {rows.map((row, rowIndex) => (
                 <tr key={rowIndex} className={theme === "light" ? "odd:bg-white even:bg-stone-50" : "odd:bg-[#1a1a1a] even:bg-[#202020]"}>
                   {columns.map((column) => (
-                    <td key={column} className={`max-w-[420px] whitespace-pre-wrap border-b px-3 py-2 align-top ${theme === "light" ? "border-stone-100 text-stone-900" : "border-stone-800 text-stone-100"}`}>
+                    <td
+                      key={column}
+                      className={`max-w-[420px] whitespace-pre-wrap border-b px-3 py-2 align-top ${theme === "light" ? "border-stone-100 text-stone-900" : "border-stone-800 text-stone-100"}`}
+                    >
                       {formatCell(row?.[column])}
                     </td>
                   ))}
@@ -719,7 +835,13 @@ function SQLOutputBlock({ title, value, theme, filenamePrefix }) {
           <CopyButton value={jsonText} variant="outline" className="h-8 px-2 text-xs" iconClassName="h-3.5 w-3.5" title="Copy JSON">
             JSON
           </CopyButton>
-          <Button type="button" variant="outline" className="h-8 px-2 text-xs" title="Download JSON" onClick={() => downloadJSON(value || {}, `${filenamePrefix}.json`)}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-8 px-2 text-xs"
+            title="Download JSON"
+            onClick={() => downloadJSON(value || {}, `${filenamePrefix}.json`)}
+          >
             <Download className="h-3.5 w-3.5" />
             JSON
           </Button>
@@ -731,7 +853,14 @@ function SQLOutputBlock({ title, value, theme, filenamePrefix }) {
 }
 
 function ActivityStatusBadge({ status }) {
-  const tone = status === "completed" ? "good" : status === "failed" || status === "error" || status === "stale" ? "bad" : status === "approval_pending" || status === "running" ? "warn" : "neutral";
+  const tone =
+    status === "completed"
+      ? "good"
+      : status === "failed" || status === "error" || status === "stale"
+        ? "bad"
+        : status === "approval_pending" || status === "running"
+          ? "warn"
+          : "neutral";
   return <Badge tone={tone}>{status}</Badge>;
 }
 
@@ -846,7 +975,9 @@ function recentSQLQueries(items, config) {
 }
 
 function sqlPreview(sql) {
-  const compact = String(sql || "").replace(/\s+/g, " ").trim();
+  const compact = String(sql || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (compact.length <= 64) return compact;
   return `${compact.slice(0, 61)}...`;
 }
@@ -872,7 +1003,13 @@ function mergeMetadataRows(current, incoming) {
   const merged = [];
   const seen = new Set();
   for (const item of [...(current || []), ...(incoming || [])]) {
-    const key = [normalizeSQLName(item.schema), normalizeSQLName(item.table), normalizeSQLName(item.column), normalizeSQLName(item.dataType || item.type), item.position || ""].join(".");
+    const key = [
+      normalizeSQLName(item.schema),
+      normalizeSQLName(item.table),
+      normalizeSQLName(item.column),
+      normalizeSQLName(item.dataType || item.type),
+      item.position || "",
+    ].join(".");
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(item);
@@ -912,14 +1049,16 @@ function uniqueTableBrowserRows(rows) {
     }
     byTable.set(key, current);
   }
-  return Array.from(byTable.values()).map((table) => ({
-    ...table,
-    columnCount: (table.columns || []).length,
-    columns: [...(table.columns || [])].sort((a, b) => (a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name)),
-  })).sort((a, b) => {
-    const schemaCompare = a.schema.localeCompare(b.schema);
-    return schemaCompare || a.table.localeCompare(b.table);
-  });
+  return Array.from(byTable.values())
+    .map((table) => ({
+      ...table,
+      columnCount: (table.columns || []).length,
+      columns: [...(table.columns || [])].sort((a, b) => (a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => {
+      const schemaCompare = a.schema.localeCompare(b.schema);
+      return schemaCompare || a.table.localeCompare(b.table);
+    });
 }
 
 function parseJSON(value) {
@@ -988,8 +1127,8 @@ function sqlEditorTheme(monaco, theme) {
       "editorLineNumber.foreground": dark ? "#78716c" : "#a8a29e",
       "editorCursor.foreground": dark ? "#e7e5e4" : "#1c1917",
       "editor.selectionBackground": dark ? "#064e3b" : "#bbf7d0",
-      "editorLineHighlightBorder": "#00000000",
-      "editorLineHighlightBackground": "#00000000",
+      editorLineHighlightBorder: "#00000000",
+      editorLineHighlightBackground: "#00000000",
       "editorIndentGuide.background1": "#00000000",
       "editorIndentGuide.activeBackground1": "#00000000",
       "editorSuggestWidget.background": dark ? "#252526" : "#ffffff",
@@ -1104,7 +1243,9 @@ function sqlCompletionItems(monaco, tables, keywords, model, position) {
 
 function matchingReferencesForQualifier(qualifier, references, metadataRows) {
   const normalized = normalizeSQLName(qualifier);
-  const matches = references.filter((reference) => normalizeSQLName(reference.alias) === normalized || normalizeSQLName(reference.table) === normalized);
+  const matches = references.filter(
+    (reference) => normalizeSQLName(reference.alias) === normalized || normalizeSQLName(reference.table) === normalized,
+  );
   if (matches.length > 0) return matches;
   const metadataMatches = [];
   const seen = new Set();
@@ -1126,7 +1267,10 @@ function dotReferenceBeforePosition(model, position) {
 }
 
 function isTableCompletionContext(model, position) {
-  const prefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1).toLowerCase();
+  const prefix = model
+    .getLineContent(position.lineNumber)
+    .slice(0, position.column - 1)
+    .toLowerCase();
   return /\b(from|join)\s+(?:"[^"]*"|`[^`]*`|[a-z_][\w$]*)?$/i.test(prefix);
 }
 

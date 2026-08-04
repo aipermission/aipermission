@@ -9,11 +9,16 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
     <>
       {credentials.length === 0 ? (
         <Notice tone="warn">
-          Create or import an SSH credential before adding an SSH connector. <Link to="/credentials" className="font-semibold underline">Open Credentials</Link>.
+          Create or import an SSH credential before adding an SSH connector.{" "}
+          <Link to="/credentials" className="font-semibold underline">
+            Open Credentials
+          </Link>
+          .
         </Notice>
       ) : null}
       <Notice tone="good">
-        The first SSH credential profile is created from the selected username and gateway key. You can grant token permissions for this connector from Console or Tokens.
+        The first SSH credential profile is created from the selected username and gateway key. You can grant token permissions for this
+        connector from Console or Tokens.
       </Notice>
       <Field>
         Connector name
@@ -70,7 +75,9 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
       <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark-soft-panel">
         <div>
           <p className="text-sm font-semibold text-stone-900">Advanced SSH startup</p>
-          <p className="mt-1 text-xs text-stone-500">Optional startup settings for appliances that show an interactive menu before a normal shell.</p>
+          <p className="mt-1 text-xs text-stone-500">
+            Optional startup settings for appliances that show an interactive menu before a normal shell.
+          </p>
         </div>
         <Field>
           Startup input after connect
@@ -87,7 +94,11 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
         </Field>
         <Field>
           Force shell command
-          <Input value={form.force_shell_command} onChange={(event) => onChange("force_shell_command", event.target.value)} placeholder="/bin/sh -l" />
+          <Input
+            value={form.force_shell_command}
+            onChange={(event) => onChange("force_shell_command", event.target.value)}
+            placeholder="/bin/sh -l"
+          />
           <span className="text-xs text-stone-500">
             Leave empty for normal shell startup. Use only when the target needs a specific shell command.
           </span>

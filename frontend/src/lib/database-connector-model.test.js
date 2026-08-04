@@ -8,9 +8,21 @@ function testModel() {
     kind: "analytics",
     label: "Analytics",
     defaultRiskLabel: "read-only",
-    targetDefaults: { name: "analytics", connection_mode: "direct", host: "127.0.0.1", port: 9000, database: "default", transport_target_ref: "" },
+    targetDefaults: {
+      name: "analytics",
+      connection_mode: "direct",
+      host: "127.0.0.1",
+      port: 9000,
+      database: "default",
+      transport_target_ref: "",
+    },
     credentialDefaults: { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only" },
-    targetForm: (target) => ({ connection_mode: target.config.connection_mode, host: target.config.host, port: target.config.port, database: target.config.database }),
+    targetForm: (target) => ({
+      connection_mode: target.config.connection_mode,
+      host: target.config.host,
+      port: target.config.port,
+      database: target.config.database,
+    }),
     targetConfig: (form) => ({ connection_mode: form.connection_mode, host: form.host, port: Number(form.port), database: form.database }),
     targetEndpoint: ({ target }) => `${target.config.host}:${target.config.port}/${target.config.database}`,
   });
@@ -19,7 +31,11 @@ function testModel() {
 test("database model factory keeps target and credential behavior connector-scoped", () => {
   const model = testModel();
   assert.equal(model.emptyForm().connector_kind, "analytics");
-  assert.equal(model.syncForm({ form: { connector_kind: "analytics", connection_mode: "direct", transport_target_ref: "ssh:1:1" } }).transport_target_ref, "");
+  assert.equal(
+    model.syncForm({ form: { connector_kind: "analytics", connection_mode: "direct", transport_target_ref: "ssh:1:1" } })
+      .transport_target_ref,
+    "",
+  );
 
   const target = {
     id: 4,

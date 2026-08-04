@@ -124,11 +124,16 @@ export function replySubject(subject) {
 }
 
 export function replyText(message) {
-  const body = String(message?.body || "").replace(/\r\n?/g, "\n").trimEnd();
+  const body = String(message?.body || "")
+    .replace(/\r\n?/g, "\n")
+    .trimEnd();
   if (!body) return "";
   const sender = addressLabel(message?.from);
   const date = formatMessageDate(message?.received_at || message?.header_date);
-  const quote = body.split("\n").map((line) => `> ${line}`).join("\n");
+  const quote = body
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
   return boundedUTF8(`\n\nOn ${date}, ${sender} wrote:\n${quote}`, 48 * 1024, "\n> [quoted message truncated]");
 }
 

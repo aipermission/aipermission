@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { connectorActionError, connectorActionPending } from "../connectors/templates/_shared/action-result.js";
-import { actionableOffsetPartitions, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection, requestIsCurrent } from "../connectors/templates/kafka/console-helpers.js";
+import {
+  actionableOffsetPartitions,
+  detailMatchesSelection,
+  offsetSelectionValue,
+  parseOffsetSelection,
+  requestIsCurrent,
+} from "../connectors/templates/kafka/console-helpers.js";
 import { credentialPayload } from "../connectors/templates/kafka/model-helpers.js";
 
 test("Kafka action helpers surface failed HTTP 200 responses", () => {
@@ -40,9 +46,7 @@ test("Kafka offset controls exclude broker error rows", () => {
     { topic: "orders", partition: 1, error: "not leader" },
     { topic: "", partition: 2, committed_offset: "4", end_offset: "5" },
   ]);
-  assert.deepEqual(partitions, [
-    { topic: "orders", partition: 0, committed_offset: "12", end_offset: "20" },
-  ]);
+  assert.deepEqual(partitions, [{ topic: "orders", partition: 0, committed_offset: "12", end_offset: "20" }]);
 });
 
 test("Kafka credential edits preserve an existing SASL password", () => {

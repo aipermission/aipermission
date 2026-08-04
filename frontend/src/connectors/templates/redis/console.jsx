@@ -12,7 +12,17 @@ import { serverProductLabel, validateStringWrite } from "./model";
 
 const defaultPattern = "*";
 const defaultLimit = 100;
-const emptyConfirmDialog = Object.freeze({ open: false, type: "", title: "", description: "", details: [], tone: "warn", pending: false, error: "", onConfirm: null });
+const emptyConfirmDialog = Object.freeze({
+  open: false,
+  type: "",
+  title: "",
+  description: "",
+  details: [],
+  tone: "warn",
+  pending: false,
+  error: "",
+  onConfirm: null,
+});
 
 export function RedisConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
   const activeSession = session || { active: false, startedAt: "" };
@@ -34,10 +44,17 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
   const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
   const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400" : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
+  const inputClass =
+    theme === "light"
+      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
+      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
   const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass = theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
-  const activeItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
+  const activeRowClass =
+    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const activeItems = useMemo(
+    () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
+    [approvals?.data, target.ref],
+  );
   const latestAction = activeItems[0] || null;
   const selectedCount = selectedKeys.length;
 
@@ -186,7 +203,10 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
       title: `Delete ${keysToDelete.length} ${product} key${keysToDelete.length === 1 ? "" : "s"}`,
       description: `This permanently deletes the selected ${product} key data.`,
       tone: "bad",
-      details: keysToDelete.slice(0, 8).map((key) => ({ label: "Key", value: key })).concat(keysToDelete.length > 8 ? [{ label: "More", value: `${keysToDelete.length - 8} additional key(s)` }] : []),
+      details: keysToDelete
+        .slice(0, 8)
+        .map((key) => ({ label: "Key", value: key }))
+        .concat(keysToDelete.length > 8 ? [{ label: "More", value: `${keysToDelete.length - 8} additional key(s)` }] : []),
       onConfirm: async () => {
         await runRedisAction({
           actionName: "delete_keys",
@@ -232,7 +252,9 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
             <Database className={`mx-auto h-10 w-10 ${mutedClass}`} />
             <div>
               <h3 className="text-lg font-semibold">No active {product} session</h3>
-              <p className={`mt-2 text-sm ${mutedClass}`}>Start a structured session to browse {product} keys through the connector approval, history, and audit pipeline.</p>
+              <p className={`mt-2 text-sm ${mutedClass}`}>
+                Start a structured session to browse {product} keys through the connector approval, history, and audit pipeline.
+              </p>
             </div>
             <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
               Start {product} session
@@ -252,7 +274,9 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   return (
     <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
       <div className="grid min-h-0 gap-4 overflow-hidden p-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-        <section className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+        <section
+          className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
+        >
           <div className={`border-b p-3 ${borderClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -260,24 +284,51 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
                 <p className={`text-xs ${mutedClass}`}>{keys.length} loaded</p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                {latestAction ? <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>{latestAction.action_name}</Badge> : null}
-                <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Refresh keys" onClick={() => scanKeys({ reset: true })} disabled={state.state !== "idle"}>
+                {latestAction ? (
+                  <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>
+                    {latestAction.action_name}
+                  </Badge>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-8 px-0"
+                  title="Refresh keys"
+                  onClick={() => scanKeys({ reset: true })}
+                  disabled={state.state !== "idle"}
+                >
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </Button>
                 <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={startNewKey}>
                   <Plus className="h-3.5 w-3.5" />
                   New
                 </Button>
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setSelectedKeys(selectedKeys.length === keys.length ? [] : keys)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => setSelectedKeys(selectedKeys.length === keys.length ? [] : keys)}
+                >
                   {selectedKeys.length === keys.length && keys.length > 0 ? "None" : "All"}
                 </Button>
               </div>
             </div>
           </div>
-          <form className={`grid gap-2 border-b p-3 ${borderClass}`} onSubmit={(event) => { event.preventDefault(); void scanKeys({ reset: true }); }}>
+          <form
+            className={`grid gap-2 border-b p-3 ${borderClass}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void scanKeys({ reset: true });
+            }}
+          >
             <div className="relative">
               <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${mutedClass}`} />
-              <Input className={`pl-9 ${inputClass}`} value={pattern} onChange={(event) => setPattern(event.target.value)} placeholder="SCAN pattern, e.g. user:*" />
+              <Input
+                className={`pl-9 ${inputClass}`}
+                value={pattern}
+                onChange={(event) => setPattern(event.target.value)}
+                placeholder="SCAN pattern, e.g. user:*"
+              />
             </div>
             <Button type="submit" variant="outline" className="h-9" disabled={state.state !== "idle"}>
               {state.state === "scanning" ? "Scanning" : "Scan keys"}
@@ -297,16 +348,34 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
                   onChange={() => toggleSelection(key)}
                   aria-label={`Select ${key}`}
                 />
-                <span className="truncate font-mono text-xs" title={key}>{key}</span>
+                <span className="truncate font-mono text-xs" title={key}>
+                  {key}
+                </span>
               </button>
             ))}
-            {keys.length === 0 ? <Notice>{state.state === "scanning" ? `Scanning ${product} keys...` : "No keys loaded. Scan to browse this database."}</Notice> : null}
+            {keys.length === 0 ? (
+              <Notice>
+                {state.state === "scanning" ? `Scanning ${product} keys...` : "No keys loaded. Scan to browse this database."}
+              </Notice>
+            ) : null}
           </div>
           <div className={`flex items-center justify-between gap-2 border-t p-3 ${borderClass}`}>
-            <Button type="button" variant="outline" className="h-8 px-3 text-xs" disabled={cursor === "0" || state.state !== "idle"} onClick={() => scanKeys({ reset: false })}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 px-3 text-xs"
+              disabled={cursor === "0" || state.state !== "idle"}
+              onClick={() => scanKeys({ reset: false })}
+            >
               More
             </Button>
-            <Button type="button" variant="outline" className="h-8 px-3 text-xs text-red-600" disabled={(selectedCount === 0 && !activeKey) || state.state !== "idle"} onClick={deleteSelected}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 px-3 text-xs text-red-600"
+              disabled={(selectedCount === 0 && !activeKey) || state.state !== "idle"}
+              onClick={deleteSelected}
+            >
               <Trash2 className="h-3.5 w-3.5" />
               Delete {selectedCount || (activeKey ? 1 : "")}
             </Button>
@@ -317,20 +386,56 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
           <div className={`flex flex-wrap items-center justify-between gap-3 border-b p-3 ${borderClass} ${subtlePanelClass}`}>
             <div className="min-w-0">
               <p className="text-sm font-semibold">{activeKey || "New string key"}</p>
-              <p className={`truncate text-xs ${mutedClass}`}>{keyResult ? keyMetaText(keyResult) : creatingKey ? `Create a ${product} string value.` : "Select a key from the browser."}</p>
+              <p className={`truncate text-xs ${mutedClass}`}>
+                {keyResult ? keyMetaText(keyResult) : creatingKey ? `Create a ${product} string value.` : "Select a key from the browser."}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {keyResult?.type ? <Badge tone={keyResult.type === "none" ? "neutral" : "good"}>{keyResult.type}</Badge> : null}
-              {keyResult ? <CopyButton value={JSON.stringify(keyResult, null, 2)} variant="outline" className="h-8 px-2 text-xs" title="Copy key JSON">JSON</CopyButton> : null}
+              {keyResult ? (
+                <CopyButton value={JSON.stringify(keyResult, null, 2)} variant="outline" className="h-8 px-2 text-xs" title="Copy key JSON">
+                  JSON
+                </CopyButton>
+              ) : null}
             </div>
           </div>
           <div className={`flex flex-wrap items-center justify-between gap-2 border-b p-3 ${borderClass}`}>
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <Button type="button" variant={resultMode === "value" ? "default" : "outline"} className="h-8 px-3 text-xs" onClick={() => setResultMode("value")}>Value</Button>
-              <Button type="button" variant={resultMode === "json" ? "default" : "outline"} className="h-8 px-3 text-xs" onClick={() => setResultMode("json")}>Raw JSON</Button>
-              {activeKey ? <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Reload key" onClick={() => loadKey(activeKey)} disabled={state.state !== "idle"}><RefreshCcw className="h-3.5 w-3.5" /></Button> : null}
+              <Button
+                type="button"
+                variant={resultMode === "value" ? "default" : "outline"}
+                className="h-8 px-3 text-xs"
+                onClick={() => setResultMode("value")}
+              >
+                Value
+              </Button>
+              <Button
+                type="button"
+                variant={resultMode === "json" ? "default" : "outline"}
+                className="h-8 px-3 text-xs"
+                onClick={() => setResultMode("json")}
+              >
+                Raw JSON
+              </Button>
+              {activeKey ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-8 px-0"
+                  title="Reload key"
+                  onClick={() => loadKey(activeKey)}
+                  disabled={state.state !== "idle"}
+                >
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
               {creatingKey ? (
-                <Input className={`h-8 min-w-56 flex-1 ${inputClass}`} value={newKey} onChange={(event) => setNewKey(event.target.value)} placeholder="New key name" />
+                <Input
+                  className={`h-8 min-w-56 flex-1 ${inputClass}`}
+                  value={newKey}
+                  onChange={(event) => setNewKey(event.target.value)}
+                  placeholder="New key name"
+                />
               ) : null}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -342,11 +447,24 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
                   placeholder="TTL"
                   aria-label="TTL seconds"
                 />
-                <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Save TTL" disabled={!canUpdateTTL} onClick={updateTTL}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-8 px-0"
+                  title="Save TTL"
+                  disabled={!canUpdateTTL}
+                  onClick={updateTTL}
+                >
                   <Save className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <Button type="button" className="h-8 px-3 text-xs" disabled={state.state !== "idle" || !canSaveString} onClick={saveStringValue} title={editableString ? `Save ${product} string value` : `This ${product} type is read-only in the MVP`}>
+              <Button
+                type="button"
+                className="h-8 px-3 text-xs"
+                disabled={state.state !== "idle" || !canSaveString}
+                onClick={saveStringValue}
+                title={editableString ? `Save ${product} string value` : `This ${product} type is read-only in the MVP`}
+              >
                 {activeKey ? <Save className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                 {activeKey ? (editableString ? "Save string" : "Read only") : "Create key"}
               </Button>
@@ -354,15 +472,24 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
           </div>
           <div className="min-h-0 overflow-hidden p-4">
             {resultMode === "json" ? (
-              <TerminalBlock surface="log" className="h-full min-h-0 text-xs">{keyResult ? JSON.stringify(keyResult, null, 2) : creatingKey ? "New key is not saved yet." : "No key selected."}</TerminalBlock>
+              <TerminalBlock surface="log" className="h-full min-h-0 text-xs">
+                {keyResult ? JSON.stringify(keyResult, null, 2) : creatingKey ? "New key is not saved yet." : "No key selected."}
+              </TerminalBlock>
             ) : creatingKey ? (
-              <Textarea className={`h-full min-h-0 resize-none font-mono text-xs ${inputClass}`} value={newValue} onChange={(event) => setNewValue(event.target.value)} placeholder="String value" />
+              <Textarea
+                className={`h-full min-h-0 resize-none font-mono text-xs ${inputClass}`}
+                value={newValue}
+                onChange={(event) => setNewValue(event.target.value)}
+                placeholder="String value"
+              />
             ) : (
               <ValuePanel keyResult={keyResult} valueDraft={valueDraft} onValueDraft={setValueDraft} inputClass={inputClass} />
             )}
           </div>
           <div className={`grid gap-2 border-t p-3 ${borderClass}`}>
-            {keyResult && keyResult.type !== "string" && resultMode === "value" ? <Notice tone="warn">This {product} type is read-only in the MVP. TTL changes are still available from the toolbar.</Notice> : null}
+            {keyResult && keyResult.type !== "string" && resultMode === "value" ? (
+              <Notice tone="warn">This {product} type is read-only in the MVP. TTL changes are still available from the toolbar.</Notice>
+            ) : null}
             {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
             {state.message ? <Notice tone="good">{state.message}</Notice> : null}
           </div>
@@ -370,7 +497,13 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
       </div>
 
       <RedisEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      <RedisConfirmDialog value={confirmDialog} theme={theme} product={product} onClose={() => setConfirmDialog(emptyConfirmDialog)} onConfirm={confirmPendingAction} />
+      <RedisConfirmDialog
+        value={confirmDialog}
+        theme={theme}
+        product={product}
+        onClose={() => setConfirmDialog(emptyConfirmDialog)}
+        onConfirm={confirmPendingAction}
+      />
     </div>
   );
 }
@@ -423,16 +556,28 @@ function ValuePanel({ keyResult, valueDraft, onValueDraft, inputClass }) {
     return <Notice>Select a key from the left panel to inspect its value.</Notice>;
   }
   if (keyResult.type === "string") {
-    return <Textarea className={`min-h-0 h-full resize-none font-mono text-xs ${inputClass}`} value={valueDraft} onChange={(event) => onValueDraft(event.target.value)} />;
+    return (
+      <Textarea
+        className={`min-h-0 h-full resize-none font-mono text-xs ${inputClass}`}
+        value={valueDraft}
+        onChange={(event) => onValueDraft(event.target.value)}
+      />
+    );
   }
-  return <TerminalBlock surface="log" className="min-h-0 text-xs">{formatRedisValue(keyResult.value)}</TerminalBlock>;
+  return (
+    <TerminalBlock surface="log" className="min-h-0 text-xs">
+      {formatRedisValue(keyResult.value)}
+    </TerminalBlock>
+  );
 }
 
 function RedisEndpointFooter({ target, borderClass, mutedClass }) {
   return (
     <div className={`flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-xs ${borderClass}`}>
       <span className={`truncate font-mono ${mutedClass}`}>{target.ref}</span>
-      <span className={`truncate ${mutedClass}`}>{serverProductLabel(target)} · {target.config?.host}:{target.config?.port} db {target.config?.database || 0}</span>
+      <span className={`truncate ${mutedClass}`}>
+        {serverProductLabel(target)} · {target.config?.host}:{target.config?.port} db {target.config?.database || 0}
+      </span>
     </div>
   );
 }

@@ -11,17 +11,27 @@ export function S3CredentialFormTemplate({ targets, form, formMode = "create", s
       {s3Targets.length === 0 ? (
         <Notice tone="warn">Create an S3 connector target before adding an S3 credential profile.</Notice>
       ) : (
-        <Notice tone="good">{editing ? "Update public S3 profile metadata, or enter a new secret to rotate the stored key." : "Create an S3 profile, then bind tokens to this profile from Console or Tokens."}</Notice>
+        <Notice tone="good">
+          {editing
+            ? "Update public S3 profile metadata, or enter a new secret to rotate the stored key."
+            : "Create an S3 profile, then bind tokens to this profile from Console or Tokens."}
+        </Notice>
       )}
       <Field>
         Connector target
-        <Select value={form.target_id} onChange={(event) => onChange({ ...form, target_id: event.target.value })} disabled={editing} required>
+        <Select
+          value={form.target_id}
+          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
+          disabled={editing}
+          required
+        >
           <option value="" disabled>
             Select S3 target
           </option>
           {s3Targets.map((target) => (
             <option value={target.id} key={target.id}>
-              {target.name} · {target.config?.scheme || "https"}://{target.config?.host}:{target.config?.port || 443}/{target.config?.bucket || "bucket"}
+              {target.name} · {target.config?.scheme || "https"}://{target.config?.host}:{target.config?.port || 443}/
+              {target.config?.bucket || "bucket"}
             </option>
           ))}
         </Select>
@@ -38,7 +48,12 @@ export function S3CredentialFormTemplate({ targets, form, formMode = "create", s
       </div>
       <Field>
         Access key ID
-        <Input value={form.access_key_id} onChange={(event) => onChange({ ...form, access_key_id: event.target.value })} autoComplete="off" required />
+        <Input
+          value={form.access_key_id}
+          onChange={(event) => onChange({ ...form, access_key_id: event.target.value })}
+          autoComplete="off"
+          required
+        />
       </Field>
       <Field>
         {editing ? "New secret access key" : "Secret access key"}

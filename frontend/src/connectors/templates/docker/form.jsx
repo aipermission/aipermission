@@ -6,7 +6,8 @@ export function DockerConnectorFormTemplate({ form, targets = [], onChange }) {
   return (
     <>
       <Notice tone="good">
-        Docker actions run through bounded command templates over an SSH connector profile. Start lifecycle actions in Prompt mode until the workflow is trusted.
+        Docker actions run through bounded command templates over an SSH connector profile. Start lifecycle actions in Prompt mode until the
+        workflow is trusted.
       </Notice>
       <Field>
         Connector name
@@ -50,16 +51,27 @@ export function DockerConnectorFormTemplate({ form, targets = [], onChange }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <Field>
             Allowed containers
-            <Textarea rows={5} value={form.allowed_containers} onChange={(event) => onChange("allowed_containers", event.target.value)} placeholder={"api\nweb\nf6fc4f91e616"} />
+            <Textarea
+              rows={5}
+              value={form.allowed_containers}
+              onChange={(event) => onChange("allowed_containers", event.target.value)}
+              placeholder={"api\nweb\nf6fc4f91e616"}
+            />
           </Field>
           <Field>
             Allowed name patterns
-            <Textarea rows={5} value={form.allowed_patterns} onChange={(event) => onChange("allowed_patterns", event.target.value)} placeholder={"project-api-*\n*_worker"} />
+            <Textarea
+              rows={5}
+              value={form.allowed_patterns}
+              onChange={(event) => onChange("allowed_patterns", event.target.value)}
+              placeholder={"project-api-*\n*_worker"}
+            />
           </Field>
         </div>
       ) : null}
       <Notice>
-        For one-container AI access, choose Selected containers and enter exactly that container name or ID. List/logs/restart actions are enforced against this profile scope.
+        For one-container AI access, choose Selected containers and enter exactly that container name or ID. List/logs/restart actions are
+        enforced against this profile scope.
       </Notice>
     </>
   );
@@ -72,6 +84,6 @@ function sshProfileOptions(targets) {
       (target.profiles || []).map((profile) => ({
         ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
         label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
-      }))
+      })),
     );
 }

@@ -66,10 +66,17 @@ export function Dialog({
         aria-label="Close dialog"
         onClick={!closeDisabled && closeOnOverlay ? onClose : undefined}
       />
-      <section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className={`relative grid w-full ${sizes[size] || sizes.sm} overflow-hidden rounded-lg border border-stone-200 bg-white shadow-2xl ${className}`}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dialog-title"
+        className={`relative grid w-full ${sizes[size] || sizes.sm} overflow-hidden rounded-lg border border-stone-200 bg-white shadow-2xl ${className}`}
+      >
         <header className="flex items-start justify-between gap-4 border-b border-stone-200 p-5">
           <div>
-            <h2 id="dialog-title" className="text-lg font-semibold text-stone-950">{title}</h2>
+            <h2 id="dialog-title" className="text-lg font-semibold text-stone-950">
+              {title}
+            </h2>
             {description ? <p className="mt-1 text-sm text-stone-500">{description}</p> : null}
           </div>
           <Button ref={closeButtonRef} type="button" variant="ghost" className="h-9 w-9 px-0" onClick={onClose} disabled={closeDisabled}>

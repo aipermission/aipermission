@@ -12,5 +12,8 @@ export function credentialPayload(form, existingKind = "sasl") {
 }
 
 export function targetEndpoint(target) {
-  return String(target?.config?.bootstrap_brokers || "no brokers").split(/[\s,]+/).filter(Boolean).join(", ");
+  return String(target?.config?.bootstrap_brokers || "no brokers")
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .join(", ");
 }

@@ -17,7 +17,7 @@ export const Button = forwardRef(function Button({ className, variant = "default
       className={cn(
         "inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition disabled:pointer-events-none disabled:opacity-50",
         variants[variant],
-        className
+        className,
       )}
       {...props}
     />

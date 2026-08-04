@@ -8,6 +8,6 @@ export async function updateTokenProjectVisibility(tokenID, projects, projectID,
 
 export function enabledProjectIDsForVisibility(projects, projectID, enabled) {
   return projects
-    .filter((project) => Number(project.project_id) === Number(projectID) ? enabled : Boolean(project.enabled))
+    .filter((project) => (Number(project.project_id) === Number(projectID) ? enabled : Boolean(project.enabled)))
     .map((project) => project.project_id);
 }

@@ -24,8 +24,14 @@ export function MailConnectorFormTemplate({ form, mode = "create", targets = [],
         <Field>
           SSH transport profile
           <Select value={form.transport_target_ref} onChange={(event) => onChange("transport_target_ref", event.target.value)} required>
-            <option value="" disabled>Select SSH profile</option>
-            {sshProfileOptions(targets).map((profile) => <option value={profile.ref} key={profile.ref}>{profile.label}</option>)}
+            <option value="" disabled>
+              Select SSH profile
+            </option>
+            {sshProfileOptions(targets).map((profile) => (
+              <option value={profile.ref} key={profile.ref}>
+                {profile.label}
+              </option>
+            ))}
           </Select>
         </Field>
       ) : null}
@@ -38,8 +44,15 @@ export function MailConnectorFormTemplate({ form, mode = "create", targets = [],
       <MailEndpointFields prefix="smtp" label="SMTP" form={form} onChange={onChange} />
       <Field>
         Allowed recipient domains
-        <Textarea className="min-h-20 font-mono text-xs" value={form.allowed_recipient_domains} onChange={(event) => onChange("allowed_recipient_domains", event.target.value)} placeholder={"example.com\ncustomer.example"} />
-        <span className="text-xs font-normal text-stone-500">Optional exact domains, one per line. Their subdomains are also accepted.</span>
+        <Textarea
+          className="min-h-20 font-mono text-xs"
+          value={form.allowed_recipient_domains}
+          onChange={(event) => onChange("allowed_recipient_domains", event.target.value)}
+          placeholder={"example.com\ncustomer.example"}
+        />
+        <span className="text-xs font-normal text-stone-500">
+          Optional exact domains, one per line. Their subdomains are also accepted.
+        </span>
       </Field>
       <MailCredentialFields form={form} editing={mode === "edit"} onChange={(field, value) => onChange(field, value)} />
     </>
@@ -57,13 +70,26 @@ function MailEndpointFields({ prefix, label, form, onChange }) {
         <Field>
           <span className="flex items-center justify-between gap-2">
             <span>{label} host</span>
-            <HostPingButton host={form[hostField]} port={form[portField]} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} projectID={form.project_id} />
+            <HostPingButton
+              host={form[hostField]}
+              port={form[portField]}
+              mode={form.connection_mode}
+              transportTargetRef={form.transport_target_ref}
+              projectID={form.project_id}
+            />
           </span>
           <Input value={form[hostField]} onChange={(event) => onChange(hostField, event.target.value)} required />
         </Field>
         <Field>
           Port
-          <Input type="number" min="1" max="65535" value={form[portField]} onChange={(event) => onChange(portField, event.target.value)} required />
+          <Input
+            type="number"
+            min="1"
+            max="65535"
+            value={form[portField]}
+            onChange={(event) => onChange(portField, event.target.value)}
+            required
+          />
         </Field>
         <Field>
           TLS mode

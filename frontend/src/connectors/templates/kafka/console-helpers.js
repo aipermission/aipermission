@@ -24,9 +24,6 @@ export function actionableOffsetPartitions(partitions = []) {
   return partitions.filter((partition) => {
     if (!partition || partition.error || !partition.topic) return false;
     const partitionID = Number(partition.partition);
-    return Number.isInteger(partitionID)
-      && partitionID >= 0
-      && partition.committed_offset != null
-      && partition.end_offset != null;
+    return Number.isInteger(partitionID) && partitionID >= 0 && partition.committed_offset != null && partition.end_offset != null;
   });
 }

@@ -18,7 +18,19 @@ const resourceTabs = Object.freeze([
   { key: "events", label: "Events", action: "list_events", output: "events" },
 ]);
 
-export function KubernetesConnectorConsoleTemplate({ children, target, approvals, theme, session, selectedSessionLive, selectedRuntimeTarget, onNewLiveSession, onSelectLiveSessionName, onEndLiveSession, onRefreshActivity }) {
+export function KubernetesConnectorConsoleTemplate({
+  children,
+  target,
+  approvals,
+  theme,
+  session,
+  selectedSessionLive,
+  selectedRuntimeTarget,
+  onNewLiveSession,
+  onSelectLiveSessionName,
+  onEndLiveSession,
+  onRefreshActivity,
+}) {
   const [tab, setTab] = useState("workloads");
   const [namespace, setNamespace] = useState("");
   const [namespaces, setNamespaces] = useState([]);
@@ -36,10 +48,17 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
   const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
   const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
   const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400" : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
+  const inputClass =
+    theme === "light"
+      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
+      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
   const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass = theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
-  const activeItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
+  const activeRowClass =
+    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const activeItems = useMemo(
+    () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
+    [approvals?.data, target.ref],
+  );
   const latestAction = activeItems[0] || null;
   const activeTab = resourceTabs.find((item) => item.key === tab) || resourceTabs[0];
   const activeResources = resources[tab] || [];
@@ -49,7 +68,13 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
   const filteredResources = useMemo(() => {
     const query = filter.trim().toLowerCase();
     if (!query) return activeResources;
-    return activeResources.filter((item) => resourceSearchValues(tab, item).some((value) => String(value || "").toLowerCase().includes(query)));
+    return activeResources.filter((item) =>
+      resourceSearchValues(tab, item).some((value) =>
+        String(value || "")
+          .toLowerCase()
+          .includes(query),
+      ),
+    );
   }, [activeResources, filter, tab]);
 
   useEffect(() => {
@@ -95,7 +120,11 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
   }
 
   async function refreshNamespaces() {
-    const item = await runKubeAction({ actionName: "list_namespaces", reason: "manual Kubernetes browser namespace list", busy: "loading" });
+    const item = await runKubeAction({
+      actionName: "list_namespaces",
+      reason: "manual Kubernetes browser namespace list",
+      busy: "loading",
+    });
     const next = Array.isArray(item.output?.namespaces) ? item.output.namespaces : [];
     setNamespaces(next);
   }
@@ -174,7 +203,12 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
   }
 
   async function describeResource(input) {
-    const item = await runKubeAction({ actionName: "describe_resource", input, reason: "manual Kubernetes browser resource detail", busy: "reading" });
+    const item = await runKubeAction({
+      actionName: "describe_resource",
+      input,
+      reason: "manual Kubernetes browser resource detail",
+      busy: "reading",
+    });
     setDetail(item);
   }
 
@@ -252,16 +286,31 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
   return (
     <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
       <div className="grid h-full min-h-0 gap-4 overflow-hidden p-4 lg:grid-cols-[380px_minmax(0,1fr)]">
-        <section className={`grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+        <section
+          className={`grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
+        >
           <div className={`border-b p-3 ${borderClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold">Kubernetes resources</p>
-                <p className={`text-xs ${mutedClass}`}>{filteredResources.length} shown · {activeResources.length} loaded</p>
+                <p className={`text-xs ${mutedClass}`}>
+                  {filteredResources.length} shown · {activeResources.length} loaded
+                </p>
               </div>
               <div className="flex items-center gap-2">
-                {latestAction ? <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>{latestAction.action_name}</Badge> : null}
-                <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Refresh" onClick={() => refreshResource(tab)} disabled={state.state !== "idle"}>
+                {latestAction ? (
+                  <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>
+                    {latestAction.action_name}
+                  </Badge>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-8 px-0"
+                  title="Refresh"
+                  onClick={() => refreshResource(tab)}
+                  disabled={state.state !== "idle"}
+                >
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -280,7 +329,15 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
             ))}
           </div>
           <div className={`grid gap-2 border-b p-3 ${borderClass}`}>
-            <Select value={namespace} onChange={(event) => { setNamespace(event.target.value); setSelectedKey(""); setDetail(null); setLogs(""); }}>
+            <Select
+              value={namespace}
+              onChange={(event) => {
+                setNamespace(event.target.value);
+                setSelectedKey("");
+                setDetail(null);
+                setLogs("");
+              }}
+            >
               <option value="">All allowed namespaces</option>
               {namespaces.map((item) => (
                 <option value={item.name} key={item.name}>
@@ -290,7 +347,12 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
             </Select>
             <div className="relative">
               <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${mutedClass}`} />
-              <Input className={`pl-9 ${inputClass}`} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={`Filter ${activeTab.label.toLowerCase()}`} />
+              <Input
+                className={`pl-9 ${inputClass}`}
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder={`Filter ${activeTab.label.toLowerCase()}`}
+              />
             </div>
           </div>
           <div className="min-h-0 overflow-auto">
@@ -302,14 +364,18 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
                 onClick={() => selectResource(resource)}
               >
                 <span className="flex min-w-0 items-center justify-between gap-3">
-                  <span className="truncate font-semibold" title={resourceTitle(tab, resource)}>{resourceTitle(tab, resource)}</span>
+                  <span className="truncate font-semibold" title={resourceTitle(tab, resource)}>
+                    {resourceTitle(tab, resource)}
+                  </span>
                   {resourceStatus(tab, resource) ? <Badge tone={resourceTone(tab, resource)}>{resourceStatus(tab, resource)}</Badge> : null}
                 </span>
                 <span className={`truncate text-xs ${mutedClass}`}>{resourceSubtitle(tab, resource)}</span>
                 <span className={`truncate text-xs ${mutedClass}`}>{resourceTertiary(tab, resource)}</span>
               </button>
             ))}
-            {filteredResources.length === 0 ? <Notice>{state.state === "loading" ? "Loading Kubernetes resources..." : "No resources found for this filter."}</Notice> : null}
+            {filteredResources.length === 0 ? (
+              <Notice>{state.state === "loading" ? "Loading Kubernetes resources..." : "No resources found for this filter."}</Notice>
+            ) : null}
           </div>
         </section>
 
@@ -317,22 +383,45 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
           <div className={`flex flex-wrap items-center justify-between gap-3 border-b p-3 ${borderClass} ${subtlePanelClass}`}>
             <div className="min-w-0">
               <p className="text-sm font-semibold">{selectedResource ? resourceTitle(tab, selectedResource) : activeTab.label}</p>
-              <p className={`truncate text-xs ${mutedClass}`}>{selectedResource ? resourceSubtitle(tab, selectedResource) : "Select a resource to inspect details, logs, events, or raw JSON."}</p>
+              <p className={`truncate text-xs ${mutedClass}`}>
+                {selectedResource
+                  ? resourceSubtitle(tab, selectedResource)
+                  : "Select a resource to inspect details, logs, events, or raw JSON."}
+              </p>
               <KubernetesHeaderStatus state={state} mutedClass={mutedClass} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {selectedResource && tab === "pods" ? (
                 <>
-                  <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => readLogs(selectedResource)} disabled={state.state !== "idle"}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 px-2 text-xs"
+                    onClick={() => readLogs(selectedResource)}
+                    disabled={state.state !== "idle"}
+                  >
                     Logs
                   </Button>
-                  <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={() => openPodConsole(selectedResource)} disabled={state.state !== "idle"} title="Open live console inside this pod">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 w-8 px-0"
+                    onClick={() => openPodConsole(selectedResource)}
+                    disabled={state.state !== "idle"}
+                    title="Open live console inside this pod"
+                  >
                     <TerminalSquare className="h-3.5 w-3.5" />
                   </Button>
                 </>
               ) : null}
               {selectedResource && tab === "workloads" && selectedResource.kind === "Deployment" ? (
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => openRestart(selectedResource)} disabled={state.state !== "idle"}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => openRestart(selectedResource)}
+                  disabled={state.state !== "idle"}
+                >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Restart
                 </Button>
@@ -372,18 +461,34 @@ export function KubernetesConnectorConsoleTemplate({ children, target, approvals
         </section>
       </div>
       <KubernetesFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      <Dialog open={confirmRestart.open} onClose={() => setConfirmRestart({ open: false, pending: false, workload: null })} title="Rollout restart deployment" maxWidth="max-w-lg">
+      <Dialog
+        open={confirmRestart.open}
+        onClose={() => setConfirmRestart({ open: false, pending: false, workload: null })}
+        title="Rollout restart deployment"
+        maxWidth="max-w-lg"
+      >
         <div className="grid gap-4">
           <Notice tone="warn">
             <TriangleAlert className="mr-2 inline h-4 w-4" />
             This restarts pods for the selected deployment. Keep this action in Prompt mode unless the workflow is trusted.
           </Notice>
           <div className={`rounded-md border p-3 text-sm ${borderClass}`}>
-            <p><span className={mutedClass}>Namespace:</span> {confirmRestart.workload?.namespace}</p>
-            <p><span className={mutedClass}>Deployment:</span> {confirmRestart.workload?.name}</p>
+            <p>
+              <span className={mutedClass}>Namespace:</span> {confirmRestart.workload?.namespace}
+            </p>
+            <p>
+              <span className={mutedClass}>Deployment:</span> {confirmRestart.workload?.name}
+            </p>
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setConfirmRestart({ open: false, pending: false, workload: null })} disabled={confirmRestart.pending}>Cancel</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmRestart({ open: false, pending: false, workload: null })}
+              disabled={confirmRestart.pending}
+            >
+              Cancel
+            </Button>
             <Button type="button" onClick={confirmRolloutRestart} disabled={confirmRestart.pending}>
               {confirmRestart.pending ? "Restarting..." : "Rollout restart"}
             </Button>
@@ -410,7 +515,15 @@ function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearc
   const showLogSurface = tab === "pods";
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,600px)_auto_minmax(0,1fr)] overflow-hidden">
-      <KubernetesResultHeader title={topTitle} subtitle={topSubtitle} copyValue={topCopyValue} search={search} onSearch={onSearch} inputClass={inputClass} searchPlaceholder={tab === "pods" ? "Search logs" : "Search metadata"} />
+      <KubernetesResultHeader
+        title={topTitle}
+        subtitle={topSubtitle}
+        copyValue={topCopyValue}
+        search={search}
+        onSearch={onSearch}
+        inputClass={inputClass}
+        searchPlaceholder={tab === "pods" ? "Search logs" : "Search metadata"}
+      />
       {showLogSurface ? (
         <TerminalBlock
           className="h-full min-h-0 max-h-full overflow-auto whitespace-pre text-xs"
@@ -424,7 +537,8 @@ function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearc
           <KubernetesSummaryCards tab={tab} resource={resource} mutedClass={mutedClass} />
           {tab === "nodes" ? (
             <p className="mt-3 rounded-md border border-amber-700/50 bg-amber-950/30 p-3 text-xs text-amber-100">
-              Kubernetes nodes do not expose pod-style logs through kubectl logs. Use metadata, conditions, and events for node investigation.
+              Kubernetes nodes do not expose pod-style logs through kubectl logs. Use metadata, conditions, and events for node
+              investigation.
             </p>
           ) : null}
           {tab === "events" && resource.message ? (
@@ -440,7 +554,12 @@ function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearc
           <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">Kubernetes raw data</p>
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2">
-          <Input className={`h-8 w-56 text-xs ${inputClass || ""}`} value={search} onChange={(event) => onSearch?.(event.target.value)} placeholder="Search raw data" />
+          <Input
+            className={`h-8 w-56 text-xs ${inputClass || ""}`}
+            value={search}
+            onChange={(event) => onSearch?.(event.target.value)}
+            placeholder="Search raw data"
+          />
           <CopyButton value={rawValue} variant="outline" className="h-8 px-2 text-xs" />
         </div>
       </div>
@@ -453,11 +572,26 @@ function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearc
   );
 }
 
-function KubernetesPodConsolePanel({ children, target, pod, selectedRuntimeTarget, session, sessionLive, pending, theme, mutedClass, borderClass, onStart, onEnd }) {
+function KubernetesPodConsolePanel({
+  children,
+  target,
+  pod,
+  selectedRuntimeTarget,
+  session,
+  sessionLive,
+  pending,
+  theme,
+  mutedClass,
+  borderClass,
+  onStart,
+  onEnd,
+}) {
   const light = theme === "light";
   if (!pod) {
     return (
-      <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}>
+      <div
+        className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}
+      >
         Select a pod, then open a live console inside it.
       </div>
     );
@@ -487,7 +621,9 @@ function KubernetesPodConsolePanel({ children, target, pod, selectedRuntimeTarge
         <div className="grid max-w-md gap-3">
           <LoaderCircle className="mx-auto h-6 w-6 animate-spin text-emerald-500" />
           <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>Connecting pod console</h3>
-          <p className={`text-sm leading-6 ${mutedClass}`}>Opening an interactive shell inside <span className="font-mono">{podRef}</span>.</p>
+          <p className={`text-sm leading-6 ${mutedClass}`}>
+            Opening an interactive shell inside <span className="font-mono">{podRef}</span>.
+          </p>
         </div>
       </div>
     );
@@ -495,15 +631,22 @@ function KubernetesPodConsolePanel({ children, target, pod, selectedRuntimeTarge
   return (
     <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center ${borderClass}`}>
       <div className="grid max-w-md gap-4">
-        <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${light ? "border-stone-200 bg-stone-100" : "border-stone-600 bg-stone-800"}`}>
+        <div
+          className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${light ? "border-stone-200 bg-stone-100" : "border-stone-600 bg-stone-800"}`}
+        >
           <TerminalSquare className={`h-6 w-6 ${light ? "text-stone-600" : "text-stone-300"}`} />
         </div>
         <div className="grid gap-2">
           <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>No active pod console</h3>
           <p className={`text-sm leading-6 ${mutedClass}`}>
-            Start an interactive shell inside <span className="font-mono">{podRef}</span>. It uses the same live terminal as SSH and Docker consoles.
+            Start an interactive shell inside <span className="font-mono">{podRef}</span>. It uses the same live terminal as SSH and Docker
+            consoles.
           </p>
-          {!selectedRuntimeTarget ? <p className="text-xs text-red-500">This Kubernetes profile does not have a live runtime surface yet. Save the connector once, then retry.</p> : null}
+          {!selectedRuntimeTarget ? (
+            <p className="text-xs text-red-500">
+              This Kubernetes profile does not have a live runtime surface yet. Save the connector once, then retry.
+            </p>
+          ) : null}
         </div>
         <Button type="button" className="mx-auto" onClick={onStart} disabled={!selectedRuntimeTarget}>
           <RefreshCcw className="h-4 w-4" />
@@ -541,7 +684,12 @@ function KubernetesResultHeader({ title, subtitle, copyValue, search, onSearch, 
         {subtitle ? <p className="truncate text-xs text-stone-500">{subtitle}</p> : null}
       </div>
       <div className="flex min-w-0 items-center justify-end gap-2">
-        <Input className={`h-8 w-56 text-xs ${inputClass || ""}`} value={search} onChange={(event) => onSearch?.(event.target.value)} placeholder={searchPlaceholder || "Search"} />
+        <Input
+          className={`h-8 w-56 text-xs ${inputClass || ""}`}
+          value={search}
+          onChange={(event) => onSearch?.(event.target.value)}
+          placeholder={searchPlaceholder || "Search"}
+        />
         {copyValue ? <CopyButton value={copyValue} variant="outline" className="h-8 px-2 text-xs" /> : null}
       </div>
     </div>
@@ -563,7 +711,7 @@ function HighlightedText({ text, query }) {
     parts.push(
       <mark key={`m-${key++}`} className="rounded bg-yellow-300 px-0.5 text-stone-950">
         {value.slice(matchIndex, matchIndex + needle.length)}
-      </mark>
+      </mark>,
     );
     index = matchIndex + needle.length;
     matchIndex = lowerValue.indexOf(lowerNeedle, index);
@@ -603,7 +751,9 @@ function KubernetesSummaryCards({ tab, resource, detail, mutedClass }) {
       {rows.map((row) => (
         <div key={row.label} className="rounded-md border border-stone-700/40 p-2">
           <p className={`text-[11px] uppercase ${mutedClass}`}>{row.label}</p>
-          <p className="truncate text-sm font-semibold" title={String(row.value || "-")}>{row.value || "-"}</p>
+          <p className="truncate text-sm font-semibold" title={String(row.value || "-")}>
+            {row.value || "-"}
+          </p>
         </div>
       ))}
     </div>
@@ -620,36 +770,41 @@ function KubernetesFooter({ target, borderClass, mutedClass }) {
 }
 
 function summaryRows(tab, resource) {
-  if (tab === "workloads") return [
-    { label: "Kind", value: resource.kind },
-    { label: "Namespace", value: resource.namespace },
-    { label: "Ready", value: resource.ready },
-    { label: "Image", value: resource.image },
-  ];
-  if (tab === "pods") return [
-    { label: "Namespace", value: resource.namespace },
-    { label: "Phase", value: resource.phase },
-    { label: "Ready", value: resource.ready },
-    { label: "Restarts", value: resource.restarts },
-  ];
-  if (tab === "services") return [
-    { label: "Namespace", value: resource.namespace },
-    { label: "Type", value: resource.type },
-    { label: "Cluster IP", value: resource.cluster_ip },
-    { label: "Ports", value: resource.ports },
-  ];
-  if (tab === "ingress") return [
-    { label: "Namespace", value: resource.namespace },
-    { label: "Class", value: resource.class },
-    { label: "Hosts", value: resource.hosts },
-    { label: "Age", value: resource.age },
-  ];
-  if (tab === "nodes") return [
-    { label: "Name", value: resource.name },
-    { label: "Ready", value: resource.ready },
-    { label: "Roles", value: resource.roles },
-    { label: "Version", value: resource.version },
-  ];
+  if (tab === "workloads")
+    return [
+      { label: "Kind", value: resource.kind },
+      { label: "Namespace", value: resource.namespace },
+      { label: "Ready", value: resource.ready },
+      { label: "Image", value: resource.image },
+    ];
+  if (tab === "pods")
+    return [
+      { label: "Namespace", value: resource.namespace },
+      { label: "Phase", value: resource.phase },
+      { label: "Ready", value: resource.ready },
+      { label: "Restarts", value: resource.restarts },
+    ];
+  if (tab === "services")
+    return [
+      { label: "Namespace", value: resource.namespace },
+      { label: "Type", value: resource.type },
+      { label: "Cluster IP", value: resource.cluster_ip },
+      { label: "Ports", value: resource.ports },
+    ];
+  if (tab === "ingress")
+    return [
+      { label: "Namespace", value: resource.namespace },
+      { label: "Class", value: resource.class },
+      { label: "Hosts", value: resource.hosts },
+      { label: "Age", value: resource.age },
+    ];
+  if (tab === "nodes")
+    return [
+      { label: "Name", value: resource.name },
+      { label: "Ready", value: resource.ready },
+      { label: "Roles", value: resource.roles },
+      { label: "Version", value: resource.version },
+    ];
   return [
     { label: "Type", value: resource.type },
     { label: "Reason", value: resource.reason },
@@ -713,7 +868,19 @@ function resourceTone(tab, item) {
 }
 
 function resourceSearchValues(tab, item) {
-  return [resourceTitle(tab, item), resourceSubtitle(tab, item), resourceTertiary(tab, item), item.namespace, item.name, item.kind, item.reason, item.message, item.hosts, item.image, item.node];
+  return [
+    resourceTitle(tab, item),
+    resourceSubtitle(tab, item),
+    resourceTertiary(tab, item),
+    item.namespace,
+    item.name,
+    item.kind,
+    item.reason,
+    item.message,
+    item.hosts,
+    item.image,
+    item.node,
+  ];
 }
 
 function resourceTypeForWorkload(resource) {

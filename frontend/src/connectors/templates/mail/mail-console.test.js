@@ -1,7 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { connectorActionCode, connectorActionError, connectorActionPending } from "../_shared/action-result.js";
-import { addressLabel, mailActionResolution, mailActionSummary, mailFolderAllowed, mailFolderEqual, mailProtocolCapabilities, mailProtocolsEnabled, messageRefKey, recipientList, replySubject, replyText, submissionDraftFingerprint, unknownSubmissionRetryDecision, validateComposeFields } from "./helpers.js";
+import {
+  addressLabel,
+  mailActionResolution,
+  mailActionSummary,
+  mailFolderAllowed,
+  mailFolderEqual,
+  mailProtocolCapabilities,
+  mailProtocolsEnabled,
+  messageRefKey,
+  recipientList,
+  replySubject,
+  replyText,
+  submissionDraftFingerprint,
+  unknownSubmissionRetryDecision,
+  validateComposeFields,
+} from "./helpers.js";
 import { normalizeEditorLink, plainTextToHTML, richTextToPlainText, splitPlainTextLines } from "./rich-text.js";
 
 test("mail helpers preserve stable message references and explicit read errors", () => {
@@ -45,17 +60,24 @@ test("pending Mail actions resolve exactly once from connector activity", () => 
 });
 
 test("mail helpers normalize recipients and reply labels", () => {
-  assert.deepEqual(recipientList('"Doe, John" <john@example.com>, two@example.com\nthree@example.com'), ['"Doe, John" <john@example.com>', "two@example.com", "three@example.com"]);
+  assert.deepEqual(recipientList('"Doe, John" <john@example.com>, two@example.com\nthree@example.com'), [
+    '"Doe, John" <john@example.com>',
+    "two@example.com",
+    "three@example.com",
+  ]);
   assert.equal(addressLabel([{ name: "Operator", address: "operator@example.com" }]), "Operator <operator@example.com>");
   assert.equal(replySubject("Status"), "Re: Status");
   assert.equal(replySubject("Re: Status"), "Re: Status");
 });
 
 test("mail helpers keep action status compact and quote safe reply text", () => {
-  assert.equal(mailActionSummary("search_messages", { output: { folder: "Sent", count: 2, total: 9 } }), "Sent loaded: 2 shown · 9 message(s) in mailbox.");
+  assert.equal(
+    mailActionSummary("search_messages", { output: { folder: "Sent", count: 2, total: 9 } }),
+    "Sent loaded: 2 shown · 9 message(s) in mailbox.",
+  );
   assert.equal(
     replyText({ from: [{ name: "Operator", address: "operator@example.com" }], body: "First line\r\nSecond line" }),
-    "\n\nOn Unknown date, Operator <operator@example.com> wrote:\n> First line\n> Second line"
+    "\n\nOn Unknown date, Operator <operator@example.com> wrote:\n> First line\n> Second line",
   );
   assert.equal(replyText({ body: "" }), "");
 });
@@ -67,7 +89,10 @@ test("Mail folder policy mirrors backend INBOX matching", () => {
 });
 
 test("Mail workspace supports SMTP-only profiles without IMAP actions", () => {
-  assert.deepEqual(mailProtocolCapabilities({ imap_enabled: false, smtp_auth_mode: "separate" }), { imapEnabled: false, smtpEnabled: true });
+  assert.deepEqual(mailProtocolCapabilities({ imap_enabled: false, smtp_auth_mode: "separate" }), {
+    imapEnabled: false,
+    smtpEnabled: true,
+  });
   assert.deepEqual(mailProtocolCapabilities({ imap_enabled: true, smtp_auth_mode: "disabled" }), { imapEnabled: true, smtpEnabled: false });
   assert.equal(mailProtocolsEnabled({ imap_enabled: false, smtp_auth_mode: "disabled" }), false);
   assert.equal(mailProtocolsEnabled({ imap_enabled: false, smtp_auth_mode: "separate" }), true);
@@ -98,7 +123,10 @@ test("mail rich text produces a deterministic list-aware plain-text fallback", (
   const list = element("ol", [first, second]);
   first.parentElement = list;
   second.parentElement = list;
-  const root = element("div", [element("p", [text("Hello "), element("a", [text("documentation")], { href: "https://example.com/docs" })]), list]);
+  const root = element("div", [
+    element("p", [text("Hello "), element("a", [text("documentation")], { href: "https://example.com/docs" })]),
+    list,
+  ]);
 
   assert.equal(richTextToPlainText(root), "Hello documentation (https://example.com/docs)\n1. First\n2. Second");
   assert.equal(richTextToPlainText(element("div", [element("a", [], { href: "https://example.com/empty" })])), "https://example.com/empty");

@@ -68,7 +68,9 @@ export function pendingMetadataReferences(sql, rows, requestedKeys, limit = 4) {
 }
 
 export function normalizeSQLName(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 export function tableReferenceKey(reference) {
@@ -140,7 +142,23 @@ function splitSQLQualifiedName(value) {
 
 function isSQLAlias(value) {
   if (!value) return false;
-  return !new Set(["where", "join", "left", "right", "inner", "outer", "full", "cross", "on", "group", "order", "limit", "offset", "union", "having"]).has(normalizeSQLName(value));
+  return !new Set([
+    "where",
+    "join",
+    "left",
+    "right",
+    "inner",
+    "outer",
+    "full",
+    "cross",
+    "on",
+    "group",
+    "order",
+    "limit",
+    "offset",
+    "union",
+    "having",
+  ]).has(normalizeSQLName(value));
 }
 
 function cleanCompletionValue(value) {

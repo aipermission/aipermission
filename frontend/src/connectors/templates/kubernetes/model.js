@@ -1,7 +1,13 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
 
-const emptyKubernetesCredentialForm = { target_id: "", profile_label: "all-namespaces", scope_mode: "all", namespaces: "", risk_label: "cluster visibility" };
+const emptyKubernetesCredentialForm = {
+  target_id: "",
+  profile_label: "all-namespaces",
+  scope_mode: "all",
+  namespaces: "",
+  risk_label: "cluster visibility",
+};
 
 export function emptyForm() {
   return {
@@ -146,7 +152,7 @@ export function credentialRows({ targets }) {
         target_detail: targetEndpoint({ target }),
         metadata: credentialMetadata(profile),
         delete_disabled: "",
-      }))
+      })),
   );
 }
 
@@ -231,7 +237,7 @@ export function deleteDialog({ target }) {
 
 async function createTarget({ form }) {
   await createTargetWithProfile({
-	projectID: form.project_id,
+    projectID: form.project_id,
     targetPayload: {
       connector_kind: "kubernetes",
       name: form.name,
@@ -242,10 +248,12 @@ async function createTarget({ form }) {
 }
 
 async function updateTarget({ form, target }) {
-  const profile = target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+  const profile =
+    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
+    (target?.profiles?.length === 1 ? target.profiles[0] : null);
   if (!target || !profile) throw new Error("Kubernetes connector profile is not loaded.");
   await updateTargetWithProfile({
-	projectID: form.project_id,
+    projectID: form.project_id,
     targetID: target.id,
     profileID: profile.id,
     targetPayload: {
@@ -283,7 +291,8 @@ function credentialMetadata(profile) {
   const scope = profile.public?.scope_mode === "selected" ? "selected namespaces" : "all namespaces";
   const namespaces = splitLines(profile.public?.namespaces || "");
   const items = [`scope: ${scope}`];
-  if (namespaces.length > 0) items.push(`namespaces: ${namespaces.slice(0, 3).join(", ")}${namespaces.length > 3 ? ` +${namespaces.length - 3}` : ""}`);
+  if (namespaces.length > 0)
+    items.push(`namespaces: ${namespaces.slice(0, 3).join(", ")}${namespaces.length > 3 ? ` +${namespaces.length - 3}` : ""}`);
   if (profile.risk_label) items.push(`risk: ${profile.risk_label}`);
   return items;
 }

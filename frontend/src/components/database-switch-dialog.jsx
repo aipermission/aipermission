@@ -12,7 +12,13 @@ export function DatabaseSwitchDialog({ state, databaseStatus, onChange, onClose,
   const selectedIsUnlocked = Boolean(selected?.unlocked);
 
   return (
-    <Dialog open={state.open} title="Switch database" description="Continue with the current database, or unlock another one." onClose={onClose} size="md">
+    <Dialog
+      open={state.open}
+      title="Switch database"
+      description="Continue with the current database, or unlock another one."
+      onClose={onClose}
+      size="md"
+    >
       <form className="grid gap-4" onSubmit={onSubmit}>
         <div className="grid gap-2">
           {databases.map((database) => {
@@ -32,7 +38,11 @@ export function DatabaseSwitchDialog({ state, databaseStatus, onChange, onClose,
                   <span className="block truncate text-sm font-semibold text-stone-900">{database.name}</span>
                   <span className="block truncate text-xs text-stone-500">{database.id}</span>
                 </span>
-                {current || unlocked ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" /> : <LockKeyhole className="h-5 w-5 shrink-0 text-stone-400" />}
+                {current || unlocked ? (
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" />
+                ) : (
+                  <LockKeyhole className="h-5 w-5 shrink-0 text-stone-400" />
+                )}
               </button>
             );
           })}
@@ -54,7 +64,13 @@ export function DatabaseSwitchDialog({ state, databaseStatus, onChange, onClose,
         {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
 
         <Button type="submit" disabled={!selected || state.state === "switching"}>
-          {selectedIsCurrent ? "Continue" : selectedIsUnlocked ? "Switch" : state.state === "switching" ? "Unlocking..." : "Unlock and switch"}
+          {selectedIsCurrent
+            ? "Continue"
+            : selectedIsUnlocked
+              ? "Switch"
+              : state.state === "switching"
+                ? "Unlocking..."
+                : "Unlock and switch"}
         </Button>
       </form>
     </Dialog>

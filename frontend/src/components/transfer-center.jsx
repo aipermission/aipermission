@@ -22,7 +22,9 @@ export function TransferCenter({ open, batches, state, error, onClose, onRefresh
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-stone-950">{active.length} active queue{active.length === 1 ? "" : "s"}</p>
+          <p className="text-sm font-semibold text-stone-950">
+            {active.length} active queue{active.length === 1 ? "" : "s"}
+          </p>
           <p className="text-xs text-stone-500">Closing this panel does not stop transfers.</p>
         </div>
         <Button type="button" variant="outline" className="h-9" onClick={onRefresh} disabled={state === "loading"}>
@@ -38,7 +40,15 @@ export function TransferCenter({ open, batches, state, error, onClose, onRefresh
         <section className="grid gap-3">
           <h3 className="text-xs font-semibold uppercase text-stone-500">Active</h3>
           {active.map((batch) => (
-            <TransferBatchCard key={batch.id} batch={batch} onPause={onPause} onResume={onResume} onCancel={onCancel} onApprove={onApprove} onDecline={onDecline} />
+            <TransferBatchCard
+              key={batch.id}
+              batch={batch}
+              onPause={onPause}
+              onResume={onResume}
+              onCancel={onCancel}
+              onApprove={onApprove}
+              onDecline={onDecline}
+            />
           ))}
         </section>
       ) : (
@@ -131,7 +141,10 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
 
       <div className="grid gap-1.5">
         <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-          <div className={`h-full rounded-full bg-emerald-700 transition-all ${active ? "animate-pulse" : ""}`} style={{ width: `${progress.percent}%` }} />
+          <div
+            className={`h-full rounded-full bg-emerald-700 transition-all ${active ? "animate-pulse" : ""}`}
+            style={{ width: `${progress.percent}%` }}
+          />
         </div>
         <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
           <span>{progress.percent}%</span>
@@ -145,11 +158,16 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
         <div className="grid gap-3 rounded-md border border-amber-300 bg-amber-50 p-3">
           <div>
             <p className="text-sm font-semibold text-amber-950">Local approval required</p>
-            <p className="text-xs text-amber-800">Select the files AIPermission may transfer. Unchecked files are rejected with the note below.</p>
+            <p className="text-xs text-amber-800">
+              Select the files AIPermission may transfer. Unchecked files are rejected with the note below.
+            </p>
           </div>
           <div className="max-h-48 overflow-auto rounded-md border border-amber-200 bg-white">
             {pendingItems.map((item) => (
-              <label key={item.id} className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-amber-100 px-3 py-2 last:border-b-0">
+              <label
+                key={item.id}
+                className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-amber-100 px-3 py-2 last:border-b-0"
+              >
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-emerald-700"

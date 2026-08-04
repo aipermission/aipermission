@@ -25,7 +25,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   }, [targets, targetQuery]);
   const selectedIDs = useMemo(
     () => targets.filter((target) => selected[target.id]).map((target) => Number(target.id)),
-    [targets, selected]
+    [targets, selected],
   );
   const confirmationText = selectedIDs.length > 0 ? `RUN ON ${selectedIDs.length} TARGETS` : "RUN ON 0 TARGETS";
   const canRun = selectedIDs.length > 0 && command.trim() && confirmation === confirmationText && runState.state !== "starting";
@@ -111,9 +111,14 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
           } catch (error) {
             return { ...item, status: "error", error: error.message };
           }
-        })
+        }),
       );
-      setRunState((current) => ({ ...current, state: details.some((item) => !terminalStatuses.has(item.status)) ? "running" : "done", items: details, error: null }));
+      setRunState((current) => ({
+        ...current,
+        state: details.some((item) => !terminalStatuses.has(item.status)) ? "running" : "done",
+        items: details,
+        error: null,
+      }));
       await onRefresh?.();
     } catch (error) {
       setRunState((current) => ({ ...current, state: "error", error: error.message }));
@@ -158,7 +163,10 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
           </div>
           <div className="min-h-0 overflow-auto rounded-md border border-stone-200">
             {visibleTargets.map((server) => (
-              <label key={server.id} className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50">
+              <label
+                key={server.id}
+                className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50"
+              >
                 <input
                   type="checkbox"
                   className="mt-1 h-4 w-4 accent-emerald-800"
@@ -230,9 +238,17 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-stone-950">Results</p>
-                <p className="text-xs text-stone-500">{runState.items.length > 0 ? resultSummary(runState.items) : "Results appear here after the command starts."}</p>
+                <p className="text-xs text-stone-500">
+                  {runState.items.length > 0 ? resultSummary(runState.items) : "Results appear here after the command starts."}
+                </p>
               </div>
-              <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={refreshRequests} disabled={runState.items.length === 0}>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-2 text-xs"
+                onClick={refreshRequests}
+                disabled={runState.items.length === 0}
+              >
                 <RefreshCcw className="h-3.5 w-3.5" />
                 Refresh
               </Button>

@@ -16,13 +16,18 @@ export function PostgresCredentialFormTemplate({ targets, form, formMode = "crea
           {managed
             ? "Update the local profile label or risk note. Managed database username and password changes must go through a dedicated managed-role operation."
             : editing
-            ? "Update public credential metadata, or enter a new password to rotate the stored secret."
-            : "Create a dedicated Postgres profile, then bind tokens to this profile from Console or Tokens."}
+              ? "Update public credential metadata, or enter a new password to rotate the stored secret."
+              : "Create a dedicated Postgres profile, then bind tokens to this profile from Console or Tokens."}
         </Notice>
       )}
       <Field>
         Connector target
-        <Select value={form.target_id} onChange={(event) => onChange({ ...form, target_id: event.target.value })} disabled={editing} required>
+        <Select
+          value={form.target_id}
+          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
+          disabled={editing}
+          required
+        >
           <option value="" disabled>
             Select Postgres target
           </option>
@@ -45,9 +50,20 @@ export function PostgresCredentialFormTemplate({ targets, form, formMode = "crea
       </div>
       <Field>
         Username
-        <Input value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value })} autoComplete="off" disabled={managed} required />
+        <Input
+          value={form.username}
+          onChange={(event) => onChange({ ...form, username: event.target.value })}
+          autoComplete="off"
+          disabled={managed}
+          required
+        />
       </Field>
-      {managed ? <Notice tone="warn">This credential profile owns a managed database role. The username is fixed; deleting the profile also deletes the managed database role.</Notice> : null}
+      {managed ? (
+        <Notice tone="warn">
+          This credential profile owns a managed database role. The username is fixed; deleting the profile also deletes the managed
+          database role.
+        </Notice>
+      ) : null}
       <Field>
         {editing ? "New password" : "Password"}
         <Input
@@ -55,7 +71,13 @@ export function PostgresCredentialFormTemplate({ targets, form, formMode = "crea
           value={form.password}
           onChange={(event) => onChange({ ...form, password: event.target.value })}
           autoComplete="new-password"
-          placeholder={managed ? "Managed passwords are rotated through a managed-role operation" : editing ? "Leave blank to keep current password" : ""}
+          placeholder={
+            managed
+              ? "Managed passwords are rotated through a managed-role operation"
+              : editing
+                ? "Leave blank to keep current password"
+                : ""
+          }
           disabled={managed}
           required={!editing && !managed}
         />

@@ -6,7 +6,8 @@ export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }
   return (
     <>
       <Notice tone="good">
-        Kubernetes uses bounded kubectl templates over an SSH connector profile. Start with read-only actions and keep rollout restart in Prompt mode.
+        Kubernetes uses bounded kubectl templates over an SSH connector profile. Start with read-only actions and keep rollout restart in
+        Prompt mode.
       </Notice>
       <Field>
         Connector name
@@ -36,7 +37,11 @@ export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }
         </Field>
         <Field>
           Default namespace
-          <Input value={form.default_namespace} onChange={(event) => onChange("default_namespace", event.target.value)} placeholder="optional" />
+          <Input
+            value={form.default_namespace}
+            onChange={(event) => onChange("default_namespace", event.target.value)}
+            placeholder="optional"
+          />
         </Field>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -59,11 +64,17 @@ export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }
       {form.scope_mode === "selected" ? (
         <Field>
           Namespaces
-          <Textarea rows={5} value={form.namespaces} onChange={(event) => onChange("namespaces", event.target.value)} placeholder={"production\nmonitoring"} />
+          <Textarea
+            rows={5}
+            value={form.namespaces}
+            onChange={(event) => onChange("namespaces", event.target.value)}
+            placeholder={"production\nmonitoring"}
+          />
         </Field>
       ) : null}
       <Notice>
-        AIPermission does not import kubeconfig or service-account tokens in this MVP. The selected SSH profile must reach a host where kubectl is already configured.
+        AIPermission does not import kubeconfig or service-account tokens in this MVP. The selected SSH profile must reach a host where
+        kubectl is already configured.
       </Notice>
     </>
   );
@@ -76,6 +87,6 @@ function sshProfileOptions(targets) {
       (target.profiles || []).map((profile) => ({
         ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
         label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
-      }))
+      })),
     );
 }

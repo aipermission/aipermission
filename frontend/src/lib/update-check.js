@@ -35,7 +35,9 @@ async function fetchLatestRelease() {
 }
 
 function normalizeVersion(value) {
-  return String(value || "").trim().replace(/^v/i, "");
+  return String(value || "")
+    .trim()
+    .replace(/^v/i, "");
 }
 
 function compareVersions(a, b) {

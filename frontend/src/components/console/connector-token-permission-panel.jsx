@@ -55,7 +55,10 @@ export function ConnectorTokenPermissionPanel({
   const tokenIDsKey = activeTokens.map((token) => token.id).join(",");
   const load = connectorPermissionState || { state: "idle", data: {}, actionsByTargetRef: {}, error: null };
   const permissionsByToken = load.data || {};
-  const targetProfiles = useMemo(() => profilesForConnectorTarget(targets?.data || [], selectedTarget), [targets?.data, selectedTarget?.connector_kind, selectedTarget?.target_id]);
+  const targetProfiles = useMemo(
+    () => profilesForConnectorTarget(targets?.data || [], selectedTarget),
+    [targets?.data, selectedTarget?.connector_kind, selectedTarget?.target_id],
+  );
   const targetProfileSignature = targetProfiles.map((profile) => profile.profile_id).join(",");
 
   useEffect(() => {
@@ -178,7 +181,9 @@ export function ConnectorTokenPermissionPanel({
     try {
       const existing = permissionsByToken[token.id] || [];
       const actionNames = new Set(selectedActions.map((action) => action.name));
-      const preserved = existing.filter((permission) => !matchesConnectorTargetProfile(permission, selectedTarget, profileID) || !actionNames.has(permission.action_name));
+      const preserved = existing.filter(
+        (permission) => !matchesConnectorTargetProfile(permission, selectedTarget, profileID) || !actionNames.has(permission.action_name),
+      );
       const expiresAt = rule === "blocked" ? "" : connectorTargetProfileLifetime(existing, selectedTarget, profileID)?.expires_at || "";
       const next = rule
         ? [
@@ -254,7 +259,12 @@ export function ConnectorTokenPermissionPanel({
           onSetPermanent={() => setProfileLifetime(token, profile.profile_id, "")}
           onSetTemporary={(lifetime) => setProfileLifetime(token, profile.profile_id, expiresAtFromLifetime(lifetime))}
         />
-        {actions.length > 0 ? <PermissionModeTabs value={permissionMode} onChange={(mode) => setPermissionModeByKey((current) => ({ ...current, [modeKey]: mode }))} /> : null}
+        {actions.length > 0 ? (
+          <PermissionModeTabs
+            value={permissionMode}
+            onChange={(mode) => setPermissionModeByKey((current) => ({ ...current, [modeKey]: mode }))}
+          />
+        ) : null}
         {permissionMode === "basic" && actions.length > 0 ? (
           <PermissionRuleGroup
             title="All operations"
@@ -282,9 +292,13 @@ export function ConnectorTokenPermissionPanel({
         {permissionMode === "advanced"
           ? categoryGroups.map((group) => (
               <div key={group.name} className="grid gap-2">
-                {categoryGroups.length > 1 ? <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">{group.name}</p> : null}
+                {categoryGroups.length > 1 ? (
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">{group.name}</p>
+                ) : null}
                 {group.actions.map((action) => {
-                  const permission = permissions.find((item) => matchesConnectorTargetProfileAction(item, selectedTarget, profile.profile_id, action.name));
+                  const permission = permissions.find((item) =>
+                    matchesConnectorTargetProfileAction(item, selectedTarget, profile.profile_id, action.name),
+                  );
                   const rule = effectiveRule(permission) || "";
                   const key = `${token.id}:${profile.profile_id}:${action.name}`;
                   return (
@@ -308,7 +322,10 @@ export function ConnectorTokenPermissionPanel({
 
   if (compact) {
     return (
-      <aside ref={compactPanelRef} className="relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-visible rounded-lg border border-stone-200 bg-white">
+      <aside
+        ref={compactPanelRef}
+        className="relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-visible rounded-lg border border-stone-200 bg-white"
+      >
         <header className="grid gap-2 border-b border-stone-200 p-2">
           <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Expand tokens" onClick={onToggleCompact}>
             <PanelRightOpen className="h-4 w-4" />
@@ -339,7 +356,11 @@ export function ConnectorTokenPermissionPanel({
                       <p className="truncate text-sm font-semibold text-stone-900">{token.name}</p>
                       <p className="mt-1 text-xs text-stone-500">{selectedTarget.target_name}</p>
                     </div>
-                    <ProfileSelect profiles={targetProfiles} value={profile?.profile_id} onChange={(profileID) => selectProfile(token, profileID)} />
+                    <ProfileSelect
+                      profiles={targetProfiles}
+                      value={profile?.profile_id}
+                      onChange={(profileID) => selectProfile(token, profileID)}
+                    />
                     {profile ? renderTokenActions(token, profile, true) : <Notice>No credential profiles for this connector.</Notice>}
                   </div>
                 ) : null}
@@ -359,15 +380,20 @@ export function ConnectorTokenPermissionPanel({
             <TicketCheck className="h-4 w-4" />
             Tokens
           </h3>
-          <p className="mt-1 truncate text-xs text-stone-500">
-            {selectedTarget ? selectedTarget.target_name : "Select a connector"}
-          </p>
+          <p className="mt-1 truncate text-xs text-stone-500">{selectedTarget ? selectedTarget.target_name : "Select a connector"}</p>
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse tokens" onClick={onToggleCompact}>
             <PanelRightClose className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Refresh connector permissions" onClick={refreshPanel} disabled={load.state === "loading"}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 w-9 px-0"
+            title="Refresh connector permissions"
+            onClick={refreshPanel}
+            disabled={load.state === "loading"}
+          >
             <RefreshCcw className="h-4 w-4" />
           </Button>
         </div>
@@ -386,10 +412,17 @@ export function ConnectorTokenPermissionPanel({
             const selectedCount = selectedCountByToken[token.id] || 0;
             const profile = selectedConnectorProfile(token.id, selectedTarget, targetProfiles, profileByToken);
             const unreadCount = targetSupportsMessages(selectedTarget)
-              ? unreadMessages.filter((message) => Number(message.runtime_id) === Number(profile?.runtime_id || selectedTarget.runtime_id) && Number(message.token_id) === Number(token.id)).length
+              ? unreadMessages.filter(
+                  (message) =>
+                    Number(message.runtime_id) === Number(profile?.runtime_id || selectedTarget.runtime_id) &&
+                    Number(message.token_id) === Number(token.id),
+                ).length
               : 0;
             return (
-              <section className={`grid gap-3 rounded-lg border p-3 transition ${selectedCount > 0 ? "border-emerald-200 bg-emerald-50" : "border-stone-200 bg-white"}`} key={token.id}>
+              <section
+                className={`grid gap-3 rounded-lg border p-3 transition ${selectedCount > 0 ? "border-emerald-200 bg-emerald-50" : "border-stone-200 bg-white"}`}
+                key={token.id}
+              >
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="min-w-0">
                     <button
@@ -405,9 +438,15 @@ export function ConnectorTokenPermissionPanel({
                     </button>
                     <p className="mt-1 truncate font-mono text-[11px] text-stone-500">{maskedToken(token.token)}</p>
                   </div>
-                  <Badge tone={selectedCount > 0 ? "good" : "neutral"}>{selectedCount > 0 ? `${selectedCount} grants` : ruleLabel("")}</Badge>
+                  <Badge tone={selectedCount > 0 ? "good" : "neutral"}>
+                    {selectedCount > 0 ? `${selectedCount} grants` : ruleLabel("")}
+                  </Badge>
                 </div>
-                <ProfileSelect profiles={targetProfiles} value={profile?.profile_id} onChange={(profileID) => selectProfile(token, profileID)} />
+                <ProfileSelect
+                  profiles={targetProfiles}
+                  value={profile?.profile_id}
+                  onChange={(profileID) => selectProfile(token, profileID)}
+                />
                 {profile ? renderTokenActions(token, profile) : <Notice>No credential profiles for this connector.</Notice>}
               </section>
             );
@@ -420,10 +459,14 @@ export function ConnectorTokenPermissionPanel({
 
 function ProjectVisibilityControl({ projectName, enabled, saving, onChange }) {
   return (
-    <div className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs ${enabled ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+    <div
+      className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs ${enabled ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}
+    >
       <div className="min-w-0">
         <p className="truncate font-semibold text-stone-800">{projectName}</p>
-        <p className="truncate text-stone-500">{enabled ? "Visible to this token through MCP" : "Hidden from this token's MCP target list"}</p>
+        <p className="truncate text-stone-500">
+          {enabled ? "Visible to this token through MCP" : "Hidden from this token's MCP target list"}
+        </p>
       </div>
       <Button type="button" variant="outline" className="h-8 shrink-0 px-2 text-xs" disabled={saving} onClick={() => onChange(!enabled)}>
         {saving ? "Saving..." : enabled ? "Hide" : "Enable"}
@@ -523,7 +566,11 @@ function PermissionRuleGroup({ title, description, rule, saving, disabled = fals
         <ConnectorRuleButton active={rule === "blocked"} disabled={saving || disabled} onClick={() => onSetRule("blocked")}>
           Blocked
         </ConnectorRuleButton>
-        <ConnectorRuleButton active={rule === "approval_required"} disabled={saving || disabled} onClick={() => onSetRule("approval_required")}>
+        <ConnectorRuleButton
+          active={rule === "approval_required"}
+          disabled={saving || disabled}
+          onClick={() => onSetRule("approval_required")}
+        >
           Prompt
         </ConnectorRuleButton>
         <ConnectorRuleButton active={rule === "always_run"} disabled={saving || disabled} onClick={() => onSetRule("always_run")}>

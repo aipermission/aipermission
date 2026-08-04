@@ -27,8 +27,8 @@ export function SSHCredentialFormTemplate({
           <Input value={form.name} onChange={(event) => onFormChange({ ...form, name: event.target.value })} required />
         </Field>
         <Notice>
-          SSH credential edits only change the local credential label and install-command comment. Key material is not rewritten; import a new credential to
-          rotate keys.
+          SSH credential edits only change the local credential label and install-command comment. Key material is not rewritten; import a
+          new credential to rotate keys.
         </Notice>
         {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
         <Button type="submit" disabled={state.state === "saving"}>
@@ -135,8 +135,8 @@ export function SSHCredentialFormTemplate({
             {state.state === "importing" ? "Importing..." : "Import credential"}
           </Button>
           <Notice tone="warn">
-            Imported keys are decrypted once during import, normalized, and then stored in the encrypted local vault.
-            The passphrase is not saved.
+            Imported keys are decrypted once during import, normalized, and then stored in the encrypted local vault. The passphrase is not
+            saved.
           </Notice>
         </form>
       )}

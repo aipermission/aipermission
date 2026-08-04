@@ -77,7 +77,16 @@ export function HistoryPage() {
       void loadHistory(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.projectID, filters.connectorKind, filters.status, filters.source, filters.targetRef, filters.labelID, targetSignature]);
+  }, [
+    filters.query,
+    filters.projectID,
+    filters.connectorKind,
+    filters.status,
+    filters.source,
+    filters.targetRef,
+    filters.labelID,
+    targetSignature,
+  ]);
 
   useEffect(() => {
     const hasActive = state.data.some((item) => ["pending", "pending_approval", "running", "paused"].includes(item.status));
@@ -237,11 +246,21 @@ export function HistoryPage() {
 
       <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[1fr_.8fr_.8fr_.8fr_1.2fr_.9fr]">
-          <Select value={filters.projectID} onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetRef: "" }))}>
+          <Select
+            value={filters.projectID}
+            onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetRef: "" }))}
+          >
             <option value="">All projects</option>
-            {projects.data.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+            {projects.data.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
           </Select>
-          <Select value={filters.connectorKind} onChange={(event) => setFilters((current) => ({ ...current, connectorKind: event.target.value }))}>
+          <Select
+            value={filters.connectorKind}
+            onChange={(event) => setFilters((current) => ({ ...current, connectorKind: event.target.value }))}
+          >
             {connectorKindOptions.map((option) => (
               <option key={option.value || "all"} value={option.value}>
                 {option.label}
@@ -264,11 +283,13 @@ export function HistoryPage() {
           </Select>
           <Select value={filters.targetRef} onChange={(event) => setFilters((current) => ({ ...current, targetRef: event.target.value }))}>
             <option value="">All connectors</option>
-            {targetItems.filter((target) => !filters.projectID || String(target.project_id) === String(filters.projectID)).map((target) => (
-              <option key={target.ref} value={target.ref}>
-                {targetOptionLabel(target)}
-              </option>
-            ))}
+            {targetItems
+              .filter((target) => !filters.projectID || String(target.project_id) === String(filters.projectID))
+              .map((target) => (
+                <option key={target.ref} value={target.ref}>
+                  {targetOptionLabel(target)}
+                </option>
+              ))}
           </Select>
           <Select value={filters.labelID} onChange={(event) => setFilters((current) => ({ ...current, labelID: event.target.value }))}>
             <option value="">All labels</option>
@@ -342,7 +363,9 @@ export function HistoryPage() {
                     </td>
                     <td className="truncate px-4 py-3">
                       <div className="truncate font-medium text-stone-900">{item.target_name || "-"}</div>
-                      <div className="truncate text-xs text-stone-500">{[item.project_name, item.profile_label].filter(Boolean).join(" / ")}</div>
+                      <div className="truncate text-xs text-stone-500">
+                        {[item.project_name, item.profile_label].filter(Boolean).join(" / ")}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <ActionBadge item={item} />
@@ -587,7 +610,11 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
           </div>
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
             <SectionHeader label="Output" value={output} />
-            {item.activity_type === "file_transfer" ? <TransferDetail item={item} /> : <TerminalBlock>{output || "No output captured."}</TerminalBlock>}
+            {item.activity_type === "file_transfer" ? (
+              <TransferDetail item={item} />
+            ) : (
+              <TerminalBlock>{output || "No output captured."}</TerminalBlock>
+            )}
           </div>
         </div>
 
@@ -661,19 +688,20 @@ function SectionHeader({ label, value }) {
 }
 
 function StatusBadge({ status }) {
-  const tone = {
-    completed: "good",
-    canceled: "warn",
-    paused: "warn",
-    pending: "neutral",
-    running: "neutral",
-    pending_approval: "warn",
-    declined: "warn",
-    stale: "warn",
-    untracked: "warn",
-    failed: "bad",
-    error: "bad",
-  }[status] || "neutral";
+  const tone =
+    {
+      completed: "good",
+      canceled: "warn",
+      paused: "warn",
+      pending: "neutral",
+      running: "neutral",
+      pending_approval: "warn",
+      declined: "warn",
+      stale: "warn",
+      untracked: "warn",
+      failed: "bad",
+      error: "bad",
+    }[status] || "neutral";
   return <Badge tone={tone}>{statusLabel(status)}</Badge>;
 }
 
@@ -682,11 +710,14 @@ function ConnectorBadge({ kind }) {
 }
 
 function ActionBadge({ item }) {
-  const label = {
-    command: item.source === "manual" ? "manual" : item.action_name || "exec",
-    action: item.action_name || "action",
-    file_transfer: item.action_name || "transfer",
-  }[item.activity_type] || item.action_name || "activity";
+  const label =
+    {
+      command: item.source === "manual" ? "manual" : item.action_name || "exec",
+      action: item.action_name || "action",
+      file_transfer: item.action_name || "transfer",
+    }[item.activity_type] ||
+    item.action_name ||
+    "activity";
   return <Badge tone={item.activity_type === "file_transfer" ? "warn" : "neutral"}>{label}</Badge>;
 }
 
@@ -756,7 +787,10 @@ function progressPercent(item) {
 }
 
 function transferFileName(item) {
-  const summary = String(item.summary || "").split("/").filter(Boolean).pop();
+  const summary = String(item.summary || "")
+    .split("/")
+    .filter(Boolean)
+    .pop();
   return summary || item.title || "aipermission-download";
 }
 

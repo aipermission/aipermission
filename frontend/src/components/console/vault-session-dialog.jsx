@@ -46,7 +46,13 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
     setSelected(next);
     setQuery("");
     setProjectID(String(state.options?.target_project_id || projects[0]?.id || ""));
-  }, [state.open, state.runtime?.id, state.options?.target_project_id, defaults.map((item) => `${item.id}:${item.binding_revision}`).join(","), projects.map((project) => project.id).join(",")]);
+  }, [
+    state.open,
+    state.runtime?.id,
+    state.options?.target_project_id,
+    defaults.map((item) => `${item.id}:${item.binding_revision}`).join(","),
+    projects.map((project) => project.id).join(","),
+  ]);
 
   const visibleItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -54,7 +60,14 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
     return availableItems.filter((item) => {
       const assignedProjectIDs = [Number(item.owner_project_id), ...(item.project_ids || []).map(Number)];
       if (!assignedProjectIDs.includes(selectedProjectID)) return false;
-      return !needle || [item.name, item.provider, item.environment, item.description].some((value) => String(value || "").toLowerCase().includes(needle));
+      return (
+        !needle ||
+        [item.name, item.provider, item.environment, item.description].some((value) =>
+          String(value || "")
+            .toLowerCase()
+            .includes(needle),
+        )
+      );
     });
   }, [availableItems, projectID, query]);
   const selectedItems = useMemo(() => {
@@ -72,20 +85,23 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
         delete next[item.id];
         return next;
       }
-      const defaultBinding = preferredDefaultBindings(defaults, projectID)
-        .find((binding) => Number(binding.vault_item_id) === Number(item.id));
+      const defaultBinding = preferredDefaultBindings(defaults, projectID).find(
+        (binding) => Number(binding.vault_item_id) === Number(item.id),
+      );
       const selectedFromDefaultProject = Number(defaultBinding?.source_project_id) === Number(projectID);
-      next[item.id] = selectedFromDefaultProject ? {
-        item_id: Number(item.id),
-        source_project_id: Number(defaultBinding.source_project_id),
-        replace_existing: Boolean(defaultBinding.replace_existing),
-        binding_id: Number(defaultBinding.id),
-        binding_revision: Number(defaultBinding.binding_revision),
-      } : {
-        item_id: Number(item.id),
-        source_project_id: Number(projectID),
-        replace_existing: Boolean(defaultBinding?.replace_existing),
-      };
+      next[item.id] = selectedFromDefaultProject
+        ? {
+            item_id: Number(item.id),
+            source_project_id: Number(defaultBinding.source_project_id),
+            replace_existing: Boolean(defaultBinding.replace_existing),
+            binding_id: Number(defaultBinding.id),
+            binding_revision: Number(defaultBinding.binding_revision),
+          }
+        : {
+            item_id: Number(item.id),
+            source_project_id: Number(projectID),
+            replace_existing: Boolean(defaultBinding?.replace_existing),
+          };
       return next;
     });
   }
@@ -117,14 +133,23 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
           <label className="grid gap-1.5 text-sm font-medium text-stone-700">
             Project
             <Select value={projectID} onChange={(event) => setProjectID(event.target.value)} autoFocus>
-              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
             </Select>
           </label>
           <label className="grid gap-1.5 text-sm font-medium text-stone-700">
             Vault items
             <span className="relative">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
-              <Input className="w-full pl-9" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this project" />
+              <Input
+                className="w-full pl-9"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search this project"
+              />
             </span>
           </label>
         </div>
@@ -133,9 +158,14 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
             <p className="text-xs font-semibold uppercase text-stone-500">Selected for this session</p>
             <div className="flex flex-wrap gap-2">
               {selectedItems.map(({ item, selection }) => (
-                <span key={item.id} className="inline-flex max-w-full items-center gap-2 rounded border border-stone-200 bg-white px-2 py-1 text-xs">
+                <span
+                  key={item.id}
+                  className="inline-flex max-w-full items-center gap-2 rounded border border-stone-200 bg-white px-2 py-1 text-xs"
+                >
                   <span className="truncate font-mono font-semibold">{item.name}</span>
-                  <span className="truncate text-stone-500">{projectNames[selection.source_project_id] || `Project ${selection.source_project_id}`}</span>
+                  <span className="truncate text-stone-500">
+                    {projectNames[selection.source_project_id] || `Project ${selection.source_project_id}`}
+                  </span>
                   <button
                     type="button"
                     className="text-stone-400 transition hover:text-red-600"
@@ -160,16 +190,25 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-semibold">{item.name}</span>
-                      {defaults.some((binding) => Number(binding.vault_item_id) === Number(item.id)) ? <Badge tone="good">default</Badge> : null}
+                      {defaults.some((binding) => Number(binding.vault_item_id) === Number(item.id)) ? (
+                        <Badge tone="good">default</Badge>
+                      ) : null}
                     </span>
                     <span className="mt-1 block truncate text-xs text-stone-500">{item.description || item.provider || "Vault item"}</span>
                   </span>
                 </label>
                 {selection ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 pl-7">
-                    <span className="text-xs text-stone-500">From {projectNames[selection.source_project_id] || `Project ${selection.source_project_id}`}</span>
+                    <span className="text-xs text-stone-500">
+                      From {projectNames[selection.source_project_id] || `Project ${selection.source_project_id}`}
+                    </span>
                     <label className="flex items-center gap-2 text-sm text-stone-700">
-                      <Checkbox checked={selection.replace_existing} onChange={(event) => update(item.id, { replace_existing: event.target.checked, binding_id: undefined, binding_revision: undefined })} />
+                      <Checkbox
+                        checked={selection.replace_existing}
+                        onChange={(event) =>
+                          update(item.id, { replace_existing: event.target.checked, binding_id: undefined, binding_revision: undefined })
+                        }
+                      />
                       Overwrite existing shell value
                     </label>
                   </div>
@@ -177,16 +216,20 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
               </div>
             );
           })}
-          {visibleItems.length === 0 ? <p className="p-6 text-center text-sm text-stone-500">No matching Vault items in this project.</p> : null}
+          {visibleItems.length === 0 ? (
+            <p className="p-6 text-center text-sm text-stone-500">No matching Vault items in this project.</p>
+          ) : null}
         </div>
         {Number(state.options?.total || 0) > items.length ? (
           <Notice tone="warn" className="py-2 text-xs">
-            Showing {items.length} of {state.options.total} Vault items. Narrow the project first, then use the Vault page search to manage items outside this bounded session list.
+            Showing {items.length} of {state.options.total} Vault items. Narrow the project first, then use the Vault page search to manage
+            items outside this bounded session list.
           </Notice>
         ) : null}
         {Object.keys(selected).length > 0 ? (
           <Notice tone="warn" className="py-2 text-xs">
-            Every process in the new shell can read, transform, persist, or transmit the selected values. Exact-value redaction only reduces accidental output exposure, and detached processes may retain inherited values.
+            Every process in the new shell can read, transform, persist, or transmit the selected values. Exact-value redaction only reduces
+            accidental output exposure, and detached processes may retain inherited values.
           </Notice>
         ) : null}
         {state.error ? <Notice tone="bad">{state.error}</Notice> : null}

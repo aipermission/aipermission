@@ -205,7 +205,9 @@ export function TokensPage() {
                     <div className="grid gap-1.5 text-xs">
                       <div className="flex flex-wrap gap-1">
                         {grantSummary.kinds.map((kind) => (
-                          <Badge key={kind} tone="neutral">{kind}</Badge>
+                          <Badge key={kind} tone="neutral">
+                            {kind}
+                          </Badge>
                         ))}
                         {grantSummary.kinds.length === 0 ? <Badge tone="neutral">none</Badge> : null}
                       </div>
@@ -343,7 +345,9 @@ export function TokensPage() {
 function connectorGrantSummary(permissions) {
   const active = permissions.filter((permission) => Boolean(effectiveRule(permission)));
   const kinds = [...new Set(active.map((permission) => permission.connector_kind).filter(Boolean))].sort();
-  const targetProfiles = new Set(active.map((permission) => `${permission.connector_kind}:${permission.target_id}:${permission.profile_id}`));
+  const targetProfiles = new Set(
+    active.map((permission) => `${permission.connector_kind}:${permission.target_id}:${permission.profile_id}`),
+  );
   return {
     activeActions: active.length,
     targetProfiles: targetProfiles.size,
@@ -353,12 +357,18 @@ function connectorGrantSummary(permissions) {
 
 function TokenStat({ icon: Icon, label, value, tone = "neutral", selected = false, onClick }) {
   const tones = {
-    neutral: selected ? "token-stat-neutral-selected border-stone-500 bg-stone-50 text-stone-950 ring-stone-300" : "token-stat-neutral border-stone-200 bg-white text-stone-900 ring-transparent",
+    neutral: selected
+      ? "token-stat-neutral-selected border-stone-500 bg-stone-50 text-stone-950 ring-stone-300"
+      : "token-stat-neutral border-stone-200 bg-white text-stone-900 ring-transparent",
     good: selected
       ? "token-stat-good-selected border-emerald-700 bg-emerald-50 text-emerald-950 ring-emerald-200"
       : "token-stat-good border-emerald-200 bg-emerald-50 text-emerald-950 ring-transparent",
-    warn: selected ? "token-stat-warn-selected border-amber-700 bg-amber-50 text-amber-950 ring-amber-200" : "token-stat-warn border-amber-200 bg-amber-50 text-amber-950 ring-transparent",
-    bad: selected ? "token-stat-bad-selected border-red-700 bg-red-50 text-red-950 ring-red-200" : "token-stat-bad border-red-200 bg-red-50 text-red-950 ring-transparent",
+    warn: selected
+      ? "token-stat-warn-selected border-amber-700 bg-amber-50 text-amber-950 ring-amber-200"
+      : "token-stat-warn border-amber-200 bg-amber-50 text-amber-950 ring-transparent",
+    bad: selected
+      ? "token-stat-bad-selected border-red-700 bg-red-50 text-red-950 ring-red-200"
+      : "token-stat-bad border-red-200 bg-red-50 text-red-950 ring-transparent",
   };
   return (
     <button

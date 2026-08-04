@@ -75,7 +75,10 @@ test("connector template registry evaluates at runtime", async () => {
       blankValueError: "Value is required.",
       validValueError: "",
     });
-    assert.deepEqual(pageErrors.map((error) => error.message), []);
+    assert.deepEqual(
+      pageErrors.map((error) => error.message),
+      [],
+    );
   } finally {
     if (browser) {
       await browser.close();

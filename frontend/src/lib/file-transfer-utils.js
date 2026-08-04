@@ -38,7 +38,9 @@ export function forgetDownloadPath(server) {
 
 export function joinRemotePath(remoteDir, remoteName) {
   const dir = normalizeRemoteDirectoryInput(remoteDir);
-  const name = String(remoteName || "").trim().replace(/^\/+/, "");
+  const name = String(remoteName || "")
+    .trim()
+    .replace(/^\/+/, "");
   if (dir === "/") return `/${name}`;
   return `${dir.replace(/\/+$/, "")}/${name}`;
 }

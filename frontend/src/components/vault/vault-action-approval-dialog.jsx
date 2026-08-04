@@ -30,21 +30,28 @@ export function VaultActionApprovalDialog({ approval, note, action, onNoteChange
     >
       {approval ? (
         <div className="grid h-[calc(100vh-196px)] min-h-0 grid-rows-[minmax(0,1fr)_auto]">
-          <div className={`grid min-h-0 gap-3 p-5 ${approvedItems.length > 0 ? "grid-rows-[auto_auto_auto_auto_minmax(0,1fr)]" : "grid-rows-[auto_auto_auto_minmax(0,1fr)]"}`}>
+          <div
+            className={`grid min-h-0 gap-3 p-5 ${approvedItems.length > 0 ? "grid-rows-[auto_auto_auto_auto_minmax(0,1fr)]" : "grid-rows-[auto_auto_auto_minmax(0,1fr)]"}`}
+          >
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="warn">pending</Badge>
               <Badge>{approval.token_name}</Badge>
               <Badge>{approval.project_name}</Badge>
               <Badge>{approval.action_name}</Badge>
               {age ? <Badge title={timestamp}>sent {age}</Badge> : null}
-              {expiry ? <Badge tone="warn" title={expiryTimestamp}>{expiry}</Badge> : null}
+              {expiry ? (
+                <Badge tone="warn" title={expiryTimestamp}>
+                  {expiry}
+                </Badge>
+              ) : null}
             </div>
             <div className="rounded-md border border-stone-200 bg-stone-50 p-3">
               <p className="text-xs font-semibold uppercase text-stone-500">Reason</p>
               <p className="mt-1 text-sm text-stone-800">{approval.reason || "No reason supplied."}</p>
               {context.target_id ? (
                 <p className="mt-2 font-mono text-xs text-stone-500">
-                  {context.connector_kind} target {context.target_id} · profile {context.profile_id} · session {context.expected_session_id || "new"}
+                  {context.connector_kind} target {context.target_id} · profile {context.profile_id} · session{" "}
+                  {context.expected_session_id || "new"}
                 </p>
               ) : null}
             </div>
@@ -60,7 +67,8 @@ export function VaultActionApprovalDialog({ approval, note, action, onNoteChange
                   <div key={`${item.source_project_id}:${item.item_id}`} className="flex items-center justify-between gap-3 text-sm">
                     <span className="font-mono font-semibold text-stone-900">{item.name}</span>
                     <span className="text-xs text-stone-500">
-                      project {item.source_project_id}{item.replace_existing ? " · overwrites existing shell value" : ""}
+                      project {item.source_project_id}
+                      {item.replace_existing ? " · overwrites existing shell value" : ""}
                     </span>
                   </div>
                 ))}
@@ -87,7 +95,9 @@ export function VaultActionApprovalDialog({ approval, note, action, onNoteChange
             </label>
             {action.error ? <Notice tone="bad">{action.error}</Notice> : null}
             {terminal ? (
-              <Button type="button" onClick={onClose}>OK</Button>
+              <Button type="button" onClick={onClose}>
+                OK
+              </Button>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 <Button type="button" variant="outline" onClick={onDecline} disabled={!["idle", "error"].includes(action.state)}>

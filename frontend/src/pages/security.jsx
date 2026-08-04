@@ -130,7 +130,8 @@ export function SecurityPage() {
             <span className="grid gap-1 text-sm">
               <span className="font-semibold text-stone-900">Allow reusable token copy</span>
               <span className="text-stone-500">
-                Off is safer: new token values are shown once at creation. Turn this on only if you want local convenience for newly created MCP tokens.
+                Off is safer: new token values are shown once at creation. Turn this on only if you want local convenience for newly created
+                MCP tokens.
               </span>
             </span>
           </label>
@@ -166,7 +167,8 @@ export function SecurityPage() {
             <span className="grid gap-1 text-sm">
               <span className="font-semibold text-stone-900">Expose endpoint metadata to MCP</span>
               <span className="text-stone-500">
-                Off is safer: AI clients see connector target/profile/action permission context only. Turn this on only when the agent needs connector endpoint context.
+                Off is safer: AI clients see connector target/profile/action permission context only. Turn this on only when the agent needs
+                connector endpoint context.
               </span>
             </span>
           </label>
@@ -202,7 +204,8 @@ export function SecurityPage() {
             <span className="grid gap-1 text-sm">
               <span className="font-semibold text-stone-900">Start MCP execution after unlock</span>
               <span className="text-stone-500">
-                Off is safer: permissions stay saved, but MCP command execution starts stopped when the gateway starts or the database is unlocked.
+                Off is safer: permissions stay saved, but MCP command execution starts stopped when the gateway starts or the database is
+                unlocked.
               </span>
             </span>
           </label>
@@ -226,29 +229,45 @@ export function SecurityPage() {
               className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-emerald-800"
               value={security.data?.redaction_mode || "basic"}
               disabled={security.state === "loading" || securityState.state === "saving"}
-              onChange={(event) => updateSecuritySettings({ redaction_mode: event.target.value }, `Redaction mode set to ${event.target.value}.`)}
+              onChange={(event) =>
+                updateSecuritySettings({ redaction_mode: event.target.value }, `Redaction mode set to ${event.target.value}.`)
+              }
             >
               <option value="basic">Basic</option>
               <option value="off">Off</option>
             </select>
           </Field>
           <Notice tone={security.data?.redaction_mode === "off" ? "warn" : "good"}>
-            Basic redaction masks common token, password, API key, bearer token, and private key patterns in persisted command/audit data. Avoid printing secrets; redaction is best-effort.
+            Basic redaction masks common token, password, API key, bearer token, and private key patterns in persisted command/audit data.
+            Avoid printing secrets; redaction is best-effort.
           </Notice>
           {security.data?.redaction_mode === "basic" ? (
             <div className="grid gap-4 rounded-lg border border-stone-200 bg-stone-50 p-4">
               <div>
                 <h4 className="text-sm font-semibold text-stone-900">Custom redaction rules</h4>
-                <p className="mt-1 text-sm text-stone-500">Add Go RE2 regex patterns that run after the built-in basic rules. Matches are replaced with [REDACTED].</p>
+                <p className="mt-1 text-sm text-stone-500">
+                  Add Go RE2 regex patterns that run after the built-in basic rules. Matches are replaced with [REDACTED].
+                </p>
               </div>
               <form className="grid gap-3" onSubmit={createRedactionRule}>
                 <Field>
                   Rule name
-                  <Input value={redactionRuleForm.name} onChange={(event) => updateRedactionRuleForm("name", event.target.value)} placeholder="Internal token" maxLength={80} required />
+                  <Input
+                    value={redactionRuleForm.name}
+                    onChange={(event) => updateRedactionRuleForm("name", event.target.value)}
+                    placeholder="Internal token"
+                    maxLength={80}
+                    required
+                  />
                 </Field>
                 <Field>
                   Regex pattern
-                  <Input value={redactionRuleForm.pattern} onChange={(event) => updateRedactionRuleForm("pattern", event.target.value)} placeholder="(?i)internal_[a-z0-9]{24,}" required />
+                  <Input
+                    value={redactionRuleForm.pattern}
+                    onChange={(event) => updateRedactionRuleForm("pattern", event.target.value)}
+                    placeholder="(?i)internal_[a-z0-9]{24,}"
+                    required
+                  />
                 </Field>
                 <label className="flex items-center gap-2 text-sm text-stone-700">
                   <input
@@ -273,7 +292,13 @@ export function SecurityPage() {
                         <p className="truncate text-sm font-semibold text-stone-900">{rule.name}</p>
                         <code className="mt-1 block break-all rounded bg-stone-100 px-2 py-1 text-xs text-stone-700">{rule.pattern}</code>
                       </div>
-                      <Button type="button" variant="ghost" className="h-8 w-8 shrink-0 px-0" onClick={() => deleteRedactionRule(rule)} disabled={redactionRuleState.state === "deleting"}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-8 w-8 shrink-0 px-0"
+                        onClick={() => deleteRedactionRule(rule)}
+                        disabled={redactionRuleState.state === "deleting"}
+                      >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -289,7 +314,9 @@ export function SecurityPage() {
                     </label>
                   </div>
                 ))}
-                {redactionRules.state === "ready" && redactionRules.data.length === 0 ? <Notice>No custom redaction rules yet.</Notice> : null}
+                {redactionRules.state === "ready" && redactionRules.data.length === 0 ? (
+                  <Notice>No custom redaction rules yet.</Notice>
+                ) : null}
               </div>
             </div>
           ) : (

@@ -6,8 +6,8 @@ export const connectorTemplateMetadata = Object.freeze(
   Object.fromEntries(
     Object.entries(metadataModules)
       .map(([path, metadata]) => [connectorKindFromPath(path), Object.freeze(metadata)])
-      .sort(([left], [right]) => left.localeCompare(right))
-  )
+      .sort(([left], [right]) => left.localeCompare(right)),
+  ),
 );
 
 export const supportedConnectorKinds = Object.freeze(Object.keys(connectorTemplateMetadata));

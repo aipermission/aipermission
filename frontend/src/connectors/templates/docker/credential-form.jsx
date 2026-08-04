@@ -12,12 +12,19 @@ export function DockerCredentialFormTemplate({ targets, form, formMode = "create
         <Notice tone="warn">Create a Docker connector target before adding a Docker credential scope.</Notice>
       ) : (
         <Notice tone="good">
-          {editing ? "Update this Docker scope. Token permissions bound to this profile will use the new container scope immediately." : "Create a Docker scope, then bind tokens to this profile from Console or Tokens."}
+          {editing
+            ? "Update this Docker scope. Token permissions bound to this profile will use the new container scope immediately."
+            : "Create a Docker scope, then bind tokens to this profile from Console or Tokens."}
         </Notice>
       )}
       <Field>
         Connector target
-        <Select value={form.target_id} onChange={(event) => onChange({ ...form, target_id: event.target.value })} disabled={editing} required>
+        <Select
+          value={form.target_id}
+          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
+          disabled={editing}
+          required
+        >
           <option value="" disabled>
             Select Docker target
           </option>
@@ -49,11 +56,21 @@ export function DockerCredentialFormTemplate({ targets, form, formMode = "create
         <div className="grid gap-3 sm:grid-cols-2">
           <Field>
             Allowed containers
-            <Textarea rows={6} value={form.allowed_containers} onChange={(event) => onChange({ ...form, allowed_containers: event.target.value })} placeholder={"api\nweb\ncontainer-id-prefix"} />
+            <Textarea
+              rows={6}
+              value={form.allowed_containers}
+              onChange={(event) => onChange({ ...form, allowed_containers: event.target.value })}
+              placeholder={"api\nweb\ncontainer-id-prefix"}
+            />
           </Field>
           <Field>
             Allowed name patterns
-            <Textarea rows={6} value={form.allowed_patterns} onChange={(event) => onChange({ ...form, allowed_patterns: event.target.value })} placeholder={"project-api-*\n*_worker"} />
+            <Textarea
+              rows={6}
+              value={form.allowed_patterns}
+              onChange={(event) => onChange({ ...form, allowed_patterns: event.target.value })}
+              placeholder={"project-api-*\n*_worker"}
+            />
           </Field>
         </div>
       ) : null}

@@ -76,7 +76,9 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
           </Notice>
         </>
       ) : token ? (
-        <Notice tone="warn">This token value is not available for copy. Create a new token, or enable reusable token copy in Settings before creating tokens.</Notice>
+        <Notice tone="warn">
+          This token value is not available for copy. Create a new token, or enable reusable token copy in Settings before creating tokens.
+        </Notice>
       ) : null}
     </Dialog>
   );
@@ -113,6 +115,6 @@ function manualConfigJSON(name, token) {
       },
     },
     null,
-    2
+    2,
   );
 }
