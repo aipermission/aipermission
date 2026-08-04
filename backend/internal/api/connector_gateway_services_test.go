@@ -97,8 +97,8 @@ func createRuntimeScopedVaultRequest(t *testing.T, runtime *databaseRuntime, suf
 	runtimeID := surface.ID
 	request, _, err := vaultrequests.NewStore(runtime.database).Create(ctx, vaultrequests.CreateInput{
 		TokenID: token.ID, ProjectID: project.ID, RuntimeID: &runtimeID,
-		ActionName: vaultrequests.ActionRestartSession,
-		Input: map[string]any{"target_ref": "test:" + suffix},
+		ActionName:          vaultrequests.ActionRestartSession,
+		Input:               map[string]any{"target_ref": "test:" + suffix},
 		ApprovalContextHash: "trust-" + suffix, IdempotencyKey: "trust-" + suffix,
 	})
 	if err != nil {
