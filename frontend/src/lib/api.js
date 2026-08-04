@@ -2,14 +2,9 @@ import { scopedUICookieName } from "./ui-cookie.js";
 
 const viteEnv = import.meta.env || {};
 
-export const apiUrl =
-  viteEnv.VITE_API_URL === undefined
-    ? "http://localhost:8080"
-    : normalizeApiUrl(viteEnv.VITE_API_URL);
+export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl =
-  viteEnv.VITE_MCP_API_URL === undefined
-    ? "http://localhost:3210"
-    : normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
+  viteEnv.VITE_MCP_API_URL === undefined ? "http://localhost:3210" : normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 export async function apiGet(path) {
   const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
@@ -136,11 +131,13 @@ function csrfHeaders(base = {}) {
 function readCookie(name) {
   if (typeof document === "undefined") return "";
   const prefix = `${name}=`;
-  return document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(prefix))
-    ?.slice(prefix.length) || "";
+  return (
+    document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(prefix))
+      ?.slice(prefix.length) || ""
+  );
 }
 
 export function downloadBlob(blob, filename) {

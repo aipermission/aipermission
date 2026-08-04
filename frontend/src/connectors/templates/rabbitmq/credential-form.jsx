@@ -12,18 +12,26 @@ export function RabbitMQCredentialFormTemplate({ targets, form, formMode = "crea
         <Notice tone="warn">Create a RabbitMQ connector target before adding a RabbitMQ credential profile.</Notice>
       ) : (
         <Notice tone="good">
-          {editing ? "Update public RabbitMQ profile metadata, or enter a new password to rotate the stored secret." : "Create a RabbitMQ profile, then bind tokens to this profile from Console or Tokens."}
+          {editing
+            ? "Update public RabbitMQ profile metadata, or enter a new password to rotate the stored secret."
+            : "Create a RabbitMQ profile, then bind tokens to this profile from Console or Tokens."}
         </Notice>
       )}
       <Field>
         Connector target
-        <Select value={form.target_id} onChange={(event) => onChange({ ...form, target_id: event.target.value })} disabled={editing} required>
+        <Select
+          value={form.target_id}
+          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
+          disabled={editing}
+          required
+        >
           <option value="" disabled>
             Select RabbitMQ target
           </option>
           {rabbitTargets.map((target) => (
             <option value={target.id} key={target.id}>
-          {target.name} · management {target.config?.scheme || "http"}://{target.config?.host}:{target.config?.port || 15672} · {target.config?.vhost || "/"}
+              {target.name} · management {target.config?.scheme || "http"}://{target.config?.host}:{target.config?.port || 15672} ·{" "}
+              {target.config?.vhost || "/"}
             </option>
           ))}
         </Select>
@@ -40,7 +48,13 @@ export function RabbitMQCredentialFormTemplate({ targets, form, formMode = "crea
       </div>
       <Field>
         Username
-        <Input value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value })} autoComplete="off" placeholder="RabbitMQ Management API username" required />
+        <Input
+          value={form.username}
+          onChange={(event) => onChange({ ...form, username: event.target.value })}
+          autoComplete="off"
+          placeholder="RabbitMQ Management API username"
+          required
+        />
       </Field>
       <Field>
         {editing ? "New password" : "Password"}

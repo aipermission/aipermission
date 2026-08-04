@@ -302,7 +302,12 @@ export function SettingsPage() {
   }
 
   function closeBackupRecordsDialog() {
-    if (backupProviderState.state?.startsWith("restoring-") || backupProviderState.state === "pruning" || backupProviderState.state === "deleting-records") return;
+    if (
+      backupProviderState.state?.startsWith("restoring-") ||
+      backupProviderState.state === "pruning" ||
+      backupProviderState.state === "deleting-records"
+    )
+      return;
     setBackupPruneTarget(null);
     setBackupDeleteRecords([]);
     setSelectedBackupRecordIDs([]);
@@ -343,8 +348,7 @@ export function SettingsPage() {
     const provider = backupRecordsProvider;
     const result = await runBackupProviderAction({
       pending: "deleting-records",
-      successMessage: (response) =>
-        `Deleted ${response.deleted_count} backup version${response.deleted_count === 1 ? "" : "s"}.`,
+      successMessage: (response) => `Deleted ${response.deleted_count} backup version${response.deleted_count === 1 ? "" : "s"}.`,
       action: () =>
         apiPost(`/api/backup/providers/${provider.id}/records/delete`, {
           record_ids: backupDeleteRecords.map((record) => record.id),
@@ -392,7 +396,11 @@ export function SettingsPage() {
     await runBackupProviderAction({
       pending: `downloading-record-${record.id}`,
       successMessage: `Downloaded ${record.filename}.`,
-      action: () => apiDownload(`/api/backup/providers/${backupRecordsProvider.id}/records/${record.id}/download`, record.filename || "aipermission-backup.aipdb"),
+      action: () =>
+        apiDownload(
+          `/api/backup/providers/${backupRecordsProvider.id}/records/${record.id}/download`,
+          record.filename || "aipermission-backup.aipdb",
+        ),
     });
   }
 
@@ -591,7 +599,12 @@ export function SettingsPage() {
         });
       }
       if (message.type === "ready") {
-        setMaintenanceSession((current) => ({ ...current, status: message.status || "connected", shell: message.shell || current.shell, error: null }));
+        setMaintenanceSession((current) => ({
+          ...current,
+          status: message.status || "connected",
+          shell: message.shell || current.shell,
+          error: null,
+        }));
       }
       if (message.type === "output") {
         setMaintenanceSession((current) => ({
@@ -690,7 +703,10 @@ export function SettingsPage() {
                 </div>
               ) : (
                 backupProviders.data.map((provider) => (
-                  <div key={provider.id} className="grid gap-3 rounded-md border border-stone-200 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,20rem)]">
+                  <div
+                    key={provider.id}
+                    className="grid gap-3 rounded-md border border-stone-200 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,20rem)]"
+                  >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <Cloud className="h-4 w-4 text-emerald-600" />
@@ -698,13 +714,23 @@ export function SettingsPage() {
                         <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold uppercase text-stone-600">
                           {providerLabel(provider.provider_type, backupProviderCatalog.data)}
                         </span>
-                        <span className={provider.status === "active" ? "rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark-badge-good" : "rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-700 dark-badge-neutral"}>
+                        <span
+                          className={
+                            provider.status === "active"
+                              ? "rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark-badge-good"
+                              : "rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-700 dark-badge-neutral"
+                          }
+                        >
                           {provider.status}
                         </span>
                       </div>
-                      <p className="mt-1 truncate font-mono text-xs text-stone-500">{provider.public?.base_url || "Service URL not configured"}</p>
+                      <p className="mt-1 truncate font-mono text-xs text-stone-500">
+                        {provider.public?.base_url || "Service URL not configured"}
+                      </p>
                       <p className="mt-1 text-xs text-stone-500">
-                        {provider.last_checked_at ? `Last verified ${formatRelativeAge(provider.last_checked_at)}` : "Connection has not been verified yet"}
+                        {provider.last_checked_at
+                          ? `Last verified ${formatRelativeAge(provider.last_checked_at)}`
+                          : "Connection has not been verified yet"}
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -766,7 +792,12 @@ export function SettingsPage() {
                           Enable
                         </Button>
                       )}
-                      <Button type="button" variant="outline" className="h-9 px-2 text-xs" onClick={() => openBackupProviderDialog(provider)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 px-2 text-xs"
+                        onClick={() => openBackupProviderDialog(provider)}
+                      >
                         <Edit3 className="h-4 w-4" />
                         Edit
                       </Button>
@@ -796,7 +827,8 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="grid gap-4">
           <Notice tone="warn">
-            Local UI-only diagnostics for the gateway runtime. It is not exposed to MCP, output is bounded in memory, and open/close lifecycle events are audited.
+            Local UI-only diagnostics for the gateway runtime. It is not exposed to MCP, output is bounded in memory, and open/close
+            lifecycle events are audited.
           </Notice>
           <Button type="button" onClick={openMaintenanceConsole}>
             <Terminal className="h-4 w-4" />
@@ -814,7 +846,8 @@ export function SettingsPage() {
         <CardContent>
           <form className="grid gap-4" onSubmit={saveRetention}>
             <Notice>
-              Cleanup runs when a database is unlocked and immediately after saving these settings. Use 0 to disable automatic cleanup for a category.
+              Cleanup runs when a database is unlocked and immediately after saving these settings. Use 0 to disable automatic cleanup for a
+              category.
             </Notice>
             {retention.state === "error" ? <Notice tone="bad">{retention.error}</Notice> : null}
             <div className="grid gap-3 sm:grid-cols-2">
@@ -852,16 +885,36 @@ export function SettingsPage() {
                 <p className="text-xs text-stone-500">Run a one-time purge without changing automatic retention settings.</p>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
-                <Button type="button" variant="outline" onClick={() => purgeRetention("history", 30)} disabled={purgeState.state === "purging"}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => purgeRetention("history", 30)}
+                  disabled={purgeState.state === "purging"}
+                >
                   Purge history older than 30 days
                 </Button>
-                <Button type="button" variant="outline" onClick={() => purgeRetention("audit", 30)} disabled={purgeState.state === "purging"}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => purgeRetention("audit", 30)}
+                  disabled={purgeState.state === "purging"}
+                >
                   Purge audit older than 30 days
                 </Button>
-                <Button type="button" variant="outline" onClick={() => purgeRetention("console", 7)} disabled={purgeState.state === "purging"}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => purgeRetention("console", 7)}
+                  disabled={purgeState.state === "purging"}
+                >
                   Purge consoles older than 7 days
                 </Button>
-                <Button type="button" variant="outline" onClick={() => purgeRetention("messages", 7)} disabled={purgeState.state === "purging"}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => purgeRetention("messages", 7)}
+                  disabled={purgeState.state === "purging"}
+                >
                   Purge messages older than 7 days
                 </Button>
               </div>
@@ -1027,7 +1080,10 @@ export function SettingsPage() {
         size="md"
       >
         <form className="grid gap-4" onSubmit={saveBackupProvider}>
-          <Notice>Remote providers store encrypted database files only. They do not receive MCP tokens, connector credentials, or the database password.</Notice>
+          <Notice>
+            Remote providers store encrypted database files only. They do not receive MCP tokens, connector credentials, or the database
+            password.
+          </Notice>
           <Field>
             Provider type
             <Select
@@ -1075,7 +1131,12 @@ export function SettingsPage() {
             />
             <span className="text-xs font-normal text-stone-500">
               Stored encrypted in this local database and never returned by the API.{" "}
-              <a className="font-semibold text-emerald-700 underline-offset-2 hover:underline" href={backupServiceGuideURL} target="_blank" rel="noreferrer">
+              <a
+                className="font-semibold text-emerald-700 underline-offset-2 hover:underline"
+                href={backupServiceGuideURL}
+                target="_blank"
+                rel="noreferrer"
+              >
                 Setup guide
               </a>
             </span>
@@ -1108,7 +1169,12 @@ export function SettingsPage() {
           </div>
           {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={closeBackupProviderArchiveDialog} disabled={backupProviderState.state === "archiving"}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeBackupProviderArchiveDialog}
+              disabled={backupProviderState.state === "archiving"}
+            >
               Cancel
             </Button>
             <Button type="submit" variant="danger" disabled={!backupProviderArchiveTarget || backupProviderState.state === "archiving"}>
@@ -1122,7 +1188,9 @@ export function SettingsPage() {
       <Dialog
         open={Boolean(backupUploadTarget)}
         title="Upload encrypted backup"
-        description={backupUploadTarget ? `Upload the current ${databaseName} database to ${backupUploadTarget.name}.` : "Upload encrypted backup."}
+        description={
+          backupUploadTarget ? `Upload the current ${databaseName} database to ${backupUploadTarget.name}.` : "Upload encrypted backup."
+        }
         onClose={closeUploadBackupDialog}
         closeDisabled={backupProviderState.state === `uploading-${backupUploadTarget?.id}`}
         closeOnOverlay={false}
@@ -1130,7 +1198,8 @@ export function SettingsPage() {
       >
         <form className="grid gap-4" onSubmit={uploadBackupProvider}>
           <Notice>
-            AIPermission will upload an encrypted <code>.aipdb</code> snapshot. The database password and encryption key are never sent to the backup service.
+            AIPermission will upload an encrypted <code>.aipdb</code> snapshot. The database password and encryption key are never sent to
+            the backup service.
           </Notice>
           <div className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm">
             <div className="flex items-center justify-between gap-3">
@@ -1148,7 +1217,12 @@ export function SettingsPage() {
           </div>
           {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={closeUploadBackupDialog} disabled={backupProviderState.state === `uploading-${backupUploadTarget?.id}`}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeUploadBackupDialog}
+              disabled={backupProviderState.state === `uploading-${backupUploadTarget?.id}`}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={!backupUploadTarget || backupProviderState.state === `uploading-${backupUploadTarget?.id}`}>
@@ -1164,18 +1238,25 @@ export function SettingsPage() {
         title="Remote backup records"
         description={backupRecordsProvider ? `Backups uploaded through ${backupRecordsProvider.name}.` : "Remote backup records."}
         onClose={closeBackupRecordsDialog}
-        closeDisabled={backupProviderState.state?.startsWith("restoring-") || backupProviderState.state === "pruning" || backupProviderState.state === "deleting-records"}
+        closeDisabled={
+          backupProviderState.state?.startsWith("restoring-") ||
+          backupProviderState.state === "pruning" ||
+          backupProviderState.state === "deleting-records"
+        }
         closeOnOverlay={false}
         size="wide"
         className="!max-w-4xl"
       >
         <div className="grid gap-4">
           <Notice>
-            Download a remote <code>.aipdb</code> file for manual import, or restore it as a new local database. Restores never overwrite the currently open database.
+            Download a remote <code>.aipdb</code> file for manual import, or restore it as a new local database. Restores never overwrite
+            the currently open database.
           </Notice>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-stone-500">
-              {backupRecords.state === "ready" ? `${backupRecords.data.length} backup${backupRecords.data.length === 1 ? "" : "s"}` : "Loading backups..."}
+              {backupRecords.state === "ready"
+                ? `${backupRecords.data.length} backup${backupRecords.data.length === 1 ? "" : "s"}`
+                : "Loading backups..."}
             </p>
             <div className="flex items-center gap-2">
               {selectedBackupRecordIDs.length > 0 ? (
@@ -1204,7 +1285,13 @@ export function SettingsPage() {
                 <Trash2 className="h-4 w-4" />
                 Prune
               </Button>
-              <Button type="button" variant="outline" className="h-9 px-3 text-xs" onClick={refreshBackupRecords} disabled={backupRecords.state === "loading"}>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 px-3 text-xs"
+                onClick={refreshBackupRecords}
+                disabled={backupRecords.state === "loading"}
+              >
                 <RotateCcw className="h-4 w-4" />
                 Refresh
               </Button>
@@ -1234,12 +1321,13 @@ export function SettingsPage() {
                         className="mt-1 shrink-0"
                       />
                       <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-stone-950">{record.filename}</p>
-                      <p className="mt-1 text-xs text-stone-500">
-                        {formatBytes(record.size_bytes)} · {formatRelativeAge(record.backup_created_at || record.uploaded_at)} · from {record.source_machine || "unknown machine"}
-                      </p>
-                      <p className="mt-1 text-[11px] text-stone-400">{formatTimestamp(record.backup_created_at || record.uploaded_at)}</p>
-                      <p className="mt-1 truncate font-mono text-[11px] text-stone-400">{record.checksum_sha256 || "no checksum"}</p>
+                        <p className="truncate text-sm font-semibold text-stone-950">{record.filename}</p>
+                        <p className="mt-1 text-xs text-stone-500">
+                          {formatBytes(record.size_bytes)} · {formatRelativeAge(record.backup_created_at || record.uploaded_at)} · from{" "}
+                          {record.source_machine || "unknown machine"}
+                        </p>
+                        <p className="mt-1 text-[11px] text-stone-400">{formatTimestamp(record.backup_created_at || record.uploaded_at)}</p>
+                        <p className="mt-1 truncate font-mono text-[11px] text-stone-400">{record.checksum_sha256 || "no checksum"}</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-[1fr_1fr_auto] gap-2 md:w-72">
@@ -1297,7 +1385,8 @@ export function SettingsPage() {
       >
         <form className="grid gap-4" onSubmit={deleteBackupRecords}>
           <Notice tone="warn">
-            This cannot be undone. AIPermission Backup will remove the selected immutable files and metadata. At least one recovery version always remains.
+            This cannot be undone. AIPermission Backup will remove the selected immutable files and metadata. At least one recovery version
+            always remains.
           </Notice>
           <div className="max-h-48 overflow-auto rounded-md border border-stone-200 bg-stone-50">
             <div className="divide-y divide-stone-200">
@@ -1313,10 +1402,19 @@ export function SettingsPage() {
           </div>
           {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={closeDeleteBackupRecordsDialog} disabled={backupProviderState.state === "deleting-records"}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeDeleteBackupRecordsDialog}
+              disabled={backupProviderState.state === "deleting-records"}
+            >
               Cancel
             </Button>
-            <Button type="submit" variant="danger" disabled={backupProviderState.state === "deleting-records" || backupDeleteRecords.length === 0}>
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={backupProviderState.state === "deleting-records" || backupDeleteRecords.length === 0}
+            >
               <Trash2 className="h-4 w-4" />
               {backupProviderState.state === "deleting-records" ? "Deleting..." : "Delete permanently"}
             </Button>
@@ -1327,7 +1425,9 @@ export function SettingsPage() {
       <Dialog
         open={Boolean(backupPruneTarget)}
         title="Prune old backup versions"
-        description={backupPruneTarget ? `Keep only the newest versions uploaded through ${backupPruneTarget.name}.` : "Prune old backup versions."}
+        description={
+          backupPruneTarget ? `Keep only the newest versions uploaded through ${backupPruneTarget.name}.` : "Prune old backup versions."
+        }
         onClose={closePruneBackupRecordsDialog}
         closeDisabled={backupProviderState.state === "pruning"}
         closeOnOverlay={false}
@@ -1335,7 +1435,8 @@ export function SettingsPage() {
       >
         <form className="grid gap-4" onSubmit={pruneBackupRecords}>
           <Notice tone="warn">
-            Older remote versions will be permanently deleted from the self-hosted backup service. The newest versions are never removed by this action.
+            Older remote versions will be permanently deleted from the self-hosted backup service. The newest versions are never removed by
+            this action.
           </Notice>
           <Field>
             Versions to keep
@@ -1356,16 +1457,18 @@ export function SettingsPage() {
           </p>
           {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={closePruneBackupRecordsDialog} disabled={backupProviderState.state === "pruning"}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closePruneBackupRecordsDialog}
+              disabled={backupProviderState.state === "pruning"}
+            >
               Cancel
             </Button>
             <Button
               type="submit"
               variant="danger"
-              disabled={
-                backupProviderState.state === "pruning" ||
-                parsedBackupPruneKeepLatest === null
-              }
+              disabled={backupProviderState.state === "pruning" || parsedBackupPruneKeepLatest === null}
             >
               <Trash2 className="h-4 w-4" />
               {backupProviderState.state === "pruning" ? "Pruning..." : "Prune old versions"}
@@ -1407,7 +1510,12 @@ export function SettingsPage() {
           </Field>
           {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={closeRestoreBackupRecordDialog} disabled={backupProviderState.state === `restoring-${restoreRecordTarget?.id}`}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeRestoreBackupRecordDialog}
+              disabled={backupProviderState.state === `restoring-${restoreRecordTarget?.id}`}
+            >
               Cancel
             </Button>
             <Button
@@ -1438,7 +1546,8 @@ export function SettingsPage() {
       >
         <form className="grid gap-4" onSubmit={enableBackupProvider}>
           <Notice tone="warn">
-            Encrypted database bytes will leave this machine. Remote backup requires a strong database password. The password itself is verified locally and is never sent to the backup service.
+            Encrypted database bytes will leave this machine. Remote backup requires a strong database password. The password itself is
+            verified locally and is never sent to the backup service.
           </Notice>
           <Field>
             Current database password
@@ -1450,11 +1559,18 @@ export function SettingsPage() {
               autoFocus
               required
             />
-            <span className="text-xs font-normal text-stone-500">Use at least 18 characters with uppercase, lowercase, and numbers. Common or database-derived passwords are rejected.</span>
+            <span className="text-xs font-normal text-stone-500">
+              Use at least 18 characters with uppercase, lowercase, and numbers. Common or database-derived passwords are rejected.
+            </span>
           </Field>
           {backupProviderState.state === "error" ? <Notice tone="bad">{backupProviderState.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={closeEnableBackupProviderDialog} disabled={backupProviderState.state === `enabling-${backupEnableTarget?.id}`}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeEnableBackupProviderDialog}
+              disabled={backupProviderState.state === `enabling-${backupEnableTarget?.id}`}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={!backupEnablePassword || backupProviderState.state === `enabling-${backupEnableTarget?.id}`}>
@@ -1495,7 +1611,11 @@ export function SettingsPage() {
             <Button type="button" variant="outline" onClick={closeDeleteDialog} disabled={deleteState.state === "deleting"}>
               Cancel
             </Button>
-            <Button type="submit" variant="danger" disabled={deleteState.state === "deleting" || deleteName !== databaseName || !deletePassword}>
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={deleteState.state === "deleting" || deleteName !== databaseName || !deletePassword}
+            >
               <Trash2 className="h-4 w-4" />
               {deleteState.state === "deleting" ? "Deleting..." : "Delete permanently"}
             </Button>
@@ -1520,12 +1640,7 @@ export function SettingsPage() {
             </Notice>
           </div>
           <div className="min-h-0">
-            <PtyConsole
-              session={maintenanceSession}
-              onInput={sendMaintenanceInput}
-              onResize={resizeMaintenanceConsole}
-              theme="dark"
-            />
+            <PtyConsole session={maintenanceSession} onInput={sendMaintenanceInput} onResize={resizeMaintenanceConsole} theme="dark" />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 px-4 py-3 text-xs text-stone-500">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1534,7 +1649,9 @@ export function SettingsPage() {
                 {maintenanceSession.status || "closed"}
               </span>
               {maintenanceSession.shell ? <span className="truncate font-mono">{maintenanceSession.shell}</span> : null}
-              {maintenanceSession.error || maintenanceOpenError ? <span className="truncate text-red-600">{maintenanceSession.error || maintenanceOpenError}</span> : null}
+              {maintenanceSession.error || maintenanceOpenError ? (
+                <span className="truncate text-red-600">{maintenanceSession.error || maintenanceOpenError}</span>
+              ) : null}
             </div>
             <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={reconnectMaintenanceConsole}>
               Reconnect

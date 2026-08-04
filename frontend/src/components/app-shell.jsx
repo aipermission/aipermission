@@ -33,7 +33,14 @@ export function Shell({ theme, setTheme }) {
   const [switchDialog, setSwitchDialog] = useState({ open: false, database_id: "", password: "", state: "idle", error: null });
   const [lockDialog, setLockDialog] = useState({ open: false, state: "idle", error: null });
   const [transferCenterOpen, setTransferCenterOpen] = useState(false);
-  const [vaultSessionDialog, setVaultSessionDialog] = useState({ open: false, status: "idle", runtime: null, options: null, sessionOptions: null, error: null });
+  const [vaultSessionDialog, setVaultSessionDialog] = useState({
+    open: false,
+    status: "idle",
+    runtime: null,
+    options: null,
+    sessionOptions: null,
+    error: null,
+  });
   const [vaultActionDialog, setVaultActionDialog] = useState({ approval: null, note: "", state: "idle", error: null });
   const vaultSessionResolverRef = useRef(null);
   const consoleConnectionsRef = useRef({});
@@ -75,11 +82,13 @@ export function Shell({ theme, setTheme }) {
           if (!model?.loadCredentialResources) return [];
           const items = await model.loadCredentialResources();
           return normalizeCredentialResources(kind, items);
-        })
+        }),
       );
       const data = results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
       const errors = results
-        .map((result, index) => (result.status === "rejected" ? `${supportedConnectorKinds[index]}: ${result.reason?.message || result.reason}` : ""))
+        .map((result, index) =>
+          result.status === "rejected" ? `${supportedConnectorKinds[index]}: ${result.reason?.message || result.reason}` : "",
+        )
         .filter(Boolean);
       setCredentials({ state: "ready", data, error: null, errors });
     } catch (error) {
@@ -102,9 +111,7 @@ export function Shell({ theme, setTheme }) {
     try {
       const data = await apiGet("/api/console/sessions");
       setConsoleSessions((current) => ({ state: "ready", data: mergeConsoleSessionData(data, current.data), error: null }));
-      data
-        .filter((session) => isLiveConsoleSession(session))
-        .forEach((session) => attachConsoleSession(session.id));
+      data.filter((session) => isLiveConsoleSession(session)).forEach((session) => attachConsoleSession(session.id));
     } catch (error) {
       setConsoleSessions({ state: "error", data: [], error: error.message });
     }
@@ -178,7 +185,19 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function refreshAll() {
-    await Promise.all([loadStatus(), loadDatabaseStatus(), loadMCPRuntime(), loadTargets(), loadCredentials(), loadTokens(), loadConsoleSessions(), loadConnectorActionApprovals(), loadVaultActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+    await Promise.all([
+      loadStatus(),
+      loadDatabaseStatus(),
+      loadMCPRuntime(),
+      loadTargets(),
+      loadCredentials(),
+      loadTokens(),
+      loadConsoleSessions(),
+      loadConnectorActionApprovals(),
+      loadVaultActionApprovals(),
+      loadMessages(),
+      loadFileTransferBatches({ keepData: true }),
+    ]);
   }
 
   useEffect(() => {
@@ -192,7 +211,16 @@ export function Shell({ theme, setTheme }) {
         return;
       }
       if (location.pathname === "/console") {
-        await Promise.all([loadStatus(), loadDatabaseStatus(), loadTargets(), loadConsoleSessions(), loadConnectorActionApprovals(), loadVaultActionApprovals(), loadMessages(), loadFileTransferBatches({ keepData: true })]);
+        await Promise.all([
+          loadStatus(),
+          loadDatabaseStatus(),
+          loadTargets(),
+          loadConsoleSessions(),
+          loadConnectorActionApprovals(),
+          loadVaultActionApprovals(),
+          loadMessages(),
+          loadFileTransferBatches({ keepData: true }),
+        ]);
       } else {
         await refreshAll();
       }
@@ -225,7 +253,14 @@ export function Shell({ theme, setTheme }) {
     const runtimeLabel = mcpRuntime.data?.enabled ? "Started" : "Stopped";
     const databaseName = databaseStatus.data?.database_name || databaseStatus.data?.database_id || "Database";
     document.title = `${runtimeLabel} - ${databaseName}`;
-  }, [databaseStatus.state, databaseStatus.data?.unlocked, databaseStatus.data?.state, databaseStatus.data?.database_name, databaseStatus.data?.database_id, mcpRuntime.data?.enabled]);
+  }, [
+    databaseStatus.state,
+    databaseStatus.data?.unlocked,
+    databaseStatus.data?.state,
+    databaseStatus.data?.database_name,
+    databaseStatus.data?.database_id,
+    mcpRuntime.data?.enabled,
+  ]);
 
   const gatewayState = useMemo(() => {
     if (status.state === "ready") return "running";
@@ -289,7 +324,14 @@ export function Shell({ theme, setTheme }) {
           vaultSessionResolverRef.current?.resolve(null);
           return new Promise((resolve, reject) => {
             vaultSessionResolverRef.current = { resolve, reject };
-            setVaultSessionDialog({ open: true, status: "idle", runtime: server, options: vaultOptions, sessionOptions: options, error: null });
+            setVaultSessionDialog({
+              open: true,
+              status: "idle",
+              runtime: server,
+              options: vaultOptions,
+              sessionOptions: options,
+              error: null,
+            });
           });
         }
       } catch {
@@ -586,7 +628,9 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  const pendingConnectorActionApprovalCount = connectorActionApprovals.data.filter((approval) => approval.status === "approval_pending").length;
+  const pendingConnectorActionApprovalCount = connectorActionApprovals.data.filter(
+    (approval) => approval.status === "approval_pending",
+  ).length;
   const pendingVaultActionApprovalCount = vaultActionApprovals.data.filter((approval) => approval.status === "approval_pending").length;
   const unreadMessageCount = messages.data.filter(isUnreadMessage).length;
   const consoleAttentionCount = pendingConnectorActionApprovalCount + pendingVaultActionApprovalCount + unreadMessageCount;
@@ -649,7 +693,8 @@ export function Shell({ theme, setTheme }) {
       >
         <div className="grid gap-4">
           <Notice>
-            Lock current closes only the active database and switches to another unlocked database if one is available. Lock all closes every unlocked database and stops MCP access until a database is unlocked again.
+            Lock current closes only the active database and switches to another unlocked database if one is available. Lock all closes
+            every unlocked database and stops MCP access until a database is unlocked again.
           </Notice>
           {lockDialog.error ? <Notice tone="bad">{lockDialog.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
@@ -675,8 +720,14 @@ export function Shell({ theme, setTheme }) {
                 . This local database may be stale.
               </span>
               <span className="flex items-center gap-3">
-                <Link className="font-semibold underline underline-offset-2" to="/settings">Review backups</Link>
-                <button type="button" className="font-semibold text-stone-600 hover:text-stone-950" onClick={() => setBackupFreshness((current) => ({ ...current, data: [] }))}>
+                <Link className="font-semibold underline underline-offset-2" to="/settings">
+                  Review backups
+                </Link>
+                <button
+                  type="button"
+                  className="font-semibold text-stone-600 hover:text-stone-950"
+                  onClick={() => setBackupFreshness((current) => ({ ...current, data: [] }))}
+                >
                   Dismiss
                 </button>
               </span>
@@ -692,8 +743,14 @@ export function Shell({ theme, setTheme }) {
                 . Review the provider connection before relying on the local copy.
               </span>
               <span className="flex items-center gap-3">
-                <Link className="font-semibold underline underline-offset-2" to="/settings">Review backups</Link>
-                <button type="button" className="font-semibold text-stone-600 hover:text-stone-950" onClick={() => setBackupFreshness((current) => ({ ...current, checkErrors: [], error: null }))}>
+                <Link className="font-semibold underline underline-offset-2" to="/settings">
+                  Review backups
+                </Link>
+                <button
+                  type="button"
+                  className="font-semibold text-stone-600 hover:text-stone-950"
+                  onClick={() => setBackupFreshness((current) => ({ ...current, checkErrors: [], error: null }))}
+                >
                   Dismiss
                 </button>
               </span>

@@ -10,12 +10,25 @@ export function MailCredentialFormTemplate({ targets, form, formMode = "create",
   const editing = formMode === "edit";
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
-      {mailTargets.length === 0 ? <Notice tone="warn">Create a Mail connector target before adding a mailbox credential profile.</Notice> : null}
+      {mailTargets.length === 0 ? (
+        <Notice tone="warn">Create a Mail connector target before adding a mailbox credential profile.</Notice>
+      ) : null}
       <Field>
         Connector target
-        <Select value={form.target_id} onChange={(event) => onChange({ ...form, target_id: event.target.value })} disabled={editing} required>
-          <option value="" disabled>Select Mail target</option>
-          {mailTargets.map((target) => <option value={target.id} key={target.id}>{target.name} · {target.config?.imap_host}:{target.config?.imap_port || 993}</option>)}
+        <Select
+          value={form.target_id}
+          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
+          disabled={editing}
+          required
+        >
+          <option value="" disabled>
+            Select Mail target
+          </option>
+          {mailTargets.map((target) => (
+            <option value={target.id} key={target.id}>
+              {target.name} · {target.config?.imap_host}:{target.config?.imap_port || 993}
+            </option>
+          ))}
         </Select>
       </Field>
       <MailCredentialFields form={form} editing={editing} onChange={(field, value) => onChange({ ...form, [field]: value })} />

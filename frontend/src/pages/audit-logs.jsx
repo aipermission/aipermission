@@ -85,7 +85,7 @@ export function AuditLogsPage() {
       mcp: state.data.filter((item) => item.actor_type === "mcp").length,
       user: state.data.filter((item) => item.actor_type === "user").length,
     }),
-    [state.data, state.total]
+    [state.data, state.total],
   );
 
   async function loadAuditLogs(offset = state.offset) {
@@ -159,14 +159,18 @@ export function AuditLogsPage() {
             className="pl-9"
           />
         </div>
-        <Select value={filters.projectID} onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetID: "" }))}>
-          <option value="">All projects</option>
-          {projects.data.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-        </Select>
         <Select
-          value={filters.actor}
-          onChange={(event) => setFilters((current) => ({ ...current, actor: event.target.value }))}
+          value={filters.projectID}
+          onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetID: "" }))}
         >
+          <option value="">All projects</option>
+          {projects.data.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </Select>
+        <Select value={filters.actor} onChange={(event) => setFilters((current) => ({ ...current, actor: event.target.value }))}>
           {actorOptions.map((option) => (
             <option key={option.value || "all"} value={option.value}>
               {option.label}
@@ -184,10 +188,7 @@ export function AuditLogsPage() {
             </option>
           ))}
         </Select>
-        <Select
-          value={filters.targetID}
-          onChange={(event) => setFilters((current) => ({ ...current, targetID: event.target.value }))}
-        >
+        <Select value={filters.targetID} onChange={(event) => setFilters((current) => ({ ...current, targetID: event.target.value }))}>
           <option value="">All connectors</option>
           {targetOptions.map(([id, name]) => (
             <option key={id} value={id}>
@@ -229,11 +230,7 @@ export function AuditLogsPage() {
             ) : null}
             {state.state !== "loading"
               ? state.data.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="cursor-pointer transition hover:bg-stone-50"
-                    onClick={() => openAuditItem(item)}
-                  >
+                  <tr key={item.id} className="cursor-pointer transition hover:bg-stone-50" onClick={() => openAuditItem(item)}>
                     <td className="px-4 py-3">
                       <ActorBadge actor={item.actor_type} />
                     </td>
@@ -367,7 +364,9 @@ function parsePayload(value) {
 }
 
 function oneLine(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function formatShortTime(value) {

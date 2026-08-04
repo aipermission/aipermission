@@ -162,7 +162,7 @@ export function credentialRows({ targets }) {
         target_detail: targetEndpoint({ target }),
         metadata: credentialMetadata(profile),
         delete_disabled: "",
-      }))
+      })),
   );
 }
 
@@ -237,7 +237,7 @@ export function operationFromError() {
 
 async function createTarget({ form }) {
   await createTargetWithProfile({
-	projectID: form.project_id,
+    projectID: form.project_id,
     targetPayload: {
       connector_kind: "redis",
       name: form.name,
@@ -254,7 +254,9 @@ async function createTarget({ form }) {
 }
 
 async function updateTarget({ form, target }) {
-  const profile = target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+  const profile =
+    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
+    (target?.profiles?.length === 1 ? target.profiles[0] : null);
   if (!target || !profile) throw new Error(`${connectorProductLabel} connector profile is not loaded.`);
   const profilePayload = {
     kind: profile.kind || "username_password",
@@ -266,7 +268,7 @@ async function updateTarget({ form, target }) {
     profilePayload.secret = { password: form.password };
   }
   await updateTargetWithProfile({
-	projectID: form.project_id,
+    projectID: form.project_id,
     targetID: target.id,
     previousTarget: target,
     profileID: profile.id,

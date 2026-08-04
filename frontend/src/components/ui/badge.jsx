@@ -26,7 +26,7 @@ export function CountBadge({ className, children, tone = "red", ...props }) {
       className={cn(
         "inline-block h-[18px] min-w-[18px] shrink-0 rounded-full px-1.5 text-center align-middle text-[10px] font-bold leading-[18px] tabular-nums shadow-sm",
         tones[tone],
-        className
+        className,
       )}
       {...props}
     >

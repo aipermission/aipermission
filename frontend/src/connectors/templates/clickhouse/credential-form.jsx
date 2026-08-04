@@ -19,7 +19,12 @@ export function ClickHouseCredentialFormTemplate({ targets, form, formMode = "cr
       )}
       <Field>
         Connector target
-        <Select value={form.target_id} onChange={(event) => onChange({ ...form, target_id: event.target.value })} disabled={editing} required>
+        <Select
+          value={form.target_id}
+          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
+          disabled={editing}
+          required
+        >
           <option value="" disabled>
             Select ClickHouse target
           </option>
@@ -42,7 +47,12 @@ export function ClickHouseCredentialFormTemplate({ targets, form, formMode = "cr
       </div>
       <Field>
         Username
-        <Input value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value })} autoComplete="off" required />
+        <Input
+          value={form.username}
+          onChange={(event) => onChange({ ...form, username: event.target.value })}
+          autoComplete="off"
+          required
+        />
       </Field>
       <Field>
         {editing ? "New password" : "Password"}

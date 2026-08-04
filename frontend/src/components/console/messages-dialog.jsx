@@ -49,10 +49,7 @@ export function MessagesDialog({ open, target, tokens, tokenID, state, text, onT
           ) : (
             <div className="flex min-h-full flex-col justify-end gap-2">
               {filteredMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.direction === "ai_to_user" ? "justify-start" : "justify-end"}`}
-                >
+                <div key={message.id} className={`flex ${message.direction === "ai_to_user" ? "justify-start" : "justify-end"}`}>
                   <div className="w-fit max-w-[70%] rounded-lg border border-stone-200 bg-white px-3 py-2 shadow-sm">
                     <div className="mb-1 text-[11px] text-stone-500">
                       {message.direction === "ai_to_user" ? "AI" : "You"} · {formatMessageTime(message.created_at)}
@@ -78,7 +75,11 @@ export function MessagesDialog({ open, target, tokens, tokenID, state, text, onT
             <Send className="h-4 w-4" />
             Send
           </Button>
-          {state.state === "error" ? <Notice tone="bad" className="col-span-2">{state.error}</Notice> : null}
+          {state.state === "error" ? (
+            <Notice tone="bad" className="col-span-2">
+              {state.error}
+            </Notice>
+          ) : null}
         </form>
       </div>
     </Drawer>

@@ -42,7 +42,13 @@ export function NetworkTransportFields({
         <Field>
           <span className="flex items-center justify-between gap-2">
             <span>{hostLabel}</span>
-            <HostPingButton host={form.host} port={form.port} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} projectID={form.project_id} />
+            <HostPingButton
+              host={form.host}
+              port={form.port}
+              mode={form.connection_mode}
+              transportTargetRef={form.transport_target_ref}
+              projectID={form.project_id}
+            />
           </span>
           <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
         </Field>
@@ -62,6 +68,6 @@ export function sshProfileOptions(targets) {
       (target.profiles || []).map((profile) => ({
         ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
         label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
-      }))
+      })),
     );
 }

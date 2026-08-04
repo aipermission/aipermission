@@ -171,14 +171,20 @@ export function UnlockPage({ status, onUnlocked }) {
         <Notice tone="warn">Your browser session is missing or expired. Enter the database password to continue.</Notice>
       ) : null}
       {selectedUnsupported ? (
-        <Notice tone="bad">This file is a plaintext SQLite database. AIPermission only supports SQLCipher-encrypted .aipdb databases.</Notice>
+        <Notice tone="bad">
+          This file is a plaintext SQLite database. AIPermission only supports SQLCipher-encrypted .aipdb databases.
+        </Notice>
       ) : null}
       {selectedMigrationRequired ? (
         <Notice tone="warn">
-          This database uses the pre-0.2 schema. Open the local migration helper, migrate it into a new 0.2 database, then delete this old local copy when you no longer need it.
+          This database uses the pre-0.2 schema. Open the local migration helper, migrate it into a new 0.2 database, then delete this old
+          local copy when you no longer need it.
         </Notice>
       ) : null}
-      <div className="grid rounded-md border border-stone-200 bg-stone-100 p-1" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+      <div
+        className="grid rounded-md border border-stone-200 bg-stone-100 p-1"
+        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+      >
         {tabs.map(([value, label]) => (
           <button
             key={value}
@@ -239,9 +245,7 @@ export function UnlockPage({ status, onUnlocked }) {
               <Button
                 type="button"
                 variant={unlockAction === "delete" ? "danger" : "default"}
-                className={`rounded-l-none px-0 ${
-                  unlockAction === "delete" ? "border-l border-red-800" : "border-l border-emerald-800"
-                }`}
+                className={`rounded-l-none px-0 ${unlockAction === "delete" ? "border-l border-red-800" : "border-l border-emerald-800"}`}
                 aria-expanded={unlockActionMenuOpen}
                 aria-label={unlockAction === "delete" ? "Choose unlock action" : "Choose database action"}
                 title={unlockAction === "delete" ? "Choose unlock action" : "Choose database action"}
@@ -317,9 +321,14 @@ export function UnlockPage({ status, onUnlocked }) {
               required
             />
           </div>
-          <Notice>Use at least 14 characters with uppercase letters, lowercase letters, and numbers. This password cannot be recovered.</Notice>
+          <Notice>
+            Use at least 14 characters with uppercase letters, lowercase letters, and numbers. This password cannot be recovered.
+          </Notice>
           {createState.state === "error" ? <Notice tone="bad">{createState.error}</Notice> : null}
-          <Button type="submit" disabled={createState.state === "saving" || !createPasswordValid || createForm.password !== createForm.confirm_password}>
+          <Button
+            type="submit"
+            disabled={createState.state === "saving" || !createPasswordValid || createForm.password !== createForm.confirm_password}
+          >
             <LockKeyhole className="h-4 w-4" />
             {createState.state === "saving" ? "Working..." : "Create encrypted database"}
           </Button>
@@ -330,7 +339,10 @@ export function UnlockPage({ status, onUnlocked }) {
         <form className="grid gap-4" onSubmit={importDatabase}>
           <div>
             <h2 className="text-sm font-semibold text-stone-900">Import encrypted database</h2>
-            <p className="mt-1 text-sm text-stone-500">Choose an exported .aipdb or SQLCipher .db file, then enter that database password. Imports always create a new named database.</p>
+            <p className="mt-1 text-sm text-stone-500">
+              Choose an exported .aipdb or SQLCipher .db file, then enter that database password. Imports always create a new named
+              database.
+            </p>
           </div>
           <div className="grid gap-2">
             <label className="text-sm font-semibold text-stone-800">Database name</label>
@@ -380,7 +392,8 @@ export function UnlockPage({ status, onUnlocked }) {
       >
         <form className="grid gap-4" onSubmit={deleteLockedDatabase}>
           <Notice tone="bad">
-            This local database will be deleted permanently from this gateway. If you have not migrated or backed it up, its local configuration will be lost.
+            This local database will be deleted permanently from this gateway. If you have not migrated or backed it up, its local
+            configuration will be lost.
           </Notice>
           <div className="rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
             <span className="font-semibold text-stone-900">Database:</span> {selectedDatabase?.name || "Unknown"}
@@ -401,7 +414,11 @@ export function UnlockPage({ status, onUnlocked }) {
             <Button type="button" variant="outline" onClick={closeDeleteDialog} disabled={deleteDialog.state === "deleting"}>
               Cancel
             </Button>
-            <Button type="submit" variant="danger" disabled={deleteDialog.state === "deleting" || deleteDialog.confirmName !== selectedDatabase?.name}>
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={deleteDialog.state === "deleting" || deleteDialog.confirmName !== selectedDatabase?.name}
+            >
               <Trash2 className="h-4 w-4" />
               {deleteDialog.state === "deleting" ? "Deleting..." : "Delete permanently"}
             </Button>
@@ -505,10 +522,13 @@ function RemoteRestorePanel({ onUnlocked }) {
     <div className="grid gap-4">
       <div>
         <h2 className="text-sm font-semibold text-stone-900">Restore from AIPermission Backup</h2>
-        <p className="mt-1 text-sm text-stone-500">Connect temporarily, choose a database stream and immutable version, then unlock the restored local copy.</p>
+        <p className="mt-1 text-sm text-stone-500">
+          Connect temporarily, choose a database stream and immutable version, then unlock the restored local copy.
+        </p>
       </div>
       <Notice>
-        The service stores encrypted <code>.aipdb</code> bytes only. Its token is used for this restore request and is not saved in browser storage or a local database.
+        The service stores encrypted <code>.aipdb</code> bytes only. Its token is used for this restore request and is not saved in browser
+        storage or a local database.
       </Notice>
       <form className="grid gap-4" onSubmit={connectService}>
         <div className="grid gap-2">
@@ -532,7 +552,11 @@ function RemoteRestorePanel({ onUnlocked }) {
             required
           />
         </div>
-        <Button type="submit" variant="outline" disabled={state.state === "connecting" || state.state === "loading_versions" || state.state === "restoring"}>
+        <Button
+          type="submit"
+          variant="outline"
+          disabled={state.state === "connecting" || state.state === "loading_versions" || state.state === "restoring"}
+        >
           <RefreshCw className={`h-4 w-4 ${state.state === "connecting" ? "animate-spin" : ""}`} />
           {state.state === "connecting" ? "Connecting..." : streams.length > 0 ? "Refresh remote backups" : "Connect and list backups"}
         </Button>
@@ -553,7 +577,9 @@ function RemoteRestorePanel({ onUnlocked }) {
                 disabled={state.state === "loading_versions" || state.state === "restoring"}
               >
                 {streams.map((stream) => (
-                  <option key={stream.id} value={stream.id}>{stream.database_name} · {shortBackupStreamID(stream.id)}</option>
+                  <option key={stream.id} value={stream.id}>
+                    {stream.database_name} · {shortBackupStreamID(stream.id)}
+                  </option>
                 ))}
               </select>
             </label>
@@ -570,7 +596,8 @@ function RemoteRestorePanel({ onUnlocked }) {
                   <optgroup key={group.source} label={`Source ${shortBackupSourceID(group.source)}`}>
                     {group.items.map((version) => (
                       <option key={version.id} value={version.id}>
-                        {formatRelativeAge(version.created_at)} · {formatLocalTimestamp(version.created_at)} · {formatBytes(version.size_bytes)}
+                        {formatRelativeAge(version.created_at)} · {formatLocalTimestamp(version.created_at)} ·{" "}
+                        {formatBytes(version.size_bytes)}
                       </option>
                     ))}
                   </optgroup>
@@ -580,21 +607,27 @@ function RemoteRestorePanel({ onUnlocked }) {
           </div>
           {selectedVersion ? (
             <div className="grid gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600 sm:grid-cols-2">
-              <span className="truncate"><strong className="text-stone-900">File:</strong> {selectedVersion.filename}</span>
-              <span><strong className="text-stone-900">Created:</strong> {formatLocalTimestamp(selectedVersion.created_at)}</span>
-              <span className="truncate"><strong className="text-stone-900">Source:</strong> {shortBackupSourceID(selectedVersion.source_installation_id)}</span>
-              <span><strong className="text-stone-900">Size:</strong> {formatBytes(selectedVersion.size_bytes)}</span>
+              <span className="truncate">
+                <strong className="text-stone-900">File:</strong> {selectedVersion.filename}
+              </span>
+              <span>
+                <strong className="text-stone-900">Created:</strong> {formatLocalTimestamp(selectedVersion.created_at)}
+              </span>
+              <span className="truncate">
+                <strong className="text-stone-900">Source:</strong> {shortBackupSourceID(selectedVersion.source_installation_id)}
+              </span>
+              <span>
+                <strong className="text-stone-900">Size:</strong> {formatBytes(selectedVersion.size_bytes)}
+              </span>
             </div>
           ) : null}
           {selectedStream ? (
             <div className="grid gap-2">
               <label className="text-sm font-semibold text-stone-800">New local database name</label>
-              <Input
-                value={form.database_name}
-                onChange={(event) => updateField("database_name", event.target.value)}
-                required
-              />
-              <p className="text-xs text-stone-500">Remote stream {shortBackupStreamID(selectedStream.id)} remains unchanged; this name is only for the restored local copy.</p>
+              <Input value={form.database_name} onChange={(event) => updateField("database_name", event.target.value)} required />
+              <p className="text-xs text-stone-500">
+                Remote stream {shortBackupStreamID(selectedStream.id)} remains unchanged; this name is only for the restored local copy.
+              </p>
             </div>
           ) : null}
           <div className="grid gap-2">
@@ -607,7 +640,16 @@ function RemoteRestorePanel({ onUnlocked }) {
               required
             />
           </div>
-          <Button type="submit" disabled={!selectedBackupID || !form.database_name.trim() || !form.database_password || state.state === "restoring" || state.state === "loading_versions"}>
+          <Button
+            type="submit"
+            disabled={
+              !selectedBackupID ||
+              !form.database_name.trim() ||
+              !form.database_password ||
+              state.state === "restoring" ||
+              state.state === "loading_versions"
+            }
+          >
             <CloudDownload className="h-4 w-4" />
             {state.state === "restoring" ? "Restoring..." : "Restore encrypted database"}
           </Button>
@@ -647,7 +689,11 @@ function isMigrationRequiredError(error) {
 
 function Toast({ message }) {
   return (
-    <div role="status" aria-live="polite" className="fixed right-5 top-5 z-[80] rounded-md border border-stone-700 bg-stone-950 px-4 py-3 text-sm font-semibold text-white shadow-xl">
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed right-5 top-5 z-[80] rounded-md border border-stone-700 bg-stone-950 px-4 py-3 text-sm font-semibold text-white shadow-xl"
+    >
       {message}
     </div>
   );
@@ -666,7 +712,8 @@ export function UnlockShell({ title, children }) {
             </div>
           </div>
           <Notice tone="warn">
-            Local-only gateway. Keep Docker ports bound to <span className="font-mono">127.0.0.1</span>; do not expose this UI or API on LAN or the public internet.
+            Local-only gateway. Keep Docker ports bound to <span className="font-mono">127.0.0.1</span>; do not expose this UI or API on LAN
+            or the public internet.
           </Notice>
           {children}
         </section>

@@ -7,11 +7,7 @@ import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 import { expiresAtFromLifetime, permissionLifetimeLabel } from "../../lib/permissions";
-import {
-  vaultCapabilitiesFromDraft,
-  vaultCapabilityDraftFromItems,
-  vaultCapabilityKey,
-} from "../../lib/vault-capabilities";
+import { vaultCapabilitiesFromDraft, vaultCapabilityDraftFromItems, vaultCapabilityKey } from "../../lib/vault-capabilities";
 
 const emptyLoad = {
   state: "idle",
@@ -44,7 +40,7 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
 
   const selectedProject = useMemo(
     () => load.projects.find((project) => project.project_id === selectedProjectID) || null,
-    [load.projects, selectedProjectID]
+    [load.projects, selectedProjectID],
   );
 
   useEffect(() => {
@@ -153,14 +149,17 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
     >
       <form className="grid gap-4" onSubmit={saveCapabilities}>
         <Notice tone="warn">
-          Project visibility does not grant Vault access. Prompt asks before each action. Always permits autonomous secret generation or delivery through the same validation, lease, and drift checks, without opening an approval dialog.
+          Project visibility does not grant Vault access. Prompt asks before each action. Always permits autonomous secret generation or
+          delivery through the same validation, lease, and drift checks, without opening an approval dialog.
         </Notice>
         {load.state === "loading" ? <Notice>Loading project Vault permissions...</Notice> : null}
         {load.state === "error" ? <Notice tone="bad">{load.error}</Notice> : null}
         {scopeSave.state === "error" ? <Notice tone="bad">{scopeSave.error}</Notice> : null}
         {save.state === "error" ? <Notice tone="bad">{save.error}</Notice> : null}
         {save.state === "ready" ? <Notice tone="good">Project Vault capabilities saved.</Notice> : null}
-        {load.state === "ready" && load.projects.length === 0 ? <Notice>Create a project before granting Vault capabilities.</Notice> : null}
+        {load.state === "ready" && load.projects.length === 0 ? (
+          <Notice>Create a project before granting Vault capabilities.</Notice>
+        ) : null}
 
         {load.state === "ready" && load.projects.length > 0 ? (
           <div
@@ -176,8 +175,8 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
                 {load.projects.map((project) => {
                   const selected = project.project_id === selectedProjectID;
                   const visible = Boolean(scopeDraft[project.project_id]);
-                  const activeCount = load.definitions.filter(
-                    (definition) => Boolean(capabilityDraft[vaultCapabilityKey(project.project_id, definition.name)]?.execution_rule)
+                  const activeCount = load.definitions.filter((definition) =>
+                    Boolean(capabilityDraft[vaultCapabilityKey(project.project_id, definition.name)]?.execution_rule),
                   ).length;
                   return (
                     <div
@@ -245,7 +244,10 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
                           className="grid gap-1 self-start"
                           style={{ gridTemplateColumns: `repeat(${definition.allowed_rules.length + 1}, minmax(0, 1fr))` }}
                         >
-                          <ConnectorRuleButton active={!rule} onClick={() => setCapabilityRule(selectedProject.project_id, definition.name, "")}>
+                          <ConnectorRuleButton
+                            active={!rule}
+                            onClick={() => setCapabilityRule(selectedProject.project_id, definition.name, "")}
+                          >
                             Disabled
                           </ConnectorRuleButton>
                           {definition.allowed_rules.includes("approval_required") ? (
@@ -304,7 +306,9 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-stone-500">{selectedCount} Vault capability grant{selectedCount === 1 ? "" : "s"} selected.</p>
+          <p className="text-sm text-stone-500">
+            {selectedCount} Vault capability grant{selectedCount === 1 ? "" : "s"} selected.
+          </p>
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Close

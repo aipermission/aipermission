@@ -9,7 +9,8 @@ export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets =
   return (
     <>
       <Notice tone="good">
-        RabbitMQ uses the Management API, not the AMQP listener. Use the port from the management URL, usually 15672, and start with Prompt permissions for message peeking.
+        RabbitMQ uses the Management API, not the AMQP listener. Use the port from the management URL, usually 15672, and start with Prompt
+        permissions for message peeking.
       </Notice>
       <Field>
         Connector name
@@ -39,7 +40,8 @@ export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets =
       ) : null}
       {overSSH ? (
         <Notice>
-          Host and port are resolved from the SSH server. Use 127.0.0.1:15672 when RabbitMQ Management only listens on the remote machine; do not use the AMQP port.
+          Host and port are resolved from the SSH server. Use 127.0.0.1:15672 when RabbitMQ Management only listens on the remote machine;
+          do not use the AMQP port.
         </Notice>
       ) : (
         <Notice>
@@ -57,13 +59,27 @@ export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets =
         <Field>
           <span className="flex items-center justify-between gap-2">
             <span>Management host</span>
-            <HostPingButton host={form.host} port={form.port} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} projectID={form.project_id} />
+            <HostPingButton
+              host={form.host}
+              port={form.port}
+              mode={form.connection_mode}
+              transportTargetRef={form.transport_target_ref}
+              projectID={form.project_id}
+            />
           </span>
           <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
         </Field>
         <Field>
           Management API port
-          <Input type="number" min="1" max="65535" value={form.port} onChange={(event) => onChange("port", event.target.value)} placeholder="15672" required />
+          <Input
+            type="number"
+            min="1"
+            max="65535"
+            value={form.port}
+            onChange={(event) => onChange("port", event.target.value)}
+            placeholder="15672"
+            required
+          />
         </Field>
       </div>
       <Field>
@@ -82,7 +98,13 @@ export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets =
       </div>
       <Field>
         Username
-        <Input value={form.username} onChange={(event) => onChange("username", event.target.value)} autoComplete="off" placeholder="RabbitMQ Management API username" required />
+        <Input
+          value={form.username}
+          onChange={(event) => onChange("username", event.target.value)}
+          autoComplete="off"
+          placeholder="RabbitMQ Management API username"
+          required
+        />
       </Field>
       <Field>
         Password
@@ -106,6 +128,6 @@ function sshProfileOptions(targets) {
       (target.profiles || []).map((profile) => ({
         ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
         label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
-      }))
+      })),
     );
 }

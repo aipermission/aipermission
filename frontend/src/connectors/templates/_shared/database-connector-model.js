@@ -141,7 +141,7 @@ export function createDatabaseConnectorModel(config) {
           target_detail: targetEndpoint({ target }),
           metadata: credentialMetadata(profile),
           delete_disabled: "",
-        }))
+        })),
     );
   }
 
@@ -190,7 +190,9 @@ export function createDatabaseConnectorModel(config) {
   }
 
   async function updateTarget(form, target) {
-    const profile = target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+    const profile =
+      target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
+      (target?.profiles?.length === 1 ? target.profiles[0] : null);
     if (!target || !profile) throw new Error(`${label} connector profile is not loaded.`);
     await updateTargetWithProfile({
       projectID: form.project_id,

@@ -34,13 +34,36 @@ export function FolderPane({ folders, selectedFolder, folderStats, onSelect, bor
   );
 }
 
-export function MessagePane({ messages, selectedRef, query, unreadOnly, hasMore, busy, onQuery, onUnreadOnly, onSearch, onSelect, onLoadMore, borderClass, mutedClass, inputClass, rowHoverClass, activeRowClass }) {
+export function MessagePane({
+  messages,
+  selectedRef,
+  query,
+  unreadOnly,
+  hasMore,
+  busy,
+  onQuery,
+  onUnreadOnly,
+  onSearch,
+  onSelect,
+  onLoadMore,
+  borderClass,
+  mutedClass,
+  inputClass,
+  rowHoverClass,
+  activeRowClass,
+}) {
   return (
     <section className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-r ${borderClass}`}>
       <form className={`grid gap-2 border-b p-3 ${borderClass}`} onSubmit={onSearch}>
         <div className="relative">
           <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${mutedClass}`} />
-          <Input className={`pl-9 ${inputClass}`} value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Search subject" disabled={busy} />
+          <Input
+            className={`pl-9 ${inputClass}`}
+            value={query}
+            onChange={(event) => onQuery(event.target.value)}
+            placeholder="Search subject"
+            disabled={busy}
+          />
         </div>
         <label className={`flex items-center gap-2 text-xs ${mutedClass}`}>
           <Checkbox checked={unreadOnly} onChange={(event) => onUnreadOnly(event.target.checked)} disabled={busy} />
@@ -66,7 +89,9 @@ export function MessagePane({ messages, selectedRef, query, unreadOnly, hasMore,
             </button>
           );
         })}
-        {messages.length === 0 ? <p className={`p-4 text-center text-xs ${mutedClass}`}>{busy ? "Loading messages..." : "No messages match this view."}</p> : null}
+        {messages.length === 0 ? (
+          <p className={`p-4 text-center text-xs ${mutedClass}`}>{busy ? "Loading messages..." : "No messages match this view."}</p>
+        ) : null}
       </div>
       <div className={`border-t p-2 ${borderClass}`}>
         <Button type="button" variant="outline" className="h-8 w-full text-xs" onClick={onLoadMore} disabled={!hasMore || busy}>

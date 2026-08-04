@@ -49,9 +49,7 @@ export function UnsavedDownloadCloseDialog({ open, onCancel, onCloseAnyway, onSa
       closeOnEscape={false}
     >
       <div className="grid gap-4">
-        <Notice tone="warn">
-          Save the download before closing if you still need the staged file.
-        </Notice>
+        <Notice tone="warn">Save the download before closing if you still need the staged file.</Notice>
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
@@ -82,12 +80,12 @@ export function OverwriteConfirmDialog({ open, conflicts, onCancel, onOverwrite 
       closeOnEscape={false}
     >
       <div className="grid gap-4">
-        <Notice tone="warn">
-          Existing files will be replaced. Review the paths before continuing.
-        </Notice>
+        <Notice tone="warn">Existing files will be replaced. Review the paths before continuing.</Notice>
         <div className="max-h-56 overflow-auto rounded-md border border-amber-300 bg-amber-50 p-3 font-mono text-xs text-amber-950">
           {conflicts.map((item) => (
-            <p key={item.remote_path} className="break-all py-1">{item.remote_path}</p>
+            <p key={item.remote_path} className="break-all py-1">
+              {item.remote_path}
+            </p>
           ))}
         </div>
         <div className="flex flex-wrap justify-end gap-2">

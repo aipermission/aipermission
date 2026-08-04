@@ -7,16 +7,11 @@ export function Drawer({ open, title, description, children, onClose, bodyClassN
 
   return (
     <div className="fixed inset-0 z-50">
-      <button
-        type="button"
-        className="absolute inset-0 bg-stone-950/30"
-        aria-label="Close drawer"
-        onClick={onClose}
-      />
+      <button type="button" className="absolute inset-0 bg-stone-950/30" aria-label="Close drawer" onClick={onClose} />
       <aside
         className={cn(
           "absolute inset-y-0 right-0 flex w-full max-w-xl flex-col border-l border-stone-200 bg-white shadow-2xl",
-          "animate-in slide-in-from-right"
+          "animate-in slide-in-from-right",
         )}
       >
         <header className="flex items-start justify-between gap-4 border-b border-stone-200 p-5">

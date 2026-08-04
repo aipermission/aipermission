@@ -69,7 +69,13 @@ export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, on
               }}
             />
           </Field>
-          <Button type="button" variant="outline" className="h-10" onClick={() => onLoad(browser.path, browser.purpose)} disabled={browser.state === "loading"}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10"
+            onClick={() => onLoad(browser.path, browser.purpose)}
+            disabled={browser.state === "loading"}
+          >
             <RefreshCcw className="h-4 w-4" />
             Refresh
           </Button>
@@ -100,9 +106,7 @@ export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, on
               <span className="text-xs text-stone-500">parent</span>
               <span />
             </button>
-            {browser.state === "loading" ? (
-              <p className="px-3 py-8 text-center text-sm text-stone-500">Loading remote files...</p>
-            ) : null}
+            {browser.state === "loading" ? <p className="px-3 py-8 text-center text-sm text-stone-500">Loading remote files...</p> : null}
             {browser.state !== "loading" && entries.length === 0 ? (
               <p className="px-3 py-8 text-center text-sm text-stone-500">No files in this directory.</p>
             ) : null}
@@ -123,11 +127,21 @@ export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, on
                     ) : (
                       <span />
                     )}
-                    {entry.type === "directory" ? <Folder className="h-4 w-4 text-emerald-700" /> : <File className="h-4 w-4 text-stone-500" />}
-                    <button type="button" className="min-w-0 text-left" onClick={() => (entry.type === "directory" ? onLoad(entry.path, browser.purpose) : toggleFile(entry))}>
+                    {entry.type === "directory" ? (
+                      <Folder className="h-4 w-4 text-emerald-700" />
+                    ) : (
+                      <File className="h-4 w-4 text-stone-500" />
+                    )}
+                    <button
+                      type="button"
+                      className="min-w-0 text-left"
+                      onClick={() => (entry.type === "directory" ? onLoad(entry.path, browser.purpose) : toggleFile(entry))}
+                    >
                       <span className="block truncate font-medium">{entry.name}</span>
                     </button>
-                    <span className="text-xs text-stone-500">{entry.type === "directory" ? "folder" : queuedPaths?.has(entry.path) ? "queued" : formatBytes(entry.size)}</span>
+                    <span className="text-xs text-stone-500">
+                      {entry.type === "directory" ? "folder" : queuedPaths?.has(entry.path) ? "queued" : formatBytes(entry.size)}
+                    </span>
                     <span className="truncate text-right text-xs text-stone-500">{formatShortDate(entry.modified_at)}</span>
                   </div>
                 ))

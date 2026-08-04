@@ -50,7 +50,9 @@ export function formFromTarget({ target, profile }) {
   };
 }
 
-export function activeCredential() { return null; }
+export function activeCredential() {
+  return null;
+}
 
 export function syncForm({ form }) {
   if (form.connector_kind !== "kafka") return form;
@@ -67,7 +69,9 @@ export function syncForm({ form }) {
   return next;
 }
 
-export function submitDisabled({ state }) { return state.state === "saving"; }
+export function submitDisabled({ state }) {
+  return state.state === "saving";
+}
 export function submitLabel({ state, mode }) {
   if (state.state === "saving") return "Saving...";
   return mode === "edit" ? "Save changes" : "Create connector";
@@ -76,26 +80,43 @@ export async function save({ mode, form, target }) {
   if (mode === "edit") return updateTarget({ form, target });
   return createTarget({ form });
 }
-export async function deleteTarget({ target }) { await apiDelete(`/api/connector-targets/${target.id}`); }
+export async function deleteTarget({ target }) {
+  await apiDelete(`/api/connector-targets/${target.id}`);
+}
 
 export function emptyCredentialState({ targets = [] } = {}) {
   const firstTarget = targets.find((target) => target.connector_kind === "kafka");
-  return { form: { target_id: String(firstTarget?.id || ""), profile_label: "monitor", sasl_mechanism: "none", existing_sasl_mechanism: "none", username: "", password: "", risk_label: defaultRiskLabel } };
+  return {
+    form: {
+      target_id: String(firstTarget?.id || ""),
+      profile_label: "monitor",
+      sasl_mechanism: "none",
+      existing_sasl_mechanism: "none",
+      username: "",
+      password: "",
+      risk_label: defaultRiskLabel,
+    },
+  };
 }
 export function credentialStateFromRow({ row }) {
-  return { form: {
-    target_id: String(row.target_id || ""),
-    profile_label: row.name,
-    sasl_mechanism: row.profile?.public?.mechanism || "none",
-    existing_sasl_mechanism: row.profile?.public?.mechanism || "none",
-    username: row.profile?.public?.username || "",
-    password: "",
-    risk_label: row.profile?.risk_label || defaultRiskLabel,
-  } };
+  return {
+    form: {
+      target_id: String(row.target_id || ""),
+      profile_label: row.name,
+      sasl_mechanism: row.profile?.public?.mechanism || "none",
+      existing_sasl_mechanism: row.profile?.public?.mechanism || "none",
+      username: row.profile?.public?.username || "",
+      password: "",
+      risk_label: row.profile?.risk_label || defaultRiskLabel,
+    },
+  };
 }
 export function credentialFormProps({ targets, formState, setFormState, formMode, state, onSubmit }) {
   return {
-    form: formState.form, formMode, targets, state,
+    form: formState.form,
+    formMode,
+    targets,
+    state,
     onChange: (form) => setFormState({ form }),
     onSubmit: (event) => onSubmit(event, formMode === "edit" ? "update" : "create"),
   };
@@ -114,25 +135,29 @@ export async function saveCredential({ operation, row, formState }) {
   }
   throw new Error("Unsupported Kafka credential operation.");
 }
-export async function deleteCredential({ row }) { await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`); }
+export async function deleteCredential({ row }) {
+  await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
+}
 export function credentialRows({ targets }) {
-  return targets.flatMap((target) => (target.profiles || [])
-    .filter(() => target.connector_kind === "kafka")
-    .map((profile) => ({
-      row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
-      connector_kind: target.connector_kind,
-      resource_kind: "credential_profile",
-      connector_label: "Kafka / Redpanda",
-      id: profile.id,
-      target_id: target.id,
-      name: profile.label,
-      kind: profile.kind,
-      profile,
-      target_label: target.name,
-      target_detail: targetEndpoint({ target }),
-      metadata: credentialMetadata(profile),
-      delete_disabled: "",
-    })));
+  return targets.flatMap((target) =>
+    (target.profiles || [])
+      .filter(() => target.connector_kind === "kafka")
+      .map((profile) => ({
+        row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
+        connector_kind: target.connector_kind,
+        resource_kind: "credential_profile",
+        connector_label: "Kafka / Redpanda",
+        id: profile.id,
+        target_id: target.id,
+        name: profile.label,
+        kind: profile.kind,
+        profile,
+        target_label: target.name,
+        target_detail: targetEndpoint({ target }),
+        metadata: credentialMetadata(profile),
+        delete_disabled: "",
+      })),
+  );
 }
 export async function test({ target, profile }) {
   const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
@@ -140,9 +165,15 @@ export async function test({ target, profile }) {
   const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
   return { ok: data.ok, error: data.message || null, data };
 }
-export function canEdit() { return true; }
-export function canDelete() { return true; }
-export function credentialHint() { return null; }
+export function canEdit() {
+  return true;
+}
+export function canDelete() {
+  return true;
+}
+export function credentialHint() {
+  return null;
+}
 export function targetEndpoint({ target }) {
   return targetEndpointValue(target);
 }
@@ -151,11 +182,21 @@ function targetEndpointValue(target) {
   const mode = target.config?.connection_mode === "over_ssh" ? "over ssh" : "direct";
   return `${brokers} · ${mode}`;
 }
-export function targetDisplayName({ target }) { return target?.target_name || target?.name || "Kafka target"; }
-export function targetSubtitle({ target }) { return targetEndpoint({ target }); }
-export function targetProfileLabel({ target }) { return target?.profile_label || "monitor"; }
-export function usesLiveConsole() { return false; }
-export function recoverableRunningActions() { return []; }
+export function targetDisplayName({ target }) {
+  return target?.target_name || target?.name || "Kafka target";
+}
+export function targetSubtitle({ target }) {
+  return targetEndpoint({ target });
+}
+export function targetProfileLabel({ target }) {
+  return target?.profile_label || "monitor";
+}
+export function usesLiveConsole() {
+  return false;
+}
+export function recoverableRunningActions() {
+  return [];
+}
 export function deleteDialog({ target }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
@@ -171,7 +212,9 @@ export function deleteDialog({ target }) {
     ],
   };
 }
-export function operationFromError() { return null; }
+export function operationFromError() {
+  return null;
+}
 
 async function createTarget({ form }) {
   await createTargetWithProfile({
@@ -181,7 +224,9 @@ async function createTarget({ form }) {
   });
 }
 async function updateTarget({ form, target }) {
-  const profile = target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+  const profile =
+    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
+    (target?.profiles?.length === 1 ? target.profiles[0] : null);
   if (!target || !profile) throw new Error("Kafka connector profile is not loaded.");
   await updateTargetWithProfile({
     projectID: form.project_id,

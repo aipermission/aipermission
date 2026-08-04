@@ -20,7 +20,9 @@ export function ConnectorKindCell({ target, catalog }) {
         <ConnectorIcon kind={target.connector_kind} className="h-4 w-4 shrink-0 text-stone-500" />
         <div className="grid min-w-0 gap-1">
           <span className="truncate font-semibold">{catalogLabel(catalog, target.connector_kind)}</span>
-          <span className="font-mono text-xs text-stone-500">{target.connector_kind}:{target.id}</span>
+          <span className="font-mono text-xs text-stone-500">
+            {target.connector_kind}:{target.id}
+          </span>
         </div>
       </div>
     </td>

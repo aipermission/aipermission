@@ -11,9 +11,13 @@ export function QueueSummary({ batch, queue, mode, progress }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Summary</p>
-          <p className="mt-1 text-sm font-semibold text-stone-900">{totalItems} item{totalItems === 1 ? "" : "s"}</p>
+          <p className="mt-1 text-sm font-semibold text-stone-900">
+            {totalItems} item{totalItems === 1 ? "" : "s"}
+          </p>
         </div>
-        <span className="rounded-full border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-600">{batch?.status || mode}</span>
+        <span className="rounded-full border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-600">
+          {batch?.status || mode}
+        </span>
       </div>
       <div className="grid gap-2 text-sm">
         <div className="flex justify-between gap-3">
@@ -34,7 +38,10 @@ export function QueueSummary({ batch, queue, mode, progress }) {
         </div>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-        <div className={cn("h-full rounded-full bg-emerald-700 transition-all", batch?.status === "running" ? "animate-pulse" : "")} style={{ width: `${progress.percent}%` }} />
+        <div
+          className={cn("h-full rounded-full bg-emerald-700 transition-all", batch?.status === "running" ? "animate-pulse" : "")}
+          style={{ width: `${progress.percent}%` }}
+        />
       </div>
     </div>
   );
@@ -92,13 +99,31 @@ function QueueRow({ item, index, total, active, batchMode, canEditPausedBatch, c
         <div className="flex items-center gap-1">
           {canEdit ? (
             <>
-              <Button type="button" variant="ghost" className="h-8 w-8 px-0" onClick={() => onMove(item.id, -1)} disabled={batchMode ? !canMoveUp : active || index === 0}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 w-8 px-0"
+                onClick={() => onMove(item.id, -1)}
+                disabled={batchMode ? !canMoveUp : active || index === 0}
+              >
                 <ArrowUp className="h-4 w-4" />
               </Button>
-              <Button type="button" variant="ghost" className="h-8 w-8 px-0" onClick={() => onMove(item.id, 1)} disabled={batchMode ? !canMoveDown : active || index === total - 1}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 w-8 px-0"
+                onClick={() => onMove(item.id, 1)}
+                disabled={batchMode ? !canMoveDown : active || index === total - 1}
+              >
                 <ArrowDown className="h-4 w-4" />
               </Button>
-              <Button type="button" variant="ghost" className="h-8 w-8 px-0 text-red-700" onClick={() => onRemove(item.id)} disabled={!batchMode && active}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 w-8 px-0 text-red-700"
+                onClick={() => onRemove(item.id)}
+                disabled={!batchMode && active}
+              >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </>
@@ -113,7 +138,10 @@ function QueueRow({ item, index, total, active, batchMode, canEditPausedBatch, c
       </div>
       {batchMode ? (
         <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
-          <div className={cn("h-full rounded-full bg-emerald-700 transition-all", item.status === "running" ? "animate-pulse" : "")} style={{ width: `${progress.percent}%` }} />
+          <div
+            className={cn("h-full rounded-full bg-emerald-700 transition-all", item.status === "running" ? "animate-pulse" : "")}
+            style={{ width: `${progress.percent}%` }}
+          />
         </div>
       ) : null}
       {item.error ? <p className="text-xs text-red-700">{item.error}</p> : null}

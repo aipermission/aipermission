@@ -11,7 +11,8 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
   return (
     <>
       <Notice tone="good">
-        Kafka and Redpanda share one connector. Start with read actions in Prompt mode; message samples can contain sensitive application data.
+        Kafka and Redpanda share one connector. Start with read actions in Prompt mode; message samples can contain sensitive application
+        data.
       </Notice>
       <Field>
         Connector name
@@ -35,8 +36,14 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
         <Field>
           SSH transport profile
           <Select value={form.transport_target_ref} onChange={(event) => onChange("transport_target_ref", event.target.value)} required>
-            <option value="" disabled>Select SSH profile</option>
-            {sshProfiles.map((profile) => <option value={profile.ref} key={profile.ref}>{profile.label}</option>)}
+            <option value="" disabled>
+              Select SSH profile
+            </option>
+            {sshProfiles.map((profile) => (
+              <option value={profile.ref} key={profile.ref}>
+                {profile.label}
+              </option>
+            ))}
           </Select>
         </Field>
       ) : null}
@@ -68,14 +75,22 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
           TLS
-          <Select value={form.tls_enabled ? "enabled" : "disabled"} onChange={(event) => onChange("tls_enabled", event.target.value === "enabled")}>
+          <Select
+            value={form.tls_enabled ? "enabled" : "disabled"}
+            onChange={(event) => onChange("tls_enabled", event.target.value === "enabled")}
+          >
             <option value="disabled">Disabled</option>
             <option value="enabled">Enabled</option>
           </Select>
         </Field>
         <Field>
           TLS server name
-          <Input value={form.tls_server_name} onChange={(event) => onChange("tls_server_name", event.target.value)} disabled={!form.tls_enabled} placeholder="Optional certificate hostname override" />
+          <Input
+            value={form.tls_server_name}
+            onChange={(event) => onChange("tls_server_name", event.target.value)}
+            disabled={!form.tls_enabled}
+            placeholder="Optional certificate hostname override"
+          />
         </Field>
       </div>
       {!form.tls_enabled && form.sasl_mechanism === "plain" ? (
@@ -94,7 +109,12 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
       {form.tls_enabled ? (
         <Field>
           Custom CA certificate
-          <Textarea className="min-h-24 font-mono text-xs" value={form.tls_ca_pem} onChange={(event) => onChange("tls_ca_pem", event.target.value)} placeholder="Optional PEM certificate chain" />
+          <Textarea
+            className="min-h-24 font-mono text-xs"
+            value={form.tls_ca_pem}
+            onChange={(event) => onChange("tls_ca_pem", event.target.value)}
+            placeholder="Optional PEM certificate chain"
+          />
         </Field>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -125,5 +145,9 @@ function firstBrokerPort(value) {
 }
 
 function firstBroker(value) {
-  return String(value || "").split(/[\s,]+/).find(Boolean) || "127.0.0.1:9092";
+  return (
+    String(value || "")
+      .split(/[\s,]+/)
+      .find(Boolean) || "127.0.0.1:9092"
+  );
 }

@@ -123,9 +123,7 @@ export const changelogEntries = [
       },
       {
         title: "Security",
-        items: [
-          "RESP parsing now bounds line, bulk, array, nesting, aggregate-byte, and aggregate-value sizes before allocation.",
-        ],
+        items: ["RESP parsing now bounds line, bulk, array, nesting, aggregate-byte, and aggregate-value sizes before allocation."],
       },
     ],
   },
@@ -215,9 +213,7 @@ export const changelogEntries = [
       },
       {
         title: "Security",
-        items: [
-          "Project scope is a local visibility boundary above connector permissions, not team RBAC or multi-tenant isolation.",
-        ],
+        items: ["Project scope is a local visibility boundary above connector permissions, not team RBAC or multi-tenant isolation."],
       },
     ],
   },
@@ -241,9 +237,7 @@ export const changelogEntries = [
       },
       {
         title: "Tests",
-        items: [
-          "S3 connector tests now cover directory browse hints and pagination follow-up input.",
-        ],
+        items: ["S3 connector tests now cover directory browse hints and pagination follow-up input."],
       },
     ],
   },
@@ -304,9 +298,7 @@ export const changelogEntries = [
       },
       {
         title: "Fixed",
-        items: [
-          "Manual command history now completes for Kubernetes/BusyBox-style prompts such as / # and /app $.",
-        ],
+        items: ["Manual command history now completes for Kubernetes/BusyBox-style prompts such as / # and /app $."],
       },
       {
         title: "Security",
@@ -460,9 +452,7 @@ export const changelogEntries = [
       },
       {
         title: "Changed",
-        items: [
-          "Protocol connectors can use a generic network transport capability without importing SSH-specific code.",
-        ],
+        items: ["Protocol connectors can use a generic network transport capability without importing SSH-specific code."],
       },
     ],
   },
@@ -588,9 +578,7 @@ export const changelogEntries = [
       },
       {
         title: "Fixed",
-        items: [
-          "NAS and appliance prompt detection now recognizes bracket-style shell prompts such as [~] #.",
-        ],
+        items: ["NAS and appliance prompt detection now recognizes bracket-style shell prompts such as [~] #."],
       },
       {
         title: "Security",
@@ -680,9 +668,7 @@ export const changelogEntries = [
       },
       {
         title: "Fixed",
-        items: [
-          "Persistent console MCP exec is more resilient across repeated commands and closed sessions.",
-        ],
+        items: ["Persistent console MCP exec is more resilient across repeated commands and closed sessions."],
       },
     ],
   },

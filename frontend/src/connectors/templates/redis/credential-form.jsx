@@ -15,12 +15,19 @@ export function RedisCredentialFormTemplate({ targets, form, formMode = "create"
         <Notice tone="warn">Create a {connectorProductLabel} connector target before adding a credential profile.</Notice>
       ) : (
         <Notice tone="good">
-          {editing ? `Update public ${product} profile metadata, or enter a new password to rotate the stored secret.` : `Create a ${product} profile, then bind tokens to this profile from Console or Tokens.`}
+          {editing
+            ? `Update public ${product} profile metadata, or enter a new password to rotate the stored secret.`
+            : `Create a ${product} profile, then bind tokens to this profile from Console or Tokens.`}
         </Notice>
       )}
       <Field>
         Connector target
-        <Select value={form.target_id} onChange={(event) => onChange({ ...form, target_id: event.target.value })} disabled={editing} required>
+        <Select
+          value={form.target_id}
+          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
+          disabled={editing}
+          required
+        >
           <option value="" disabled>
             Select {connectorProductLabel} target
           </option>
@@ -43,7 +50,12 @@ export function RedisCredentialFormTemplate({ targets, form, formMode = "create"
       </div>
       <Field>
         Username
-        <Input value={form.username} onChange={(event) => onChange({ ...form, username: event.target.value })} autoComplete="off" placeholder={`optional ${product} ACL username`} />
+        <Input
+          value={form.username}
+          onChange={(event) => onChange({ ...form, username: event.target.value })}
+          autoComplete="off"
+          placeholder={`optional ${product} ACL username`}
+        />
       </Field>
       <Field>
         {editing ? "New password" : "Password"}

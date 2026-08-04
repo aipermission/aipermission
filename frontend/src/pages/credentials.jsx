@@ -34,20 +34,24 @@ export function CredentialsPage() {
   const activeModel = getConnectorModel(drawer.kind);
   const rows = useMemo(
     () =>
-      availableConnectorKinds.flatMap((kind) => getConnectorModel(kind)?.credentialRows?.({
-        credentials: credentials.data,
-        targets: connectorTargets.data,
-      }) || []),
-    [availableConnectorKinds, credentials.data, connectorTargets.data]
+      availableConnectorKinds.flatMap(
+        (kind) =>
+          getConnectorModel(kind)?.credentialRows?.({
+            credentials: credentials.data,
+            targets: connectorTargets.data,
+          }) || [],
+      ),
+    [availableConnectorKinds, credentials.data, connectorTargets.data],
   );
-  const credentialFormProps = activeModel?.credentialFormProps?.({
-    targets: connectorTargets.data,
-    formState: credentialState,
-    setFormState: setCredentialState,
-    formMode: drawer.mode,
-    state,
-    onSubmit: saveCredential,
-  }) || {};
+  const credentialFormProps =
+    activeModel?.credentialFormProps?.({
+      targets: connectorTargets.data,
+      formState: credentialState,
+      setFormState: setCredentialState,
+      formMode: drawer.mode,
+      state,
+      onSubmit: saveCredential,
+    }) || {};
 
   useEffect(() => {
     void loadConnectorCatalog();
@@ -108,7 +112,12 @@ export function CredentialsPage() {
       pending: operation === "import" ? "importing" : "saving",
       successMessage: (result) => result?.message || "Credential saved.",
       action: async () => {
-        const result = await model.saveCredential({ operation, row: drawer.row, formState: credentialState, targets: connectorTargets.data });
+        const result = await model.saveCredential({
+          operation,
+          row: drawer.row,
+          formState: credentialState,
+          targets: connectorTargets.data,
+        });
         closeDrawer();
         await refreshCredentials();
         return result;
@@ -151,7 +160,9 @@ export function CredentialsPage() {
       {connectorCatalog.state === "error" ? <Notice tone="bad">{connectorCatalog.error}</Notice> : null}
       {credentials.state === "error" ? <Notice tone="bad">{credentials.error}</Notice> : null}
       {(credentials.errors || []).map((error) => (
-        <Notice tone="warn" key={error}>Credential resource load warning: {error}</Notice>
+        <Notice tone="warn" key={error}>
+          Credential resource load warning: {error}
+        </Notice>
       ))}
       {connectorTargets.state === "error" ? <Notice tone="bad">{connectorTargets.error}</Notice> : null}
 
@@ -274,7 +285,14 @@ function CredentialRow({ row, onEdit, onDelete, busy }) {
       </td>
       <td className="px-4 py-4">
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Edit credential" onClick={() => onEdit(row)} disabled={busy}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 w-9 px-0"
+            title="Edit credential"
+            onClick={() => onEdit(row)}
+            disabled={busy}
+          >
             <Pencil className="h-4 w-4" />
           </Button>
           <Button

@@ -22,7 +22,7 @@ export function useConnectorPermissions(initialTokens = []) {
         tokenItems.map(async (token) => {
           const permissions = await apiGet(`/api/tokens/${token.id}/connector-permissions`);
           return [token.id, permissions.items || []];
-        })
+        }),
       );
       const data = Object.fromEntries(entries);
       setPermissionState((current) => ({ ...current, state: "ready", data, error: null }));

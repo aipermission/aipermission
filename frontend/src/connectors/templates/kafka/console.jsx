@@ -8,7 +8,13 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost } from "../../../lib/api";
 import { connectorActionError, connectorActionPending } from "../_shared/action-result";
-import { actionableOffsetPartitions, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection, requestIsCurrent } from "./console-helpers";
+import {
+  actionableOffsetPartitions,
+  detailMatchesSelection,
+  offsetSelectionValue,
+  parseOffsetSelection,
+  requestIsCurrent,
+} from "./console-helpers";
 import { KafkaOffsetDialog, KafkaPublishDialog } from "./write-dialogs";
 
 const defaultRead = Object.freeze({ partition: "0", start_position: "recent", offset: "0", max_records: "20" });
@@ -38,13 +44,21 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
   const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900" : "border-stone-700 bg-[#1a1a1a] text-stone-100";
   const hoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeClass = theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
-  const latestAction = useMemo(() => (approvals?.data || []).find((item) => item.target_ref === target.ref) || null, [approvals?.data, target.ref]);
+  const activeClass =
+    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const latestAction = useMemo(
+    () => (approvals?.data || []).find((item) => item.target_ref === target.ref) || null,
+    [approvals?.data, target.ref],
+  );
   const items = view === "topics" ? topics : groups;
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return items;
-    return items.filter((item) => String(item.name || "").toLowerCase().includes(needle));
+    return items.filter((item) =>
+      String(item.name || "")
+        .toLowerCase()
+        .includes(needle),
+    );
   }, [items, query]);
   const activeDetail = detailMatchesSelection(detailIdentity, view, selectedName) ? detail : null;
   const offsetPartitions = actionableOffsetPartitions(activeDetail?.partitions);
@@ -92,7 +106,11 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
         await onRefreshActivity?.();
       } catch (refreshError) {
         if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
-        setState({ state: "idle", error: `Action ${pending ? "is pending" : "completed"}, but activity refresh failed: ${refreshError.message || "unknown error"}`, message });
+        setState({
+          state: "idle",
+          error: `Action ${pending ? "is pending" : "completed"}, but activity refresh failed: ${refreshError.message || "unknown error"}`,
+          message,
+        });
         return pending ? null : item.output || {};
       }
       if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
@@ -199,15 +217,21 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
       return;
     }
     setPublishDialog((current) => ({ ...current, error: "" }));
-    const output = await runAction("publish_message", {
-      topic: selectedName,
-      partition: Number(form.partition),
-      key: form.key,
-      key_encoding: form.key_encoding,
-      value: form.value,
-      value_encoding: form.value_encoding,
-      headers,
-    }, `manual ${product} browser message publish`, "writing", "publish");
+    const output = await runAction(
+      "publish_message",
+      {
+        topic: selectedName,
+        partition: Number(form.partition),
+        key: form.key,
+        key_encoding: form.key_encoding,
+        value: form.value,
+        value_encoding: form.value_encoding,
+        headers,
+      },
+      `manual ${product} browser message publish`,
+      "writing",
+      "publish",
+    );
     if (!output) return;
     setPublishDialog({ open: false, form: defaultPublish, error: "" });
     await loadDetail(selectedName, "topics");
@@ -232,12 +256,18 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
       return;
     }
     setOffsetDialog((current) => ({ ...current, error: "" }));
-    const output = await runAction("set_consumer_group_offset", {
-      group: selectedName,
-      topic: selected.topic,
-      partition: selected.partition,
-      offset: offsetDialog.form.offset.trim(),
-    }, `manual ${product} browser consumer group offset change`, "writing", "offset");
+    const output = await runAction(
+      "set_consumer_group_offset",
+      {
+        group: selectedName,
+        topic: selected.topic,
+        partition: selected.partition,
+        offset: offsetDialog.form.offset.trim(),
+      },
+      `manual ${product} browser consumer group offset change`,
+      "writing",
+      "offset",
+    );
     if (!output) return;
     setOffsetDialog({ open: false, form: defaultOffset, error: "" });
     await loadDetail(selectedName, "groups");
@@ -264,9 +294,13 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
           <Database className={`mx-auto h-8 w-8 ${mutedClass}`} />
           <div>
             <p className="font-semibold">No active {product} session</p>
-            <p className={`mt-1 text-sm ${mutedClass}`}>Start a structured session to browse topics, consumer groups, lag, and bounded message samples.</p>
+            <p className={`mt-1 text-sm ${mutedClass}`}>
+              Start a structured session to browse topics, consumer groups, lag, and bounded message samples.
+            </p>
           </div>
-          <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>New session</Button>
+          <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
+            New session
+          </Button>
         </div>
       </div>
     );
@@ -275,21 +309,52 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   return (
     <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
       <div className="grid min-h-0 gap-4 overflow-y-auto p-4 xl:grid-cols-[360px_minmax(0,1fr)] xl:overflow-hidden">
-        <section className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}>
+        <section
+          className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
+        >
           <div className={`grid grid-cols-2 gap-1 border-b p-2 ${borderClass}`} role="tablist" aria-label={`${product} browser view`}>
-            <Button type="button" role="tab" aria-selected={view === "topics"} variant={view === "topics" ? "default" : "outline"} className="h-9" onClick={() => void changeView("topics")}>
-              <Database className="h-4 w-4" />Topics
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={view === "topics"}
+              variant={view === "topics" ? "default" : "outline"}
+              className="h-9"
+              onClick={() => void changeView("topics")}
+            >
+              <Database className="h-4 w-4" />
+              Topics
             </Button>
-            <Button type="button" role="tab" aria-selected={view === "groups"} variant={view === "groups" ? "default" : "outline"} className="h-9" onClick={() => void changeView("groups")}>
-              <Users className="h-4 w-4" />Groups
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={view === "groups"}
+              variant={view === "groups" ? "default" : "outline"}
+              className="h-9"
+              onClick={() => void changeView("groups")}
+            >
+              <Users className="h-4 w-4" />
+              Groups
             </Button>
           </div>
           <div className={`grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-b p-3 ${borderClass}`}>
             <div className="relative">
               <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${mutedClass}`} />
-              <Input className={`pl-9 ${inputClass}`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Filter ${view}`} aria-label={`Filter ${view}`} />
+              <Input
+                className={`pl-9 ${inputClass}`}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={`Filter ${view}`}
+                aria-label={`Filter ${view}`}
+              />
             </div>
-            <Button type="button" variant="outline" className="h-9 w-9 px-0" title={`Refresh ${view}`} onClick={() => void refreshList()} disabled={state.state !== "idle"}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 w-9 px-0"
+              title={`Refresh ${view}`}
+              onClick={() => void refreshList()}
+              disabled={state.state !== "idle"}
+            >
               <RefreshCcw className="h-4 w-4" />
             </Button>
           </div>
@@ -302,7 +367,9 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
                 onClick={() => void selectItem(item)}
                 aria-pressed={selectedName === item.name}
               >
-                <span className="truncate font-mono text-xs font-semibold" title={item.name}>{item.name}</span>
+                <span className="truncate font-mono text-xs font-semibold" title={item.name}>
+                  {item.name}
+                </span>
                 <span className={`truncate text-xs ${selectedName === item.name ? "" : mutedClass}`}>
                   {view === "topics"
                     ? `${item.partition_count || 0} partitions · replication ${item.replication_factor || 0}`
@@ -317,59 +384,129 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
         <section className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${borderClass}`}>
           <div className={`flex items-center justify-between gap-3 border-b p-3 ${borderClass} ${subtlePanelClass}`}>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{selectedName || (view === "topics" ? "Topic detail" : "Consumer group detail")}</p>
+              <p className="truncate text-sm font-semibold">
+                {selectedName || (view === "topics" ? "Topic detail" : "Consumer group detail")}
+              </p>
               <p className={`truncate text-xs ${mutedClass}`}>
-                {selectedName ? (view === "topics" ? "Partitions, offsets, and bounded message samples" : "Members, assignments, committed offsets, and lag") : `Select one of the ${view} on the left.`}
+                {selectedName
+                  ? view === "topics"
+                    ? "Partitions, offsets, and bounded message samples"
+                    : "Members, assignments, committed offsets, and lag"
+                  : `Select one of the ${view} on the left.`}
               </p>
             </div>
             <div className="flex items-center gap-2">
               {activeDetail && view === "topics" ? (
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={openPublishDialog} disabled={state.state !== "idle"}>
-                  <Send className="h-3.5 w-3.5" />Publish
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                  onClick={openPublishDialog}
+                  disabled={state.state !== "idle"}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Publish
                 </Button>
               ) : null}
               {activeDetail && view === "groups" && offsetPartitions.length > 0 ? (
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={openOffsetDialog} disabled={state.state !== "idle"}>
-                  <Gauge className="h-3.5 w-3.5" />Set offset
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                  onClick={openOffsetDialog}
+                  disabled={state.state !== "idle"}
+                >
+                  <Gauge className="h-3.5 w-3.5" />
+                  Set offset
                 </Button>
               ) : null}
-              {activeDetail ? <CopyButton value={JSON.stringify({ detail: activeDetail, messages }, null, 2)} variant="outline" className="h-8 px-2 text-xs">JSON</CopyButton> : null}
+              {activeDetail ? (
+                <CopyButton
+                  value={JSON.stringify({ detail: activeDetail, messages }, null, 2)}
+                  variant="outline"
+                  className="h-8 px-2 text-xs"
+                >
+                  JSON
+                </CopyButton>
+              ) : null}
             </div>
           </div>
           <div className="grid min-h-0 gap-4 overflow-y-auto p-4 lg:grid-cols-2 lg:overflow-hidden">
             <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
               <p className={`text-xs font-semibold uppercase ${mutedClass}`}>{view === "topics" ? "Topic metadata" : "Group and lag"}</p>
-              <TerminalBlock surface="log" className="min-h-0 text-xs">{activeDetail ? JSON.stringify(activeDetail, null, 2) : "No item selected."}</TerminalBlock>
+              <TerminalBlock surface="log" className="min-h-0 text-xs">
+                {activeDetail ? JSON.stringify(activeDetail, null, 2) : "No item selected."}
+              </TerminalBlock>
             </div>
             <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-2">
               <p className={`text-xs font-semibold uppercase ${mutedClass}`}>{view === "topics" ? "Message sample" : "Assignments"}</p>
               {view === "topics" ? (
                 <div className="grid gap-2 sm:grid-cols-[100px_140px_110px_minmax(0,1fr)_auto]">
-                  <Select className={inputClass} value={readForm.partition} onChange={(event) => setReadForm({ ...readForm, partition: event.target.value })} aria-label="Partition">
-                    {(activeDetail?.partitions || []).map((partition) => <option value={partition.partition} key={partition.partition}>p{partition.partition}</option>)}
+                  <Select
+                    className={inputClass}
+                    value={readForm.partition}
+                    onChange={(event) => setReadForm({ ...readForm, partition: event.target.value })}
+                    aria-label="Partition"
+                  >
+                    {(activeDetail?.partitions || []).map((partition) => (
+                      <option value={partition.partition} key={partition.partition}>
+                        p{partition.partition}
+                      </option>
+                    ))}
                   </Select>
-                  <Select className={inputClass} value={readForm.start_position} onChange={(event) => setReadForm({ ...readForm, start_position: event.target.value })} aria-label="Start position">
+                  <Select
+                    className={inputClass}
+                    value={readForm.start_position}
+                    onChange={(event) => setReadForm({ ...readForm, start_position: event.target.value })}
+                    aria-label="Start position"
+                  >
                     <option value="recent">Recent</option>
                     <option value="earliest">Earliest</option>
                     <option value="offset">Offset</option>
                   </Select>
-                  <Input className={inputClass} type="number" min="0" value={readForm.start_position === "offset" ? readForm.offset : readForm.max_records} onChange={(event) => setReadForm({ ...readForm, [readForm.start_position === "offset" ? "offset" : "max_records"]: event.target.value })} aria-label={readForm.start_position === "offset" ? "Offset" : "Maximum records"} />
+                  <Input
+                    className={inputClass}
+                    type="number"
+                    min="0"
+                    value={readForm.start_position === "offset" ? readForm.offset : readForm.max_records}
+                    onChange={(event) =>
+                      setReadForm({ ...readForm, [readForm.start_position === "offset" ? "offset" : "max_records"]: event.target.value })
+                    }
+                    aria-label={readForm.start_position === "offset" ? "Offset" : "Maximum records"}
+                  />
                   <span />
-                  <Button type="button" className="h-9" disabled={!selectedName || state.state !== "idle"} onClick={() => void readMessages()}>
-                    <Eye className="h-4 w-4" />Read
+                  <Button
+                    type="button"
+                    className="h-9"
+                    disabled={!selectedName || state.state !== "idle"}
+                    onClick={() => void readMessages()}
+                  >
+                    <Eye className="h-4 w-4" />
+                    Read
                   </Button>
                 </div>
-              ) : <span />}
+              ) : (
+                <span />
+              )}
               <TerminalBlock surface="log" className="min-h-0 text-xs">
                 {view === "topics"
-                  ? (messages ? JSON.stringify(messages, null, 2) : "No messages read in this session.")
-                  : (activeDetail ? JSON.stringify({ members: activeDetail.members || [], partitions: activeDetail.partitions || [] }, null, 2) : "No consumer group selected.")}
+                  ? messages
+                    ? JSON.stringify(messages, null, 2)
+                    : "No messages read in this session."
+                  : activeDetail
+                    ? JSON.stringify({ members: activeDetail.members || [], partitions: activeDetail.partitions || [] }, null, 2)
+                    : "No consumer group selected."}
               </TerminalBlock>
             </div>
           </div>
           <div className={`grid gap-2 border-t p-3 ${borderClass}`} aria-live="polite">
-            <Notice tone="warn">Message values, keys, and headers can contain secrets. Samples are bounded and never commit consumer offsets.</Notice>
-            <Notice tone="warn">Publishing writes one message. Offset changes can replay or skip messages. Local browser writes require confirmation here; for MCP access, keep both actions on Prompt unless direct execution is intentional.</Notice>
+            <Notice tone="warn">
+              Message values, keys, and headers can contain secrets. Samples are bounded and never commit consumer offsets.
+            </Notice>
+            <Notice tone="warn">
+              Publishing writes one message. Offset changes can replay or skip messages. Local browser writes require confirmation here; for
+              MCP access, keep both actions on Prompt unless direct execution is intentional.
+            </Notice>
             {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
             {state.message ? <Notice tone="good">{state.message}</Notice> : null}
           </div>
@@ -378,8 +515,17 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
       <div className={`flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-xs ${borderClass}`}>
         <span className={`truncate font-mono ${mutedClass}`}>{target.ref}</span>
         <span className={`flex items-center gap-2 truncate ${mutedClass}`}>
-          {latestAction ? <Badge tone={latestAction.status === "completed" ? "good" : latestAction.status === "failed" ? "bad" : "warn"}>{latestAction.action_name}</Badge> : <Activity className="h-3.5 w-3.5" />}
-          {String(target.config?.bootstrap_brokers || "").split(/[\s,]+/).filter(Boolean).join(", ")}
+          {latestAction ? (
+            <Badge tone={latestAction.status === "completed" ? "good" : latestAction.status === "failed" ? "bad" : "warn"}>
+              {latestAction.action_name}
+            </Badge>
+          ) : (
+            <Activity className="h-3.5 w-3.5" />
+          )}
+          {String(target.config?.bootstrap_brokers || "")
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .join(", ")}
         </span>
       </div>
       <KafkaPublishDialog

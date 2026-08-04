@@ -51,15 +51,19 @@ export function RedisConnectorFormTemplate({ form, mode = "create", targets = []
           Host and port are resolved from the SSH server. Use 127.0.0.1:6379 when {product} only listens on the remote machine.
         </Notice>
       ) : (
-        <Notice>
-          For {product} running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost.
-        </Notice>
+        <Notice>For {product} running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost.</Notice>
       )}
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px_120px]">
         <Field>
           <span className="flex items-center justify-between gap-2">
             <span>{product} host</span>
-            <HostPingButton host={form.host} port={form.port} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} projectID={form.project_id} />
+            <HostPingButton
+              host={form.host}
+              port={form.port}
+              mode={form.connection_mode}
+              transportTargetRef={form.transport_target_ref}
+              projectID={form.project_id}
+            />
           </span>
           <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
         </Field>
@@ -84,7 +88,12 @@ export function RedisConnectorFormTemplate({ form, mode = "create", targets = []
       </div>
       <Field>
         Username
-        <Input value={form.username} onChange={(event) => onChange("username", event.target.value)} autoComplete="off" placeholder={`optional ${product} ACL username`} />
+        <Input
+          value={form.username}
+          onChange={(event) => onChange("username", event.target.value)}
+          autoComplete="off"
+          placeholder={`optional ${product} ACL username`}
+        />
       </Field>
       <Field>
         Password
@@ -107,6 +116,6 @@ function sshProfileOptions(targets) {
       (target.profiles || []).map((profile) => ({
         ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
         label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
-      }))
+      })),
     );
 }

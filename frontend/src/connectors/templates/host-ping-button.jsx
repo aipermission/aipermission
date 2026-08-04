@@ -70,20 +70,30 @@ export function HostPingButton({ host, port, mode = "direct", transportTargetRef
           {dialog.result ? (
             <>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={dialog.result.ok ? "good" : dialog.result.received > 0 ? "warn" : "bad"}>{dialog.result.received}/{dialog.result.sent} reachable</Badge>
+                <Badge tone={dialog.result.ok ? "good" : dialog.result.received > 0 ? "warn" : "bad"}>
+                  {dialog.result.received}/{dialog.result.sent} reachable
+                </Badge>
                 <Badge tone="neutral">{dialog.result.duration_ms} ms total</Badge>
                 <Badge tone="neutral">{modeLabel(dialog.result.mode)}</Badge>
               </div>
               <Notice tone={dialog.result.ok ? "good" : "warn"}>{dialog.result.message}</Notice>
               <div className="overflow-hidden rounded-lg border border-stone-200">
                 {(dialog.result.attempts || []).map((attempt) => (
-                  <div key={attempt.attempt} className="grid gap-2 border-b border-stone-200 px-3 py-2 last:border-b-0 sm:grid-cols-[92px_120px_minmax(0,1fr)]">
+                  <div
+                    key={attempt.attempt}
+                    className="grid gap-2 border-b border-stone-200 px-3 py-2 last:border-b-0 sm:grid-cols-[92px_120px_minmax(0,1fr)]"
+                  >
                     <span className="text-sm font-semibold text-stone-900">Attempt {attempt.attempt}</span>
-                    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${attempt.ok ? "text-emerald-700" : "text-red-700"}`}>
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-sm font-semibold ${attempt.ok ? "text-emerald-700" : "text-red-700"}`}
+                    >
                       {attempt.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                       {attempt.ok ? "reachable" : "failed"}
                     </span>
-                    <span className="min-w-0 truncate font-mono text-xs text-stone-500" title={attempt.error || `${attempt.duration_ms} ms`}>
+                    <span
+                      className="min-w-0 truncate font-mono text-xs text-stone-500"
+                      title={attempt.error || `${attempt.duration_ms} ms`}
+                    >
                       {attempt.error || `${attempt.duration_ms} ms`}
                     </span>
                   </div>
@@ -106,7 +116,8 @@ function pingDisabledReason({ host, port, mode, transportTargetRef, projectID })
   if (!String(host || "").trim()) return "Enter a host first.";
   if (!Number.isInteger(port) || port < 1 || port > 65535) return "Enter a valid port first.";
   if (mode === "over_ssh" && !String(transportTargetRef || "").trim()) return "Select an SSH transport profile first.";
-  if (mode === "over_ssh" && (!Number.isInteger(Number(projectID)) || Number(projectID) < 1)) return "Select a project before testing an SSH transport.";
+  if (mode === "over_ssh" && (!Number.isInteger(Number(projectID)) || Number(projectID) < 1))
+    return "Select a project before testing an SSH transport.";
   return "";
 }
 

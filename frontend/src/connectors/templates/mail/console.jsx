@@ -7,7 +7,18 @@ import { apiPost } from "../../../lib/api";
 import { connectorActionCode, connectorActionError, connectorActionPending } from "../_shared/action-result";
 import { ComposeDialog } from "./compose-dialog";
 import { MailActionResultDialog } from "./action-result-dialog";
-import { addressValues, mailActionResolution, mailActionSummary, mailFolderAllowed, mailProtocolCapabilities, messageRefKey, replySubject, replyText, submissionDraftFingerprint, unknownSubmissionRetryDecision } from "./helpers";
+import {
+  addressValues,
+  mailActionResolution,
+  mailActionSummary,
+  mailFolderAllowed,
+  mailProtocolCapabilities,
+  messageRefKey,
+  replySubject,
+  replyText,
+  submissionDraftFingerprint,
+  unknownSubmissionRetryDecision,
+} from "./helpers";
 import { FolderPane, MessagePane } from "./mailbox-pane";
 import { MessageDetail } from "./message-detail";
 import { DeleteMessageDialog, MoveMessageDialog, RetryUnknownSubmissionDialog } from "./message-dialogs";
@@ -41,15 +52,26 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
   const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
   const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400" : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
+  const inputClass =
+    theme === "light"
+      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
+      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
   const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass = theme === "light" ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
-  const resultClass = theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-emerald-800 bg-emerald-950/40 text-emerald-100";
-  const activeItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
+  const activeRowClass =
+    theme === "light" ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const resultClass =
+    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-emerald-800 bg-emerald-950/40 text-emerald-100";
+  const activeItems = useMemo(
+    () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
+    [approvals?.data, target.ref],
+  );
   const latestAction = activeItems[0] || null;
   const busy = state.state !== "idle" && state.state !== "error";
-  const outboundPending = Object.values(pendingActions).some((pending) => pending.actionName === "send_message" || pending.actionName === "reply_message")
-    || activeItems.some((item) => ["send_message", "reply_message"].includes(item.action_name) && ["approval_pending", "running"].includes(item.status));
+  const outboundPending =
+    Object.values(pendingActions).some((pending) => pending.actionName === "send_message" || pending.actionName === "reply_message") ||
+    activeItems.some(
+      (item) => ["send_message", "reply_message"].includes(item.action_name) && ["approval_pending", "running"].includes(item.status),
+    );
   const composeError = ["send_message", "reply_message"].includes(state.result?.actionName) ? state.error : "";
   const destinationFolders = useMemo(() => allowedDestinationFolders(target), [target]);
   const { imapEnabled, smtpEnabled } = mailProtocolCapabilities(target.public);
@@ -57,9 +79,9 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   const canDelete = mailFolderAllowed(target.public?.trash_folder, target.public?.allowed_mutation_destination_folders);
 
   function reportActivityRefreshFailure() {
-    setState((current) => current.state === "idle"
-      ? { ...current, error: "Activity refresh unavailable.", message: "", result: null }
-      : current);
+    setState((current) =>
+      current.state === "idle" ? { ...current, error: "Activity refresh unavailable.", message: "", result: null } : current,
+    );
   }
 
   function refreshActivitySafely() {
@@ -160,7 +182,12 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
           ...current,
           [item.id]: { requestID: item.id, actionName, context: pendingContext, generation },
         }));
-        setState({ state: "idle", error: "", message: item.display_text || "Mail action is awaiting approval.", result: { actionName, summary: item.display_text || "Mail action is awaiting approval.", item } });
+        setState({
+          state: "idle",
+          error: "",
+          message: item.display_text || "Mail action is awaiting approval.",
+          result: { actionName, summary: item.display_text || "Mail action is awaiting approval.", item },
+        });
         refreshActivitySafely();
         return item;
       }
@@ -170,7 +197,12 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
       return item;
     } catch (error) {
       if (generation === requestGeneration.current && targetRef === currentTargetRef.current) {
-        setState({ state: "error", error: error.message || "Mail action failed.", message: "", result: error.actionResult || { actionName, summary: error.message || "Mail action failed.", item: null } });
+        setState({
+          state: "error",
+          error: error.message || "Mail action failed.",
+          message: "",
+          result: error.actionResult || { actionName, summary: error.message || "Mail action failed.", item: null },
+        });
       }
       throw error;
     }
@@ -190,9 +222,10 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
         setSelectedMessage(null);
       }
       if (actionName === "send_message" || actionName === "reply_message") {
-        const submissionUnknown = item.output?.submission_status === "submission_unknown"
-          ? { messageID: item.output.message_id || "", fingerprint: context.draftFingerprint }
-          : null;
+        const submissionUnknown =
+          item.output?.submission_status === "submission_unknown"
+            ? { messageID: item.output.message_id || "", fingerprint: context.draftFingerprint }
+            : null;
         setCompose({ open: true, reply: context.reply, messageRef: context.messageRef, form: context.fields || {}, submissionUnknown });
       }
       return;
@@ -235,7 +268,9 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   function applyFolderResult(item, preferredFolder) {
     const nextFolders = Array.isArray(item.output?.folders) ? item.output.folders.filter((folder) => folder.selectable !== false) : [];
     setFolders(nextFolders);
-    const preferred = nextFolders.some((folder) => folder.name === preferredFolder) ? preferredFolder : nextFolders.find((folder) => folder.name.toUpperCase() === defaultFolder)?.name || nextFolders[0]?.name || defaultFolder;
+    const preferred = nextFolders.some((folder) => folder.name === preferredFolder)
+      ? preferredFolder
+      : nextFolders.find((folder) => folder.name.toUpperCase() === defaultFolder)?.name || nextFolders[0]?.name || defaultFolder;
     setSelectedFolder(preferred);
     return preferred;
   }
@@ -243,7 +278,10 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   function applyMessageSearchResult(item, context) {
     const nextMessages = Array.isArray(item.output?.messages) ? item.output.messages : [];
     setMessages((current) => (context.reset ? nextMessages : mergeMessages(current, nextMessages)));
-    setFolderStats((current) => ({ ...current, [context.folder]: { total: Number(item.output?.total || 0), unread: Number(item.output?.unread || 0) } }));
+    setFolderStats((current) => ({
+      ...current,
+      [context.folder]: { total: Number(item.output?.total || 0), unread: Number(item.output?.unread || 0) },
+    }));
     setNextCursor(item.output?.next_cursor || "");
     if (context.reset) setSelectedMessage(null);
   }
@@ -265,7 +303,10 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   async function refreshMailbox({ preferredFolder = selectedFolder, subject = appliedQuery } = {}) {
     if (!activeSession.active || !imapEnabled) return;
     try {
-      const folderItem = await runMailAction("list_folders", {}, "manual Mail workspace folder list", "loading", { preferredFolder, subject });
+      const folderItem = await runMailAction("list_folders", {}, "manual Mail workspace folder list", "loading", {
+        preferredFolder,
+        subject,
+      });
       if (!folderItem || connectorActionPending(folderItem)) return;
       const preferred = applyFolderResult(folderItem, preferredFolder);
       await loadMessages(preferred, { reset: true, subject });
@@ -282,7 +323,7 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
         { folder, unread_only: unread, subject, limit: defaultMessageLimit, cursor },
         "manual Mail workspace message search",
         "loading",
-        { folder, reset, cursor, unread, subject }
+        { folder, reset, cursor, unread, subject },
       );
       if (!item || connectorActionPending(item)) return;
       applyMessageSearchResult(item, { folder, reset });
@@ -303,7 +344,13 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   async function selectMessage(message) {
     if (busy) return;
     try {
-      const item = await runMailAction("get_message", { message_ref: message.message_ref }, "manual Mail workspace message read", "reading", { messageKey: messageRefKey(message) });
+      const item = await runMailAction(
+        "get_message",
+        { message_ref: message.message_ref },
+        "manual Mail workspace message read",
+        "reading",
+        { messageKey: messageRefKey(message) },
+      );
       if (item && !connectorActionPending(item)) setSelectedMessage(item.output || null);
     } catch (error) {
       if (connectorActionCode(error.actionItem) === "stale_message_reference") setSelectedMessage(null);
@@ -316,7 +363,13 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
     const actionName = selectedMessage.read ? "mark_unread" : "mark_read";
     try {
       const context = { messageKey: messageRefKey(selectedMessage), folder: selectedFolder, wasRead: selectedMessage.read };
-      const item = await runMailAction(actionName, { message_ref: selectedMessage.message_ref }, `manual Mail workspace ${actionName.replace("_", " ")}`, "updating", context);
+      const item = await runMailAction(
+        actionName,
+        { message_ref: selectedMessage.message_ref },
+        `manual Mail workspace ${actionName.replace("_", " ")}`,
+        "updating",
+        context,
+      );
       if (!item || connectorActionPending(item)) return;
       applyReadStateResult(item, context);
     } catch {
@@ -351,7 +404,13 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
     if (compose.reply && compose.messageRef) input.message_ref = compose.messageRef;
     try {
       const pendingContext = { fields, reply: compose.reply, messageRef: compose.messageRef, draftFingerprint };
-      const item = await runMailAction(actionName, input, compose.reply ? "manual Mail workspace reply" : "manual Mail workspace send", "sending", pendingContext);
+      const item = await runMailAction(
+        actionName,
+        input,
+        compose.reply ? "manual Mail workspace reply" : "manual Mail workspace send",
+        "sending",
+        pendingContext,
+      );
       if (!item) return;
       if (connectorActionPending(item)) {
         setCompose((current) => ({ ...current, form: fields, pendingRequestID: item.id }));
@@ -361,7 +420,10 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
       setRetryDialog({ open: false, fields: null, messageID: "" });
     } catch (error) {
       if (error.actionItem?.output?.submission_status === "submission_unknown") {
-        setCompose((current) => ({ ...current, submissionUnknown: { messageID: error.actionItem.output.message_id || "", fingerprint: draftFingerprint } }));
+        setCompose((current) => ({
+          ...current,
+          submissionUnknown: { messageID: error.actionItem.output.message_id || "", fingerprint: draftFingerprint },
+        }));
       }
       // Keep the draft open so the operator can inspect the exact failure.
     }
@@ -373,8 +435,15 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
         <div className="grid place-items-center p-8 text-center">
           <div className="grid max-w-lg gap-4">
             <Mail className={`mx-auto h-10 w-10 ${mutedClass}`} />
-            <div><h3 className="text-lg font-semibold">No active Mail session</h3><p className={`mt-2 text-sm ${mutedClass}`}>Start a structured session to browse bounded IMAP content and submit guarded SMTP actions.</p></div>
-            <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>Start Mail session</Button>
+            <div>
+              <h3 className="text-lg font-semibold">No active Mail session</h3>
+              <p className={`mt-2 text-sm ${mutedClass}`}>
+                Start a structured session to browse bounded IMAP content and submit guarded SMTP actions.
+              </p>
+            </div>
+            <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
+              Start Mail session
+            </Button>
           </div>
         </div>
         <MailEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
@@ -387,9 +456,18 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
       <div className={`flex min-w-0 items-center justify-between gap-3 border-b px-3 py-2 ${borderClass}`}>
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-semibold">{target.public?.mailbox_address || target.profile_label}</span>
-          {latestAction ? <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>{latestAction.action_name}</Badge> : null}
+          {latestAction ? (
+            <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>
+              {latestAction.action_name}
+            </Badge>
+          ) : null}
           {state.message ? (
-            <button type="button" className={`flex h-7 max-w-72 items-center gap-1.5 overflow-hidden rounded-md border px-2 text-left text-xs ${resultClass}`} onClick={() => state.result && setResultDialog({ open: true, ...state.result })} title={state.message}>
+            <button
+              type="button"
+              className={`flex h-7 max-w-72 items-center gap-1.5 overflow-hidden rounded-md border px-2 text-left text-xs ${resultClass}`}
+              onClick={() => state.result && setResultDialog({ open: true, ...state.result })}
+              title={state.message}
+            >
               <CircleCheck className="h-3.5 w-3.5 shrink-0" />
               <span className="min-w-0 flex-1 truncate">{state.message}</span>
               <ChevronRight className="h-3.5 w-3.5 shrink-0" />
@@ -397,45 +475,129 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          {imapEnabled ? <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Refresh mailbox" aria-label="Refresh mailbox" onClick={() => refreshMailbox()} disabled={busy}><RefreshCcw className={`h-4 w-4 ${state.state === "loading" ? "animate-spin" : ""}`} /></Button> : null}
-          <Button type="button" className="h-8" onClick={openCompose} disabled={busy || outboundPending || !smtpEnabled}><PenLine className="h-4 w-4" />Compose</Button>
+          {imapEnabled ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 w-8 px-0"
+              title="Refresh mailbox"
+              aria-label="Refresh mailbox"
+              onClick={() => refreshMailbox()}
+              disabled={busy}
+            >
+              <RefreshCcw className={`h-4 w-4 ${state.state === "loading" ? "animate-spin" : ""}`} />
+            </Button>
+          ) : null}
+          <Button type="button" className="h-8" onClick={openCompose} disabled={busy || outboundPending || !smtpEnabled}>
+            <PenLine className="h-4 w-4" />
+            Compose
+          </Button>
         </div>
       </div>
-      {imapEnabled ? <div className="grid min-h-0 gap-2 overflow-y-auto xl:grid-cols-[220px_340px_minmax(0,1fr)] xl:gap-0 xl:overflow-hidden [&>*]:min-h-[320px] xl:[&>*]:min-h-0">
-        <FolderPane folders={folders} selectedFolder={selectedFolder} folderStats={folderStats} onSelect={selectFolder} borderClass={borderClass} mutedClass={mutedClass} rowHoverClass={rowHoverClass} activeRowClass={activeRowClass} />
-        <MessagePane messages={messages} selectedRef={messageRefKey(selectedMessage)} query={query} unreadOnly={unreadOnly} hasMore={Boolean(nextCursor)} busy={busy} onQuery={setQuery} onUnreadOnly={(value) => { setUnreadOnly(value); if (!busy) void loadMessages(selectedFolder, { reset: true, unread: value }); }} onSearch={(event) => { event.preventDefault(); if (!busy) { const subject = query.trim(); setAppliedQuery(subject); void loadMessages(selectedFolder, { reset: true, subject }); } }} onSelect={selectMessage} onLoadMore={() => loadMessages(selectedFolder, { reset: false, cursor: nextCursor })} borderClass={borderClass} mutedClass={mutedClass} inputClass={inputClass} rowHoverClass={rowHoverClass} activeRowClass={activeRowClass} />
-        <MessageDetail
-          message={selectedMessage}
-          busy={busy}
-          canReply={smtpEnabled && !outboundPending}
-          canMove={destinationFolders.length > 0}
-          canArchive={canArchive}
-          canDelete={canDelete}
-          onToggleRead={toggleRead}
-          onReply={openReply}
-          onMove={() => setMoveDialog({ open: true, destination: "", sourceFolder: selectedMessage?.message_ref?.folder || "" })}
-          onArchive={() => moveSelected("archive_message")}
-          onDelete={() => setDeleteOpen(true)}
-          borderClass={borderClass}
-          mutedClass={mutedClass}
-          subtlePanelClass={subtlePanelClass}
-        />
-      </div> : <div className="grid min-h-0 place-items-center p-8 text-center">
-        <div className={`grid max-w-lg gap-3 rounded-md border p-6 ${borderClass} ${subtlePanelClass}`}>
-          <PenLine className={`mx-auto h-9 w-9 ${mutedClass}`} />
-          <h3 className="text-base font-semibold">SMTP-only Mail profile</h3>
-          <p className={`text-sm ${mutedClass}`}>Mailbox browsing is disabled for this profile. Compose remains available through the configured SMTP connection.</p>
-          <Button type="button" className="mx-auto" onClick={openCompose} disabled={busy || outboundPending || !smtpEnabled}><PenLine className="h-4 w-4" />Compose message</Button>
+      {imapEnabled ? (
+        <div className="grid min-h-0 gap-2 overflow-y-auto xl:grid-cols-[220px_340px_minmax(0,1fr)] xl:gap-0 xl:overflow-hidden [&>*]:min-h-[320px] xl:[&>*]:min-h-0">
+          <FolderPane
+            folders={folders}
+            selectedFolder={selectedFolder}
+            folderStats={folderStats}
+            onSelect={selectFolder}
+            borderClass={borderClass}
+            mutedClass={mutedClass}
+            rowHoverClass={rowHoverClass}
+            activeRowClass={activeRowClass}
+          />
+          <MessagePane
+            messages={messages}
+            selectedRef={messageRefKey(selectedMessage)}
+            query={query}
+            unreadOnly={unreadOnly}
+            hasMore={Boolean(nextCursor)}
+            busy={busy}
+            onQuery={setQuery}
+            onUnreadOnly={(value) => {
+              setUnreadOnly(value);
+              if (!busy) void loadMessages(selectedFolder, { reset: true, unread: value });
+            }}
+            onSearch={(event) => {
+              event.preventDefault();
+              if (!busy) {
+                const subject = query.trim();
+                setAppliedQuery(subject);
+                void loadMessages(selectedFolder, { reset: true, subject });
+              }
+            }}
+            onSelect={selectMessage}
+            onLoadMore={() => loadMessages(selectedFolder, { reset: false, cursor: nextCursor })}
+            borderClass={borderClass}
+            mutedClass={mutedClass}
+            inputClass={inputClass}
+            rowHoverClass={rowHoverClass}
+            activeRowClass={activeRowClass}
+          />
+          <MessageDetail
+            message={selectedMessage}
+            busy={busy}
+            canReply={smtpEnabled && !outboundPending}
+            canMove={destinationFolders.length > 0}
+            canArchive={canArchive}
+            canDelete={canDelete}
+            onToggleRead={toggleRead}
+            onReply={openReply}
+            onMove={() => setMoveDialog({ open: true, destination: "", sourceFolder: selectedMessage?.message_ref?.folder || "" })}
+            onArchive={() => moveSelected("archive_message")}
+            onDelete={() => setDeleteOpen(true)}
+            borderClass={borderClass}
+            mutedClass={mutedClass}
+            subtlePanelClass={subtlePanelClass}
+          />
         </div>
-      </div>}
+      ) : (
+        <div className="grid min-h-0 place-items-center p-8 text-center">
+          <div className={`grid max-w-lg gap-3 rounded-md border p-6 ${borderClass} ${subtlePanelClass}`}>
+            <PenLine className={`mx-auto h-9 w-9 ${mutedClass}`} />
+            <h3 className="text-base font-semibold">SMTP-only Mail profile</h3>
+            <p className={`text-sm ${mutedClass}`}>
+              Mailbox browsing is disabled for this profile. Compose remains available through the configured SMTP connection.
+            </p>
+            <Button type="button" className="mx-auto" onClick={openCompose} disabled={busy || outboundPending || !smtpEnabled}>
+              <PenLine className="h-4 w-4" />
+              Compose message
+            </Button>
+          </div>
+        </div>
+      )}
       <div className={`grid gap-2 border-t px-3 py-2 ${borderClass}`}>
         {state.error ? <Notice tone="bad">{state.error}</Notice> : null}
         <MailEndpointFooter target={target} mutedClass={mutedClass} />
       </div>
-      <ComposeDialog draft={compose} busy={state.state === "sending" || Boolean(compose.pendingRequestID)} error={compose.open ? composeError : ""} onClose={() => setCompose((current) => current.pendingRequestID ? { ...current, open: false } : { open: false, reply: false, form: {} })} onSubmit={submitMessage} />
-      <MailActionResultDialog value={resultDialog} onClose={() => setResultDialog({ open: false, actionName: "", summary: "", item: null })} />
-      <MoveMessageDialog dialog={moveDialog} folders={destinationFolders} busy={state.state === "updating"} onClose={() => setMoveDialog({ open: false, destination: "", sourceFolder: "" })} onDestination={(destination) => setMoveDialog((current) => ({ ...current, destination }))} onConfirm={() => moveSelected("move_message", moveDialog.destination)} />
-      <DeleteMessageDialog open={deleteOpen} trashFolder={target.public?.trash_folder} busy={state.state === "updating"} onClose={() => setDeleteOpen(false)} onConfirm={() => moveSelected("delete_message")} />
+      <ComposeDialog
+        draft={compose}
+        busy={state.state === "sending" || Boolean(compose.pendingRequestID)}
+        error={compose.open ? composeError : ""}
+        onClose={() =>
+          setCompose((current) => (current.pendingRequestID ? { ...current, open: false } : { open: false, reply: false, form: {} }))
+        }
+        onSubmit={submitMessage}
+      />
+      <MailActionResultDialog
+        value={resultDialog}
+        onClose={() => setResultDialog({ open: false, actionName: "", summary: "", item: null })}
+      />
+      <MoveMessageDialog
+        dialog={moveDialog}
+        folders={destinationFolders}
+        busy={state.state === "updating"}
+        onClose={() => setMoveDialog({ open: false, destination: "", sourceFolder: "" })}
+        onDestination={(destination) => setMoveDialog((current) => ({ ...current, destination }))}
+        onConfirm={() => moveSelected("move_message", moveDialog.destination)}
+      />
+      <DeleteMessageDialog
+        open={deleteOpen}
+        trashFolder={target.public?.trash_folder}
+        busy={state.state === "updating"}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={() => moveSelected("delete_message")}
+      />
       <RetryUnknownSubmissionDialog
         value={retryDialog}
         busy={state.state === "sending"}
@@ -447,7 +609,12 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
 }
 
 function MailEndpointFooter({ target, borderClass = "", mutedClass }) {
-  return <div className={`flex min-w-0 items-center justify-between gap-3 ${borderClass}`}><span className={`truncate font-mono text-xs ${mutedClass}`}>{target.ref}</span><span className={`truncate text-xs ${mutedClass}`}>{targetEndpoint({ target })}</span></div>;
+  return (
+    <div className={`flex min-w-0 items-center justify-between gap-3 ${borderClass}`}>
+      <span className={`truncate font-mono text-xs ${mutedClass}`}>{target.ref}</span>
+      <span className={`truncate text-xs ${mutedClass}`}>{targetEndpoint({ target })}</span>
+    </div>
+  );
 }
 
 function mergeMessages(current, next) {
@@ -463,6 +630,8 @@ function updateUnreadCount(stats, folder, wasRead, isRead) {
 }
 
 function allowedDestinationFolders(target) {
-  const allowed = Array.isArray(target.public?.allowed_mutation_destination_folders) ? target.public.allowed_mutation_destination_folders : [];
+  const allowed = Array.isArray(target.public?.allowed_mutation_destination_folders)
+    ? target.public.allowed_mutation_destination_folders
+    : [];
   return allowed.map((name) => ({ name, display_name: name, selectable: true }));
 }

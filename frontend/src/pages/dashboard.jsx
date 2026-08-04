@@ -21,15 +21,53 @@ export function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Getting Started</CardTitle>
-            <CardDescription>Small path, clear control: create a credential, add a connector, give a token permission, then let the AI work through MCP.</CardDescription>
+            <CardDescription>
+              Small path, clear control: create a credential, add a connector, give a token permission, then let the AI work through MCP.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <LifecycleStep number="1" to="/credentials" icon={KeyRound} title="Create a credential" text="Generate or import a connector credential. aipermission keeps private material local and encrypted." />
-            <LifecycleStep number="2" to="/connectors" icon={Cable} title="Add a connector" text="Create a connector target, attach a credential profile, then test it through the connector pipeline." />
-            <LifecycleStep number="3" to="/tokens" icon={TicketCheck} title="Create a token and install MCP" text="Create one token per AI client or session, then use Install to copy the provider-specific init command." />
-            <LifecycleStep number="4" to="/console" icon={TerminalSquare} title="Grant connector permission" text="Open Console, select a target and token, then choose disabled, prompt, or always." />
-            <LifecycleStep number="5" to="/mcp-setup" icon={PlugZap} title="Use it with your AI" text="Tell the AI which MCP server name to use, such as aipermission-default." />
-            <LifecycleStep number="6" to="/history" icon={History} title="Review history" text="Inspect executed commands, reasons, outputs, approvals, and failures after the session." />
+            <LifecycleStep
+              number="1"
+              to="/credentials"
+              icon={KeyRound}
+              title="Create a credential"
+              text="Generate or import a connector credential. aipermission keeps private material local and encrypted."
+            />
+            <LifecycleStep
+              number="2"
+              to="/connectors"
+              icon={Cable}
+              title="Add a connector"
+              text="Create a connector target, attach a credential profile, then test it through the connector pipeline."
+            />
+            <LifecycleStep
+              number="3"
+              to="/tokens"
+              icon={TicketCheck}
+              title="Create a token and install MCP"
+              text="Create one token per AI client or session, then use Install to copy the provider-specific init command."
+            />
+            <LifecycleStep
+              number="4"
+              to="/console"
+              icon={TerminalSquare}
+              title="Grant connector permission"
+              text="Open Console, select a target and token, then choose disabled, prompt, or always."
+            />
+            <LifecycleStep
+              number="5"
+              to="/mcp-setup"
+              icon={PlugZap}
+              title="Use it with your AI"
+              text="Tell the AI which MCP server name to use, such as aipermission-default."
+            />
+            <LifecycleStep
+              number="6"
+              to="/history"
+              icon={History}
+              title="Review history"
+              text="Inspect executed commands, reasons, outputs, approvals, and failures after the session."
+            />
           </CardContent>
         </Card>
 
@@ -94,8 +132,13 @@ function Metric({ to, icon: Icon, title, value, detail }) {
 
 function LifecycleStep({ number, to, icon: Icon, title, text }) {
   return (
-    <Link to={to} className="group flex gap-3 rounded-lg border border-stone-200 p-3 transition hover:border-emerald-800 hover:bg-emerald-50/40">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-950 text-xs font-bold text-white">{number}</span>
+    <Link
+      to={to}
+      className="group flex gap-3 rounded-lg border border-stone-200 p-3 transition hover:border-emerald-800 hover:bg-emerald-50/40"
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-950 text-xs font-bold text-white">
+        {number}
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-stone-500 group-hover:text-emerald-900" />

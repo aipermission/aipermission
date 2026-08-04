@@ -9,7 +9,8 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
   return (
     <>
       <Notice tone="good">
-        S3 supports S3-compatible providers such as AWS S3 and MinIO. Object downloads/uploads are bounded connector actions; use Prompt permissions before allowing writes.
+        S3 supports S3-compatible providers such as AWS S3 and MinIO. Object downloads/uploads are bounded connector actions; use Prompt
+        permissions before allowing writes.
       </Notice>
       <Field>
         Connector name
@@ -38,9 +39,15 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
         </Field>
       ) : null}
       {overSSH ? (
-        <Notice>Host and port are resolved from the SSH server. Use 127.0.0.1 when a MinIO/S3-compatible endpoint is only reachable from that server.</Notice>
+        <Notice>
+          Host and port are resolved from the SSH server. Use 127.0.0.1 when a MinIO/S3-compatible endpoint is only reachable from that
+          server.
+        </Notice>
       ) : (
-        <Notice>For MinIO or S3-compatible storage running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost.</Notice>
+        <Notice>
+          For MinIO or S3-compatible storage running on the same Linux host as AIPermission Docker, use host.docker.internal instead of
+          localhost.
+        </Notice>
       )}
       <div className="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)_120px]">
         <Field>
@@ -53,7 +60,13 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
         <Field>
           <span className="flex items-center justify-between gap-2">
             <span>Endpoint host</span>
-            <HostPingButton host={form.host} port={form.port} mode={form.connection_mode} transportTargetRef={form.transport_target_ref} projectID={form.project_id} />
+            <HostPingButton
+              host={form.host}
+              port={form.port}
+              mode={form.connection_mode}
+              transportTargetRef={form.transport_target_ref}
+              projectID={form.project_id}
+            />
           </span>
           <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
         </Field>
@@ -125,6 +138,6 @@ function sshProfileOptions(targets) {
       (target.profiles || []).map((profile) => ({
         ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
         label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
-      }))
+      })),
     );
 }

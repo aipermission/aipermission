@@ -1,4 +1,16 @@
-import { AlertTriangle, ChevronDown, ChevronRight, Circle, Clock, Database, FolderKanban, PanelLeftClose, PanelLeftOpen, RefreshCcw, TerminalSquare } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  Clock,
+  Database,
+  FolderKanban,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RefreshCcw,
+  TerminalSquare,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { apiGet, apiPost } from "../lib/api";
@@ -54,7 +66,8 @@ export function ConsolePage() {
     theme,
   } = useGateway();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { connectorPermissionState, loadAllConnectorPermissions, loadConnectorActions, replaceTokenConnectorPermissions } = useConnectorPermissions(tokens.data);
+  const { connectorPermissionState, loadAllConnectorPermissions, loadConnectorActions, replaceTokenConnectorPermissions } =
+    useConnectorPermissions(tokens.data);
   const [activeConnectorApprovalID, setActiveConnectorApprovalID] = useState(null);
   const [activeConnectorApprovalSnapshot, setActiveConnectorApprovalSnapshot] = useState(null);
   const [dismissedConnectorApprovalIDs, setDismissedConnectorApprovalIDs] = useState({});
@@ -89,7 +102,7 @@ export function ConsolePage() {
       targetItems.map((target) => `${target.ref}:${target.runtime_id || ""}`).join(","),
       rawUnreadMessages.map((message) => `${message.id}:${message.runtime_id}`).join(","),
       pendingConnectorApprovals.map((approval) => `${approval.id}:${approval.target_ref}`).join(","),
-    ]
+    ],
   );
   const selectedTarget = useMemo(() => {
     if (!targetItems.length) return null;
@@ -104,8 +117,11 @@ export function ConsolePage() {
   const selectedTargetUsesLiveConsole = targetUsesLiveConsole(selectedTarget);
   const SelectedConnectorConsoleTemplate = selectedConnectorTemplate?.Console || null;
   const SelectedConnectorToolbarActions = selectedConnectorTemplate?.ToolbarActions || null;
-  const ConnectorOperationTemplate = connectorOperation?.connector_kind ? getConnectorTemplate(connectorOperation.connector_kind)?.Operations || null : null;
-  const selectedStructuredSession = selectedTarget && !selectedTargetUsesLiveConsole ? structuredSessionsByTarget[selectedTarget.ref] || null : null;
+  const ConnectorOperationTemplate = connectorOperation?.connector_kind
+    ? getConnectorTemplate(connectorOperation.connector_kind)?.Operations || null
+    : null;
+  const selectedStructuredSession =
+    selectedTarget && !selectedTargetUsesLiveConsole ? structuredSessionsByTarget[selectedTarget.ref] || null : null;
   const {
     selectedRuntimeTarget,
     selectedSession: runtimeSelectedSession,
@@ -119,31 +135,49 @@ export function ConsolePage() {
     allowTargetFallback: false,
   });
   const selectedLiveSessionName = selectedTarget?.ref ? liveSessionNameByTarget[selectedTarget.ref] || "" : "";
-  const selectedNamedLiveSession = selectedRuntimeTarget && selectedLiveSessionName
-    ? sessions.find((session) => Number(session.runtime_id) === Number(selectedRuntimeTarget.id) && session.name === selectedLiveSessionName)
-    : null;
+  const selectedNamedLiveSession =
+    selectedRuntimeTarget && selectedLiveSessionName
+      ? sessions.find(
+          (session) => Number(session.runtime_id) === Number(selectedRuntimeTarget.id) && session.name === selectedLiveSessionName,
+        )
+      : null;
   const selectedSession = selectedNamedLiveSession || runtimeSelectedSession;
   const selectedSessionLive = isLiveConsoleSession(selectedSession);
-  const selectedTargetProfiles = useMemo(() => profilesForConnectorTarget(targetItems, selectedTarget), [targetItems, selectedTarget?.connector_kind, selectedTarget?.target_id]);
-  const targetRows = useMemo(() => consoleTargetRows(targetItems, selectedTarget, selectedProfileByTarget), [targetItems, selectedTarget?.ref, selectedProfileByTarget]);
+  const selectedTargetProfiles = useMemo(
+    () => profilesForConnectorTarget(targetItems, selectedTarget),
+    [targetItems, selectedTarget?.connector_kind, selectedTarget?.target_id],
+  );
+  const targetRows = useMemo(
+    () => consoleTargetRows(targetItems, selectedTarget, selectedProfileByTarget),
+    [targetItems, selectedTarget?.ref, selectedProfileByTarget],
+  );
   const selectedTokenOptions = useMemo(() => {
     if (!selectedTarget) return [];
     return tokens.data.filter((token) => {
       if (token.revoked_at) return false;
       const profileID = selectedConnectorProfileID(token.id, selectedTarget, selectedTargetProfiles);
-      return effectiveConnectorTargetProfilePermissions(connectorPermissionState.data[token.id] || [], selectedTarget, profileID, now).some((permission) => permission.project_enabled !== false);
+      return effectiveConnectorTargetProfilePermissions(connectorPermissionState.data[token.id] || [], selectedTarget, profileID, now).some(
+        (permission) => permission.project_enabled !== false,
+      );
     });
   }, [tokens.data, connectorPermissionState.data, selectedTarget, selectedTargetProfiles, now]);
-  const selectedPendingConnectorApprovals = selectedTarget ? pendingConnectorApprovals.filter((approval) => approval.target_ref === selectedTarget.ref) : [];
-  const activeConnectorApproval = activeConnectorApprovalSnapshot && Number(activeConnectorApprovalSnapshot.id) === Number(activeConnectorApprovalID) ? activeConnectorApprovalSnapshot : null;
+  const selectedPendingConnectorApprovals = selectedTarget
+    ? pendingConnectorApprovals.filter((approval) => approval.target_ref === selectedTarget.ref)
+    : [];
+  const activeConnectorApproval =
+    activeConnectorApprovalSnapshot && Number(activeConnectorApprovalSnapshot.id) === Number(activeConnectorApprovalID)
+      ? activeConnectorApprovalSnapshot
+      : null;
   const alwaysRunTokenPermissions = useMemo(() => {
     if (!selectedTarget) return [];
     return selectedTokenOptions
       .map((token) => {
         const profileID = selectedConnectorProfileID(token.id, selectedTarget, selectedTargetProfiles);
-        const permission = currentConnectorTargetProfilePermissions(connectorPermissionState.data[token.id] || [], selectedTarget, profileID).find(
-          (item) => effectiveRule(item, now) === "always_run"
-        );
+        const permission = currentConnectorTargetProfilePermissions(
+          connectorPermissionState.data[token.id] || [],
+          selectedTarget,
+          profileID,
+        ).find((item) => effectiveRule(item, now) === "always_run");
         return permission ? { token, permission } : null;
       })
       .filter(Boolean);
@@ -154,9 +188,15 @@ export function ConsolePage() {
     .map((permission) => permissionLifetimeLabel(permission, now));
   const showAlwaysRunWarning = Boolean(mcpRuntime?.data?.enabled && selectedTarget && alwaysRunTokenPermissions.length > 0);
   const selectedRecoverableRunningActions = recoverableRunningActions(selectedTarget);
-  const selectedRunningConnectorRequests = selectedTarget && selectedRecoverableRunningActions.length > 0
-    ? connectorActionApprovals.data.filter((approval) => approval.status === "running" && approval.target_ref === selectedTarget.ref && selectedRecoverableRunningActions.includes(approval.action_name))
-    : [];
+  const selectedRunningConnectorRequests =
+    selectedTarget && selectedRecoverableRunningActions.length > 0
+      ? connectorActionApprovals.data.filter(
+          (approval) =>
+            approval.status === "running" &&
+            approval.target_ref === selectedTarget.ref &&
+            selectedRecoverableRunningActions.includes(approval.action_name),
+        )
+      : [];
   const selectedRunningRequest = selectedRunningConnectorRequests[0] || null;
   const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0) + (newSessionError ? 1 : 0);
   const filteredTargets = useMemo(() => {
@@ -164,7 +204,15 @@ export function ConsolePage() {
     return targetRows.filter((target) => {
       if (!query) return true;
       const profiles = profilesForConnectorTarget(targetItems, target);
-      return [target.project_name, target.project_slug, targetDisplayName(target), targetSubtitle(target), target.connector_kind, target.ref, ...profiles.map((profile) => profile.profile_label)]
+      return [
+        target.project_name,
+        target.project_slug,
+        targetDisplayName(target),
+        targetSubtitle(target),
+        target.connector_kind,
+        target.ref,
+        ...profiles.map((profile) => profile.profile_label),
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
@@ -181,9 +229,9 @@ export function ConsolePage() {
   useEffect(() => {
     if (!selectedTarget?.profile_id) return;
     const key = connectorTargetKey(selectedTarget);
-    setSelectedProfileByTarget((current) => (
-      String(current[key] || "") === String(selectedTarget.profile_id) ? current : { ...current, [key]: Number(selectedTarget.profile_id) }
-    ));
+    setSelectedProfileByTarget((current) =>
+      String(current[key] || "") === String(selectedTarget.profile_id) ? current : { ...current, [key]: Number(selectedTarget.profile_id) },
+    );
   }, [selectedTarget?.connector_kind, selectedTarget?.target_id, selectedTarget?.profile_id]);
 
   useEffect(() => {
@@ -230,7 +278,11 @@ export function ConsolePage() {
   }, [selectedRuntimeTarget?.id, selectedRunningRequest?.id]);
 
   useEffect(() => {
-    if (activeConnectorApprovalID && !pendingConnectorApprovals.some((approval) => Number(approval.id) === Number(activeConnectorApprovalID)) && !["error", "failed", "running", "stale"].includes(connectorApprovalAction.state)) {
+    if (
+      activeConnectorApprovalID &&
+      !pendingConnectorApprovals.some((approval) => Number(approval.id) === Number(activeConnectorApprovalID)) &&
+      !["error", "failed", "running", "stale"].includes(connectorApprovalAction.state)
+    ) {
       connectorApprovalLoadGeneration.current += 1;
       setActiveConnectorApprovalID(null);
       setActiveConnectorApprovalSnapshot(null);
@@ -243,7 +295,14 @@ export function ConsolePage() {
     if (next) {
       void openConnectorApproval(next);
     }
-  }, [activeConnectorApprovalID, pendingConnectorApprovals.map((approval) => approval.id).join(","), selectedPendingConnectorApprovals.map((approval) => approval.id).join(","), dismissedConnectorApprovalIDs, selectedPendingConnectorApprovals.length, connectorApprovalAction.state]);
+  }, [
+    activeConnectorApprovalID,
+    pendingConnectorApprovals.map((approval) => approval.id).join(","),
+    selectedPendingConnectorApprovals.map((approval) => approval.id).join(","),
+    dismissedConnectorApprovalIDs,
+    selectedPendingConnectorApprovals.length,
+    connectorApprovalAction.state,
+  ]);
 
   function selectTarget(target) {
     if (!target) return;
@@ -274,9 +333,11 @@ export function ConsolePage() {
       const exact = await apiGet(`/api/connector-action-approvals/${approval.id}`);
       if (generation !== connectorApprovalLoadGeneration.current) return;
       setActiveConnectorApprovalSnapshot(exact);
-      setConnectorApprovalAction(exact.status === "approval_pending"
-        ? { state: "idle", error: null }
-        : { state: "failed", error: "This connector approval is no longer pending. Refresh activity before taking another action." });
+      setConnectorApprovalAction(
+        exact.status === "approval_pending"
+          ? { state: "idle", error: null }
+          : { state: "failed", error: "This connector approval is no longer pending. Refresh activity before taking another action." },
+      );
     } catch (error) {
       if (generation !== connectorApprovalLoadGeneration.current) return;
       setConnectorApprovalAction({ state: "load_error", error: error.message });
@@ -348,7 +409,10 @@ export function ConsolePage() {
       const item = await runConnectorActionApproval(approval.id, connectorApprovalNote);
       if (item?.status === "error" || item?.status === "failed" || item?.status === "stale") {
         setActiveConnectorApprovalSnapshot({ ...approval, ...item });
-        setConnectorApprovalAction({ state: item.status === "stale" ? "stale" : "failed", error: item.error || "Connector action failed." });
+        setConnectorApprovalAction({
+          state: item.status === "stale" ? "stale" : "failed",
+          error: item.error || "Connector action failed.",
+        });
         return;
       }
       setDismissedConnectorApprovalIDs((current) => {
@@ -452,9 +516,17 @@ export function ConsolePage() {
       }}
     >
       <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <div className={`border-b border-stone-200 ${targetsCompact ? "grid gap-2 p-2" : "flex items-center justify-between gap-3 px-4 py-3"}`}>
+        <div
+          className={`border-b border-stone-200 ${targetsCompact ? "grid gap-2 p-2" : "flex items-center justify-between gap-3 px-4 py-3"}`}
+        >
           {targetsCompact ? (
-            <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Expand connectors" onClick={() => setTargetsCompact(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 w-9 px-0"
+              title="Expand connectors"
+              onClick={() => setTargetsCompact(false)}
+            >
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
           ) : (
@@ -464,7 +536,13 @@ export function ConsolePage() {
                 Connectors
                 <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">{targetRows.length}</span>
               </h3>
-              <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse connectors" onClick={() => setTargetsCompact(true)}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9 w-9 px-0"
+                title="Collapse connectors"
+                onClick={() => setTargetsCompact(true)}
+              >
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </>
@@ -505,7 +583,9 @@ export function ConsolePage() {
             </ConsoleProjectGroup>
           ))}
           {targets.state === "ready" && targetItems.length === 0 && !targetsCompact ? <Notice>No targets yet.</Notice> : null}
-          {targets.state === "ready" && targetRows.length > 0 && filteredTargets.length === 0 && !targetsCompact ? <Notice>No connectors match that search.</Notice> : null}
+          {targets.state === "ready" && targetRows.length > 0 && filteredTargets.length === 0 && !targetsCompact ? (
+            <Notice>No connectors match that search.</Notice>
+          ) : null}
           {targets.state === "error" && !targetsCompact ? <Notice tone="bad">{targets.error}</Notice> : null}
         </div>
       </aside>
@@ -526,7 +606,9 @@ export function ConsolePage() {
                 target: selectedTarget,
                 session: selectedSession,
                 pendingCount: selectedPendingConnectorApprovals.length,
-                runningCount: connectorActionApprovals.data.filter((approval) => approval.status === "running" && selectedTarget && approval.target_ref === selectedTarget.ref).length,
+                runningCount: connectorActionApprovals.data.filter(
+                  (approval) => approval.status === "running" && selectedTarget && approval.target_ref === selectedTarget.ref,
+                ).length,
               })}
             />
             <div className="min-w-0">
@@ -541,7 +623,9 @@ export function ConsolePage() {
               ) : null}
             </div>
             {selectedTargetProfiles.length > 1 ? (
-              <label className={`ml-2 hidden min-w-36 max-w-48 shrink-0 items-center gap-2 text-xs font-semibold lg:flex ${theme === "light" ? "text-stone-600" : "text-stone-300"}`}>
+              <label
+                className={`ml-2 hidden min-w-36 max-w-48 shrink-0 items-center gap-2 text-xs font-semibold lg:flex ${theme === "light" ? "text-stone-600" : "text-stone-300"}`}
+              >
                 Profile
                 <Select
                   className={`h-8 ${theme === "light" ? "" : "border-stone-700 bg-[#1e1e1e] text-stone-100"}`}
@@ -594,11 +678,15 @@ export function ConsolePage() {
 
         <div
           className="grid h-full min-h-0 overflow-hidden"
-          style={{ gridTemplateRows: consoleBannerCount > 0 ? `${Array(consoleBannerCount).fill("auto").join(" ")} minmax(0, 1fr)` : "minmax(0, 1fr)" }}
+          style={{
+            gridTemplateRows:
+              consoleBannerCount > 0 ? `${Array(consoleBannerCount).fill("auto").join(" ")} minmax(0, 1fr)` : "minmax(0, 1fr)",
+          }}
         >
           {showAlwaysRunWarning ? (
             <div className="sticky top-0 z-10 border-b border-red-800/50 bg-red-950 px-4 py-2 text-xs font-semibold text-red-50">
-              MCP is started and {alwaysRunTokenPermissions.length} token{alwaysRunTokenPermissions.length === 1 ? "" : "s"} can run connector actions on this target without approval. Prefer prompt mode unless direct execution is intentional.
+              MCP is started and {alwaysRunTokenPermissions.length} token{alwaysRunTokenPermissions.length === 1 ? "" : "s"} can run
+              connector actions on this target without approval. Prefer prompt mode unless direct execution is intentional.
               {temporaryAlwaysRunLabels.length > 0 ? ` Temporary grant: ${temporaryAlwaysRunLabels[0]}.` : ""}
             </div>
           ) : null}
@@ -648,7 +736,9 @@ export function ConsolePage() {
                   theme={theme}
                 />
               ) : selectedTargetUsesLiveConsole ? (
-                <div className={`p-4 text-sm ${theme === "light" ? "text-stone-500" : "text-stone-300"}`}>Select a live-console connector.</div>
+                <div className={`p-4 text-sm ${theme === "light" ? "text-stone-500" : "text-stone-300"}`}>
+                  Select a live-console connector.
+                </div>
               ) : null}
             </SelectedConnectorConsoleTemplate>
           ) : selectedTarget ? (
@@ -675,7 +765,11 @@ export function ConsolePage() {
         onOpenMessages={(tokenID) => openMessages(tokenID)}
         onRefresh={async () => {
           const tokenItems = await loadTokens();
-          await Promise.all([loadTargets(), loadAllConnectorPermissions(tokenItems), selectedTarget?.ref ? loadConnectorActions(selectedTarget) : Promise.resolve()]);
+          await Promise.all([
+            loadTargets(),
+            loadAllConnectorPermissions(tokenItems),
+            selectedTarget?.ref ? loadConnectorActions(selectedTarget) : Promise.resolve(),
+          ]);
         }}
       />
 
@@ -728,7 +822,9 @@ function ConsoleProjectGroup({ group, collapsed, targetsCompact, onToggle, child
         title={`${group.name} (${group.targets.length})`}
         onClick={onToggle}
       >
-        {targetsCompact ? <FolderKanban className="h-4 w-4" /> : (
+        {targetsCompact ? (
+          <FolderKanban className="h-4 w-4" />
+        ) : (
           <>
             {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             <FolderKanban className="h-3.5 w-3.5" />
@@ -759,9 +855,16 @@ function TargetListItem({
   const session = runtimeID ? latestSessionForRuntime(sessions, runtimeID) || emptySession : emptySession;
   const active = selectedTarget && connectorTargetKey(selectedTarget) === connectorTargetKey(target);
   const refs = new Set((profileTargets?.length ? profileTargets : [target]).map((profile) => profile.ref));
-  const runtimeIDs = new Set((profileTargets?.length ? profileTargets : [target]).map((profile) => profile.runtime_id).filter(Boolean).map((id) => Number(id)));
+  const runtimeIDs = new Set(
+    (profileTargets?.length ? profileTargets : [target])
+      .map((profile) => profile.runtime_id)
+      .filter(Boolean)
+      .map((id) => Number(id)),
+  );
   const connectorPendingCount = pendingConnectorApprovals.filter((approval) => refs.has(approval.target_ref)).length;
-  const connectorRunningCount = connectorActionApprovals.data.filter((approval) => approval.status === "running" && refs.has(approval.target_ref)).length;
+  const connectorRunningCount = connectorActionApprovals.data.filter(
+    (approval) => approval.status === "running" && refs.has(approval.target_ref),
+  ).length;
   const pendingCount = connectorPendingCount;
   const runningCount = connectorRunningCount;
   const unreadCount = runtimeIDs.size > 0 ? unreadMessages.filter((message) => runtimeIDs.has(Number(message.runtime_id))).length : 0;
@@ -790,7 +893,10 @@ function TargetListItem({
         <>
           <span className="flex min-w-0 items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-2">
-              <ConnectorIcon kind={target.connector_kind} className={`h-3.5 w-3.5 shrink-0 ${active ? "text-emerald-100" : "text-stone-400"}`} />
+              <ConnectorIcon
+                kind={target.connector_kind}
+                className={`h-3.5 w-3.5 shrink-0 ${active ? "text-emerald-100" : "text-stone-400"}`}
+              />
               <span className="truncate text-sm font-semibold">{targetDisplayName(target)}</span>
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
@@ -798,12 +904,16 @@ function TargetListItem({
               <ConsoleStatusDot status={status} className={active && status === "offline" ? "text-red-200" : ""} />
             </span>
           </span>
-          <span className={`truncate text-xs ${active ? "text-emerald-100" : "text-stone-500"}`}>{targetSubtitle(target, runtimeTarget)}</span>
+          <span className={`truncate text-xs ${active ? "text-emerald-100" : "text-stone-500"}`}>
+            {targetSubtitle(target, runtimeTarget)}
+          </span>
           <span className="flex min-w-0 gap-1.5">
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass}`}>{kindLabel}</span>
             <span className={`truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{profileLabel}</span>
             {profileTargets?.length > 1 ? (
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{profileTargets.length} profiles</span>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>
+                {profileTargets.length} profiles
+              </span>
             ) : null}
           </span>
         </>
@@ -815,7 +925,8 @@ function TargetListItem({
 function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
   const ageMs = Math.max(0, now - parseTimestamp(request.created_at));
   const showRecoveryHint = ageMs >= 20000;
-  const panelClass = theme === "light" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-amber-900/70 bg-amber-950/40 text-amber-50";
+  const panelClass =
+    theme === "light" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-amber-900/70 bg-amber-950/40 text-amber-50";
   const mutedClass = theme === "light" ? "text-amber-900/80" : "text-amber-100/80";
   const commandPreview = firstLine(request.command || request.input?.command || request.action_name || "connector action");
   const sourceLabel = runningRequestLabel(request);
@@ -825,11 +936,15 @@ function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <Clock className="h-3.5 w-3.5 shrink-0" />
         <span className="shrink-0 font-semibold">{sourceLabel}</span>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}>
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}
+        >
           {formatDuration(ageMs)}
         </span>
         {request.token_name ? (
-          <span className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-100"}`}>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-100"}`}
+          >
             {request.token_name}
           </span>
         ) : null}
@@ -864,7 +979,9 @@ function runningRequestLabel(request) {
 }
 
 function firstLine(value) {
-  const line = String(value || "").split(/\r?\n/, 1)[0].trim();
+  const line = String(value || "")
+    .split(/\r?\n/, 1)[0]
+    .trim();
   if (line.length <= 90) return line;
   return `${line.slice(0, 87)}...`;
 }
@@ -923,7 +1040,9 @@ function defaultConsoleTargetRef(targets, unreadMessages, pendingConnectorApprov
   if (!targets.length) return "";
   const pendingConnector = pendingConnectorApprovals.find((approval) => targets.some((target) => target.ref === approval.target_ref));
   if (pendingConnector) return pendingConnector.target_ref;
-  const unread = unreadMessages.find((message) => targets.some((target) => target.runtime_id && Number(target.runtime_id) === Number(message.runtime_id)));
+  const unread = unreadMessages.find((message) =>
+    targets.some((target) => target.runtime_id && Number(target.runtime_id) === Number(message.runtime_id)),
+  );
   if (unread) {
     const target = targets.find((item) => item.runtime_id && Number(item.runtime_id) === Number(unread.runtime_id));
     if (target) return target.ref;

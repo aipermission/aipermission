@@ -52,7 +52,9 @@ export function plainTextToHTML(value) {
 }
 
 export function splitPlainTextLines(value) {
-  return String(value || "").replace(/\r\n?/g, "\n").split("\n");
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n");
 }
 
 export function normalizeEditorLink(value) {
@@ -75,7 +77,9 @@ function listMarker(node) {
 }
 
 function normalizePlainText(value) {
-  const lines = String(value || "").replaceAll("\r", "").split("\n");
+  const lines = String(value || "")
+    .replaceAll("\r", "")
+    .split("\n");
   const output = [];
   let previousBlank = true;
   for (const source of lines) {

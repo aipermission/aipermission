@@ -1,4 +1,16 @@
-import { ChevronDown, ChevronRight, CircleCheck, CircleX, Edit3, FolderKanban, Plus, PlugZap, RefreshCcw, Search, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  CircleCheck,
+  CircleX,
+  Edit3,
+  FolderKanban,
+  Plus,
+  PlugZap,
+  RefreshCcw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
@@ -8,7 +20,14 @@ import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
-import { ConnectorIcon, ConnectorKindCell, StatusCell, TargetCell, connectorKindLabel, connectorSummary } from "../connectors/templates/common";
+import {
+  ConnectorIcon,
+  ConnectorKindCell,
+  StatusCell,
+  TargetCell,
+  connectorKindLabel,
+  connectorSummary,
+} from "../connectors/templates/common";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
 
@@ -45,7 +64,7 @@ export function ConnectorsPage() {
   const activeConnectorModel = getConnectorModel(form.connector_kind);
   const activeCredential = useMemo(
     () => activeConnectorModel?.activeCredential?.({ credentials: credentials.data, form }) || null,
-    [activeConnectorModel, credentials.data, form]
+    [activeConnectorModel, credentials.data, form],
   );
   const ActiveConnectorFormTemplate = getConnectorTemplate(form.connector_kind)?.Form || null;
   const connectorOptions = useMemo(
@@ -54,9 +73,12 @@ export function ConnectorsPage() {
         const item = catalog.data.find((entry) => entry.kind === kind);
         return { kind, label: item?.label || connectorKindLabel(kind) };
       }),
-    [availableConnectorKinds, catalog.data]
+    [availableConnectorKinds, catalog.data],
   );
-  const defaultProjectID = useMemo(() => projects.data.find((project) => project.slug === "ungrouped")?.id || projects.data[0]?.id || "", [projects.data]);
+  const defaultProjectID = useMemo(
+    () => projects.data.find((project) => project.slug === "ungrouped")?.id || projects.data[0]?.id || "",
+    [projects.data],
+  );
 
   useEffect(() => {
     setForm((current) => getConnectorModel(current.connector_kind)?.syncForm?.({ form: current, firstCredentialID }) || current);
@@ -89,7 +111,11 @@ export function ConnectorsPage() {
       }
       return next;
     });
-  }, [targets.data.map((target) => `${target.connector_kind}:${target.id}:${(target.profiles || []).map((profile) => profile.id).join(",")}`).join("|")]);
+  }, [
+    targets.data
+      .map((target) => `${target.connector_kind}:${target.id}:${(target.profiles || []).map((profile) => profile.id).join(",")}`)
+      .join("|"),
+  ]);
 
   async function refreshConnectors() {
     await Promise.all([loadTargets(), loadProjects(), loadUnifiedTargets()]);
@@ -117,7 +143,7 @@ export function ConnectorsPage() {
           } catch (error) {
             detailFailures.push({ kind: item.kind, error: error.message || "failed to load connector details" });
           }
-        })
+        }),
       );
       setCatalog({ state: "ready", data: data.items || [], details, detailFailures, error: null });
     } catch (error) {
@@ -261,11 +287,17 @@ export function ConnectorsPage() {
     const testKey = connectorTestKey(target, profile);
     const model = getConnectorModel(target.connector_kind);
     if (!model?.test) {
-      setTests((current) => ({ ...current, [testKey]: { state: "error", error: `Connector model not found for ${target.connector_kind}.`, data: null } }));
+      setTests((current) => ({
+        ...current,
+        [testKey]: { state: "error", error: `Connector model not found for ${target.connector_kind}.`, data: null },
+      }));
       return;
     }
     if (!profile) {
-      setTests((current) => ({ ...current, [testKey]: { state: "error", error: "Select a credential profile before testing.", data: null } }));
+      setTests((current) => ({
+        ...current,
+        [testKey]: { state: "error", error: "Select a credential profile before testing.", data: null },
+      }));
       return;
     }
     setTests((current) => ({ ...current, [testKey]: { state: "testing", error: null, data: null } }));
@@ -287,7 +319,9 @@ export function ConnectorsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">Connectors</h3>
-          <p className="text-sm text-stone-500">Create connector targets, attach credential profiles, then grant token permissions per action.</p>
+          <p className="text-sm text-stone-500">
+            Create connector targets, attach credential profiles, then grant token permissions per action.
+          </p>
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="outline" onClick={refreshConnectors} disabled={targets.state === "loading"}>
@@ -307,13 +341,19 @@ export function ConnectorsPage() {
 
       {catalog.state === "error" ? <Notice tone="bad">{catalog.error}</Notice> : null}
       {catalogWarnings.map((warning) => (
-        <Notice tone="warn" key={warning}>{warning}</Notice>
+        <Notice tone="warn" key={warning}>
+          {warning}
+        </Notice>
       ))}
       {targets.state === "error" ? <Notice tone="bad">{targets.error}</Notice> : null}
       {projects.state === "error" ? <Notice tone="bad">{projects.error}</Notice> : null}
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-      {toast ? <div className="fixed right-5 top-5 z-[80] rounded-md border border-stone-700 bg-stone-950 px-4 py-3 text-sm font-semibold text-white shadow-xl">{toast}</div> : null}
+      {toast ? (
+        <div className="fixed right-5 top-5 z-[80] rounded-md border border-stone-700 bg-stone-950 px-4 py-3 text-sm font-semibold text-white shadow-xl">
+          {toast}
+        </div>
+      ) : null}
 
       <ConnectorTargetsTable
         targets={targets}
@@ -338,7 +378,11 @@ export function ConnectorsPage() {
       <Drawer
         open={drawer.open}
         title={drawer.mode === "edit" ? `Edit ${drawer.target?.name || "connector"}` : "Add connector"}
-        description={drawer.mode === "edit" ? "Update this connector and its default credential profile." : "Choose a connector type, then create its first default credential profile."}
+        description={
+          drawer.mode === "edit"
+            ? "Update this connector and its default credential profile."
+            : "Choose a connector type, then create its first default credential profile."
+        }
         onClose={() => setDrawer({ open: false, mode: "create", kind: defaultConnectorKind, target: null })}
       >
         <form className="grid gap-4" onSubmit={saveConnector}>
@@ -357,9 +401,13 @@ export function ConnectorsPage() {
           <Field>
             Project
             <Select value={form.project_id || ""} onChange={(event) => updateForm("project_id", event.target.value)} required>
-              <option value="" disabled>Select project</option>
+              <option value="" disabled>
+                Select project
+              </option>
               {projects.data.map((project) => (
-                <option value={project.id} key={project.id}>{project.name}</option>
+                <option value={project.id} key={project.id}>
+                  {project.name}
+                </option>
               ))}
             </Select>
           </Field>
@@ -377,11 +425,22 @@ export function ConnectorsPage() {
           )}
           {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={() => setDrawer({ open: false, mode: "create", kind: defaultConnectorKind, target: null })}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDrawer({ open: false, mode: "create", kind: defaultConnectorKind, target: null })}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={activeConnectorModel?.submitDisabled?.({ state, mode: drawer.mode, form, credentials: credentials.data }) ?? state.state === "saving"}>
-              {activeConnectorModel?.submitLabel?.({ state, mode: drawer.mode, form }) || (drawer.mode === "edit" ? "Save changes" : "Create connector")}
+            <Button
+              type="submit"
+              disabled={
+                activeConnectorModel?.submitDisabled?.({ state, mode: drawer.mode, form, credentials: credentials.data }) ??
+                state.state === "saving"
+              }
+            >
+              {activeConnectorModel?.submitLabel?.({ state, mode: drawer.mode, form }) ||
+                (drawer.mode === "edit" ? "Save changes" : "Create connector")}
             </Button>
           </div>
         </form>
@@ -409,14 +468,48 @@ export function ConnectorsPage() {
   );
 }
 
-function ConnectorTargetsTable({ targets, projects, search, collapsedProjects, onSearch, onToggleProject, catalog, unifiedTargets, credentials, profileSelections, tests, onSelectProfile, onTestConnector, onOperation, onUnderConstruction, onEdit, onDelete }) {
+function ConnectorTargetsTable({
+  targets,
+  projects,
+  search,
+  collapsedProjects,
+  onSearch,
+  onToggleProject,
+  catalog,
+  unifiedTargets,
+  credentials,
+  profileSelections,
+  tests,
+  onSelectProfile,
+  onTestConnector,
+  onOperation,
+  onUnderConstruction,
+  onEdit,
+  onDelete,
+}) {
   const query = search.trim().toLowerCase();
   const groups = projects
     .map((project) => {
-      const projectMatches = query && [project.name, project.slug].some((value) => String(value || "").toLowerCase().includes(query));
+      const projectMatches =
+        query &&
+        [project.name, project.slug].some((value) =>
+          String(value || "")
+            .toLowerCase()
+            .includes(query),
+        );
       return {
         project,
-        targets: targets.data.filter((target) => target.project_id === project.id && (!query || projectMatches || [target.name, target.connector_kind, ...(target.profiles || []).map((profile) => profile.label)].some((value) => String(value || "").toLowerCase().includes(query)))),
+        targets: targets.data.filter(
+          (target) =>
+            target.project_id === project.id &&
+            (!query ||
+              projectMatches ||
+              [target.name, target.connector_kind, ...(target.profiles || []).map((profile) => profile.label)].some((value) =>
+                String(value || "")
+                  .toLowerCase()
+                  .includes(query),
+              )),
+        ),
       };
     })
     .filter((group) => group.targets.length > 0 || (!query && group.project.target_count > 0));
@@ -469,10 +562,17 @@ function ConnectorTargetsTable({ targets, projects, search, collapsedProjects, o
       ) : null}
       {targets.state === "ready" && targets.data.length === 0 ? (
         <div className="p-4">
-          <Notice>Create your first connector target. Every connector uses the same target, credential profile, permission, history, and audit pipeline.</Notice>
+          <Notice>
+            Create your first connector target. Every connector uses the same target, credential profile, permission, history, and audit
+            pipeline.
+          </Notice>
         </div>
       ) : null}
-      {targets.state === "ready" && targets.data.length > 0 && groups.length === 0 ? <div className="p-4"><Notice>No connectors match that search.</Notice></div> : null}
+      {targets.state === "ready" && targets.data.length > 0 && groups.length === 0 ? (
+        <div className="p-4">
+          <Notice>No connectors match that search.</Notice>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -482,7 +582,11 @@ function ProjectTargetRows({ project, targets, collapsed, onToggle, ...rowProps 
     <>
       <tr className="bg-stone-50">
         <td colSpan={6} className="px-3 py-2">
-          <button type="button" className="flex w-full items-center gap-2 text-left text-xs font-semibold uppercase text-stone-600" onClick={onToggle}>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 text-left text-xs font-semibold uppercase text-stone-600"
+            onClick={onToggle}
+          >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             <FolderKanban className="h-4 w-4" />
             <span className="truncate">{project.name}</span>
@@ -490,14 +594,16 @@ function ProjectTargetRows({ project, targets, collapsed, onToggle, ...rowProps 
           </button>
         </td>
       </tr>
-      {!collapsed ? targets.map((target) => (
-        <ConnectorTargetRow
-          key={`${target.connector_kind}:${target.id}`}
-          target={target}
-          selectedProfileID={rowProps.profileSelections[targetProfileSelectionKey(target)] || ""}
-          {...rowProps}
-        />
-      )) : null}
+      {!collapsed
+        ? targets.map((target) => (
+            <ConnectorTargetRow
+              key={`${target.connector_kind}:${target.id}`}
+              target={target}
+              selectedProfileID={rowProps.profileSelections[targetProfileSelectionKey(target)] || ""}
+              {...rowProps}
+            />
+          ))
+        : null}
     </>
   );
 }
@@ -512,7 +618,20 @@ function connectorTestKey(target, profile) {
 }
 
 function ConnectorTargetRow(props) {
-  const { target, catalog, unifiedTargets, credentials, selectedProfileID, tests, onSelectProfile, onTestConnector, onOperation, onUnderConstruction, onEdit, onDelete } = props;
+  const {
+    target,
+    catalog,
+    unifiedTargets,
+    credentials,
+    selectedProfileID,
+    tests,
+    onSelectProfile,
+    onTestConnector,
+    onOperation,
+    onUnderConstruction,
+    onEdit,
+    onDelete,
+  } = props;
   const template = getConnectorTemplate(target.connector_kind);
   const model = template?.model;
   const RowActionsTemplate = template?.RowActions;
@@ -544,12 +663,7 @@ function ConnectorTargetRow(props) {
       <td className="px-4 py-4">
         <div className="flex justify-end gap-2">
           {RowActionsTemplate ? (
-            <RowActionsTemplate
-              target={target}
-              profile={profile}
-              onOperation={onOperation}
-              onUnderConstruction={onUnderConstruction}
-            />
+            <RowActionsTemplate target={target} profile={profile} onOperation={onOperation} onUnderConstruction={onUnderConstruction} />
           ) : (
             <ConnectorTemplateNotFound kind={target.connector_kind} slot="row-actions" />
           )}
@@ -557,13 +671,34 @@ function ConnectorTargetRow(props) {
       </td>
       <td className="px-4 py-4">
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Test connection" disabled={!profile || test?.state === "testing" || test?.cooldown} onClick={() => onTestConnector(target, profile)}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 w-9 px-0"
+            title="Test connection"
+            disabled={!profile || test?.state === "testing" || test?.cooldown}
+            onClick={() => onTestConnector(target, profile)}
+          >
             <PlugZap className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Edit connector" disabled={!canEdit} onClick={() => canEdit && onEdit(target, profile)}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 w-9 px-0"
+            title="Edit connector"
+            disabled={!canEdit}
+            onClick={() => canEdit && onEdit(target, profile)}
+          >
             <Edit3 className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Delete connector" disabled={!canDelete} onClick={() => canDelete && onDelete(target)}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 w-9 px-0"
+            title="Delete connector"
+            disabled={!canDelete}
+            onClick={() => canDelete && onDelete(target)}
+          >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -584,10 +719,18 @@ function ConnectorProfilesCell({ target, selectedProfileID, onSelectProfile }) {
     return <span className="text-xs text-stone-500">No profiles</span>;
   }
   if (profiles.length === 1) {
-    return <Badge tone="neutral" title={profiles[0].ref}>{profiles[0].label}</Badge>;
+    return (
+      <Badge tone="neutral" title={profiles[0].ref}>
+        {profiles[0].label}
+      </Badge>
+    );
   }
   return (
-    <Select value={selectedProfileID ? String(selectedProfileID) : ""} onChange={(event) => onSelectProfile(target, event.target.value)} className="h-9 text-xs">
+    <Select
+      value={selectedProfileID ? String(selectedProfileID) : ""}
+      onChange={(event) => onSelectProfile(target, event.target.value)}
+      className="h-9 text-xs"
+    >
       <option value="">Select profile</option>
       {profiles.map((profile) => (
         <option value={profile.id} key={profile.id}>
@@ -649,7 +792,9 @@ function AddConnectorMenu({ catalog, onAdd }) {
         })}
         {catalog.state === "loading" ? <p className="px-3 py-2 text-sm text-stone-500">Loading connector catalog...</p> : null}
         {catalog.state === "ready" && availableKinds.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-stone-500">No connector type is available in both the backend catalog and frontend templates.</p>
+          <p className="px-3 py-2 text-sm text-stone-500">
+            No connector type is available in both the backend catalog and frontend templates.
+          </p>
         ) : null}
       </div>
     </div>
@@ -689,17 +834,24 @@ function DeleteConnectorDialog({ value, state, onDelete, onClose }) {
       {target ? (
         <div className="grid gap-4">
           <div className="rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
-            {(dialog?.details || []).filter((item) => item.value).map((item) => (
-              <p className="mt-1 first:mt-0" key={item.label}>
-                <span className="font-semibold">{item.label}: </span>
-                <span className={item.label === "Reference" ? "font-mono text-xs" : ""}>{item.value}</span>
-              </p>
-            ))}
+            {(dialog?.details || [])
+              .filter((item) => item.value)
+              .map((item) => (
+                <p className="mt-1 first:mt-0" key={item.label}>
+                  <span className="font-semibold">{item.label}: </span>
+                  <span className={item.label === "Reference" ? "font-mono text-xs" : ""}>{item.value}</span>
+                </p>
+              ))}
           </div>
           {dialog?.notice ? <Notice tone="warn">{dialog.notice}</Notice> : null}
           {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            {(dialog?.actions || [{ label: "Cancel", action: "close", variant: "outline" }, { label: "Delete connector", removeKey: false }]).map((action) => (
+            {(
+              dialog?.actions || [
+                { label: "Cancel", action: "close", variant: "outline" },
+                { label: "Delete connector", removeKey: false },
+              ]
+            ).map((action) => (
               <Button
                 type="button"
                 variant={action.variant || "default"}

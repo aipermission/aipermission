@@ -60,12 +60,16 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
   const targetID = value.target?.id;
   const profileID = value.profile?.id;
   const selectedScope = useMemo(() => buildProvisionScope(scope), [scope]);
-  const sqlPreview = useMemo(() => buildProvisionSQLPreview({
-    roleName: form.role_name,
-    preset: form.preset,
-    database: value.target?.config?.database || "database",
-    scope: selectedScope,
-  }), [form.role_name, form.preset, selectedScope, value.target?.config?.database]);
+  const sqlPreview = useMemo(
+    () =>
+      buildProvisionSQLPreview({
+        roleName: form.role_name,
+        preset: form.preset,
+        database: value.target?.config?.database || "database",
+        scope: selectedScope,
+      }),
+    [form.role_name, form.preset, selectedScope, value.target?.config?.database],
+  );
   const scopeSummary = useMemo(() => readableScopeSummary(selectedScope, form.preset), [selectedScope, form.preset]);
   const canSubmit = Boolean(targetID && profileID && form.role_name.trim() && selectedScope);
 
@@ -132,7 +136,8 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
     >
       <form className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] gap-4" onSubmit={provisionUser}>
         <Notice tone="warn">
-          AIPermission will create the database role through this admin profile. When the managed credential is deleted, the managed database role is dropped too.
+          AIPermission will create the database role through this admin profile. When the managed credential is deleted, the managed
+          database role is dropped too.
         </Notice>
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px]">
           <Field>
@@ -141,7 +146,11 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
           </Field>
           <Field>
             Profile label
-            <Input value={form.profile_label} onChange={(event) => update("profile_label", event.target.value)} placeholder={form.role_name || "app_reader"} />
+            <Input
+              value={form.profile_label}
+              onChange={(event) => update("profile_label", event.target.value)}
+              placeholder={form.role_name || "app_reader"}
+            />
           </Field>
           <Field>
             Preset
@@ -159,7 +168,13 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
                 <h4 className="text-sm font-semibold text-stone-900">Access scope</h4>
                 <p className="text-xs text-stone-500">Choose all schemas, or narrow the role to selected schemas, tables, and columns.</p>
               </div>
-              <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={loadMetadata} disabled={!targetRef || metadata.state === "loading"}>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-3 text-xs"
+                onClick={loadMetadata}
+                disabled={!targetRef || metadata.state === "loading"}
+              >
                 <RefreshCcw className="h-3.5 w-3.5" />
                 {metadata.state === "loading" ? "Loading" : "Refresh"}
               </Button>
@@ -168,7 +183,9 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
               <Checkbox checked={scope.all_schemas} onChange={(event) => setScope({ ...scope, all_schemas: event.target.checked })} />
               <span>
                 <span className="block font-semibold text-stone-900">All schemas, all tables, all columns</span>
-                <span className="text-xs text-stone-500">Grant the preset across every non-system schema visible to the admin profile.</span>
+                <span className="text-xs text-stone-500">
+                  Grant the preset across every non-system schema visible to the admin profile.
+                </span>
               </span>
             </label>
             {!scope.all_schemas ? (
@@ -178,13 +195,17 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
             )}
           </div>
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-            <Notice tone="good" className="max-h-[200px] overflow-auto">{scopeSummary}</Notice>
+            <Notice tone="good" className="max-h-[200px] overflow-auto">
+              {scopeSummary}
+            </Notice>
             <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
               <div className="flex items-center justify-between gap-3">
                 <h4 className="text-sm font-semibold text-stone-900">SQL preview</h4>
                 <CopyButton value={sqlPreview} variant="outline" className="h-8 px-3 text-xs" title="Copy SQL preview" />
               </div>
-              <TerminalBlock surface="log" className="min-h-0 text-xs">{sqlPreview}</TerminalBlock>
+              <TerminalBlock surface="log" className="min-h-0 text-xs">
+                {sqlPreview}
+              </TerminalBlock>
             </div>
           </div>
         </section>
@@ -308,11 +329,15 @@ function BackupRestoreDialog({ value, onClose }) {
         ) : (
           <form className="grid gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark-notice-bad" onSubmit={restoreBackup}>
             <Notice tone="bad">
-              Restore executes the selected SQL file against this database profile. Use a trusted dump and verify the target before continuing.
+              Restore executes the selected SQL file against this database profile. Use a trusted dump and verify the target before
+              continuing.
             </Notice>
             <div>
               <h4 className="text-sm font-semibold">Restore</h4>
-              <p className="text-xs">This may drop and recreate objects if the dump contains clean statements. Type the connector target name exactly before restoring.</p>
+              <p className="text-xs">
+                This may drop and recreate objects if the dump contains clean statements. Type the connector target name exactly before
+                restoring.
+              </p>
             </div>
             <Field>
               SQL dump file
@@ -320,7 +345,12 @@ function BackupRestoreDialog({ value, onClose }) {
             </Field>
             <Field>
               Type target name to confirm: {targetName}
-              <Input value={confirmTarget} onChange={(event) => setConfirmTarget(event.target.value)} placeholder={targetName} autoComplete="off" />
+              <Input
+                value={confirmTarget}
+                onChange={(event) => setConfirmTarget(event.target.value)}
+                placeholder={targetName}
+                autoComplete="off"
+              />
             </Field>
             <div className="flex justify-end">
               <Button type="submit" variant="danger" disabled={!restoreReady}>
@@ -342,10 +372,16 @@ function BackupRestoreDialog({ value, onClose }) {
 function SchemaScopePicker({ metadata, scope, onChange, preset }) {
   const schemas = metadata.schemas || [];
   if (metadata.state === "loading") {
-    return <div className="rounded-md border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500">Loading schema metadata...</div>;
+    return (
+      <div className="rounded-md border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500">Loading schema metadata...</div>
+    );
   }
   if (schemas.length === 0) {
-    return <div className="rounded-md border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500">No schema metadata loaded. Refresh metadata or use all schemas.</div>;
+    return (
+      <div className="rounded-md border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500">
+        No schema metadata loaded. Refresh metadata or use all schemas.
+      </div>
+    );
   }
   return (
     <div className="h-full min-h-0 overflow-y-auto rounded-md border border-stone-200 bg-white">
@@ -354,7 +390,10 @@ function SchemaScopePicker({ metadata, scope, onChange, preset }) {
         return (
           <div className="border-b border-stone-200 p-3 last:border-b-0" key={schema.name}>
             <label className="flex items-start gap-3 text-sm">
-              <Checkbox checked={schemaState.selected} onChange={(event) => onChange(toggleSchema(scope, schema.name, event.target.checked))} />
+              <Checkbox
+                checked={schemaState.selected}
+                onChange={(event) => onChange(toggleSchema(scope, schema.name, event.target.checked))}
+              />
               <span>
                 <span className="block font-semibold text-stone-900">{schema.name}</span>
                 <span className="text-xs text-stone-500">{schema.tables.length} tables</span>
@@ -363,13 +402,24 @@ function SchemaScopePicker({ metadata, scope, onChange, preset }) {
             {schemaState.selected ? (
               <div className="mt-3 ml-7 grid gap-3">
                 <label className="flex items-center gap-2 text-sm">
-                  <Checkbox checked={schemaState.all_tables} onChange={(event) => onChange(updateSchema(scope, schema.name, { all_tables: event.target.checked }))} />
+                  <Checkbox
+                    checked={schemaState.all_tables}
+                    onChange={(event) => onChange(updateSchema(scope, schema.name, { all_tables: event.target.checked }))}
+                  />
                   <span>All tables and columns in this schema</span>
                 </label>
                 {!schemaState.all_tables ? (
                   <div className="grid gap-2">
                     {schema.tables.map((table) => (
-                      <TableScopeRow key={table.name} schema={schema.name} table={table} tableState={schemaState.tables[table.name]} scope={scope} onChange={onChange} preset={preset} />
+                      <TableScopeRow
+                        key={table.name}
+                        schema={schema.name}
+                        table={table}
+                        tableState={schemaState.tables[table.name]}
+                        scope={scope}
+                        onChange={onChange}
+                        preset={preset}
+                      />
                     ))}
                   </div>
                 ) : null}
@@ -408,7 +458,10 @@ function TableScopeRow({ schema, table, tableState, scope, onChange, preset }) {
             <div className="grid gap-1">
               {table.columns.map((column) => (
                 <label className="flex items-center gap-2 rounded border border-stone-200 bg-white px-2 py-1 text-xs" key={column}>
-                  <Checkbox checked={Boolean(current.columns?.[column])} onChange={(event) => onChange(toggleColumn(scope, schema, table.name, column, event.target.checked))} />
+                  <Checkbox
+                    checked={Boolean(current.columns?.[column])}
+                    onChange={(event) => onChange(toggleColumn(scope, schema, table.name, column, event.target.checked))}
+                  />
                   <span className="truncate">{column}</span>
                 </label>
               ))}
@@ -449,7 +502,10 @@ function metadataColumns(row) {
       const parsed = JSON.parse(row.columns);
       if (Array.isArray(parsed)) return parsed.map((item) => String(item || "").trim()).filter(Boolean);
     } catch {
-      return row.columns.split(",").map((item) => item.trim()).filter(Boolean);
+      return row.columns
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
     }
   }
   const columnName = String(row.column_name || "").trim();
@@ -472,7 +528,11 @@ function buildProvisionScope(scope) {
         .filter(([, table]) => table.selected)
         .map(([tableName, table]) => {
           if (table.all_columns) return { table: tableName, all_columns: true };
-          return { table: tableName, all_columns: false, columns: Object.keys(table.columns || {}).filter((column) => table.columns[column]) };
+          return {
+            table: tableName,
+            all_columns: false,
+            columns: Object.keys(table.columns || {}).filter((column) => table.columns[column]),
+          };
         })
         .filter((table) => table.all_columns || table.columns.length > 0);
       return { schema: schemaName, all_tables: false, tables };
@@ -593,6 +653,10 @@ function quotePreviewIdentifier(value) {
 }
 
 function safeFilename(value) {
-  const text = String(value || "").trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  const text = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   return text || "postgres-backup";
 }

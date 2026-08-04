@@ -45,8 +45,8 @@ export const connectorTemplates = Object.freeze(
           }),
         ];
       })
-      .sort(([left], [right]) => left.localeCompare(right))
-  )
+      .sort(([left], [right]) => left.localeCompare(right)),
+  ),
 );
 
 assertConnectorTemplateRegistration();
@@ -113,7 +113,6 @@ function assertConnectorTemplate(kind, template) {
     }
   }
 }
-
 
 function connectorKindFromPath(path) {
   const match = String(path).match(/^\.\/([^/]+)\/index\.jsx$/);
