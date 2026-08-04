@@ -5,6 +5,7 @@ services:
     build:
       context: ./backend
     container_name: aipermission-backend
+    restart: unless-stopped
     environment:
       AIPERMISSION_BACKEND_HOST: 127.0.0.1
       AIPERMISSION_BACKEND_PORT: 8080
@@ -41,6 +42,7 @@ services:
         VITE_API_URL: ""
         VITE_MCP_API_URL: ${AIPERMISSION_MCP_API_URL:-}
     container_name: aipermission-frontend
+    restart: unless-stopped
     ports:
       - "127.0.0.1:${AIPERMISSION_FRONTEND_PORT:-3210}:3210"
 

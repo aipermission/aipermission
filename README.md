@@ -236,6 +236,10 @@ docker compose -f docker-compose.release.yml pull
 docker compose -f docker-compose.release.yml up -d
 ```
 
+The frontend and backend use Docker's `unless-stopped` restart policy, so an
+installation that has been started once returns when Docker starts after a host
+reboot. The migration helper never starts automatically.
+
 To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
 `v`:
 

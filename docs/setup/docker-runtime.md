@@ -17,6 +17,11 @@ docker compose -f docker-compose.release.yml pull
 docker compose -f docker-compose.release.yml up -d
 ```
 
+The frontend and backend use Docker's `unless-stopped` restart policy. After
+the initial Compose start, they start again when Docker starts after a host
+reboot. An intentional manual stop remains stopped until you start the stack
+again. The one-time migration helper is excluded from automatic restart.
+
 Pin a specific release image with `AIPERMISSION_VERSION` without the leading
 `v`:
 
