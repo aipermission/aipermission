@@ -574,10 +574,8 @@ function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearc
 
 function KubernetesPodConsolePanel({
   children,
-  target,
   pod,
   selectedRuntimeTarget,
-  session,
   sessionLive,
   pending,
   theme,
@@ -614,7 +612,6 @@ function KubernetesPodConsolePanel({
       </div>
     );
   }
-  const expectedName = kubernetesConsoleSessionName(target, pod);
   if (pending) {
     return (
       <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center ${borderClass}`}>

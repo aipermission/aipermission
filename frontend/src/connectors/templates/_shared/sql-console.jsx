@@ -1084,10 +1084,6 @@ function groupTableBrowserRows(rows) {
   return Array.from(bySchema.values());
 }
 
-function cleanCompletionValue(value) {
-  return String(value || "").trim();
-}
-
 function isAutocompleteMetadataRequest(item, metadataReason) {
   return item?.reason === metadataReason;
 }

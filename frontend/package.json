@@ -7,6 +7,10 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "lint": "eslint .",
+    "lint:suppressions": "eslint . --prune-suppressions",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "node scripts/run-tests.mjs",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1"
@@ -25,9 +29,14 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.9.0",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.7.2",
     "vite": "^6.4.3"

@@ -1,4 +1,4 @@
-.PHONY: help backend-test backend-race backend-vet backend-vuln frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -6,6 +6,8 @@ help:
 		'  make test            Run backend, frontend, and MCP tests' \
 		'  make build           Build frontend and MCP package' \
 		'  make audit           Run frontend and MCP production audits' \
+		'  make frontend-lint   Lint frontend source and React hooks' \
+		'  make frontend-format-check  Check frontend formatting' \
 		'  make release-check   Run the local RC verification set' \
 		'  make docker-up       Build and start the local Docker stack'
 
@@ -20,6 +22,12 @@ backend-vet:
 
 backend-vuln:
 	cd backend && govulncheck ./...
+
+frontend-lint:
+	cd frontend && npm run lint
+
+frontend-format-check:
+	cd frontend && npm run format:check
 
 frontend-test:
 	cd frontend && npm test
@@ -54,7 +62,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: backend-test backend-race backend-vet backend-vuln frontend-test frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build

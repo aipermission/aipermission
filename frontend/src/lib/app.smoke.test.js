@@ -137,10 +137,6 @@ const vaultActionApprovalDialogSource = readFileSync(
   "utf8",
 );
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function backendRegisteredConnectorKinds(source) {
   const connectorImports = new Map();
   for (const match of source.matchAll(/(\w+)\s+"github\.com\/aipermission\/aipermission\/backend\/internal\/connectors\/([^"]+)"/g)) {
