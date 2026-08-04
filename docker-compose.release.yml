@@ -4,6 +4,7 @@ services:
   backend:
     image: ghcr.io/aipermission/aipermission-backend:${AIPERMISSION_VERSION:-latest}
     container_name: aipermission-backend
+    restart: unless-stopped
     environment:
       AIPERMISSION_BACKEND_HOST: 127.0.0.1
       AIPERMISSION_BACKEND_PORT: 8080
@@ -35,6 +36,7 @@ services:
   frontend:
     image: ghcr.io/aipermission/aipermission-frontend:${AIPERMISSION_VERSION:-latest}
     container_name: aipermission-frontend
+    restart: unless-stopped
     ports:
       - "127.0.0.1:${AIPERMISSION_FRONTEND_PORT:-3210}:3210"
 
