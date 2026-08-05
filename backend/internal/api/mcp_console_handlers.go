@@ -12,22 +12,13 @@ type consoleRestartResult struct {
 }
 
 func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
-	sessions, err := runtime.consoleSessions.List(ctx, runtimeID)
+	var canceledRequests int64
+	closedSessionIDs, err := runtime.consoleSessions.RecoverRuntime(ctx, principal, runtimeID, func() error {
+		var err error
+		canceledRequests, err = s.cancelRunningCommandRequestsForServer(ctx, runtime, runtimeID, runningRequestError)
+		return err
+	})
 	if err != nil {
-		return consoleRestartResult{}, err
-	}
-	closedSessionIDs := []int64{}
-	for _, session := range sessions {
-		if session.Status == "connecting" || session.Status == "connected" {
-			closedSessionIDs = append(closedSessionIDs, session.ID)
-		}
-	}
-
-	canceledRequests, err := s.cancelRunningCommandRequestsForServer(ctx, runtime, runtimeID, runningRequestError)
-	if err != nil {
-		return consoleRestartResult{}, err
-	}
-	if err := runtime.consoleSessions.CloseRuntime(ctx, principal, runtimeID); err != nil {
 		return consoleRestartResult{}, err
 	}
 	return consoleRestartResult{

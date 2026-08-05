@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -504,26 +505,83 @@ func (m *Manager) CloseRuntime(ctx context.Context, principal executionprincipal
 	return m.closeRuntimeLocked(ctx, principal, runtimeID)
 }
 
+// RecoverRuntime closes a runtime whose Vault lease may already be stale.
+// MCP callers may only recover Vault sessions created by the same token;
+// every other session still uses the normal close authorization boundary.
+// beforeClose runs after every active session is authorized and while the
+// runtime lifecycle lock is held, so related state can be settled first.
+func (m *Manager) RecoverRuntime(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, beforeClose func() error) ([]int64, error) {
+	if err := principal.Validate(); err != nil {
+		return nil, err
+	}
+	lock := m.runtimeLifecycle(runtimeID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	sessions := m.activeSessionsForRuntime(runtimeID)
+	for _, session := range sessions {
+		if err := m.authorizeRecoveryClose(ctx, principal, session); err != nil {
+			return nil, err
+		}
+	}
+	if beforeClose != nil {
+		if err := beforeClose(); err != nil {
+			return nil, err
+		}
+	}
+	if err := m.closeRuntimeSessions(ctx, runtimeID, sessions); err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(sessions))
+	for _, session := range sessions {
+		ids = append(ids, session.id)
+	}
+	return ids, nil
+}
+
 func (m *Manager) closeRuntimeLocked(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) error {
+	sessions := m.activeSessionsForRuntime(runtimeID)
+	for _, session := range sessions {
+		if err := m.authorizeOperation(ctx, principal, session, OperationClose, nil); err != nil {
+			return err
+		}
+	}
+	return m.closeRuntimeSessions(ctx, runtimeID, sessions)
+}
+
+func (m *Manager) activeSessionsForRuntime(runtimeID int64) []*managedConsoleSession {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	sessions := []*managedConsoleSession{}
 	for _, session := range m.sessions {
 		if session.runtimeID == runtimeID {
 			sessions = append(sessions, session)
 		}
 	}
-	m.mu.Unlock()
-	for _, session := range sessions {
-		if err := m.authorizeOperation(ctx, principal, session, OperationClose, nil); err != nil {
-			return err
-		}
-	}
+	sort.Slice(sessions, func(i, j int) bool { return sessions[i].id < sessions[j].id })
+	return sessions
+}
+
+func (m *Manager) closeRuntimeSessions(ctx context.Context, runtimeID int64, sessions []*managedConsoleSession) error {
 	for _, session := range sessions {
 		session.close()
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := m.db.ExecContext(ctx, `UPDATE console_sessions SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ? WHERE runtime_id = ? AND status IN ('connecting', 'connected')`, now, now, runtimeID)
 	return err
+}
+
+func (m *Manager) authorizeRecoveryClose(ctx context.Context, principal executionprincipal.Principal, session *managedConsoleSession) error {
+	if session == nil || principal.Validate() != nil || !principal.SameRuntime(session.principal) {
+		return ErrUnauthorized
+	}
+	if principal.IsMCPToken() && session.environmentContentHash != "" {
+		if !session.principal.IsMCPToken() || principal.TokenID != session.principal.TokenID {
+			return ErrUnauthorized
+		}
+		return nil
+	}
+	return m.authorizeOperation(ctx, principal, session, OperationClose, nil)
 }
 
 func (m *Manager) closeSessionLocked(ctx context.Context, principal executionprincipal.Principal, session *managedConsoleSession) error {
