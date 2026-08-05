@@ -101,6 +101,86 @@ func TestConsoleSessionManagerDeniesTokenWithoutVaultLease(t *testing.T) {
 	}
 }
 
+func TestConsoleSessionManagerRecoversOnlyOwnedStaleVaultSession(t *testing.T) {
+	database, manager, session := newManualHistoryTestSession(t)
+	local := testExecutionPrincipal()
+	owner, err := executionprincipal.MCPToken(9, local.WorkspaceID, local.RuntimeInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := executionprincipal.MCPToken(10, local.WorkspaceID, local.RuntimeInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.principal = owner
+	session.environmentContentHash = "vault-context"
+	session.approvalContextHash = "approval-context"
+	sessionCtx, cancel := context.WithCancel(context.Background())
+	session.ctx = sessionCtx
+	session.cancel = cancel
+	manager.sessions[session.id] = session
+	manager.authorize = func(
+		_ context.Context,
+		_ executionprincipal.Principal,
+		_ SessionAuthorization,
+		_ SessionOperation,
+		_ func() error,
+	) error {
+		return ErrUnauthorized
+	}
+
+	if err := manager.CloseRuntime(context.Background(), owner, session.runtimeID); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("normal close should preserve the stale lease boundary, got %v", err)
+	}
+	callbackCalled := false
+	if _, err := manager.RecoverRuntime(context.Background(), other, session.runtimeID, func() error {
+		callbackCalled = true
+		return nil
+	}); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("another token recovered the Vault session, got %v", err)
+	}
+	if callbackCalled {
+		t.Fatal("recovery callback ran before authorization completed")
+	}
+	var status string
+	if err := database.QueryRow(`SELECT status FROM console_sessions WHERE id = ?`, session.id).Scan(&status); err != nil {
+		t.Fatalf("read session after denied recovery: %v", err)
+	}
+	if status != "connected" {
+		t.Fatalf("denied recovery changed session status to %q", status)
+	}
+
+	prepareErr := errors.New("prepare recovery")
+	if _, err := manager.RecoverRuntime(context.Background(), owner, session.runtimeID, func() error {
+		return prepareErr
+	}); !errors.Is(err, prepareErr) {
+		t.Fatalf("recovery preparation error = %v", err)
+	}
+	if err := database.QueryRow(`SELECT status FROM console_sessions WHERE id = ?`, session.id).Scan(&status); err != nil {
+		t.Fatalf("read session after failed recovery preparation: %v", err)
+	}
+	if status != "connected" {
+		t.Fatalf("failed recovery preparation changed session status to %q", status)
+	}
+
+	closedIDs, err := manager.RecoverRuntime(context.Background(), owner, session.runtimeID, func() error {
+		callbackCalled = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("owning token could not recover stale Vault session: %v", err)
+	}
+	if len(closedIDs) != 1 || closedIDs[0] != session.id {
+		t.Fatalf("recovered session ids = %v", closedIDs)
+	}
+	if err := database.QueryRow(`SELECT status FROM console_sessions WHERE id = ?`, session.id).Scan(&status); err != nil {
+		t.Fatalf("read recovered session: %v", err)
+	}
+	if status != "closed" {
+		t.Fatalf("recovered session status = %q", status)
+	}
+}
+
 func TestConsoleSessionManagerSerializesAuthorizationWithInputWrite(t *testing.T) {
 	local := testExecutionPrincipal()
 	token, err := executionprincipal.MCPToken(9, local.WorkspaceID, local.RuntimeInstanceID)
