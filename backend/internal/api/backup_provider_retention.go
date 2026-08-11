@@ -72,11 +72,14 @@ func (s backupHandlers) updateBackupProviderRetention(w http.ResponseWriter, r *
 		handleBackupServiceError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.retention.updated", map[string]any{
+	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "backup.provider.retention.updated", map[string]any{
 		"provider_id": provider.ID, "provider_type": provider.ProviderType,
 		"stream_id": result.Policy.StreamID, "enabled": result.Policy.Enabled,
 		"keep_latest": result.Policy.KeepLatest, "apply_now": request.ApplyNow,
 		"deleted_count": result.DeletedCount,
-	})
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	writeJSON(w, http.StatusOK, result)
 }

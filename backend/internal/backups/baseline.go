@@ -19,7 +19,7 @@ type ServiceBaseline struct {
 	CreatedAt string `json:"created_at"`
 }
 
-func ReadServiceBaseline(ctx context.Context, db *sql.DB, baseURL, streamID string) (*ServiceBaseline, error) {
+func ReadServiceBaseline(ctx context.Context, db storeDB, baseURL, streamID string) (*ServiceBaseline, error) {
 	key, err := serviceBaselineKey(baseURL, streamID)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func ReadServiceBaseline(ctx context.Context, db *sql.DB, baseURL, streamID stri
 	return &baseline, nil
 }
 
-func WriteServiceBaseline(ctx context.Context, db *sql.DB, baseURL, streamID string, backup ServiceBackup) error {
+func WriteServiceBaseline(ctx context.Context, db storeDB, baseURL, streamID string, backup ServiceBackup) error {
 	key, err := serviceBaselineKey(baseURL, streamID)
 	if err != nil {
 		return err

@@ -41,7 +41,7 @@ func (s connectorTargetHandlers) downloadConnectorProfileBackup(w http.ResponseW
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(artifact.Data)
-	s.writeAudit(r.Context(), resolved.runtime, "user", nil, 0, "connector.profile.backup.downloaded", map[string]any{
+	s.writeObservationAudit(r.Context(), resolved.runtime, "user", nil, 0, "connector.profile.backup.downloaded", map[string]any{
 		"target_id":      resolved.target.ID,
 		"profile_id":     resolved.profile.ID,
 		"connector_kind": resolved.target.ConnectorKind,
@@ -95,7 +95,7 @@ func (s connectorTargetHandlers) restoreConnectorProfileBackup(w http.ResponseWr
 		handleConnectorProvisionError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), resolved.runtime, "user", nil, 0, "connector.profile.backup.restored", map[string]any{
+	s.writeObservationAudit(r.Context(), resolved.runtime, "user", nil, 0, "connector.profile.backup.restored", map[string]any{
 		"target_id":      resolved.target.ID,
 		"profile_id":     resolved.profile.ID,
 		"connector_kind": resolved.target.ConnectorKind,

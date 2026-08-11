@@ -103,7 +103,7 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 		})
 	}
 
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "console.bulk_exec.started", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "console.bulk_exec.started", map[string]any{
 		"target_count": len(items),
 		"request_ids":  bulkConsoleRequestIDs(items),
 		"command":      request.Command,

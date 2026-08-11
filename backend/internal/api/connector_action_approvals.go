@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -163,7 +164,16 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 	if request.UserNote != "" {
 		message = message + ": " + request.UserNote
 	}
-	item, err := connectortargets.NewStore(runtime.database).DeclineActionRequest(r.Context(), id, message)
+	var item connectortargets.ActionRequest
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "connector_action.request.declined",
+		func() any { return connectorActionRequestAuditPayload(item) },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = connectortargets.NewTxStore(tx).DeclineActionRequest(r.Context(), id, message)
+			return err
+		},
+	)
 	if errors.Is(err, connectortargets.ErrActionRequestNotFound) {
 		writeError(w, http.StatusNotFound, "connector action request not found")
 		return
@@ -176,7 +186,7 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", item.TokenID, 0, "connector_action.decline", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", item.TokenID, 0, "connector_action.decline", map[string]any{
 		"request_id":     item.ID,
 		"target_ref":     connectortargets.ConnectorTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID),
 		"connector_kind": item.ConnectorKind,
@@ -206,7 +216,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		return connectortargets.ActionRequest{}, connectortargets.ErrActionRequestNotPending
 	}
 	if item.TokenID == nil {
-		stale, staleErr := finishStaleConnectorApproval(ctx, runtime, item.ID, "connector approval token no longer exists", "token")
+		stale, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, "connector approval token no longer exists", "token")
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
 		}
@@ -215,7 +225,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	tokenID := *item.TokenID
 	token, err := runtime.tokens.Get(ctx, tokenID)
 	if err != nil {
-		stale, staleErr := finishStaleConnectorApproval(ctx, runtime, item.ID, "connector approval token no longer exists; ask the AI to send a fresh request", "token")
+		stale, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, "connector approval token no longer exists; ask the AI to send a fresh request", "token")
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
 		}
@@ -228,7 +238,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		} else {
 			reason = "connector approval token expired; ask the AI to send a fresh request"
 		}
-		stale, staleErr := finishStaleConnectorApproval(ctx, runtime, item.ID, reason, "token")
+		stale, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, reason, "token")
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
 		}
@@ -249,7 +259,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	})
 	if err != nil {
 		reason := "connector approval context changed; ask the AI to send a fresh request"
-		stale, staleErr := finishStaleConnectorApproval(ctx, runtime, item.ID, reason, "target_or_action")
+		stale, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, reason, "target_or_action")
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
 		}
@@ -257,7 +267,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	}
 	permission, err := store.GetActionPermission(ctx, tokenID, item.TargetID, item.ProfileID, item.ActionName, time.Now().UTC())
 	if err != nil || permission.ExecutionRule != connectortargets.ActionPermissionApprovalRequired {
-		stale, staleErr := finishStaleConnectorApproval(ctx, runtime, item.ID, "connector approval context changed; ask the AI to send a fresh request", "permission")
+		stale, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, "connector approval context changed; ask the AI to send a fresh request", "permission")
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
 		}
@@ -272,7 +282,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	}
 	if item.ApprovalContextHash != "" && item.ApprovalContextHash != currentHash {
 		drift := connectorApprovalDriftReason(item.ApprovalContext, currentContext)
-		stale, staleErr := finishStaleConnectorApproval(ctx, runtime, item.ID, "connector approval context changed; ask the AI to send a fresh request", drift)
+		stale, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, "connector approval context changed; ask the AI to send a fresh request", drift)
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
 		}
@@ -297,13 +307,22 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	snapshot, err := s.snapshotPreparedConnectorAction(ctx, runtime, prepared)
 	if err != nil {
 		reason := "connector approval context changed; ask the AI to send a fresh request"
-		stale, staleErr := finishStaleConnectorApproval(ctx, runtime, item.ID, reason, "profile")
+		stale, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, reason, "profile")
 		if staleErr != nil {
 			return connectortargets.ActionRequest{}, staleErr
 		}
 		return stale, fmt.Errorf("%s", reason)
 	}
-	if _, err := store.MarkActionRequestRunning(ctx, item.ID); err != nil {
+	var running connectortargets.ActionRequest
+	if err := s.withAuditedMutation(
+		ctx, runtime, "user", item.TokenID, 0, "connector_action.request.running",
+		func() any { return connectorActionRequestAuditPayload(running) },
+		func(tx *sql.Tx) error {
+			var err error
+			running, err = connectortargets.NewTxStore(tx).MarkActionRequestRunning(ctx, item.ID)
+			return err
+		},
+	); err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
 	release()
@@ -331,7 +350,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			if finishErr != nil {
 				return connectortargets.ActionRequest{}, finishErr
 			}
-			s.writeAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run.error", map[string]any{
+			s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run.error", map[string]any{
 				"request_id":     item.ID,
 				"target_ref":     targetRef,
 				"connector_kind": item.ConnectorKind,
@@ -348,7 +367,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		if err != nil {
 			return connectortargets.ActionRequest{}, err
 		}
-		s.writeAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run.running", map[string]any{
+		s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run.running", map[string]any{
 			"request_id":     item.ID,
 			"target_ref":     targetRef,
 			"connector_kind": item.ConnectorKind,
@@ -361,17 +380,14 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		result.Error = "connector returned approval_pending after approval was already granted"
 	}
 	result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
-	finished, err := store.FinishActionRequest(context.Background(), connectortargets.FinishActionRequestInput{
-		ID:          item.ID,
-		Status:      status,
-		Output:      result.Output,
-		DisplayText: result.DisplayText,
-		Error:       result.Error,
-	})
+	finished, err := s.finishConnectorActionRequest(
+		context.Background(), runtime, item.ID, status,
+		result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint,
+	)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	s.writeAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run."+string(finished.Status), map[string]any{
+	s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run."+string(finished.Status), map[string]any{
 		"request_id":     item.ID,
 		"target_ref":     targetRef,
 		"connector_kind": item.ConnectorKind,
@@ -381,14 +397,20 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	return finished, nil
 }
 
-func finishStaleConnectorApproval(ctx context.Context, runtime *databaseRuntime, requestID int64, reason string, drift string) (connectortargets.ActionRequest, error) {
-	stale, err := connectortargets.NewStore(runtime.database).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-		ID:              requestID,
-		Status:          connectors.ResultStale,
-		Error:           reason,
-		ApprovalDrift:   drift,
-		AllowedStatuses: connectorApprovalFinishStatuses(),
-	})
+func (s *Server) finishStaleConnectorApproval(ctx context.Context, runtime *databaseRuntime, requestID int64, reason string, drift string) (connectortargets.ActionRequest, error) {
+	var stale connectortargets.ActionRequest
+	err := s.withAuditedMutation(
+		ctx, runtime, "gateway", nil, 0, "connector_action.request.stale",
+		func() any { return connectorActionRequestAuditPayload(stale) },
+		func(tx *sql.Tx) error {
+			var err error
+			stale, err = connectortargets.NewTxStore(tx).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+				ID: requestID, Status: connectors.ResultStale, Error: reason,
+				ApprovalDrift: drift, AllowedStatuses: connectorApprovalFinishStatuses(),
+			})
+			return err
+		},
+	)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}

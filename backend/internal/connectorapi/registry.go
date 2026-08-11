@@ -72,6 +72,7 @@ type TargetLifecycleGateway interface {
 	ConnectorServer() GatewayServer
 	ConnectorStaleActionRequestsForTarget(ctx context.Context, runtime GatewayRuntime, targetID int64, profileID int64, reason string) (int64, error)
 	ConnectorWriteAudit(ctx context.Context, runtime GatewayRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any)
+	ConnectorDeleteTargetRecord(ctx context.Context, runtime GatewayRuntime, target connectortargets.Target, payload map[string]any) error
 	ConnectorFinalizeDeletedTarget(ctx context.Context, runtime GatewayRuntime, target connectortargets.Target, staleReason string, payload map[string]any) (int64, error)
 }
 

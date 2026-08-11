@@ -1,6 +1,8 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
@@ -55,20 +57,30 @@ func (s tokenHandlers) updateTokenProjectScopes(w http.ResponseWriter, r *http.R
 		return
 	}
 	defer release()
-	items, changed, err := projectstore.NewStore(runtime.database).ReplaceTokenScopesWithChange(r.Context(), tokenID, request.EnabledProjectIDs)
+	var items []projectstore.TokenScope
+	changed := false
+	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "token.project_scopes.updated", func() any {
+		return map[string]any{"token_id": tokenID, "enabled_project_ids": request.EnabledProjectIDs}
+	}, func(tx *sql.Tx) error {
+		var replaceErr error
+		items, changed, replaceErr = projectstore.NewTxStore(tx).ReplaceTokenScopesWithChange(r.Context(), tokenID, request.EnabledProjectIDs)
+		if replaceErr == nil && !changed {
+			return errAuditedMutationUnchanged
+		}
+		return replaceErr
+	})
+	if errors.Is(err, errAuditedMutationUnchanged) {
+		err = nil
+	}
 	if err != nil {
 		handleProjectError(w, err)
 		return
 	}
 	if changed {
-		if err := invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "project visibility changed; send a fresh Vault request"); err != nil {
+		if err := s.invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "project visibility changed; send a fresh Vault request"); err != nil {
 			writeInternalError(w)
 			return
 		}
-		s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.project_scopes.updated", map[string]any{
-			"token_id":            tokenID,
-			"enabled_project_ids": request.EnabledProjectIDs,
-		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "changed": changed})
 }

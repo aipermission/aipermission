@@ -95,7 +95,7 @@ func (h maintenanceConsoleHandlers) open(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	snapshot := session.snapshot()
-	h.writeAudit(r.Context(), runtime, "user", nil, 0, "maintenance_console.opened", map[string]any{
+	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "maintenance_console.opened", map[string]any{
 		"scope": "local-ui-only",
 		"mode":  "realtime-pty",
 		"shell": snapshot.Shell,
@@ -118,7 +118,7 @@ func (h maintenanceConsoleHandlers) close(w http.ResponseWriter, r *http.Request
 	if h.maintenanceConsole != nil {
 		closed = h.maintenanceConsole.close()
 	}
-	h.writeAudit(r.Context(), runtime, "user", nil, 0, "maintenance_console.closed", map[string]any{
+	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "maintenance_console.closed", map[string]any{
 		"scope":  "local-ui-only",
 		"mode":   "realtime-pty",
 		"closed": closed,

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -19,7 +20,7 @@ func (s vaultActionApprovalHandlers) list(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	items, err := vaultrequests.NewStore(runtime.database).List(r.Context(), strings.TrimSpace(r.URL.Query().Get("status")), 100)
+	items, err := s.vaultRequestStore(r.Context(), runtime).List(r.Context(), strings.TrimSpace(r.URL.Query().Get("status")), 100)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -87,7 +88,17 @@ func (s vaultActionApprovalHandlers) decline(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	item, err := vaultrequests.NewStore(runtime.database).Decline(r.Context(), id, request.UserNote)
+	var item vaultrequests.Request
+	tokenID, runtimeID := vaultActionAuditIdentity(r.Context(), runtime, id)
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", tokenID, runtimeID, "vault.action.declined",
+		func() any { return vaultActionAuditPayload(item, request.UserNote) },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = vaultrequests.NewTxStore(tx).Decline(r.Context(), id, request.UserNote)
+			return err
+		},
+	)
 	if errors.Is(err, vaultrequests.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "Vault action request not found")
 		return
@@ -100,7 +111,6 @@ func (s vaultActionApprovalHandlers) decline(w http.ResponseWriter, r *http.Requ
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", int64Ptr(item.TokenID), valueOrZero(item.RuntimeID), "vault.action.declined", vaultActionAuditPayload(item, request.UserNote))
 	writeJSON(w, http.StatusOK, item)
 }
 

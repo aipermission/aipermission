@@ -125,11 +125,11 @@ func (s *Store) UpdateMetadata(ctx context.Context, input UpdateMetadataInput) (
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.transaction(ctx, nil)
 	if err != nil {
 		return Item{}, fmt.Errorf("begin update vault metadata: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE vault_items
 		SET name = ?, owner_project_id = ?, secret_type = ?, provider = ?, environment = ?,
@@ -181,10 +181,14 @@ func (s *Store) UpdateMetadata(ctx context.Context, input UpdateMetadataInput) (
 	if err := insertUsageNotes(ctx, tx, input.ID, input.UsageNotes, now); err != nil {
 		return Item{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	item, err := (&Store{db: tx, vault: s.vault, workspaceUUID: s.workspaceUUID}).Get(ctx, input.ID)
+	if err != nil {
+		return Item{}, err
+	}
+	if err := commit(); err != nil {
 		return Item{}, fmt.Errorf("commit vault metadata: %w", err)
 	}
-	return s.Get(ctx, input.ID)
+	return item, nil
 }
 
 func (s *Store) Delete(ctx context.Context, id int64, expectedValueVersion int64, expectedMetadataRevision int64) error {

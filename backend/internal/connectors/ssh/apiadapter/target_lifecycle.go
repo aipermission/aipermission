@@ -140,15 +140,15 @@ func (adapter) DeleteTarget(handler connectorapi.TargetLifecycleGateway, w http.
 			canceledCommands += result.CanceledRunningRequests
 		}
 	}
-	if err := store.DeleteTarget(r.Context(), target.ID); err != nil {
-		handleTargetError(w, err)
-		return
-	}
-	if _, err := handler.ConnectorFinalizeDeletedTarget(r.Context(), runtime, target, "SSH connector target was deleted; ask the AI to send a fresh request", map[string]any{
+	if err := handler.ConnectorDeleteTargetRecord(r.Context(), runtime, target, map[string]any{
 		"remote_key_removed":  removedKeys > 0,
 		"remote_keys_removed": removedKeys,
 		"canceled_commands":   canceledCommands,
 	}); err != nil {
+		handleTargetError(w, err)
+		return
+	}
+	if _, err := handler.ConnectorFinalizeDeletedTarget(r.Context(), runtime, target, "SSH connector target was deleted; ask the AI to send a fresh request", nil); err != nil {
 		writeInternalError(w)
 		return
 	}

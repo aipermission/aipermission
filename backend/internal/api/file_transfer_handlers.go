@@ -321,7 +321,7 @@ func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.
 	}
 	if changed {
 		s.removeTransferTemp(runtime, id)
-		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.canceled", map[string]any{
+		s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.canceled", map[string]any{
 			"transfer_id": id,
 			"direction":   item.Direction,
 			"remote_path": item.RemotePath,

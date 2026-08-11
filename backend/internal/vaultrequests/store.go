@@ -72,9 +72,50 @@ type CreateInput struct {
 	InitialStatus       string
 }
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db           storeDB
+	mutationHook MutationHook
+}
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+type Executor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type MutationHook func(context.Context, Executor, Request) error
+
+type storeDB interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type transactionStarter interface {
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+}
+
+func NewStore(db *sql.DB) *Store   { return &Store{db: db} }
+func NewTxStore(tx *sql.Tx) *Store { return &Store{db: tx} }
+
+func (s *Store) WithMutationHook(hook MutationHook) *Store {
+	if s != nil {
+		s.mutationHook = hook
+	}
+	return s
+}
+
+func (s *Store) transaction(ctx context.Context, label string) (storeDB, func() error, func(), error) {
+	starter, ok := s.db.(transactionStarter)
+	if !ok {
+		return s.db, func() error { return nil }, func() {}, nil
+	}
+	tx, err := starter.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("begin %s: %w", label, err)
+	}
+	return tx, tx.Commit, func() { _ = tx.Rollback() }, nil
+}
 
 func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, error) {
 	input.ActionName = strings.TrimSpace(input.ActionName)
@@ -106,12 +147,12 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, e
 	}
 	now := formatTimestamp(nowTime)
 	expiresAt := formatTimestamp(nowTime.Add(ApprovalTTL))
-	tx, err := s.db.BeginTx(ctx, nil)
+	executor, commit, rollback, err := s.transaction(ctx, "Vault action request")
 	if err != nil {
 		return Request{}, false, err
 	}
-	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `
+	defer rollback()
+	result, err := executor.ExecContext(ctx, `
 		INSERT INTO vault_action_requests (
 			token_id, project_id, runtime_id, action_name, source, input_json, reason,
 			status, approval_context_json, approval_context_hash, idempotency_key,
@@ -126,7 +167,7 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, e
 		return Request{}, false, fmt.Errorf("create Vault action request: %w", err)
 	}
 	affected, _ := result.RowsAffected()
-	item, err := scanRequest(tx.QueryRowContext(ctx, requestSelect+` WHERE r.token_id = ? AND r.idempotency_key = ?`, input.TokenID, input.IdempotencyKey))
+	item, err := scanRequest(executor.QueryRowContext(ctx, requestSelect+` WHERE r.token_id = ? AND r.idempotency_key = ?`, input.TokenID, input.IdempotencyKey))
 	if err != nil {
 		return Request{}, false, err
 	}
@@ -134,11 +175,16 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, e
 		return Request{}, false, ErrIdempotencyConflict
 	}
 	if affected == 1 {
-		if err := history.SyncVaultActionRequestWithExecutor(ctx, tx, item.ID); err != nil {
+		if err := history.SyncVaultActionRequestWithExecutor(ctx, executor, item.ID); err != nil {
 			return Request{}, false, err
 		}
+		if s.mutationHook != nil {
+			if err := s.mutationHook(ctx, executor, item); err != nil {
+				return Request{}, false, err
+			}
+		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commit(); err != nil {
 		return Request{}, false, err
 	}
 	return item, affected == 1, nil
@@ -194,8 +240,8 @@ func (s *Store) Claim(ctx context.Context, id int64) (Request, error) {
 		return Request{}, err
 	}
 	now := formatTimestamp(nowTime)
-	affected, err := s.mutateAndSync(ctx, id, func(tx *sql.Tx) (sql.Result, error) {
-		return tx.ExecContext(ctx, `
+	affected, err := s.mutateAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
+		return executor.ExecContext(ctx, `
 			UPDATE vault_action_requests
 			SET status = ?, error = '', updated_at = ?
 			WHERE id = ? AND status = ? AND julianday(expires_at) > julianday(?)`,
@@ -239,8 +285,8 @@ func (s *Store) CancelOwned(ctx context.Context, id, tokenID int64) (Request, er
 		return Request{}, err
 	}
 	now := formatTimestamp(time.Now().UTC())
-	affected, err := s.mutateAndSync(ctx, id, func(tx *sql.Tx) (sql.Result, error) {
-		return tx.ExecContext(ctx, `
+	affected, err := s.mutateAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
+		return executor.ExecContext(ctx, `
 			UPDATE vault_action_requests
 			SET status = ?, error = 'canceled by requesting token', completed_at = ?, updated_at = ?
 			WHERE id = ? AND token_id = ? AND status = ?`,
@@ -283,8 +329,8 @@ func (s *Store) ExpirePending(ctx context.Context, now time.Time) error {
 		return err
 	}
 	for _, id := range ids {
-		affected, err := s.mutateAndSync(ctx, id, func(tx *sql.Tx) (sql.Result, error) {
-			return tx.ExecContext(ctx, `
+		affected, err := s.mutateAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
+			return executor.ExecContext(ctx, `
 				UPDATE vault_action_requests
 				SET status = ?, error = 'approval request expired', completed_at = ?, updated_at = ?
 				WHERE id = ? AND status = ? AND julianday(expires_at) <= julianday(?)`,
@@ -309,8 +355,8 @@ func (s *Store) FailRunning(ctx context.Context, errorText string) error {
 	}
 	now := formatTimestamp(time.Now().UTC())
 	for _, id := range ids {
-		affected, err := s.mutateAndSync(ctx, id, func(tx *sql.Tx) (sql.Result, error) {
-			return tx.ExecContext(ctx, `
+		affected, err := s.mutateAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
+			return executor.ExecContext(ctx, `
 				UPDATE vault_action_requests
 				SET status = ?, error = ?, completed_at = ?, updated_at = ?
 				WHERE id = ? AND status = ?`,
@@ -433,15 +479,15 @@ func (s *Store) transition(ctx context.Context, id int64, from, to string, outpu
 	if err != nil {
 		return Request{}, fmt.Errorf("encode Vault action output: %w", err)
 	}
-	affected, err := s.mutateAndSync(ctx, id, func(tx *sql.Tx) (sql.Result, error) {
+	affected, err := s.mutateAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
 		if terminal {
-			return tx.ExecContext(ctx, `
+			return executor.ExecContext(ctx, `
 				UPDATE vault_action_requests
 				SET status = ?, output_json = ?, error = ?, user_note = ?, completed_at = ?, updated_at = ?
 				WHERE id = ? AND status = ?`,
 				to, string(outputJSON), strings.TrimSpace(errorText), strings.TrimSpace(userNote), now, now, id, from)
 		}
-		return tx.ExecContext(ctx, `
+		return executor.ExecContext(ctx, `
 			UPDATE vault_action_requests SET status = ?, error = '', updated_at = ?
 			WHERE id = ? AND status = ?`, to, now, id, from)
 	})
@@ -463,8 +509,8 @@ func (s *Store) transition(ctx context.Context, id int64, from, to string, outpu
 
 func (s *Store) stalePending(ctx context.Context, id int64, reason string) (Request, error) {
 	now := formatTimestamp(time.Now().UTC())
-	affected, err := s.mutateAndSync(ctx, id, func(tx *sql.Tx) (sql.Result, error) {
-		return tx.ExecContext(ctx, `
+	affected, err := s.mutateAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
+		return executor.ExecContext(ctx, `
 			UPDATE vault_action_requests
 			SET status = ?, error = ?, completed_at = ?, updated_at = ?
 			WHERE id = ? AND status = ?`,
@@ -487,14 +533,14 @@ func (s *Store) stalePending(ctx context.Context, id int64, reason string) (Requ
 func (s *Store) mutateAndSync(
 	ctx context.Context,
 	id int64,
-	mutate func(*sql.Tx) (sql.Result, error),
+	mutate func(storeDB) (sql.Result, error),
 ) (int64, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	executor, commit, rollback, err := s.transaction(ctx, "Vault action request mutation")
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
-	result, err := mutate(tx)
+	defer rollback()
+	result, err := mutate(executor)
 	if err != nil {
 		return 0, err
 	}
@@ -503,11 +549,20 @@ func (s *Store) mutateAndSync(
 		return 0, err
 	}
 	if affected == 1 {
-		if err := history.SyncVaultActionRequestWithExecutor(ctx, tx, id); err != nil {
+		if err := history.SyncVaultActionRequestWithExecutor(ctx, executor, id); err != nil {
 			return 0, err
 		}
+		if s.mutationHook != nil {
+			item, err := scanRequest(executor.QueryRowContext(ctx, requestSelect+` WHERE r.id = ?`, id))
+			if err != nil {
+				return 0, err
+			}
+			if err := s.mutationHook(ctx, executor, item); err != nil {
+				return 0, err
+			}
+		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commit(); err != nil {
 		return 0, err
 	}
 	return affected, nil

@@ -3,6 +3,7 @@ package filetransfer
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -66,6 +67,90 @@ func TestStoreCreatesListsAndUpdatesFileTransfers(t *testing.T) {
 
 	if ok, err := store.Cancel(ctx, created.ID, "too late"); err != nil || ok {
 		t.Fatalf("completed transfer should not be cancelable: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestStoreAuditsTransferLifecycleWithoutProgressNoise(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	runtimeID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+
+	created, err := store.Create(ctx, CreateRequest{
+		RuntimeID: runtimeID, Direction: DirectionUpload, Source: SourceUI,
+		LocalPath: "deploy.tar.gz", RemotePath: "/tmp/deploy.tar.gz", FileName: "deploy.tar.gz",
+	})
+	if err != nil {
+		t.Fatalf("create transfer: %v", err)
+	}
+	if ok, err := store.MarkRunning(ctx, created.ID); err != nil || !ok {
+		t.Fatalf("mark transfer running: ok=%v err=%v", ok, err)
+	}
+	if err := store.UpdateProgress(ctx, created.ID, 512, 1024); err != nil {
+		t.Fatalf("update transfer progress: %v", err)
+	}
+	if ok, err := store.Complete(ctx, created.ID, 1024, "abc123"); err != nil || !ok {
+		t.Fatalf("complete transfer: ok=%v err=%v", ok, err)
+	}
+
+	rows, err := database.Query(`
+		SELECT action FROM audit_outbox
+		WHERE payload_json LIKE ?
+		ORDER BY id`, fmt.Sprintf(`%%"transfer_id":%d,%%`, created.ID))
+	if err != nil {
+		t.Fatalf("query transfer audit events: %v", err)
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var action string
+		if err := rows.Scan(&action); err != nil {
+			t.Fatalf("scan transfer audit action: %v", err)
+		}
+		actions = append(actions, action)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate transfer audit actions: %v", err)
+	}
+	want := []string{"file_transfer.created", "file_transfer.running", "file_transfer.completed"}
+	if len(actions) != len(want) {
+		t.Fatalf("audit actions = %v, want %v", actions, want)
+	}
+	for index := range want {
+		if actions[index] != want[index] {
+			t.Fatalf("audit actions = %v, want %v", actions, want)
+		}
+	}
+}
+
+func TestStoreRollsBackTransferWhenAuditOutboxIsUnavailable(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	runtimeID := insertTestServer(t, database)
+	if _, err := database.Exec(`DROP TABLE audit_outbox`); err != nil {
+		t.Fatalf("drop audit outbox: %v", err)
+	}
+
+	_, err = NewStore(database).Create(context.Background(), CreateRequest{
+		RuntimeID: runtimeID, Direction: DirectionUpload, Source: SourceUI,
+		LocalPath: "deploy.tar.gz", RemotePath: "/tmp/deploy.tar.gz", FileName: "deploy.tar.gz",
+	})
+	if err == nil {
+		t.Fatal("create transfer should fail when its audit event cannot be appended")
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM file_transfers`).Scan(&count); err != nil {
+		t.Fatalf("count file transfers: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("file transfer mutation committed without audit event: count=%d", count)
 	}
 }
 

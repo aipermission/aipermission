@@ -234,7 +234,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 	if result.Replayed {
 		auditAction = "mcp.connector_action.replayed"
 	}
-	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, auditAction, map[string]any{
+	s.writeObservationAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, auditAction, map[string]any{
 		"request_id":     result.Request.ID,
 		"target_ref":     request.TargetRef,
 		"connector_kind": result.Request.ConnectorKind,

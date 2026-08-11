@@ -75,7 +75,7 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, runtimeID, "file_transfer.upload.started", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "file_transfer.upload.started", map[string]any{
 		"transfer_id": record.ID,
 		"remote_path": remotePath,
 		"file_name":   fileName,
@@ -95,7 +95,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, runtimeID, "file_transfer.batch.upload.started", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "file_transfer.batch.upload.started", map[string]any{
 		"batch_id":   batch.ID,
 		"items":      len(batch.Items),
 		"size_bytes": batch.SizeBytes,
@@ -314,7 +314,7 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, request.RuntimeID, "file_transfer.download.started", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, request.RuntimeID, "file_transfer.download.started", map[string]any{
 		"transfer_id": record.ID,
 		"remote_path": remotePath,
 		"file_name":   fileName,
@@ -343,7 +343,7 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, request.RuntimeID, "file_transfer.batch.download.started", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, request.RuntimeID, "file_transfer.batch.download.started", map[string]any{
 		"batch_id":   batch.ID,
 		"items":      len(batch.Items),
 		"size_bytes": batch.SizeBytes,

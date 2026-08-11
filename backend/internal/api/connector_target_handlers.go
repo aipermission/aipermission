@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -399,22 +400,28 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	target, err := store.CreateTarget(r.Context(), connectortargets.CreateTargetInput{
-		ProjectID:     request.ProjectID,
-		ConnectorKind: strings.TrimSpace(request.ConnectorKind),
-		Name:          request.Name,
-		Config:        request.Config,
-	})
+	var target connectortargets.Target
+	err = s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "connector.target.created",
+		func() any {
+			return map[string]any{
+				"project_id": target.ProjectID, "target_id": target.ID,
+				"connector_kind": target.ConnectorKind, "name": target.Name,
+			}
+		},
+		func(tx *sql.Tx) error {
+			var err error
+			target, err = connectortargets.NewTxStore(tx).CreateTarget(r.Context(), connectortargets.CreateTargetInput{
+				ProjectID: request.ProjectID, ConnectorKind: strings.TrimSpace(request.ConnectorKind),
+				Name: request.Name, Config: request.Config,
+			})
+			return err
+		},
+	)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.created", map[string]any{
-		"project_id":     target.ProjectID,
-		"target_id":      target.ID,
-		"connector_kind": target.ConnectorKind,
-		"name":           target.Name,
-	})
 	writeJSON(w, http.StatusCreated, connectorTargetToResponse(target, nil))
 }
 
@@ -456,6 +463,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 	if !ok {
 		return
 	}
+	appendAudit := s.prepareAuditAppender(r.Context(), runtime)
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -496,23 +504,24 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
+	if err := appendAudit(tx, "user", nil, 0, "connector.target.created", map[string]any{
+		"project_id": target.ProjectID, "target_id": target.ID, "connector_kind": target.ConnectorKind, "name": target.Name,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := appendAudit(tx, "user", nil, 0, "connector.profile.created", map[string]any{
+		"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
+		"kind": profile.Kind, "label": profile.Label,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.created", map[string]any{
-		"project_id":     target.ProjectID,
-		"target_id":      target.ID,
-		"connector_kind": target.ConnectorKind,
-		"name":           target.Name,
-	})
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.created", map[string]any{
-		"target_id":      target.ID,
-		"profile_id":     profile.ID,
-		"connector_kind": target.ConnectorKind,
-		"kind":           profile.Kind,
-		"label":          profile.Label,
-	})
+	s.projectAuditEvents(r.Context(), runtime)
 	writeJSON(w, http.StatusCreated, connectorTargetToResponse(target, []connectortargets.CredentialProfile{profile}))
 }
 
@@ -633,6 +642,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	defer release()
+	appendAudit := s.prepareAuditAppender(r.Context(), runtime)
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -661,11 +671,17 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 			return
 		}
 	}
+	if err := appendAudit(tx, "user", nil, 0, "connector.target.updated", map[string]any{
+		"project_id": target.ProjectID, "target_id": target.ID, "connector_kind": target.ConnectorKind, "name": target.Name,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
-	if err := invalidateVaultSessionsForTargetProfile(
+	if err := s.invalidateVaultSessionsForTargetProfile(
 		r.Context(), runtime, target.ID, 0,
 		"connector target changed; send a fresh Vault request",
 	); err != nil {
@@ -677,13 +693,8 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.updated", map[string]any{
-		"project_id":               target.ProjectID,
-		"target_id":                target.ID,
-		"connector_kind":           target.ConnectorKind,
-		"name":                     target.Name,
-		"stale_connector_requests": staleRequests,
-	})
+	_ = staleRequests
+	s.projectAuditEvents(r.Context(), runtime)
 	writeJSON(w, http.StatusOK, connectorTargetToResponse(target, profiles))
 }
 
@@ -754,6 +765,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	defer release()
+	appendAudit := s.prepareAuditAppender(r.Context(), runtime)
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -789,11 +801,24 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
+	if err := appendAudit(tx, "user", nil, 0, "connector.target.updated", map[string]any{
+		"project_id": target.ProjectID, "target_id": target.ID, "connector_kind": target.ConnectorKind, "name": target.Name,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := appendAudit(tx, "user", nil, 0, "connector.profile.updated", map[string]any{
+		"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
+		"kind": profile.Kind, "label": profile.Label,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
-	if err := invalidateVaultSessionsForTargetProfile(
+	if err := s.invalidateVaultSessionsForTargetProfile(
 		r.Context(), runtime, target.ID, 0,
 		"connector target or credential profile changed; send a fresh Vault request",
 	); err != nil {
@@ -805,20 +830,8 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.target.updated", map[string]any{
-		"project_id":               target.ProjectID,
-		"target_id":                target.ID,
-		"connector_kind":           target.ConnectorKind,
-		"name":                     target.Name,
-		"stale_connector_requests": staleRequests,
-	})
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.updated", map[string]any{
-		"target_id":      target.ID,
-		"profile_id":     profile.ID,
-		"connector_kind": target.ConnectorKind,
-		"kind":           profile.Kind,
-		"label":          profile.Label,
-	})
+	_ = staleRequests
+	s.projectAuditEvents(r.Context(), runtime)
 	writeJSON(w, http.StatusOK, connectorTargetToResponse(target, []connectortargets.CredentialProfile{profile}))
 }
 
@@ -847,7 +860,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		adapter.DeleteTarget(s, w, r, runtime, target)
 		return
 	}
-	if err := store.DeleteTarget(r.Context(), id); err != nil {
+	if err := s.ConnectorDeleteTargetRecord(r.Context(), runtime, target, nil); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
@@ -871,14 +884,32 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 	if runtime == nil || runtime.database == nil || targetID < 1 {
 		return 0, nil
 	}
-	store := connectortargets.NewStore(runtime.database)
-	result, err := store.StaleActionRequestsForTarget(ctx, connectortargets.StaleActionRequestsForTargetInput{
-		TargetID:       targetID,
-		ProfileID:      profileID,
-		Error:          s.redactForPersistence(ctx, runtime, reason),
-		ApprovalDrift:  connectorLifecycleApprovalDrift(profileID),
-		IncludeRunning: includeRunning,
-	})
+	input := connectortargets.StaleActionRequestsForTargetInput{
+		TargetID: targetID, ProfileID: profileID,
+		Error:         s.redactForPersistence(ctx, runtime, reason),
+		ApprovalDrift: connectorLifecycleApprovalDrift(profileID), IncludeRunning: includeRunning,
+	}
+	var result connectortargets.StaleActionRequestsForTargetResult
+	err := s.withAuditedMutation(
+		ctx, runtime, "gateway", nil, 0, "connector_action.requests.stale",
+		func() any {
+			return map[string]any{
+				"target_id": targetID, "profile_id": profileID,
+				"request_ids": result.IDs, "affected": result.Affected,
+			}
+		},
+		func(tx *sql.Tx) error {
+			var err error
+			result, err = connectortargets.NewTxStore(tx).StaleActionRequestsForTarget(ctx, input)
+			if err == nil && result.Affected == 0 {
+				return errAuditedMutationUnchanged
+			}
+			return err
+		},
+	)
+	if errors.Is(err, errAuditedMutationUnchanged) {
+		return 0, nil
+	}
 	if err != nil {
 		return 0, err
 	}

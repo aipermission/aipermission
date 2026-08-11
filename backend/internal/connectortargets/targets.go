@@ -144,15 +144,11 @@ func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
 	if id < 1 {
 		return ErrTargetNotFound
 	}
-	starter, ok := s.db.(transactionStarter)
-	if !ok {
-		return fmt.Errorf("connector target store cannot start transactions")
-	}
-	tx, err := starter.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.transaction(ctx, "connector target archive")
 	if err != nil {
 		return fmt.Errorf("begin connector target archive: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback()
 	now := nowString()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE connector_targets
@@ -202,7 +198,7 @@ func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
 	); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return commit()
 }
 
 func (s *Store) ListTargets(ctx context.Context, filter ListTargetsFilter) ([]Target, error) {

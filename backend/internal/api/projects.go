@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -35,16 +36,18 @@ func (s projectHandlers) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	item, err := projectstore.NewStore(runtime.database).Create(r.Context(), request.Name)
+	var item projectstore.Project
+	err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "project.created", func() any {
+		return map[string]any{"project_id": item.ID, "name": item.Name, "slug": item.Slug}
+	}, func(tx *sql.Tx) error {
+		var createErr error
+		item, createErr = projectstore.NewTxStore(tx).Create(r.Context(), request.Name)
+		return createErr
+	})
 	if err != nil {
 		handleProjectError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "project.created", map[string]any{
-		"project_id": item.ID,
-		"name":       item.Name,
-		"slug":       item.Slug,
-	})
 	writeJSON(w, http.StatusCreated, item)
 }
 
@@ -62,16 +65,18 @@ func (s projectHandlers) updateProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	item, err := projectstore.NewStore(runtime.database).Update(r.Context(), id, request.Name)
+	var item projectstore.Project
+	err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "project.updated", func() any {
+		return map[string]any{"project_id": item.ID, "name": item.Name, "slug": item.Slug}
+	}, func(tx *sql.Tx) error {
+		var updateErr error
+		item, updateErr = projectstore.NewTxStore(tx).Update(r.Context(), id, request.Name)
+		return updateErr
+	})
 	if err != nil {
 		handleProjectError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "project.updated", map[string]any{
-		"project_id": item.ID,
-		"name":       item.Name,
-		"slug":       item.Slug,
-	})
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -90,11 +95,15 @@ func (s projectHandlers) archiveProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer release()
-	if err := projectstore.NewStore(runtime.database).Archive(r.Context(), id); err != nil {
+	if err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "project.archived", func() any {
+		return map[string]any{"project_id": id}
+	}, func(tx *sql.Tx) error {
+		return projectstore.NewTxStore(tx).Archive(r.Context(), id)
+	}); err != nil {
 		handleProjectError(w, err)
 		return
 	}
-	if err := invalidateVaultProjectSessions(
+	if err := s.invalidateVaultProjectSessions(
 		r.Context(),
 		runtime,
 		id,
@@ -103,7 +112,6 @@ func (s projectHandlers) archiveProject(w http.ResponseWriter, r *http.Request) 
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "project.archived", map[string]any{"project_id": id})
 	w.WriteHeader(http.StatusNoContent)
 }
 

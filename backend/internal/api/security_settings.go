@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -63,17 +64,29 @@ func (s securityHandlers) updateSecuritySettings(w http.ResponseWriter, r *http.
 		MCPStartEnabled:         request.MCPStartEnabled,
 		RedactionMode:           normalizeRedactionMode(request.RedactionMode),
 	}
-	if err := writeSecuritySettings(r.Context(), runtime, settings); err != nil {
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "settings.security.updated",
+		func() any { return securitySettingsAuditPayload(settings) },
+		func(tx *sql.Tx) error { return writeSecuritySettingsWithExecutor(r.Context(), tx, settings) },
+	)
+	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "settings.security.updated", map[string]any{
+	runtime.securityMu.Lock()
+	runtime.securitySettings = settings
+	runtime.securityLoaded = true
+	runtime.securityMu.Unlock()
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func securitySettingsAuditPayload(settings securitySettingsResponse) map[string]any {
+	return map[string]any{
 		"reusable_tokens":            settings.ReusableTokens,
 		"expose_mcp_server_metadata": settings.ExposeMCPServerMetadata,
 		"mcp_start_enabled":          settings.MCPStartEnabled,
 		"redaction_mode":             settings.RedactionMode,
-	})
-	writeJSON(w, http.StatusOK, settings)
+	}
 }
 
 func readSecuritySettings(ctx context.Context, runtime *databaseRuntime) (securitySettingsResponse, error) {
@@ -119,6 +132,20 @@ func writeSecuritySettings(ctx context.Context, runtime *databaseRuntime, settin
 	}
 	defer tx.Rollback()
 
+	if err := writeSecuritySettingsWithExecutor(ctx, tx, settings); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	runtime.securityMu.Lock()
+	runtime.securitySettings = settings
+	runtime.securityLoaded = true
+	runtime.securityMu.Unlock()
+	return nil
+}
+
+func writeSecuritySettingsWithExecutor(ctx context.Context, executor auditoutbox.DBTX, settings securitySettingsResponse) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	reusableValue := "false"
 	if settings.ReusableTokens {
@@ -138,7 +165,7 @@ func writeSecuritySettings(ctx context.Context, runtime *databaseRuntime, settin
 		mcpStartEnabledSettingKey:  mcpStartValue,
 		redactionModeSettingKey:    normalizeRedactionMode(settings.RedactionMode),
 	} {
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := executor.ExecContext(ctx, `
 			INSERT INTO settings (key, value, updated_at)
 			VALUES (?, ?, ?)
 			ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
@@ -150,17 +177,10 @@ func writeSecuritySettings(ctx context.Context, runtime *databaseRuntime, settin
 		}
 	}
 	if !settings.ReusableTokens {
-		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET token_value = '', updated_at = ?`, now); err != nil {
+		if _, err := executor.ExecContext(ctx, `UPDATE api_tokens SET token_value = '', updated_at = ?`, now); err != nil {
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	runtime.securityMu.Lock()
-	runtime.securitySettings = settings
-	runtime.securityLoaded = true
-	runtime.securityMu.Unlock()
 	return nil
 }
 

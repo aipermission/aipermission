@@ -33,6 +33,8 @@ type auditLogRecord struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+var errAuditedMutationUnchanged = errors.New("audited mutation unchanged")
+
 func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -232,7 +234,10 @@ func scanAuditLog(scanner interface {
 	return item, nil
 }
 
-func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any) {
+// writeObservationAudit records telemetry that is not the durable proof of a
+// local domain mutation. Mutations must use withAuditedMutation, a
+// transaction-aware store hook, or an approved lifecycle trigger instead.
+func (s *Server) writeObservationAudit(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any) {
 	if err := s.writeAuditRequired(ctx, runtime, actorType, tokenID, runtimeID, action, payload); err != nil {
 		log.Printf("audit write failed actor=%q runtime_id=%d action=%q error=%v", actorType, runtimeID, action, err)
 	}
@@ -247,26 +252,11 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 	if runtime == nil || runtime.database == nil {
 		return fmt.Errorf("audit database is unavailable")
 	}
-	payloadBytes, err := json.Marshal(payload)
+	event, err := s.buildAuditEvent(ctx, runtime, runtime.database, actorType, tokenID, runtimeID, action, payload)
 	if err != nil {
-		return fmt.Errorf("marshal audit payload: %w", err)
+		return err
 	}
-	payloadJSON := s.redactForPersistence(ctx, runtime, string(payloadBytes))
-	connectorKind, projectID, targetID, profileID, actionRequestID := auditConnectorMetadata(payload)
-	projectID = resolveAuditProjectID(ctx, runtime.database, projectID, targetID, runtimeID)
-	_, err = (auditoutbox.Store{}).Append(ctx, runtime.database, auditoutbox.Event{
-		ActorType:       actorType,
-		TokenID:         tokenID,
-		ProjectID:       projectID,
-		RuntimeID:       runtimeID,
-		ConnectorKind:   connectorKind,
-		TargetID:        targetID,
-		ProfileID:       profileID,
-		ActionRequestID: actionRequestID,
-		Action:          action,
-		LifecyclePhase:  auditLifecyclePhase(action),
-		PayloadJSON:     payloadJSON,
-	})
+	_, err = (auditoutbox.Store{}).Append(ctx, runtime.database, event)
 	if err != nil {
 		return fmt.Errorf("append audit event: %w", err)
 	}
@@ -282,11 +272,134 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 	return nil
 }
 
+func (s *Server) buildAuditEvent(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	executor auditoutbox.DBTX,
+	actorType string,
+	tokenID *int64,
+	runtimeID int64,
+	action string,
+	payload any,
+) (auditoutbox.Event, error) {
+	redact := s.prepareAuditRedactor(ctx, runtime)
+	return s.buildAuditEventWithRedactor(ctx, executor, actorType, tokenID, runtimeID, action, payload, redact)
+}
+
+func (s *Server) buildAuditEventWithRedactor(
+	ctx context.Context,
+	executor auditoutbox.DBTX,
+	actorType string,
+	tokenID *int64,
+	runtimeID int64,
+	action string,
+	payload any,
+	redact func(string) string,
+) (auditoutbox.Event, error) {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return auditoutbox.Event{}, fmt.Errorf("marshal audit payload: %w", err)
+	}
+	payloadJSON := redact(string(payloadBytes))
+	connectorKind, projectID, targetID, profileID, actionRequestID := auditConnectorMetadata(payload)
+	projectID = resolveAuditProjectID(ctx, executor, projectID, targetID, runtimeID)
+	return auditoutbox.Event{
+		ActorType:       actorType,
+		TokenID:         tokenID,
+		ProjectID:       projectID,
+		RuntimeID:       runtimeID,
+		ConnectorKind:   connectorKind,
+		TargetID:        targetID,
+		ProfileID:       profileID,
+		ActionRequestID: actionRequestID,
+		Action:          action,
+		LifecyclePhase:  auditLifecyclePhase(action),
+		PayloadJSON:     payloadJSON,
+	}, nil
+}
+
+func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRuntime) func(string) string {
+	if s.redactionMode(ctx, runtime) == redactionModeOff {
+		return func(value string) string { return value }
+	}
+	rules, _ := s.compiledRedactionRules(ctx, runtime)
+	return func(value string) string {
+		value = redactBasic(value)
+		for _, rule := range rules {
+			value = rule.Regex.ReplaceAllString(value, "[REDACTED]")
+		}
+		return value
+	}
+}
+
+func (s *Server) prepareAuditAppender(ctx context.Context, runtime *databaseRuntime) func(*sql.Tx, string, *int64, int64, string, any) error {
+	redact := s.prepareAuditRedactor(ctx, runtime)
+	return func(tx *sql.Tx, actorType string, tokenID *int64, runtimeID int64, action string, payload any) error {
+		event, err := s.buildAuditEventWithRedactor(ctx, tx, actorType, tokenID, runtimeID, action, payload, redact)
+		if err != nil {
+			return err
+		}
+		_, err = (auditoutbox.Store{}).Append(ctx, tx, event)
+		return err
+	}
+}
+
+func (s *Server) withAuditedMutation(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	actorType string,
+	tokenID *int64,
+	runtimeID int64,
+	action string,
+	payload func() any,
+	mutate func(*sql.Tx) error,
+) error {
+	if runtime == nil || runtime.database == nil {
+		return fmt.Errorf("audit database is unavailable")
+	}
+	redact := s.prepareAuditRedactor(ctx, runtime)
+	tx, err := runtime.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin audited mutation: %w", err)
+	}
+	defer tx.Rollback()
+	if err := mutate(tx); err != nil {
+		return err
+	}
+	event, err := s.buildAuditEventWithRedactor(ctx, tx, actorType, tokenID, runtimeID, action, payload(), redact)
+	if err != nil {
+		return err
+	}
+	if _, err := (auditoutbox.Store{}).Append(ctx, tx, event); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit audited mutation: %w", err)
+	}
+	s.projectAuditEvents(ctx, runtime)
+	return nil
+}
+
+func (s *Server) projectAuditEvents(ctx context.Context, runtime *databaseRuntime) {
+	if runtime == nil || runtime.database == nil {
+		return
+	}
+	dispatcher := runtime.auditDispatcher
+	if dispatcher == nil {
+		dispatcher = auditoutbox.NewDispatcher(runtime.database)
+	}
+	if _, err := dispatcher.DispatchOnce(ctx); err != nil {
+		s.auditHealth.recordFailure(time.Now())
+		log.Printf("audit projection failed error=%v", err)
+	}
+	dispatcher.Notify()
+}
+
 func auditLifecyclePhase(action string) string {
 	action = strings.TrimSpace(action)
 	if index := strings.LastIndexByte(action, '.'); index >= 0 && index+1 < len(action) {
 		switch phase := action[index+1:]; phase {
-		case "requested", "started", "completed", "failed", "declined", "canceled", "stale", "updated", "created", "deleted":
+		case "requested", "approval_pending", "started", "running", "completed", "failed", "declined", "canceled", "stale", "expired", "blocked", "outcome_unknown", "updated", "created", "deleted", "archived", "closed", "connected", "connecting", "paused", "pending":
 			return phase
 		}
 	}
@@ -323,18 +436,18 @@ func auditConnectorMetadata(payload any) (string, int64, int64, int64, int64) {
 	return connectorKind, projectID, targetID, profileID, actionRequestID
 }
 
-func resolveAuditProjectID(ctx context.Context, database *sql.DB, projectID int64, targetID int64, runtimeID int64) int64 {
-	if projectID > 0 || database == nil {
+func resolveAuditProjectID(ctx context.Context, executor auditoutbox.DBTX, projectID int64, targetID int64, runtimeID int64) int64 {
+	if projectID > 0 || executor == nil {
 		return projectID
 	}
 	if targetID > 0 {
-		_ = database.QueryRowContext(ctx, `SELECT project_id FROM connector_targets WHERE id = ?`, targetID).Scan(&projectID)
+		_ = executor.QueryRowContext(ctx, `SELECT project_id FROM connector_targets WHERE id = ?`, targetID).Scan(&projectID)
 		if projectID > 0 {
 			return projectID
 		}
 	}
 	if runtimeID > 0 {
-		_ = database.QueryRowContext(ctx, `
+		_ = executor.QueryRowContext(ctx, `
 			SELECT ct.project_id
 			FROM connector_runtime_surfaces rs
 			JOIN connector_targets ct ON ct.id = rs.target_id

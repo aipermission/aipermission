@@ -55,7 +55,7 @@ func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int
 	if !completed {
 		return
 	}
-	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.upload.completed", map[string]any{
+	s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.upload.completed", map[string]any{
 		"transfer_id":     transferID,
 		"remote_path":     item.RemotePath,
 		"bytes":           result.Bytes,
@@ -108,7 +108,7 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 		return
 	}
 	s.scheduleTransferTempCleanup(item.TempPath)
-	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.download.completed", map[string]any{
+	s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.download.completed", map[string]any{
 		"transfer_id":     transferID,
 		"remote_path":     item.RemotePath,
 		"bytes":           result.Bytes,
@@ -137,7 +137,7 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 			log.Printf("reject file transfer batch before run batch=%d error=%v", batchID, err)
 			_, _ = runtime.fileTransfers.CancelBatch(context.Background(), batchID, message)
 			s.cleanupBatchTemps(runtime, batchID)
-			s.writeAudit(context.Background(), runtime, "gateway", nil, batch.RuntimeID, "file_transfer.batch.guardrail_rejected", map[string]any{
+			s.writeObservationAudit(context.Background(), runtime, "gateway", nil, batch.RuntimeID, "file_transfer.batch.guardrail_rejected", map[string]any{
 				"batch_id": batchID,
 				"error":    message,
 			})
@@ -205,7 +205,7 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 	if ok, err := runtime.fileTransfers.CompleteBatch(context.Background(), batchID); err != nil {
 		log.Printf("complete file transfer batch failed batch=%d error=%v", batchID, err)
 	} else if ok {
-		s.writeAudit(context.Background(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.completed", map[string]any{
+		s.writeObservationAudit(context.Background(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.completed", map[string]any{
 			"batch_id":        batchID,
 			"direction":       batch.Direction,
 			"items":           len(batch.Items),
@@ -308,7 +308,7 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 	if item.Direction == filetransfer.DirectionDownload && item.BatchID == 0 {
 		s.scheduleTransferTempCleanup(item.TempPath)
 	}
-	s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.completed", map[string]any{
+	s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.completed", map[string]any{
 		"transfer_id":     transferID,
 		"batch_id":        item.BatchID,
 		"direction":       item.Direction,
@@ -445,7 +445,7 @@ func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transfe
 	}
 	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
 	if readErr == nil {
-		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.failed", map[string]any{
+		s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.failed", map[string]any{
 			"transfer_id": transferID,
 			"direction":   item.Direction,
 			"remote_path": item.RemotePath,
@@ -465,7 +465,7 @@ func (s fileTransferHandlers) cancelFileTransferRecord(runtime *databaseRuntime,
 	}
 	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
 	if readErr == nil {
-		s.writeAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.canceled", map[string]any{
+		s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.canceled", map[string]any{
 			"transfer_id": transferID,
 			"direction":   item.Direction,
 			"remote_path": item.RemotePath,

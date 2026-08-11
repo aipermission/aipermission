@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 	"time"
@@ -149,20 +150,23 @@ func (s backupHandlers) createProvider(w http.ResponseWriter, r *http.Request) {
 		handleBackupProviderError(w, err)
 		return
 	}
-	item, err := backups.NewStore(runtime.database).CreateProvider(r.Context(), backups.CreateProviderRequest{
-		ProviderType: backups.ServiceProviderType,
-		Name:         strings.TrimSpace(request.Name),
-		Status:       "disabled",
-		Public:       public,
-		Encrypted:    encrypted,
-	})
+	var item backups.Provider
+	err = s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "backup.provider.created",
+		func() any { return backupProviderAuditPayload(item) },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = backups.NewTxStore(tx).CreateProvider(r.Context(), backups.CreateProviderRequest{
+				ProviderType: backups.ServiceProviderType, Name: strings.TrimSpace(request.Name),
+				Status: "disabled", Public: public, Encrypted: encrypted,
+			})
+			return err
+		},
+	)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.created", map[string]any{
-		"provider_id": item.ID, "provider_type": item.ProviderType, "name": item.Name, "status": item.Status,
-	})
 	writeJSON(w, http.StatusCreated, backupProviderToResponse(item))
 }
 
@@ -231,16 +235,22 @@ func (s backupHandlers) updateProvider(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	item, err := store.UpdateProvider(r.Context(), id, backups.UpdateProviderRequest{
-		Name: name, Status: status, Public: public, Encrypted: encrypted,
-	})
+	var item backups.Provider
+	err = s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "backup.provider.updated",
+		func() any { return backupProviderAuditPayload(item) },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = backups.NewTxStore(tx).UpdateProvider(r.Context(), id, backups.UpdateProviderRequest{
+				Name: name, Status: status, Public: public, Encrypted: encrypted,
+			})
+			return err
+		},
+	)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.updated", map[string]any{
-		"provider_id": item.ID, "provider_type": item.ProviderType, "name": item.Name, "status": item.Status,
-	})
 	writeJSON(w, http.StatusOK, backupProviderToResponse(item))
 }
 
@@ -290,25 +300,34 @@ func (s backupHandlers) enableProvider(w http.ResponseWriter, r *http.Request) {
 	public := cloneJSONMap(provider.Public)
 	public["service_version"] = info.Version
 	public["protocol_version"] = info.ProtocolVersion
-	item, err := store.UpdateProvider(r.Context(), id, backups.UpdateProviderRequest{
-		Name: provider.Name, Status: "active", Public: public,
-	})
+	var item backups.Provider
+	err = s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "backup.provider.enabled",
+		func() any {
+			payload := backupProviderAuditPayload(item)
+			payload["service_version"] = info.Version
+			return payload
+		},
+		func(tx *sql.Tx) error {
+			txStore := backups.NewTxStore(tx)
+			var err error
+			item, err = txStore.UpdateProvider(r.Context(), id, backups.UpdateProviderRequest{
+				Name: provider.Name, Status: "active", Public: public,
+			})
+			if err != nil {
+				return err
+			}
+			if err := txStore.UpdateLastChecked(r.Context(), id, time.Now()); err != nil {
+				return err
+			}
+			item, err = txStore.GetProvider(r.Context(), id)
+			return err
+		},
+	)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	if err := store.UpdateLastChecked(r.Context(), id, time.Now()); err != nil {
-		handleBackupProviderError(w, err)
-		return
-	}
-	item, err = store.GetProvider(r.Context(), id)
-	if err != nil {
-		handleBackupProviderError(w, err)
-		return
-	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.enabled", map[string]any{
-		"provider_id": item.ID, "provider_type": item.ProviderType, "service_version": info.Version,
-	})
 	writeJSON(w, http.StatusOK, backupProviderToResponse(item))
 }
 
@@ -338,13 +357,20 @@ func (s backupHandlers) testProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	checkedAt := time.Now().UTC()
-	if err := store.UpdateLastChecked(r.Context(), id, checkedAt); err != nil {
+	err = s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "backup.provider.tested",
+		func() any {
+			return map[string]any{
+				"provider_id": provider.ID, "provider_type": provider.ProviderType,
+				"service_version": info.Version,
+			}
+		},
+		func(tx *sql.Tx) error { return backups.NewTxStore(tx).UpdateLastChecked(r.Context(), id, checkedAt) },
+	)
+	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.tested", map[string]any{
-		"provider_id": provider.ID, "provider_type": provider.ProviderType, "service_version": info.Version,
-	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "checked_at": checkedAt.Format(time.RFC3339), "service_version": info.Version,
 		"protocol_version": info.ProtocolVersion, "max_upload_bytes": info.MaxUploadBytes,
@@ -360,10 +386,21 @@ func (s backupHandlers) deleteProvider(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := backups.NewStore(runtime.database).ArchiveProvider(r.Context(), id); err != nil {
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "backup.provider.archived",
+		func() any { return map[string]any{"provider_id": id} },
+		func(tx *sql.Tx) error { return backups.NewTxStore(tx).ArchiveProvider(r.Context(), id) },
+	)
+	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.archived", map[string]any{"provider_id": id})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func backupProviderAuditPayload(item backups.Provider) map[string]any {
+	return map[string]any{
+		"provider_id": item.ID, "provider_type": item.ProviderType,
+		"name": item.Name, "status": item.Status,
+	}
 }

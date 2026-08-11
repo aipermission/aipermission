@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -211,13 +212,10 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 		result.Error = "connector returned approval_pending after execution was already allowed"
 	}
 	result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
-	finished, err := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-		ID:          request.ID,
-		Status:      status,
-		Output:      result.Output,
-		DisplayText: result.DisplayText,
-		Error:       result.Error,
-	})
+	finished, err := s.finishConnectorActionRequest(
+		ctx, runtime, request.ID, status,
+		result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint,
+	)
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
@@ -304,13 +302,10 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 		result.Error = "connector returned approval_pending for a local operator action"
 	}
 	result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
-	finished, err := connectortargets.NewStore(runtime.database).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-		ID:          request.ID,
-		Status:      status,
-		Output:      result.Output,
-		DisplayText: result.DisplayText,
-		Error:       result.Error,
-	})
+	finished, err := s.finishConnectorActionRequest(
+		ctx, runtime, request.ID, status,
+		result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint,
+	)
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
@@ -363,7 +358,7 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
-	request, created, err := connectortargets.NewStore(runtime.database).InsertActionRequestIdempotent(ctx, connectortargets.InsertActionRequestInput{
+	insertInput := connectortargets.InsertActionRequestInput{
 		TokenID:                 tokenID,
 		TargetID:                prepared.Target.ID,
 		ProfileID:               prepared.Profile.ID,
@@ -381,7 +376,24 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		ApprovalContextHash:     approvalHash,
 		IdempotencyKey:          strings.TrimSpace(idempotencyKey),
 		IdempotencyIdentityHash: identityHash,
-	})
+	}
+	var request connectortargets.ActionRequest
+	created := false
+	err = s.withAuditedMutation(
+		ctx, runtime, "gateway", tokenID, 0, "connector_action.request.created",
+		func() any { return connectorActionRequestAuditPayload(request) },
+		func(tx *sql.Tx) error {
+			var err error
+			request, created, err = connectortargets.NewTxStore(tx).InsertActionRequestIdempotent(ctx, insertInput)
+			if err == nil && !created {
+				return errAuditedMutationUnchanged
+			}
+			return err
+		},
+	)
+	if errors.Is(err, errAuditedMutationUnchanged) {
+		return request, false, nil
+	}
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
@@ -501,8 +513,17 @@ func connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {
 }
 
 func (s *Server) captureConnectorActionSessionHandle(ctx context.Context, runtime *databaseRuntime, requestID int64, handles connectors.ActionHandles) (connectortargets.ActionRequest, error) {
-	request, err := connectortargets.NewStore(runtime.database).SetActionRequestSessionHandle(
-		ctx, requestID, handles.SessionID, handles.SessionGeneration,
+	var request connectortargets.ActionRequest
+	err := s.withAuditedMutation(
+		ctx, runtime, "gateway", nil, 0, "connector_action.session_handle.updated",
+		func() any { return connectorActionRequestAuditPayload(request) },
+		func(tx *sql.Tx) error {
+			var err error
+			request, err = connectortargets.NewTxStore(tx).SetActionRequestSessionHandle(
+				ctx, requestID, handles.SessionID, handles.SessionGeneration,
+			)
+			return err
+		},
 	)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
@@ -537,18 +558,32 @@ func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, ru
 		DisplayText: displayText,
 		Error:       errorText,
 	}, hints...)
-	finished, err := connectortargets.NewStore(runtime.database).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-		ID:              requestID,
-		Status:          status,
-		Output:          redacted.Output,
-		DisplayText:     redacted.DisplayText,
-		Error:           redacted.Error,
-		AllowedStatuses: allowedStatuses,
-	})
+	var finished connectortargets.ActionRequest
+	err := s.withAuditedMutation(
+		ctx, runtime, "gateway", nil, 0, "connector_action.request."+string(status),
+		func() any { return connectorActionRequestAuditPayload(finished) },
+		func(tx *sql.Tx) error {
+			var err error
+			finished, err = connectortargets.NewTxStore(tx).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+				ID: requestID, Status: status, Output: redacted.Output,
+				DisplayText: redacted.DisplayText, Error: redacted.Error,
+				AllowedStatuses: allowedStatuses,
+			})
+			return err
+		},
+	)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
 	return finished, nil
+}
+
+func connectorActionRequestAuditPayload(request connectortargets.ActionRequest) map[string]any {
+	return map[string]any{
+		"request_id": request.ID, "target_id": request.TargetID, "profile_id": request.ProfileID,
+		"connector_kind": request.ConnectorKind, "action_name": request.ActionName,
+		"status": request.Status,
+	}
 }
 
 func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool) any {

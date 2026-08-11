@@ -109,7 +109,7 @@ func (s fileTransferHandlers) pauseFileTransferBatch(w http.ResponseWriter, r *h
 		writeError(w, http.StatusConflict, "file transfer batch is not running")
 		return
 	}
-	s.writeAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.paused", map[string]any{"batch_id": id})
+	s.writeObservationAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.paused", map[string]any{"batch_id": id})
 	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
@@ -142,7 +142,7 @@ func (s fileTransferHandlers) resumeFileTransferBatch(w http.ResponseWriter, r *
 		return
 	}
 	control.Resume()
-	s.writeAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.resumed", map[string]any{"batch_id": id})
+	s.writeObservationAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.resumed", map[string]any{"batch_id": id})
 	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
@@ -171,7 +171,7 @@ func (s fileTransferHandlers) cancelFileTransferBatch(w http.ResponseWriter, r *
 	}
 	if changed {
 		s.cleanupBatchTemps(runtime, id)
-		s.writeAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.canceled", map[string]any{"batch_id": id})
+		s.writeObservationAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.canceled", map[string]any{"batch_id": id})
 	}
 	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
 	if err != nil {
@@ -217,7 +217,7 @@ func (s fileTransferHandlers) updateFileTransferBatchQueue(w http.ResponseWriter
 			_ = os.Remove(item.TempPath)
 		}
 	}
-	s.writeAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.queue_updated", map[string]any{
+	s.writeObservationAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.queue_updated", map[string]any{
 		"batch_id": id,
 		"items":    len(request.ItemIDs),
 		"removed":  len(removed),
@@ -269,7 +269,7 @@ func (s fileTransferHandlers) approveFileTransferBatch(w http.ResponseWriter, r 
 			_ = os.Remove(item.TempPath)
 		}
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.approved", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.approved", map[string]any{
 		"batch_id":       id,
 		"approved_items": len(request.ItemIDs),
 		"rejected_items": len(rejected),
@@ -313,7 +313,7 @@ func (s fileTransferHandlers) declineFileTransferBatch(w http.ResponseWriter, r 
 			_ = os.Remove(item.TempPath)
 		}
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.declined", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.declined", map[string]any{
 		"batch_id": id,
 		"items":    len(rejected),
 		"note":     strings.TrimSpace(request.Note),

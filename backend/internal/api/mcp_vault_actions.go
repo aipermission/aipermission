@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -161,7 +162,7 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	requestStore := vaultrequests.NewStore(auth.runtime.database)
+	requestStore := s.vaultRequestStore(r.Context(), auth.runtime)
 	existing, existingErr := requestStore.GetByIdempotencyKey(r.Context(), auth.TokenID, input.IdempotencyKey)
 	if existingErr == nil {
 		if !sameVaultActionCall(existing, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
@@ -208,13 +209,32 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 	if approval.RuntimeID > 0 {
 		runtimeID = &approval.RuntimeID
 	}
-	request, created, err := requestStore.Create(r.Context(), vaultrequests.CreateInput{
+	createInput := vaultrequests.CreateInput{
 		TokenID: auth.TokenID, ProjectID: project.ID, RuntimeID: runtimeID,
 		ActionName: input.ActionName, Input: normalizedInput, Reason: input.Reason,
 		ApprovalContext: contextMap, ApprovalContextHash: contextHash,
 		IdempotencyKey: input.IdempotencyKey,
 		InitialStatus:  initialStatus,
-	})
+	}
+	var request vaultrequests.Request
+	created := false
+	err = s.withAuditedMutation(
+		r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), approval.RuntimeID,
+		"mcp.vault_action.request.created",
+		func() any { return vaultActionAuditPayload(request, "") },
+		func(tx *sql.Tx) error {
+			var err error
+			request, created, err = vaultrequests.NewTxStore(tx).Create(r.Context(), createInput)
+			if err == nil && !created {
+				return errAuditedMutationUnchanged
+			}
+			return err
+		},
+	)
+	if errors.Is(err, errAuditedMutationUnchanged) {
+		writeVaultRequestMCPResponse(w, r.Context(), s.Server, auth.runtime, request)
+		return
+	}
 	if errors.Is(err, vaultrequests.ErrIdempotencyConflict) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -224,7 +244,7 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if created && approval.ExecutionRule == projectcapabilities.RuleApprovalRequired {
-		s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), approval.RuntimeID, "mcp.vault_action.approval_pending", map[string]any{
+		s.writeObservationAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), approval.RuntimeID, "mcp.vault_action.approval_pending", map[string]any{
 			"request_id": request.ID, "project_id": project.ID, "action_name": request.ActionName,
 			"approval_context_hash": request.ApprovalContextHash,
 		})
@@ -238,7 +258,6 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 			request,
 			"mcp",
 			"",
-			"mcp.vault_action.always_run_requested",
 			"mcp.vault_action",
 		)
 		if runErr != nil {
@@ -259,7 +278,7 @@ func (s mcpHandlers) mcpGetVaultActionRequest(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	store := vaultrequests.NewStore(auth.runtime.database)
+	store := s.vaultRequestStore(r.Context(), auth.runtime)
 	item, err := store.Get(r.Context(), id)
 	if errors.Is(err, vaultrequests.ErrNotFound) || (err == nil && item.TokenID != auth.TokenID) {
 		writeError(w, http.StatusNotFound, "Vault action request not found")
@@ -328,7 +347,16 @@ func (s mcpHandlers) mcpCancelVaultActionRequest(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	item, err := vaultrequests.NewStore(auth.runtime.database).CancelOwned(r.Context(), id, auth.TokenID)
+	var item vaultrequests.Request
+	err := s.withAuditedMutation(
+		r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, "mcp.vault_action.canceled",
+		func() any { return vaultActionAuditPayload(item, "") },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = vaultrequests.NewTxStore(tx).CancelOwned(r.Context(), id, auth.TokenID)
+			return err
+		},
+	)
 	if errors.Is(err, vaultrequests.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "Vault action request not found")
 		return
@@ -341,7 +369,6 @@ func (s mcpHandlers) mcpCancelVaultActionRequest(w http.ResponseWriter, r *http.
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), valueOrZero(item.RuntimeID), "mcp.vault_action.canceled", vaultActionAuditPayload(item, ""))
 	writeJSON(w, http.StatusOK, vaultRequestMCPResponse(item))
 }
 

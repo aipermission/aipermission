@@ -21,11 +21,11 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Item, error) {
 		return Item{}, ValidationError("invalid generator parameters")
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.transaction(ctx, nil)
 	if err != nil {
 		return Item{}, fmt.Errorf("begin create vault item: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback()
 	if err := enforceCreateQuota(ctx, tx, normalized.OwnerProjectID); err != nil {
 		return Item{}, err
 	}
@@ -72,10 +72,14 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Item, error) {
 	if err := insertUsageNotes(ctx, tx, itemID, normalized.UsageNotes, now); err != nil {
 		return Item{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	item, err := (&Store{db: tx, vault: s.vault, workspaceUUID: s.workspaceUUID}).Get(ctx, itemID)
+	if err != nil {
+		return Item{}, err
+	}
+	if err := commit(); err != nil {
 		return Item{}, fmt.Errorf("commit vault item: %w", err)
 	}
-	return s.Get(ctx, itemID)
+	return item, nil
 }
 
 func (s *Store) Get(ctx context.Context, id int64) (Item, error) {

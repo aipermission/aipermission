@@ -73,11 +73,11 @@ func (s *Store) resolveSession(ctx context.Context, selections []SessionSelectio
 	if len(selections) > sessionenv.MaxItems {
 		return SessionResolution{}, ValidationError(fmt.Sprintf("a session supports at most %d Vault items", sessionenv.MaxItems))
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, commit, rollback, err := s.transaction(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return SessionResolution{}, fmt.Errorf("begin Vault session resolution: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback()
 
 	items := make([]SessionItem, 0, len(selections))
 	inputs := make([]sessionenv.EntryInput, 0, len(selections))
@@ -137,7 +137,7 @@ func (s *Store) resolveSession(ctx context.Context, selections []SessionSelectio
 		}
 		return SessionResolution{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commit(); err != nil {
 		if envelope != nil {
 			envelope.Destroy()
 		}
@@ -175,11 +175,11 @@ func (s *Store) MarkSessionItemsUsed(ctx context.Context, items []SessionItem) e
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.transaction(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin Vault usage update: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback()
 	for _, item := range items {
 		result, err := tx.ExecContext(ctx, `
 			UPDATE vault_items
@@ -195,13 +195,13 @@ func (s *Store) MarkSessionItemsUsed(ctx context.Context, items []SessionItem) e
 			return ErrStale
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commit(); err != nil {
 		return fmt.Errorf("commit Vault usage update: %w", err)
 	}
 	return nil
 }
 
-func resolveSessionItem(ctx context.Context, tx *sql.Tx, selection SessionSelection) (SessionItem, string, int, string, error) {
+func resolveSessionItem(ctx context.Context, tx storeDB, selection SessionSelection) (SessionItem, string, int, string, error) {
 	var item SessionItem
 	var encrypted, expiresAt, status string
 	var encryptionVersion, sourceActive, assigned int
