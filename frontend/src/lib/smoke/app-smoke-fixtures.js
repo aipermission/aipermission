@@ -30,7 +30,11 @@ export const shellSource = readFileSync(join(currentDir, "..", "components", "ap
 export const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
 export const auditLogsSource = readFileSync(join(currentDir, "..", "pages", "audit-logs.jsx"), "utf8");
 export const consolePageSource = readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8");
-export const connectorsSource = readFileSync(join(currentDir, "..", "pages", "connectors.jsx"), "utf8");
+export const connectorsSource = [
+  readFileSync(join(currentDir, "..", "pages", "connectors.jsx"), "utf8"),
+  readFileSync(join(currentDir, "..", "connectors", "editor", "use-connector-editor.js"), "utf8"),
+  readFileSync(join(currentDir, "..", "connectors", "editor", "use-connector-connection-tests.js"), "utf8"),
+].join("\n");
 export const projectsSource = readFileSync(join(currentDir, "..", "pages", "projects.jsx"), "utf8");
 export const tokensSource = readFileSync(join(currentDir, "..", "pages", "tokens.jsx"), "utf8");
 export const credentialsSource = readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8");
