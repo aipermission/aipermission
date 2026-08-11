@@ -46,6 +46,10 @@ POST /api/lock
 
 `/health` is a lightweight process health check and does not require an unlocked database.
 
+`POST /api/databases/rename` requires `database_name` and `current_password`.
+The password is verified before the active runtime is closed and is used only
+to recover the original runtime if the filesystem move fails. It is not stored.
+
 `/api/status` returns public gateway status and configuration shape for the web
 UI. It does not expose local database file paths. The `audit` object reports
 `status`, the process-local audit write failure count, and the latest failure

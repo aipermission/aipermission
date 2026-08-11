@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -109,6 +110,15 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"password_changed"`) {
 		t.Fatalf("change password failed: %d %s", response.Code, response.Body.String())
 	}
+	if response := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{
+		DatabaseName:    "Renamed Database",
+		CurrentPassword: "wrong-password",
+	}); response.Code != http.StatusUnauthorized {
+		t.Fatalf("rename with wrong current password should fail, got %d %s", response.Code, response.Body.String())
+	}
+	if !server.isUnlocked() {
+		t.Fatalf("failed rename authentication should not lock the active database")
+	}
 
 	download := performJSON(handler, http.MethodGet, "/api/backup/download", "", nil)
 	if download.Code != http.StatusOK || download.Body.Len() == 0 {
@@ -137,7 +147,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 		t.Fatalf("removed export endpoint should not be registered, got %d %s", response.Code, response.Body.String())
 	}
 
-	if response := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{DatabaseName: "Renamed Database"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"locked"`) {
+	if response := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{DatabaseName: "Renamed Database", CurrentPassword: "ChangedPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"locked"`) {
 		t.Fatalf("rename database failed: %d %s", response.Code, response.Body.String())
 	}
 	if server.isUnlocked() {
@@ -158,6 +168,46 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete", "", deleteDatabaseRequest{ConfirmName: "renamed database", CurrentPassword: "ChangedPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
 		t.Fatalf("delete database failed: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
+	server := newLockedAPITestServer(t)
+	handler := server.Handler()
+	defer server.Close()
+
+	setup := performJSON(handler, http.MethodPost, "/api/unlock/setup", "", setupUnlockRequest{
+		Password:        "ProjectPassword123",
+		ConfirmPassword: "ProjectPassword123",
+		DatabaseName:    "Project One",
+	})
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
+	}
+	oldPath := server.activeDataPath
+	server.databaseMove = func(string, string) error { return errors.New("injected move failure") }
+
+	response := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{
+		DatabaseName:    "Renamed Project",
+		CurrentPassword: "ProjectPassword123",
+	})
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("injected rename failure should return 500, got %d %s", response.Code, response.Body.String())
+	}
+	runtime := server.activeRuntime()
+	if runtime == nil || runtime.id != "project-one" || runtime.path != oldPath {
+		t.Fatalf("failed rename should restore the original runtime, got %#v", runtime)
+	}
+	if err := runtime.database.PingContext(t.Context()); err != nil {
+		t.Fatalf("restored runtime should remain queryable: %v", err)
+	}
+	if response := performJSON(handler, http.MethodGet, "/api/unlock/status", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"state":"unlocked"`) {
+		t.Fatalf("failed rename should preserve the UI session, got %d %s", response.Code, response.Body.String())
+	}
+	if _, renamedPath, err := dbpkg.RenameDatabaseTarget(server.config.DataPath, oldPath, "Renamed Project"); err != nil {
+		t.Fatalf("resolve renamed path: %v", err)
+	} else if dbpkg.Exists(renamedPath) {
+		t.Fatalf("failed rename should not leave the target database path")
 	}
 }
 
@@ -442,6 +492,66 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	}
 	if !server.isUnlocked() {
 		t.Fatalf("server should be unlocked after multipart import")
+	}
+}
+
+func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
+	server := newLockedAPITestServer(t)
+	handler := server.Handler()
+	defer server.Close()
+
+	setup := performJSON(handler, http.MethodPost, "/api/unlock/setup", "", setupUnlockRequest{
+		Password:        "ProjectPassword123",
+		ConfirmPassword: "ProjectPassword123",
+		DatabaseName:    "Project One",
+	})
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
+	}
+	previousRuntime := server.activeRuntime()
+
+	sourcePath := filepath.Join(t.TempDir(), "source.aipdb")
+	sourceDB, err := dbpkg.OpenEncrypted(sourcePath, "ImportPassword123")
+	if err != nil {
+		t.Fatalf("create encrypted source db: %v", err)
+	}
+	if _, err := sourceDB.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('gateway_secret', 'source-secret', datetime('now'))`); err != nil {
+		t.Fatalf("insert source gateway secret: %v", err)
+	}
+	if err := sourceDB.Close(); err != nil {
+		t.Fatalf("close source db: %v", err)
+	}
+	sourceBytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read source db: %v", err)
+	}
+	server.runtimeOpen = func(path string, id string, password string) (*databaseRuntime, error) {
+		if id == "imported-project" {
+			return nil, errors.New("injected runtime open failure")
+		}
+		return server.openRuntime(path, id, password)
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/backup/import", nil)
+	backupHandlers{server}.installImportedDatabase(response, request, "Imported Project", "ImportPassword123", func(path string) error {
+		return os.WriteFile(path, sourceBytes, 0o600)
+	})
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("injected import open failure should return 500, got %d %s", response.Code, response.Body.String())
+	}
+	if runtime := server.activeRuntime(); runtime != previousRuntime || runtime.id != "project-one" {
+		t.Fatalf("failed import should restore the previous workspace, got %#v", runtime)
+	}
+	if err := previousRuntime.database.PingContext(t.Context()); err != nil {
+		t.Fatalf("previous workspace should remain queryable: %v", err)
+	}
+	importedPath, err := dbpkg.DatabasePath(server.config.DataPath, "imported-project")
+	if err != nil {
+		t.Fatalf("resolve imported database path: %v", err)
+	}
+	if dbpkg.Exists(importedPath) {
+		t.Fatalf("failed import should remove the unusable installed copy")
 	}
 }
 

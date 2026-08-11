@@ -81,7 +81,7 @@ func fileSize(path string) int64 {
 }
 
 func (s *Server) openUnlockedLocked(password string) error {
-	runtime, err := s.openRuntime(s.activeDataPath, s.activeDatabase, password)
+	runtime, err := s.openRuntimeForLifecycle(s.activeDataPath, s.activeDatabase, password)
 	if err != nil {
 		return err
 	}
@@ -96,6 +96,20 @@ func (s *Server) openUnlockedLocked(password string) error {
 		log.Printf("read retention settings failed workspace=%s error=%v", runtime.id, err)
 	}
 	return nil
+}
+
+func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (*databaseRuntime, error) {
+	if s.runtimeOpen != nil {
+		return s.runtimeOpen(path, id, password)
+	}
+	return s.openRuntime(path, id, password)
+}
+
+func (s *Server) moveDatabase(currentPath string, targetPath string) error {
+	if s.databaseMove != nil {
+		return s.databaseMove(currentPath, targetPath)
+	}
+	return db.MoveDatabase(currentPath, targetPath)
 }
 
 func (s *Server) openRuntime(path string, id string, password string) (*databaseRuntime, error) {

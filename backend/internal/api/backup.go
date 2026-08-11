@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -193,9 +194,19 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		return
 	}
 
+	previousDataPath := s.activeDataPath
+	previousDatabase := s.activeDatabase
 	s.activeDataPath = targetPath
 	s.activeDatabase = targetID
 	if err := s.openUnlockedLocked(databasePassword); err != nil {
+		s.activeDataPath = previousDataPath
+		s.activeDatabase = previousDatabase
+		if runtime := s.workspaces[previousDatabase]; runtime != nil {
+			s.applyRuntimeLocked(runtime)
+		}
+		if cleanupErr := rollbackImportedDatabase(targetPath); cleanupErr != nil {
+			log.Printf("failed imported database cleanup path=%q error=%v", targetPath, cleanupErr)
+		}
 		writeInternalError(w)
 		return
 	}
@@ -210,4 +221,17 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		"database_id": targetID,
 		"imported_at": time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func rollbackImportedDatabase(targetPath string) error {
+	if err := dbpkg.DeleteDatabase(targetPath); err == nil {
+		return nil
+	}
+	quarantinePath := targetPath + ".failed-import-" + time.Now().UTC().Format("20060102T150405.000000000")
+	if err := os.Rename(targetPath, quarantinePath); err != nil {
+		return err
+	}
+	_ = os.Remove(targetPath + "-wal")
+	_ = os.Remove(targetPath + "-shm")
+	return nil
 }

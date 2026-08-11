@@ -39,6 +39,8 @@ type Server struct {
 	uiSessionMu          sync.RWMutex
 	uiSessions           map[string]uiSessionRecord
 	auditHealth          auditHealthState
+	databaseMove         func(string, string) error
+	runtimeOpen          func(string, string, string) (*databaseRuntime, error)
 }
 
 type databaseRuntime struct {
