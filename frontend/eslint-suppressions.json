@@ -19,11 +19,6 @@
       "count": 1
     }
   },
-  "src/connectors/templates/_shared/sql-console.jsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 4
-    }
-  },
   "src/connectors/templates/docker/console.jsx": {
     "react-hooks/exhaustive-deps": {
       "count": 3

@@ -97,6 +97,10 @@ const postgresConnectorConsoleTemplateSource = readFileSync(
   "utf8",
 );
 const sharedSQLConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "sql-console.jsx"), "utf8");
+const sharedSQLConsoleSupportSource = readFileSync(
+  join(currentDir, "..", "connectors", "templates", "_shared", "sql-console-support.jsx"),
+  "utf8",
+);
 const sharedNetworkTransportSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "_shared", "network-transport-fields.jsx"),
   "utf8",
@@ -105,7 +109,7 @@ const sharedDatabaseConnectorModelSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "_shared", "database-connector-model.js"),
   "utf8",
 );
-const postgresSQLConsoleSource = `${postgresConnectorConsoleTemplateSource}\n${sharedSQLConsoleSource}`;
+const postgresSQLConsoleSource = `${postgresConnectorConsoleTemplateSource}\n${sharedSQLConsoleSource}\n${sharedSQLConsoleSupportSource}`;
 const postgresConnectorIndexSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "index.jsx"), "utf8");
 const postgresConnectorMetadataSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "postgres", "metadata.json"),
