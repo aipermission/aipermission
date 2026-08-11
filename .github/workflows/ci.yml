@@ -79,6 +79,19 @@ jobs:
       - name: Test
         working-directory: frontend
         run: npm test
+      - name: End-to-end test
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Build
         working-directory: frontend
         run: npm run build
