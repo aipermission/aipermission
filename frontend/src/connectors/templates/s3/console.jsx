@@ -1,4 +1,4 @@
-import { CornerUpLeft, Database, Download, FileUp, Folder, Pencil, Plus, RefreshCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { CornerUpLeft, Database, Download, FileUp, Folder, Link2, Pencil, Plus, RefreshCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
 import { Badge } from "../../../components/ui/badge";
@@ -9,6 +9,7 @@ import { Field, Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost, saveBlob } from "../../../lib/api";
+import { S3PresignDialog } from "./presign-dialog";
 
 const defaultListLimit = 100;
 const defaultUploadDialog = {
@@ -37,6 +38,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const [metadataSearch, setMetadataSearch] = useState("");
   const [uploadDialog, setUploadDialog] = useState(defaultUploadDialog);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [presignOpen, setPresignOpen] = useState(false);
   const [renameDialog, setRenameDialog] = useState(defaultRenameDialog);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
@@ -79,6 +81,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     setMetadataSearch("");
     setUploadDialog(defaultUploadDialog);
     setTransferOpen(false);
+    setPresignOpen(false);
     setRenameDialog(defaultRenameDialog);
     setState({ state: "idle", error: "", message: "" });
   }, [target.ref, activeSession.active, activeSession.startedAt]);
@@ -589,6 +592,16 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
                     type="button"
                     variant="outline"
                     className="h-8 w-8 px-0"
+                    title="Create temporary S3 URL"
+                    disabled={!activeSession.active || state.state !== "idle"}
+                    onClick={() => setPresignOpen(true)}
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 w-8 px-0"
                     title="Download object"
                     disabled={!selectedKey || state.state !== "idle"}
                     onClick={downloadSelected}
@@ -663,6 +676,16 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
           setTransferOpen(false);
           void refreshObjects({ reset: true });
         }}
+      />
+      <S3PresignDialog
+        open={presignOpen}
+        selectedKey={selectedKey}
+        theme={theme}
+        inputClass={inputClass}
+        borderClass={borderClass}
+        mutedClass={mutedClass}
+        onClose={() => setPresignOpen(false)}
+        onRun={runS3Action}
       />
       <S3UploadDialog
         value={uploadDialog}
