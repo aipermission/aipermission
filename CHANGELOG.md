@@ -13,6 +13,11 @@ and this project uses semantic versioning for public releases.
   frontend package, MCP package, MCP registry metadata, and changelog version
   aligned.
 
+### Security
+
+- Added a machine-readable native dependency inventory and a runtime assertion
+  for the SQLCipher version embedded by the Go driver.
+
 ## [0.2.23] - 2026-08-11
 
 ### Changed

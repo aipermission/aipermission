@@ -68,7 +68,12 @@ Current MVP boundaries:
 - The database password is only used to unlock or re-authenticate the encrypted local database. It is not used as a bearer token for REST or MCP requests.
 - The database password can be changed only while the current password is known; it is not recoverable.
 - The database password is escaped before it is passed to SQLCipher PRAGMA key/rekey handling. Regression tests cover quotes and semicolons so user-entered password text cannot change SQL parsing.
-- Regression tests assert SQLCipher is active, the configured cipher page size is applied, KDF iterations are non-zero, and SQLite foreign keys are enabled on encrypted connections. `govulncheck` and Dependabot watch dependency risk; keep the SQLCipher driver on the newest available v4 module release.
+- Regression tests assert SQLCipher is active at the inventoried native runtime
+  version, the configured cipher page size is applied, KDF iterations are
+  non-zero, and SQLite foreign keys are enabled on encrypted connections.
+  `govulncheck` and Dependabot watch the Go wrapper, while the separate
+  [native dependency inventory](docs/security/native-dependencies.md) records
+  the embedded C runtime and its manual advisory-review policy.
 - Secret fields are encrypted with the gateway vault secret inside the encrypted database. The vault derives its AES-GCM key with HKDF-SHA256; the HKDF salt is public domain-separation data, not a second secret.
 - `AIPERMISSION_GATEWAY_SECRET` can be omitted for automatic generation. If it is set explicitly, it must be at least 32 characters. The visible local-development placeholder is replaced by a generated high-entropy secret at startup.
 - API tokens are shown once by default. If reusable token copy is enabled in Security, newly created token values are stored with gateway vault encryption for local MCP setup. Disabling the setting clears stored reusable token values.

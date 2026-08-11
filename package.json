@@ -12,7 +12,7 @@
     "test": "make test",
     "build": "make build",
     "audit": "make audit",
-    "hygiene": "node scripts/secret-scan.js && node scripts/line-ending-check.js && node scripts/maintenance-budget-check.js && node scripts/release-version.js --check",
+    "hygiene": "node scripts/secret-scan.js && node scripts/line-ending-check.js && node scripts/maintenance-budget-check.js && node scripts/release-version.js --check && node scripts/native-dependency-check.js",
     "version:check": "node scripts/release-version.js --check",
     "version:set": "node scripts/release-version.js --set",
     "release-check": "make release-check"
