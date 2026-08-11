@@ -10,6 +10,7 @@ Detailed ADR files:
 - [ADR 0002: No Cloud Mode](../adr/0002-no-cloud-mode.md)
 - [ADR 0003: Single-User Design](../adr/0003-single-user-design.md)
 - [ADR 0004: SQLCipher Choice](../adr/0004-sqlcipher-choice.md)
+- [ADR 0007: Transactional Audit Outbox](../adr/0007-transactional-audit-outbox.md)
 
 ## ADR-001: Local-Only Gateway
 
@@ -113,3 +114,23 @@ Consequence:
   does not create reusable approval-pattern records.
 - The sidebar controls the runtime Started/Stopped state.
 - Stopped MCP execution blocks new command execution while preserving saved permissions.
+
+## ADR-007: Security-Sensitive Mutations Use A Transactional Audit Outbox
+
+Decision: security-sensitive local mutations and their redacted audit intent
+will commit in the same SQLCipher transaction. `audit_logs` remains an
+idempotent read projection.
+
+Reason:
+
+- A mutation followed by a best-effort audit insert can leave missing evidence.
+- A required pre-mutation event can describe work that never committed.
+- Process-local degraded health cannot recover delivery after restart.
+
+Consequence:
+
+- Shared application services, not connectors, own the transaction and outbox.
+- Remote side effects use durable lifecycle transitions and do not claim
+  exactly-once execution.
+- The current helper remains transitional until the staged migration in ADR
+  0007 is implemented.

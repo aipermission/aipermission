@@ -18,6 +18,7 @@ Start here:
 - [Local Gateway](architecture/local-gateway.md)
 - [MCP Permission Flow](architecture/mcp-permission-flow.md)
 - [Architecture Decisions](architecture/decisions.md)
+- [Transactional Audit Outbox](adr/0007-transactional-audit-outbox.md)
 - [ADR 0001: Local-Only Gateway](adr/0001-local-only.md)
 - [ADR 0002: No Cloud Mode](adr/0002-no-cloud-mode.md)
 - [ADR 0003: Single-User Design](adr/0003-single-user-design.md)
