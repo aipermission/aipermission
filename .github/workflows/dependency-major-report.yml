@@ -1,0 +1,46 @@
+name: Deferred Major Dependency Report
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "27 5 * * 1"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    name: Review direct major updates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            packages/mcp/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: backend/go.sum
+      - name: Install npm dependency metadata
+        run: |
+          npm ci --prefix frontend --workspaces=false --ignore-scripts
+          npm ci --prefix packages/mcp --workspaces=false --ignore-scripts
+      - name: Build report
+        run: node scripts/dependency-major-report.js --output "$RUNNER_TEMP/dependency-major-report.md"
+      - name: Publish one maintainer issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT_PATH: ${{ runner.temp }}/dependency-major-report.md
+        run: |
+          title="[maintenance] Deferred major dependency updates"
+          issue_number="$(gh issue list --state open --search "in:title $title" --json number --jq '.[0].number // empty')"
+          if [ -n "$issue_number" ]; then
+            gh issue edit "$issue_number" --body-file "$REPORT_PATH"
+          else
+            gh issue create --title "$title" --body-file "$REPORT_PATH" --label maintenance
+          fi
