@@ -117,4 +117,8 @@ npm pack --dry-run
 
 For public releases, prefer npm trusted publishing or provenance from CI. Local manual publish is acceptable for early testing, but it does not provide the same supply-chain signal.
 
+Container CI treats fixed HIGH and CRITICAL Trivy findings as blocking. Published
+GHCR images include explicit BuildKit SBOM and maximum-mode provenance
+attestations; signing remains a separate release-policy decision.
+
 The MCP package includes `server.json` plus `mcpName` metadata for MCP Registry compatibility. Keep those values aligned with `packages/mcp/package.json`.

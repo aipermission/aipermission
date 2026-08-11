@@ -135,9 +135,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Build images
         run: docker compose build backend frontend
-      - name: Trivy backend scan (advisory)
-        continue-on-error: true
-        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.63.0@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037 image --severity HIGH,CRITICAL --ignore-unfixed aipermission-backend:latest
-      - name: Trivy frontend scan (advisory)
-        continue-on-error: true
-        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.63.0@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037 image --severity HIGH,CRITICAL --ignore-unfixed aipermission-frontend:latest
+      - name: Trivy backend scan
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.63.0@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037 image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed aipermission-backend:latest
+      - name: Trivy frontend scan
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.63.0@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037 image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed aipermission-frontend:latest
