@@ -146,6 +146,30 @@ func TestTestConnectionUsesSharedNetworkTransport(t *testing.T) {
 	}
 }
 
+func TestConnectDistinguishesMissingOptionalPasswordFromProviderFailure(t *testing.T) {
+	runtime := connectors.RuntimeContext{
+		Target: connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{
+			"connection_mode": "direct", "host": "127.0.0.1", "port": 9000, "database": "default", "tls_mode": "disable",
+		}},
+		Profile:      connectors.CredentialProfileView{Public: map[string]any{"username": "reader"}},
+		Capabilities: capabilityResolver{transport: &recordingTransport{}},
+	}
+
+	runtime.Secrets = staticSecrets{}
+	db, err := connect(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("connect without optional password: %v", err)
+	}
+	_ = db.Close()
+
+	providerErr := errors.New("vault lease expired")
+	runtime.Secrets = failingSecrets{err: providerErr}
+	_, err = connect(context.Background(), runtime)
+	if !errors.Is(err, providerErr) || !strings.Contains(err.Error(), "resolve clickhouse password") {
+		t.Fatalf("connect error = %v, want wrapped provider failure", err)
+	}
+}
+
 func TestClickHouseTLSConfig(t *testing.T) {
 	if config := clickHouseTLSConfig(connectors.TargetView{Config: map[string]any{"tls_mode": "disable", "host": "db.internal"}}); config != nil {
 		t.Fatalf("disabled TLS config = %#v, want nil", config)
@@ -206,9 +230,15 @@ type staticSecrets map[string]string
 func (s staticSecrets) GetSecret(_ context.Context, name string) (string, error) {
 	value, ok := s[name]
 	if !ok {
-		return "", errors.New("secret not found")
+		return "", connectors.ErrSecretNotFound
 	}
 	return value, nil
+}
+
+type failingSecrets struct{ err error }
+
+func (s failingSecrets) GetSecret(context.Context, string) (string, error) {
+	return "", s.err
 }
 
 type recordingTransport struct {

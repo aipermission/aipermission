@@ -116,6 +116,11 @@ type RestoreRequest struct {
 	Size     int64
 }
 
+// ErrSecretNotFound identifies an optional credential field that has no value.
+// Secret providers should wrap this error so connectors can distinguish an
+// absent optional secret from a vault or decryption failure.
+var ErrSecretNotFound = errors.New("connector secret not found")
+
 // SecretAccessor resolves connector credential secrets at runtime.
 type SecretAccessor interface {
 	GetSecret(ctx context.Context, name string) (string, error)
