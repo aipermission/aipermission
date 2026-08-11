@@ -43,18 +43,20 @@ connector-conformance:
 	@set -eu; \
 		compose='docker compose -p aipermission-conformance -f backend/testdata/connector-conformance/compose.yml'; \
 		trap "$$compose down -v --remove-orphans" EXIT; \
-		$$compose up -d --wait postgres valkey rabbitmq minio; \
+		$$compose up -d --wait clickhouse postgres valkey rabbitmq minio; \
 		$$compose run --rm minio-init; \
 		postgres_port=$$($$compose port postgres 5432 | sed 's/.*://'); \
 		valkey_port=$$($$compose port valkey 6379 | sed 's/.*://'); \
 		rabbitmq_port=$$($$compose port rabbitmq 15672 | sed 's/.*://'); \
 		s3_port=$$($$compose port minio 9000 | sed 's/.*://'); \
+		clickhouse_port=$$($$compose port clickhouse 9000 | sed 's/.*://'); \
 		(cd backend && \
 			AIPERMISSION_CONFORMANCE=1 \
 			AIPERMISSION_POSTGRES_PORT="$$postgres_port" \
 			AIPERMISSION_VALKEY_PORT="$$valkey_port" \
 			AIPERMISSION_RABBITMQ_PORT="$$rabbitmq_port" \
 			AIPERMISSION_S3_PORT="$$s3_port" \
+			AIPERMISSION_CLICKHOUSE_PORT="$$clickhouse_port" \
 			go test ./internal/connectors/conformance -count=1 -v)
 
 frontend-lint:

@@ -47,6 +47,11 @@ This runs:
 - MCP package dry pack
 - unscoped placeholder package dry pack
 
+The scheduled/manual connector conformance workflow additionally exercises
+ClickHouse, Postgres, Valkey, RabbitMQ, and S3 against disposable pinned service
+containers. SSH, Docker, Kubernetes, Kafka, and Mail retain focused protocol
+tests until a bounded, deterministic real-service fixture is reviewed.
+
 ## Manual Smoke
 
 ```bash
