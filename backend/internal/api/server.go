@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -76,6 +77,7 @@ type databaseRuntime struct {
 	vaultPreviewMu     sync.Mutex
 	vaultPreviewNonces map[int64]string
 	identityMu         sync.Mutex
+	auditDispatcher    *auditoutbox.Dispatcher
 }
 
 type serverOptions struct {
@@ -146,6 +148,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 	runtime.runtimeInstanceID, _ = executionprincipal.NewRuntimeInstanceID()
 	runtime.consoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
 	server.configureVaultSessionRuntime(runtime)
+	server.configureAuditDispatcher(runtime)
 	server.workspaces[activeID] = runtime
 	server.routes()
 	return server
