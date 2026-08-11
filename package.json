@@ -12,7 +12,7 @@
     "test": "make test",
     "build": "make build",
     "audit": "make audit",
-    "hygiene": "node scripts/secret-scan.js && node scripts/line-ending-check.js",
+    "hygiene": "node scripts/secret-scan.js && node scripts/line-ending-check.js && node scripts/maintenance-budget-check.js",
     "release-check": "make release-check"
   }
 }

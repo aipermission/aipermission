@@ -24,6 +24,8 @@ jobs:
         run: node scripts/line-ending-check.js
       - name: Go toolchain consistency
         run: node scripts/go-toolchain-check.js
+      - name: Maintenance budgets
+        run: node scripts/maintenance-budget-check.js
 
   backend:
     name: Backend

@@ -18,6 +18,7 @@ make release-check
 
 This runs:
 
+- repository secret, line-ending, source-size, and frontend hook-debt budgets
 - backend unit tests
 - backend race tests
 - backend vet
@@ -119,6 +120,6 @@ For public releases, prefer npm trusted publishing or provenance from CI. Local 
 
 Container CI treats fixed HIGH and CRITICAL Trivy findings as blocking. Published
 GHCR images include explicit BuildKit SBOM and maximum-mode provenance
-attestations; signing remains a separate release-policy decision.
+attestations.
 
 The MCP package includes `server.json` plus `mcpName` metadata for MCP Registry compatibility. Keep those values aligned with `packages/mcp/package.json`.
