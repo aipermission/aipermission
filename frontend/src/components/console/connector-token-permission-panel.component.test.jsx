@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
 import { ConnectorTokenPermissionPanel } from "./connector-token-permission-panel";
 
@@ -50,10 +50,15 @@ function renderPanel({ permissions = [] } = {}) {
 
 describe("ConnectorTokenPermissionPanel", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 })),
     );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("selects and persists a connector credential profile", async () => {
@@ -106,6 +111,28 @@ describe("ConnectorTokenPermissionPanel", () => {
         execution_rule: "always_run",
         expires_at: "",
       })),
+    );
+  });
+
+  it("applies one temporary lifetime to every enabled action in the profile", async () => {
+    const now = new Date("2026-08-11T10:00:00Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const user = userEvent.setup();
+    const permissions = actions.map((action) => ({
+      target_id: 7,
+      profile_id: 11,
+      action_name: action.name,
+      execution_rule: "approval_required",
+      expires_at: "",
+    }));
+    const { replaceTokenConnectorPermissions } = renderPanel({ permissions });
+
+    await user.click(await screen.findByRole("button", { name: "1h", exact: true }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions).toHaveBeenCalledWith(
+      5,
+      permissions.map((permission) => ({ ...permission, expires_at: "2026-08-11T11:00:00.000Z" })),
     );
   });
 });
