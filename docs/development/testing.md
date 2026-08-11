@@ -26,7 +26,7 @@ This runs:
 
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
 - release-version and native-dependency inventory consistency checks
-- generated OpenAPI route inventory drift
+- generated OpenAPI route and typed-schema drift
 - backend unit tests with a visible aggregate coverage summary
 - backend race tests
 - backend vet

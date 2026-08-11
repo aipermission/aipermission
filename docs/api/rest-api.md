@@ -4,11 +4,13 @@ This document tracks the public-ish REST surface used by the web UI and MCP brid
 
 The web REST API is not a remote multi-user API. After database unlock, protected web REST endpoints require a local HttpOnly browser session cookie. Mutating web REST requests also send a double-submit CSRF header/cookie pair. MCP endpoints do not use that cookie; they authenticate with API tokens.
 
-The machine-readable [OpenAPI route inventory](openapi.json) is generated from
-the backend route registration source and checked for drift by backend tests.
-Its current contract level covers methods, paths, path parameters, and stable
-operation ids. This document remains authoritative for request and response
-shapes until those schemas are migrated into the generated contract.
+The machine-readable [OpenAPI contract](openapi.json) is generated from the
+backend route registration source and a single schema catalog in
+`backend/internal/restcontract`. Backend tests block route and schema drift.
+Shared error, target/profile/action, approval, history, and audit response
+families are typed. Operations that have not yet migrated remain explicitly
+marked `route-inventory`; this document remains authoritative for those request
+and response shapes.
 
 ## Error Shape
 

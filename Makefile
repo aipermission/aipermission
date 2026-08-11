@@ -7,7 +7,7 @@ help:
 		'  make build           Build frontend and MCP package' \
 		'  make audit           Run frontend and MCP production audits' \
 		'  make hygiene         Run repository security and maintenance checks' \
-		'  make rest-contract   Regenerate the OpenAPI route inventory' \
+		'  make rest-contract   Regenerate the incremental typed OpenAPI contract' \
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
 		'  make connector-conformance  Test protocol connectors against disposable real services' \
