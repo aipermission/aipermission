@@ -358,7 +358,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		OK:            result.Status == connectors.TestOK,
 		Status:        string(result.Status),
 		Message:       s.redactForPersistence(r.Context(), runtime, result.Message),
-		Details:       redactedMapValue(s.redactedConnectorValue(r.Context(), runtime, result.Details, connectorSensitiveOutputFields())),
+		Details:       redactedMapValue(s.redactedConnectorValue(r.Context(), runtime, result.Details, connectorSensitiveOutputFields(), nil)),
 		DurationMS:    time.Since(start).Milliseconds(),
 	})
 }

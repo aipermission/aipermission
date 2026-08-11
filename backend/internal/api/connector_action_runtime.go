@@ -494,14 +494,14 @@ func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, ru
 	return finished, nil
 }
 
-func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool) any {
+func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool) any {
 	switch typed := value.(type) {
 	case string:
 		return s.redactForPersistence(ctx, runtime, typed)
 	case []any:
 		out := make([]any, 0, len(typed))
 		for _, item := range typed {
-			out = append(out, s.redactedConnectorValue(ctx, runtime, item, sensitiveFields))
+			out = append(out, s.redactedConnectorValue(ctx, runtime, item, sensitiveFields, capabilityFields))
 		}
 		return out
 	case []string:
@@ -513,8 +513,22 @@ func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRu
 	case []map[string]any:
 		out := make([]map[string]any, 0, len(typed))
 		for _, item := range typed {
-			redacted, _ := s.redactedConnectorValue(ctx, runtime, item, sensitiveFields).(map[string]any)
+			redacted, _ := s.redactedConnectorValue(ctx, runtime, item, sensitiveFields, capabilityFields).(map[string]any)
 			out = append(out, redacted)
+		}
+		return out
+	case map[string]string:
+		out := make(map[string]string, len(typed))
+		for key, item := range typed {
+			if connectorOutputFieldSensitive(key, sensitiveFields) {
+				out[key] = "[REDACTED]"
+				continue
+			}
+			if connectorOutputFieldDeclared(key, capabilityFields) {
+				out[key] = s.redactCustom(ctx, runtime, item)
+				continue
+			}
+			out[key] = s.redactForPersistence(ctx, runtime, item)
 		}
 		return out
 	case map[string]any:
@@ -524,7 +538,14 @@ func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRu
 				out[key] = "[REDACTED]"
 				continue
 			}
-			out[key] = s.redactedConnectorValue(ctx, runtime, item, sensitiveFields)
+			if connectorOutputFieldDeclared(key, capabilityFields) {
+				// Temporary capabilities are intentionally returned to the
+				// authorized caller. Preserve their signed syntax while still
+				// honoring operator-defined custom redaction rules.
+				out[key] = s.redactedTemporaryCapabilityValue(ctx, runtime, item, sensitiveFields)
+				continue
+			}
+			out[key] = s.redactedConnectorValue(ctx, runtime, item, sensitiveFields, capabilityFields)
 		}
 		return out
 	default:
@@ -532,11 +553,33 @@ func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRu
 	}
 }
 
+func (s *Server) redactedTemporaryCapabilityValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool) any {
+	switch typed := value.(type) {
+	case string:
+		return s.redactCustom(ctx, runtime, typed)
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, s.redactCustom(ctx, runtime, item))
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, s.redactedTemporaryCapabilityValue(ctx, runtime, item, sensitiveFields))
+		}
+		return out
+	default:
+		return s.redactedConnectorValue(ctx, runtime, value, sensitiveFields, nil)
+	}
+}
+
 func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) connectors.ActionResult {
 	sensitiveFields := connectorSensitiveOutputFields(hints...)
+	capabilityFields := connectorTemporaryCapabilityFields(hints...)
 	result.DisplayText = s.redactForPersistence(ctx, runtime, result.DisplayText)
 	result.Error = s.redactForPersistence(ctx, runtime, result.Error)
-	result.Output = s.redactedConnectorValue(ctx, runtime, result.Output, sensitiveFields)
+	result.Output = s.redactedConnectorValue(ctx, runtime, result.Output, sensitiveFields, capabilityFields)
 	return result
 }
 
@@ -551,7 +594,7 @@ func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databa
 			fields[normalized] = true
 		}
 	}
-	redacted, ok := s.redactedConnectorValue(ctx, runtime, input, fields).(map[string]any)
+	redacted, ok := s.redactedConnectorValue(ctx, runtime, input, fields, nil).(map[string]any)
 	if !ok || redacted == nil {
 		return map[string]any{}
 	}
@@ -568,31 +611,44 @@ func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *data
 			fields[normalized] = true
 		}
 	}
-	redacted, ok := s.redactedConnectorValue(ctx, runtime, preview, fields).(map[string]any)
+	redacted, ok := s.redactedConnectorValue(ctx, runtime, preview, fields, nil).(map[string]any)
 	if !ok || redacted == nil {
 		return map[string]any{}
 	}
 	return redacted
 }
 
+func connectorTemporaryCapabilityFields(hints ...connectors.OutputHint) map[string]bool {
+	fields := map[string]bool{}
+	for _, hint := range hints {
+		for _, field := range hint.TemporaryCapabilityFields {
+			if normalized := normalizeConnectorOutputField(field); normalized != "" {
+				fields[normalized] = true
+			}
+		}
+	}
+	return fields
+}
+
 func connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {
 	fields := map[string]bool{
-		"api_key":          true,
-		"api_token_hash":   true,
-		"apikey":           true,
-		"authorization":    true,
-		"credential":       true,
-		"credential_hash":  true,
-		"credential_value": true,
-		"password":         true,
-		"password_hash":    true,
-		"private_key":      true,
-		"refresh_token":    true,
-		"secret":           true,
-		"secret_hash":      true,
-		"secret_value":     true,
-		"token":            true,
-		"token_hash":       true,
+		"api_key":           true,
+		"api_token_hash":    true,
+		"apikey":            true,
+		"authorization":     true,
+		"credential":        true,
+		"credential_hash":   true,
+		"credential_value":  true,
+		"password":          true,
+		"password_hash":     true,
+		"private_key":       true,
+		"refresh_token":     true,
+		"secret":            true,
+		"secret_access_key": true,
+		"secret_hash":       true,
+		"secret_value":      true,
+		"token":             true,
+		"token_hash":        true,
 	}
 	for _, hint := range hints {
 		for _, field := range hint.SensitiveFields {
@@ -619,6 +675,11 @@ func connectorOutputFieldSensitive(key string, sensitiveFields map[string]bool) 
 		}
 	}
 	return false
+}
+
+func connectorOutputFieldDeclared(key string, fields map[string]bool) bool {
+	normalized := normalizeConnectorOutputField(key)
+	return normalized != "" && fields[normalized]
 }
 
 func normalizeConnectorOutputField(value string) string {

@@ -158,4 +158,25 @@ func TestValidateActionDefinitionsRejectsInvalidContracts(t *testing.T) {
 	}}, "test"); err == nil || !strings.Contains(err.Error(), "not in its input schema") {
 		t.Fatalf("expected unknown sensitive input field error, got %v", err)
 	}
+	if err := ValidateActionDefinitions([]ActionDefinition{{
+		Name:        "run",
+		Label:       "Run",
+		Description: "Run once.",
+		Risk:        RiskRead,
+		OutputHint:  OutputHint{TemporaryCapabilityFields: []string{"signed.url"}},
+	}}, "test"); err == nil || !strings.Contains(err.Error(), "invalid temporary capability field") {
+		t.Fatalf("expected invalid temporary capability field error, got %v", err)
+	}
+	if err := ValidateActionDefinitions([]ActionDefinition{{
+		Name:        "run",
+		Label:       "Run",
+		Description: "Run once.",
+		Risk:        RiskRead,
+		OutputHint: OutputHint{
+			SensitiveFields:           []string{"url"},
+			TemporaryCapabilityFields: []string{"url"},
+		},
+	}}, "test"); err == nil || !strings.Contains(err.Error(), "also marked sensitive") {
+		t.Fatalf("expected ambiguous temporary capability field error, got %v", err)
+	}
 }

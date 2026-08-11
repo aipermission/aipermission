@@ -37,6 +37,11 @@ These rules are part of the connector contract:
 - Connector-specific structured output secrets must be listed in
   `OutputHint.SensitiveFields` so the shared redaction layer masks them in MCP
   responses, history, and audit.
+- Generated short-lived bearer capabilities that the authorized caller must
+  receive may be listed in `OutputHint.TemporaryCapabilityFields`. This rare
+  exception preserves signed string syntax while retaining custom redaction;
+  the value remains in encrypted history until retention removes it. Never use
+  it for source credentials, refresh tokens, or long-lived secrets.
 - Arbitrary action inputs that may contain sensitive content, such as message
   keys, values, or headers, must be listed in
   `ActionDefinition.SensitiveInputFields`.
@@ -504,6 +509,8 @@ Add focused tests for:
 - action input schema rejection for secret fields
 - secret credential schema rejection when defaults are present
 - connector-specific `OutputHint.SensitiveFields` redaction
+- bounded `TemporaryCapabilityFields` preservation without source credential
+  leakage
 - connector-specific `SensitiveInputFields` redaction while the encrypted
   execution envelope preserves the exact input
 - `blocked`, `approval_required`, and `always_run` permission behavior
