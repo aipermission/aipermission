@@ -134,7 +134,16 @@ func (localActionTestConnector) TargetSchema() connectors.Schema {
 }
 
 func (localActionTestConnector) CredentialSchemas() []connectors.CredentialSchema {
-	return []connectors.CredentialSchema{{Kind: "default", Label: "Default", Schema: connectors.Schema{}}}
+	return []connectors.CredentialSchema{{
+		Kind:  "default",
+		Label: "Default",
+		Schema: connectors.Schema{Fields: []connectors.Field{{
+			Name:   "password",
+			Label:  "Password",
+			Type:   connectors.FieldSecret,
+			Secret: true,
+		}}},
+	}}
 }
 
 func (localActionTestConnector) GetHelp(context.Context, connectors.TargetView) (connectors.ConnectorHelp, error) {
