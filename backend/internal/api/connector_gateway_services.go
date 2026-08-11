@@ -121,6 +121,14 @@ func (s *Server) ConnectorActiveRuntimeAvailable(w http.ResponseWriter) bool {
 	return ok
 }
 
+func (s *Server) ConnectorRuntimeCapabilities(kind string, runtime connectorapi.GatewayRuntime) connectors.RuntimeCapabilityResolver {
+	dbRuntime, ok := runtime.(*databaseRuntime)
+	if !ok || dbRuntime == nil {
+		return nil
+	}
+	return connectorRuntimeCapabilitiesFor(kind, s, dbRuntime)
+}
+
 // ConnectorRestartConsoleSession closes a persistent live session and cancels
 // its running connector requests.
 func (s *Server) ConnectorRestartConsoleSession(ctx context.Context, runtime connectorapi.GatewayRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (connectorapi.ConsoleRestartResult, error) {

@@ -15,6 +15,7 @@ import (
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
 	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
+	_ "github.com/aipermission/aipermission/backend/internal/connectors/s3/apiadapter"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	_ "github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter"
 )
