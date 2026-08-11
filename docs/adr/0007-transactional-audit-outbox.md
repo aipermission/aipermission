@@ -1,11 +1,12 @@
 # ADR 0007: Transactional Audit Outbox
 
-Status: proposed
+Status: accepted
 
 ## Context
 
-AIPermission records security-relevant local mutations and connector activity in
-`audit_logs`. The current implementation has two non-atomic patterns:
+AIPermission historically recorded security-relevant local mutations and
+connector activity directly in `audit_logs`. That implementation had two
+non-atomic patterns:
 
 - most handlers commit a mutation and then write a best-effort audit row;
 - selected Vault and permission paths write a required `requested` event before
@@ -67,8 +68,9 @@ does not relax the credential boundary.
 ## Transaction Boundary
 
 Stores that participate in an audited mutation accept a narrow database
-executor implemented by both `*sql.DB` and `*sql.Tx`. The application service,
-not the HTTP handler or connector package, owns `BeginTx`, rollback, and commit.
+executor implemented by both `*sql.DB` and `*sql.Tx`. The shared application
+service, not the connector package, normally owns `BeginTx`, rollback, and
+commit.
 
 The intended shape is:
 
@@ -83,6 +85,13 @@ type DBTX interface {
 Store constructors may accept a database or transaction through this interface.
 Mutation methods must not start a nested transaction when an application
 service already owns one.
+
+Console session and file-transfer lifecycle state can also change in runtime
+goroutines that do not originate in one HTTP application service. Narrow
+database triggers cover only their create, status, queue, and archive-ready
+transitions. They append bounded identifier/status metadata to the same outbox
+transaction and deliberately ignore transcript, path, error, and progress
+updates. Connector-specific tables and triggers are not permitted.
 
 An outbox append failure rolls back the domain mutation. A domain mutation
 failure rolls back the outbox append. Response serialization and non-durable UI
@@ -138,19 +147,20 @@ The current process-local failure count remains useful during migration, but it
 is not the final source of truth. A healthy status must not hide an undelivered
 backlog left by an earlier process.
 
-## Migration Plan
+## Implementation
 
-Implementation is deliberately staged:
+The implemented boundary is deliberately layered:
 
-1. Add `audit_outbox`, nullable unique `audit_logs.event_id`, repository code,
-   dispatcher recovery, and failure-injection tests.
-2. Convert Vault mutations, token/project capability changes, connector
-   permission changes, and other credential/security settings first.
-3. Convert remaining local mutations and request lifecycle transitions.
-4. Add an enforced source rule that prevents new mutation handlers from calling
-   the legacy best-effort audit helper.
-5. Remove the legacy helper and replace process-local-only health after all
-   mutation paths use the transactional boundary.
+1. `audit_outbox` and nullable unique `audit_logs.event_id` provide durable,
+   idempotent delivery.
+2. Shared audited-mutation helpers couple local domain changes and events.
+3. Request stores couple hidden/background lifecycle transitions through
+   transaction-aware hooks.
+4. Runtime-owned console and transfer transitions use the narrow triggers
+   described above.
+5. Read observations and external side-effect telemetry may still use a
+   best-effort audit event. They do not describe a committed local mutation and
+   are not presented as an atomic guarantee.
 
 Existing `audit_logs` rows remain valid and have a null event id. The migration
 does not rewrite or synthesize historical events.
@@ -176,8 +186,7 @@ The implementation is not complete until tests prove:
 - Store transaction boundaries become more explicit and reusable.
 - The gateway gains a dispatcher and migration complexity that must be kept
   local, bounded, observable, and well tested.
-- This ADR does not change runtime behavior until its implementation stages are
-  completed.
+- Observation events remain intentionally distinct from mutation guarantees.
 
 ## Non-Goals
 
