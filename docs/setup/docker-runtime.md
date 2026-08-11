@@ -26,8 +26,11 @@ Pin a specific release image with `AIPERMISSION_VERSION` without the leading
 `v`:
 
 ```txt
-AIPERMISSION_VERSION=0.2.11 docker compose -f docker-compose.release.yml up -d
+AIPERMISSION_VERSION=X.Y.Z docker compose -f docker-compose.release.yml up -d
 ```
+
+Replace `X.Y.Z` with the release version you want to run, without the leading
+`v`.
 
 On Windows, keep shell scripts checked out with LF line endings. Git should do
 this automatically through the repository `.gitattributes` file; if

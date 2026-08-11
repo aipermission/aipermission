@@ -1,235 +1,107 @@
 # Roadmap
 
-AIPermission has published its first public release candidate and is moving
-into the connector-native 0.2 line. The local-only permission gateway is usable
-today with built-in SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker,
-Kubernetes, and Mail connectors; the next releases focus on
-dogfooding polish, small safety improvements, clearer contributor paths, and
-additional connector kinds such as API, queues, and storage that share one
-permission pipeline.
+AIPermission is a local-only, single-user permission gateway for developers and
+AI agents. The 0.2 line is connector-native: SSH, Postgres, ClickHouse,
+Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and Mail all
+use the same target, credential profile, action permission, approval, history,
+audit, and project-scoping pipeline.
 
-Related notes:
+Shipped release details live in the [changelog](../CHANGELOG.md). This document
+tracks active direction rather than repeating release history.
+
+Related documentation:
 
 - [What Is AIPermission?](whatis-aipermission.md)
+- [Project Principles](project-principles.md)
 - [MVP Scope](mvp/scope.md)
-- [Use Cases](mvp/use-cases.md)
 - [Local Gateway](architecture/local-gateway.md)
 - [MCP Permission Flow](architecture/mcp-permission-flow.md)
 - [Credential Boundary](security/credential-boundary.md)
 - [Threat Model](security/threat-model.md)
-- [Project Principles](project-principles.md)
+- [Add A Connector](development/add-a-connector.md)
 
-## Current Status
+## Now
 
-`0.1.0-rc.1` shipped the first local developer workflow:
+The current maintenance cycle focuses on reliability and contributor clarity:
 
-- Docker Compose local runtime at `http://localhost:3210`.
-- SQLCipher encrypted named `.aipdb` databases.
-- Local UI session and CSRF protection for web REST mutations.
-- Gateway-owned and explicitly imported SSH keys, SSH host fingerprint approval,
-  SSH host import from OpenSSH config files, and `known_hosts`
-  pinning.
-- Server inventory, server hints, SSH key install commands, and uninstall
-  cleanup.
-- MCP tokens with `always_run`, `approval_required`, and `blocked` execution
-  rules.
-- Token expiration, reusable-token opt-in, and global MCP Started/Stopped
-  switch.
-- Persistent console sessions with live attach, AI command display, messages,
-  transcript chunks, and history.
-- Queued SSH/SFTP upload and download from the local web UI, with separate File
-  Transfer History.
-- Approval dialogs, user notes, AI-to-user messages, audit logs, and searchable
-  History/Audit pages.
-- Redaction settings with built-in and custom regex rules.
-- MCP npm package, setup CLI, operator skill installer, and public package
-  metadata.
-- README screenshots, ADRs, security policy, contributing guide, release
-  checklist, CodeQL, Dependabot, tests, audits, and secret scan.
+- Keep connector behavior isolated inside connector packages and frontend
+  templates while strengthening the shared permission pipeline.
+- Improve graceful process shutdown, authentication backoff isolation, action
+  idempotency, and audit durability.
+- Split oversized frontend modules into behavior-owned components without
+  changing established workflows.
+- Expand behavioral tests, browser coverage, connector conformance checks, and
+  typed REST documentation.
+- Keep dependency, secret-scan, release, and container supply-chain checks
+  visible and reproducible.
+
+## Next
+
+- Add directory, recursive, and glob semantics to SSH file transfer with
+  explicit previews, limits, overwrite behavior, progress, and cancellation.
+- Improve SSH partial output, configurable default shells, recovery hints, and
+  manual terminal capture while preserving normal terminal behavior.
+- Add read-first Prometheus / Grafana and GitHub / GitLab connectors with
+  narrowly scoped profiles and guarded write actions.
+- Extend the shared SQL toolkit through SQL Server and MySQL / MariaDB without
+  hiding dialect-specific safety rules inside a universal SQL abstraction.
+- Add bounded Elasticsearch / OpenSearch and MongoDB browsing before guarded
+  mutations.
+
+## Later
+
+- Add declarative API connector recipes after their validation, credential,
+  approval-preview, and action-execution boundaries are fully specified.
+- Evaluate NATS / JetStream and additional database or analytics connectors
+  only when there is a real dogfooding use case.
+- Add optional command policy and risk-scoring helpers as warnings or deny
+  rules, never as a replacement for explicit permissions and approvals.
+- Consider SSH agent, ProxyJump/bastion, MFA, and SOCKS support if the local
+  operator experience remains understandable.
+- Consider signed backup manifests only after a separate recovery-key workflow
+  is designed.
+
+## Connector Guardrails
+
+- Every connector uses the shared target, profile, action permission,
+  approval, history, audit, and project pipeline.
+- Connector-specific backend behavior and frontend UI stay in that connector's
+  directory. Adding a normal connector must not require kind-specific branches
+  in shared routes, permission code, history, or MCP tools.
+- Permissions bind token + target + credential profile + action. UI presets are
+  conveniences, not the security authority.
+- Agents receive action definitions and profile references, never raw
+  credential values.
+- Approval-required actions snapshot the prepared request and relevant target,
+  credential, permission, connector, and transport identity.
+- Structured data connectors use bounded output, timeouts, read-first defaults,
+  and connector-owned validation.
+- Destructive queue, storage, database, and infrastructure actions remain
+  explicit, high-risk, and Prompt-first.
+- Code-defined connectors remain in-tree for 0.2.x. External code loading is
+  out of scope.
 
 ## Project Boundaries
 
-AIPermission is intentionally:
+AIPermission intentionally remains:
 
 - Local-only.
 - Single-user.
 - Developer-focused.
-- Connector-based, with built-in SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda,
-  S3, Docker, Kubernetes, and Mail.
+- Connector-based.
 - Human-in-the-loop.
 
-These requests conflict with the project principles and should normally be
-closed as `wontfix`:
-
-- Hosted SaaS mode.
-- Multi-tenant architecture.
-- Remote gateway hosting.
-- Shared team deployments.
-- LAN-accessible gateway mode.
-- Cloud-managed command execution.
-
-## Shipped Follow-Up Polish
-
-Small follow-up releases focus on daily-use friction found while using
-AIPermission against real VPS maintenance tasks.
-
-`0.1.1` shipped:
-
-- Collapsible Console side panels for smaller screens.
-- Meaningful Console status dots for no live session, idle, and busy states.
-- Browser title that shows MCP Started/Stopped and the active database.
-- Safer database deletion with a second password confirmation.
-- Manual update checks from the in-app Changelog dialog.
-- Bulk token permission updates across connector targets.
-- Approval-run notes delivered back to the AI.
-
-`0.1.2` ships:
-
-- History labels for tagging command requests and filtering History by label.
-- History label cleanup from Settings without deleting command history records.
-- On-demand Docker quick checks from SSH connector targets.
-- Docker container details and tail-configurable Docker logs dialogs.
-
-`0.1.4` ships:
-
-- Manual Console command logging for simple terminal input.
-- Best-effort manual command output capture for simple typed or pasted commands.
-- History source filters and badges for MCP and manual command records.
-- MCP request APIs explicitly scoped to MCP-origin command requests.
-- No shell hooks or hidden command suffixes; normal Console terminal behavior is unchanged.
-- Interactive commands, nested shells, heredocs, and unsafe control sequences
-  remain untracked best-effort rows. Arrow/history recall uses a placeholder
-  command because the terminal does not send the recalled command text; simple
-  recalled commands may still capture output when the prompt returns.
-
-`0.1.5` ships:
-
-- Single-file upload to a selected SSH server over SFTP.
-- Single-file remote download over SFTP, served through the browser after the
-  transfer reaches `completed`.
-- Unified History with pagination, search, connector/status/source filters,
-  status/progress metadata, checksums, and detail view.
-- File contents are not stored in SQLCipher; only metadata and progress are
-  persisted.
-
-`0.1.6` ships:
-
-- Queued upload and download flows from Console.
-- Multi-file upload with ordering, removal, overwrite confirmation, progress,
-  speed, and ETA.
-- Multi-file remote download with final zip packaging when more than one file is
-  selected.
-- Process-local pause/resume for active transfer queues, plus cancel behavior.
-- Batch transfer REST endpoints for queue status, pause, resume, cancel, and
-  final download delivery.
-
-`0.1.7` ships:
-
-- MCP transfer metadata, remote browse, remote download queue start, direct
-  local save, direct local upload, and pause/resume/cancel tools.
-- Transfer Center in the sidebar for monitoring active and recent UI/MCP
-  transfer queues.
-- MCP transfer responses stay metadata-only and never include file contents or
-  gateway temporary paths.
-
-`0.1.8` ships:
-
-- Optional expiration timestamps for token action permission grants.
-- Temporary Prompt or Always permissions from the Console token panel and Tokens
-  page permission dialogs.
-- Countdown text in the Console always-run warning for temporary `always_run`
-  grants.
-- MCP permission checks omit expired grants from connector target lists,
-  actions, SSH console reads, and file-transfer actions.
-
-## Early RC Follow-Ups
-
-These are good candidates for small follow-up releases after the first public
-tag:
-
-- [ ] Add command policy/risk scoring primitives without turning the product
-  into a DevOps platform.
-- [ ] Add optional deny/warn rules for common high-risk command patterns.
-- [ ] Add stronger manual command capture for shell history recall, arrow keys,
-  and cursor-edited commands. Do this with a deliberate frontend submitted-line
-  signal or shell-assisted marker model instead of backend escape-sequence
-  guessing, and preserve normal terminal behavior as the first invariant.
-- [ ] Add directory transfer, recursive copy, remote glob handling, and
-  restart-surviving resumable transfer design after bulk transfer semantics are
-  dogfooded.
-- [ ] Expand file-transfer `approval_required` UX after connector-action
-  approvals and Transfer Center semantics have been dogfooded together.
-- [ ] Add optional safety backup before import.
-- [ ] Add more Playwright browser tests for Settings, import, token permission,
-  and approval workflows.
-- [ ] Expand frontend component tests.
-- [ ] Add more MCP client setup examples as the client ecosystem changes.
-- [ ] Add a documented release cadence for small RC follow-up updates.
-- [ ] Open and maintain a visible good-first-issue pool.
-
-## 0.2 Connector Architecture
-
-The 0.2 line moves AIPermission from an SSH-first mental model to connector
-targets:
-
-```txt
-connector target + credential profile + action
-  -> token permission
-  -> approval policy
-  -> execution
-  -> history + audit
-```
-
-Goals:
-
-- Keep SSH working as a built-in connector with its own terminal and file-transfer surface.
-- Add Postgres as the first structured connector.
-- Add Redis as the first cache/key-value connector with direct and SSH-tunneled
-  TCP transport.
-- Add RabbitMQ as the first queue connector with direct and SSH-tunneled
-  Management API access.
-- Add S3 as the first object-storage connector with direct and SSH-tunneled
-  S3-compatible endpoint access.
-- Store connector permissions by target/profile/action instead of by a
-  connector-specific table.
-- Render connector UI through frontend templates so contributors can add a
-  connector without editing every route page.
-- Keep local-only, single-user, human-in-the-loop boundaries unchanged.
-- Treat the 0.2 connector line as a clean pre-1.0 schema boundary. Avoid
-  permanent compatibility code that keeps SSH outside the shared
-  connector path.
-- Make future connectors feel like first-class citizens: adding API, queue, storage, or
-  another integration should mean adding a connector package/template, not
-  adding another product-specific pipeline.
-
-Non-goals:
-
-- Hosted connector execution.
-- Team/RBAC collaboration.
-- LAN-accessible gateway mode.
-- A generic cloud integration marketplace in the 0.2 release.
-
-## Later Ideas
-
-These may be useful, but they are not required for the RC:
-
-- [ ] API connector definitions from operator-reviewed JSON.
-- [ ] Expand queue connector destructive operations after RabbitMQ
-  `publish_message` is dogfooded.
-- [ ] Optional sensitive/no-persist console sessions.
-- [ ] Export filters for History and Audit data.
-- [ ] FTS5 search only if the SQLCipher driver/build supports it without
-  increasing install friction. The current release uses SQLCipher-compatible
-  FTS4 search.
-- [ ] Chunk retention and compaction controls for very long console sessions.
+Hosted SaaS mode, multi-tenant architecture, remote gateway hosting, shared
+team deployments, LAN-accessible gateway mode, and cloud-managed execution are
+outside the project scope.
 
 ## Maintenance Rules
 
-- After the first public tag, do not edit migration `1`; add migration `2+` for
-  schema changes.
-- Keep docs, UI copy, comments, and package metadata in English.
-- Keep README, SECURITY, ADRs, MCP docs, and REST docs aligned with the code.
+- Add new migrations instead of editing a migration that shipped in a public
+  release.
+- Keep public docs, UI copy, comments, and package metadata in English.
+- Keep README, SECURITY, architecture decisions, MCP docs, and REST docs aligned
+  with behavior.
 - Keep local-only warnings visible in public docs and release notes.
-- Keep `approval_required` as the recommended default for normal AI-assisted
-  work.
-- Keep screenshots current when the main UI changes.
+- Keep Prompt as the recommended default for normal AI-assisted work.
+- Update screenshots when the primary UI changes materially.
