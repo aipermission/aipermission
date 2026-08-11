@@ -24,7 +24,7 @@ rest-contract-check:
 	cd backend && go run ./cmd/openapi -routes internal/api/routes.go -output ../docs/api/openapi.json -check
 
 backend-test:
-	cd backend && coverage=$$(mktemp) && trap 'rm -f "$$coverage"' EXIT; go test -coverprofile="$$coverage" ./... && go tool cover -func="$$coverage" | tail -1
+	cd backend && coverage=$$(mktemp) && trap 'rm -f "$$coverage"' EXIT; go test -coverprofile="$$coverage" ./... && go tool cover -func="$$coverage" | tail -1 && go run ./cmd/coveragecheck -profile "$$coverage"
 
 backend-race:
 	cd backend && go test -race ./...
