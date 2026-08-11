@@ -753,6 +753,10 @@ type s3Client struct {
 }
 
 func newS3Client(ctx context.Context, runtime connectors.RuntimeContext) (*s3Client, error) {
+	return newS3ClientWithTimeout(ctx, runtime, s3HTTPTimeout)
+}
+
+func newS3ClientWithTimeout(ctx context.Context, runtime connectors.RuntimeContext, timeout time.Duration) (*s3Client, error) {
 	transport, _ := runtime.Capability(connectors.NetworkTransportCapabilityName).(connectors.NetworkTransport)
 	if transport == nil {
 		return nil, ErrMissingTransport
@@ -788,7 +792,7 @@ func newS3Client(ctx context.Context, runtime connectors.RuntimeContext) (*s3Cli
 		Port:               client.port,
 		TransportTargetRef: strings.TrimSpace(stringValue(runtime.Target.Config, "transport_target_ref")),
 	}
-	client.httpClient = connectors.NewHTTPClient(transport, request, s3HTTPTimeout)
+	client.httpClient = connectors.NewHTTPClient(transport, request, timeout)
 	return client, nil
 }
 
@@ -1098,6 +1102,15 @@ func canonicalHeaderValue(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
+type s3StatusError struct {
+	status  int
+	message string
+}
+
+func (err *s3StatusError) Error() string {
+	return err.message
+}
+
 func s3HTTPError(status int, data []byte) error {
 	message := strings.TrimSpace(string(data))
 	if len(message) > 800 {
@@ -1108,12 +1121,13 @@ func s3HTTPError(status int, data []byte) error {
 	}
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Errorf("s3 authentication or permission failed: %s", message)
+		message = fmt.Sprintf("s3 authentication or permission failed: %s", message)
 	case http.StatusNotFound:
-		return fmt.Errorf("s3 object or bucket not found: %s", message)
+		message = fmt.Sprintf("s3 object or bucket not found: %s", message)
 	default:
-		return fmt.Errorf("s3 request failed with HTTP %d: %s", status, message)
+		message = fmt.Sprintf("s3 request failed with HTTP %d: %s", status, message)
 	}
+	return &s3StatusError{status: status, message: message}
 }
 
 func classifyS3TestError(err error) connectors.TestStatus {
@@ -1136,6 +1150,10 @@ func classifyS3TestError(err error) connectors.TestStatus {
 func isNotFoundError(err error) bool {
 	if err == nil {
 		return false
+	}
+	var statusErr *s3StatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.status == http.StatusNotFound
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "not found") || strings.Contains(message, "404")
