@@ -23,7 +23,7 @@ export const changelogEntries = [
         title: "Security",
         items: [
           "Connector transports ignore ambient proxy credentials, approval claims freeze validated credential material, and gateway-held secrets have explicit output-boundary regression coverage.",
-          "Container releases now enforce vulnerability checks, SBOM and provenance attestations, digest signing, and pinned CI dependencies.",
+          "CI blocks fixed HIGH/CRITICAL findings in locally built container images; publishing adds SBOM/provenance attestations and digest signing, with SHA-pinned CI dependencies.",
         ],
       },
     ],

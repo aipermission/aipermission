@@ -8,6 +8,14 @@ Shortcut:
 make release-check
 ```
 
+Set a new release version through the canonical manifest before writing the
+matching changelog entry and in-app release note, then verify all metadata:
+
+```bash
+npm run version:set -- X.Y.Z
+npm run version:check
+```
+
 ## Backend
 
 ```bash
@@ -48,6 +56,8 @@ npm pack --dry-run
 ## Supply Chain
 
 - Confirm `CHANGELOG.md` includes the release notes for the tag being published.
+- Confirm `release-manifest.json`, frontend metadata, MCP metadata, and the
+  latest changelog entries pass `npm run version:check`.
 - Confirm Dependabot is enabled for Go, npm, Docker, and GitHub Actions.
 - Confirm CodeQL is enabled for Go and JavaScript.
 - Confirm CI secret scanning passes.

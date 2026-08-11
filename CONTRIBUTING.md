@@ -45,10 +45,11 @@ npm run build --workspace frontend
 ```
 
 Use `npm run format --workspace frontend` to apply the repository Prettier
-rules. Existing React hook dependency warnings are recorded in
-`frontend/eslint-suppressions.json`; new warnings still fail lint. Fix stale
-entries in code, then run `npm run lint:suppressions --workspace frontend` to
-prune the baseline instead of adding inline suppressions.
+rules. React hook suppressions are tracked in
+`frontend/eslint-suppressions.json` with an enforced budget of zero. New
+warnings fail lint. Fix the code instead of adding inline suppressions; the
+prune command remains available if a temporary reviewed baseline is ever
+introduced.
 
 Run Playwright when a change touches route-level UI, approval dialogs, console,
 or connector template rendering:

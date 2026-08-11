@@ -14,6 +14,7 @@ const nginxSource = readFileSync(join(currentDir, "..", "..", "nginx.conf"), "ut
 const sidebarSource = readFileSync(join(currentDir, "..", "components", "app-sidebar.jsx"), "utf8");
 const unlockSource = readFileSync(join(currentDir, "..", "pages", "unlock.jsx"), "utf8");
 const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
+const releaseManifest = JSON.parse(readFileSync(join(currentDir, "..", "..", "..", "release-manifest.json"), "utf8"));
 const connectorApprovalDialogSource = readFileSync(
   join(currentDir, "..", "components", "console", "connector-action-approval-dialog.jsx"),
   "utf8",
@@ -371,7 +372,7 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.23"/);
+  assert.match(releaseSource, new RegExp(`appVersion = "${releaseManifest.version.replaceAll(".", "\\.")}"`));
   assert.match(releaseSource, /Maintenance hardening/);
   assert.match(releaseSource, /Controlled Mail workflows/);
   assert.match(releaseSource, /Backup recovery cleanup/);
