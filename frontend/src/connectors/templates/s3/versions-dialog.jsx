@@ -4,6 +4,7 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Notice } from "../../../components/ui/notice";
+import { formatBytes } from "../../../lib/file-transfer-utils";
 
 export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedClass, onClose, onRun, onChanged }) {
   const [versions, setVersions] = useState([]);
@@ -89,7 +90,9 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
                   <div className="flex items-center justify-between gap-4 p-3" key={`${version.version_id}-${version.delete_marker}`}>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate font-mono text-xs" title={version.version_id}>{version.version_id}</p>
+                        <p className="truncate font-mono text-xs" title={version.version_id}>
+                          {version.version_id}
+                        </p>
                         {version.is_latest ? <Badge tone="good">current</Badge> : null}
                         {version.delete_marker ? <Badge tone="bad">delete marker</Badge> : null}
                       </div>
@@ -136,7 +139,9 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
               >
                 Load more
               </Button>
-              <Button type="button" variant="outline" onClick={onClose} disabled={pending}>Close</Button>
+              <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+                Close
+              </Button>
             </div>
           </div>
         </div>
@@ -145,21 +150,38 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
         open={Boolean(confirmation)}
         onClose={() => !pending && setConfirmation(null)}
         title={confirmation?.action === "restore_object_version" ? "Restore object version" : "Delete object version"}
-        description={confirmation?.action === "restore_object_version" ? "This version becomes a new current object version." : "This stored version cannot be recovered by AIPermission."}
+        description={
+          confirmation?.action === "restore_object_version"
+            ? "This version becomes a new current object version."
+            : "This stored version cannot be recovered by AIPermission."
+        }
         size="md"
         closeDisabled={pending}
       >
         <div className="grid gap-4">
           <div className={`grid gap-2 rounded-md border p-3 ${detailClass}`}>
-            <p className="break-all text-xs"><strong>Object:</strong> {objectKey}</p>
-            <p className="break-all text-xs"><strong>Version:</strong> {confirmation?.version?.version_id}</p>
+            <p className="break-all text-xs">
+              <strong>Object:</strong> {objectKey}
+            </p>
+            <p className="break-all text-xs">
+              <strong>Version:</strong> {confirmation?.version?.version_id}
+            </p>
           </div>
           <Notice tone={confirmation?.action === "delete_object_version" ? "bad" : "warn"}>
-            {confirmation?.action === "delete_object_version" ? "Permanent deletion requires explicit confirmation." : "The existing current version remains in version history."}
+            {confirmation?.action === "delete_object_version"
+              ? "Permanent deletion requires explicit confirmation."
+              : "The existing current version remains in version history."}
           </Notice>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setConfirmation(null)} disabled={pending}>Cancel</Button>
-            <Button type="button" variant={confirmation?.action === "delete_object_version" ? "danger" : "default"} onClick={confirmAction} disabled={pending}>
+            <Button type="button" variant="outline" onClick={() => setConfirmation(null)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant={confirmation?.action === "delete_object_version" ? "danger" : "default"}
+              onClick={confirmAction}
+              disabled={pending}
+            >
               {pending ? "Working..." : confirmation?.action === "delete_object_version" ? "Delete version" : "Restore version"}
             </Button>
           </div>
@@ -171,12 +193,4 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
 
 export function VersionsIcon() {
   return <History className="h-3.5 w-3.5" />;
-}
-
-function formatBytes(value) {
-  const bytes = Number(value || 0);
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
 }

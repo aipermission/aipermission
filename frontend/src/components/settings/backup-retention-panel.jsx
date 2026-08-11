@@ -1,5 +1,5 @@
 import { ArchiveRestore, RotateCcw, Save, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { formatBytes } from "../../lib/file-transfer-utils";
 import { Button } from "../ui/button";
@@ -13,31 +13,15 @@ export function BackupRetentionPanel({ provider, onRecordsChanged }) {
   const [form, setForm] = useState({ enabled: false, keepLatest: String(defaultKeepLatest), applyNow: true });
   const [preview, setPreview] = useState(null);
   const [action, setAction] = useState({ status: "idle", error: "", message: "" });
+  const [formDirty, setFormDirty] = useState(false);
+  const loadRequestRef = useRef(0);
+  const loadForEffect = useEffectEvent(() => loadRemoteState({ syncForm: true }));
 
   useEffect(() => {
-    let active = true;
-    setState({ status: "loading", storage: null, policy: null, error: "" });
     setPreview(null);
     setAction({ status: "idle", error: "", message: "" });
-    Promise.all([
-      apiGet(`/api/backup/providers/${provider.id}/storage`),
-      apiGet(`/api/backup/providers/${provider.id}/retention`),
-    ])
-      .then(([storage, policy]) => {
-        if (!active) return;
-        setState({ status: "ready", storage, policy, error: "" });
-        setForm({
-          enabled: Boolean(policy.enabled),
-          keepLatest: String(policy.keep_latest || defaultKeepLatest),
-          applyNow: true,
-        });
-      })
-      .catch((error) => {
-        if (active) setState({ status: "error", storage: null, policy: null, error: error.message });
-      });
-    return () => {
-      active = false;
-    };
+    setFormDirty(false);
+    void loadForEffect();
   }, [provider.id]);
 
   const keepLatest = parseKeepLatest(form.keepLatest);
@@ -47,24 +31,31 @@ export function BackupRetentionPanel({ provider, onRecordsChanged }) {
     setForm((current) => ({ ...current, ...patch }));
     setPreview(null);
     setAction({ status: "idle", error: "", message: "" });
+    setFormDirty(true);
   }
 
-  async function refresh() {
+  async function loadRemoteState({ syncForm }) {
+    const requestID = ++loadRequestRef.current;
     setState((current) => ({ ...current, status: "loading", error: "" }));
     try {
       const [storage, policy] = await Promise.all([
         apiGet(`/api/backup/providers/${provider.id}/storage`),
         apiGet(`/api/backup/providers/${provider.id}/retention`),
       ]);
+      if (requestID !== loadRequestRef.current) return;
       setState({ status: "ready", storage, policy, error: "" });
-      setForm((current) => ({
-        ...current,
-        enabled: Boolean(policy.enabled),
-        keepLatest: String(policy.keep_latest || parseKeepLatest(current.keepLatest) || defaultKeepLatest),
-      }));
+      if (syncForm) {
+        setForm({ enabled: Boolean(policy.enabled), keepLatest: String(policy.keep_latest || defaultKeepLatest), applyNow: true });
+        setFormDirty(false);
+      }
     } catch (error) {
+      if (requestID !== loadRequestRef.current) return;
       setState({ status: "error", storage: null, policy: null, error: error.message });
     }
+  }
+
+  async function refresh() {
+    await loadRemoteState({ syncForm: !formDirty });
   }
 
   async function requestPreview() {
@@ -99,7 +90,8 @@ export function BackupRetentionPanel({ provider, onRecordsChanged }) {
           ? `Automatic retention enabled. ${deletedCount} existing backup${deletedCount === 1 ? "" : "s"} removed.`
           : "Automatic retention disabled.",
       });
-      await refresh();
+      setFormDirty(false);
+      await loadRemoteState({ syncForm: true });
       if (deletedCount > 0) await onRecordsChanged?.();
     } catch (error) {
       setAction({ status: "error", error: error.message, message: "" });
@@ -113,7 +105,14 @@ export function BackupRetentionPanel({ provider, onRecordsChanged }) {
           <p className="text-sm font-semibold text-stone-950">Storage and automatic retention</p>
           <p className="mt-1 text-xs text-stone-500">Remote service limits and this database stream's cleanup policy.</p>
         </div>
-        <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Refresh storage and retention" onClick={refresh} disabled={state.status === "loading"}>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-8 w-8 px-0"
+          title="Refresh storage and retention"
+          onClick={refresh}
+          disabled={state.status === "loading"}
+        >
           <RotateCcw className={`h-4 w-4 ${state.status === "loading" ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -153,7 +152,12 @@ export function BackupRetentionPanel({ provider, onRecordsChanged }) {
             </div>
             <div className="flex justify-end gap-2">
               {form.enabled ? (
-                <Button type="button" variant="outline" onClick={requestPreview} disabled={keepLatest === null || action.status === "previewing" || action.status === "saving"}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={requestPreview}
+                  disabled={keepLatest === null || action.status === "previewing" || action.status === "saving"}
+                >
                   <ArchiveRestore className="h-4 w-4" />
                   {action.status === "previewing" ? "Previewing..." : "Preview"}
                 </Button>
@@ -183,7 +187,9 @@ function StorageSummary({ storage }) {
       <Metric label="Quota" value={storage.quota_enabled ? formatBytes(storage.quota_bytes) : "Not configured"} />
       <Metric label="Remaining" value={storage.quota_enabled ? formatBytes(storage.remaining_bytes) : "Unlimited by service"} />
       {storage.pending_deletions > 0 ? (
-        <p className="sm:col-span-3 text-xs text-amber-700">{storage.pending_deletions} remote file deletion{storage.pending_deletions === 1 ? " is" : "s are"} pending retry.</p>
+        <p className="sm:col-span-3 text-xs text-amber-700">
+          {storage.pending_deletions} remote file deletion{storage.pending_deletions === 1 ? " is" : "s are"} pending retry.
+        </p>
       ) : null}
     </div>
   );
@@ -192,8 +198,12 @@ function StorageSummary({ storage }) {
 function RetentionPreview({ preview, applyNow }) {
   return (
     <Notice tone={preview.delete_count > 0 && applyNow ? "warn" : "good"}>
-      <span className="inline-flex items-center gap-2 font-medium"><ShieldCheck className="h-4 w-4" />The newest recovery version is always protected.</span>{" "}
-      Keep {preview.retain_count} ({formatBytes(preview.retain_bytes)}); {applyNow ? "delete" : "would delete"} {preview.delete_count} ({formatBytes(preview.delete_bytes)}).
+      <span className="inline-flex items-center gap-2 font-medium">
+        <ShieldCheck className="h-4 w-4" />
+        The newest recovery version is always protected.
+      </span>{" "}
+      Keep {preview.retain_count} ({formatBytes(preview.retain_bytes)}); {applyNow ? "delete" : "would delete"} {preview.delete_count} (
+      {formatBytes(preview.delete_bytes)}).
     </Notice>
   );
 }

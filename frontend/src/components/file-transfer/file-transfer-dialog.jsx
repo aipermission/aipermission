@@ -23,6 +23,9 @@ import {
 
 const emptyBatchState = { state: "idle", item: null, error: null };
 const emptyBrowserState = { open: false, purpose: "upload", path: "/", state: "idle", data: null, error: null };
+const maxTransferObjectBytes = 512 * 1024 * 1024;
+const maxTransferBatchBytes = 1024 * 1024 * 1024;
+const maxTransferBatchItems = 100;
 
 export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose }) {
   const defaultRemoteDir = options.defaultDirectory || defaultRemoteDirectory();
@@ -37,9 +40,16 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   const [overwritePrompt, setOverwritePrompt] = useState(null);
   const [clearDownloadPrompt, setClearDownloadPrompt] = useState(false);
   const [closeDownloadPrompt, setCloseDownloadPrompt] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(null);
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
+  const uploadQueueRef = useRef(uploadQueue);
+  const downloadQueueRef = useRef(downloadQueue);
+  const completedUploadRef = useRef(0);
+  const batchRefreshRequestRef = useRef(0);
+  const browserRequestRef = useRef(0);
+  uploadQueueRef.current = uploadQueue;
+  downloadQueueRef.current = downloadQueue;
 
   const queue = mode === "upload" ? uploadQueue : downloadQueue;
   const activeBatch = batch.item && ["pending", "running", "paused"].includes(batch.item.status);
@@ -49,16 +59,21 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   const closeDisabled = Boolean(activeBatch) || ["starting", "pausing", "resuming", "canceling", "downloading"].includes(batch.state);
   const batchItemID = batch.item?.id;
   const batchItemStatus = batch.item?.status;
+  const batchState = batch.state;
   const resetDialogForEffect = useEffectEvent((nextRemoteDir) => resetDialog(nextRemoteDir));
   const refreshBatchForEffect = useEffectEvent((id, options) => refreshBatch(id, options));
   const updateCompletedBatchNotice = useEffectEvent(() => {
     if (!batch.item || batch.item.status !== "completed") return;
     if (batch.item.direction === "upload") {
-      setNotice("Upload queue completed. Review the summary, then clear when ready.");
+      setNotice({ tone: "good", message: "Upload queue completed. Review the summary, then clear when ready." });
+      if (completedUploadRef.current !== batch.item.id) {
+        completedUploadRef.current = batch.item.id;
+        void options.onUploadCompleted?.();
+      }
       return;
     }
     if (batch.item.direction === "download" && !downloadPrompted && !downloadSaved) {
-      setNotice("Download queue completed. Click Save download to choose where to save it.");
+      setNotice({ tone: "good", message: "Download queue completed. Click Save download to choose where to save it." });
     }
   });
 
@@ -71,18 +86,20 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   }, [open, defaultRemoteDir]);
 
   useEffect(() => {
-    if (!open || !batchItemID || !["pending", "running", "paused"].includes(batchItemStatus)) return undefined;
+    if (!open || batchState !== "ready" || !batchItemID || !["pending", "running", "paused"].includes(batchItemStatus)) return undefined;
     const timer = window.setInterval(() => {
       void refreshBatchForEffect(batchItemID, { silent: true });
     }, 900);
     return () => window.clearInterval(timer);
-  }, [open, batchItemID, batchItemStatus]);
+  }, [open, batchItemID, batchItemStatus, batchState]);
 
   useEffect(() => {
     updateCompletedBatchNotice();
   }, [batch.item?.id, batch.item?.status, batch.item?.direction, downloadPrompted, downloadSaved]);
 
   function resetDialog(nextRemoteDir = defaultRemoteDir) {
+    batchRefreshRequestRef.current += 1;
+    browserRequestRef.current += 1;
     setMode("upload");
     setRemoteDir(nextRemoteDir);
     setUploadQueue([]);
@@ -94,7 +111,8 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     setOverwritePrompt(null);
     setClearDownloadPrompt(false);
     setCloseDownloadPrompt(false);
-    setNotice("");
+    setNotice(null);
+    completedUploadRef.current = 0;
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (folderInputRef.current) folderInputRef.current.value = "";
   }
@@ -130,38 +148,60 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     if (direction === "download") {
       setDownloadQueue([]);
     }
-    setNotice("");
+    setNotice(null);
     clearBatchPanel();
   }
 
   async function refreshBatch(id = batch.item?.id, options = {}) {
     if (!id) return;
+    const requestID = ++batchRefreshRequestRef.current;
     if (!options.silent) {
       setBatch((current) => ({ ...current, state: "loading", error: null }));
     }
     try {
       const item = await apiGet(`/api/file-transfer-batches/${id}`);
-      setBatch({ state: "ready", item, error: null });
+      if (requestID !== batchRefreshRequestRef.current) return;
+      setBatch((current) => {
+        if (options.silent && !["idle", "loading", "ready"].includes(current.state)) return current;
+        return { state: "ready", item, error: null };
+      });
     } catch (error) {
-      setBatch((current) => ({ ...current, state: "error", error: error.message }));
+      if (requestID !== batchRefreshRequestRef.current) return;
+      setBatch((current) => {
+        if (options.silent && !["idle", "loading", "ready"].includes(current.state)) return current;
+        return { ...current, state: "error", error: error.message };
+      });
     }
   }
 
   function handleLocalFileChange(event) {
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
-    setUploadQueue((current) => [
-      ...current,
-      ...files.map((file) => ({
-        id: localFileID(file),
-        file,
-        name: file.webkitRelativePath || file.name,
-        size: file.size,
-        relative_path: file.webkitRelativePath || file.name,
-        remote_path: joinRemotePath(remoteDir, file.webkitRelativePath || file.name),
-      })),
-    ]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    const oversized = files.find((file) => file.size > maxTransferObjectBytes);
+    if (oversized) {
+      setNotice({ tone: "bad", message: `${oversized.name} exceeds the 512 MiB per-object upload limit.` });
+      event.target.value = "";
+      return;
+    }
+    const additions = files.map((file) => ({
+      id: localFileID(file),
+      file,
+      name: file.webkitRelativePath || file.name,
+      size: file.size,
+      relative_path: file.webkitRelativePath || file.name,
+      remote_path: joinRemotePath(remoteDir, file.webkitRelativePath || file.name),
+    }));
+    const existingIDs = new Set(uploadQueueRef.current.map((item) => item.id));
+    const next = [...uploadQueueRef.current, ...additions.filter((item) => !existingIDs.has(item.id))];
+    const totalSize = next.reduce((total, item) => total + Number(item.size || 0), 0);
+    if (next.length > maxTransferBatchItems || totalSize > maxTransferBatchBytes) {
+      setNotice({ tone: "bad", message: `The upload queue cannot exceed ${maxTransferBatchItems} objects or 1 GiB total size.` });
+      event.target.value = "";
+      return;
+    }
+    setNotice(null);
+    setUploadQueue(next);
+    event.target.value = "";
   }
 
   async function addRemoteFiles(entries) {
@@ -177,30 +217,36 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
         files.push(...(expanded.entries || []).filter((entry) => entry?.type === "file"));
       }
     } catch (error) {
-      setNotice(error.message || "Could not expand the selected folder.");
-      return;
+      setNotice({ tone: "bad", message: error.message || "Could not expand the selected folder." });
+      return false;
     }
-    const existing = new Set(downloadQueue.map((item) => item.path));
+    const existing = new Set(downloadQueueRef.current.map((item) => item.path));
     const nextFiles = [];
     for (const entry of files) {
       if (existing.has(entry.path)) continue;
       existing.add(entry.path);
       nextFiles.push(entry);
     }
-    if (nextFiles.length === 0) return;
+    if (nextFiles.length === 0) return true;
     const additions = nextFiles.map((entry) => ({
       id: `remote-${entry.path}`,
       path: entry.path,
       name: entry.name,
       size: entry.size,
     }));
-    const nextQueue = [...downloadQueue, ...additions];
+    const nextQueue = [...downloadQueueRef.current, ...additions];
     const nextSize = nextQueue.reduce((total, entry) => total + Number(entry.size || 0), 0);
-    if (nextQueue.length > 100 || nextSize > 1024 * 1024 * 1024) {
-      setNotice("The download queue cannot exceed 100 objects or 1 GiB total size.");
-      return;
+    const oversized = additions.find((entry) => Number(entry.size || 0) > maxTransferObjectBytes);
+    if (oversized) {
+      setNotice({ tone: "bad", message: `${oversized.name} exceeds the 512 MiB per-object download limit.` });
+      return false;
+    }
+    if (nextQueue.length > maxTransferBatchItems || nextSize > maxTransferBatchBytes) {
+      setNotice({ tone: "bad", message: `The download queue cannot exceed ${maxTransferBatchItems} objects or 1 GiB total size.` });
+      return false;
     }
     setDownloadQueue(nextQueue);
+    return true;
   }
 
   function removeQueueItem(id) {
@@ -265,7 +311,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     formData.append("overwrite", options.overwrite ? "true" : "false");
     uploadQueue.forEach((item) => formData.append("files", item.file, item.name));
     formData.append("relative_paths", JSON.stringify(uploadQueue.map((item) => item.relative_path || item.name)));
-    setNotice("");
+    setNotice(null);
     setOverwritePrompt(null);
     setDownloadPrompted(false);
     setDownloadSaved(false);
@@ -284,7 +330,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   }
 
   async function startDownloadBatch() {
-    setNotice("");
+    setNotice(null);
     setDownloadPrompted(false);
     setDownloadSaved(false);
     setBatch({ state: "starting", item: null, error: null });
@@ -302,6 +348,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
 
   async function pauseBatch() {
     if (!batch.item) return;
+    batchRefreshRequestRef.current += 1;
     setBatch((current) => ({ ...current, state: "pausing", error: null }));
     try {
       const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/pause`, {});
@@ -313,6 +360,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
 
   async function resumeBatch() {
     if (!batch.item) return;
+    batchRefreshRequestRef.current += 1;
     setBatch((current) => ({ ...current, state: "resuming", error: null }));
     try {
       const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/resume`, {});
@@ -324,11 +372,12 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
 
   async function cancelBatch() {
     if (!batch.item) return;
+    batchRefreshRequestRef.current += 1;
     setBatch((current) => ({ ...current, state: "canceling", error: null }));
     try {
       const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/cancel`, {});
       setBatch({ state: "ready", item, error: null });
-      setNotice("Transfer queue canceled.");
+      setNotice({ tone: "warn", message: "Transfer queue canceled." });
     } catch (error) {
       setBatch((current) => ({ ...current, state: "error", error: error.message }));
     }
@@ -342,14 +391,14 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
       const result = await apiDownload(`/api/file-transfer-batches/${batch.item.id}/download`, filename, { picker: true });
       setDownloadPrompted(true);
       if (result?.canceled) {
-        setNotice("Download was not saved. You can try Save download again.");
+        setNotice({ tone: "warn", message: "Download was not saved. You can try Save download again." });
         setBatch((current) => ({ ...current, state: "ready", error: null }));
         return false;
       }
       setDownloadSaved(true);
       if (options.clearAfterSave) {
         setDownloadQueue([]);
-        setNotice("");
+        setNotice(null);
         clearBatchPanel();
         return true;
       }
@@ -358,7 +407,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
         onClose();
         return true;
       }
-      setNotice("Download saved. Review the summary, then clear when ready.");
+      setNotice({ tone: "good", message: "Download saved. Review the summary, then clear when ready." });
       setBatch((current) => ({ ...current, state: "ready", error: null }));
       return true;
     } catch (error) {
@@ -379,18 +428,29 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
 
   async function loadBrowser(pathValue = browser.path, purpose = browser.purpose, options = {}) {
     if (!runtimeTarget) return;
+    const requestID = ++browserRequestRef.current;
     const nextPath = normalizeRemoteDirectoryInput(pathValue || "/");
-    setBrowser((current) => ({ ...current, purpose, path: nextPath, state: "loading", error: null }));
+    setBrowser((current) => ({ ...current, purpose, path: nextPath, state: options.append ? "loading-more" : "loading", error: null }));
     try {
       const data = await apiPost("/api/file-transfers/browse", {
         runtime_id: Number(runtimeTarget.id),
         path: nextPath,
+        ...(options.cursor ? { cursor: options.cursor } : {}),
       });
+      if (requestID !== browserRequestRef.current) return;
       if (purpose === "download") {
         rememberDownloadPath(runtimeTarget, data.path || nextPath);
       }
-      setBrowser({ open: true, purpose, path: data.path || nextPath, state: "ready", data, error: null });
+      setBrowser((current) => ({
+        open: true,
+        purpose,
+        path: data.path || nextPath,
+        state: "ready",
+        data: options.append ? { ...data, entries: [...(current.data?.entries || []), ...(data.entries || [])] } : data,
+        error: null,
+      }));
     } catch (error) {
+      if (requestID !== browserRequestRef.current) return;
       if (purpose === "download" && options.fallbackToDefault && nextPath !== defaultRemoteDir) {
         forgetDownloadPath(runtimeTarget);
         void loadBrowser(defaultRemoteDir, purpose, { fallbackToDefault: false });
@@ -409,7 +469,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   function switchMode(nextMode) {
     setMode(nextMode);
     setOverwritePrompt(null);
-    setNotice("");
+    setNotice(null);
   }
 
   return (
@@ -433,7 +493,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
               {options.notice ||
                 "AIPermission stores transfer history metadata only; file contents use short-lived local staging files under the data directory."}
             </Notice>
-            {notice ? <Notice tone={notice.includes("canceled") ? "warn" : "good"}>{notice}</Notice> : null}
+            {notice ? <Notice tone={notice.tone}>{notice.message}</Notice> : null}
             <div className="grid grid-cols-2 gap-2 rounded-md border border-stone-200 bg-stone-50 p-1">
               <Button
                 type="button"
@@ -460,7 +520,9 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
             <div className="rounded-md border border-stone-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Target</p>
               <p className="mt-2 truncate text-sm font-semibold text-stone-900">{runtimeTarget?.name || "No target selected"}</p>
-              <p className="truncate font-mono text-xs text-stone-500">{runtimeTarget?.subtitle || "Open Console and select a target first."}</p>
+              <p className="truncate font-mono text-xs text-stone-500">
+                {runtimeTarget?.subtitle || "Open Console and select a target first."}
+              </p>
             </div>
 
             {mode === "upload" ? (
@@ -513,7 +575,14 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
                       <FolderOpen className="h-4 w-4" />
                       Add folder
                     </Button>
-                    <input ref={folderInputRef} className="hidden" type="file" multiple webkitdirectory="" onChange={handleLocalFileChange} />
+                    <input
+                      ref={folderInputRef}
+                      className="hidden"
+                      type="file"
+                      multiple
+                      webkitdirectory=""
+                      onChange={handleLocalFileChange}
+                    />
                   </>
                 ) : null}
               </div>
@@ -530,8 +599,8 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
                   Add remote files
                 </Button>
                 <p className="text-xs text-stone-500">
-                  The browser opens at the last folder used for this target, or `{defaultRemoteDir}` when no folder is remembered. Multiple
-                  downloads are saved as one temporary zip archive.
+                  The browser opens at the last folder used for this target, or <code>{defaultRemoteDir}</code> when no folder is
+                  remembered. Multiple downloads are saved as one temporary zip archive.
                 </p>
               </div>
             )}

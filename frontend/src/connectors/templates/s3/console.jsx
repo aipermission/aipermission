@@ -9,6 +9,7 @@ import { Field, Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost, saveBlob } from "../../../lib/api";
+import { formatBytes } from "../../../lib/file-transfer-utils";
 import { S3PresignDialog } from "./presign-dialog";
 import { S3VersionsDialog, VersionsIcon } from "./versions-dialog";
 import { LifecycleIcon, S3LifecycleDialog } from "./lifecycle-dialog";
@@ -697,10 +698,10 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
           recursive: true,
           notice:
             "S3 transfers use bounded queues with multipart uploads, progress, pause, cancel, and short-lived local staging. A paused transfer resumes only while this gateway process remains running.",
+          onUploadCompleted: () => refreshObjects({ reset: true }),
         }}
         onClose={() => {
           setTransferOpen(false);
-          void refreshObjects({ reset: true });
         }}
       />
       <S3PresignDialog
@@ -1225,13 +1226,6 @@ function parentPrefix(value) {
   const index = clean.lastIndexOf("/");
   if (index <= 0) return "";
   return `${clean.slice(0, index)}/`;
-}
-
-function formatBytes(value) {
-  const number = Number(value || 0);
-  if (number < 1024) return `${number} B`;
-  if (number < 1024 * 1024) return `${(number / 1024).toFixed(1)} KiB`;
-  return `${(number / 1024 / 1024).toFixed(1)} MiB`;
 }
 
 function shortDate(value) {
