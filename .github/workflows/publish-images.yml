@@ -41,6 +41,8 @@ jobs:
           fi
           docker buildx build \
             --platform linux/amd64 \
+            --provenance=mode=max \
+            --sbom=true \
             "${tags[@]}" \
             --push \
             ./backend
@@ -56,6 +58,8 @@ jobs:
           fi
           docker buildx build \
             --platform linux/amd64 \
+            --provenance=mode=max \
+            --sbom=true \
             --build-arg VITE_API_URL="" \
             --build-arg VITE_MCP_API_URL="" \
             "${tags[@]}" \
