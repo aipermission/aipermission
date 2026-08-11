@@ -11,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 type connectorActionApprovalHandlers struct {
@@ -177,10 +176,6 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 		writeInternalError(w)
 		return
 	}
-	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(r.Context(), item.ID); err != nil {
-		writeInternalError(w)
-		return
-	}
 	s.writeAudit(r.Context(), runtime, "user", item.TokenID, 0, "connector_action.decline", map[string]any{
 		"request_id":     item.ID,
 		"target_ref":     connectortargets.ConnectorTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID),
@@ -311,9 +306,6 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	if _, err := store.MarkActionRequestRunning(ctx, item.ID); err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, item.ID); err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
 	release()
 	claimHeld = false
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared, snapshot)
@@ -379,9 +371,6 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(context.Background(), finished.ID); err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
 	s.writeAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run."+string(finished.Status), map[string]any{
 		"request_id":     item.ID,
 		"target_ref":     targetRef,
@@ -402,11 +391,6 @@ func finishStaleConnectorApproval(ctx context.Context, runtime *databaseRuntime,
 	})
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
-	}
-	syncCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(syncCtx, stale.ID); err != nil {
-		return stale, fmt.Errorf("sync stale connector approval history: %w", err)
 	}
 	return stale, nil
 }

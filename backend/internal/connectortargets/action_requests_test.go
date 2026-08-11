@@ -79,6 +79,91 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreActionRequestHistoryProjectionIsAtomic(t *testing.T) {
+	t.Run("insert", func(t *testing.T) {
+		database := openTargetTestDB(t)
+		store := NewStore(database)
+		ctx := t.Context()
+		target, profile := createPostgresTargetProfile(t, ctx, store)
+		if _, err := database.Exec(`DROP TABLE history_entries`); err != nil {
+			t.Fatalf("drop history projection: %v", err)
+		}
+
+		_, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+			TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+			ActionName: "query_readonly", Status: connectors.ResultRunning,
+		})
+		if err == nil {
+			t.Fatalf("insert should fail when its history projection cannot be written")
+		}
+		var count int
+		if err := database.QueryRow(`SELECT COUNT(*) FROM connector_action_requests`).Scan(&count); err != nil {
+			t.Fatalf("count canonical requests: %v", err)
+		}
+		if count != 0 {
+			t.Fatalf("failed history projection should roll back canonical insert, count=%d", count)
+		}
+	})
+
+	t.Run("claim", func(t *testing.T) {
+		database := openTargetTestDB(t)
+		store := NewStore(database)
+		ctx := t.Context()
+		target, profile := createPostgresTargetProfile(t, ctx, store)
+		request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+			TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+			ActionName: "query_readonly", Status: connectors.ResultApprovalPending,
+		})
+		if err != nil {
+			t.Fatalf("insert pending request: %v", err)
+		}
+		if _, err := database.Exec(`DROP TABLE history_entries`); err != nil {
+			t.Fatalf("drop history projection: %v", err)
+		}
+
+		if _, err := store.MarkActionRequestRunning(ctx, request.ID); err == nil {
+			t.Fatalf("claim should fail when its history projection cannot be written")
+		}
+		var status string
+		if err := database.QueryRow(`SELECT status FROM connector_action_requests WHERE id = ?`, request.ID).Scan(&status); err != nil {
+			t.Fatalf("read canonical request: %v", err)
+		}
+		if status != string(connectors.ResultApprovalPending) {
+			t.Fatalf("failed history projection should roll back claim, status=%s", status)
+		}
+	})
+
+	t.Run("finish", func(t *testing.T) {
+		database := openTargetTestDB(t)
+		store := NewStore(database)
+		ctx := t.Context()
+		target, profile := createPostgresTargetProfile(t, ctx, store)
+		request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+			TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+			ActionName: "query_readonly", Status: connectors.ResultRunning,
+		})
+		if err != nil {
+			t.Fatalf("insert running request: %v", err)
+		}
+		if _, err := database.Exec(`DROP TABLE history_entries`); err != nil {
+			t.Fatalf("drop history projection: %v", err)
+		}
+
+		if _, err := store.FinishActionRequest(ctx, FinishActionRequestInput{
+			ID: request.ID, Status: connectors.ResultCompleted, Output: map[string]any{"ok": true},
+		}); err == nil {
+			t.Fatalf("finish should fail when its history projection cannot be written")
+		}
+		var status string
+		if err := database.QueryRow(`SELECT status FROM connector_action_requests WHERE id = ?`, request.ID).Scan(&status); err != nil {
+			t.Fatalf("read canonical request: %v", err)
+		}
+		if status != string(connectors.ResultRunning) {
+			t.Fatalf("failed history projection should roll back terminal state, status=%s", status)
+		}
+	})
+}
+
 func TestStoreFinishActionRequestDoesNotOverwriteStaleRequest(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)

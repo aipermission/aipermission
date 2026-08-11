@@ -13,7 +13,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 type createConnectorTargetRequest struct {
@@ -869,15 +868,6 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 	})
 	if err != nil {
 		return 0, err
-	}
-	if len(result.IDs) == 0 {
-		return 0, nil
-	}
-	historyStore := history.NewStore(runtime.database)
-	for _, id := range result.IDs {
-		if err := historyStore.SyncConnectorActionRequest(ctx, id); err != nil {
-			return 0, err
-		}
 	}
 	return result.Affected, nil
 }
