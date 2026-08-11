@@ -1,7 +1,7 @@
 # Architecture Decisions
 
-This note records product-level decisions that should stay stable across the
-first public RC. Use it as a compact entry point before changing security,
+This note records product-level decisions that should stay stable across public
+releases. Use it as a compact entry point before changing security,
 storage, or MCP behavior.
 
 Detailed ADR files:

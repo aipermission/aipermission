@@ -1,6 +1,6 @@
 # Good First Issue Pool
 
-This pool is a starter list for GitHub issues after the first public RC. Keep
+This pool is a starter list for contributor-friendly GitHub issues. Keep
 issues small, scoped, and friendly to contributors who are learning the codebase.
 
 ## Documentation

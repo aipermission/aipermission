@@ -1,6 +1,6 @@
 # GitHub Labels
 
-Use a small label set at the first public RC. Labels should help triage without
+Use a small, stable label set. Labels should help triage without
 turning the project into process theater.
 
 | Label | Purpose |

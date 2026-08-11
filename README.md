@@ -248,8 +248,11 @@ To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
 `v`:
 
 ```bash
-AIPERMISSION_VERSION=0.2.23 docker compose -f docker-compose.release.yml up -d
+AIPERMISSION_VERSION=X.Y.Z docker compose -f docker-compose.release.yml up -d
 ```
+
+Replace `X.Y.Z` with the release version you want to run, without the leading
+`v`.
 
 On Windows, clone the repository with Git's default text handling or make sure
 shell scripts keep LF line endings. The repository includes `.gitattributes` and
@@ -658,7 +661,7 @@ Before publishing, run the full [release checklist](RELEASE_CHECKLIST.md).
 
 ## Contributing
 
-Contributions are welcome after the first public RC. Please read
+Contributions are welcome. Please read
 [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), and the
 [Code of Conduct](CODE_OF_CONDUCT.md) before opening issues or pull requests.
 

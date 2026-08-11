@@ -101,4 +101,5 @@ Status: implemented. A dedicated audit browsing UI can still be improved.
 - token revoke validation
 - public release hardening
 
-Status: in progress.
+Status: implemented. Ongoing connector additions and hardening follow the same
+shared permission, approval, history, and audit architecture.
