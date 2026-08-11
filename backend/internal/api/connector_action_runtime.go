@@ -56,7 +56,7 @@ type connectorActionExecutionSnapshot struct {
 func (a connectorSecretAccessor) GetSecret(_ context.Context, name string) (string, error) {
 	value, ok := a.values[name]
 	if !ok || value == nil {
-		return "", fmt.Errorf("connector secret %q not found", name)
+		return "", fmt.Errorf("%w: %q", connectors.ErrSecretNotFound, name)
 	}
 	switch typed := value.(type) {
 	case string:

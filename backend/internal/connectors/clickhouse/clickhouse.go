@@ -324,7 +324,11 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB, e
 	}
 	password := ""
 	if runtime.Secrets != nil {
-		password, _ = runtime.Secrets.GetSecret(ctx, "password")
+		var err error
+		password, err = runtime.Secrets.GetSecret(ctx, "password")
+		if err != nil && !errors.Is(err, connectors.ErrSecretNotFound) {
+			return nil, fmt.Errorf("resolve clickhouse password: %w", err)
+		}
 	}
 	host := targetString(runtime.Target.Config, "host")
 	database := targetString(runtime.Target.Config, "database")
