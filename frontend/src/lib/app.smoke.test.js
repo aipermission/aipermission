@@ -32,13 +32,13 @@ const connectorsSource = readFileSync(join(currentDir, "..", "pages", "connector
 const projectsSource = readFileSync(join(currentDir, "..", "pages", "projects.jsx"), "utf8");
 const tokensSource = readFileSync(join(currentDir, "..", "pages", "tokens.jsx"), "utf8");
 const credentialsSource = readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8");
-const fileTransferDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-dialog.jsx"), "utf8");
+const fileTransferDialogSource = readFileSync(join(currentDir, "..", "components", "file-transfer", "file-transfer-dialog.jsx"), "utf8");
 const fileTransferBrowserSource = readFileSync(
-  join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-browser-dialog.jsx"),
+  join(currentDir, "..", "components", "file-transfer", "file-transfer-browser-dialog.jsx"),
   "utf8",
 );
 const fileTransferConfirmSource = readFileSync(
-  join(currentDir, "..", "connectors", "templates", "ssh", "file-transfer-confirm-dialogs.jsx"),
+  join(currentDir, "..", "components", "file-transfer", "file-transfer-confirm-dialogs.jsx"),
   "utf8",
 );
 const bulkCommandDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "ssh", "bulk-command-dialog.jsx"), "utf8");
