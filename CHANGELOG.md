@@ -7,6 +7,29 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Added
+
+- Added bounded S3 multipart upload and recursive file-transfer queues with
+  progress, pause, cancellation, overwrite checks, and explicit count/byte
+  limits.
+- Added short-lived S3 download/upload URLs, object-version browsing and
+  deliberate restore/delete actions, plus bucket lifecycle visibility and
+  guarded policy replacement/deletion.
+- Added automatic encrypted-backup retention with preview/final-version
+  protection and provider quota/usage visibility.
+
+### Changed
+
+- Generalized connector file-transfer runtimes so SSH and S3 use the same
+  queue lifecycle without moving connector-specific transport behavior into
+  shared API code.
+
+### Security
+
+- Presigned URLs are limited to one exact key and at most one hour. Lifecycle
+  replacement, lifecycle deletion, and version deletion are explicit
+  destructive connector actions.
+
 ## [0.2.24] - 2026-08-11
 
 ### Changed

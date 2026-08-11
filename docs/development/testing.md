@@ -105,6 +105,20 @@ Then verify:
     response semantics. The IMAP library parses envelope/BODYSTRUCTURE data
     inside the 4 MiB connection budget; 10-level/100-part caps apply while the
     connector traverses the parsed tree.
+29. S3 Files browse a prefix with more than one page, use **Load more** without
+    losing prior entries/selections, expand a bounded prefix, and reject an
+    object over 512 MiB or a queue over 100 objects / 1 GiB before transfer.
+30. S3 upload uses conditional single PUT or multipart completion when
+    overwrite is disabled; a concurrent or repeated write cannot replace the
+    object. Presigned no-overwrite upload results expose the signed
+    `If-None-Match: *` required header.
+31. S3 version and lifecycle dialogs distinguish versions/delete markers,
+    paginate exact-key history, require destructive acknowledgement, and show
+    bounded lifecycle raw XML.
+32. Remote backup records show service quota/usage and retention policy in the
+    same dialog. Preview changes no state; save without **Apply now** reports no
+    deletion; save with it applies the preview while preserving the final
+    recovery version.
 
 ## npm Publish Checks
 

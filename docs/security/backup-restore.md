@@ -97,6 +97,15 @@ operator chooses how many newest versions to retain, with a minimum of one.
 Metadata deletion is transactional and remote blob cleanup is durably queued so
 an interrupted cleanup resumes instead of exposing a partially pruned listing.
 
+Automatic retention uses the same stream boundary and final-version guarantee.
+The local UI can preview exact retain/delete counts before changing policy.
+Saving with `apply_now` authorizes immediate deletion; saving without it defers
+enforcement until a later explicit successful upload. Quota and pending-delete
+values come from the backup service and do not expose the database password or
+SQLCipher key. A compromised or incompatible backup service can still delete
+or replace encrypted blobs, so keep another recovery copy for important data
+and treat service-protocol validation failures as hard errors.
+
 This does not make AIPermission a remote gateway. The separate backup service is
 a passive encrypted-blob store with no command execution, connector access,
 accounts, team model, or control plane. Continuous two-way sync and background

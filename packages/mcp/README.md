@@ -122,6 +122,13 @@ sensitive application data, and offset changes can replay or skip records, so
 keep these actions in Prompt mode unless direct execution is intentional. If a
 publish has an unknown delivery outcome, inspect before retrying.
 
+For S3, discover bounded object actions, temporary URL actions, object-version
+controls, and bucket lifecycle actions through `get_connector_actions`. Signed
+URLs are bearer credentials limited to one key and at most one hour. Read the
+current lifecycle policy before changing it: replacement and deletion affect
+the complete policy and are destructive. Keep version deletion and lifecycle
+changes in Prompt unless direct execution is deliberate.
+
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,
 `list_networks`, `list_volumes`, `inspect_container`, `container_logs`,

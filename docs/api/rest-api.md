@@ -693,9 +693,11 @@ approval queue:
 }
 ```
 
-Remote paths must be absolute file paths. Directory transfer, recursive copy,
-remote glob expansion, restart-surviving resumable transfers, and
-SSH-agent/ProxyJump based transfers are not part of this MVP.
+Remote paths must be absolute file paths. Bounded recursive selection is
+available through `/api/file-transfers/expand` when the connector implements
+the recursive transfer adapter. Arbitrary recursive copy, remote glob
+expansion, restart-surviving resumable transfers, and SSH-agent/ProxyJump based
+transfers are not part of this MVP.
 
 MCP uses connector actions instead of separate file-transfer HTTP endpoints.
 For SSH remote browsing and download queues, call `call_connector_action` with

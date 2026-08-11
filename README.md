@@ -154,9 +154,11 @@ Implemented:
   single-message publishing and inactive-group offset controls
   ([setup guide](docs/setup/kafka-redpanda.md))
 - built-in S3 connector with Direct and Over SSH connection modes,
-  S3-compatible bucket browsing, object metadata, bounded object
-  upload/download, rename, and delete actions, plus MCP-friendly folder/prefix
-  browsing hints for AI agents
+  S3-compatible bucket browsing, object metadata, bounded multipart and
+  recursive transfer queues, short-lived presigned URLs, object-version
+  restore/delete, explicit lifecycle policy controls, and MCP-friendly
+  folder/prefix browsing hints for AI agents
+  ([setup guide](docs/setup/s3.md))
 - built-in Docker connector over an SSH transport profile, with scoped
   container/image/network/volume inventory, redacted inspect metadata, bounded
   logs, scoped container exec, live container console, and explicit
@@ -214,7 +216,9 @@ Implemented:
 Out of scope for the current MVP:
 
 - advanced command risk analysis
-- directory transfer, recursive copy, remote glob expansion, and restart-surviving resumable file transfers
+- arbitrary recursive copy, remote glob expansion, and restart-surviving
+  resumable file transfers. The S3 connector supports bounded recursive
+  selection inside the documented 100-object / 1-GiB queue limits.
 
 ## Quick Start
 
@@ -434,14 +438,16 @@ before retrying.
 
 For S3, call `get_connector_actions(target_ref)` to discover actions such as
 `bucket_info`, `list_objects`, `get_object_metadata`, `download_object`,
-`upload_object`, `rename_object`, and `delete_object`. Use `prefix` and
-directory `browse_input` values to browse folder-like object groups, and use
-`cursor` or `next_page_input` for pagination. Object content may contain
-secrets; use `get_object_metadata` before downloading content, keep
-`overwrite=false` unless replacement was explicitly approved, and treat delete
-as destructive. Downloads and uploads are bounded connector actions and large
-transfer-center style object movement is intentionally out of scope for the S3
-connector.
+`upload_object`, `rename_object`, `delete_object`, `presign_download`,
+`presign_upload`, `list_object_versions`, and the bucket lifecycle actions.
+Use `prefix` and directory `browse_input` values to browse folder-like object
+groups, and use `cursor` or `next_page_input` for pagination. The Files dialog
+provides bounded recursive queues and multipart uploads for larger objects,
+with visible progress, pause, cancellation, count, and byte limits. Object
+content may contain secrets; use `get_object_metadata` before downloading
+content and keep `overwrite=false` unless replacement was explicitly approved.
+Presigned URLs are temporary bearer credentials. Version deletion and complete
+lifecycle replacement/deletion are destructive and should remain Prompt-first.
 
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,
@@ -521,7 +527,7 @@ Important boundaries:
 - The database password can be changed from Settings while the current password is known.
 - The database password is escaped before SQLCipher key/rekey handling, so quotes or semicolons in the password cannot change PRAGMA SQL parsing.
 - Connector action input, command text, action output, notes, console transcripts, and audit payloads may be stored in the encrypted local database. Basic redaction is enabled by default for common secret patterns, and Security can add custom regex rules that are stored inside the encrypted database. Redaction is best-effort. Approval execution keeps the raw action payload in an encrypted internal envelope so redaction never changes what runs. A pending local approval may transiently decrypt its exact bounded prepared preview so the operator can review what will execute; normal UI lists, MCP responses, messages, history, audit fields, and the persisted preview stay redacted. Do not put secrets directly in connector action inputs, commands, or prompts, and use judgment when asking AI to inspect files or environment values.
-- File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, speed, ETA, checksum, and errors only. Uploads are staged to a temporary remote file and moved into place only after completion, so canceled uploads do not leave partial target files behind. Download queues are capped at 1 GiB total remote file size. Pause/resume works for the active local gateway process; if the gateway, Docker container, or computer restarts, unfinished transfer queues should be started again. The local web UI owns full upload/download queue management. MCP uses the generic connector-action tools; today the SSH connector exposes remote browsing and remote-to-local download queue creation through `browse_remote_files` and `start_file_download`. MCP transfer responses never include file contents, gateway temporary paths, or archive staging paths.
+- File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, speed, ETA, checksum, and errors only. SSH uploads use a remote temporary file followed by rename. S3 uploads use conditional single PUT or multipart completion, and failed multipart uploads are aborted. Download queues are capped at 100 objects, 512 MiB per object, and 1 GiB total remote size. Pause/resume works for the active local gateway process; if the gateway, Docker container, or computer restarts, unfinished transfer queues should be started again. The local web UI owns full queue management. MCP uses generic connector actions and never receives file contents, gateway temporary paths, or archive staging paths.
 - Secret fields are also encrypted with the gateway vault secret inside the SQLCipher database.
 - The gateway vault secret is sensitive. Losing it prevents vault payload decryption; exposing it together with unlocked database contents compromises vault-protected payloads.
 - `AIPERMISSION_GATEWAY_SECRET` is optional and should be left unset for normal local installs. The gateway auto-generates a high-entropy local vault secret at startup. If it is set explicitly for advanced local testing, use at least 32 random characters.
@@ -551,9 +557,10 @@ During one backend process, multiple named databases can stay unlocked. `Switch`
 
 The optional self-hosted AIPermission Backup service stores immutable encrypted
 versions for the database's stable lineage id. Settings can download, restore,
-delete selected historical versions, or prune older versions while preserving a
-chosen newest count. The service always protects the final recovery version in
-a stream. After unlock, AIPermission checks active providers once and warns when
+delete selected historical versions, prune older versions, inspect storage
+quota, or configure automatic keep-latest retention for one stream. Retention
+can be previewed before it is saved or applied immediately. The service always
+protects the final recovery version in a stream. After unlock, AIPermission checks active providers once and warns when
 the remote stream is newer than the version last uploaded or restored by this
 encrypted local database. See the
 [AIPermission Backup guide](docs/providers/aipermission-backup.md).

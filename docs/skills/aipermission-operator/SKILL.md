@@ -203,6 +203,19 @@ prefer this sequence:
    operator explicitly approved replacement.
 7. Treat `delete_object` as destructive and ask for explicit confirmation if
    approval mode does not already provide it.
+8. Use `presign_download` and `presign_upload` only for one exact object key
+   and keep expiry between 60 and 3600 seconds. The returned URL is a temporary
+   bearer credential. When an upload result includes `required_headers`, send
+   every listed header unchanged; no-overwrite URLs require the signed
+   `If-None-Match: *` header.
+9. Use `list_object_versions` before `restore_object_version` or
+   `delete_object_version`. Restoring creates a new current version; deleting
+   an exact version or delete marker is permanent.
+10. Read `get_bucket_lifecycle` before changing retention. The bounded
+    `replace_bucket_lifecycle` action replaces every existing rule with one
+    explicit rule; `delete_bucket_lifecycle` removes the complete policy.
+11. Keep lifecycle replacement, lifecycle deletion, and version deletion in
+    Prompt unless the operator deliberately trusts that exact workflow.
 
 Object content may contain secrets or customer data. Avoid downloading or
 echoing object contents unless the operator asked for that exact object.
