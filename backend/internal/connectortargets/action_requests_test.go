@@ -79,6 +79,66 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreActionRequestIdempotency(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := t.Context()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+	input := InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: "postgres", ActionName: "query_readonly",
+		Input: map[string]any{"sql": "select 1"}, Status: connectors.ResultApprovalPending,
+		IdempotencyKey: "stable-request", IdempotencyIdentityHash: "identity-one",
+	}
+	first, created, err := store.InsertActionRequestIdempotent(ctx, input)
+	if err != nil || !created {
+		t.Fatalf("create idempotent request: created=%v err=%v", created, err)
+	}
+	second, created, err := store.InsertActionRequestIdempotent(ctx, input)
+	if err != nil || created || second.ID != first.ID {
+		t.Fatalf("replay request: first=%d second=%d created=%v err=%v", first.ID, second.ID, created, err)
+	}
+	input.IdempotencyIdentityHash = "identity-two"
+	if _, _, err := store.InsertActionRequestIdempotent(ctx, input); !errors.Is(err, ErrActionRequestIdempotency) {
+		t.Fatalf("conflicting identity error = %v", err)
+	}
+	var requestCount, historyCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM connector_action_requests WHERE idempotency_key = ?`, input.IdempotencyKey).Scan(&requestCount); err != nil {
+		t.Fatalf("count requests: %v", err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM history_entries WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, first.ID).Scan(&historyCount); err != nil {
+		t.Fatalf("count history: %v", err)
+	}
+	if requestCount != 1 || historyCount != 1 {
+		t.Fatalf("idempotent projection counts request=%d history=%d", requestCount, historyCount)
+	}
+	secondToken, err := database.Exec(`
+		INSERT INTO api_tokens (name, token_hash, token_prefix, created_at, updated_at)
+		VALUES ('connector-codex-two', 'connector-hash-two', 'aip_two', datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatalf("insert second token: %v", err)
+	}
+	secondTokenID, err := secondToken.LastInsertId()
+	if err != nil {
+		t.Fatalf("second token id: %v", err)
+	}
+	input.TokenID = &secondTokenID
+	input.IdempotencyIdentityHash = "identity-for-token-two"
+	if _, created, err := store.InsertActionRequestIdempotent(ctx, input); err != nil || !created {
+		t.Fatalf("same caller key in a second token scope: created=%v err=%v", created, err)
+	}
+	if _, err := database.Exec(`DELETE FROM api_tokens WHERE id IN (?, ?)`, tokenID, secondTokenID); err != nil {
+		t.Fatalf("delete tokens while retaining idempotent history: %v", err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM connector_action_requests WHERE token_id IS NULL AND idempotency_key = ?`, input.IdempotencyKey).Scan(&requestCount); err != nil {
+		t.Fatalf("count retained requests: %v", err)
+	}
+	if requestCount != 2 {
+		t.Fatalf("retained idempotent requests=%d", requestCount)
+	}
+}
+
 func TestStoreActionRequestHistoryProjectionIsAtomic(t *testing.T) {
 	t.Run("insert", func(t *testing.T) {
 		database := openTargetTestDB(t)

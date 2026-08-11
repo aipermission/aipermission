@@ -185,7 +185,7 @@ Keep the public MCP surface connector-first:
 list_connector_targets()
 get_connector_help(target_ref)
 get_connector_actions(target_ref)
-call_connector_action(target_ref, action_name, input?, reason?)
+call_connector_action(target_ref, action_name, input?, reason?, idempotency_key?)
 get_connector_action_request(request_id)
 list_vault_items(project_ref?)
 call_vault_action(project_ref, action_name, input, reason, idempotency_key)

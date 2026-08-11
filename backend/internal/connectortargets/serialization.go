@@ -22,6 +22,7 @@ var (
 	ErrActionPermissionNotFound = errors.New("connector action permission not found")
 	ErrActionRequestNotFound    = errors.New("connector action request not found")
 	ErrActionRequestNotPending  = errors.New("connector action request is not pending")
+	ErrActionRequestIdempotency = errors.New("connector action idempotency key was already used for a different request")
 )
 
 func jsonObjectString(value map[string]any) (string, error) {
@@ -197,6 +198,7 @@ func actionRequestSelectSQL() string {
 			r.source, r.input_json, r.encrypted_payload_json,
 			r.reason, r.status, r.output_json, r.display_text, r.error,
 			r.approval_context, r.approval_context_hash, r.approval_context_drift,
+			r.idempotency_key, r.idempotency_identity_hash,
 			r.session_id, r.session_generation,
 			r.created_at, r.completed_at
 		FROM connector_action_requests r
@@ -238,6 +240,8 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 		&request.ApprovalContext,
 		&request.ApprovalContextHash,
 		&request.ApprovalContextDrift,
+		&request.IdempotencyKey,
+		&request.IdempotencyIdentityHash,
 		&sessionID,
 		&sessionGeneration,
 		&request.CreatedAt,
@@ -290,6 +294,12 @@ func validateActionRequestInput(input InsertActionRequestInput) error {
 	}
 	if !validActionRequestStatus(input.Status) {
 		return ValidationError("invalid action request status")
+	}
+	if len(strings.TrimSpace(input.IdempotencyKey)) > 128 {
+		return ValidationError("idempotency_key is too long")
+	}
+	if strings.TrimSpace(input.IdempotencyKey) != "" && strings.TrimSpace(input.IdempotencyIdentityHash) == "" {
+		return ValidationError("idempotency identity hash is required")
 	}
 	return nil
 }

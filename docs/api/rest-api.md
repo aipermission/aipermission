@@ -1189,6 +1189,12 @@ operator connector consoles. It runs one connector action as source `manual`
 without MCP token permission checks, stores the action request in the shared
 connector history/audit pipeline, and is protected by the UI session plus CSRF.
 MCP clients must use `POST /api/mcp/connector-actions/call` instead.
+Both endpoints accept an optional `idempotency_key` of at most 128 characters.
+The browser generates one per deliberate local submission and retains it after
+an uncertain network failure. A replay with the same caller scope and request
+identity returns the original request with `replayed: true`; it does not execute
+again or reset approval age. Reusing the key with different target/profile,
+action, input, or reason returns `409 Conflict`.
 
 `GET /api/history/targets` returns target/profile facets derived from
 `history_entries`, not only currently active connector targets. Use it for

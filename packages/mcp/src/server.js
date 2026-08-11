@@ -69,13 +69,15 @@ server.tool(
     action_name: z.string().min(1).describe("Action name from get_connector_actions."),
     input: z.record(z.unknown()).optional().describe("Connector-specific action input."),
     reason: z.string().optional().describe("Why this connector action is needed."),
+    idempotency_key: z.string().min(1).max(128).optional().describe("Caller-stable key that makes retries return the original request without running twice."),
   },
-  async ({ target_ref, action_name, input, reason }) => {
+  async ({ target_ref, action_name, input, reason, idempotency_key }) => {
     return jsonToolResult(() => apiPost("/api/mcp/connector-actions/call", {
       target_ref,
       action_name,
       input: input || {},
       reason: reason || "",
+      idempotency_key,
     }));
   }
 );
