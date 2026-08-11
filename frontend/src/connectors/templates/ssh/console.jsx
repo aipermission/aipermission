@@ -3,7 +3,7 @@ import { useState } from "react";
 import { CountBadge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { BulkCommandDialog } from "./bulk-command-dialog";
-import { FileTransferDialog } from "./file-transfer-dialog";
+import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
 
 export function SSHConnectorConsoleTemplate({ children }) {
   return children;
@@ -95,7 +95,25 @@ export function SSHConnectorToolbarActionsTemplate({
         <Square className="h-3.5 w-3.5" />
         Interrupt
       </Button>
-      <FileTransferDialog open={filesOpen} server={selectedRuntimeTarget} onClose={() => setFilesOpen(false)} />
+      <FileTransferDialog
+        open={filesOpen}
+        runtimeTarget={
+          selectedRuntimeTarget
+            ? {
+                ...selectedRuntimeTarget,
+                id: selectedRuntimeTarget.target?.transfer_runtime_id || selectedRuntimeTarget.id,
+                subtitle: `${selectedRuntimeTarget.username}@${selectedRuntimeTarget.host}:${selectedRuntimeTarget.port}`,
+              }
+            : null
+        }
+        options={{
+          transportLabel: "SFTP",
+          defaultDirectory: "/home",
+          notice:
+            "File transfers use SFTP over the target's existing gateway key. AIPermission stores transfer history metadata only; file contents use short-lived local staging files under the data directory.",
+        }}
+        onClose={() => setFilesOpen(false)}
+      />
       <BulkCommandDialog
         open={bulkOpen}
         targets={liveConsoleTargets}

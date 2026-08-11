@@ -1,12 +1,12 @@
 import { File, Folder, RefreshCcw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button } from "../../../components/ui/button";
-import { Dialog } from "../../../components/ui/dialog";
-import { Field, Input } from "../../../components/ui/form";
-import { Notice } from "../../../components/ui/notice";
-import { formatBytes, formatShortDate } from "../../../lib/file-transfer-utils";
+import { Button } from "../ui/button";
+import { Dialog } from "../ui/dialog";
+import { Field, Input } from "../ui/form";
+import { Notice } from "../ui/notice";
+import { formatBytes, formatShortDate } from "../../lib/file-transfer-utils";
 
-export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, onUseDirectory, onAddFiles, queuedPaths }) {
+export function RemoteBrowserDialog({ browser, transportLabel = "the connector", onClose, onLoad, onPathChange, onUseDirectory, onAddFiles, queuedPaths, recursive }) {
   const [selectedFiles, setSelectedFiles] = useState({});
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, on
   const selectedCount = selectedList.length;
 
   function toggleFile(entry) {
-    if (!entry || entry.type !== "file" || queuedPaths?.has(entry.path)) return;
+    if (!entry || (entry.type !== "file" && !(recursive && entry.type === "directory")) || queuedPaths?.has(entry.path)) return;
     setSelectedFiles((current) => {
       const next = { ...current };
       if (next[entry.path]) {
@@ -45,7 +45,7 @@ export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, on
     <Dialog
       open={browser.open}
       title={browser.purpose === "upload" ? "Choose remote folder" : "Add remote files"}
-      description="Browse the selected target over SFTP."
+      description={`Browse the selected target over ${transportLabel}.`}
       onClose={onClose}
       size="xl"
       className="max-h-[calc(100vh-80px)]"
@@ -116,7 +116,7 @@ export function RemoteBrowserDialog({ browser, onClose, onLoad, onPathChange, on
                     key={entry.path}
                     className="grid w-full grid-cols-[24px_24px_minmax(0,1fr)_120px_170px] items-center gap-3 border-b border-stone-100 px-3 py-2 text-left text-sm transition hover:bg-stone-50"
                   >
-                    {entry.type === "file" && browser.purpose === "download" ? (
+                    {browser.purpose === "download" && (entry.type === "file" || (recursive && entry.type === "directory")) ? (
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-stone-300 accent-emerald-700"

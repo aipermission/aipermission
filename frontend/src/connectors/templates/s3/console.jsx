@@ -1,5 +1,6 @@
-import { CornerUpLeft, Database, Download, FileUp, Folder, Pencil, Plus, RefreshCcw, Search, Trash2, X } from "lucide-react";
+import { CornerUpLeft, Database, Download, FileUp, Folder, Pencil, Plus, RefreshCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
@@ -35,6 +36,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const [metadata, setMetadata] = useState(null);
   const [metadataSearch, setMetadataSearch] = useState("");
   const [uploadDialog, setUploadDialog] = useState(defaultUploadDialog);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [renameDialog, setRenameDialog] = useState(defaultRenameDialog);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
@@ -76,6 +78,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     setMetadata(null);
     setMetadataSearch("");
     setUploadDialog(defaultUploadDialog);
+    setTransferOpen(false);
     setRenameDialog(defaultRenameDialog);
     setState({ state: "idle", error: "", message: "" });
   }, [target.ref, activeSession.active, activeSession.startedAt]);
@@ -445,7 +448,17 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
                   type="button"
                   variant="outline"
                   className="h-8 w-8 px-0"
-                  title="Upload objects"
+                  title="Transfer files and folders"
+                  onClick={() => setTransferOpen(true)}
+                  disabled={state.state !== "idle" || !target.transfer_runtime_id}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-8 px-0"
+                  title="Create a small object"
                   onClick={openUploadDialog}
                   disabled={state.state !== "idle"}
                 >
@@ -628,6 +641,29 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
         </section>
       </div>
       <S3EndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
+      <FileTransferDialog
+        open={transferOpen}
+        runtimeTarget={
+          target.transfer_runtime_id
+            ? {
+                id: target.transfer_runtime_id,
+                name: target.target_name || target.name || "S3 target",
+                subtitle: `${target.config?.scheme || "https"}://${target.config?.host || "s3.amazonaws.com"}:${target.config?.port || 443}/${target.config?.bucket || "bucket"}`,
+              }
+            : null
+        }
+        options={{
+          transportLabel: "S3 object storage",
+          defaultDirectory: "/",
+          recursive: true,
+          notice:
+            "S3 transfers use bounded queues with multipart uploads, progress, pause, cancel, and short-lived local staging. A paused transfer resumes only while this gateway process remains running.",
+        }}
+        onClose={() => {
+          setTransferOpen(false);
+          void refreshObjects({ reset: true });
+        }}
+      />
       <S3UploadDialog
         value={uploadDialog}
         theme={theme}
