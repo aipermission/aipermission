@@ -14,10 +14,6 @@ import (
 )
 
 func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn, error) {
-	return connectPostgres(ctx, runtime, true)
-}
-
-func connectPostgres(ctx context.Context, runtime connectors.RuntimeContext, readOnly bool) (*pgx.Conn, error) {
 	username := strings.TrimSpace(publicString(runtime.Profile.Public, "username"))
 	if username == "" {
 		return nil, fmt.Errorf("%w: username", ErrMissingSecret)

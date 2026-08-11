@@ -63,7 +63,7 @@ func (Connector) ProvisionCredentialProfile(ctx context.Context, runtime connect
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
-	conn, err := connectPostgres(ctx, runtime, false)
+	conn, err := connect(ctx, runtime)
 	if err != nil {
 		return connectors.ProvisionedCredentialProfile{}, err
 	}
@@ -167,7 +167,7 @@ func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtim
 	}
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
-	conn, err := connectPostgres(ctx, runtime, false)
+	conn, err := connect(ctx, runtime)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
