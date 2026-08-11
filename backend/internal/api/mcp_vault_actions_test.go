@@ -335,7 +335,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	var startAudits, completeAudits int
 	if err := fixture.db.QueryRow(`
 		SELECT
-			SUM(CASE WHEN action = 'mcp.vault_action.always_run_requested' THEN 1 ELSE 0 END),
+			SUM(CASE WHEN action = 'mcp.vault_action.request.created' THEN 1 ELSE 0 END),
 			SUM(CASE WHEN action = 'mcp.vault_action.completed' THEN 1 ELSE 0 END)
 		FROM audit_logs
 		WHERE token_id = ?`, token.ID,

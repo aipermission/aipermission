@@ -112,11 +112,13 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	auditResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs?connector_kind="+localActionTestConnectorKind+"&target_id="+strconv.FormatInt(target.ID, 10), "", nil)
 	assertOKWithoutCredential("audit list response", auditResponse.Body.String(), auditResponse.Code)
 	auditPage := decodeRouteResponse[pageResponse[auditLogRecord]](t, auditResponse.Body.Bytes())
-	if len(auditPage.Items) != 1 {
-		t.Fatalf("expected one connector audit item, got %#v", auditPage)
+	if len(auditPage.Items) < 3 {
+		t.Fatalf("expected connector request lifecycle audit items, got %#v", auditPage)
 	}
-	auditDetailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs/"+strconv.FormatInt(auditPage.Items[0].ID, 10), "", nil)
-	assertOKWithoutCredential("audit detail response", auditDetailResponse.Body.String(), auditDetailResponse.Code)
+	for _, auditItem := range auditPage.Items {
+		auditDetailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs/"+strconv.FormatInt(auditItem.ID, 10), "", nil)
+		assertOKWithoutCredential("audit detail response", auditDetailResponse.Body.String(), auditDetailResponse.Code)
+	}
 
 	var persistedSecretReferences int
 	if err := fixture.db.QueryRowContext(ctx, `
