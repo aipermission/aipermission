@@ -20,6 +20,8 @@ jobs:
           node-version: 24
       - name: Secret scan
         run: node scripts/secret-scan.js
+      - name: Repository history secret scan
+        run: sh scripts/gitleaks-history-scan.sh
       - name: Line ending check
         run: node scripts/line-ending-check.js
       - name: Go toolchain consistency

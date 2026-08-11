@@ -25,6 +25,8 @@ make release-check
 This runs:
 
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
+- pinned Gitleaks scanning across current files and complete Git history, with
+  exact synthetic-fixture fingerprints allowlisted in `.gitleaksignore`
 - release-version and native-dependency inventory consistency checks
 - generated OpenAPI route and typed-schema drift
 - backend unit tests with an aggregate summary and reviewed floors for auth,

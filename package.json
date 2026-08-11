@@ -13,6 +13,7 @@
     "build": "make build",
     "audit": "make audit",
     "hygiene": "node scripts/secret-scan.js && node scripts/line-ending-check.js && node scripts/maintenance-budget-check.js && node scripts/release-version.js --check && node scripts/native-dependency-check.js",
+    "security:history": "sh scripts/gitleaks-history-scan.sh",
     "version:check": "node scripts/release-version.js --check",
     "version:set": "node scripts/release-version.js --set",
     "release-check": "make release-check"

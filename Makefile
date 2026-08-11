@@ -1,4 +1,4 @@
-.PHONY: help hygiene rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -7,6 +7,7 @@ help:
 		'  make build           Build frontend and MCP package' \
 		'  make audit           Run frontend and MCP production audits' \
 		'  make hygiene         Run repository security and maintenance checks' \
+		'  make secret-history-check  Scan current files and Git history for secrets' \
 		'  make rest-contract   Regenerate the incremental typed OpenAPI contract' \
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
@@ -16,6 +17,9 @@ help:
 
 hygiene:
 	npm run hygiene
+
+secret-history-check:
+	npm run security:history
 
 rest-contract:
 	cd backend && go run ./cmd/openapi -routes internal/api/routes.go -output ../docs/api/openapi.json
@@ -92,7 +96,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene rest-contract-check backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build
