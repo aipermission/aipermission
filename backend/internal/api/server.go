@@ -33,6 +33,8 @@ type Server struct {
 	lifecycleMu          sync.RWMutex
 	maintenanceConsole   *maintenanceConsoleRuntime
 	authLimiter          *authRateLimiter
+	mcpIPAuthLimiter     *authRateLimiter
+	mcpTokenAuthLimiter  *authRateLimiter
 	vaultRevealLimiter   *windowRateLimiter
 	vaultGenerateLimiter *windowRateLimiter
 	vaultRequestLimiter  *windowRateLimiter
@@ -117,6 +119,8 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		mux:                  http.NewServeMux(),
 		maintenanceConsole:   newMaintenanceConsoleRuntime(),
 		authLimiter:          newAuthRateLimiter(),
+		mcpIPAuthLimiter:     newMCPGlobalAuthRateLimiter(),
+		mcpTokenAuthLimiter:  newAuthRateLimiter(),
 		vaultRevealLimiter:   newWindowRateLimiter(8, time.Minute),
 		vaultGenerateLimiter: newWindowRateLimiter(10, time.Minute),
 		vaultRequestLimiter:  newWindowRateLimiter(30, time.Minute),
@@ -158,6 +162,8 @@ func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 		mux:                  http.NewServeMux(),
 		maintenanceConsole:   newMaintenanceConsoleRuntime(),
 		authLimiter:          newAuthRateLimiter(),
+		mcpIPAuthLimiter:     newMCPGlobalAuthRateLimiter(),
+		mcpTokenAuthLimiter:  newAuthRateLimiter(),
 		vaultRevealLimiter:   newWindowRateLimiter(8, time.Minute),
 		vaultGenerateLimiter: newWindowRateLimiter(10, time.Minute),
 		vaultRequestLimiter:  newWindowRateLimiter(30, time.Minute),

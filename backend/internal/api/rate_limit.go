@@ -11,9 +11,16 @@ import (
 const maxAuthRateLimitEntries = 1024
 const authRateLimitLockoutFailures = 8
 
+const (
+	mcpGlobalDelayFailures   = 32
+	mcpGlobalLockoutFailures = 64
+)
+
 type authRateLimiter struct {
-	mu      sync.Mutex
-	entries map[string]authRateLimitEntry
+	mu              sync.Mutex
+	entries         map[string]authRateLimitEntry
+	delayFailures   int
+	lockoutFailures int
 }
 
 type authRateLimitEntry struct {
@@ -61,7 +68,19 @@ func (l *windowRateLimiter) allow(key string) bool {
 }
 
 func newAuthRateLimiter() *authRateLimiter {
-	return &authRateLimiter{entries: map[string]authRateLimitEntry{}}
+	return newConfiguredAuthRateLimiter(1, authRateLimitLockoutFailures)
+}
+
+func newMCPGlobalAuthRateLimiter() *authRateLimiter {
+	return newConfiguredAuthRateLimiter(mcpGlobalDelayFailures, mcpGlobalLockoutFailures)
+}
+
+func newConfiguredAuthRateLimiter(delayFailures int, lockoutFailures int) *authRateLimiter {
+	return &authRateLimiter{
+		entries:         map[string]authRateLimitEntry{},
+		delayFailures:   delayFailures,
+		lockoutFailures: lockoutFailures,
+	}
 }
 
 func (l *authRateLimiter) wait(ctx context.Context, key string) error {
@@ -82,15 +101,16 @@ func (l *authRateLimiter) wait(ctx context.Context, key string) error {
 func (l *authRateLimiter) recordFailure(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.pruneLocked(time.Now())
+	now := time.Now()
+	l.pruneLocked(now)
 	entry := l.entries[key]
 	entry.failures++
-	now := time.Now()
 	entry.lastSeen = now
-	if entry.failures >= authRateLimitLockoutFailures {
+	if entry.failures >= l.lockoutFailures {
 		entry.lockedUntil = now.Add(1 * time.Minute)
 	}
 	l.entries[key] = entry
+	l.pruneLocked(now)
 }
 
 func (l *authRateLimiter) recordSuccess(key string) {
@@ -107,10 +127,10 @@ func (l *authRateLimiter) delay(key string) time.Duration {
 	if entry.lockedUntil.After(time.Now()) {
 		return time.Until(entry.lockedUntil)
 	}
-	if entry.failures == 0 || time.Since(entry.lastSeen) > 10*time.Minute {
+	if entry.failures < l.delayFailures || time.Since(entry.lastSeen) > 10*time.Minute {
 		return 0
 	}
-	shift := entry.failures - 1
+	shift := entry.failures - l.delayFailures
 	if shift > 4 {
 		shift = 4
 	}
