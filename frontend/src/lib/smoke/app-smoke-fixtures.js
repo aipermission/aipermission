@@ -37,7 +37,10 @@ export const connectorsSource = [
 ].join("\n");
 export const projectsSource = readFileSync(join(currentDir, "..", "pages", "projects.jsx"), "utf8");
 export const tokensSource = readFileSync(join(currentDir, "..", "pages", "tokens.jsx"), "utf8");
-export const credentialsSource = readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8");
+export const credentialsSource = [
+  readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8"),
+  readFileSync(join(currentDir, "..", "connectors", "editor", "use-credential-profile-editor.js"), "utf8"),
+].join("\n");
 export const fileTransferDialogSource = readFileSync(
   join(currentDir, "..", "components", "file-transfer", "file-transfer-dialog.jsx"),
   "utf8",
