@@ -7,6 +7,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.24] - 2026-08-11
+
 ### Changed
 
 - Added one canonical release manifest plus a hygiene check that keeps the UI,
