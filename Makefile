@@ -1,4 +1,4 @@
-.PHONY: help hygiene backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -9,6 +9,7 @@ help:
 		'  make hygiene         Run repository security and maintenance checks' \
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
+		'  make connector-conformance  Test protocol connectors against disposable real services' \
 		'  make release-check   Run the local RC verification set' \
 		'  make docker-up       Build and start the local Docker stack'
 
@@ -26,6 +27,24 @@ backend-vet:
 
 backend-vuln:
 	cd backend && govulncheck ./...
+
+connector-conformance:
+	@set -eu; \
+		compose='docker compose -p aipermission-conformance -f backend/testdata/connector-conformance/compose.yml'; \
+		trap "$$compose down -v --remove-orphans" EXIT; \
+		$$compose up -d --wait postgres valkey rabbitmq minio; \
+		$$compose run --rm minio-init; \
+		postgres_port=$$($$compose port postgres 5432 | sed 's/.*://'); \
+		valkey_port=$$($$compose port valkey 6379 | sed 's/.*://'); \
+		rabbitmq_port=$$($$compose port rabbitmq 15672 | sed 's/.*://'); \
+		s3_port=$$($$compose port minio 9000 | sed 's/.*://'); \
+		(cd backend && \
+			AIPERMISSION_CONFORMANCE=1 \
+			AIPERMISSION_POSTGRES_PORT="$$postgres_port" \
+			AIPERMISSION_VALKEY_PORT="$$valkey_port" \
+			AIPERMISSION_RABBITMQ_PORT="$$rabbitmq_port" \
+			AIPERMISSION_S3_PORT="$$s3_port" \
+			go test ./internal/connectors/conformance -count=1 -v)
 
 frontend-lint:
 	cd frontend && npm run lint
