@@ -941,6 +941,10 @@ POST /api/backup/providers/{id}/enable
 POST /api/backup/providers/{id}/test
 GET  /api/backup/freshness
 GET  /api/backup/providers/{id}/records
+GET  /api/backup/providers/{id}/storage
+GET  /api/backup/providers/{id}/retention
+POST /api/backup/providers/{id}/retention/preview
+PUT  /api/backup/providers/{id}/retention
 POST /api/backup/providers/{id}/upload
 POST /api/backup/providers/{id}/prune
 POST /api/backup/providers/{id}/records/delete
@@ -986,6 +990,18 @@ connected provider, and stores a local backup record with provider file id,
 filename, size, checksum, source installation, and timestamps. The service
 receives the encrypted database bytes and its own bearer token, but never the
 database password.
+
+`GET /api/backup/providers/{id}/storage` returns service-reported storage usage,
+quota, remaining capacity, backup/stream counts, and pending remote deletions.
+A failed service check is returned as an error; clients must not render it as
+zero usage or healthy capacity.
+
+`GET /api/backup/providers/{id}/retention` returns the current stream policy.
+`POST .../retention/preview` accepts `{"keep_latest": 10}` and reports the exact
+version/byte counts that would be retained and deleted. `PUT .../retention`
+accepts `enabled`, `keep_latest`, and `apply_now`; enabling requires a bounded
+count from 1 to 1000. The backup service always protects the final recovery
+version. Policy changes and applied deletion counts are audited.
 
 `POST /api/backup/providers/{id}/prune` accepts `{"keep_latest": 10}` with a
 bounded value from 1 to 1000. It permanently removes only older versions from

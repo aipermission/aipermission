@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"net"
 	"net/http"
@@ -41,23 +42,56 @@ type ServiceInfo struct {
 }
 
 type ServiceBackup struct {
-	ID                   string `json:"id"`
-	StreamID             string `json:"stream_id"`
-	DatabaseName         string `json:"database_name"`
-	SourceInstallationID string `json:"source_installation_id"`
-	Filename             string `json:"filename"`
-	SizeBytes            int64  `json:"size_bytes"`
-	SHA256               string `json:"sha256"`
-	CreatedAt            string `json:"created_at"`
+	ID                    string `json:"id"`
+	StreamID              string `json:"stream_id"`
+	DatabaseName          string `json:"database_name"`
+	SourceInstallationID  string `json:"source_installation_id"`
+	Filename              string `json:"filename"`
+	SizeBytes             int64  `json:"size_bytes"`
+	SHA256                string `json:"sha256"`
+	CreatedAt             string `json:"created_at"`
+	RetentionDeletedCount int    `json:"retention_deleted_count,omitempty"`
 }
 
 type ServiceStream struct {
-	ID           string         `json:"id"`
-	DatabaseName string         `json:"database_name"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	BackupCount  int64          `json:"backup_count"`
-	LatestBackup *ServiceBackup `json:"latest_backup,omitempty"`
+	ID                  string         `json:"id"`
+	DatabaseName        string         `json:"database_name"`
+	CreatedAt           string         `json:"created_at"`
+	UpdatedAt           string         `json:"updated_at"`
+	BackupCount         int64          `json:"backup_count"`
+	RetentionKeepLatest *int           `json:"retention_keep_latest,omitempty"`
+	LatestBackup        *ServiceBackup `json:"latest_backup,omitempty"`
+}
+
+type ServiceStorageUsage struct {
+	UsedBytes        int64  `json:"used_bytes"`
+	QuotaEnabled     bool   `json:"quota_enabled"`
+	QuotaBytes       int64  `json:"quota_bytes,omitempty"`
+	RemainingBytes   *int64 `json:"remaining_bytes,omitempty"`
+	BackupCount      int64  `json:"backup_count"`
+	StreamCount      int64  `json:"stream_count"`
+	PendingDeletions int64  `json:"pending_deletions"`
+}
+
+type ServiceRetentionPolicy struct {
+	StreamID   string `json:"stream_id"`
+	Enabled    bool   `json:"enabled"`
+	KeepLatest int    `json:"keep_latest,omitempty"`
+}
+
+type ServiceRetentionPreview struct {
+	StreamID    string `json:"stream_id"`
+	KeepLatest  int    `json:"keep_latest"`
+	RetainCount int    `json:"retain_count"`
+	RetainBytes int64  `json:"retain_bytes"`
+	DeleteCount int    `json:"delete_count"`
+	DeleteBytes int64  `json:"delete_bytes"`
+}
+
+type ServiceRetentionUpdate struct {
+	Policy       ServiceRetentionPolicy  `json:"policy"`
+	Preview      ServiceRetentionPreview `json:"preview"`
+	DeletedCount int                     `json:"deleted_count"`
 }
 
 type ServicePruneResult struct {
@@ -95,10 +129,10 @@ func NewServiceClient(rawBaseURL, token string) (*ServiceClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	token = strings.TrimSpace(token)
-	if len(token) < 32 || strings.ContainsAny(token, "\r\n\t ") {
-		return nil, ValidationError("backup service token must contain at least 32 characters without whitespace")
+	if err := ValidateServiceToken(token); err != nil {
+		return nil, err
 	}
+	token = strings.TrimSpace(token)
 	return &ServiceClient{
 		baseURL: baseURL,
 		token:   token,
@@ -108,6 +142,14 @@ func NewServiceClient(rawBaseURL, token string) (*ServiceClient, error) {
 			},
 		},
 	}, nil
+}
+
+func ValidateServiceToken(token string) error {
+	token = strings.TrimSpace(token)
+	if len(token) < 32 || strings.ContainsAny(token, "\r\n\t ") {
+		return ValidationError("backup service token must contain at least 32 characters without whitespace")
+	}
+	return nil
 }
 
 func ValidateServiceURL(raw string) (string, error) {
@@ -160,6 +202,9 @@ func (c *ServiceClient) ListStreams(ctx context.Context) ([]ServiceStream, error
 		if !validServiceIdentifier(item.ID) || strings.TrimSpace(item.DatabaseName) == "" || len(item.DatabaseName) > 128 {
 			return nil, errors.New("backup service returned invalid stream metadata")
 		}
+		if item.BackupCount < 0 || (item.RetentionKeepLatest != nil && (*item.RetentionKeepLatest < 1 || *item.RetentionKeepLatest > 1000)) {
+			return nil, errors.New("backup service returned invalid stream counters or retention metadata")
+		}
 	}
 	return items, nil
 }
@@ -178,6 +223,74 @@ func (c *ServiceClient) ListBackups(ctx context.Context, streamID string) ([]Ser
 		}
 	}
 	return items, nil
+}
+
+func (c *ServiceClient) StorageUsage(ctx context.Context) (ServiceStorageUsage, error) {
+	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	var response ServiceStorageUsage
+	if err := c.doJSON(requestCtx, http.MethodGet, "/v1/storage", nil, true, &response); err != nil {
+		return ServiceStorageUsage{}, err
+	}
+	if err := validateServiceStorageUsage(response); err != nil {
+		return ServiceStorageUsage{}, err
+	}
+	return response, nil
+}
+
+func (c *ServiceClient) GetRetentionPolicy(ctx context.Context, streamID string) (ServiceRetentionPolicy, error) {
+	if !validServiceIdentifier(streamID) {
+		return ServiceRetentionPolicy{}, ValidationError("backup stream id is invalid")
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	var response ServiceRetentionPolicy
+	if err := c.doJSON(requestCtx, http.MethodGet, "/v1/streams/"+url.PathEscape(streamID)+"/retention", nil, true, &response); err != nil {
+		return ServiceRetentionPolicy{}, err
+	}
+	if err := validateServiceRetentionPolicy(response, streamID); err != nil {
+		return ServiceRetentionPolicy{}, err
+	}
+	return response, nil
+}
+
+func (c *ServiceClient) PreviewRetention(ctx context.Context, streamID string, keepLatest int) (ServiceRetentionPreview, error) {
+	if !validServiceIdentifier(streamID) || keepLatest < 1 || keepLatest > 1000 {
+		return ServiceRetentionPreview{}, ValidationError("backup stream id or retention count is invalid")
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	var response ServiceRetentionPreview
+	if err := c.doJSON(requestCtx, http.MethodPost, "/v1/streams/"+url.PathEscape(streamID)+"/retention/preview", map[string]int{"keep_latest": keepLatest}, true, &response); err != nil {
+		return ServiceRetentionPreview{}, err
+	}
+	if err := validateServiceRetentionPreview(response, streamID, keepLatest); err != nil {
+		return ServiceRetentionPreview{}, err
+	}
+	return response, nil
+}
+
+func (c *ServiceClient) UpdateRetention(ctx context.Context, streamID string, enabled bool, keepLatest int, applyNow bool) (ServiceRetentionUpdate, error) {
+	if !validServiceIdentifier(streamID) ||
+		(enabled && (keepLatest < 1 || keepLatest > 1000)) ||
+		(!enabled && keepLatest != 0) {
+		return ServiceRetentionUpdate{}, ValidationError("backup stream id or retention count is invalid")
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	payload := map[string]any{"enabled": enabled, "keep_latest": keepLatest, "apply_now": applyNow}
+	var response ServiceRetentionUpdate
+	if err := c.doJSON(requestCtx, http.MethodPut, "/v1/streams/"+url.PathEscape(streamID)+"/retention", payload, true, &response); err != nil {
+		return ServiceRetentionUpdate{}, err
+	}
+	if err := validateServiceRetentionPolicy(response.Policy, streamID); err != nil ||
+		validateServiceRetentionPreview(response.Preview, streamID, response.Policy.KeepLatest) != nil || response.DeletedCount < 0 {
+		return ServiceRetentionUpdate{}, errors.New("backup service returned invalid retention update metadata")
+	}
+	if response.Policy.Enabled != enabled || response.Policy.KeepLatest != keepLatest || (!applyNow && response.DeletedCount != 0) {
+		return ServiceRetentionUpdate{}, errors.New("backup service retention update does not match the requested policy")
+	}
+	return response, nil
 }
 
 func (c *ServiceClient) PruneBackups(ctx context.Context, streamID string, keepLatest int) (ServicePruneResult, error) {
@@ -329,7 +442,7 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 	if !validServiceIdentifier(streamID) || !validServiceIdentifier(backupID) {
 		return ServiceBackup{}, ValidationError("backup stream or version id is invalid")
 	}
-	if maxBytes < 1 {
+	if maxBytes < 1 || maxBytes == math.MaxInt64 {
 		return ServiceBackup{}, ValidationError("local import limit must be positive")
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
@@ -348,6 +461,10 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 	}
 	if response.ContentLength > maxBytes && response.ContentLength >= 0 {
 		return ServiceBackup{}, ValidationError("remote backup exceeds the local import limit")
+	}
+	responseBackupID := strings.TrimSpace(response.Header.Get("X-AIPermission-Backup-ID"))
+	if responseBackupID != "" && responseBackupID != backupID {
+		return ServiceBackup{}, errors.New("backup service returned a mismatched version id")
 	}
 	output, err := os.OpenFile(targetPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -381,7 +498,7 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 	}
 	remove = false
 	return ServiceBackup{
-		ID:        strings.TrimSpace(response.Header.Get("X-AIPermission-Backup-ID")),
+		ID:        backupID,
 		StreamID:  streamID,
 		Filename:  filenameFromDisposition(response.Header.Get("Content-Disposition")),
 		SizeBytes: written,
@@ -489,11 +606,50 @@ func validateServiceBackup(item ServiceBackup, streamID string, expectedSize int
 	if err != nil || createdAt.IsZero() || !validServiceIdentifier(item.ID) || item.StreamID != streamID ||
 		strings.TrimSpace(item.DatabaseName) == "" || len(item.DatabaseName) > 128 ||
 		!validServiceIdentifier(item.SourceInstallationID) || strings.TrimSpace(item.Filename) == "" ||
-		item.SizeBytes < 1 || !validSHA256(strings.ToLower(strings.TrimSpace(item.SHA256))) {
+		item.SizeBytes < 1 || item.RetentionDeletedCount < 0 || !validSHA256(strings.ToLower(strings.TrimSpace(item.SHA256))) {
 		return errors.New("backup service returned invalid backup metadata")
 	}
 	if expectedSize > 0 && item.SizeBytes != expectedSize {
 		return errors.New("backup service returned a size that does not match the uploaded snapshot")
+	}
+	return nil
+}
+
+func validateServiceStorageUsage(item ServiceStorageUsage) error {
+	if item.UsedBytes < 0 || item.BackupCount < 0 || item.StreamCount < 0 || item.PendingDeletions < 0 {
+		return errors.New("backup service returned invalid storage usage")
+	}
+	if item.QuotaEnabled {
+		if item.QuotaBytes < 1 || item.RemainingBytes == nil || *item.RemainingBytes < 0 {
+			return errors.New("backup service returned invalid storage quota metadata")
+		}
+		expectedRemaining := item.QuotaBytes - item.UsedBytes
+		if expectedRemaining < 0 {
+			expectedRemaining = 0
+		}
+		if *item.RemainingBytes != expectedRemaining {
+			return errors.New("backup service returned inconsistent storage quota metadata")
+		}
+		return nil
+	}
+	if item.QuotaBytes != 0 || item.RemainingBytes != nil {
+		return errors.New("backup service returned inconsistent storage quota metadata")
+	}
+	return nil
+}
+
+func validateServiceRetentionPolicy(item ServiceRetentionPolicy, streamID string) error {
+	if item.StreamID != streamID ||
+		(item.Enabled && (item.KeepLatest < 1 || item.KeepLatest > 1000)) ||
+		(!item.Enabled && item.KeepLatest != 0) {
+		return errors.New("backup service returned invalid retention policy metadata")
+	}
+	return nil
+}
+
+func validateServiceRetentionPreview(item ServiceRetentionPreview, streamID string, keepLatest int) error {
+	if item.StreamID != streamID || item.KeepLatest != keepLatest || item.RetainCount < 0 || item.RetainBytes < 0 || item.DeleteCount < 0 || item.DeleteBytes < 0 {
+		return errors.New("backup service returned invalid retention preview metadata")
 	}
 	return nil
 }

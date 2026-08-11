@@ -32,6 +32,12 @@ type pruneBackupProviderRequest struct {
 	KeepLatest int `json:"keep_latest"`
 }
 
+type updateBackupRetentionRequest struct {
+	Enabled    bool `json:"enabled"`
+	KeepLatest int  `json:"keep_latest"`
+	ApplyNow   bool `json:"apply_now"`
+}
+
 type deleteBackupRecordsRequest struct {
 	RecordIDs []int64 `json:"record_ids"`
 }
@@ -94,7 +100,7 @@ func (s backupHandlers) providerCatalog(w http.ResponseWriter, _ *http.Request) 
 			ProviderType: backups.ServiceProviderType,
 			Label:        "AIPermission Backup",
 			Status:       "available",
-			Capabilities: []string{"encrypted_database_upload", "immutable_versions", "prune_versions", "delete_versions", "first_run_restore", "self_hosted"},
+			Capabilities: []string{"encrypted_database_upload", "immutable_versions", "prune_versions", "delete_versions", "storage_usage", "automatic_retention", "first_run_restore", "self_hosted"},
 		}},
 	})
 }

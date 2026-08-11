@@ -95,7 +95,7 @@ func encryptBackupServiceToken(runtime *databaseRuntime, secret map[string]any, 
 		}
 		return "", nil
 	}
-	if _, err := backups.NewServiceClient("http://localhost", token); err != nil {
+	if err := backups.ValidateServiceToken(token); err != nil {
 		return "", err
 	}
 	return runtime.vault.EncryptJSON(map[string]any{"token": token})
@@ -336,9 +336,15 @@ func handleBackupServiceError(w http.ResponseWriter, err error) {
 		case http.StatusUnauthorized, http.StatusForbidden:
 			writeError(w, http.StatusBadGateway, "backup service rejected its access token")
 		case http.StatusNotFound:
-			writeError(w, http.StatusNotFound, "remote backup version was not found")
+			if serviceError.Code == "backup_not_found" || serviceError.Code == "stream_not_found" {
+				writeError(w, http.StatusNotFound, serviceError.Message)
+			} else {
+				writeError(w, http.StatusConflict, "backup service does not support this operation; upgrade AIPermission Backup")
+			}
 		case http.StatusRequestEntityTooLarge:
 			writeError(w, http.StatusRequestEntityTooLarge, "backup exceeds the remote service upload limit")
+		case http.StatusInsufficientStorage:
+			writeError(w, http.StatusInsufficientStorage, "backup service storage quota is full")
 		case http.StatusUpgradeRequired:
 			writeError(w, http.StatusConflict, "backup service protocol is incompatible with this AIPermission version")
 		default:

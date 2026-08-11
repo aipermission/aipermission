@@ -332,6 +332,100 @@
         "x-aipermission-contract-level": "route-inventory"
       }
     },
+    "/api/backup/providers/{id}/retention": {
+      "get": {
+        "operationId": "getApiBackupProvidersByIdRetention",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiBackupProvidersByIdRetention",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/retention/preview": {
+      "post": {
+        "operationId": "postApiBackupProvidersByIdRetentionPreview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/storage": {
+      "get": {
+        "operationId": "getApiBackupProvidersByIdStorage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
     "/api/backup/providers/{id}/test": {
       "post": {
         "operationId": "postApiBackupProvidersByIdTest",

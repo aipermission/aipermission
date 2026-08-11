@@ -105,6 +105,7 @@ func (s backupHandlers) uploadProviderBackup(w http.ResponseWriter, r *http.Requ
 	s.writeAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.uploaded", map[string]any{
 		"provider_id": provider.ID, "provider_type": provider.ProviderType,
 		"provider_file_id": backup.ID, "filename": backup.Filename, "size_bytes": backup.SizeBytes,
+		"retention_deleted_count": backup.RetentionDeletedCount,
 	})
 	writeJSON(w, http.StatusCreated, backupRecordToResponse(record))
 }
