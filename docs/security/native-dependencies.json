@@ -1,7 +1,10 @@
 {
   "sqlcipher": {
-    "go_module": "github.com/mutecomm/go-sqlcipher/v4",
-    "go_module_version": "v4.4.2",
-    "runtime_version": "4.4.2"
+    "go_module": "github.com/SE-I-T-Digital/go-sqlcipher",
+    "go_module_version": "v0.0.0-20260614154805-8f19266d2b27",
+    "wrapper_commit": "8f19266d2b27",
+    "runtime_version": "4.16.0",
+    "reviewed_upstream_runtime_version": "4.17.0",
+    "crypto_provider": "openssl-3"
   }
 }
