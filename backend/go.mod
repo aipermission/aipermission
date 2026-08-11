@@ -6,6 +6,7 @@ toolchain go1.26.5
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
+	github.com/SE-I-T-Digital/go-sqlcipher v0.0.0-20260614154805-8f19266d2b27
 	github.com/creack/pty v1.1.24
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.18.2
@@ -15,7 +16,6 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/klauspost/compress v1.19.2
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/mutecomm/go-sqlcipher/v4 v4.4.2
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/pkg/sftp v1.13.11
 	github.com/twmb/franz-go v1.21.5

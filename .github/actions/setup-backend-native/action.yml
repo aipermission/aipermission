@@ -1,0 +1,11 @@
+name: Set up backend native dependencies
+description: Install native headers required by the embedded SQLCipher runtime.
+
+runs:
+  using: composite
+  steps:
+    - name: Install OpenSSL development headers
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libssl-dev

@@ -2,6 +2,8 @@ github.com/ClickHouse/ch-go v0.74.0 h1:uYs2m4wIt0ZHSM1E72rg0maCfzhR2V3xWb/vZEgpe
 github.com/ClickHouse/ch-go v0.74.0/go.mod h1:sZ/r+8ttZMjyrP9PuFbgoVbth1ywIu2LIQNA2vgko6M=
 github.com/ClickHouse/clickhouse-go/v2 v2.48.0 h1:auzd4VkapQYhQF8F2Gog7s3x78Bi1JZmByxGbrw3C+4=
 github.com/ClickHouse/clickhouse-go/v2 v2.48.0/go.mod h1:lBjUCPRG6RpRQdMbkXq+JV8rY0/O5lw+Z7jShgReFjM=
+github.com/SE-I-T-Digital/go-sqlcipher v0.0.0-20260614154805-8f19266d2b27 h1:BRMw4TRd8KhfnbN2ThaW3MGjEtu1UIO7QAhb2KsPMMY=
+github.com/SE-I-T-Digital/go-sqlcipher v0.0.0-20260614154805-8f19266d2b27/go.mod h1:DGeBYll9slhX56GU+uCB6R6XfAY6nl/l7n5FLcDTb5w=
 github.com/andybalholm/brotli v1.2.2 h1:HzTuoo2ErYQqf5qvcJInB8uvqSVxRttzkFexPWtnceM=
 github.com/andybalholm/brotli v1.2.2/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/aymerick/douceur v0.2.0 h1:Mv+mAeH1Q+n9Fr+oyamOlAkUNPWPlA8PPGR0QAaYuPk=
@@ -50,8 +52,6 @@ github.com/kr/fs v0.1.0 h1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=
 github.com/kr/fs v0.1.0/go.mod h1:FFnZGqtBN9Gxj7eW1uZ42v5BccTP0vu6NEaFoC2HwRg=
 github.com/microcosm-cc/bluemonday v1.0.27 h1:MpEUotklkwCSLeH+Qdx1VJgNqLlpY2KXwXFM08ygZfk=
 github.com/microcosm-cc/bluemonday v1.0.27/go.mod h1:jFi9vgW+H7c3V0lb6nR74Ib/DIB5OBs92Dimizgw2cA=
-github.com/mutecomm/go-sqlcipher/v4 v4.4.2 h1:eM10bFtI4UvibIsKr10/QT7Yfz+NADfjZYh0GKrXUNc=
-github.com/mutecomm/go-sqlcipher/v4 v4.4.2/go.mod h1:mF2UmIpBnzFeBdu/ypTDb/LdbS0nk0dfSN1WUsWTjMA=
 github.com/paulmach/orb v0.13.0 h1:r7n7mQGGF+cj/CbcivEj9J3HGK+XR+yXnvzRdq9saIw=
 github.com/paulmach/orb v0.13.0/go.mod h1:6scRWINywA2Jf05dcjOfLfxrUIMECvTSG2MVbRLxu/k=
 github.com/pierrec/lz4/v4 v4.1.27 h1:+PhzhWDrjRj89TH2sw43nE3+4+W8lSxIuQadEHZyjUk=

@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	_ "github.com/mutecomm/go-sqlcipher/v4"
+	_ "github.com/SE-I-T-Digital/go-sqlcipher"
 )
 
 const (
 	currentSchemaVersion     = 13
-	expectedSQLCipherVersion = "4.4.2"
+	expectedSQLCipherVersion = "4.16.0"
 )
 
 func OpenEncrypted(path string, password string) (*sql.DB, error) {
@@ -44,10 +44,9 @@ func openEncrypted(path string, password string, runMigrations bool) (*sql.DB, e
 	}
 
 	values := url.Values{}
-	values.Set("_pragma_foreign_keys", "ON")
+	values.Set("_foreign_keys", "ON")
 	if password != "" {
-		values.Set("_pragma_key", quoteSQLDoubleQuotedString(password))
-		values.Set("_pragma_cipher_page_size", "4096")
+		values.Set("_key", quoteSQLDoubleQuotedString(password))
 	}
 
 	dsn := path

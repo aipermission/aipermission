@@ -19,5 +19,6 @@ jobs:
         with:
           go-version: "1.26.5"
           cache-dependency-path: backend/go.sum
+      - uses: ./.github/actions/setup-backend-native
       - name: Run real-service connector conformance
         run: make connector-conformance

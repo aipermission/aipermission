@@ -2,6 +2,10 @@ FROM golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93
 
 WORKDIR /src
 
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends libssl-dev \
+	&& rm -rf /var/lib/apt/lists/*
+
 COPY go.mod go.sum* ./
 RUN go mod download
 
@@ -15,7 +19,7 @@ FROM debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8
 WORKDIR /app
 
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ca-certificates curl gnupg gosu \
+	&& apt-get install -y --no-install-recommends ca-certificates curl gnupg gosu libssl3 \
 	&& install -d /usr/share/postgresql-common/pgdg \
 	&& curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
 		| gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \

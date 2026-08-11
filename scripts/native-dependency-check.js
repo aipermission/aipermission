@@ -16,6 +16,10 @@ const dbSource = fs.readFileSync(
   path.join(root, "backend/internal/db/db.go"),
   "utf8",
 );
+const backendDockerfile = fs.readFileSync(
+  path.join(root, "backend/Dockerfile"),
+  "utf8",
+);
 const modulePattern = new RegExp(
   `^\\s*${sqlcipher.go_module.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+(v\\S+)`,
   "m",
@@ -34,6 +38,18 @@ if (moduleVersion !== sqlcipher.go_module_version) {
 if (runtimeVersion !== sqlcipher.runtime_version) {
   failures.push(
     `SQLCipher runtime assertion is ${runtimeVersion || "missing"}; inventory expects ${sqlcipher.runtime_version}`,
+  );
+}
+if (!sqlcipher.go_module_version.endsWith(`-${sqlcipher.wrapper_commit}`)) {
+  failures.push("SQLCipher wrapper commit does not match the pinned pseudo-version");
+}
+if (
+  sqlcipher.crypto_provider !== "openssl-3" ||
+  !backendDockerfile.includes("libssl-dev") ||
+  !backendDockerfile.includes("libssl3")
+) {
+  failures.push(
+    "SQLCipher OpenSSL build/runtime packages are missing from the backend image",
   );
 }
 if (failures.length > 0) {
