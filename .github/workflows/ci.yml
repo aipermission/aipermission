@@ -22,6 +22,8 @@ jobs:
         run: node scripts/secret-scan.js
       - name: Line ending check
         run: node scripts/line-ending-check.js
+      - name: Go toolchain consistency
+        run: node scripts/go-toolchain-check.js
 
   backend:
     name: Backend
@@ -30,7 +32,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: "1.26.4"
+          go-version: "1.26.5"
           cache-dependency-path: backend/go.sum
       - name: Test
         working-directory: backend
