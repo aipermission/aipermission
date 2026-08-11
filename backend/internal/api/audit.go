@@ -108,8 +108,8 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	queryArgs := append(append([]any{}, args...), page.Limit, page.Offset)
 	rows, err := runtime.database.QueryContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id, COALESCE(profile_ct.name, ''),
-			a.connector_kind, a.target_id, COALESCE(ct.name, ''), a.profile_id, a.action_request_id,
+		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id,
+			COALESCE(ct.name, profile_ct.name, ''), a.connector_kind, a.target_id, a.profile_id, a.action_request_id,
 			a.action, substr(a.payload_json, 1, 500), a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
@@ -155,8 +155,8 @@ func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row := runtime.database.QueryRowContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id, COALESCE(profile_ct.name, ''),
-			a.connector_kind, a.target_id, COALESCE(ct.name, ''), a.profile_id, a.action_request_id,
+		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id,
+			COALESCE(ct.name, profile_ct.name, ''), a.connector_kind, a.target_id, a.profile_id, a.action_request_id,
 			a.action, a.payload_json, a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
@@ -201,7 +201,6 @@ func scanAuditLog(scanner interface {
 		&item.TargetName,
 		&item.ConnectorKind,
 		&targetID,
-		&item.TargetName,
 		&profileID,
 		&actionRequestID,
 		&item.Action,

@@ -373,6 +373,17 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if auditDetailResponse.Code != http.StatusOK || !strings.Contains(auditDetailResponse.Body.String(), "docker image scan") {
 		t.Fatalf("audit detail should include full payload: %d %s", auditDetailResponse.Code, auditDetailResponse.Body.String())
 	}
+	fixture.server.writeAudit(ctx, fixture.server.activeRuntime(), "user", &token.ID, server.ID, "runtime.audit", map[string]any{
+		"detail": "runtime-only audit metadata",
+	})
+	runtimeAuditResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs?q=runtime-only", "", nil)
+	if runtimeAuditResponse.Code != http.StatusOK {
+		t.Fatalf("runtime audit search failed: %d %s", runtimeAuditResponse.Code, runtimeAuditResponse.Body.String())
+	}
+	runtimeAuditPage := decodeRouteResponse[pageResponse[auditLogRecord]](t, runtimeAuditResponse.Body.Bytes())
+	if runtimeAuditPage.Total != 1 || len(runtimeAuditPage.Items) != 1 || runtimeAuditPage.Items[0].TargetName != "worker-1" {
+		t.Fatalf("runtime audit target metadata missing: %#v", runtimeAuditPage)
+	}
 	fixture.server.writeAudit(ctx, fixture.server.activeRuntime(), "mcp", &token.ID, 0, "connector_action.completed", map[string]any{
 		"connector_kind":    "ssh",
 		"target_id":         server.TargetID,
