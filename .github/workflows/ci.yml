@@ -46,6 +46,7 @@ jobs:
         run: |
           go test -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out | tail -1
+          go run ./cmd/coveragecheck -profile coverage.out
       - name: Race test
         working-directory: backend
         run: go test -race ./...

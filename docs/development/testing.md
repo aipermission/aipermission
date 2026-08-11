@@ -27,7 +27,9 @@ This runs:
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
 - release-version and native-dependency inventory consistency checks
 - generated OpenAPI route and typed-schema drift
-- backend unit tests with a visible aggregate coverage summary
+- backend unit tests with an aggregate summary and reviewed floors for auth,
+  permission, approval, Vault, session injection, target lifecycle, and audit
+  outbox packages
 - backend race tests
 - backend vet
 - backend govulncheck
