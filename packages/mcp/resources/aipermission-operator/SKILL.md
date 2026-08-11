@@ -104,12 +104,18 @@ declined
 blocked
 error
 stale
+outcome_unknown
 ```
 
 If the request is `declined`, read the note/error and follow the user's
 correction. If the request is `stale`, the approval context changed before
 execution; send a fresh `call_connector_action` request with the current target,
 action, input, and reason.
+
+If the request is `outcome_unknown`, do not automatically retry it. The gateway
+lost definitive lifecycle state after execution may have started. Inspect the
+target with a safe read action when possible, or ask the operator to decide
+whether retrying is safe.
 
 ## Running Flow
 

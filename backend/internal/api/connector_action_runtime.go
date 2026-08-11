@@ -18,7 +18,7 @@ import (
 
 const (
 	connectorActionToolName          = "connector.call_action"
-	connectorActionApprovalHint      = "Wait 3 seconds, then poll this connector action request until it is completed, failed, declined, stale, or blocked."
+	connectorActionApprovalHint      = "Wait 3 seconds, then poll this connector action request until it is completed, failed, declined, stale, blocked, or outcome_unknown."
 	connectorActionRunningHint       = "Wait 3 seconds, then call get_connector_action_request again. Use the connector-specific read or recovery actions when the connector exposes them."
 	connectorActionMissingPermission = "This token is not allowed to run this connector action for the selected target/profile"
 )

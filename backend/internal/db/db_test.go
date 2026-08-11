@@ -353,19 +353,19 @@ func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
 	if err := reopened.QueryRow(`SELECT status, error FROM connector_action_requests LIMIT 1`).Scan(&status, &message); err != nil {
 		t.Fatalf("read connector action: %v", err)
 	}
-	if status != "error" {
-		t.Fatalf("expected restarted connector action to be error, got %q", status)
+	if status != "outcome_unknown" {
+		t.Fatalf("expected restarted connector action outcome to be unknown, got %q", status)
 	}
-	if message != "gateway restarted while connector action was running" {
+	if message != connectorActionOutcomeUnknownMessage {
 		t.Fatalf("unexpected error message: %q", message)
 	}
 	if err := reopened.QueryRow(`SELECT status, error FROM history_entries WHERE source_ref_type = 'connector_action_request' LIMIT 1`).Scan(&status, &message); err != nil {
 		t.Fatalf("read connector action history entry: %v", err)
 	}
-	if status != "error" {
-		t.Fatalf("expected restarted connector action history entry to be error, got %q", status)
+	if status != "outcome_unknown" {
+		t.Fatalf("expected restarted connector action history outcome to be unknown, got %q", status)
 	}
-	if message != "gateway restarted while connector action was running" {
+	if message != connectorActionOutcomeUnknownMessage {
 		t.Fatalf("unexpected history entry error message: %q", message)
 	}
 }
