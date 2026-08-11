@@ -40,7 +40,12 @@ POST /api/lock
 
 `/health` is a lightweight process health check and does not require an unlocked database.
 
-`/api/status` returns public gateway status and configuration shape for the web UI. It does not expose local database file paths.
+`/api/status` returns public gateway status and configuration shape for the web
+UI. It does not expose local database file paths. The `audit` object reports
+`status`, the process-local audit write failure count, and the latest failure
+time. A `degraded` audit status means at least one required or best-effort audit
+write failed since the gateway process started; inspect local gateway logs
+before relying on the affected audit interval.
 
 Most `/api/*` application endpoints return `423 Locked` until a database is unlocked. Setup/import/unlock endpoints remain available while locked. After a database is unlocked, protected web REST endpoints return `401 Unauthorized` if the local browser session cookie is missing or invalid.
 

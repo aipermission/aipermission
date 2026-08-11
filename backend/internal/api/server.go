@@ -38,6 +38,7 @@ type Server struct {
 	vaultRequestLimiter  *windowRateLimiter
 	uiSessionMu          sync.RWMutex
 	uiSessions           map[string]uiSessionRecord
+	auditHealth          auditHealthState
 }
 
 type databaseRuntime struct {
