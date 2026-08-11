@@ -979,6 +979,56 @@ var migrations = []migration{
 				WHERE idempotency_key <> '';`,
 		},
 	},
+	{
+		version:     12,
+		description: "transactional audit outbox",
+		statements: []string{
+			`ALTER TABLE audit_logs ADD COLUMN event_id TEXT;`,
+			`CREATE UNIQUE INDEX idx_audit_logs_event_id
+				ON audit_logs(event_id)
+				WHERE event_id IS NOT NULL;`,
+			`CREATE TABLE audit_outbox (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				event_id TEXT NOT NULL UNIQUE,
+				event_version INTEGER NOT NULL,
+				actor_type TEXT NOT NULL,
+				token_id INTEGER,
+				project_id INTEGER,
+				runtime_id INTEGER,
+				connector_kind TEXT NOT NULL DEFAULT '',
+				target_id INTEGER,
+				profile_id INTEGER,
+				action_request_id INTEGER,
+				action TEXT NOT NULL,
+				lifecycle_phase TEXT NOT NULL DEFAULT '',
+				payload_json TEXT NOT NULL DEFAULT '{}',
+				occurred_at TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				delivered_at TEXT,
+				attempt_count INTEGER NOT NULL DEFAULT 0,
+				last_error TEXT NOT NULL DEFAULT '',
+				last_attempt_at TEXT,
+				FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL,
+				FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL,
+				FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE SET NULL
+			);`,
+			`CREATE INDEX idx_audit_outbox_pending
+				ON audit_outbox(delivered_at, id);`,
+			`CREATE INDEX idx_audit_outbox_attempts
+				ON audit_outbox(attempt_count, last_attempt_at)
+				WHERE delivered_at IS NULL;`,
+			`CREATE TABLE audit_dispatch_state (
+				id INTEGER PRIMARY KEY CHECK (id = 1),
+				failure_count INTEGER NOT NULL DEFAULT 0,
+				last_error TEXT NOT NULL DEFAULT '',
+				last_failure_at TEXT,
+				last_success_at TEXT,
+				updated_at TEXT NOT NULL
+			);`,
+			`INSERT INTO audit_dispatch_state (id, updated_at)
+				VALUES (1, datetime('now'));`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {

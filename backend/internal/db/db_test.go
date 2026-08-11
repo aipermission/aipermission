@@ -71,6 +71,15 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !tableExists(t, database, "backup_records") {
 		t.Fatalf("backup_records table was not created")
 	}
+	if !tableExists(t, database, "audit_outbox") {
+		t.Fatalf("audit_outbox table was not created")
+	}
+	if !tableExists(t, database, "audit_dispatch_state") {
+		t.Fatalf("audit_dispatch_state table was not created")
+	}
+	if !columnExists(t, database, "audit_logs", "event_id") {
+		t.Fatalf("audit_logs.event_id column was not created")
+	}
 	if !columnExists(t, database, "api_tokens", "expires_at") {
 		t.Fatalf("api_tokens.expires_at column was not created")
 	}
