@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 )
 
 const defaultHistoryLabelColor = "#0f766e"
@@ -48,21 +50,31 @@ func (s historyLabelHandlers) createHistoryLabel(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	label, created, err := s.createOrGetHistoryLabel(r.Context(), runtime, request.Name, request.Color)
+	var label historyLabelRecord
+	var created bool
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "history.label.created",
+		func() any { return map[string]any{"label_id": label.ID, "name": label.Name} },
+		func(tx *sql.Tx) error {
+			var err error
+			label, created, err = createOrGetHistoryLabelWithExecutor(r.Context(), tx, request.Name, request.Color)
+			if err == nil && !created {
+				return errAuditedMutationUnchanged
+			}
+			return err
+		},
+	)
+	if errors.Is(err, errAuditedMutationUnchanged) {
+		label, err = s.getHistoryLabelByName(r.Context(), runtime, request.Name)
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	status := http.StatusOK
-	action := "history.label.reused"
 	if created {
 		status = http.StatusCreated
-		action = "history.label.created"
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, action, map[string]any{
-		"label_id": label.ID,
-		"name":     label.Name,
-	})
 	writeJSON(w, status, label)
 }
 
@@ -75,23 +87,29 @@ func (s historyLabelHandlers) deleteHistoryLabel(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	result, err := runtime.database.ExecContext(r.Context(), `DELETE FROM history_labels WHERE id = ?`, labelID)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if affected == 0 {
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "history.label.deleted",
+		func() any { return map[string]any{"label_id": labelID} },
+		func(tx *sql.Tx) error {
+			result, err := tx.ExecContext(r.Context(), `DELETE FROM history_labels WHERE id = ?`, labelID)
+			if err != nil {
+				return err
+			}
+			affected, err := result.RowsAffected()
+			if err == nil && affected == 0 {
+				return sql.ErrNoRows
+			}
+			return err
+		},
+	)
+	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "history label not found")
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "history.label.deleted", map[string]any{
-		"label_id": labelID,
-	})
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
@@ -109,33 +127,49 @@ func (s historyLabelHandlers) attachHistoryEntryLabel(w http.ResponseWriter, r *
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	var label historyLabelRecord
-	var created bool
-	var err error
-	if request.LabelID > 0 {
-		label, err = s.getHistoryLabel(r.Context(), runtime, request.LabelID)
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "label not found")
-			return
-		}
-	} else {
-		label, created, err = s.createOrGetHistoryLabel(r.Context(), runtime, request.Name, request.Color)
-	}
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	if !historyEntryExists(r.Context(), runtime, id) {
 		writeError(w, http.StatusNotFound, "history entry not found")
 		return
 	}
-	if _, err := runtime.database.ExecContext(r.Context(), `
-		INSERT OR IGNORE INTO history_entry_labels (history_entry_id, label_id, created_at)
-		VALUES (?, ?, datetime('now'))`,
-		id,
-		label.ID,
-	); err != nil {
-		writeInternalError(w)
+	var label historyLabelRecord
+	var created bool
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "history.label.attached",
+		func() any {
+			return map[string]any{"history_entry_id": id, "label_id": label.ID, "created": created}
+		},
+		func(tx *sql.Tx) error {
+			var err error
+			if request.LabelID > 0 {
+				label, err = getHistoryLabelWithExecutor(r.Context(), tx, request.LabelID)
+			} else {
+				label, created, err = createOrGetHistoryLabelWithExecutor(r.Context(), tx, request.Name, request.Color)
+			}
+			if err != nil {
+				return err
+			}
+			result, err := tx.ExecContext(r.Context(), `
+				INSERT OR IGNORE INTO history_entry_labels (history_entry_id, label_id, created_at)
+				VALUES (?, ?, datetime('now'))`, id, label.ID)
+			if err != nil {
+				return err
+			}
+			affected, err := result.RowsAffected()
+			if err == nil && affected == 0 && !created {
+				return errAuditedMutationUnchanged
+			}
+			return err
+		},
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "label not found")
+		return
+	}
+	if errors.Is(err, errAuditedMutationUnchanged) {
+		err = nil
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	labels, err := s.labelsForHistoryEntry(r.Context(), runtime, id)
@@ -147,11 +181,6 @@ func (s historyLabelHandlers) attachHistoryEntryLabel(w http.ResponseWriter, r *
 	if created {
 		status = http.StatusCreated
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "history.label.attached", map[string]any{
-		"history_entry_id": id,
-		"label_id":         label.ID,
-		"created":          created,
-	})
 	writeJSON(w, status, labels)
 }
 
@@ -172,23 +201,29 @@ func (s historyLabelHandlers) detachHistoryEntryLabel(w http.ResponseWriter, r *
 		writeError(w, http.StatusNotFound, "history entry not found")
 		return
 	}
-	result, err := runtime.database.ExecContext(r.Context(), `
-		DELETE FROM history_entry_labels
-		WHERE history_entry_id = ? AND label_id = ?`,
-		id,
-		labelID,
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "history.label.detached",
+		func() any { return map[string]any{"history_entry_id": id, "label_id": labelID} },
+		func(tx *sql.Tx) error {
+			result, err := tx.ExecContext(r.Context(), `
+				DELETE FROM history_entry_labels
+				WHERE history_entry_id = ? AND label_id = ?`, id, labelID)
+			if err != nil {
+				return err
+			}
+			affected, err := result.RowsAffected()
+			if err == nil && affected == 0 {
+				return sql.ErrNoRows
+			}
+			return err
+		},
 	)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if affected == 0 {
+	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "history label relationship not found")
+		return
+	}
+	if err != nil {
+		writeInternalError(w)
 		return
 	}
 	labels, err := s.labelsForHistoryEntry(r.Context(), runtime, id)
@@ -196,10 +231,6 @@ func (s historyLabelHandlers) detachHistoryEntryLabel(w http.ResponseWriter, r *
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "history.label.detached", map[string]any{
-		"history_entry_id": id,
-		"label_id":         labelID,
-	})
 	writeJSON(w, http.StatusOK, labels)
 }
 
@@ -224,8 +255,12 @@ func (s *Server) allHistoryLabels(ctx context.Context, runtime *databaseRuntime)
 }
 
 func (s *Server) getHistoryLabel(ctx context.Context, runtime *databaseRuntime, id int64) (historyLabelRecord, error) {
+	return getHistoryLabelWithExecutor(ctx, runtime.database, id)
+}
+
+func getHistoryLabelWithExecutor(ctx context.Context, executor auditoutbox.DBTX, id int64) (historyLabelRecord, error) {
 	var label historyLabelRecord
-	err := runtime.database.QueryRowContext(ctx, `
+	err := executor.QueryRowContext(ctx, `
 		SELECT id, name, color, created_at, updated_at
 		FROM history_labels
 		WHERE id = ?`,
@@ -235,12 +270,16 @@ func (s *Server) getHistoryLabel(ctx context.Context, runtime *databaseRuntime, 
 }
 
 func (s *Server) createOrGetHistoryLabel(ctx context.Context, runtime *databaseRuntime, name string, color string) (historyLabelRecord, bool, error) {
+	return createOrGetHistoryLabelWithExecutor(ctx, runtime.database, name, color)
+}
+
+func createOrGetHistoryLabelWithExecutor(ctx context.Context, executor auditoutbox.DBTX, name string, color string) (historyLabelRecord, bool, error) {
 	name, err := normalizeHistoryLabelName(name)
 	if err != nil {
 		return historyLabelRecord{}, false, err
 	}
 	color = normalizeHistoryLabelColor(color)
-	result, err := runtime.database.ExecContext(ctx, `
+	result, err := executor.ExecContext(ctx, `
 		INSERT OR IGNORE INTO history_labels (name, color, created_at, updated_at)
 		VALUES (?, ?, datetime('now'), datetime('now'))`,
 		name,
@@ -254,13 +293,27 @@ func (s *Server) createOrGetHistoryLabel(ctx context.Context, runtime *databaseR
 		return historyLabelRecord{}, false, err
 	}
 	var label historyLabelRecord
-	err = runtime.database.QueryRowContext(ctx, `
+	err = executor.QueryRowContext(ctx, `
 		SELECT id, name, color, created_at, updated_at
 		FROM history_labels
 		WHERE name = ? COLLATE NOCASE`,
 		name,
 	).Scan(&label.ID, &label.Name, &label.Color, &label.CreatedAt, &label.UpdatedAt)
 	return label, affected > 0, err
+}
+
+func (s *Server) getHistoryLabelByName(ctx context.Context, runtime *databaseRuntime, name string) (historyLabelRecord, error) {
+	name, err := normalizeHistoryLabelName(name)
+	if err != nil {
+		return historyLabelRecord{}, err
+	}
+	var label historyLabelRecord
+	err = runtime.database.QueryRowContext(ctx, `
+		SELECT id, name, color, created_at, updated_at
+		FROM history_labels
+		WHERE name = ? COLLATE NOCASE`, name,
+	).Scan(&label.ID, &label.Name, &label.Color, &label.CreatedAt, &label.UpdatedAt)
+	return label, err
 }
 
 func historyEntryExists(ctx context.Context, runtime *databaseRuntime, id int64) bool {

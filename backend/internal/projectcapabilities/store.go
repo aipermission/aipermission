@@ -54,9 +54,20 @@ type SetInput struct {
 	ExpiresAt     string
 }
 
-type Store struct{ db *sql.DB }
+type storeDB interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+type Store struct {
+	db    storeDB
+	begin func(context.Context, *sql.TxOptions) (*sql.Tx, error)
+}
+
+func NewStore(db *sql.DB) *Store { return &Store{db: db, begin: db.BeginTx} }
+
+func NewTxStore(tx *sql.Tx) *Store { return &Store{db: tx} }
 
 func Definitions() []Definition {
 	return []Definition{
@@ -156,28 +167,31 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 		normalized = append(normalized, value)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin replace project capabilities: %w", err)
+	executor := s.db
+	var tx *sql.Tx
+	if s.begin != nil {
+		var err error
+		tx, err = s.begin(ctx, nil)
+		if err != nil {
+			return nil, fmt.Errorf("begin replace project capabilities: %w", err)
+		}
+		defer tx.Rollback()
+		executor = tx
 	}
-	defer tx.Rollback()
-	if err := requireToken(ctx, tx, tokenID); err != nil {
+	if err := requireToken(ctx, executor, tokenID); err != nil {
 		return nil, err
 	}
 	for _, input := range normalized {
-		if err := requireActiveProject(ctx, tx, input.ProjectID); err != nil {
+		if err := requireActiveProject(ctx, executor, input.ProjectID); err != nil {
 			return nil, err
 		}
 	}
-	existing, err := existingCapabilityStates(ctx, tx, tokenID)
+	existing, err := existingCapabilityStates(ctx, executor, tokenID)
 	if err != nil {
 		return nil, err
 	}
 	if capabilitySetEqual(existing, normalized) {
-		if err := tx.Rollback(); err != nil {
-			return nil, fmt.Errorf("rollback unchanged project capabilities: %w", err)
-		}
-		return s.List(ctx, tokenID)
+		return (&Store{db: executor}).List(ctx, tokenID)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, input := range normalized {
@@ -186,7 +200,7 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 		if exists && current.ExecutionRule == input.ExecutionRule && current.ExpiresAt == input.ExpiresAt {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := executor.ExecContext(ctx, `
 			INSERT INTO token_project_capability_revisions (
 				token_id, project_id, capability_name, revision, updated_at
 			)
@@ -198,7 +212,7 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 			return nil, fmt.Errorf("advance project capability revision: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM token_project_capabilities WHERE token_id = ?`, tokenID); err != nil {
+	if _, err := executor.ExecContext(ctx, `DELETE FROM token_project_capabilities WHERE token_id = ?`, tokenID); err != nil {
 		return nil, fmt.Errorf("clear project capabilities: %w", err)
 	}
 	for _, input := range normalized {
@@ -206,7 +220,7 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 		if createdAt == "" {
 			createdAt = now
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := executor.ExecContext(ctx, `
 			INSERT INTO token_project_capabilities (
 				token_id, project_id, capability_name, execution_rule, expires_at,
 				revision, created_at, updated_at
@@ -220,10 +234,16 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 			return nil, fmt.Errorf("insert project capability: %w", err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit project capabilities: %w", err)
+	items, err := (&Store{db: executor}).List(ctx, tokenID)
+	if err != nil {
+		return nil, err
 	}
-	return s.List(ctx, tokenID)
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit project capabilities: %w", err)
+		}
+	}
+	return items, nil
 }
 
 func (s *Store) ReplaceWithChange(ctx context.Context, tokenID int64, inputs []SetInput) ([]Capability, bool, error) {
@@ -261,8 +281,8 @@ type capabilityState struct {
 	CreatedAt     string
 }
 
-func existingCapabilityStates(ctx context.Context, tx *sql.Tx, tokenID int64) (map[string]capabilityState, error) {
-	rows, err := tx.QueryContext(ctx, `
+func existingCapabilityStates(ctx context.Context, executor storeDB, tokenID int64) (map[string]capabilityState, error) {
+	rows, err := executor.QueryContext(ctx, `
 		SELECT project_id, capability_name, execution_rule, COALESCE(expires_at, ''), created_at
 		FROM token_project_capabilities
 		WHERE token_id = ?`, tokenID)
@@ -371,7 +391,7 @@ func scanCapability(row scanner) (Capability, error) {
 	return item, nil
 }
 
-func requireToken(ctx context.Context, tx *sql.Tx, tokenID int64) error {
+func requireToken(ctx context.Context, tx storeDB, tokenID int64) error {
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM api_tokens WHERE id = ?`, tokenID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -382,7 +402,7 @@ func requireToken(ctx context.Context, tx *sql.Tx, tokenID int64) error {
 	return nil
 }
 
-func requireActiveProject(ctx context.Context, tx *sql.Tx, projectID int64) error {
+func requireActiveProject(ctx context.Context, tx storeDB, projectID int64) error {
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM projects WHERE id = ? AND status = 'active'`, projectID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

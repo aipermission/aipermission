@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"time"
 
@@ -61,6 +62,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 	if !ok {
 		return
 	}
+	appendAudit := s.prepareAuditAppender(r.Context(), runtime)
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -91,17 +93,18 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
+	if err := appendAudit(tx, "user", nil, 0, "connector.profile.created", map[string]any{
+		"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
+		"kind": profile.Kind, "label": profile.Label,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.created", map[string]any{
-		"target_id":      target.ID,
-		"profile_id":     profile.ID,
-		"connector_kind": target.ConnectorKind,
-		"kind":           profile.Kind,
-		"label":          profile.Label,
-	})
+	s.projectAuditEvents(r.Context(), runtime)
 	writeJSON(w, http.StatusCreated, profileToSummary(profile))
 }
 
@@ -159,6 +162,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		return
 	}
 	defer release()
+	appendAudit := s.prepareAuditAppender(r.Context(), runtime)
 	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeInternalError(w)
@@ -184,11 +188,18 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
+	if err := appendAudit(tx, "user", nil, 0, "connector.profile.updated", map[string]any{
+		"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
+		"kind": profile.Kind, "label": profile.Label,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeInternalError(w)
 		return
 	}
-	if err := invalidateVaultSessionsForTargetProfile(
+	if err := s.invalidateVaultSessionsForTargetProfile(
 		r.Context(), runtime, target.ID, profile.ID,
 		"connector credential profile changed; send a fresh Vault request",
 	); err != nil {
@@ -200,14 +211,8 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.updated", map[string]any{
-		"target_id":                target.ID,
-		"profile_id":               profile.ID,
-		"connector_kind":           target.ConnectorKind,
-		"kind":                     profile.Kind,
-		"label":                    profile.Label,
-		"stale_connector_requests": staleRequests,
-	})
+	_ = staleRequests
+	s.projectAuditEvents(r.Context(), runtime)
 	writeJSON(w, http.StatusOK, profileToSummary(profile))
 }
 
@@ -251,11 +256,18 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 			return
 		}
 	}
-	if err := store.DeleteCredentialProfile(r.Context(), targetID, profileID); err != nil {
+	if err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "connector.profile.deleted", func() any {
+		return map[string]any{
+			"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
+			"kind": profile.Kind, "label": profile.Label,
+		}
+	}, func(tx *sql.Tx) error {
+		return connectortargets.NewTxStore(tx).DeleteCredentialProfile(r.Context(), targetID, profileID)
+	}); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := invalidateVaultSessionsForTargetProfile(
+	if err := s.invalidateVaultSessionsForTargetProfile(
 		r.Context(), runtime, targetID, profileID,
 		"connector credential profile was deleted; send a fresh Vault request",
 	); err != nil {
@@ -267,14 +279,7 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.deleted", map[string]any{
-		"target_id":                target.ID,
-		"profile_id":               profile.ID,
-		"connector_kind":           target.ConnectorKind,
-		"kind":                     profile.Kind,
-		"label":                    profile.Label,
-		"stale_connector_requests": staleRequests,
-	})
+	_ = staleRequests
 	w.WriteHeader(http.StatusNoContent)
 }
 

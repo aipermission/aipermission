@@ -42,16 +42,38 @@ type CreateResponse struct {
 }
 
 type Store struct {
-	db    *sql.DB
+	db    storeDB
+	begin func(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	vault *vault.Vault
 }
 
+type storeDB interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 func NewStore(db *sql.DB, secretVault ...*vault.Vault) *Store {
-	store := &Store{db: db}
+	store := &Store{db: db, begin: db.BeginTx}
 	if len(secretVault) > 0 {
 		store.vault = secretVault[0]
 	}
 	return store
+}
+
+func NewTxStore(tx *sql.Tx, secretVault ...*vault.Vault) *Store {
+	store := &Store{db: tx}
+	if len(secretVault) > 0 {
+		store.vault = secretVault[0]
+	}
+	return store
+}
+
+func (s *Store) WithTx(tx *sql.Tx) *Store {
+	if s == nil {
+		return NewTxStore(tx)
+	}
+	return NewTxStore(tx, s.vault)
 }
 
 func (s *Store) List(ctx context.Context) ([]Token, error) {
@@ -125,12 +147,26 @@ func (s *Store) Create(ctx context.Context, request CreateRequest, options ...Cr
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return CreateResponse{}, fmt.Errorf("begin create token: %w", err)
+	if s.begin != nil {
+		tx, err := s.begin(ctx, nil)
+		if err != nil {
+			return CreateResponse{}, fmt.Errorf("begin create token: %w", err)
+		}
+		defer tx.Rollback()
+		item, err := NewTxStore(tx, s.vault).create(ctx, request, tokenValue, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now)
+		if err != nil {
+			return CreateResponse{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return CreateResponse{}, fmt.Errorf("commit create token: %w", err)
+		}
+		return item, nil
 	}
-	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, request.Name, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now, now)
+	return s.create(ctx, request, tokenValue, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now)
+}
+
+func (s *Store) create(ctx context.Context, request CreateRequest, tokenValue, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now string) (CreateResponse, error) {
+	result, err := s.db.ExecContext(ctx, `INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, request.Name, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return CreateResponse{}, ValidationError("token name already exists")
@@ -141,13 +177,10 @@ func (s *Store) Create(ctx context.Context, request CreateRequest, options ...Cr
 	if err != nil {
 		return CreateResponse{}, fmt.Errorf("read token id: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
 		SELECT ?, id, 1, ?, ? FROM projects WHERE status = 'active'`, id, now, now); err != nil {
 		return CreateResponse{}, fmt.Errorf("initialize token project scopes: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return CreateResponse{}, fmt.Errorf("commit create token: %w", err)
 	}
 	item, err := s.Get(ctx, id)
 	if err != nil {

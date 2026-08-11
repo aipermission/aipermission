@@ -3,6 +3,7 @@ package connectortargets
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 type Store struct {
@@ -31,4 +32,16 @@ func NewStore(db *sql.DB) *Store {
 
 func NewTxStore(tx *sql.Tx) *Store {
 	return &Store{db: tx}
+}
+
+func (s *Store) transaction(ctx context.Context, label string) (storeDB, func() error, func(), error) {
+	starter, ok := s.db.(transactionStarter)
+	if !ok {
+		return s.db, func() error { return nil }, func() {}, nil
+	}
+	tx, err := starter.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("begin %s: %w", label, err)
+	}
+	return tx, tx.Commit, func() { _ = tx.Rollback() }, nil
 }

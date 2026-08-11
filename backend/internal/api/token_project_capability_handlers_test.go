@@ -36,14 +36,14 @@ func TestTokenProjectCapabilityRoutes(t *testing.T) {
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"allowed_rules"`) {
 		t.Fatalf("list project capabilities: %d %s", response.Code, response.Body.String())
 	}
-	var requestedAudits int
+	var updatedAudits int
 	if err := fixture.db.QueryRow(`
 		SELECT COUNT(*) FROM audit_logs
-		WHERE action = 'token.project_capabilities.update_requested'`).Scan(&requestedAudits); err != nil {
+		WHERE action = 'token.project_capabilities.updated'`).Scan(&updatedAudits); err != nil {
 		t.Fatal(err)
 	}
-	if requestedAudits != 1 {
-		t.Fatalf("requested audit count = %d", requestedAudits)
+	if updatedAudits != 1 {
+		t.Fatalf("updated audit count = %d", updatedAudits)
 	}
 }
 

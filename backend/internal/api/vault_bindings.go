@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
@@ -126,21 +127,28 @@ func (s vaultItemHandlers) saveVaultDefaultBinding(w http.ResponseWriter, r *htt
 			return
 		}
 	}
-	item, err := store.SaveDefaultBinding(r.Context(), projectvault.DefaultBindingInput{
+	input := projectvault.DefaultBindingInput{
 		VaultItemID: request.VaultItemID, SourceProjectID: request.SourceProjectID,
 		TargetID: request.TargetID, ProfileID: request.ProfileID,
 		ReplaceExisting:         request.ReplaceExisting,
 		ExpectedBindingRevision: request.ExpectedBindingRevision,
+	}
+	var item projectvault.DefaultBinding
+	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.binding.updated", func() any {
+		return vaultBindingAuditPayload(item)
+	}, func(tx *sql.Tx) error {
+		var saveErr error
+		item, saveErr = store.WithTx(tx).SaveDefaultBinding(r.Context(), input)
+		return saveErr
 	})
 	if err != nil {
 		handleVaultBindingError(w, err)
 		return
 	}
-	if err := invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{BindingID: item.ID}); err != nil {
+	if err := s.invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{BindingID: item.ID}); err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.binding.updated", vaultBindingAuditPayload(item))
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -156,12 +164,6 @@ func (s vaultItemHandlers) deleteVaultDefaultBinding(w http.ResponseWriter, r *h
 	var request deleteVaultDefaultBindingRequest
 	if err := decodeJSON(w, r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json body")
-		return
-	}
-	if err := s.writeRequiredVaultAudit(r, runtime, "vault.binding.delete.requested", map[string]any{
-		"binding_id": id, "expected_binding_revision": request.ExpectedBindingRevision,
-	}); err != nil {
-		writeInternalError(w)
 		return
 	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())
@@ -184,15 +186,18 @@ func (s vaultItemHandlers) deleteVaultDefaultBinding(w http.ResponseWriter, r *h
 		writeInternalError(w)
 		return
 	}
-	if err := store.DeleteDefaultBinding(r.Context(), id, request.ExpectedBindingRevision); err != nil {
+	if err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.binding.deleted", func() any {
+		return map[string]any{"binding_id": id}
+	}, func(tx *sql.Tx) error {
+		return store.WithTx(tx).DeleteDefaultBinding(r.Context(), id, request.ExpectedBindingRevision)
+	}); err != nil {
 		handleVaultBindingError(w, err)
 		return
 	}
-	if err := invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{BindingID: binding.ID}); err != nil {
+	if err := s.invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{BindingID: binding.ID}); err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.binding.deleted", map[string]any{"binding_id": id})
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -86,11 +86,11 @@ func (s *Store) SaveDefaultBinding(ctx context.Context, input DefaultBindingInpu
 	if input.ExpectedBindingRevision < 0 {
 		return DefaultBinding{}, ValidationError("expected binding revision cannot be negative")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.transaction(ctx, nil)
 	if err != nil {
 		return DefaultBinding{}, fmt.Errorf("begin save vault default binding: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback()
 	if err := validateDefaultBindingReferences(ctx, tx, input); err != nil {
 		return DefaultBinding{}, err
 	}
@@ -143,10 +143,14 @@ func (s *Store) SaveDefaultBinding(ctx context.Context, input DefaultBindingInpu
 			return DefaultBinding{}, ErrStale
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	item, err := (&Store{db: tx, vault: s.vault, workspaceUUID: s.workspaceUUID}).getDefaultBinding(ctx, id)
+	if err != nil {
+		return DefaultBinding{}, err
+	}
+	if err := commit(); err != nil {
 		return DefaultBinding{}, fmt.Errorf("commit vault default binding: %w", err)
 	}
-	return s.getDefaultBinding(ctx, id)
+	return item, nil
 }
 
 func (s *Store) DeleteDefaultBinding(ctx context.Context, id, expectedRevision int64) error {
@@ -204,7 +208,7 @@ func (s *Store) FindDefaultBinding(ctx context.Context, input DefaultBindingInpu
 	return item, true, nil
 }
 
-func validateDefaultBindingReferences(ctx context.Context, tx *sql.Tx, input DefaultBindingInput) error {
+func validateDefaultBindingReferences(ctx context.Context, tx storeDB, input DefaultBindingInput) error {
 	var itemActive, projectActive, assigned, targetActive, profileActive int
 	err := tx.QueryRowContext(ctx, `
 		SELECT

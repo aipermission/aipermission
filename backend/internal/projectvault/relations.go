@@ -91,7 +91,7 @@ func (s *Store) loadRelations(ctx context.Context, item *Item) error {
 	return noteRows.Close()
 }
 
-func validateActiveProjects(ctx context.Context, db *sql.DB, ids []int64) error {
+func validateActiveProjects(ctx context.Context, db storeDB, ids []int64) error {
 	for _, id := range ids {
 		var exists int
 		if err := db.QueryRowContext(ctx, `SELECT 1 FROM projects WHERE id = ? AND status = 'active'`, id).Scan(&exists); err != nil {
@@ -104,7 +104,7 @@ func validateActiveProjects(ctx context.Context, db *sql.DB, ids []int64) error 
 	return nil
 }
 
-func enforceCreateQuota(ctx context.Context, tx *sql.Tx, ownerProjectID int64) error {
+func enforceCreateQuota(ctx context.Context, tx storeDB, ownerProjectID int64) error {
 	var total int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM vault_items WHERE status = 'active'`).Scan(&total); err != nil {
 		return err
@@ -122,11 +122,11 @@ func enforceCreateQuota(ctx context.Context, tx *sql.Tx, ownerProjectID int64) e
 	return nil
 }
 
-func insertAssignments(ctx context.Context, tx *sql.Tx, itemID int64, ids []int64, now string) error {
+func insertAssignments(ctx context.Context, tx storeDB, itemID int64, ids []int64, now string) error {
 	return insertAssignmentsAtRevision(ctx, tx, itemID, ids, 1, now)
 }
 
-func insertAssignmentsAtRevision(ctx context.Context, tx *sql.Tx, itemID int64, ids []int64, revision int64, now string) error {
+func insertAssignmentsAtRevision(ctx context.Context, tx storeDB, itemID int64, ids []int64, revision int64, now string) error {
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO vault_item_projects (vault_item_id, project_id, assignment_revision, created_at, updated_at)
@@ -137,7 +137,7 @@ func insertAssignmentsAtRevision(ctx context.Context, tx *sql.Tx, itemID int64, 
 	return nil
 }
 
-func insertTags(ctx context.Context, tx *sql.Tx, itemID int64, tags []string, now string) error {
+func insertTags(ctx context.Context, tx storeDB, itemID int64, tags []string, now string) error {
 	for _, tag := range tags {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO vault_item_tags (vault_item_id, tag, created_at) VALUES (?, ?, ?)`, itemID, tag, now); err != nil {
 			return fmt.Errorf("insert vault tag: %w", err)
@@ -146,7 +146,7 @@ func insertTags(ctx context.Context, tx *sql.Tx, itemID int64, tags []string, no
 	return nil
 }
 
-func insertUsageNotes(ctx context.Context, tx *sql.Tx, itemID int64, notes []UsageNote, now string) error {
+func insertUsageNotes(ctx context.Context, tx storeDB, itemID int64, notes []UsageNote, now string) error {
 	for _, note := range notes {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO vault_item_usage_notes (vault_item_id, location, notes, created_at, updated_at)

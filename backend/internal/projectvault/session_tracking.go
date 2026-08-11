@@ -2,7 +2,6 @@ package projectvault
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 )
@@ -22,11 +21,11 @@ func (s *Store) RecordSessionItems(ctx context.Context, sessionID int64, items [
 	if sessionID < 1 {
 		return ValidationError("session id must be a positive integer")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.transaction(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin Vault session item tracking: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback()
 	if err := requireTrackedSession(ctx, tx, sessionID); err != nil {
 		return err
 	}
@@ -46,7 +45,7 @@ func (s *Store) RecordSessionItems(ctx context.Context, sessionID int64, items [
 			return fmt.Errorf("record Vault session item: %w", err)
 		}
 	}
-	return tx.Commit()
+	return commit()
 }
 
 func (s *Store) ActiveSessionsForMutation(ctx context.Context, scope SessionMutationScope) ([]SessionReference, error) {
@@ -83,7 +82,7 @@ func (s *Store) ActiveSessionsForMutation(ctx context.Context, scope SessionMuta
 	return items, nil
 }
 
-func requireTrackedSession(ctx context.Context, tx *sql.Tx, sessionID int64) error {
+func requireTrackedSession(ctx context.Context, tx storeDB, sessionID int64) error {
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM console_sessions WHERE id = ?)`, sessionID).Scan(&exists); err != nil {
 		return err

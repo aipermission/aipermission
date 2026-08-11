@@ -22,7 +22,14 @@ type ValidationError string
 func (e ValidationError) Error() string { return string(e) }
 
 type Store struct {
-	db *sql.DB
+	db    storeDB
+	begin func(context.Context, *sql.TxOptions) (*sql.Tx, error)
+}
+
+type storeDB interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 type Project struct {
@@ -41,7 +48,9 @@ type TokenScope struct {
 	Enabled     bool   `json:"enabled"`
 }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *sql.DB) *Store { return &Store{db: db, begin: db.BeginTx} }
+
+func NewTxStore(tx *sql.Tx) *Store { return &Store{db: tx} }
 
 func (s *Store) List(ctx context.Context) ([]Project, error) {
 	rows, err := s.db.QueryContext(ctx, `
@@ -96,17 +105,31 @@ func (s *Store) Create(ctx context.Context, name string) (Project, error) {
 	if err := validateName(name); err != nil {
 		return Project{}, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Project{}, fmt.Errorf("begin create project: %w", err)
+	if s.begin != nil {
+		tx, err := s.begin(ctx, nil)
+		if err != nil {
+			return Project{}, fmt.Errorf("begin create project: %w", err)
+		}
+		defer tx.Rollback()
+		item, err := createProject(ctx, tx, name)
+		if err != nil {
+			return Project{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return Project{}, fmt.Errorf("commit create project: %w", err)
+		}
+		return s.Get(ctx, item.ID)
 	}
-	defer tx.Rollback()
-	slug, err := availableSlug(ctx, tx, slugify(name))
+	return createProject(ctx, s.db, name)
+}
+
+func createProject(ctx context.Context, executor storeDB, name string) (Project, error) {
+	slug, err := availableSlug(ctx, executor, slugify(name))
 	if err != nil {
 		return Project{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := tx.ExecContext(ctx, `INSERT INTO projects (name, slug, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)`, name, slug, now, now)
+	result, err := executor.ExecContext(ctx, `INSERT INTO projects (name, slug, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)`, name, slug, now, now)
 	if err != nil {
 		if isUniqueError(err) {
 			return Project{}, ValidationError("project name already exists")
@@ -117,15 +140,12 @@ func (s *Store) Create(ctx context.Context, name string) (Project, error) {
 	if err != nil {
 		return Project{}, fmt.Errorf("read project id: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := executor.ExecContext(ctx, `
 		INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
 		SELECT id, ?, 1, ?, ? FROM api_tokens`, id, now, now); err != nil {
 		return Project{}, fmt.Errorf("initialize token project scopes: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return Project{}, fmt.Errorf("commit create project: %w", err)
-	}
-	return s.Get(ctx, id)
+	return Project{ID: id, Name: name, Slug: slug, CreatedAt: now, UpdatedAt: now}, nil
 }
 
 func (s *Store) Update(ctx context.Context, id int64, name string) (Project, error) {
@@ -209,13 +229,23 @@ func (s *Store) ListTokenScopes(ctx context.Context, tokenID int64) ([]TokenScop
 }
 
 func (s *Store) ReplaceTokenScopes(ctx context.Context, tokenID int64, enabledProjectIDs []int64) ([]TokenScope, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin replace token project scopes: %w", err)
+	if s.begin != nil {
+		tx, err := s.begin(ctx, nil)
+		if err != nil {
+			return nil, fmt.Errorf("begin replace token project scopes: %w", err)
+		}
+		defer tx.Rollback()
+		items, err := NewTxStore(tx).ReplaceTokenScopes(ctx, tokenID, enabledProjectIDs)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit replace token project scopes: %w", err)
+		}
+		return items, nil
 	}
-	defer tx.Rollback()
 	var tokenExists int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM api_tokens WHERE id = ?`, tokenID).Scan(&tokenExists); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM api_tokens WHERE id = ?`, tokenID).Scan(&tokenExists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ValidationError("token not found")
 		}
@@ -228,7 +258,7 @@ func (s *Store) ReplaceTokenScopes(ctx context.Context, tokenID int64, enabledPr
 		}
 		enabled[id] = true
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM projects WHERE status = 'active'`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM projects WHERE status = 'active'`)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +284,7 @@ func (s *Store) ReplaceTokenScopes(ctx context.Context, tokenID int64, enabledPr
 			value = 1
 			delete(enabled, id)
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := s.db.ExecContext(ctx, `
 			INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT(token_id, project_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`, tokenID, id, value, now, now); err != nil {
@@ -263,9 +293,6 @@ func (s *Store) ReplaceTokenScopes(ctx context.Context, tokenID int64, enabledPr
 	}
 	if len(enabled) > 0 {
 		return nil, ValidationError("project not found")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit replace token project scopes: %w", err)
 	}
 	return s.ListTokenScopes(ctx, tokenID)
 }
@@ -354,14 +381,14 @@ func slugify(value string) string {
 	return slug
 }
 
-func availableSlug(ctx context.Context, tx *sql.Tx, base string) (string, error) {
+func availableSlug(ctx context.Context, executor storeDB, base string) (string, error) {
 	for index := 1; index < 10000; index++ {
 		candidate := base
 		if index > 1 {
 			candidate = fmt.Sprintf("%s-%d", base, index)
 		}
 		var exists int
-		err := tx.QueryRowContext(ctx, `SELECT 1 FROM projects WHERE slug = ?`, candidate).Scan(&exists)
+		err := executor.QueryRowContext(ctx, `SELECT 1 FROM projects WHERE slug = ?`, candidate).Scan(&exists)
 		if errors.Is(err, sql.ErrNoRows) {
 			return candidate, nil
 		}

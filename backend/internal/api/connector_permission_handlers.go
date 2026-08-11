@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
@@ -94,20 +95,30 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 		return
 	}
 	defer release()
-	permissions, changed, err := store.ReplaceActionPermissionsWithChange(r.Context(), tokenID, inputs)
+	var permissions []connectortargets.ActionPermission
+	changed := false
+	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "token.connector_permissions.updated", func() any {
+		return map[string]any{"token_id": tokenID, "permissions": connectorPermissionResponses(permissions)}
+	}, func(tx *sql.Tx) error {
+		var replaceErr error
+		permissions, changed, replaceErr = connectortargets.NewTxStore(tx).ReplaceActionPermissionsWithChange(r.Context(), tokenID, inputs)
+		if replaceErr == nil && !changed {
+			return errAuditedMutationUnchanged
+		}
+		return replaceErr
+	})
+	if errors.Is(err, errAuditedMutationUnchanged) {
+		err = nil
+	}
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
 	if changed {
-		if err := invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "connector action permission changed; send a fresh Vault request"); err != nil {
+		if err := s.invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "connector action permission changed; send a fresh request"); err != nil {
 			writeInternalError(w)
 			return
 		}
-		s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.connector_permissions.updated", map[string]any{
-			"token_id":    tokenID,
-			"permissions": connectorPermissionResponses(permissions),
-		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": connectorPermissionResponses(permissions), "changed": changed,

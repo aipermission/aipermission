@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 
@@ -47,16 +48,18 @@ func (s tokenHandlers) createToken(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
-	item, err := runtime.tokens.Create(r.Context(), request, tokens.CreateOptions{StoreReusableToken: settings.ReusableTokens})
+	var item tokens.CreateResponse
+	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "token.created", func() any {
+		return map[string]any{"token_id": item.ID, "name": item.Name, "reusable_tokens": settings.ReusableTokens}
+	}, func(tx *sql.Tx) error {
+		var createErr error
+		item, createErr = runtime.tokens.WithTx(tx).Create(r.Context(), request, tokens.CreateOptions{StoreReusableToken: settings.ReusableTokens})
+		return createErr
+	})
 	if err != nil {
 		handleTokenError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.created", map[string]any{
-		"token_id":        item.ID,
-		"name":            item.Name,
-		"reusable_tokens": settings.ReusableTokens,
-	})
 	writeJSON(w, http.StatusCreated, item)
 }
 
@@ -76,7 +79,14 @@ func (s tokenHandlers) revokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
-	item, err := runtime.tokens.Revoke(r.Context(), id)
+	var item tokens.Token
+	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "token.revoked", func() any {
+		return map[string]any{"token_id": item.ID, "name": item.Name}
+	}, func(tx *sql.Tx) error {
+		var revokeErr error
+		item, revokeErr = runtime.tokens.WithTx(tx).Revoke(r.Context(), id)
+		return revokeErr
+	})
 	if err != nil {
 		handleTokenError(w, err)
 		return
@@ -91,15 +101,11 @@ func (s tokenHandlers) revokeToken(w http.ResponseWriter, r *http.Request) {
 		item.TokenValue = ""
 	}
 	if runtime.vaultLeases != nil {
-		if err := invalidateVaultTokenSessions(r.Context(), runtime, id, "token revoked; send a fresh Vault request"); err != nil {
+		if err := s.invalidateVaultTokenSessions(r.Context(), runtime, id, "token revoked; send a fresh Vault request"); err != nil {
 			log.Printf("invalidate Vault token sessions failed token=%d error=%v", id, err)
 			writeInternalError(w)
 			return
 		}
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.revoked", map[string]any{
-		"token_id": item.ID,
-		"name":     item.Name,
-	})
 	writeJSON(w, http.StatusOK, item)
 }

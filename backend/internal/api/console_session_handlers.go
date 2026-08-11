@@ -99,7 +99,7 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, connectorErrorMessage(adapter, "console session failed", err))
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, item.RuntimeID, "console.session.created", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, item.RuntimeID, "console.session.created", map[string]any{
 		"session_id":               item.ID,
 		"name":                     item.Name,
 		"close_existing":           request.CloseExisting,
@@ -195,7 +195,7 @@ func (s consoleHandlers) inputConsoleSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if runtimeID, err := consoleSessionRuntimeID(r.Context(), runtime, id); err == nil {
-		s.writeAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.input", map[string]any{
+		s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.input", map[string]any{
 			"session_id": id,
 			"bytes":      len(request.Data),
 		})
@@ -226,7 +226,7 @@ func (s consoleHandlers) closeConsoleSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if runtimeID, err := consoleSessionRuntimeID(r.Context(), runtime, id); err == nil {
-		s.writeAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.closed", map[string]any{
+		s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.closed", map[string]any{
 			"session_id": id,
 		})
 	}
@@ -252,7 +252,7 @@ func (s consoleHandlers) restartTargetConsoleSession(w http.ResponseWriter, r *h
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.restarted", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.restarted", map[string]any{
 		"closed_session_ids":        result.ClosedSessionIDs,
 		"canceled_running_requests": result.CanceledRunningRequests,
 	})

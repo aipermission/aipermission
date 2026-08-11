@@ -73,7 +73,7 @@ func (s connectorActionHandlers) runLocalConnectorAction(w http.ResponseWriter, 
 	if result.Replayed {
 		auditAction = "connector_action.manual.replayed"
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, auditAction, map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, auditAction, map[string]any{
 		"request_id":     result.Request.ID,
 		"target_ref":     request.TargetRef,
 		"connector_kind": result.Request.ConnectorKind,

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 )
 
 const (
@@ -63,22 +65,31 @@ func (s retentionHandlers) updateRetentionSettings(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := writeRetentionSettings(r.Context(), runtime, settings); err != nil {
-		writeInternalError(w)
-		return
-	}
-	deleted, err := applyRetentionSettings(r.Context(), runtime, settings)
+	deleted := map[string]int64{}
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "settings.retention.updated",
+		func() any {
+			return map[string]any{
+				"history_days": settings.HistoryDays,
+				"audit_days":   settings.AuditDays,
+				"console_days": settings.ConsoleDays,
+				"message_days": settings.MessageDays,
+				"deleted":      deleted,
+			}
+		},
+		func(tx *sql.Tx) error {
+			if err := writeRetentionSettingsWithExecutor(r.Context(), tx, settings); err != nil {
+				return err
+			}
+			var err error
+			deleted, err = applyRetentionSettingsWithExecutor(r.Context(), tx, settings)
+			return err
+		},
+	)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "settings.retention.updated", map[string]any{
-		"history_days": settings.HistoryDays,
-		"audit_days":   settings.AuditDays,
-		"console_days": settings.ConsoleDays,
-		"message_days": settings.MessageDays,
-		"deleted":      deleted,
-	})
 	writeJSON(w, http.StatusOK, settings)
 }
 
@@ -96,16 +107,20 @@ func (s retentionHandlers) purgeRetention(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "days must be at least 1")
 		return
 	}
-	deleted, err := purgeRetentionTarget(r.Context(), runtime, request.Target, request.Days)
+	var deleted int64
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "settings.retention.purged",
+		func() any { return map[string]any{"target": request.Target, "days": request.Days, "deleted": deleted} },
+		func(tx *sql.Tx) error {
+			var err error
+			deleted, err = purgeRetentionTargetWithExecutor(r.Context(), tx, request.Target, request.Days)
+			return err
+		},
+	)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "settings.retention.purged", map[string]any{
-		"target":  request.Target,
-		"days":    request.Days,
-		"deleted": deleted,
-	})
 	writeJSON(w, http.StatusOK, purgeRetentionResponse{Target: request.Target, Days: request.Days, Deleted: deleted})
 }
 
@@ -123,6 +138,10 @@ func readRetentionSettings(ctx context.Context, runtime *databaseRuntime) (reten
 }
 
 func writeRetentionSettings(ctx context.Context, runtime *databaseRuntime, settings retentionSettingsResponse) error {
+	return writeRetentionSettingsWithExecutor(ctx, runtime.database, settings)
+}
+
+func writeRetentionSettingsWithExecutor(ctx context.Context, executor auditoutbox.DBTX, settings retentionSettingsResponse) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	for key, value := range map[string]int{
 		historyRetentionDaysKey: settings.HistoryDays,
@@ -130,7 +149,7 @@ func writeRetentionSettings(ctx context.Context, runtime *databaseRuntime, setti
 		consoleRetentionDaysKey: settings.ConsoleDays,
 		messageRetentionDaysKey: settings.MessageDays,
 	} {
-		if _, err := runtime.database.ExecContext(ctx, `
+		if _, err := executor.ExecContext(ctx, `
 			INSERT INTO settings (key, value, updated_at)
 			VALUES (?, ?, ?)
 			ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
@@ -154,6 +173,10 @@ func validateRetentionSettings(settings retentionSettingsResponse) error {
 }
 
 func applyRetentionSettings(ctx context.Context, runtime *databaseRuntime, settings retentionSettingsResponse) (map[string]int64, error) {
+	return applyRetentionSettingsWithExecutor(ctx, runtime.database, settings)
+}
+
+func applyRetentionSettingsWithExecutor(ctx context.Context, executor auditoutbox.DBTX, settings retentionSettingsResponse) (map[string]int64, error) {
 	deleted := map[string]int64{}
 	for target, days := range map[string]int{
 		"history":  settings.HistoryDays,
@@ -164,7 +187,7 @@ func applyRetentionSettings(ctx context.Context, runtime *databaseRuntime, setti
 		if days == 0 {
 			continue
 		}
-		count, err := purgeRetentionTarget(ctx, runtime, target, days)
+		count, err := purgeRetentionTargetWithExecutor(ctx, executor, target, days)
 		if err != nil {
 			return nil, err
 		}
@@ -174,27 +197,29 @@ func applyRetentionSettings(ctx context.Context, runtime *databaseRuntime, setti
 }
 
 func purgeRetentionTarget(ctx context.Context, runtime *databaseRuntime, target string, days int) (int64, error) {
+	return purgeRetentionTargetWithExecutor(ctx, runtime.database, target, days)
+}
+
+func purgeRetentionTargetWithExecutor(ctx context.Context, executor auditoutbox.DBTX, target string, days int) (int64, error) {
 	switch target {
 	case "history":
-		return purgeHistoryRetention(ctx, runtime, days)
+		return purgeHistoryRetentionWithExecutor(ctx, executor, days)
 	case "audit":
-		return execRetentionDelete(ctx, runtime, `DELETE FROM audit_logs WHERE julianday(created_at) < julianday('now', ?)`, days)
+		return execRetentionDeleteWithCutoff(ctx, executor, `DELETE FROM audit_logs WHERE julianday(created_at) < julianday('now', ?)`, "-"+strconv.Itoa(days)+" days")
 	case "console":
-		return execRetentionDelete(ctx, runtime, `DELETE FROM console_sessions WHERE closed_at IS NOT NULL AND julianday(closed_at) < julianday('now', ?)`, days)
+		return execRetentionDeleteWithCutoff(ctx, executor, `DELETE FROM console_sessions WHERE closed_at IS NOT NULL AND julianday(closed_at) < julianday('now', ?)`, "-"+strconv.Itoa(days)+" days")
 	case "messages":
-		return execRetentionDelete(ctx, runtime, `DELETE FROM message_queue WHERE consumed_at IS NOT NULL AND julianday(consumed_at) < julianday('now', ?)`, days)
+		return execRetentionDeleteWithCutoff(ctx, executor, `DELETE FROM message_queue WHERE consumed_at IS NOT NULL AND julianday(consumed_at) < julianday('now', ?)`, "-"+strconv.Itoa(days)+" days")
 	default:
 		return 0, errInvalidQuery("invalid retention target")
 	}
 }
 
 func purgeHistoryRetention(ctx context.Context, runtime *databaseRuntime, days int) (int64, error) {
-	tx, err := runtime.database.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
+	return purgeHistoryRetentionWithExecutor(ctx, runtime.database, days)
+}
 
+func purgeHistoryRetentionWithExecutor(ctx context.Context, executor auditoutbox.DBTX, days int) (int64, error) {
 	cutoff := "-" + strconv.Itoa(days) + " days"
 	total := int64(0)
 	for _, statement := range []string{
@@ -204,14 +229,11 @@ func purgeHistoryRetention(ctx context.Context, runtime *databaseRuntime, days i
 		`DELETE FROM file_transfer_batches WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM history_entries WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 	} {
-		deleted, err := execRetentionDeleteWithCutoff(ctx, tx, statement, cutoff)
+		deleted, err := execRetentionDeleteWithCutoff(ctx, executor, statement, cutoff)
 		if err != nil {
 			return 0, err
 		}
 		total += deleted
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
 	}
 	return total, nil
 }

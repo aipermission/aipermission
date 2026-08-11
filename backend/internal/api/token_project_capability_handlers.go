@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -68,31 +69,36 @@ func (s tokenHandlers) updateTokenProjectCapabilities(w http.ResponseWriter, r *
 			ExecutionRule: capability.ExecutionRule, ExpiresAt: capability.ExpiresAt,
 		})
 	}
-	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "token.project_capabilities.update_requested", map[string]any{
-		"token_id": tokenID, "capabilities": request.Capabilities,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault capability update was canceled")
 		return
 	}
 	defer release()
-	items, changed, err := projectcapabilities.NewStore(runtime.database).ReplaceWithChange(r.Context(), tokenID, inputs)
+	var items []projectcapabilities.Capability
+	changed := false
+	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "token.project_capabilities.updated", func() any {
+		return map[string]any{"token_id": tokenID, "capabilities": items}
+	}, func(tx *sql.Tx) error {
+		var replaceErr error
+		items, changed, replaceErr = projectcapabilities.NewTxStore(tx).ReplaceWithChange(r.Context(), tokenID, inputs)
+		if replaceErr == nil && !changed {
+			return errAuditedMutationUnchanged
+		}
+		return replaceErr
+	})
+	if errors.Is(err, errAuditedMutationUnchanged) {
+		err = nil
+	}
 	if err != nil {
 		handleProjectCapabilityError(w, err)
 		return
 	}
 	if changed {
-		if err := invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "Vault project capability changed; send a fresh request"); err != nil {
+		if err := s.invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "Vault project capability changed; send a fresh request"); err != nil {
 			writeInternalError(w)
 			return
 		}
-		s.writeAudit(r.Context(), runtime, "user", nil, 0, "token.project_capabilities.updated", map[string]any{
-			"token_id": tokenID, "capabilities": items,
-		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"definitions": projectcapabilities.Definitions(),

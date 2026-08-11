@@ -8,17 +8,16 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
-func invalidateVaultMutationAfterCommit(
+func (s *Server) invalidateVaultMutationAfterCommit(
 	ctx context.Context,
 	runtime *databaseRuntime,
 	sessions []projectvault.SessionReference,
 	scope projectvault.SessionMutationScope,
 ) error {
 	closeErr := closeVaultSessionReferences(ctx, runtime, sessions)
-	staleErr := vaultrequests.NewStore(runtime.database).StalePendingForContext(
+	staleErr := s.vaultRequestStore(ctx, runtime).StalePendingForContext(
 		ctx, scope.ItemID, scope.BindingID, "Vault item or binding changed; send a fresh request",
 	)
 	return errors.Join(closeErr, staleErr)
@@ -47,7 +46,7 @@ func closeVaultSessionReferences(ctx context.Context, runtime *databaseRuntime, 
 	return errors.Join(closeErrors...)
 }
 
-func invalidateVaultTokenSessions(ctx context.Context, runtime *databaseRuntime, tokenID int64, reason string) error {
+func (s *Server) invalidateVaultTokenSessions(ctx context.Context, runtime *databaseRuntime, tokenID int64, reason string) error {
 	rows, err := runtime.database.QueryContext(ctx, `
 		SELECT DISTINCT session_id
 		FROM vault_session_leases
@@ -78,7 +77,7 @@ func invalidateVaultTokenSessions(ctx context.Context, runtime *databaseRuntime,
 	); err != nil {
 		invalidationErrors = append(invalidationErrors, err)
 	}
-	if err := vaultrequests.NewStore(runtime.database).StalePendingForToken(ctx, tokenID, reason); err != nil {
+	if err := s.vaultRequestStore(ctx, runtime).StalePendingForToken(ctx, tokenID, reason); err != nil {
 		invalidationErrors = append(invalidationErrors, err)
 	}
 	principal, err := localExecutionPrincipal(runtime)
@@ -94,7 +93,7 @@ func invalidateVaultTokenSessions(ctx context.Context, runtime *databaseRuntime,
 	return errors.Join(invalidationErrors...)
 }
 
-func invalidateVaultProjectSessions(ctx context.Context, runtime *databaseRuntime, projectID int64, reason string) error {
+func (s *Server) invalidateVaultProjectSessions(ctx context.Context, runtime *databaseRuntime, projectID int64, reason string) error {
 	rows, err := runtime.database.QueryContext(ctx, `
 		SELECT DISTINCT session_id, runtime_id, session_generation
 		FROM vault_session_leases
@@ -125,7 +124,7 @@ func invalidateVaultProjectSessions(ctx context.Context, runtime *databaseRuntim
 		WHERE project_id = ? AND status = 'active'`,
 		now, projectID,
 	)
-	staleErr := vaultrequests.NewStore(runtime.database).StalePendingForProject(ctx, projectID, reason)
+	staleErr := s.vaultRequestStore(ctx, runtime).StalePendingForProject(ctx, projectID, reason)
 	return errors.Join(closeErr, revokeErr, staleErr)
 }
 
@@ -174,7 +173,7 @@ func vaultAllRuntimeIDs(ctx context.Context, runtime *databaseRuntime) ([]int64,
 	return queryVaultRuntimeIDs(ctx, runtime, "")
 }
 
-func invalidateVaultRuntimeSessions(ctx context.Context, runtime *databaseRuntime, runtimeIDs []int64, reason string) error {
+func (s *Server) invalidateVaultRuntimeSessions(ctx context.Context, runtime *databaseRuntime, runtimeIDs []int64, reason string) error {
 	if len(runtimeIDs) == 0 {
 		return nil
 	}
@@ -212,11 +211,11 @@ func invalidateVaultRuntimeSessions(ctx context.Context, runtime *databaseRuntim
 		}
 	}
 	closeErr := closeVaultSessionReferences(ctx, runtime, references)
-	staleErr := vaultrequests.NewStore(runtime.database).StalePendingForRuntimes(ctx, runtimeIDs, reason)
+	staleErr := s.vaultRequestStore(ctx, runtime).StalePendingForRuntimes(ctx, runtimeIDs, reason)
 	return errors.Join(closeErr, staleErr)
 }
 
-func invalidateVaultSessionsForTargetProfile(
+func (s *Server) invalidateVaultSessionsForTargetProfile(
 	ctx context.Context,
 	runtime *databaseRuntime,
 	targetID int64,
@@ -227,5 +226,5 @@ func invalidateVaultSessionsForTargetProfile(
 	if err != nil {
 		return err
 	}
-	return invalidateVaultRuntimeSessions(ctx, runtime, runtimeIDs, reason)
+	return s.invalidateVaultRuntimeSessions(ctx, runtime, runtimeIDs, reason)
 }

@@ -66,7 +66,7 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w)
 			return
 		}
-		if err := invalidateVaultRuntimeSessions(
+		if err := s.invalidateVaultRuntimeSessions(
 			r.Context(),
 			runtime,
 			runtimeIDs,
@@ -75,7 +75,7 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w)
 			return
 		}
-		store := vaultrequests.NewStore(runtime.database)
+		store := s.vaultRequestStore(r.Context(), runtime)
 		if err := store.StalePendingForAction(
 			r.Context(),
 			vaultrequests.ActionGenerateItem,
@@ -93,7 +93,7 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 	if request.Enabled {
 		action = "mcp.runtime.started"
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, action, map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, action, map[string]any{
 		"enabled": request.Enabled,
 	})
 	settings, err := readSecuritySettings(r.Context(), runtime)

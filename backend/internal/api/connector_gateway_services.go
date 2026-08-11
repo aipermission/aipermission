@@ -104,7 +104,7 @@ func (s *Server) ConnectorChangeVaultPeerTrust(ctx context.Context, change func(
 		if err := revokeAllPersistedVaultLeases(ctx, runtime); err != nil {
 			return err
 		}
-		if err := invalidateVaultRuntimeSessions(
+		if err := s.invalidateVaultRuntimeSessions(
 			ctx,
 			runtime,
 			runtimeIDs,
@@ -172,13 +172,33 @@ func (s connectorTargetHandlers) ConnectorWriteAudit(ctx context.Context, runtim
 	if !ok || dbRuntime == nil {
 		return
 	}
-	s.writeAudit(ctx, dbRuntime, actorType, tokenID, runtimeID, action, payload)
+	s.writeObservationAudit(ctx, dbRuntime, actorType, tokenID, runtimeID, action, payload)
+}
+
+// ConnectorDeleteTargetRecord atomically deletes a connector target and
+// records its shared lifecycle audit event. Connector-owned adapters perform
+// remote cleanup before crossing this irreversible local boundary.
+func (s connectorTargetHandlers) ConnectorDeleteTargetRecord(ctx context.Context, runtime connectorapi.GatewayRuntime, target connectortargets.Target, payload map[string]any) error {
+	dbRuntime, ok := runtime.(*databaseRuntime)
+	if !ok || dbRuntime == nil {
+		return errInvalidConnectorRuntime
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["target_id"] = target.ID
+	payload["connector_kind"] = target.ConnectorKind
+	payload["name"] = target.Name
+	return s.withAuditedMutation(
+		ctx, dbRuntime, "user", nil, 0, "connector.target.deleted",
+		func() any { return payload },
+		func(tx *sql.Tx) error { return connectortargets.NewTxStore(tx).DeleteTarget(ctx, target.ID) },
+	)
 }
 
 // ConnectorFinalizeDeletedTarget applies the shared post-delete lifecycle:
-// pending connector action requests are marked stale and the common delete
-// audit event is written. Connector adapters may add connector-specific payload
-// fields, but they should not duplicate this cleanup themselves.
+// pending connector action requests are marked stale after the target record
+// and its audit event commit atomically.
 func (s connectorTargetHandlers) ConnectorFinalizeDeletedTarget(ctx context.Context, runtime connectorapi.GatewayRuntime, target connectortargets.Target, staleReason string, payload map[string]any) (int64, error) {
 	dbRuntime, ok := runtime.(*databaseRuntime)
 	if !ok || dbRuntime == nil {
@@ -187,7 +207,7 @@ func (s connectorTargetHandlers) ConnectorFinalizeDeletedTarget(ctx context.Cont
 	if staleReason == "" {
 		staleReason = "connector target was deleted; ask the AI to send a fresh request"
 	}
-	if err := invalidateVaultSessionsForTargetProfile(
+	if err := s.invalidateVaultSessionsForTargetProfile(
 		ctx,
 		dbRuntime,
 		target.ID,
@@ -200,14 +220,6 @@ func (s connectorTargetHandlers) ConnectorFinalizeDeletedTarget(ctx context.Cont
 	if err != nil {
 		return 0, err
 	}
-	if payload == nil {
-		payload = map[string]any{}
-	}
-	payload["target_id"] = target.ID
-	payload["connector_kind"] = target.ConnectorKind
-	payload["name"] = target.Name
-	payload["stale_connector_requests"] = staleRequests
-	s.writeAudit(ctx, dbRuntime, "user", nil, 0, "connector.target.deleted", payload)
 	return staleRequests, nil
 }
 

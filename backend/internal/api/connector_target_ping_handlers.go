@@ -143,7 +143,7 @@ func (s connectorTargetHandlers) pingConnectorTargetHost(w http.ResponseWriter, 
 		DurationMS:         time.Since(started).Milliseconds(),
 		Message:            connectorHostPingMessage(received, attemptCount),
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.host.ping", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "connector.host.ping", map[string]any{
 		"project_id":           request.ProjectID,
 		"host":                 request.Host,
 		"port":                 request.Port,

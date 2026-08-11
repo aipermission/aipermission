@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -88,32 +89,39 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 		writeInternalError(w)
 		return
 	}
-	profile, err := store.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
-		TargetID:            target.ID,
-		ConnectorKind:       target.ConnectorKind,
-		Kind:                provisioned.Kind,
-		Label:               provisioned.Label,
-		Public:              provisioned.Public,
-		EncryptedSecretJSON: encrypted,
-		RiskLabel:           provisioned.RiskLabel,
-	})
+	var profile connectortargets.CredentialProfile
+	err = s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "connector.profile.provisioned",
+		func() any {
+			return map[string]any{
+				"target_id": target.ID, "profile_id": profile.ID,
+				"admin_profile_id": adminProfile.ID, "connector_kind": target.ConnectorKind,
+				"kind": profile.Kind, "label": profile.Label,
+			}
+		},
+		func(tx *sql.Tx) error {
+			txStore := connectortargets.NewTxStore(tx)
+			var err error
+			profile, err = txStore.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
+				TargetID:            target.ID,
+				ConnectorKind:       target.ConnectorKind,
+				Kind:                provisioned.Kind,
+				Label:               provisioned.Label,
+				Public:              provisioned.Public,
+				EncryptedSecretJSON: encrypted,
+				RiskLabel:           provisioned.RiskLabel,
+			})
+			if err != nil {
+				return err
+			}
+			return ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile)
+		},
+	)
 	if err != nil {
 		cleanupProvisionedCredentialProfileAfterFailure(provisioner, target, adminProfile, secrets, provisioned, s.Server, runtime)
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
-		writeInternalError(w)
-		return
-	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "connector.profile.provisioned", map[string]any{
-		"target_id":        target.ID,
-		"profile_id":       profile.ID,
-		"admin_profile_id": adminProfile.ID,
-		"connector_kind":   target.ConnectorKind,
-		"kind":             profile.Kind,
-		"label":            profile.Label,
-	})
 	writeJSON(w, http.StatusCreated, provisionConnectorCredentialProfileResponse{
 		Profile: profileToSummary(profile),
 		Result:  provisioned.Result,

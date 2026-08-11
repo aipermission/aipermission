@@ -227,15 +227,11 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 	if targetID < 1 || profileID < 1 {
 		return ErrTargetProfileNotFound
 	}
-	starter, ok := s.db.(transactionStarter)
-	if !ok {
-		return fmt.Errorf("connector target store cannot start transactions")
-	}
-	tx, err := starter.BeginTx(ctx, nil)
+	tx, commit, rollback, err := s.transaction(ctx, "connector profile archive")
 	if err != nil {
 		return fmt.Errorf("begin connector profile archive: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE connector_credential_profiles
 		SET status = ?, updated_at = ?
@@ -276,7 +272,7 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 	); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return commit()
 }
 
 func (s *Store) ListCredentialProfiles(ctx context.Context, targetID int64) ([]CredentialProfile, error) {

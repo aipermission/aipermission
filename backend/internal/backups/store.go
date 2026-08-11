@@ -85,11 +85,37 @@ type CreateRecordRequest struct {
 }
 
 type Store struct {
-	db *sql.DB
+	db storeDB
+}
+
+type storeDB interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type transactionStarter interface {
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 }
 
 func NewStore(database *sql.DB) *Store {
 	return &Store{db: database}
+}
+
+func NewTxStore(tx *sql.Tx) *Store {
+	return &Store{db: tx}
+}
+
+func (s *Store) transaction(ctx context.Context, label string) (storeDB, func() error, func(), error) {
+	starter, ok := s.db.(transactionStarter)
+	if !ok {
+		return s.db, func() error { return nil }, func() {}, nil
+	}
+	tx, err := starter.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("begin %s: %w", label, err)
+	}
+	return tx, tx.Commit, func() { _ = tx.Rollback() }, nil
 }
 
 func (s *Store) ListProviders(ctx context.Context) ([]Provider, error) {
@@ -500,21 +526,21 @@ func (s *Store) MarkMissingProviderRecordsDeleted(ctx context.Context, providerI
 	if len(missing) == 0 {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	executor, commit, rollback, err := s.transaction(ctx, "provider record reconciliation")
 	if err != nil {
-		return fmt.Errorf("begin provider record reconciliation: %w", err)
+		return err
 	}
-	defer tx.Rollback()
+	defer rollback()
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, id := range missing {
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := executor.ExecContext(ctx, `
 			UPDATE backup_records
 			SET deleted_at = ?, updated_at = ?
 			WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, now, now, providerID, id); err != nil {
 			return fmt.Errorf("mark missing provider record deleted: %w", err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commit(); err != nil {
 		return fmt.Errorf("commit provider record reconciliation: %w", err)
 	}
 	return nil
@@ -537,21 +563,21 @@ func (s *Store) MarkProviderRecordsDeleted(ctx context.Context, providerID int64
 		seen[id] = struct{}{}
 		normalizedIDs = append(normalizedIDs, id)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	executor, commit, rollback, err := s.transaction(ctx, "provider record deletion")
 	if err != nil {
-		return fmt.Errorf("begin provider record deletion: %w", err)
+		return err
 	}
-	defer tx.Rollback()
+	defer rollback()
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, id := range normalizedIDs {
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := executor.ExecContext(ctx, `
 			UPDATE backup_records
 			SET deleted_at = ?, updated_at = ?
 			WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, now, now, providerID, id); err != nil {
 			return fmt.Errorf("mark provider record deleted: %w", err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := commit(); err != nil {
 		return fmt.Errorf("commit provider record deletion: %w", err)
 	}
 	return nil

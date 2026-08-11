@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -126,27 +127,26 @@ func (s vaultItemHandlers) createVaultItem(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if err := s.writeRequiredVaultAudit(r, runtime, "vault.item.create.requested", map[string]any{
-		"project_id": request.OwnerProjectID,
-		"name":       strings.TrimSpace(request.Name),
-		"source":     request.Source,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
-	item, err := store.Create(r.Context(), projectvault.CreateInput{
+	input := projectvault.CreateInput{
 		Name: request.Name, Value: request.Value, OwnerProjectID: request.OwnerProjectID,
 		SharedProjectIDs: request.SharedProjectIDs, SecretType: request.SecretType,
 		Provider: request.Provider, Environment: request.Environment, Description: request.Description,
 		ExpiresAt: request.ExpiresAt, ExpiryWarningDays: request.ExpiryWarningDays,
 		Source: request.Source, GeneratorKind: request.GeneratorKind, Tags: request.Tags,
 		UsageNotes: vaultUsageNotes(request.UsageNotes),
+	}
+	var item projectvault.Item
+	err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.item.created", func() any {
+		return vaultItemAuditPayload(item)
+	}, func(tx *sql.Tx) error {
+		var createErr error
+		item, createErr = store.WithTx(tx).Create(r.Context(), input)
+		return createErr
 	})
 	if err != nil {
 		handleVaultItemError(w, err)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.item.created", vaultItemAuditPayload(item))
 	writeJSON(w, http.StatusCreated, item)
 }
 
@@ -181,14 +181,6 @@ func (s vaultItemHandlers) updateVaultItem(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if err := s.writeRequiredVaultAudit(r, runtime, "vault.item.update.requested", map[string]any{
-		"project_id":                 request.OwnerProjectID,
-		"vault_item_id":              id,
-		"expected_metadata_revision": request.ExpectedMetadataRevision,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault item update was canceled")
@@ -210,23 +202,30 @@ func (s vaultItemHandlers) updateVaultItem(w http.ResponseWriter, r *http.Reques
 		writeInternalError(w)
 		return
 	}
-	item, err := store.UpdateMetadata(r.Context(), projectvault.UpdateMetadataInput{
+	input := projectvault.UpdateMetadataInput{
 		ID: id, ExpectedMetadataRevision: request.ExpectedMetadataRevision, Name: request.Name,
 		OwnerProjectID: request.OwnerProjectID, SharedProjectIDs: request.SharedProjectIDs,
 		SecretType: request.SecretType, Provider: request.Provider, Environment: request.Environment,
 		Description: request.Description, ExpiresAt: request.ExpiresAt,
 		ExpiryWarningDays: request.ExpiryWarningDays, Tags: request.Tags,
 		UsageNotes: vaultUsageNotes(request.UsageNotes),
+	}
+	var item projectvault.Item
+	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.item.updated", func() any {
+		return vaultItemAuditPayload(item)
+	}, func(tx *sql.Tx) error {
+		var updateErr error
+		item, updateErr = store.WithTx(tx).UpdateMetadata(r.Context(), input)
+		return updateErr
 	})
 	if err != nil {
 		handleVaultItemError(w, err)
 		return
 	}
-	if err := invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, scope); err != nil {
+	if err := s.invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, scope); err != nil {
 		writeInternalError(w)
 		return
 	}
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.item.updated", vaultItemAuditPayload(item))
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -277,15 +276,6 @@ func (s vaultItemHandlers) replaceVaultItemValue(w http.ResponseWriter, r *http.
 		handleVaultItemError(w, err)
 		return
 	}
-	if err := s.writeRequiredVaultAudit(r, runtime, "vault.item.value_replace.requested", map[string]any{
-		"project_id": current.OwnerProjectID, "vault_item_id": id,
-		"expected_value_version": request.ExpectedValueVersion,
-		"source":                 request.Source,
-		"generator_kind":         request.GeneratorKind,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
 	if current.ValueVersion != request.ExpectedValueVersion {
 		handleVaultItemError(w, projectvault.ErrStale)
 		return
@@ -310,21 +300,28 @@ func (s vaultItemHandlers) replaceVaultItemValue(w http.ResponseWriter, r *http.
 		writeInternalError(w)
 		return
 	}
-	item, err := store.ReplaceValue(r.Context(), projectvault.ReplaceValueInput{
+	input := projectvault.ReplaceValueInput{
 		ID: id, Value: request.Value, Source: request.Source, GeneratorKind: request.GeneratorKind,
 		GeneratorParams:      generatedPreview.GeneratorParameters,
 		ExpectedValueVersion: request.ExpectedValueVersion,
+	}
+	var item projectvault.Item
+	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.item.value_replaced", func() any {
+		return vaultItemAuditPayload(item)
+	}, func(tx *sql.Tx) error {
+		var replaceErr error
+		item, replaceErr = store.WithTx(tx).ReplaceValue(r.Context(), input)
+		return replaceErr
 	})
 	if err != nil {
 		handleVaultItemError(w, err)
 		return
 	}
-	if err := invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, scope); err != nil {
+	if err := s.invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, scope); err != nil {
 		writeInternalError(w)
 		return
 	}
 	runtime.clearVaultPreview(id)
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.item.value_replaced", vaultItemAuditPayload(item))
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -502,14 +499,6 @@ func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Reques
 		handleVaultItemError(w, err)
 		return
 	}
-	if err := s.writeRequiredVaultAudit(r, runtime, "vault.item.delete.requested", map[string]any{
-		"project_id": item.OwnerProjectID, "vault_item_id": id,
-		"expected_value_version":     request.ExpectedValueVersion,
-		"expected_metadata_revision": request.ExpectedMetadataRevision,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
 	if item.ValueVersion != request.ExpectedValueVersion || item.MetadataRevision != request.ExpectedMetadataRevision {
 		handleVaultItemError(w, projectvault.ErrStale)
 		return
@@ -519,16 +508,19 @@ func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Reques
 		writeInternalError(w)
 		return
 	}
-	if err := store.Delete(r.Context(), id, request.ExpectedValueVersion, request.ExpectedMetadataRevision); err != nil {
+	if err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.item.deleted", func() any {
+		return vaultItemAuditPayload(item)
+	}, func(tx *sql.Tx) error {
+		return store.WithTx(tx).Delete(r.Context(), id, request.ExpectedValueVersion, request.ExpectedMetadataRevision)
+	}); err != nil {
 		handleVaultItemError(w, err)
 		return
 	}
-	if err := invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{ItemID: item.ID}); err != nil {
+	if err := s.invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{ItemID: item.ID}); err != nil {
 		writeInternalError(w)
 		return
 	}
 	runtime.clearVaultPreview(id)
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "vault.item.deleted", vaultItemAuditPayload(item))
 	w.WriteHeader(http.StatusNoContent)
 }
 

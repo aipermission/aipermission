@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
 
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
@@ -17,6 +19,21 @@ type vaultActionRunResult struct {
 	ExecutionError error
 }
 
+func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
+	redact := s.prepareAuditRedactor(ctx, runtime)
+	return vaultrequests.NewStore(runtime.database).WithMutationHook(func(ctx context.Context, executor vaultrequests.Executor, item vaultrequests.Request) error {
+		event, err := s.buildAuditEventWithRedactor(
+			ctx, executor, "gateway", int64Ptr(item.TokenID), valueOrZero(item.RuntimeID),
+			"vault.action_request."+item.Status, vaultActionAuditPayload(item, item.UserNote), redact,
+		)
+		if err != nil {
+			return err
+		}
+		_, err = (auditoutbox.Store{}).Append(ctx, executor, event)
+		return err
+	})
+}
+
 func (s *Server) runVaultActionRequest(
 	ctx context.Context,
 	runtime *databaseRuntime,
@@ -26,8 +43,7 @@ func (s *Server) runVaultActionRequest(
 	startedAction string,
 	finishedActionPrefix string,
 ) (vaultActionRunResult, error) {
-	store := vaultrequests.NewStore(runtime.database)
-	item, err := store.Claim(ctx, requestID)
+	item, err := s.claimVaultActionRequest(ctx, runtime, requestID, actor, startedAction, userNote)
 	if err != nil {
 		return vaultActionRunResult{}, err
 	}
@@ -37,7 +53,6 @@ func (s *Server) runVaultActionRequest(
 		item,
 		actor,
 		userNote,
-		startedAction,
 		finishedActionPrefix,
 	)
 }
@@ -48,22 +63,9 @@ func (s *Server) executeClaimedVaultActionRequest(
 	item vaultrequests.Request,
 	actor string,
 	userNote string,
-	startedAction string,
 	finishedActionPrefix string,
 ) (vaultActionRunResult, error) {
-	store := vaultrequests.NewStore(runtime.database)
-	if err := s.writeAuditRequired(
-		ctx,
-		runtime,
-		actor,
-		int64Ptr(item.TokenID),
-		valueOrZero(item.RuntimeID),
-		startedAction,
-		vaultActionAuditPayload(item, userNote),
-	); err != nil {
-		_, _ = store.Complete(ctx, item.ID, vaultrequests.StatusFailed, nil, "audit write failed before execution", userNote)
-		return vaultActionRunResult{}, err
-	}
+	store := s.vaultRequestStore(ctx, runtime)
 
 	output, executeErr := executeVaultAction(ctx, s, runtime, item)
 	status := vaultrequests.StatusCompleted
@@ -75,7 +77,10 @@ func (s *Server) executeClaimedVaultActionRequest(
 			status = vaultrequests.StatusStale
 		}
 	}
-	completed, err := store.Complete(ctx, item.ID, status, output, errorText, userNote)
+	completed, err := s.completeVaultActionRequest(
+		ctx, runtime, item.ID, status, output, errorText, userNote,
+		actor, finishedActionPrefix+"."+status,
+	)
 	if err != nil {
 		current, getErr := store.Get(ctx, item.ID)
 		if getErr == nil && current.Status == status {
@@ -88,7 +93,10 @@ func (s *Server) executeClaimedVaultActionRequest(
 				return vaultActionRunResult{}, fmt.Errorf("finalize Vault action: %w; compensate effect: %v", err, compensateErr)
 			}
 			failure := "Vault action effect was rolled back because request finalization failed"
-			failed, failErr := store.Complete(ctx, item.ID, vaultrequests.StatusFailed, nil, failure, userNote)
+			failed, failErr := s.completeVaultActionRequest(
+				ctx, runtime, item.ID, vaultrequests.StatusFailed, nil, failure, userNote,
+				actor, finishedActionPrefix+"."+vaultrequests.StatusFailed,
+			)
 			if failErr != nil {
 				return vaultActionRunResult{}, fmt.Errorf("finalize Vault action: %w; record compensation: %v", err, failErr)
 			}
@@ -96,18 +104,68 @@ func (s *Server) executeClaimedVaultActionRequest(
 		}
 	}
 	item = completed
-	if err := s.writeAuditRequired(
-		ctx,
-		runtime,
-		actor,
-		int64Ptr(item.TokenID),
-		valueOrZero(item.RuntimeID),
-		finishedActionPrefix+"."+status,
-		vaultActionAuditPayload(item, userNote),
-	); err != nil {
-		log.Printf("Vault terminal audit write failed request=%d status=%s error=%v", item.ID, status, err)
-	}
 	return vaultActionRunResult{Request: item, ExecutionError: executeErr}, nil
+}
+
+func (s *Server) claimVaultActionRequest(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	requestID int64,
+	actor string,
+	action string,
+	userNote string,
+) (vaultrequests.Request, error) {
+	tokenID, runtimeID := vaultActionAuditIdentity(ctx, runtime, requestID)
+	var item vaultrequests.Request
+	err := s.withAuditedMutation(
+		ctx, runtime, actor, tokenID, runtimeID, action,
+		func() any { return vaultActionAuditPayload(item, userNote) },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = vaultrequests.NewTxStore(tx).Claim(ctx, requestID)
+			return err
+		},
+	)
+	return item, err
+}
+
+func (s *Server) completeVaultActionRequest(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	requestID int64,
+	status string,
+	output any,
+	errorText string,
+	userNote string,
+	actor string,
+	action string,
+) (vaultrequests.Request, error) {
+	tokenID, runtimeID := vaultActionAuditIdentity(ctx, runtime, requestID)
+	var item vaultrequests.Request
+	err := s.withAuditedMutation(
+		ctx, runtime, actor, tokenID, runtimeID, action,
+		func() any { return vaultActionAuditPayload(item, userNote) },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = vaultrequests.NewTxStore(tx).Complete(ctx, requestID, status, output, errorText, userNote)
+			return err
+		},
+	)
+	return item, err
+}
+
+func vaultActionAuditIdentity(ctx context.Context, runtime *databaseRuntime, requestID int64) (*int64, int64) {
+	if runtime == nil || runtime.database == nil || requestID < 1 {
+		return nil, 0
+	}
+	var tokenID int64
+	var runtimeID sql.NullInt64
+	if err := runtime.database.QueryRowContext(ctx, `
+		SELECT token_id, runtime_id FROM vault_action_requests WHERE id = ?`, requestID,
+	).Scan(&tokenID, &runtimeID); err != nil {
+		return nil, 0
+	}
+	return &tokenID, runtimeID.Int64
 }
 
 func compensateVaultActionEffect(ctx context.Context, runtime *databaseRuntime, request vaultrequests.Request, output any) error {

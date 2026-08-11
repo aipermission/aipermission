@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 )
 
 const (
@@ -69,17 +71,21 @@ func (s redactionRuleHandlers) createRedactionRule(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("redaction rule limit is %d", maxRedactionRules))
 		return
 	}
-	item, err := insertRedactionRule(r.Context(), runtime, request)
+	var item redactionRule
+	err = s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "settings.redaction_rule.created",
+		func() any { return map[string]any{"id": item.ID, "name": item.Name, "enabled": item.Enabled} },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = insertRedactionRuleWithExecutor(r.Context(), tx, request)
+			return err
+		},
+	)
 	if err != nil {
 		handleRedactionRuleError(w, err)
 		return
 	}
 	s.invalidateRedactionRules(runtime)
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "settings.redaction_rule.created", map[string]any{
-		"id":      item.ID,
-		"name":    item.Name,
-		"enabled": item.Enabled,
-	})
 	writeJSON(w, http.StatusCreated, item)
 }
 
@@ -102,17 +108,21 @@ func (s redactionRuleHandlers) updateRedactionRule(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	item, err := updateRedactionRuleRecord(r.Context(), runtime, id, request)
+	var item redactionRule
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "settings.redaction_rule.updated",
+		func() any { return map[string]any{"id": item.ID, "name": item.Name, "enabled": item.Enabled} },
+		func(tx *sql.Tx) error {
+			var err error
+			item, err = updateRedactionRuleRecordWithExecutor(r.Context(), tx, id, request)
+			return err
+		},
+	)
 	if err != nil {
 		handleRedactionRuleError(w, err)
 		return
 	}
 	s.invalidateRedactionRules(runtime)
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "settings.redaction_rule.updated", map[string]any{
-		"id":      item.ID,
-		"name":    item.Name,
-		"enabled": item.Enabled,
-	})
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -125,17 +135,24 @@ func (s redactionRuleHandlers) deleteRedactionRule(w http.ResponseWriter, r *htt
 	if !ok {
 		return
 	}
-	deleted, err := deleteRedactionRuleRecord(r.Context(), runtime, id)
+	deleted := false
+	err := s.withAuditedMutation(
+		r.Context(), runtime, "user", nil, 0, "settings.redaction_rule.deleted",
+		func() any { return map[string]any{"id": id} },
+		func(tx *sql.Tx) error {
+			var err error
+			deleted, err = deleteRedactionRuleRecordWithExecutor(r.Context(), tx, id)
+			if err == nil && !deleted {
+				return sql.ErrNoRows
+			}
+			return err
+		},
+	)
 	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if !deleted {
-		writeError(w, http.StatusNotFound, "redaction rule not found")
+		handleRedactionRuleError(w, err)
 		return
 	}
 	s.invalidateRedactionRules(runtime)
-	s.writeAudit(r.Context(), runtime, "user", nil, 0, "settings.redaction_rule.deleted", map[string]any{"id": id})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -196,8 +213,12 @@ func countRedactionRules(ctx context.Context, runtime *databaseRuntime) (int, er
 }
 
 func insertRedactionRule(ctx context.Context, runtime *databaseRuntime, request redactionRuleRequest) (redactionRule, error) {
+	return insertRedactionRuleWithExecutor(ctx, runtime.database, request)
+}
+
+func insertRedactionRuleWithExecutor(ctx context.Context, executor auditoutbox.DBTX, request redactionRuleRequest) (redactionRule, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := runtime.database.ExecContext(ctx, `
+	result, err := executor.ExecContext(ctx, `
 		INSERT INTO redaction_rules (name, pattern, enabled, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		request.Name,
@@ -213,12 +234,16 @@ func insertRedactionRule(ctx context.Context, runtime *databaseRuntime, request 
 	if err != nil {
 		return redactionRule{}, err
 	}
-	return getRedactionRule(ctx, runtime, id)
+	return getRedactionRuleWithExecutor(ctx, executor, id)
 }
 
 func updateRedactionRuleRecord(ctx context.Context, runtime *databaseRuntime, id int64, request redactionRuleRequest) (redactionRule, error) {
+	return updateRedactionRuleRecordWithExecutor(ctx, runtime.database, id, request)
+}
+
+func updateRedactionRuleRecordWithExecutor(ctx context.Context, executor auditoutbox.DBTX, id int64, request redactionRuleRequest) (redactionRule, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := runtime.database.ExecContext(ctx, `
+	result, err := executor.ExecContext(ctx, `
 		UPDATE redaction_rules
 		SET name = ?, pattern = ?, enabled = ?, updated_at = ?
 		WHERE id = ?`,
@@ -238,11 +263,15 @@ func updateRedactionRuleRecord(ctx context.Context, runtime *databaseRuntime, id
 	if affected == 0 {
 		return redactionRule{}, sql.ErrNoRows
 	}
-	return getRedactionRule(ctx, runtime, id)
+	return getRedactionRuleWithExecutor(ctx, executor, id)
 }
 
 func deleteRedactionRuleRecord(ctx context.Context, runtime *databaseRuntime, id int64) (bool, error) {
-	result, err := runtime.database.ExecContext(ctx, `DELETE FROM redaction_rules WHERE id = ?`, id)
+	return deleteRedactionRuleRecordWithExecutor(ctx, runtime.database, id)
+}
+
+func deleteRedactionRuleRecordWithExecutor(ctx context.Context, executor auditoutbox.DBTX, id int64) (bool, error) {
+	result, err := executor.ExecContext(ctx, `DELETE FROM redaction_rules WHERE id = ?`, id)
 	if err != nil {
 		return false, err
 	}
@@ -251,7 +280,11 @@ func deleteRedactionRuleRecord(ctx context.Context, runtime *databaseRuntime, id
 }
 
 func getRedactionRule(ctx context.Context, runtime *databaseRuntime, id int64) (redactionRule, error) {
-	row := runtime.database.QueryRowContext(ctx, `
+	return getRedactionRuleWithExecutor(ctx, runtime.database, id)
+}
+
+func getRedactionRuleWithExecutor(ctx context.Context, executor auditoutbox.DBTX, id int64) (redactionRule, error) {
+	row := executor.QueryRowContext(ctx, `
 		SELECT id, name, pattern, enabled, created_at, updated_at
 		FROM redaction_rules
 		WHERE id = ?`, id)
