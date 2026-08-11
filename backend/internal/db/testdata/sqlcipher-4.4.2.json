@@ -1,0 +1,15 @@
+{
+  "description": "Synthetic SQLCipher compatibility fixture with no user or production data.",
+  "driver_module": "github.com/mutecomm/go-sqlcipher/v4",
+  "driver_module_version": "v4.4.2",
+  "runtime_version": "4.4.2 community",
+  "cipher_page_size": 4096,
+  "password": "FixturePassword123",
+  "sha256": "5970ba8021680c642a0514a7d3675f09f9ffd142861f8b6c97c5e68511cc896d",
+  "application_fixture": {
+    "file": "aipermission-schema13-sqlcipher-4.4.2.aipdb",
+    "schema_version": 13,
+    "description": "Synthetic empty AIPermission schema with one non-secret compatibility marker.",
+    "sha256": "f99ce9213896517a77fd0eabb59a349cc1fc29b758fd0f1984a5140b58fb7233"
+  }
+}

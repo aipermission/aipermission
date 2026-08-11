@@ -15,6 +15,10 @@ const fixturePatterns = [
   /(^|\/)docs\/api\/rest-api\.md$/,
   /(^|\/)docs\/security\/threat-model\.md$/,
 ];
+const allowedEncryptedFixtures = new Set([
+  "backend/internal/db/testdata/aipermission-schema13-sqlcipher-4.4.2.aipdb",
+  "backend/internal/db/testdata/sqlcipher-4.4.2.aipdb",
+]);
 const blockedTrackedNames = [
   /^\.env$/,
   /^\.env\.(?!example$).+/,
@@ -40,6 +44,7 @@ function isSkipped(file) {
 const findings = [];
 for (const file of tracked) {
   const normalized = file.split(path.sep).join("/");
+  if (allowedEncryptedFixtures.has(normalized)) continue;
   if (blockedTrackedNames.some((pattern) => pattern.test(normalized))) {
     findings.push(`${file}: tracked local secret-like file name`);
     continue;
