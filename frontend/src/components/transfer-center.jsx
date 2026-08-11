@@ -75,14 +75,14 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
   const approvalMode = batch.status === "pending_approval";
   const Icon = batch.direction === "upload" ? Upload : Download;
   const pendingItems = useMemo(() => (batch.items || []).filter((item) => item.status === "pending_approval"), [batch.items]);
-  const pendingItemKey = pendingItems.map((item) => item.id).join(",");
+  const pendingItemIDsJSON = JSON.stringify(pendingItems.map((item) => item.id));
   const [selectedItems, setSelectedItems] = useState(() => new Set(pendingItems.map((item) => item.id)));
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    setSelectedItems(new Set(pendingItems.map((item) => item.id)));
+    setSelectedItems(new Set(JSON.parse(pendingItemIDsJSON)));
     setNote("");
-  }, [batch.id, pendingItemKey]);
+  }, [batch.id, pendingItemIDsJSON]);
 
   function toggleItem(itemID) {
     setSelectedItems((current) => {

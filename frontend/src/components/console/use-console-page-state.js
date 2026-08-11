@@ -15,7 +15,7 @@ export function useConsolePageState({ liveConsoleTargets, messages, sessions, se
     ? latestSessionForRuntime(sessions, selectedRuntimeTarget.id) || emptySession
     : emptySession;
   const selectedSessionLive = isLiveConsoleSession(selectedSession);
-  const unreadMessages = messages.data.filter(isUnreadMessage);
+  const unreadMessages = useMemo(() => messages.data.filter(isUnreadMessage), [messages.data]);
   const selectedUnreadMessages = selectedRuntimeTarget
     ? unreadMessages.filter((message) => Number(message.runtime_id) === Number(selectedRuntimeTarget.id))
     : [];
@@ -26,7 +26,7 @@ export function useConsolePageState({ liveConsoleTargets, messages, sessions, se
       liveConsoleTargets.data.some((target) => Number(target.id) === Number(message.runtime_id)),
     );
     return String(unread ? unread.runtime_id : liveConsoleTargets.data[0].id);
-  }, [liveConsoleTargets.data, unreadMessages.map((message) => `${message.id}:${message.runtime_id}`).join(",")]);
+  }, [liveConsoleTargets.data, unreadMessages]);
 
   return {
     selectedRuntimeTarget,

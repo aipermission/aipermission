@@ -61,7 +61,7 @@ export function KubernetesConnectorConsoleTemplate({
   );
   const latestAction = activeItems[0] || null;
   const activeTab = resourceTabs.find((item) => item.key === tab) || resourceTabs[0];
-  const activeResources = resources[tab] || [];
+  const activeResources = useMemo(() => resources[tab] || [], [resources, tab]);
   const selectedResource = activeResources.find((item) => resourceKey(tab, item) === selectedKey) || null;
   const expectedConsoleSessionName = selectedResource && tab === "pods" ? kubernetesConsoleSessionName(target, selectedResource) : "";
   const selectedPodConsoleLive = Boolean(selectedSessionLive && session?.name === expectedConsoleSessionName);

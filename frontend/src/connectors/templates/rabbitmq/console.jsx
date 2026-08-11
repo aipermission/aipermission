@@ -62,7 +62,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
     setPublishRoutingKey("");
     setPublishPayload("");
     setPublishProperties('{"content_type":"application/json"}');
-  }, [target.ref, activeSession.active, activeSession.startedAt]);
+  }, [target.ref, target.config?.vhost, activeSession.active, activeSession.startedAt]);
 
   useEffect(() => {
     if (!activeSession.active) return;
