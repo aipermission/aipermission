@@ -1,6 +1,33 @@
-export const appVersion = "0.2.22";
+export const appVersion = "0.2.23";
 
 export const changelogEntries = [
+  {
+    version: "0.2.23",
+    label: "Maintenance hardening",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "Large backend and frontend modules were split by responsibility, React hook suppressions were reduced to zero, and generated REST contract drift is now release-blocking.",
+          "Real-service conformance now exercises Postgres, Valkey, RabbitMQ, and S3 against disposable services.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Owned console sessions recover from stale Vault authorization leases, and the local gateway restarts reliably after a host reboot.",
+          "Audit target names, stale approval history, and streamed connector backup restores now remain consistent across failure paths.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Connector transports ignore ambient proxy credentials, approval claims freeze validated credential material, and gateway-held secrets have explicit output-boundary regression coverage.",
+          "Container releases now enforce vulnerability checks, SBOM and provenance attestations, digest signing, and pinned CI dependencies.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.22",
     label: "Controlled Mail workflows",
