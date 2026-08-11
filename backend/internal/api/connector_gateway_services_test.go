@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
@@ -11,6 +12,28 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
+
+func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	runtime := fixture.server.activeRuntime()
+	transferCtx, cancelTransfer := context.WithCancel(context.Background())
+	runtime.transferMu.Lock()
+	runtime.transferCancels[1] = cancelTransfer
+	runtime.transferMu.Unlock()
+
+	fixture.server.Close()
+
+	select {
+	case <-transferCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("server close did not cancel active runtime work")
+	}
+	fixture.server.mu.RLock()
+	defer fixture.server.mu.RUnlock()
+	if len(fixture.server.workspaces) != 0 || fixture.server.database != nil || fixture.server.vault != nil || fixture.server.tokens != nil {
+		t.Fatalf("server close retained unlocked runtime state: workspaces=%d", len(fixture.server.workspaces))
+	}
+}
 
 func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T) {
 	fixture := newAPITestFixture(t)
