@@ -13,7 +13,11 @@ decryption paths.
 
 ## Current Model
 
-The SQLite file is encrypted with a SQLCipher-compatible driver. The backend does not open it automatically at startup; the web UI first checks unlock status.
+The SQLite file is encrypted with SQLCipher 4.16.0 through a pinned Go wrapper
+and the OpenSSL 3 provider. The backend does not open it automatically at
+startup; the web UI first checks unlock status. A committed database generated
+by the previous 4.4.2 runtime verifies that existing SQLCipher 4 files remain
+readable before a native runtime update is accepted.
 
 The database password is escaped before it is passed to SQLCipher PRAGMA key/rekey handling. Regression tests cover quotes and semicolons so user-entered password text cannot change SQL parsing.
 
@@ -22,6 +26,11 @@ configured cipher page size is applied, KDF iterations are non-zero, and SQLite
 foreign keys are enabled on encrypted connections. Dependency updates are
 watched with `govulncheck` and Dependabot, while the embedded native runtime is
 tracked under the [native dependency inventory](native-dependencies.md).
+
+Native runtime updates never rewrite the only database copy. The current
+runtime opens the prior SQLCipher 4 format directly. Any future format migration
+must first create and independently validate an encrypted snapshot, migrate a
+separate copy, and preserve a documented rollback path.
 
 If no database exists, the first screen shows:
 
