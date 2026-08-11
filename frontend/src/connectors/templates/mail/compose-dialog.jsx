@@ -1,5 +1,5 @@
 import { Bold, Code2, Heading2, Italic, Link, List, ListOrdered, Quote, Send, Underline } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Field, Input, Textarea } from "../../../components/ui/form";
@@ -12,14 +12,17 @@ export function ComposeDialog({ draft, busy, error, onClose, onSubmit }) {
   const [form, setForm] = useState(emptyComposeForm());
   const [formattedFallback, setFormattedFallback] = useState("");
   const [validationError, setValidationError] = useState("");
-
-  useEffect(() => {
-    if (!draft?.open) return;
+  const initializeDraft = useEffectEvent(() => {
     const nextForm = composeFormValue(draft.form);
     setMode(nextForm.html_body ? "formatted" : "plain");
     setForm(nextForm);
     setFormattedFallback(nextForm.html_body ? nextForm.text_body : "");
     setValidationError("");
+  });
+
+  useEffect(() => {
+    if (!draft?.open) return;
+    initializeDraft();
   }, [draft?.open, draft?.reply, draft?.messageRef, draft?.pendingRequestID]);
 
   function updateForm(changes) {

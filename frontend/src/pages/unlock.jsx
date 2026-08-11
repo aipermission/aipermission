@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, CloudDownload, ExternalLink, LockKeyhole, RefreshCw, Trash2, Upload } from "lucide-react";
 import { apiPost, apiPostForm } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -11,7 +11,7 @@ import { formatLocalTimestamp, formatRelativeAge } from "../lib/date-time";
 import { formatBytes } from "../lib/file-transfer-utils";
 
 export function UnlockPage({ status, onUnlocked }) {
-  const databases = status?.databases || [];
+  const databases = useMemo(() => status?.databases || [], [status?.databases]);
   const firstDatabaseID = status?.database_id || databases[0]?.id || "default";
   const [selectedDatabaseID, setSelectedDatabaseID] = useState(firstDatabaseID);
   const selectedDatabase = databases.find((database) => database.id === selectedDatabaseID) || databases[0] || null;
@@ -34,7 +34,7 @@ export function UnlockPage({ status, onUnlocked }) {
   useEffect(() => {
     const nextID = status?.database_id || databases[0]?.id || "default";
     setSelectedDatabaseID(nextID);
-  }, [status?.database_id, databases.length]);
+  }, [status?.database_id, databases]);
 
   useEffect(() => {
     if (!selectedDatabase) {
@@ -42,7 +42,7 @@ export function UnlockPage({ status, onUnlocked }) {
       return;
     }
     setActiveTab("unlock");
-  }, [selectedDatabase?.id, selectedDatabase?.state]);
+  }, [selectedDatabase]);
 
   useEffect(() => {
     setUnlockAction("unlock");

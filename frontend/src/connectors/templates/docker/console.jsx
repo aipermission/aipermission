@@ -61,7 +61,10 @@ export function DockerConnectorConsoleTemplate({
   const selectedContainerRef = selectedContainer ? selectedContainer.name || selectedContainer.id : "";
   const expectedConsoleSessionName = selectedContainerRef ? dockerConsoleSessionName(target, selectedContainerRef) : "";
   const selectedContainerConsoleLive = Boolean(selectedSessionLive && session?.name === expectedConsoleSessionName);
-  const activeResourceList = resourceView === "containers" ? containers : resources[resourceView] || [];
+  const activeResourceList = useMemo(
+    () => (resourceView === "containers" ? containers : resources[resourceView] || []),
+    [containers, resourceView, resources],
+  );
   const selectedResource =
     resourceView === "containers"
       ? selectedContainer
