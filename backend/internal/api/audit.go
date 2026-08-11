@@ -237,7 +237,12 @@ func (s *Server) writeAudit(ctx context.Context, runtime *databaseRuntime, actor
 	}
 }
 
-func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any) error {
+func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any) (err error) {
+	defer func() {
+		if err != nil && s != nil {
+			s.auditHealth.recordFailure(time.Now())
+		}
+	}()
 	if runtime == nil || runtime.database == nil {
 		return fmt.Errorf("audit database is unavailable")
 	}
