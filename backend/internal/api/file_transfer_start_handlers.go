@@ -21,7 +21,7 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferUploadBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferObjectBytes+maxFileTransferMultipartOverhead)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart upload")
 		return
@@ -49,6 +49,11 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 	tempPath, size, err := s.stageUploadFile(file)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, err := validateStagedUploadSize(size, 0); err != nil {
+		_ = os.Remove(tempPath)
+		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 		return
 	}
 	if ok := s.checkUploadOverwrite(w, r, runtime, runtimeID, remotePath, overwrite, tempPath); !ok {
@@ -101,7 +106,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 }
 
 func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, source string, status *string, authorize func(runtimeID int64) bool, prepare func(runtimeID int64, remoteDir string, fileNames []string, overwrite bool) bool) (filetransfer.BatchRecord, int64, bool, bool) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferUploadBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferBatchBytes+maxFileTransferMultipartOverhead)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart upload")
 		return filetransfer.BatchRecord{}, 0, false, false
@@ -134,8 +139,8 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 		writeError(w, http.StatusBadRequest, "files are required")
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
-	if len(headers) > 100 {
-		writeError(w, http.StatusBadRequest, "cannot upload more than 100 files at once")
+	if len(headers) > maxFileTransferBatchItems {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("cannot upload more than %d files at once", maxFileTransferBatchItems))
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	relativePaths := []string{}
@@ -173,6 +178,7 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 	}
 	requests := make([]filetransfer.CreateRequest, 0, len(headers))
 	tempPaths := []string{}
+	var stagedBytes int64
 	for i, header := range headers {
 		file, err := header.Open()
 		if err != nil {
@@ -185,6 +191,13 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 		if err != nil {
 			cleanupTempPaths(tempPaths)
 			writeError(w, http.StatusBadRequest, err.Error())
+			return filetransfer.BatchRecord{}, 0, false, false
+		}
+		stagedBytes, err = validateStagedUploadSize(size, stagedBytes)
+		if err != nil {
+			_ = os.Remove(tempPath)
+			cleanupTempPaths(tempPaths)
+			writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 			return filetransfer.BatchRecord{}, 0, false, false
 		}
 		tempPaths = append(tempPaths, tempPath)
@@ -225,6 +238,23 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 	return batch, runtimeID, overwrite, true
 }
 
+func validateStagedUploadSize(size int64, currentBatchBytes int64) (int64, error) {
+	if size < 0 || size > maxFileTransferObjectBytes {
+		return currentBatchBytes, fmt.Errorf("upload object cannot exceed 512 MiB")
+	}
+	if currentBatchBytes > maxFileTransferBatchBytes-size {
+		return currentBatchBytes, fmt.Errorf("upload batch cannot exceed 1 GiB total size")
+	}
+	return currentBatchBytes + size, nil
+}
+
+func validateDownloadObjectSize(size int64) error {
+	if size < 0 || size > maxFileTransferObjectBytes {
+		return fmt.Errorf("download object cannot exceed 512 MiB")
+	}
+	return nil
+}
+
 func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -244,6 +274,26 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
+	adapter, err := s.fileTransferAdapter(r.Context(), runtime, request.RuntimeID)
+	if err != nil {
+		handleConnectorTargetRuntimeError(w, err)
+		return
+	}
+	remoteStatus, err := adapter.StatRemotePath(r.Context(), s.Server, runtime, request.RuntimeID, remotePath)
+	if err != nil {
+		if !writeConnectorError(w, adapter, err) {
+			writeError(w, http.StatusBadGateway, connectorErrorMessage(adapter, "remote path check failed", err))
+		}
+		return
+	}
+	if !remoteStatus.Exists || remoteStatus.Type != "file" {
+		writeError(w, http.StatusBadRequest, "remote path must be an existing regular file")
+		return
+	}
+	if err := validateDownloadObjectSize(remoteStatus.Size); err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
+		return
+	}
 	tempPath, err := s.reserveDownloadTempFile()
 	if err != nil {
 		writeInternalError(w)
@@ -256,6 +306,7 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 		Source:     filetransfer.SourceUI,
 		RemotePath: remotePath,
 		FileName:   fileName,
+		SizeBytes:  remoteStatus.Size,
 		TempPath:   tempPath,
 	})
 	if err != nil {
@@ -308,8 +359,8 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 	if len(remotePaths) == 0 {
 		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "remote_paths is required")
 	}
-	if len(remotePaths) > 100 {
-		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "cannot download more than 100 files at once")
+	if len(remotePaths) > maxFileTransferBatchItems {
+		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, fmt.Sprintf("cannot download more than %d files at once", maxFileTransferBatchItems))
 	}
 	var adapter connectorapi.FileTransferAdapter
 	validateRemoteBeforeApproval := status != filetransfer.StatusPendingApproval
@@ -347,6 +398,10 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 				return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, "remote path must be an existing regular file")
 			}
 			size = status.Size
+			if err := validateDownloadObjectSize(size); err != nil {
+				cleanupTempPaths(tempPaths)
+				return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusRequestEntityTooLarge, err.Error())
+			}
 		}
 		totalSize += size
 		if totalSize > maxFileTransferBatchBytes {
@@ -390,7 +445,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 }
 
 func (s fileTransferHandlers) writeFileTransferStartError(w http.ResponseWriter, err error) bool {
-	if errors.Is(err, connectortargets.ErrTargetProfileNotFound) {
+	if errors.Is(err, connectortargets.ErrTargetProfileNotFound) || errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 		handleConnectorTargetRuntimeError(w, err)
 		return true
 	}

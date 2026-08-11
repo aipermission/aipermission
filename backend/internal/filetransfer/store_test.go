@@ -236,6 +236,40 @@ func TestStoreApprovesPendingTransferBatchItems(t *testing.T) {
 	}
 }
 
+func TestStoreUpdatesPendingBatchItemSizesAtomically(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	store := NewStore(database)
+	batch, err := store.CreateBatch(context.Background(), CreateBatchRequest{
+		RuntimeID: insertTestServer(t, database),
+		Direction: DirectionDownload,
+		Source:    SourceMCP,
+		Items: []CreateRequest{
+			{RemotePath: "/tmp/a.log", FileName: "a.log", TempPath: "/tmp/a"},
+			{RemotePath: "/tmp/b.log", FileName: "b.log", TempPath: "/tmp/b"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if err := store.UpdatePendingBatchItemSizes(context.Background(), batch.ID, map[int64]int64{
+		batch.Items[0].ID: 100,
+		batch.Items[1].ID: 200,
+	}); err != nil {
+		t.Fatalf("update pending sizes: %v", err)
+	}
+	updated, err := store.GetBatch(context.Background(), batch.ID)
+	if err != nil {
+		t.Fatalf("get batch: %v", err)
+	}
+	if updated.SizeBytes != 300 || updated.Items[0].SizeBytes != 100 || updated.Items[1].SizeBytes != 200 {
+		t.Fatalf("unexpected updated sizes: %#v", updated)
+	}
+}
+
 func TestStoreUpdatesPausedBatchQueue(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {

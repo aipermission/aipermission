@@ -15,14 +15,13 @@ func reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime *databaseRun
 	if err != nil {
 		return err
 	}
-	handlers := connectorTargetHandlers{}
 	for _, target := range targets {
 		profiles, err := store.ListCredentialProfiles(ctx, target.ID)
 		if err != nil {
 			return err
 		}
 		for _, profile := range profiles {
-			if err := handlers.ensureConnectorRuntimeSurfacesForProfile(ctx, store, target, profile); err != nil {
+			if err := ensureConnectorRuntimeSurfacesForProfile(ctx, store, target, profile); err != nil {
 				return err
 			}
 		}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -12,6 +13,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
 func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
@@ -22,12 +25,30 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		}
 		switch r.Method {
 		case http.MethodGet:
+			if r.URL.Query().Get("prefix") == "large/" {
+				_, _ = w.Write([]byte(`<ListBucketResult><Contents><Key>large/object.bin</Key><Size>536870913</Size></Contents></ListBucketResult>`))
+				return
+			}
 			if r.URL.Query().Get("prefix") == "daily/nested/report.txt/" {
 				_, _ = w.Write([]byte(`<ListBucketResult/>`))
 				return
 			}
-			_, _ = w.Write([]byte(`<ListBucketResult><Contents><Key>daily/report.txt</Key><Size>12</Size></Contents></ListBucketResult>`))
+			if r.URL.Query().Get("continuation-token") == "page-2" {
+				_, _ = w.Write([]byte(`<ListBucketResult><Contents><Key>daily/report-2.txt</Key><Size>14</Size></Contents></ListBucketResult>`))
+				return
+			}
+			_, _ = w.Write([]byte(`<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>page-2</NextContinuationToken><Contents><Key>daily/report.txt</Key><Size>12</Size></Contents></ListBucketResult>`))
 		case http.MethodHead:
+			if r.URL.Path == "/test-bucket/batch/a.bin" || r.URL.Path == "/test-bucket/batch/b.bin" || r.URL.Path == "/test-bucket/batch/c.bin" {
+				w.Header().Set("Content-Length", "536870912")
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if r.URL.Path == "/test-bucket/large/object.bin" {
+				w.Header().Set("Content-Length", "536870913")
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
 		case http.MethodPut:
 			_, _ = io.Copy(io.Discard, r.Body)
@@ -95,9 +116,51 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		RuntimeID: payload.Items[0].TransferRuntimeID,
 		Path:      "/daily",
 	})
-	if browse.Code != http.StatusOK || !bytes.Contains(browse.Body.Bytes(), []byte(`"path":"/daily/report.txt"`)) {
+	if browse.Code != http.StatusOK || !bytes.Contains(browse.Body.Bytes(), []byte(`"path":"/daily/report.txt"`)) || !bytes.Contains(browse.Body.Bytes(), []byte(`"has_more":true`)) {
 		t.Fatalf("browse S3 transfer runtime: %d %s", browse.Code, browse.Body.String())
 	}
+	nextBrowse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
+		RuntimeID: payload.Items[0].TransferRuntimeID,
+		Path:      "/daily",
+		Cursor:    "page-2",
+	})
+	if nextBrowse.Code != http.StatusOK || !bytes.Contains(nextBrowse.Body.Bytes(), []byte(`"path":"/daily/report-2.txt"`)) || !bytes.Contains(nextBrowse.Body.Bytes(), []byte(`"has_more":false`)) {
+		t.Fatalf("browse S3 transfer runtime next page: %d %s", nextBrowse.Code, nextBrowse.Body.String())
+	}
+	oversizedExpand := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/expand", "", expandRemoteFilesRequest{
+		RuntimeID: payload.Items[0].TransferRuntimeID,
+		Path:      "/large",
+	})
+	if oversizedExpand.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized recursive selection status=%d body=%s", oversizedExpand.Code, oversizedExpand.Body.String())
+	}
+	oversizedDownload := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{
+		RuntimeID:  payload.Items[0].TransferRuntimeID,
+		RemotePath: "/large/object.bin",
+	})
+	if oversizedDownload.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized download status=%d body=%s", oversizedDownload.Code, oversizedDownload.Body.String())
+	}
+	runtime := fixture.server.activeRuntime()
+	handlers := fileTransferHandlers{fixture.server}
+	pendingBatch, err := handlers.createDownloadBatch(context.Background(), runtime, payload.Items[0].TransferRuntimeID, []string{
+		"/batch/a.bin", "/batch/b.bin", "/batch/c.bin",
+	}, "", filetransfer.SourceMCP, filetransfer.StatusPendingApproval)
+	if err != nil {
+		t.Fatalf("create pending approval download batch: %v", err)
+	}
+	approvedIDs := make([]int64, 0, len(pendingBatch.Items))
+	for _, item := range pendingBatch.Items {
+		approvedIDs = append(approvedIDs, item.ID)
+	}
+	approvedBatch, _, err := runtime.fileTransfers.ApproveBatch(context.Background(), pendingBatch.ID, filetransfer.BatchApprovalRequest{ApprovedItemIDs: approvedIDs})
+	if err != nil {
+		t.Fatalf("approve download batch: %v", err)
+	}
+	if err := handlers.validateDownloadBatchBeforeRun(context.Background(), runtime, approvedBatch); err == nil {
+		t.Fatal("expected approved download batch to be revalidated against the 1 GiB limit")
+	}
+	handlers.cleanupBatchTemps(runtime, pendingBatch.ID)
 
 	body, contentType := multipartUploadBody(t, map[string]string{
 		"runtime_id":     strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),

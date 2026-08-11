@@ -15,19 +15,23 @@ func normalizeObjectKey(input map[string]any, name string) string {
 }
 
 func objectFilename(key string) string {
-	parts := strings.Split(strings.TrimRight(key, "/"), "/")
+	return lastPathSegment(key, "s3-object")
+}
+
+func directoryName(prefix string) string {
+	return lastPathSegment(prefix, prefix)
+}
+
+func lastPathSegment(value string, fallback string) string {
+	parts := strings.Split(strings.TrimRight(value, "/"), "/")
 	if len(parts) == 0 || strings.TrimSpace(parts[len(parts)-1]) == "" {
-		return "s3-object"
+		return fallback
 	}
 	return parts[len(parts)-1]
 }
 
-func directoryName(prefix string) string {
-	parts := strings.Split(strings.TrimRight(prefix, "/"), "/")
-	if len(parts) == 0 || strings.TrimSpace(parts[len(parts)-1]) == "" {
-		return prefix
-	}
-	return parts[len(parts)-1]
+func intValue(values map[string]any, name string) int {
+	return normalizeInt(values, name, 0, -int(^uint(0)>>1)-1, int(^uint(0)>>1))
 }
 
 func s3Scheme(target connectors.TargetView) string {

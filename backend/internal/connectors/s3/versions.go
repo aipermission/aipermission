@@ -19,6 +19,8 @@ const (
 	defaultVersionListLimit = 100
 	maxVersionListLimit     = 1000
 	maxVersionIDBytes       = 2048
+	maxVersionCursorBytes   = 8192
+	maxVersionEmptyPages    = 32
 )
 
 type s3VersionListResult struct {
@@ -46,27 +48,33 @@ type s3VersionCursor struct {
 }
 
 func executeListObjectVersions(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
-	key := stringValue(input, "key")
+	key := normalizeObjectKey(input, "key")
+	limit := normalizeInt(input, "limit", defaultVersionListLimit, 1, maxVersionListLimit)
 	cursor, err := decodeVersionCursor(stringValue(input, "cursor"))
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	result, err := client.ListObjectVersions(ctx, key, cursor, intValue(input, "limit"))
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
+	var result s3VersionListResult
 	items := make([]map[string]any, 0, len(result.Versions)+len(result.DeleteMarkers))
-	for _, version := range result.Versions {
-		if version.Key != key {
-			continue
+	for page := 0; page < maxVersionEmptyPages; page++ {
+		result, err = client.ListObjectVersions(ctx, key, cursor, limit)
+		if err != nil {
+			return connectors.ActionResult{}, err
 		}
-		items = append(items, objectVersionOutput(version, false))
-	}
-	for _, marker := range result.DeleteMarkers {
-		if marker.Key != key {
-			continue
+		for _, version := range result.Versions {
+			if version.Key == key {
+				items = append(items, objectVersionOutput(version, false))
+			}
 		}
-		items = append(items, objectVersionOutput(marker, true))
+		for _, marker := range result.DeleteMarkers {
+			if marker.Key == key {
+				items = append(items, objectVersionOutput(marker, true))
+			}
+		}
+		if len(items) > 0 || !result.IsTruncated {
+			break
+		}
+		cursor = s3VersionCursor{KeyMarker: result.NextKeyMarker, VersionIDMarker: result.NextVersionIDMarker}
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		return stringValue(items[i], "last_modified") > stringValue(items[j], "last_modified")
@@ -90,7 +98,7 @@ func executeListObjectVersions(ctx context.Context, client *s3Client, input map[
 		"next_cursor": nextCursor,
 	}
 	if nextCursor != "" {
-		output["next_page_input"] = map[string]any{"key": key, "cursor": nextCursor, "limit": intValue(input, "limit")}
+		output["next_page_input"] = map[string]any{"key": key, "cursor": nextCursor, "limit": limit}
 	}
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
@@ -100,8 +108,14 @@ func executeListObjectVersions(ctx context.Context, client *s3Client, input map[
 }
 
 func executeRestoreObjectVersion(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
-	key := stringValue(input, "key")
-	versionID := stringValue(input, "version_id")
+	key := normalizeObjectKey(input, "key")
+	versionID, err := normalizeVersionID(input)
+	if key == "" {
+		return connectors.ActionResult{}, fmt.Errorf("key is required")
+	}
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
 	if err := client.CopyObjectVersion(ctx, key, versionID); err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -118,8 +132,14 @@ func executeRestoreObjectVersion(ctx context.Context, client *s3Client, input ma
 }
 
 func executeDeleteObjectVersion(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
-	key := stringValue(input, "key")
-	versionID := stringValue(input, "version_id")
+	key := normalizeObjectKey(input, "key")
+	versionID, err := normalizeVersionID(input)
+	if key == "" {
+		return connectors.ActionResult{}, fmt.Errorf("key is required")
+	}
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
 	if err := client.DeleteObjectVersion(ctx, key, versionID); err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -207,7 +227,7 @@ func decodeVersionCursor(raw string) (s3VersionCursor, error) {
 		return s3VersionCursor{}, nil
 	}
 	data, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil || len(data) > 8192 {
+	if err != nil || len(data) > maxVersionCursorBytes {
 		return s3VersionCursor{}, fmt.Errorf("invalid S3 version cursor")
 	}
 	var cursor s3VersionCursor

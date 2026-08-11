@@ -131,18 +131,18 @@ func uniqueArchiveEntryName(name string, remotePath string, archiveRoot string, 
 	if base == "" {
 		base = safeArchiveEntryPath(name)
 	}
-	count := used[base]
-	used[base] = count + 1
-	if count == 0 {
-		return base
-	}
 	directory, fileName := path.Split(base)
 	ext := path.Ext(fileName)
 	stem := strings.TrimSuffix(fileName, ext)
 	if stem == "" {
 		stem = "file"
 	}
-	return directory + fmt.Sprintf("%s-%d%s", stem, count+1, ext)
+	candidate := base
+	for suffix := 2; used[candidate] > 0; suffix++ {
+		candidate = directory + fmt.Sprintf("%s-%d%s", stem, suffix, ext)
+	}
+	used[candidate] = 1
+	return candidate
 }
 
 func commonRemoteArchiveRoot(items []filetransfer.Record) string {
@@ -219,9 +219,6 @@ func addFileToZip(zipWriter *zip.Writer, filePath string, name string) error {
 		return fmt.Errorf("create archive header: %w", err)
 	}
 	header.Name = safeArchiveEntryPath(name)
-	if header.Name == "" {
-		header.Name = safeFileName(filepath.Base(filePath))
-	}
 	header.Method = zip.Deflate
 	if shouldStoreArchiveEntry(header.Name) {
 		header.Method = zip.Store

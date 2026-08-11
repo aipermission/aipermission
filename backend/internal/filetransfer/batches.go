@@ -317,3 +317,46 @@ func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record
 	}
 	return item, nil
 }
+
+func (s *Store) UpdatePendingBatchItemSizes(ctx context.Context, batchID int64, sizes map[int64]int64) error {
+	if batchID < 1 || len(sizes) == 0 {
+		return ErrInvalidArgument
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin file transfer batch size update: %w", err)
+	}
+	defer tx.Rollback()
+	for itemID, size := range sizes {
+		if itemID < 1 || size < 0 {
+			return ErrInvalidArgument
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE file_transfers
+			SET size_bytes = ?, updated_at = ?
+			WHERE id = ? AND batch_id = ? AND status = ?`,
+			size,
+			nowString(),
+			itemID,
+			batchID,
+			StatusPending,
+		)
+		if err != nil {
+			return fmt.Errorf("update pending file transfer size: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("read pending file transfer size rows: %w", err)
+		}
+		if rows != 1 {
+			return ErrInvalidState
+		}
+	}
+	if err := recalculateBatch(ctx, tx, batchID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit file transfer batch size update: %w", err)
+	}
+	return s.syncBatchTransferHistory(ctx, batchID)
+}

@@ -102,7 +102,7 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
+	if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
 		writeInternalError(w)
 		return
 	}
