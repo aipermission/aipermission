@@ -11,6 +11,7 @@ import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost, saveBlob } from "../../../lib/api";
 import { S3PresignDialog } from "./presign-dialog";
 import { S3VersionsDialog, VersionsIcon } from "./versions-dialog";
+import { LifecycleIcon, S3LifecycleDialog } from "./lifecycle-dialog";
 
 const defaultListLimit = 100;
 const defaultUploadDialog = {
@@ -41,6 +42,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const [transferOpen, setTransferOpen] = useState(false);
   const [presignOpen, setPresignOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [lifecycleOpen, setLifecycleOpen] = useState(false);
   const [renameDialog, setRenameDialog] = useState(defaultRenameDialog);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
@@ -85,6 +87,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     setTransferOpen(false);
     setPresignOpen(false);
     setVersionsOpen(false);
+    setLifecycleOpen(false);
     setRenameDialog(defaultRenameDialog);
     setState({ state: "idle", error: "", message: "" });
   }, [target.ref, activeSession.active, activeSession.startedAt]);
@@ -595,6 +598,16 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
                     type="button"
                     variant="outline"
                     className="h-8 w-8 px-0"
+                    title="Bucket lifecycle"
+                    disabled={!activeSession.active || state.state !== "idle"}
+                    onClick={() => setLifecycleOpen(true)}
+                  >
+                    <LifecycleIcon />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 w-8 px-0"
                     title="Create temporary S3 URL"
                     disabled={!activeSession.active || state.state !== "idle"}
                     onClick={() => setPresignOpen(true)}
@@ -712,6 +725,16 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
           await refreshObjects({ reset: true });
           if (selectedKey) await readObjectMetadata(selectedKey);
         }}
+      />
+      <S3LifecycleDialog
+        open={lifecycleOpen}
+        bucket={target.config?.bucket || "bucket"}
+        theme={theme}
+        inputClass={inputClass}
+        borderClass={borderClass}
+        mutedClass={mutedClass}
+        onClose={() => setLifecycleOpen(false)}
+        onRun={runS3Action}
       />
       <S3UploadDialog
         value={uploadDialog}
