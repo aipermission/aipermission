@@ -75,8 +75,8 @@ These rules are part of the connector contract:
   "redis"` branches to generic pages.
 
 Connector-specific gateway capabilities live behind adapter contracts in
-`internal/api/connector_api_adapters.go`. SSH uses those contracts for
-persistent PTY sessions, SFTP transfer, host-key approval, key
+`internal/connectorapi` and are registered through the connector adapter
+registry. SSH uses those contracts for persistent PTY sessions, SFTP transfer, host-key approval, key
 generation/import, reviewed TCP transport, reviewed command transport, and
 remote authorized_keys cleanup. Generic route handlers must ask the adapter
 what the connector supports instead of branching on a connector kind.
@@ -88,10 +88,12 @@ connector-local copies of those gateway contracts; if a new capability needs a
 new gateway service, extend `internal/connectorapi` and update all adapters
 through that shared contract.
 
-Some live-console runtime surfaces expose `runtime_id` as the shared identifier
-for connector-profile runtime surfaces. In the connector model this value is
-supplied by the live-console adapter, not the generic target id. New connectors
-must not add their own `runtime_id` model or copy SSH command/file-transfer
+Runtime-backed capabilities expose `runtime_id` as the shared identifier for a
+connector-profile capability surface. The adapter must resolve that id and
+fail closed unless connector kind, target/profile identity, and capability kind
+match its own contract. SSH and S3 both use the generic file-transfer adapter;
+paginated browse and recursive selection are optional typed extensions. New
+connectors must not add their own runtime-id model or copy command/file-transfer
 tables unless a reusable gateway runtime adapter has been designed first.
 
 The `Credentials` page manages connector credential profiles and
@@ -103,9 +105,8 @@ keep secret values in encrypted credential schemas.
 Targets can have multiple credential profiles. Connector templates decide how
 to expose profile selection in the UI, while token permissions always bind the
 exact target/profile/action tuple that will run. Built-in SSH uses the same
-target/profile/action model as structured connectors; persistent console and
-file-transfer features receive a connector-profile runtime id from the SSH
-adapter.
+target/profile/action model as structured connectors; runtime-backed features
+receive a connector-profile capability-surface id from the owning adapter.
 
 The 0.2 connector line is a clean baseline. Do not add compatibility branches
 for pre-0.2 preview database layouts. Important old data belongs in a separate
@@ -167,6 +168,16 @@ For connector-specific output fields that contain sensitive material, set
 `ActionDefinition.OutputHint.SensitiveFields`. The gateway masks those field
 names in structured output before returning MCP responses or persisting
 history/audit payloads.
+
+If an action intentionally generates a narrowly scoped, short-lived bearer
+capability that must be returned intact, list its string field in
+`ActionDefinition.OutputHint.TemporaryCapabilityFields`. Built-in token-pattern
+redaction is skipped only for that declared field; operator custom redaction
+still applies, and encrypted history retains the capability for the normal
+retention period. Keep expiry bounded and test that no source credential is
+present. Contributor-declared sensitive/capability overlap is rejected, while
+gateway built-in sensitive names such as `token` and `secret` always remain
+redacted and must not be declared as temporary capabilities.
 
 For action inputs such as message keys, payloads, or headers whose arbitrary
 content may itself be sensitive, list the corresponding schema field names in

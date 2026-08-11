@@ -98,6 +98,26 @@ not placed in local storage, URL parameters, or a provider record. After the
 database is restored and unlocked, add a provider normally in Settings if this
 machine should create future backups.
 
+## Storage Quota And Automatic Retention
+
+The **Backups** dialog shows service-reported storage usage, quota, remaining
+capacity, backup count, stream count, and pending remote deletions. Automatic
+retention is scoped to the current encrypted database stream and keeps the
+newest 1–1000 immutable versions.
+
+Preview calculates the exact version and byte counts that would be retained or
+deleted without changing remote state. Saving with **Apply now** deletes the
+previewed older versions immediately; saving without it only affects future
+uploads. When enabled, the backup service applies the policy after a successful
+immutable upload. Both automatic and explicit cleanup preserve the final
+recovery version. Pending deletion bytes may continue to count toward provider
+storage until the remote blob worker finishes cleanup.
+
+Retention and quota controls require a backup service implementing the current
+`v1` storage and retention endpoints. A 404 or protocol error from those
+controls means the separate backup service must be upgraded before the feature
+can be used.
+
 ## Operational Notes
 
 - Backups made before a database password change still require the old
@@ -105,7 +125,8 @@ machine should create future backups.
 - SHA-256 detects accidental corruption. It does not prove that a malicious
   storage operator has not replaced both a blob and its metadata.
 - Upload, download, and restore are explicit local user actions. There is no
-  background sync in this release.
+  background sync in this release. An enabled retention policy may run on the
+  backup service immediately after an explicit successful upload.
 - After unlock, AIPermission checks active providers once. If the latest remote
   version is newer than the version last uploaded or restored by this encrypted
   local database, the UI displays a stale-local-copy warning. Listing remote
@@ -116,6 +137,9 @@ machine should create future backups.
   because it remains the same logical database lineage.
 - Prune is an explicit destructive action scoped to one stream. It always keeps
   at least the newest version and requires confirmation in the local UI.
+- Automatic retention is also stream-scoped and destructive. Preview it before
+  enabling or applying it; changing the keep-latest count never authorizes
+  deletion of the final recovery version.
 - Selected-version cleanup is also explicit, stream-scoped, limited to 100
   unique versions per request, and confirmed in the local UI. Deleting the
   final remaining version is rejected.

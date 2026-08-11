@@ -20,8 +20,9 @@ actions, Postgres and ClickHouse provide structured metadata and bounded
 read-only query actions, Redis / Valkey provides bounded
 key browsing plus explicit write/delete actions, RabbitMQ provides queue
 metadata, bindings, bounded message previews, and explicit message publishing,
-S3 provides S3-compatible bucket browsing, object metadata, bounded
-upload/download, rename, and delete actions, and Docker provides scoped
+S3 provides S3-compatible bucket browsing, object metadata, bounded multipart
+and recursive transfer queues, temporary URLs, object version controls, and
+explicit lifecycle policy management, and Docker provides scoped
 container/image/network/volume inventory, logs, redacted inspect metadata,
 scoped container exec, live container console, and explicit lifecycle actions.
 Mail provides bounded IMAP reads, explicit read/unread and folder mutations,

@@ -48,6 +48,7 @@ Start here:
 - [MCP Client Setup](setup/mcp-client-setup.md)
 - [Kafka / Redpanda Connector](setup/kafka-redpanda.md)
 - [Mail Connector](setup/mail.md)
+- [S3-Compatible Storage](setup/s3.md)
 
 ## Providers
 

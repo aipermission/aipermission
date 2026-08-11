@@ -248,7 +248,8 @@ Publish request displays redact raw keys, values, and headers. A failed publish
 can have an unknown delivery outcome, so inspect before manually retrying.
 
 S3 actions include bucket metadata, bounded object listing, object metadata,
-bounded object download/upload, object rename, and explicit delete. Object
+bounded object download/upload, object rename, explicit delete, short-lived
+presigned URLs, object versions, and bucket lifecycle policy controls. Object
 content may contain secrets or customer data; prefer approval-required access
 for downloads, uploads, renames, and deletes until the workflow is trusted.
 Use `prefix` to browse folder-like object groups, `browse_input` from directory
@@ -256,6 +257,13 @@ entries to enter a folder, and `cursor` from `next_cursor` or `next_page_input`
 to fetch the next page. Do not send `continuation_token` as an action input.
 Use `get_object_metadata` before `download_object` when content is not needed.
 Leave `overwrite=false` unless replacement was explicitly approved.
+`presign_download` and `presign_upload` accept one exact object key and an
+expiry from 60 to 3600 seconds. Their URLs are temporary bearer credentials.
+Send every returned `required_headers` entry unchanged when using an upload
+URL; no-overwrite uploads require the signed `If-None-Match: *` header.
+Use `list_object_versions` before restoring or deleting an exact version.
+`replace_bucket_lifecycle` replaces the complete lifecycle policy with one
+bounded rule; it and `delete_bucket_lifecycle` are destructive operations.
 
 Docker actions include version metadata, scoped container/image/network/volume
 listing, redacted container inspect metadata, bounded container log tails,

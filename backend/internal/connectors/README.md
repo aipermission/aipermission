@@ -84,6 +84,16 @@ masked even when their names are connector-specific. The gateway also masks a
 small default set such as `password`, `token`, `secret`, `api_key`, and
 `authorization`, but connector-specific names must be explicit.
 
+Use `OutputHint.TemporaryCapabilityFields` only for a generated, narrowly
+scoped, short-lived capability that the authorized caller must receive, such
+as a bounded presigned URL. The gateway preserves the signed syntax of those
+string fields while still applying operator-defined custom redaction rules.
+The value remains in encrypted history until normal retention removes it, so
+never use this hint for source credentials, refresh tokens, or long-lived
+secrets. Contributor-declared sensitive/capability overlap is rejected;
+gateway built-in sensitive names such as `token` and `secret` remain redacted
+and must not be declared as temporary capabilities.
+
 Use `ActionDefinition.SensitiveInputFields` for non-credential action inputs
 whose values may contain customer data or secrets, such as a message key,
 payload, or headers. Core persists and returns redacted input values while
