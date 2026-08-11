@@ -1,0 +1,125 @@
+package s3connector
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+)
+
+func TestExecuteListObjectVersionsFiltersExactKeyAndReturnsCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := r.URL.Query()["versions"]; !ok {
+			t.Fatalf("missing versions query: %s", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("prefix") != "daily/report.csv" {
+			t.Fatalf("prefix = %q", r.URL.Query().Get("prefix"))
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<ListVersionsResult>
+<IsTruncated>true</IsTruncated>
+<NextKeyMarker>daily/report.csv</NextKeyMarker>
+<NextVersionIdMarker>version-1</NextVersionIdMarker>
+<Version><Key>daily/report.csv</Key><VersionId>version-1</VersionId><IsLatest>true</IsLatest><LastModified>2026-08-11T10:00:00Z</LastModified><ETag>"abc"</ETag><Size>42</Size><StorageClass>STANDARD</StorageClass></Version>
+<Version><Key>daily/report.csv.extra</Key><VersionId>other</VersionId><IsLatest>false</IsLatest><LastModified>2026-08-10T10:00:00Z</LastModified><ETag>"def"</ETag><Size>12</Size></Version>
+<DeleteMarker><Key>daily/report.csv</Key><VersionId>marker-1</VersionId><IsLatest>false</IsLatest><LastModified>2026-08-09T10:00:00Z</LastModified></DeleteMarker>
+</ListVersionsResult>`))
+	}))
+	defer server.Close()
+
+	result, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionListVersions,
+		Payload:    map[string]any{"key": "daily/report.csv", "cursor": "", "limit": 100},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	output := result.Output.(map[string]any)
+	if output["count"] != 2 || output["next_cursor"] == "" {
+		t.Fatalf("output = %#v", output)
+	}
+	versions := output["versions"].([]map[string]any)
+	if versions[0]["version_id"] != "version-1" || versions[1]["delete_marker"] != true {
+		t.Fatalf("versions = %#v", versions)
+	}
+	cursor, err := decodeVersionCursor(output["next_cursor"].(string))
+	if err != nil || cursor.VersionIDMarker != "version-1" {
+		t.Fatalf("cursor = %#v err=%v", cursor, err)
+	}
+}
+
+func TestRestoreObjectVersionUsesVersionedCopySource(t *testing.T) {
+	var copySource string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		copySource = r.Header.Get("X-Amz-Copy-Source")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionRestoreVersion,
+		Payload:    map[string]any{"key": "daily/report #1.csv", "version_id": "v/1+two"},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if copySource != "/test-bucket/daily/report%20%231.csv?versionId=v%2F1%2Btwo" {
+		t.Fatalf("copy source = %q", copySource)
+	}
+}
+
+func TestDeleteObjectVersionUsesExactVersionID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Query().Get("versionId") != "version+1/2" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.String())
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionDeleteVersion,
+		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version+1/2"},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+}
+
+func TestPrepareObjectVersionActionsUseExplicitRisks(t *testing.T) {
+	connector := New()
+	for _, test := range []struct {
+		name   string
+		action string
+		risk   connectors.RiskLevel
+	}{
+		{name: "list", action: ActionListVersions, risk: connectors.RiskRead},
+		{name: "restore", action: ActionRestoreVersion, risk: connectors.RiskWrite},
+		{name: "delete", action: ActionDeleteVersion, risk: connectors.RiskDestructive},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := map[string]any{"key": "/daily/report.csv"}
+			if test.action != ActionListVersions {
+				input["version_id"] = "version-1"
+			}
+			prepared, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
+				Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: test.action, Input: input,
+			})
+			if err != nil {
+				t.Fatalf("prepare: %v", err)
+			}
+			if prepared.Risk != test.risk || prepared.Payload["key"] != "daily/report.csv" {
+				t.Fatalf("prepared = %#v", prepared)
+			}
+		})
+	}
+}
+
+func TestDecodeVersionCursorRejectsInvalidInput(t *testing.T) {
+	if _, err := decodeVersionCursor("not-a-valid-cursor"); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("err = %v", err)
+	}
+}

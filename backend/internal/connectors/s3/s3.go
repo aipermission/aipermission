@@ -37,6 +37,9 @@ const (
 	ActionDeleteObject      = "delete_object"
 	ActionPresignDownload   = "presign_download"
 	ActionPresignUpload     = "presign_upload"
+	ActionListVersions      = "list_object_versions"
+	ActionRestoreVersion    = "restore_object_version"
+	ActionDeleteVersion     = "delete_object_version"
 
 	defaultS3Scheme    = "https"
 	defaultS3Host      = "s3.amazonaws.com"
@@ -209,6 +212,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use rename_object only for intentional object moves. It copies to the destination key and then deletes the source key.",
 			"Use delete_object carefully; it is destructive and should normally require explicit approval.",
 			"Use presign_download or presign_upload only when the operator explicitly needs a short-lived URL for one exact object key.",
+			"Use list_object_versions before restoring or deleting one exact version. Restoring creates a new current version.",
 		},
 		Warnings: []string{
 			"S3 objects may contain secrets or customer data. Redaction is best-effort; avoid reading object content unless explicitly approved.",
@@ -216,6 +220,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Do not put access keys, secret keys, signed URLs, or reusable tokens into action input. Store credentials in the selected credential profile.",
 			"S3 credential profiles decide what the object storage service itself allows.",
 			"Presigned URLs are temporary bearer credentials. Do not place them in reasons, inputs, logs, or messages beyond the intended recipient.",
+			"delete_object_version permanently removes one stored version or delete marker and is destructive.",
 		},
 	}, nil
 }
@@ -331,6 +336,43 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{Name: "overwrite", Label: "Allow overwrite", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless replacing an existing object is intentional."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000},
+		},
+		{
+			Name:        ActionListVersions,
+			Label:       "List object versions",
+			Description: "List bounded stored versions and delete markers for one exact object key.",
+			Category:    "versioning",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
+				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional cursor returned by the previous page."},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultVersionListLimit, Description: "Maximum version records requested from S3."},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 16000},
+		},
+		{
+			Name:        ActionRestoreVersion,
+			Label:       "Restore object version",
+			Description: "Copy one stored object version into a new current version.",
+			Category:    "versioning",
+			Risk:        connectors.RiskWrite,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
+				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact stored version ID returned by list_object_versions."},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+		},
+		{
+			Name:        ActionDeleteVersion,
+			Label:       "Delete object version",
+			Description: "Permanently delete one exact object version or delete marker.",
+			Category:    "destructive",
+			Risk:        connectors.RiskDestructive,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
+				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact version ID returned by list_object_versions."},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
 	}, nil
 }
@@ -452,6 +494,39 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			title = "Create S3 download URL"
 		}
 		summary = fmt.Sprintf("%s (%d seconds)", key, expiresSeconds)
+	case ActionListVersions:
+		key := normalizeObjectKey(input, "key")
+		if key == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		}
+		cursor := strings.TrimSpace(stringValue(input, "cursor"))
+		if _, err := decodeVersionCursor(cursor); err != nil {
+			return connectors.PreparedAction{}, err
+		}
+		input["key"] = key
+		input["cursor"] = cursor
+		input["limit"] = normalizeInt(input, "limit", defaultVersionListLimit, 1, maxVersionListLimit)
+		title = "List S3 object versions"
+		summary = key
+	case ActionRestoreVersion, ActionDeleteVersion:
+		key := normalizeObjectKey(input, "key")
+		if key == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		}
+		versionID, err := normalizeVersionID(input)
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
+		input["key"] = key
+		input["version_id"] = versionID
+		if req.ActionName == ActionDeleteVersion {
+			risk = connectors.RiskDestructive
+			title = "Delete S3 object version"
+		} else {
+			risk = connectors.RiskWrite
+			title = "Restore S3 object version"
+		}
+		summary = fmt.Sprintf("%s @ %s", key, versionID)
 	default:
 		return connectors.PreparedAction{}, ErrUnsupportedAction
 	}
@@ -505,6 +580,12 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 		return executePresignDownload(ctx, client, action.Payload)
 	case ActionPresignUpload:
 		return executePresignUpload(ctx, client, action.Payload)
+	case ActionListVersions:
+		return executeListObjectVersions(ctx, client, action.Payload)
+	case ActionRestoreVersion:
+		return executeRestoreObjectVersion(ctx, client, action.Payload)
+	case ActionDeleteVersion:
+		return executeDeleteObjectVersion(ctx, client, action.Payload)
 	default:
 		return connectors.ActionResult{}, ErrUnsupportedAction
 	}
