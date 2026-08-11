@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"io"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -83,18 +82,14 @@ func (s connectorTargetHandlers) restoreConnectorProfileBackup(w http.ResponseWr
 		return
 	}
 	defer file.Close()
-	data, err := io.ReadAll(file)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if len(data) == 0 {
+	if header.Size == 0 {
 		writeError(w, http.StatusBadRequest, "restore SQL file is empty")
 		return
 	}
 	result, err := backupRestorer.Restore(r.Context(), resolved.runtimeContext, connectors.RestoreRequest{
 		Filename: header.Filename,
-		Data:     data,
+		Content:  file,
+		Size:     header.Size,
 	})
 	if err != nil {
 		handleConnectorProvisionError(w, err)
