@@ -1,5 +1,5 @@
 import { Ban, CalendarClock, Database, KeyRound, LockKeyhole, PlugZap, Plus, RefreshCcw, TicketCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { effectiveRule, maskedToken } from "../lib/permissions";
@@ -35,6 +35,7 @@ export function TokensPage() {
   const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
   const { actionState: state, runAction } = useAsyncAction();
   const [tokenFilter, setTokenFilter] = useState("active");
+  const loadPermissionsForEffect = useEffectEvent(() => loadAllConnectorPermissions(tokens.data));
 
   const stats = useMemo(() => {
     const active = tokens.data.filter((token) => tokenStatus(token) === "active").length;
@@ -54,10 +55,11 @@ export function TokensPage() {
     return tokens.data;
   }, [tokenFilter, tokens.data]);
 
+  const tokenIDs = tokens.data.map((token) => token.id).join(",");
   useEffect(() => {
     if (tokens.state !== "ready") return;
-    loadAllConnectorPermissions(tokens.data);
-  }, [tokens.state, tokens.data.map((token) => token.id).join(",")]);
+    loadPermissionsForEffect();
+  }, [tokens.state, tokenIDs]);
 
   async function refreshTokensAndPermissions() {
     const tokenItems = await loadTokens();

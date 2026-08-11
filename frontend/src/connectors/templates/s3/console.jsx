@@ -1,5 +1,5 @@
 import { CornerUpLeft, Database, Download, FileUp, Folder, Pencil, Plus, RefreshCcw, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
@@ -64,6 +64,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const latestAction = activeItems[0] || null;
   const selectedObject = objects.find((item) => item.key === selectedKey) || null;
   const visibleBytes = useMemo(() => objects.reduce((total, object) => total + Number(object.size || 0), 0), [objects]);
+  const refreshObjectsForEffect = useEffectEvent((options) => refreshObjects(options));
 
   useEffect(() => {
     setPrefix("");
@@ -81,7 +82,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
 
   useEffect(() => {
     if (!activeSession.active) return;
-    void refreshObjects({ reset: true });
+    void refreshObjectsForEffect({ reset: true });
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
   async function runS3Action({ actionName, input, reason, busy = "running", suppressError = false }) {

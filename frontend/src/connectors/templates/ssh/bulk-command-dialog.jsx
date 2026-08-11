@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Copy, RefreshCcw, TerminalSquare } from "lucide-react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
@@ -30,6 +30,8 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   const confirmationText = selectedIDs.length > 0 ? `RUN ON ${selectedIDs.length} TARGETS` : "RUN ON 0 TARGETS";
   const canRun = selectedIDs.length > 0 && command.trim() && confirmation === confirmationText && runState.state !== "starting";
   const hasActiveItems = runState.items.some((item) => !terminalStatuses.has(item.status));
+  const requestStatusSignature = runState.items.map((item) => `${item.request_id}:${item.status}`).join(",");
+  const refreshRequestsForEffect = useEffectEvent(() => refreshRequests());
 
   useEffect(() => {
     if (!open) return;
@@ -49,10 +51,10 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   useEffect(() => {
     if (!open || !hasActiveItems) return undefined;
     const timer = window.setInterval(() => {
-      void refreshRequests();
+      void refreshRequestsForEffect();
     }, 2500);
     return () => window.clearInterval(timer);
-  }, [open, hasActiveItems, runState.items.map((item) => `${item.request_id}:${item.status}`).join(",")]);
+  }, [open, hasActiveItems, requestStatusSignature]);
 
   function toggleTarget(runtimeID) {
     setSelected((current) => ({ ...current, [runtimeID]: !current[runtimeID] }));

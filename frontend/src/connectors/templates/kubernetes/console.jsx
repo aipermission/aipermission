@@ -1,5 +1,5 @@
 import { FileJson, LoaderCircle, RefreshCcw, RotateCcw, Search, TerminalSquare, TriangleAlert, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
@@ -76,6 +76,8 @@ export function KubernetesConnectorConsoleTemplate({
       ),
     );
   }, [activeResources, filter, tab]);
+  const refreshNamespacesForEffect = useEffectEvent(() => refreshNamespaces());
+  const refreshResourceForEffect = useEffectEvent((nextTab) => refreshResource(nextTab));
 
   useEffect(() => {
     setNamespace("");
@@ -91,8 +93,8 @@ export function KubernetesConnectorConsoleTemplate({
   }, [target.ref]);
 
   useEffect(() => {
-    void refreshNamespaces();
-    void refreshResource("workloads");
+    void refreshNamespacesForEffect();
+    void refreshResourceForEffect("workloads");
   }, [target.ref]);
 
   useEffect(() => {

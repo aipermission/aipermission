@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { apiGet, apiPost, apiPut, apiUrl } from "../lib/api";
 import { AppSidebar } from "./app-sidebar";
@@ -200,30 +200,31 @@ export function Shell({ theme, setTheme }) {
     ]);
   }
 
+  const refreshCurrentRoute = useEffectEvent(async (pathname, firstLoad) => {
+    if (firstLoad || pathname !== "/console") {
+      await refreshAll();
+      return;
+    }
+    await Promise.all([
+      loadStatus(),
+      loadDatabaseStatus(),
+      loadTargets(),
+      loadConsoleSessions(),
+      loadConnectorActionApprovals(),
+      loadVaultActionApprovals(),
+      loadMessages(),
+      loadFileTransferBatches({ keepData: true }),
+    ]);
+  });
+
   useEffect(() => {
     let cancelled = false;
     let firstLoad = true;
     async function load() {
       if (cancelled) return;
-      if (firstLoad) {
-        firstLoad = false;
-        await refreshAll();
-        return;
-      }
-      if (location.pathname === "/console") {
-        await Promise.all([
-          loadStatus(),
-          loadDatabaseStatus(),
-          loadTargets(),
-          loadConsoleSessions(),
-          loadConnectorActionApprovals(),
-          loadVaultActionApprovals(),
-          loadMessages(),
-          loadFileTransferBatches({ keepData: true }),
-        ]);
-      } else {
-        await refreshAll();
-      }
+      const initial = firstLoad;
+      firstLoad = false;
+      await refreshCurrentRoute(location.pathname, initial);
     }
     load();
     const timer = setInterval(load, 5000);

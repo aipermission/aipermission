@@ -1,5 +1,5 @@
 import { Download, RefreshCcw, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CopyButton } from "../components/ui/copy-button";
@@ -58,6 +58,7 @@ export function HistoryPage() {
   const [targets, setTargets] = useState({ state: "idle", data: [], error: null });
   const [projects, setProjects] = useState({ state: "idle", data: [], error: null });
   const [selected, setSelected] = useState(null);
+  const loadHistoryForEffect = useEffectEvent((offset, options) => loadHistory(offset, options));
 
   useEffect(() => {
     void loadLabels();
@@ -65,16 +66,16 @@ export function HistoryPage() {
     void loadProjects();
   }, []);
 
-  const targetItems = targets.data || [];
+  const targetItems = useMemo(() => targets.data || [], [targets.data]);
   const targetSignature = targetItems.map((target) => `${target.ref}:${target.project_id || ""}:${target.project_name || ""}`).join(",");
   const connectorKindOptions = useMemo(() => {
     const kinds = Array.from(new Set(targetItems.map((target) => target.connector_kind).filter(Boolean))).sort();
     return [{ value: "", label: "All connectors" }, ...kinds.map((kind) => ({ value: kind, label: connectorKindLabel(kind) }))];
-  }, [targetSignature]);
+  }, [targetItems]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadHistory(0);
+      void loadHistoryForEffect(0);
     }, 250);
     return () => window.clearTimeout(timer);
   }, [
@@ -92,7 +93,7 @@ export function HistoryPage() {
     const hasActive = state.data.some((item) => ["pending", "pending_approval", "running", "paused"].includes(item.status));
     if (!hasActive) return undefined;
     const timer = window.setInterval(() => {
-      void loadHistory(state.offset, { silent: true });
+      void loadHistoryForEffect(state.offset, { silent: true });
     }, 1500);
     return () => window.clearInterval(timer);
   }, [state.data, state.offset]);

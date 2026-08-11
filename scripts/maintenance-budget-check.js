@@ -9,7 +9,7 @@ const sourceBudgets = [
   { directory: "frontend/src", extensions: new Set([".js", ".jsx", ".ts", ".tsx"]), maxLines: 1800 },
   { directory: "packages/mcp/src", extensions: new Set([".js", ".ts"]), maxLines: 1200 },
 ];
-const suppressionBudget = 37;
+const suppressionBudget = 0;
 const criticalSuppressionPaths = [
   "src/components/console/connector-token-permission-panel.jsx",
   "src/components/console/vault-session-dialog.jsx",
