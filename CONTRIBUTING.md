@@ -12,6 +12,8 @@ The project is in active MVP testing. The current focus is a reliable local deve
 - clear documentation
 
 Before proposing scope changes, read [Project Principles](docs/project-principles.md).
+AIPermission's maintainer and decision model is documented in
+[Governance](GOVERNANCE.md).
 AIPermission is local-only, single-user, developer-focused, connector-based,
 and human-in-the-loop. Hosted SaaS, team RBAC, remote gateway hosting,
 LAN-accessible deployments, and cloud-managed execution are intentionally out
@@ -100,6 +102,10 @@ docker compose up -d --build
 ```
 
 ## Pull Requests
+
+Contributions are submitted for distribution under the repository's
+`AGPL-3.0-only` license. A separate CLA or DCO sign-off is not currently
+required.
 
 Before opening a PR:
 

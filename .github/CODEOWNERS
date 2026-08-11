@@ -1,0 +1,11 @@
+# Default ownership and security-sensitive boundaries.
+* @hakanekin
+
+/backend/internal/actions/ @hakanekin
+/backend/internal/api/ @hakanekin
+/backend/internal/connectors/ @hakanekin
+/backend/internal/projectvault/ @hakanekin
+/backend/internal/vault/ @hakanekin
+/backend/internal/vaultsessions/ @hakanekin
+/.github/workflows/ @hakanekin
+/SECURITY.md @hakanekin
