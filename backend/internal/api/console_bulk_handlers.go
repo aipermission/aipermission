@@ -155,6 +155,7 @@ func (s consoleHandlers) bulkConsoleTarget(ctx context.Context, runtime *databas
 func handleConnectorTargetRuntimeError(w http.ResponseWriter, err error) {
 	if errors.Is(err, connectortargets.ErrTargetProfileNotFound) ||
 		errors.Is(err, connectortargets.ErrTargetNotFound) ||
+		errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) ||
 		errors.Is(err, connectortargets.ErrInvalidTargetRef) {
 		writeError(w, http.StatusNotFound, "connector target profile not found")
 		return

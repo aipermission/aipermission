@@ -184,7 +184,8 @@ func executionTransferOptions(options connectorapi.TransferOptions) execution.Tr
 				options.Progress(transferred, total)
 			}
 		},
-		Wait: options.Wait,
+		Wait:     options.Wait,
+		MaxBytes: options.MaxBytes,
 	}
 }
 

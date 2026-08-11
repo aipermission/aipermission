@@ -47,7 +47,7 @@ func TestPresignObjectCreatesBoundedSigV4URL(t *testing.T) {
 	if query.Get("X-Amz-Security-Token") != "temporary-session-token" {
 		t.Fatalf("session token = %q", query.Get("X-Amz-Security-Token"))
 	}
-	if len(query.Get("X-Amz-Signature")) != 64 {
+	if query.Get("X-Amz-Signature") != "4f6f6cdf829a73b7037a454fe91d4997c623396975104c73208d33bdc4c096c8" {
 		t.Fatalf("signature = %q", query.Get("X-Amz-Signature"))
 	}
 	if strings.Contains(signedURL, "test-secret") {
@@ -125,5 +125,35 @@ func TestExecutePresignUploadProtectsExistingObject(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestExecutePresignUploadSignsRequiredNoOverwriteHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead {
+			t.Fatalf("method = %s", r.Method)
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	result, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionPresignUpload,
+		Payload:    map[string]any{"key": "/new.txt", "expires_seconds": 900, "overwrite": false},
+	})
+	if err != nil {
+		t.Fatalf("execute presign upload: %v", err)
+	}
+	output := result.Output.(map[string]any)
+	parsed, err := url.Parse(output["url"].(string))
+	if err != nil {
+		t.Fatalf("parse signed URL: %v", err)
+	}
+	if parsed.Query().Get("X-Amz-SignedHeaders") != "host;if-none-match" {
+		t.Fatalf("signed headers = %q", parsed.Query().Get("X-Amz-SignedHeaders"))
+	}
+	headers, ok := output["required_headers"].(map[string]string)
+	if !ok || headers["If-None-Match"] != "*" {
+		t.Fatalf("required headers = %#v", output["required_headers"])
 	}
 }

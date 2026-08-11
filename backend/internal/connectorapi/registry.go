@@ -6,6 +6,7 @@ package connectorapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,6 +20,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/vault"
+)
+
+var (
+	ErrRemotePathNotFound = errors.New("remote path not found")
+	ErrTransferLimit      = errors.New("file transfer limit exceeded")
 )
 
 // Adapter is a marker implemented by connector-owned gateway adapters.
@@ -205,6 +211,7 @@ type TransferProgress func(transferred int64, total int64)
 type TransferOptions struct {
 	Progress TransferProgress
 	Wait     func(context.Context) error
+	MaxBytes int64
 }
 
 type TransferResult struct {
@@ -228,6 +235,12 @@ type RemotePathStatus struct {
 	Size   int64  `json:"size"`
 }
 
+type RemoteFilePage struct {
+	Entries    []RemoteFileEntry `json:"entries"`
+	NextCursor string            `json:"next_cursor,omitempty"`
+	HasMore    bool              `json:"has_more"`
+}
+
 type FileTransferAdapter interface {
 	BrowseRemoteFiles(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string) ([]RemoteFileEntry, error)
 	StatRemotePath(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string) (RemotePathStatus, error)
@@ -236,7 +249,11 @@ type FileTransferAdapter interface {
 }
 
 type RecursiveFileTransferAdapter interface {
-	ListRecursiveFiles(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string, maxItems int, maxBytes int64) ([]RemoteFileEntry, error)
+	ListRecursiveFiles(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]RemoteFileEntry, error)
+}
+
+type PaginatedFileTransferAdapter interface {
+	BrowseRemoteFilesPage(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string, cursor string) (RemoteFilePage, error)
 }
 
 type ErrorPresenter interface {

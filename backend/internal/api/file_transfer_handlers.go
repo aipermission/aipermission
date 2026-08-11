@@ -13,11 +13,13 @@ import (
 )
 
 const (
-	maxFileTransferUploadBytes = 512 << 20
-	maxFileTransferBatchBytes  = 1 << 30
-	fileTransferTimeout        = 2 * time.Hour
-	fileTransferBatchTimeout   = 6 * time.Hour
-	fileTransferTempTTL        = 30 * time.Minute
+	maxFileTransferObjectBytes       = 512 << 20
+	maxFileTransferBatchBytes        = 1 << 30
+	maxFileTransferBatchItems        = 100
+	maxFileTransferMultipartOverhead = 16 << 20
+	fileTransferTimeout              = 2 * time.Hour
+	fileTransferBatchTimeout         = 6 * time.Hour
+	fileTransferTempTTL              = 30 * time.Minute
 )
 
 type startDownloadRequest struct {
@@ -47,12 +49,15 @@ type declineFileTransferBatchRequest struct {
 type browseRemoteFilesRequest struct {
 	RuntimeID int64  `json:"runtime_id"`
 	Path      string `json:"path"`
+	Cursor    string `json:"cursor"`
 }
 
 type browseRemoteFilesResponse struct {
-	Path    string                         `json:"path"`
-	Parent  string                         `json:"parent"`
-	Entries []connectorapi.RemoteFileEntry `json:"entries"`
+	Path       string                         `json:"path"`
+	Parent     string                         `json:"parent"`
+	Entries    []connectorapi.RemoteFileEntry `json:"entries"`
+	NextCursor string                         `json:"next_cursor,omitempty"`
+	HasMore    bool                           `json:"has_more"`
 }
 
 type expandRemoteFilesRequest struct {
@@ -203,7 +208,15 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		handleConnectorTargetRuntimeError(w, err)
 		return
 	}
-	entries, err := adapter.BrowseRemoteFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath)
+	page := connectorapi.RemoteFilePage{}
+	if paginated, ok := adapter.(connectorapi.PaginatedFileTransferAdapter); ok {
+		page, err = paginated.BrowseRemoteFilesPage(ctx, s.Server, runtime, request.RuntimeID, remotePath, strings.TrimSpace(request.Cursor))
+	} else if strings.TrimSpace(request.Cursor) != "" {
+		writeError(w, http.StatusBadRequest, "this connector does not support paginated file browsing")
+		return
+	} else {
+		page.Entries, err = adapter.BrowseRemoteFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath)
+	}
 	if err != nil {
 		if writeConnectorError(w, adapter, err) {
 			return
@@ -216,9 +229,11 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		parent = "/"
 	}
 	writeJSON(w, http.StatusOK, browseRemoteFilesResponse{
-		Path:    remotePath,
-		Parent:  parent,
-		Entries: entries,
+		Path:       remotePath,
+		Parent:     parent,
+		Entries:    page.Entries,
+		NextCursor: page.NextCursor,
+		HasMore:    page.HasMore,
 	})
 }
 
@@ -253,8 +268,16 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusConflict, "this connector does not support recursive file selection")
 		return
 	}
-	entries, err := adapter.ListRecursiveFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath, 100, maxFileTransferBatchBytes)
+	entries, err := adapter.ListRecursiveFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath, maxFileTransferBatchItems, maxFileTransferObjectBytes, maxFileTransferBatchBytes)
 	if err != nil {
+		if errors.Is(err, connectorapi.ErrRemotePathNotFound) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if errors.Is(err, connectorapi.ErrTransferLimit) {
+			writeError(w, http.StatusRequestEntityTooLarge, err.Error())
+			return
+		}
 		if writeConnectorError(w, baseAdapter, err) {
 			return
 		}

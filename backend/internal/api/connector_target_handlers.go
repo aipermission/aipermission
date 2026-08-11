@@ -492,7 +492,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
+	if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -656,7 +656,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	for _, profile := range profiles {
-		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+		if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 			writeInternalError(w)
 			return
 		}
@@ -785,7 +785,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+	if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -885,7 +885,7 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 	return result.Affected, nil
 }
 
-func (s connectorTargetHandlers) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 	if store == nil {
 		return nil
 	}

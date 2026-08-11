@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,24 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
+
+func TestFileTransferRoutesReturnNotFoundForUnknownRuntime(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	browse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
+		RuntimeID: 999999,
+		Path:      "/",
+	})
+	if browse.Code != http.StatusNotFound {
+		t.Fatalf("browse status = %d body=%s", browse.Code, browse.Body.String())
+	}
+	download := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{
+		RuntimeID:  999999,
+		RemotePath: "/missing.txt",
+	})
+	if download.Code != http.StatusNotFound {
+		t.Fatalf("download status = %d body=%s", download.Code, download.Body.String())
+	}
+}
 
 func TestUniqueArchiveEntryNameAvoidsDuplicateBasenames(t *testing.T) {
 	used := map[string]int{}
@@ -30,6 +49,22 @@ func TestUniqueArchiveEntryNameAvoidsDuplicateBasenames(t *testing.T) {
 	}
 }
 
+func TestUniqueArchiveEntryNameTracksGeneratedSuffixes(t *testing.T) {
+	used := map[string]int{}
+	names := []string{
+		uniqueArchiveEntryName("", "/a/f.txt", "/", used),
+		uniqueArchiveEntryName("", `/a\f.txt`, "/", used),
+		uniqueArchiveEntryName("", "/a/f-2.txt", "/", used),
+	}
+	seen := map[string]bool{}
+	for _, name := range names {
+		if seen[name] {
+			t.Fatalf("duplicate generated archive entry %q in %#v", name, names)
+		}
+		seen[name] = true
+	}
+}
+
 func TestNormalizeRelativeTransferPathPreservesFoldersAndRejectsTraversal(t *testing.T) {
 	value, err := normalizeRelativeTransferPath(`reports\2026\daily.csv`)
 	if err != nil || value != "reports/2026/daily.csv" {
@@ -42,6 +77,18 @@ func TestNormalizeRelativeTransferPathPreservesFoldersAndRejectsTraversal(t *tes
 	}
 	if joined := joinRemoteRelativePath("/archive", value); joined != "/archive/reports/2026/daily.csv" {
 		t.Fatalf("joined relative transfer path = %q", joined)
+	}
+}
+
+func TestValidateStagedUploadSizeEnforcesObjectAndBatchLimits(t *testing.T) {
+	if total, err := validateStagedUploadSize(maxFileTransferObjectBytes, maxFileTransferObjectBytes); err != nil || total != maxFileTransferBatchBytes {
+		t.Fatalf("expected exact limits to pass: total=%d err=%v", total, err)
+	}
+	if _, err := validateStagedUploadSize(maxFileTransferObjectBytes+1, 0); err == nil {
+		t.Fatal("expected oversized object to fail")
+	}
+	if _, err := validateStagedUploadSize(1, maxFileTransferBatchBytes); err == nil {
+		t.Fatal("expected oversized batch to fail")
 	}
 }
 

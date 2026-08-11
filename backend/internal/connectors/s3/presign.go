@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,27 +21,27 @@ const (
 )
 
 func executePresignDownload(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
-	key := stringValue(input, "key")
+	key := normalizeObjectKey(input, "key")
 	if _, err := client.HeadObject(ctx, key); err != nil {
 		return connectors.ActionResult{}, err
 	}
-	return presignedActionResult(client, http.MethodGet, key, intValue(input, "expires_seconds"), time.Now().UTC())
+	return presignedActionResult(client, http.MethodGet, key, normalizeInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds), nil, time.Now().UTC())
 }
 
 func executePresignUpload(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
-	key := stringValue(input, "key")
+	key := normalizeObjectKey(input, "key")
+	requiredHeaders := map[string]string{}
 	if !boolValue(input, "overwrite") {
-		if _, err := client.HeadObject(ctx, key); err == nil {
-			return connectors.ActionResult{}, fmt.Errorf("object %q already exists; set overwrite=true to replace it", key)
-		} else if !isNotFoundError(err) {
+		if err := client.ensureObjectAbsent(ctx, key); err != nil {
 			return connectors.ActionResult{}, err
 		}
+		requiredHeaders["If-None-Match"] = "*"
 	}
-	return presignedActionResult(client, http.MethodPut, key, intValue(input, "expires_seconds"), time.Now().UTC())
+	return presignedActionResult(client, http.MethodPut, key, normalizeInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds), requiredHeaders, time.Now().UTC())
 }
 
-func presignedActionResult(client *s3Client, method string, key string, expiresSeconds int, now time.Time) (connectors.ActionResult, error) {
-	signedURL, expiresAt, err := client.PresignObject(method, key, expiresSeconds, now)
+func presignedActionResult(client *s3Client, method string, key string, expiresSeconds int, requiredHeaders map[string]string, now time.Time) (connectors.ActionResult, error) {
+	signedURL, expiresAt, err := client.presignObject(method, key, expiresSeconds, requiredHeaders, now)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -51,20 +52,25 @@ func presignedActionResult(client *s3Client, method string, key string, expiresS
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
-			"bucket":          client.bucket,
-			"key":             key,
-			"operation":       operation,
-			"method":          method,
-			"url":             signedURL,
-			"expires_at":      expiresAt.Format(time.RFC3339),
-			"expires_seconds": expiresSeconds,
-			"warning":         "This URL is a temporary bearer credential. Share it only with the intended recipient.",
+			"bucket":           client.bucket,
+			"key":              key,
+			"operation":        operation,
+			"method":           method,
+			"url":              signedURL,
+			"expires_at":       expiresAt.Format(time.RFC3339),
+			"expires_seconds":  expiresSeconds,
+			"required_headers": requiredHeaders,
+			"warning":          "This URL is a temporary bearer credential. Share it only with the intended recipient.",
 		},
 		DisplayText: fmt.Sprintf("Created a %d-second presigned %s URL for %s.", expiresSeconds, operation, key),
 	}, nil
 }
 
 func (client *s3Client) PresignObject(method string, key string, expiresSeconds int, now time.Time) (string, time.Time, error) {
+	return client.presignObject(method, key, expiresSeconds, nil, now)
+}
+
+func (client *s3Client) presignObject(method string, key string, expiresSeconds int, requiredHeaders map[string]string, now time.Time) (string, time.Time, error) {
 	if method != http.MethodGet && method != http.MethodPut {
 		return "", time.Time{}, fmt.Errorf("unsupported presigned URL method")
 	}
@@ -79,12 +85,29 @@ func (client *s3Client) PresignObject(method string, key string, expiresSeconds 
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")
 	credentialScope := dateStamp + "/" + client.region + "/s3/aws4_request"
+	canonicalHeaderValues := map[string]string{"host": canonicalHeaderValue(client.URL(key, nil).Host)}
+	for name, value := range requiredHeaders {
+		normalizedName := strings.ToLower(strings.TrimSpace(name))
+		if normalizedName == "" || normalizedName == "host" {
+			continue
+		}
+		canonicalHeaderValues[normalizedName] = canonicalHeaderValue(value)
+	}
+	signedHeaderNames := sortedHeaderNames(canonicalHeaderValues)
+	var canonicalHeaders strings.Builder
+	for _, name := range signedHeaderNames {
+		canonicalHeaders.WriteString(name)
+		canonicalHeaders.WriteByte(':')
+		canonicalHeaders.WriteString(canonicalHeaderValues[name])
+		canonicalHeaders.WriteByte('\n')
+	}
+	signedHeaders := strings.Join(signedHeaderNames, ";")
 	query := url.Values{
 		"X-Amz-Algorithm":     []string{"AWS4-HMAC-SHA256"},
 		"X-Amz-Credential":    []string{client.accessKey + "/" + credentialScope},
 		"X-Amz-Date":          []string{amzDate},
 		"X-Amz-Expires":       []string{strconv.Itoa(expiresSeconds)},
-		"X-Amz-SignedHeaders": []string{"host"},
+		"X-Amz-SignedHeaders": []string{signedHeaders},
 	}
 	if client.sessionToken != "" {
 		query.Set("X-Amz-Security-Token", client.sessionToken)
@@ -94,8 +117,8 @@ func (client *s3Client) PresignObject(method string, key string, expiresSeconds 
 		method,
 		u.EscapedPath(),
 		canonicalQuery(u.Query()),
-		"host:" + canonicalHeaderValue(u.Host) + "\n",
-		"host",
+		canonicalHeaders.String(),
+		signedHeaders,
 		presignedPayloadHash,
 	}, "\n")
 	stringToSign := strings.Join([]string{
@@ -110,16 +133,13 @@ func (client *s3Client) PresignObject(method string, key string, expiresSeconds 
 	return u.String(), now.Add(time.Duration(expiresSeconds) * time.Second), nil
 }
 
-func intValue(values map[string]any, name string) int {
-	switch value := values[name].(type) {
-	case int:
-		return value
-	case int64:
-		return int(value)
-	case float64:
-		return int(value)
-	default:
-		parsed, _ := strconv.Atoi(strings.TrimSpace(fmt.Sprint(value)))
-		return parsed
+func sortedHeaderNames(headers map[string]string) []string {
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, name)
 	}
+	sort.Slice(names, func(i, j int) bool {
+		return strings.ToLower(names[i]) < strings.ToLower(names[j])
+	})
+	return names
 }

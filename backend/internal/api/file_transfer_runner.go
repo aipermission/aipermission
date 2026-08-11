@@ -89,6 +89,7 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 	}
 	result, err := adapter.DownloadFile(ctx, s.Server, runtime, item.RuntimeID, item.RemotePath, item.TempPath, connectorapi.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID),
+		MaxBytes: maxFileTransferObjectBytes,
 	})
 	if err != nil {
 		_ = os.Remove(item.TempPath)
@@ -125,13 +126,31 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 	defer runtime.unregisterBatchControl(batchID)
 	defer cancel()
 
+	batch, err := runtime.fileTransfers.GetBatch(ctx, batchID)
+	if err != nil {
+		log.Printf("read file transfer batch before run failed batch=%d error=%v", batchID, err)
+		return
+	}
+	if batch.Direction == filetransfer.DirectionDownload {
+		if err := s.validateDownloadBatchBeforeRun(ctx, runtime, batch); err != nil {
+			message := fileTransferFailureMessage(err)
+			log.Printf("reject file transfer batch before run batch=%d error=%v", batchID, err)
+			_, _ = runtime.fileTransfers.CancelBatch(context.Background(), batchID, message)
+			s.cleanupBatchTemps(runtime, batchID)
+			s.writeAudit(context.Background(), runtime, "gateway", nil, batch.RuntimeID, "file_transfer.batch.guardrail_rejected", map[string]any{
+				"batch_id": batchID,
+				"error":    message,
+			})
+			return
+		}
+	}
 	if ok, err := runtime.fileTransfers.MarkBatchRunning(ctx, batchID); err != nil {
 		log.Printf("mark file transfer batch running failed batch=%d error=%v", batchID, err)
 		return
 	} else if !ok {
 		return
 	}
-	batch, err := runtime.fileTransfers.GetBatch(ctx, batchID)
+	batch, err = runtime.fileTransfers.GetBatch(ctx, batchID)
 	if err != nil {
 		log.Printf("read file transfer batch failed batch=%d error=%v", batchID, err)
 		return
@@ -197,6 +216,39 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 	}
 }
 
+func (s fileTransferHandlers) validateDownloadBatchBeforeRun(ctx context.Context, runtime *databaseRuntime, batch filetransfer.BatchRecord) error {
+	adapter, err := s.fileTransferAdapter(ctx, runtime, batch.RuntimeID)
+	if err != nil {
+		return err
+	}
+	sizes := make(map[int64]int64, len(batch.Items))
+	var totalSize int64
+	for _, item := range batch.Items {
+		if item.Status != filetransfer.StatusPending {
+			continue
+		}
+		status, err := adapter.StatRemotePath(ctx, s.Server, runtime, batch.RuntimeID, item.RemotePath)
+		if err != nil {
+			return fmt.Errorf("stat %s before download: %w", item.RemotePath, err)
+		}
+		if !status.Exists || status.Type != "file" {
+			return fmt.Errorf("remote path %s is not an existing regular file", item.RemotePath)
+		}
+		if err := validateDownloadObjectSize(status.Size); err != nil {
+			return fmt.Errorf("%s: %w", item.RemotePath, err)
+		}
+		if totalSize > maxFileTransferBatchBytes-status.Size {
+			return fmt.Errorf("download batch cannot exceed 1 GiB total size")
+		}
+		totalSize += status.Size
+		sizes[item.ID] = status.Size
+	}
+	if len(sizes) == 0 {
+		return fmt.Errorf("download batch has no pending items")
+	}
+	return runtime.fileTransfers.UpdatePendingBatchItemSizes(ctx, batch.ID, sizes)
+}
+
 func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime *databaseRuntime, transferID int64, overwrite bool, control *transferControl) {
 	itemCtx, itemCancel := context.WithCancel(ctx)
 	runtime.registerTransferCancel(transferID, itemCancel)
@@ -226,6 +278,7 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 	options := connectorapi.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID),
 		Wait:     control.Wait,
+		MaxBytes: maxFileTransferObjectBytes,
 	}
 	var result connectorapi.TransferResult
 	if item.Direction == filetransfer.DirectionUpload {

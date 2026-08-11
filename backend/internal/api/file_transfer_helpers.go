@@ -16,12 +16,9 @@ import (
 
 func (s fileTransferHandlers) fileTransferAdapter(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (connectorapi.FileTransferAdapter, error) {
 	store := connectortargets.NewStore(runtime.database)
-	target, _, surface, err := store.TargetProfileByRuntimeID(ctx, runtimeID)
+	target, _, _, err := store.TargetProfileByRuntimeID(ctx, runtimeID)
 	if err != nil {
 		return nil, err
-	}
-	if surface.CapabilityKind != connectortargets.RuntimeCapabilityFileTransfer && surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole {
-		return nil, connectortargets.ErrInvalidTargetRef
 	}
 	adapter := connectorFileTransferAdapterFor(target.ConnectorKind)
 	if adapter == nil {

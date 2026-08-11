@@ -19,6 +19,7 @@ type TransferProgress func(transferred int64, total int64)
 type TransferOptions struct {
 	Progress TransferProgress
 	Wait     func(context.Context) error
+	MaxBytes int64
 }
 
 type TransferResult struct {
@@ -317,6 +318,9 @@ func DownloadFileWithOptions(ctx context.Context, target Target, remotePath stri
 	if info.IsDir() {
 		return TransferResult{}, fmt.Errorf("remote path is a directory")
 	}
+	if options.MaxBytes > 0 && info.Size() > options.MaxBytes {
+		return TransferResult{}, fmt.Errorf("remote file is larger than %d bytes", options.MaxBytes)
+	}
 
 	local, err := os.Create(localPath)
 	if err != nil {
@@ -354,6 +358,9 @@ func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total i
 		}
 		nr, er := src.Read(buffer)
 		if nr > 0 {
+			if options.MaxBytes > 0 && copied+int64(nr) > options.MaxBytes {
+				return copied, "", fmt.Errorf("transfer exceeds the %d byte limit", options.MaxBytes)
+			}
 			chunk := buffer[:nr]
 			nw, ew := dst.Write(chunk)
 			if nw > 0 {

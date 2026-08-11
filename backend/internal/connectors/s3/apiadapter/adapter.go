@@ -3,6 +3,7 @@ package apiadapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
@@ -29,6 +30,18 @@ func (adapter) BrowseRemoteFiles(ctx context.Context, server connectorapi.Gatewa
 	return remoteEntries(entries), nil
 }
 
+func (adapter) BrowseRemoteFilesPage(ctx context.Context, server connectorapi.GatewayServer, gatewayRuntime connectorapi.GatewayRuntime, runtimeID int64, remotePath string, cursor string) (connectorapi.RemoteFilePage, error) {
+	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
+	if err != nil {
+		return connectorapi.RemoteFilePage{}, err
+	}
+	page, err := s3connector.BrowseRemoteFilesPage(ctx, runtime, remotePath, cursor)
+	if err != nil {
+		return connectorapi.RemoteFilePage{}, err
+	}
+	return connectorapi.RemoteFilePage{Entries: remoteEntries(page.Entries), NextCursor: page.NextCursor, HasMore: page.HasMore}, nil
+}
+
 func (adapter) StatRemotePath(ctx context.Context, server connectorapi.GatewayServer, gatewayRuntime connectorapi.GatewayRuntime, runtimeID int64, remotePath string) (connectorapi.RemotePathStatus, error) {
 	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
 	if err != nil {
@@ -41,13 +54,19 @@ func (adapter) StatRemotePath(ctx context.Context, server connectorapi.GatewaySe
 	return connectorapi.RemotePathStatus{Exists: status.Exists, Type: status.Type, Size: status.Size}, nil
 }
 
-func (adapter) ListRecursiveFiles(ctx context.Context, server connectorapi.GatewayServer, gatewayRuntime connectorapi.GatewayRuntime, runtimeID int64, remotePath string, maxItems int, maxBytes int64) ([]connectorapi.RemoteFileEntry, error) {
+func (adapter) ListRecursiveFiles(ctx context.Context, server connectorapi.GatewayServer, gatewayRuntime connectorapi.GatewayRuntime, runtimeID int64, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]connectorapi.RemoteFileEntry, error) {
 	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := s3connector.ListRecursiveFiles(ctx, runtime, remotePath, maxItems, maxBytes)
+	entries, err := s3connector.ListRecursiveFiles(ctx, runtime, remotePath, maxItems, maxObjectBytes, maxBatchBytes)
 	if err != nil {
+		if errors.Is(err, s3connector.ErrRemotePathNotFound) {
+			return nil, fmt.Errorf("%w: %v", connectorapi.ErrRemotePathNotFound, err)
+		}
+		if errors.Is(err, s3connector.ErrTransferLimit) {
+			return nil, fmt.Errorf("%w: %v", connectorapi.ErrTransferLimit, err)
+		}
 		return nil, err
 	}
 	return remoteEntries(entries), nil
@@ -131,7 +150,7 @@ func remoteEntries(entries []s3connector.RemoteFileEntry) []connectorapi.RemoteF
 }
 
 func s3TransferOptions(options connectorapi.TransferOptions) s3connector.TransferOptions {
-	return s3connector.TransferOptions{Progress: s3connector.TransferProgress(options.Progress), Wait: options.Wait}
+	return s3connector.TransferOptions{Progress: s3connector.TransferProgress(options.Progress), Wait: options.Wait, MaxBytes: options.MaxBytes}
 }
 
 func transferResult(result s3connector.TransferResult) connectorapi.TransferResult {

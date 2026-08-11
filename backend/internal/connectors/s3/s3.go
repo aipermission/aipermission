@@ -385,7 +385,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Description: "Read the current bucket lifecycle policy and summarize its rules.",
 			Category:    "lifecycle",
 			Risk:        connectors.RiskRead,
-			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: 16000},
+			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: maxLifecycleResponse},
 		},
 		{
 			Name:        ActionReplaceLifecycle,
@@ -868,9 +868,7 @@ func executeUploadObject(ctx context.Context, client *s3Client, input map[string
 	}
 	overwrite := boolValue(input, "overwrite")
 	if !overwrite {
-		if _, err := client.HeadObject(ctx, key); err == nil {
-			return connectors.ActionResult{}, fmt.Errorf("object %q already exists; set overwrite=true to replace it", key)
-		} else if !isNotFoundError(err) {
+		if err := client.ensureObjectAbsent(ctx, key); err != nil {
 			return connectors.ActionResult{}, err
 		}
 	}
@@ -878,7 +876,11 @@ func executeUploadObject(ctx context.Context, client *s3Client, input map[string
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	if err := client.PutObject(ctx, key, data, contentType, nil); err != nil {
+	headers := http.Header{}
+	if !overwrite {
+		headers.Set("If-None-Match", "*")
+	}
+	if err := client.PutObject(ctx, key, data, contentType, headers); err != nil {
 		return connectors.ActionResult{}, err
 	}
 	return connectors.ActionResult{
@@ -899,9 +901,7 @@ func executeRenameObject(ctx context.Context, client *s3Client, input map[string
 	destinationKey := normalizeObjectKey(input, "destination_key")
 	overwrite := boolValue(input, "overwrite")
 	if !overwrite {
-		if _, err := client.HeadObject(ctx, destinationKey); err == nil {
-			return connectors.ActionResult{}, fmt.Errorf("object %q already exists; set overwrite=true to replace it", destinationKey)
-		} else if !isNotFoundError(err) {
+		if err := client.ensureObjectAbsent(ctx, destinationKey); err != nil {
 			return connectors.ActionResult{}, err
 		}
 	}
@@ -1028,6 +1028,15 @@ func (client *s3Client) ListObjects(ctx context.Context, prefix string, token st
 func (client *s3Client) HeadObject(ctx context.Context, key string) (http.Header, error) {
 	_, headers, err := client.Do(ctx, http.MethodHead, key, nil, nil, maxS3ResponseBytes)
 	return headers, err
+}
+
+func (client *s3Client) ensureObjectAbsent(ctx context.Context, key string) error {
+	if _, err := client.HeadObject(ctx, key); err == nil {
+		return fmt.Errorf("object %q already exists; set overwrite=true to replace it", key)
+	} else if !isNotFoundError(err) {
+		return err
+	}
+	return nil
 }
 
 func (client *s3Client) GetObject(ctx context.Context, key string, maxBytes int) ([]byte, http.Header, error) {

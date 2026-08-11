@@ -2,6 +2,7 @@ package execution
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -10,6 +11,14 @@ import (
 	"testing"
 	"time"
 )
+
+func TestCopyWithProgressStopsAtConfiguredByteLimit(t *testing.T) {
+	var output bytes.Buffer
+	written, _, err := copyWithProgress(context.Background(), &output, strings.NewReader("12345"), 5, TransferOptions{MaxBytes: 4})
+	if err == nil || written != 0 || output.Len() != 0 {
+		t.Fatalf("expected pre-write byte limit rejection: written=%d output=%q err=%v", written, output.String(), err)
+	}
+}
 
 func TestProgressReaderReportsTransferredBytes(t *testing.T) {
 	var seenTransferred int64

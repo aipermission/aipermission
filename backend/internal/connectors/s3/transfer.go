@@ -29,11 +29,17 @@ const (
 	maxTransferObjectBytes = 512 << 20
 )
 
+var (
+	ErrRemotePathNotFound = errors.New("s3 object or prefix not found")
+	ErrTransferLimit      = errors.New("s3 transfer limit exceeded")
+)
+
 type TransferProgress func(transferred int64, total int64)
 
 type TransferOptions struct {
 	Progress TransferProgress
 	Wait     func(context.Context) error
+	MaxBytes int64
 }
 
 type TransferResult struct {
@@ -57,15 +63,26 @@ type RemotePathStatus struct {
 	Size   int64
 }
 
+type RemoteFilePage struct {
+	Entries    []RemoteFileEntry
+	NextCursor string
+	HasMore    bool
+}
+
 func BrowseRemoteFiles(ctx context.Context, runtime connectors.RuntimeContext, remotePath string) ([]RemoteFileEntry, error) {
+	page, err := BrowseRemoteFilesPage(ctx, runtime, remotePath, "")
+	return page.Entries, err
+}
+
+func BrowseRemoteFilesPage(ctx context.Context, runtime connectors.RuntimeContext, remotePath string, cursor string) (RemoteFilePage, error) {
 	client, err := newS3Client(ctx, runtime)
 	if err != nil {
-		return nil, err
+		return RemoteFilePage{}, err
 	}
 	prefix := directoryPrefix(remotePath)
-	result, err := client.ListObjects(ctx, prefix, "", maxS3ListLimit, true)
+	result, err := client.ListObjects(ctx, prefix, strings.TrimSpace(cursor), maxS3ListLimit, true)
 	if err != nil {
-		return nil, err
+		return RemoteFilePage{}, err
 	}
 	entries := make([]RemoteFileEntry, 0, len(result.CommonPrefixes)+len(result.Contents))
 	for _, item := range result.CommonPrefixes {
@@ -93,7 +110,7 @@ func BrowseRemoteFiles(ctx context.Context, runtime connectors.RuntimeContext, r
 		}
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
-	return entries, nil
+	return RemoteFilePage{Entries: entries, NextCursor: result.NextContinuationToken, HasMore: result.IsTruncated && strings.TrimSpace(result.NextContinuationToken) != ""}, nil
 }
 
 func StatRemotePath(ctx context.Context, runtime connectors.RuntimeContext, remotePath string) (RemotePathStatus, error) {
@@ -126,8 +143,8 @@ func statRemotePath(ctx context.Context, client *s3Client, remotePath string) (R
 	return RemotePathStatus{Exists: len(result.Contents) > 0, Type: "directory"}, nil
 }
 
-func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, remotePath string, maxItems int, maxBytes int64) ([]RemoteFileEntry, error) {
-	if maxItems < 1 || maxBytes < 1 {
+func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]RemoteFileEntry, error) {
+	if maxItems < 1 || maxObjectBytes < 1 || maxBatchBytes < 1 {
 		return nil, fmt.Errorf("recursive transfer limits are required")
 	}
 	client, err := newS3Client(ctx, runtime)
@@ -139,11 +156,11 @@ func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, 
 		return nil, err
 	}
 	if !status.Exists {
-		return nil, fmt.Errorf("s3 object or prefix not found")
+		return nil, ErrRemotePathNotFound
 	}
 	if status.Type == "file" {
-		if status.Size > maxBytes {
-			return nil, fmt.Errorf("selected object exceeds the recursive transfer byte limit")
+		if status.Size > maxObjectBytes {
+			return nil, fmt.Errorf("%w: selected object exceeds the per-object byte limit", ErrTransferLimit)
 		}
 		return []RemoteFileEntry{{Name: path.Base(remotePath), Path: cleanVirtualPath(remotePath), Type: "file", Size: status.Size}}, nil
 	}
@@ -161,11 +178,14 @@ func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, 
 				continue
 			}
 			if len(entries) >= maxItems {
-				return nil, fmt.Errorf("selected prefix exceeds the %d object limit", maxItems)
+				return nil, fmt.Errorf("%w: selected prefix exceeds the %d object limit", ErrTransferLimit, maxItems)
+			}
+			if item.Size > maxObjectBytes {
+				return nil, fmt.Errorf("%w: object %q exceeds the per-object byte limit", ErrTransferLimit, item.Key)
 			}
 			total += item.Size
-			if total > maxBytes {
-				return nil, fmt.Errorf("selected prefix exceeds the %d byte limit", maxBytes)
+			if total > maxBatchBytes {
+				return nil, fmt.Errorf("%w: selected prefix exceeds the %d byte limit", ErrTransferLimit, maxBatchBytes)
 			}
 			entries = append(entries, RemoteFileEntry{Name: path.Base(item.Key), Path: virtualObjectPath(item.Key), Type: "file", Size: item.Size, ModifiedAt: item.LastModified})
 		}
@@ -200,9 +220,7 @@ func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPat
 		return TransferResult{}, fmt.Errorf("upload object must be a regular file no larger than %d bytes", maxTransferObjectBytes)
 	}
 	if !overwrite {
-		if _, err := client.HeadObject(ctx, key); err == nil {
-			return TransferResult{}, fmt.Errorf("s3 object %q already exists", key)
-		} else if !isNotFoundError(err) {
+		if err := client.ensureObjectAbsent(ctx, key); err != nil {
 			return TransferResult{}, err
 		}
 	}
@@ -225,11 +243,15 @@ func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPat
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
-		if err := client.PutObject(ctx, key, data, contentType, nil); err != nil {
+		headers := http.Header{}
+		if !overwrite {
+			headers.Set("If-None-Match", "*")
+		}
+		if err := client.PutObject(ctx, key, data, contentType, headers); err != nil {
 			return TransferResult{}, err
 		}
 		progressTransfer(options, info.Size(), info.Size())
-	} else if err := client.multipartUpload(ctx, key, file, info.Size(), options); err != nil {
+	} else if err := client.multipartUpload(ctx, key, file, info.Size(), !overwrite, options); err != nil {
 		return TransferResult{}, err
 	}
 	return TransferResult{Bytes: info.Size(), Size: info.Size(), ChecksumSHA256: checksum, DurationMS: time.Since(started).Milliseconds()}, nil
@@ -259,8 +281,12 @@ func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remote
 		data, _ := io.ReadAll(io.LimitReader(response.Body, maxS3ResponseBytes))
 		return TransferResult{}, s3HTTPError(response.StatusCode, data)
 	}
-	if response.ContentLength > maxTransferObjectBytes {
-		return TransferResult{}, fmt.Errorf("download object is larger than %d bytes", maxTransferObjectBytes)
+	maxBytes := int64(maxTransferObjectBytes)
+	if options.MaxBytes > 0 && options.MaxBytes < maxBytes {
+		maxBytes = options.MaxBytes
+	}
+	if response.ContentLength > maxBytes {
+		return TransferResult{}, fmt.Errorf("download object is larger than %d bytes", maxBytes)
 	}
 	output, err := os.OpenFile(localPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -283,8 +309,8 @@ func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remote
 		read, readErr := response.Body.Read(buffer)
 		if read > 0 {
 			written += int64(read)
-			if written > maxTransferObjectBytes {
-				return TransferResult{}, fmt.Errorf("download object is larger than %d bytes", maxTransferObjectBytes)
+			if written > maxBytes {
+				return TransferResult{}, fmt.Errorf("download object is larger than %d bytes", maxBytes)
 			}
 			if _, err := output.Write(buffer[:read]); err != nil {
 				return TransferResult{}, err
@@ -306,7 +332,7 @@ func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remote
 	return TransferResult{Bytes: written, Size: written, ChecksumSHA256: hex.EncodeToString(hash.Sum(nil)), DurationMS: time.Since(started).Milliseconds()}, nil
 }
 
-func (client *s3Client) multipartUpload(ctx context.Context, key string, file *os.File, size int64, options TransferOptions) (err error) {
+func (client *s3Client) multipartUpload(ctx context.Context, key string, file *os.File, size int64, preventOverwrite bool, options TransferOptions) (err error) {
 	query := url.Values{"uploads": []string{""}}
 	data, _, err := client.Do(ctx, http.MethodPost, key, query, s3RequestBody{Headers: http.Header{}, Data: nil}, maxS3ResponseBytes)
 	if err != nil {
@@ -383,7 +409,11 @@ func (client *s3Client) multipartUpload(ctx context.Context, key string, file *o
 		return err
 	}
 	completeQuery := url.Values{"uploadId": []string{uploadID}}
-	if _, _, err := client.Do(ctx, http.MethodPost, key, completeQuery, s3RequestBody{Headers: http.Header{"Content-Type": []string{"application/xml"}}, Data: completePayload}, maxS3ResponseBytes); err != nil {
+	completeHeaders := http.Header{"Content-Type": []string{"application/xml"}}
+	if preventOverwrite {
+		completeHeaders.Set("If-None-Match", "*")
+	}
+	if _, _, err := client.Do(ctx, http.MethodPost, key, completeQuery, s3RequestBody{Headers: completeHeaders, Data: completePayload}, maxS3ResponseBytes); err != nil {
 		return err
 	}
 	completed = true

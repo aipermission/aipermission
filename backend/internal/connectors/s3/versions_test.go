@@ -51,6 +51,42 @@ func TestExecuteListObjectVersionsFiltersExactKeyAndReturnsCursor(t *testing.T) 
 	}
 }
 
+func TestExecuteListObjectVersionsSkipsEmptyPrefixCollisionPages(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Query().Get("max-keys") != "100" {
+			t.Fatalf("default max-keys = %q", r.URL.Query().Get("max-keys"))
+		}
+		if calls == 1 {
+			_, _ = w.Write([]byte(`<ListVersionsResult>
+<IsTruncated>true</IsTruncated><NextKeyMarker>a-extra</NextKeyMarker><NextVersionIdMarker>other</NextVersionIdMarker>
+<Version><Key>a-extra</Key><VersionId>other</VersionId></Version>
+</ListVersionsResult>`))
+			return
+		}
+		if r.URL.Query().Get("key-marker") != "a-extra" || r.URL.Query().Get("version-id-marker") != "other" {
+			t.Fatalf("marker query = %s", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`<ListVersionsResult>
+<Version><Key>a</Key><VersionId>exact</VersionId><LastModified>2026-08-11T10:00:00Z</LastModified></Version>
+</ListVersionsResult>`))
+	}))
+	defer server.Close()
+
+	result, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionListVersions,
+		Payload:    map[string]any{"key": "a"},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	output := result.Output.(map[string]any)
+	if calls != 2 || output["count"] != 1 {
+		t.Fatalf("calls=%d output=%#v", calls, output)
+	}
+}
+
 func TestRestoreObjectVersionUsesVersionedCopySource(t *testing.T) {
 	var copySource string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

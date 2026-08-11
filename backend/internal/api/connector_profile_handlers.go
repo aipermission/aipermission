@@ -87,7 +87,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+	if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -180,7 +180,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+	if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 		writeInternalError(w)
 		return
 	}

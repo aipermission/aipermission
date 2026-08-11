@@ -2,7 +2,9 @@ package s3connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,6 +33,27 @@ func TestBrowseRemoteFilesReturnsVirtualDirectoriesAndObjects(t *testing.T) {
 	}
 }
 
+func TestBrowseRemoteFilesPageReturnsOpaqueContinuation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("continuation-token") != "cursor-a" {
+			t.Fatalf("continuation token = %q", r.URL.Query().Get("continuation-token"))
+		}
+		_, _ = w.Write([]byte(`<ListBucketResult>
+<IsTruncated>true</IsTruncated><NextContinuationToken>cursor-b</NextContinuationToken>
+<Contents><Key>daily/report.json</Key><Size>42</Size></Contents>
+</ListBucketResult>`))
+	}))
+	defer server.Close()
+
+	page, err := BrowseRemoteFilesPage(context.Background(), s3TestRuntime(t, server.URL), "/daily", "cursor-a")
+	if err != nil {
+		t.Fatalf("browse remote file page: %v", err)
+	}
+	if !page.HasMore || page.NextCursor != "cursor-b" || len(page.Entries) != 1 {
+		t.Fatalf("unexpected page: %#v", page)
+	}
+}
+
 func TestUploadFileUsesMultipartAndReportsProgress(t *testing.T) {
 	partCount := 0
 	completed := false
@@ -48,6 +71,9 @@ func TestUploadFileUsesMultipartAndReportsProgress(t *testing.T) {
 			w.Header().Set("ETag", fmt.Sprintf(`"part-%d"`, partCount))
 			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodPost && r.URL.Query().Get("uploadId") == "upload-1":
+			if r.Header.Get("If-None-Match") != "*" {
+				t.Fatalf("multipart completion did not enforce no-overwrite: %#v", r.Header)
+			}
 			completed = true
 			w.WriteHeader(http.StatusOK)
 		default:
@@ -73,6 +99,32 @@ func TestUploadFileUsesMultipartAndReportsProgress(t *testing.T) {
 	}
 }
 
+func TestUploadFileUsesConditionalPutWhenOverwriteIsDisabled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			w.WriteHeader(http.StatusNotFound)
+		case http.MethodPut:
+			if r.Header.Get("If-None-Match") != "*" {
+				t.Fatalf("conditional header = %q", r.Header.Get("If-None-Match"))
+			}
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected request: %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	fileName := t.TempDir() + "/small.txt"
+	if err := os.WriteFile(fileName, []byte("payload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := UploadFile(context.Background(), s3TestRuntime(t, server.URL), fileName, "/small.txt", false, TransferOptions{}); err != nil {
+		t.Fatalf("conditional upload: %v", err)
+	}
+}
+
 func TestListRecursiveFilesEnforcesObjectLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -89,9 +141,27 @@ func TestListRecursiveFilesEnforcesObjectLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := ListRecursiveFiles(context.Background(), s3TestRuntime(t, server.URL), "/daily", 1, 100)
+	_, err := ListRecursiveFiles(context.Background(), s3TestRuntime(t, server.URL), "/daily", 1, 100, 100)
 	if err == nil || !strings.Contains(err.Error(), "object limit") {
 		t.Fatalf("expected object limit error, got %v", err)
+	}
+}
+
+func TestListRecursiveFilesEnforcesPerObjectLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			w.Header().Set("Content-Length", "101")
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected request: %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	_, err := ListRecursiveFiles(context.Background(), s3TestRuntime(t, server.URL), "/large.bin", 10, 100, 1000)
+	if !errors.Is(err, ErrTransferLimit) {
+		t.Fatalf("expected transfer limit, got %v", err)
 	}
 }
 
