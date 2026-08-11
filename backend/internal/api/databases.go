@@ -10,7 +10,8 @@ import (
 )
 
 type renameDatabaseRequest struct {
-	DatabaseName string `json:"database_name"`
+	DatabaseName    string `json:"database_name"`
+	CurrentPassword string `json:"current_password"`
 }
 
 type deleteDatabaseRequest struct {
@@ -40,6 +41,7 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
+	defer clearStringReferences(&request.CurrentPassword)
 	request.DatabaseName = strings.TrimSpace(request.DatabaseName)
 	if request.DatabaseName == "" {
 		writeError(w, http.StatusBadRequest, "database name is required")
@@ -59,17 +61,28 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if request.CurrentPassword == "" {
+		writeError(w, http.StatusBadRequest, "current password is required")
+		return
+	}
+	if err := dbpkg.ValidateEncrypted(oldPath, request.CurrentPassword); err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid current database password")
+		return
+	}
 	_, _ = s.database.ExecContext(r.Context(), `PRAGMA wal_checkpoint(FULL)`)
 	s.closeUnlockedResources()
-	s.clearUISessions(w)
 
-	if err := dbpkg.MoveDatabase(oldPath, path); err != nil {
+	if err := s.moveDatabase(oldPath, path); err != nil {
 		s.activeDataPath = oldPath
+		if reopenErr := s.openUnlockedLocked(request.CurrentPassword); reopenErr != nil {
+			s.clearUISessions(w)
+		}
 		writeInternalError(w)
 		return
 	}
 	s.activeDataPath = path
 	s.activeDatabase = id
+	s.clearUISessions(w)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "renamed",

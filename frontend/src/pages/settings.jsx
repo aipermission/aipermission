@@ -36,6 +36,7 @@ export function SettingsPage() {
   const [labelDeleteDialogOpen, setLabelDeleteDialogOpen] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [renameName, setRenameName] = useState("");
+  const [renamePassword, setRenamePassword] = useState("");
   const [deleteName, setDeleteName] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
@@ -443,7 +444,16 @@ export function SettingsPage() {
     const result = await runRenameAction({
       pending: "saving",
       successMessage: "Database renamed. Unlock it again to continue.",
-      action: () => apiPost("/api/databases/rename", { database_name: renameName }),
+      action: async () => {
+        try {
+          return await apiPost("/api/databases/rename", {
+            database_name: renameName,
+            current_password: renamePassword,
+          });
+        } finally {
+          setRenamePassword("");
+        }
+      },
     });
     if (result !== undefined) window.setTimeout(() => window.location.reload(), 800);
   }
@@ -1025,7 +1035,7 @@ export function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Rename</CardTitle>
-          <CardDescription>Rename the current database. You will unlock it again after rename.</CardDescription>
+          <CardDescription>Rename the current database. Confirm its password now, then unlock it again after rename.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4" onSubmit={renameDatabase}>
@@ -1033,7 +1043,21 @@ export function SettingsPage() {
               Database name
               <Input value={renameName} onChange={(event) => setRenameName(event.target.value)} required />
             </Field>
-            <Button type="submit" variant="outline" disabled={renameState.state === "saving" || renameName.trim() === databaseName}>
+            <Field>
+              Current database password
+              <Input
+                type="password"
+                value={renamePassword}
+                onChange={(event) => setRenamePassword(event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </Field>
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={renameState.state === "saving" || renameName.trim() === databaseName || !renamePassword}
+            >
               <Edit3 className="h-4 w-4" />
               {renameState.state === "saving" ? "Renaming..." : "Rename database"}
             </Button>
