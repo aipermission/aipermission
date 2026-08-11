@@ -1109,7 +1109,6 @@ export function SettingsPage() {
             Remote providers store encrypted database files only. They do not receive MCP tokens, connector credentials, or the database
             password.
           </Notice>
-          {backupRecordsProvider ? <BackupRetentionPanel provider={backupRecordsProvider} onRecordsChanged={refreshBackupRecords} /> : null}
           <Field>
             Provider type
             <Select
@@ -1274,6 +1273,7 @@ export function SettingsPage() {
         className="!max-w-4xl"
       >
         <div className="grid gap-4">
+          {backupRecordsProvider ? <BackupRetentionPanel provider={backupRecordsProvider} onRecordsChanged={refreshBackupRecords} /> : null}
           <Notice>
             Download a remote <code>.aipdb</code> file for manual import, or restore it as a new local database. Restores never overwrite
             the currently open database.

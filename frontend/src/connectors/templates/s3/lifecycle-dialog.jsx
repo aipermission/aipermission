@@ -41,7 +41,12 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
     setPending(true);
     setError("");
     try {
-      const item = await onRun({ actionName: "get_bucket_lifecycle", input: {}, reason: "manual S3 lifecycle review", busy: "reading lifecycle" });
+      const item = await onRun({
+        actionName: "get_bucket_lifecycle",
+        input: {},
+        reason: "manual S3 lifecycle review",
+        busy: "reading lifecycle",
+      });
       setPolicy(item.output || { configured: false, rules: [], raw_xml: "" });
     } catch (loadError) {
       setError(loadError.message || "Bucket lifecycle could not be read.");
@@ -87,7 +92,12 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
     setPending(true);
     setError("");
     try {
-      await onRun({ actionName: "delete_bucket_lifecycle", input: {}, reason: "manual S3 lifecycle policy deletion", busy: "deleting lifecycle" });
+      await onRun({
+        actionName: "delete_bucket_lifecycle",
+        input: {},
+        reason: "manual S3 lifecycle policy deletion",
+        busy: "deleting lifecycle",
+      });
       setConfirmDelete(false);
       await loadPolicy();
     } catch (deleteError) {
@@ -113,27 +123,35 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">Current policy</p>
-              <p className={`text-xs ${mutedClass}`}>{policy?.configured ? `${rules.length} lifecycle rule(s)` : "No lifecycle policy configured"}</p>
+              <p className={`text-xs ${mutedClass}`}>
+                {policy?.configured ? `${rules.length} lifecycle rule(s)` : "No lifecycle policy configured"}
+              </p>
             </div>
-            <Button type="button" variant="outline" className="h-8" onClick={loadPolicy} disabled={pending}>Refresh</Button>
+            <Button type="button" variant="outline" className="h-8" onClick={loadPolicy} disabled={pending}>
+              Refresh
+            </Button>
           </div>
           <div className={`grid min-h-48 gap-2 rounded-lg border p-3 ${borderClass} ${panelClass}`}>
             {rules.length === 0 ? (
-              <div className="grid min-h-40 place-items-center text-center"><p className={`text-sm ${mutedClass}`}>{pending ? "Reading policy..." : "No rules to display."}</p></div>
-            ) : rules.map((rule) => (
-              <div className={`grid gap-2 rounded-md border p-3 ${borderClass}`} key={rule.id}>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-xs font-semibold">{rule.id || "unnamed rule"}</p>
-                  <Badge tone={rule.status === "Enabled" ? "good" : "neutral"}>{String(rule.status || "unknown").toLowerCase()}</Badge>
-                </div>
-                <p className={`text-xs ${mutedClass}`}>Prefix: {rule.prefix || "whole bucket"}</p>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <span>Current: {dayLabel(rule.expire_current_after_days)}</span>
-                  <span>Noncurrent: {dayLabel(rule.expire_noncurrent_after_days)}</span>
-                  <span>Multipart: {dayLabel(rule.abort_incomplete_multipart_days)}</span>
-                </div>
+              <div className="grid min-h-40 place-items-center text-center">
+                <p className={`text-sm ${mutedClass}`}>{pending ? "Reading policy..." : "No rules to display."}</p>
               </div>
-            ))}
+            ) : (
+              rules.map((rule) => (
+                <div className={`grid gap-2 rounded-md border p-3 ${borderClass}`} key={rule.id}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-mono text-xs font-semibold">{rule.id || "unnamed rule"}</p>
+                    <Badge tone={rule.status === "Enabled" ? "good" : "neutral"}>{String(rule.status || "unknown").toLowerCase()}</Badge>
+                  </div>
+                  <p className={`text-xs ${mutedClass}`}>Prefix: {rule.prefix || "whole bucket"}</p>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <span>Current: {dayLabel(rule.expire_current_after_days)}</span>
+                    <span>Noncurrent: {dayLabel(rule.expire_noncurrent_after_days)}</span>
+                    <span>Multipart: {dayLabel(rule.abort_incomplete_multipart_days)}</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
           {policy?.raw_xml ? (
             <div className="grid gap-2">
@@ -141,13 +159,20 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
                 <p className="text-xs font-semibold uppercase text-stone-400">Raw lifecycle XML</p>
                 <CopyButton value={policy.raw_xml} variant="outline" className="h-8 px-2 text-xs" />
               </div>
-              <TerminalBlock className="max-h-44 overflow-auto whitespace-pre-wrap text-xs" surface="log">{policy.raw_xml}</TerminalBlock>
+              <TerminalBlock className="max-h-44 overflow-auto whitespace-pre-wrap text-xs" surface="log">
+                {policy.raw_xml}
+              </TerminalBlock>
             </div>
           ) : null}
           {policy?.configured ? (
             <div className="grid gap-2">
               <label className={`flex items-start gap-2 rounded-md border p-3 text-sm ${borderClass}`}>
-                <input type="checkbox" checked={confirmDelete} onChange={(event) => setConfirmDelete(event.target.checked)} disabled={pending} />
+                <input
+                  type="checkbox"
+                  checked={confirmDelete}
+                  onChange={(event) => setConfirmDelete(event.target.checked)}
+                  disabled={pending}
+                />
                 remove the complete lifecycle policy from this bucket
               </label>
               <Button type="button" variant="danger" onClick={deletePolicy} disabled={pending || !confirmDelete}>
@@ -162,23 +187,83 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
             <p className={`text-xs ${mutedClass}`}>Create exactly one bounded expiration and cleanup rule.</p>
           </div>
           <Notice tone="bad">This replaces every existing lifecycle rule, including rules created outside AIPermission.</Notice>
-          <Field>Rule ID<Input className={inputClass} value={form.ruleId} maxLength={255} onChange={(event) => setForm({ ...form, ruleId: event.target.value })} /></Field>
-          <Field>Object prefix<Input className={inputClass} value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value })} placeholder="Empty applies to the whole bucket" /></Field>
+          <Field>
+            Rule ID
+            <Input
+              className={inputClass}
+              value={form.ruleId}
+              maxLength={255}
+              onChange={(event) => setForm({ ...form, ruleId: event.target.value })}
+            />
+          </Field>
+          <Field>
+            Object prefix
+            <Input
+              className={inputClass}
+              value={form.prefix}
+              maxLength={1024}
+              onChange={(event) => setForm({ ...form, prefix: event.target.value })}
+              placeholder="Empty applies to the whole bucket"
+            />
+          </Field>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field>Current days<Input className={inputClass} type="number" min="0" max="36500" value={form.expireCurrentDays} onChange={(event) => setForm({ ...form, expireCurrentDays: event.target.value })} /></Field>
-            <Field>Noncurrent days<Input className={inputClass} type="number" min="0" max="36500" value={form.expireNoncurrentDays} onChange={(event) => setForm({ ...form, expireNoncurrentDays: event.target.value })} /></Field>
-            <Field>Multipart days<Input className={inputClass} type="number" min="0" max="36500" value={form.abortMultipartDays} onChange={(event) => setForm({ ...form, abortMultipartDays: event.target.value })} /></Field>
+            <Field>
+              Current days
+              <Input
+                className={inputClass}
+                type="number"
+                min="0"
+                max="36500"
+                value={form.expireCurrentDays}
+                onChange={(event) => setForm({ ...form, expireCurrentDays: event.target.value })}
+              />
+            </Field>
+            <Field>
+              Noncurrent days
+              <Input
+                className={inputClass}
+                type="number"
+                min="0"
+                max="36500"
+                value={form.expireNoncurrentDays}
+                onChange={(event) => setForm({ ...form, expireNoncurrentDays: event.target.value })}
+              />
+            </Field>
+            <Field>
+              Multipart days
+              <Input
+                className={inputClass}
+                type="number"
+                min="0"
+                max="36500"
+                value={form.abortMultipartDays}
+                onChange={(event) => setForm({ ...form, abortMultipartDays: event.target.value })}
+              />
+            </Field>
           </div>
           <label className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${borderClass}`}>
-            <input type="checkbox" checked={form.enabled} onChange={(event) => setForm({ ...form, enabled: event.target.checked })} disabled={pending} /> enable replacement rule
+            <input
+              type="checkbox"
+              checked={form.enabled}
+              onChange={(event) => setForm({ ...form, enabled: event.target.checked })}
+              disabled={pending}
+            />{" "}
+            enable replacement rule
           </label>
           <label className={`flex items-start gap-2 rounded-md border p-3 text-sm ${borderClass}`}>
-            <input type="checkbox" checked={form.acknowledged} onChange={(event) => setForm({ ...form, acknowledged: event.target.checked })} disabled={pending} />
+            <input
+              type="checkbox"
+              checked={form.acknowledged}
+              onChange={(event) => setForm({ ...form, acknowledged: event.target.checked })}
+              disabled={pending}
+            />
             I understand that this replaces the complete lifecycle policy.
           </label>
           {error ? <Notice tone="bad">{error}</Notice> : null}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>Close</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+              Close
+            </Button>
             <Button type="submit" variant="danger" disabled={pending || !form.acknowledged || !form.ruleId.trim()}>
               {pending ? "Working..." : "Replace lifecycle policy"}
             </Button>

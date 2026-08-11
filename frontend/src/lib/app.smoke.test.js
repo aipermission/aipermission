@@ -24,6 +24,7 @@ const connectorActivityDialogSource = readFileSync(
   "utf8",
 );
 const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
+const backupRetentionPanelSource = readFileSync(join(currentDir, "..", "components", "settings", "backup-retention-panel.jsx"), "utf8");
 const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
 const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
 const auditLogsSource = readFileSync(join(currentDir, "..", "pages", "audit-logs.jsx"), "utf8");
@@ -61,6 +62,9 @@ const connectorTargetProfileSaveSource = readFileSync(join(currentDir, "..", "co
 const connectorTemplateRegistrySource = readFileSync(join(currentDir, "..", "connectors", "templates", "registry.jsx"), "utf8");
 const connectorTemplateCatalogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "catalog.js"), "utf8");
 const connectorHostPingSource = readFileSync(join(currentDir, "..", "connectors", "templates", "host-ping-button.jsx"), "utf8");
+const s3PresignDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "s3", "presign-dialog.jsx"), "utf8");
+const s3VersionsDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "s3", "versions-dialog.jsx"), "utf8");
+const s3LifecycleDialogSource = readFileSync(join(currentDir, "..", "connectors", "templates", "s3", "lifecycle-dialog.jsx"), "utf8");
 const backendConnectorRegistrySource = readFileSync(
   join(currentDir, "..", "..", "..", "backend", "internal", "connectors", "builtin", "registry.go"),
   "utf8",
@@ -642,7 +646,7 @@ test("Audit page exposes connector-aware filters", () => {
   assert.match(auditLogsSource, /connectorKindOptions/);
 });
 
-test("Console and History expose SSH file transfer flows", () => {
+test("Console and History expose connector file transfer flows", () => {
   assert.match(historySource, /file_transfer/);
   assert.match(historySource, /TransferDetail/);
   assert.match(historySource, /\/api\/file-transfers\/\$\{item\.source_ref_id\}\/download/);
@@ -650,6 +654,8 @@ test("Console and History expose SSH file transfer flows", () => {
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/upload-batch/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/download-batch/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/browse/);
+  assert.match(fileTransferDialogSource, /\/api\/file-transfers\/expand/);
+  assert.match(fileTransferBrowserSource, /Load more/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/pause/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/resume/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/cancel/);
@@ -667,6 +673,22 @@ test("Console and History expose SSH file transfer flows", () => {
   assert.match(transferCenterSource, /Approve selected/);
   assert.match(shellSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/approve/);
   assert.match(shellSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/decline/);
+});
+
+test("Settings backup records expose retention and quota controls", () => {
+  const recordsDialogIndex = settingsSource.indexOf('title="Remote backup records"');
+  const retentionPanelIndex = settingsSource.indexOf("<BackupRetentionPanel");
+  assert.ok(recordsDialogIndex >= 0 && retentionPanelIndex > recordsDialogIndex);
+  assert.match(backupRetentionPanelSource, /\/storage/);
+  assert.match(backupRetentionPanelSource, /\/retention\/preview/);
+  assert.match(backupRetentionPanelSource, /apply_now/);
+});
+
+test("S3 management dialogs expose bounded capability controls", () => {
+  assert.match(s3PresignDialogSource, /required_headers/);
+  assert.match(s3PresignDialogSource, /Required request headers/);
+  assert.match(s3VersionsDialogSource, /next_cursor/);
+  assert.match(s3LifecycleDialogSource, /maxLength=\{1024\}/);
 });
 
 test("Console exposes stuck command recovery controls", () => {

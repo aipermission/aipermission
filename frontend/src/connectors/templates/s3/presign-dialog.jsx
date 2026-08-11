@@ -118,7 +118,9 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
             allow replacing an existing object
           </label>
         ) : null}
-        <Notice tone="warn">The generated URL is a temporary bearer credential. Anyone holding it can use the approved operation until it expires.</Notice>
+        <Notice tone="warn">
+          The generated URL is a temporary bearer credential. Anyone holding it can use the approved operation until it expires.
+        </Notice>
         {error ? <Notice tone="bad">{error}</Notice> : null}
         {result?.url ? (
           <div className={`grid gap-2 rounded-lg border p-3 ${borderClass}`}>
@@ -130,6 +132,20 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
               <CopyButton value={result.url} variant="outline" className="h-8 px-2 text-xs" />
             </div>
             <p className="max-h-24 overflow-auto break-all font-mono text-xs">{result.url}</p>
+            {Object.keys(result.required_headers || {}).length ? (
+              <div className={`grid gap-2 border-t pt-3 ${borderClass}`}>
+                <p className="text-xs font-semibold uppercase">Required request headers</p>
+                {Object.entries(result.required_headers).map(([name, value]) => (
+                  <div key={name} className="flex items-center justify-between gap-3">
+                    <code className="min-w-0 break-all text-xs">
+                      {name}: {value}
+                    </code>
+                    <CopyButton value={`${name}: ${value}`} variant="outline" className="h-8 shrink-0 px-2 text-xs" />
+                  </div>
+                ))}
+                <p className={`text-xs ${mutedClass}`}>The signed upload fails if these headers are omitted or changed.</p>
+              </div>
+            ) : null}
           </div>
         ) : null}
         <div className="flex justify-end gap-2">

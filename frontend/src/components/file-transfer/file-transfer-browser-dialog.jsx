@@ -6,7 +6,17 @@ import { Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { formatBytes, formatShortDate } from "../../lib/file-transfer-utils";
 
-export function RemoteBrowserDialog({ browser, transportLabel = "the connector", onClose, onLoad, onPathChange, onUseDirectory, onAddFiles, queuedPaths, recursive }) {
+export function RemoteBrowserDialog({
+  browser,
+  transportLabel = "the connector",
+  onClose,
+  onLoad,
+  onPathChange,
+  onUseDirectory,
+  onAddFiles,
+  queuedPaths,
+  recursive,
+}) {
   const [selectedFiles, setSelectedFiles] = useState({});
 
   useEffect(() => {
@@ -34,9 +44,10 @@ export function RemoteBrowserDialog({ browser, transportLabel = "the connector",
     });
   }
 
-  function addSelectedFiles() {
+  async function addSelectedFiles() {
     if (selectedCount === 0) return;
-    onAddFiles(selectedList);
+    const added = await onAddFiles(selectedList);
+    if (!added) return;
     setSelectedFiles({});
     onClose();
   }
@@ -85,7 +96,7 @@ export function RemoteBrowserDialog({ browser, transportLabel = "the connector",
             </Button>
           ) : null}
           {!canUseCurrentDirectory ? (
-            <Button type="button" className="h-10" onClick={addSelectedFiles} disabled={selectedCount === 0}>
+            <Button type="button" className="h-10" onClick={() => void addSelectedFiles()} disabled={selectedCount === 0}>
               Add Selected Files ({selectedCount})
             </Button>
           ) : null}
@@ -146,6 +157,18 @@ export function RemoteBrowserDialog({ browser, transportLabel = "the connector",
                   </div>
                 ))
               : null}
+            {browser.data?.has_more ? (
+              <div className="flex justify-center p-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onLoad(browser.path, browser.purpose, { append: true, cursor: browser.data.next_cursor })}
+                  disabled={browser.state === "loading-more"}
+                >
+                  {browser.state === "loading-more" ? "Loading more..." : "Load more"}
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
