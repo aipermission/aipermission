@@ -139,7 +139,7 @@ func ValidateConnectorContract(connector Connector) error {
 			if err := ValidateActionDefinitions(exemplarActions, kind+" actions"); err != nil {
 				return fmt.Errorf("connector %q: %w", kind, err)
 			}
-			if !equalActionDefinitions(baselineActions, canonicalActionDefinitions(exemplarActions)) {
+			if !ActionDefinitionsEqual(baselineActions, exemplarActions) {
 				return fmt.Errorf("connector %q action list must be stable for the connector kind", kind)
 			}
 		}
@@ -155,12 +155,15 @@ func canonicalActionDefinitions(actions []ActionDefinition) []ActionDefinition {
 	return canonical
 }
 
-func equalActionDefinitions(left []ActionDefinition, right []ActionDefinition) bool {
-	if len(left) != len(right) {
+// ActionDefinitionsEqual compares connector action contracts independent of declaration order.
+func ActionDefinitionsEqual(left []ActionDefinition, right []ActionDefinition) bool {
+	canonicalLeft := canonicalActionDefinitions(left)
+	canonicalRight := canonicalActionDefinitions(right)
+	if len(canonicalLeft) != len(canonicalRight) {
 		return false
 	}
-	for index := range left {
-		if !equalActionDefinition(left[index], right[index]) {
+	for index := range canonicalLeft {
+		if !equalActionDefinition(canonicalLeft[index], canonicalRight[index]) {
 			return false
 		}
 	}

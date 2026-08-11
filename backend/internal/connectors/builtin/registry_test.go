@@ -374,6 +374,14 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				s3connector.ActionUploadObject:      {"key": "daily/app.txt", "content_text": "hello", "content_type": "text/plain", "overwrite": true},
 				s3connector.ActionRenameObject:      {"source_key": "daily/app.txt", "destination_key": "daily/app-renamed.txt", "overwrite": true},
 				s3connector.ActionDeleteObject:      {"key": "daily/app-renamed.txt"},
+				s3connector.ActionPresignDownload:   {"key": "daily/app.aipdb", "expires_seconds": 900},
+				s3connector.ActionPresignUpload:     {"key": "incoming/app.aipdb", "expires_seconds": 900, "overwrite": false},
+				s3connector.ActionListVersions:      {"key": "daily/app.aipdb", "limit": 10},
+				s3connector.ActionRestoreVersion:    {"key": "daily/app.aipdb", "version_id": "version-1"},
+				s3connector.ActionDeleteVersion:     {"key": "daily/app.aipdb", "version_id": "version-2"},
+				s3connector.ActionGetLifecycle:      {},
+				s3connector.ActionReplaceLifecycle:  {"rule_id": "cleanup", "prefix": "tmp/", "expire_current_after_days": 30, "abort_incomplete_multipart_days": 7, "enabled": true},
+				s3connector.ActionDeleteLifecycle:   {},
 			}
 	case sshconnector.Kind:
 		return connectors.TargetView{
