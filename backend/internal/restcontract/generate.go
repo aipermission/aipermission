@@ -92,19 +92,26 @@ func Generate(source []byte) ([]byte, error) {
 	}
 	paths := map[string]map[string]any{}
 	operationIDs := map[string]Route{}
+	typedContracts := typedOperationContracts()
 	for _, route := range routes {
 		operationID := routeOperationID(route)
 		if previous, exists := operationIDs[operationID]; exists {
 			return nil, fmt.Errorf("operation id %q collides for %s %s and %s %s", operationID, previous.Method, previous.Path, route.Method, route.Path)
 		}
 		operationIDs[operationID] = route
+		responses := map[string]any{
+			"default": responseWithSchema("Error response", refSchema("Error")),
+		}
+		contractLevel := "route-inventory"
+		if contract, ok := typedContracts[route]; ok {
+			responses[contract.StatusCode] = responseWithSchema("Successful response", contract.ResponseSchema)
+			contractLevel = "typed-response"
+		}
 		operation := map[string]any{
-			"operationId": operationID,
-			"responses": map[string]any{
-				"default": map[string]any{"description": "See the REST API reference for status and response body details."},
-			},
+			"operationId":                   operationID,
+			"responses":                     responses,
 			"tags":                          []string{routeTag(route.Path)},
-			"x-aipermission-contract-level": "route-inventory",
+			"x-aipermission-contract-level": contractLevel,
 		}
 		if parameters := pathParameters(route.Path); len(parameters) > 0 {
 			operation["parameters"] = parameters
@@ -118,10 +125,11 @@ func Generate(source []byte) ([]byte, error) {
 		"openapi": "3.1.0",
 		"info": map[string]any{
 			"title":       "AIPermission Local REST API",
-			"version":     "route-inventory-v1",
-			"description": "Generated route inventory for the local-only gateway. Typed request and response schemas remain documented in rest-api.md until they are migrated into this contract.",
+			"version":     "typed-contract-v1",
+			"description": "Generated local REST contract. Shared response families are typed incrementally; remaining operations are explicitly marked as route inventory.",
 		},
 		"servers":                       []map[string]string{{"url": "http://localhost:3210"}},
+		"components":                    map[string]any{"schemas": sharedSchemas()},
 		"paths":                         paths,
 		"x-aipermission-generated-from": "backend/internal/api/routes.go",
 		"x-aipermission-contract-level": "route-inventory",
@@ -134,6 +142,15 @@ func Generate(source []byte) ([]byte, error) {
 		return nil, fmt.Errorf("encode OpenAPI route inventory: %w", err)
 	}
 	return output.Bytes(), nil
+}
+
+func responseWithSchema(description string, schema map[string]any) map[string]any {
+	return map[string]any{
+		"description": description,
+		"content": map[string]any{
+			"application/json": map[string]any{"schema": schema},
+		},
+	}
 }
 
 func routeOperationID(route Route) string {
