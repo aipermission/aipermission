@@ -395,7 +395,7 @@ Expected MCP tools:
 list_connector_targets()
 get_connector_help(target_ref)
 get_connector_actions(target_ref)
-call_connector_action(target_ref, action_name, input?, reason?)
+call_connector_action(target_ref, action_name, input?, reason?, idempotency_key?)
 get_connector_action_request(request_id)
 ```
 

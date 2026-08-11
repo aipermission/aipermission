@@ -967,6 +967,18 @@ var migrations = []migration{
 			 WHERE provider_type = 'google_drive'`,
 		},
 	},
+	{
+		version:     11,
+		description: "connector action idempotency",
+		statements: []string{
+			`ALTER TABLE connector_action_requests ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE connector_action_requests ADD COLUMN idempotency_identity_hash TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE connector_action_requests ADD COLUMN idempotency_scope TEXT NOT NULL DEFAULT '';`,
+			`CREATE UNIQUE INDEX idx_connector_action_requests_idempotency
+				ON connector_action_requests(idempotency_scope, idempotency_key)
+				WHERE idempotency_key <> '';`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {

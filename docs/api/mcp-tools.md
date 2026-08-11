@@ -23,7 +23,7 @@ is sent.
 list_connector_targets()
 get_connector_help(target_ref)
 get_connector_actions(target_ref)
-call_connector_action(target_ref, action_name, input?, reason?)
+call_connector_action(target_ref, action_name, input?, reason?, idempotency_key?)
 get_connector_action_request(request_id)
 list_vault_items(project_ref?)
 call_vault_action(project_ref, action_name, input, reason, idempotency_key)
@@ -66,6 +66,12 @@ mail:13:8
 The profile chooses which stored credential is used. The connector action still
 runs locally through the gateway; AIPermission does not host a remote connector
 service.
+
+Supply a caller-stable `idempotency_key` for connector actions that may be
+retried. Repeating the same key with the same token, target/profile, action,
+input, and reason returns the original request and never executes twice or
+extends an approval lifetime. Reusing the key for a different logical request
+returns `409 Conflict`. Keys are limited to 128 characters.
 
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
 Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker,

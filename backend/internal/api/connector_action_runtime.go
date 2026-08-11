@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,18 +25,20 @@ const (
 )
 
 type connectorActionCall struct {
-	Source     string
-	TokenID    int64
-	TargetRef  string
-	ActionName string
-	Input      map[string]any
-	Reason     string
+	Source         string
+	TokenID        int64
+	TargetRef      string
+	ActionName     string
+	Input          map[string]any
+	Reason         string
+	IdempotencyKey string
 }
 
 type connectorActionCallResult struct {
 	Request    connectortargets.ActionRequest
 	Permission connectortargets.ActionPermission
 	Result     connectors.ActionResult
+	Replayed   bool
 }
 
 type connectorActionExecutionEnvelope struct {
@@ -95,22 +98,25 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	store := connectortargets.NewStore(runtime.database)
 	permission, err := store.GetActionPermission(ctx, call.TokenID, prepared.Target.ID, prepared.Profile.ID, prepared.Action.ActionName, time.Now().UTC())
 	if errors.Is(err, connectortargets.ErrActionPermissionNotFound) {
-		request, insertErr := s.insertConnectorActionRequest(ctx, runtime, call.TokenID, prepared, connectortargets.ActionPermission{}, connectors.ResultBlocked, connectorActionMissingPermission)
+		request, created, insertErr := s.insertConnectorActionRequest(ctx, runtime, call.TokenID, prepared, connectortargets.ActionPermission{}, connectors.ResultBlocked, connectorActionMissingPermission, call.IdempotencyKey)
 		if insertErr != nil {
 			return connectorActionCallResult{}, insertErr
 		}
-		return connectorActionCallResult{
-			Request: request,
-			Result:  connectors.ActionResult{Status: connectors.ResultBlocked, Error: connectorActionMissingPermission},
-		}, nil
+		if !created {
+			return replayedConnectorActionCallResult(request), nil
+		}
+		return connectorActionCallResult{Request: request, Result: connectors.ActionResult{Status: connectors.ResultBlocked, Error: connectorActionMissingPermission}}, nil
 	}
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
 	if permission.ExecutionRule == connectortargets.ActionPermissionBlocked {
-		request, insertErr := s.insertConnectorActionRequest(ctx, runtime, call.TokenID, prepared, permission, connectors.ResultBlocked, "Connector action is blocked for this token")
+		request, created, insertErr := s.insertConnectorActionRequest(ctx, runtime, call.TokenID, prepared, permission, connectors.ResultBlocked, "Connector action is blocked for this token", call.IdempotencyKey)
 		if insertErr != nil {
 			return connectorActionCallResult{}, insertErr
+		}
+		if !created {
+			return replayedConnectorActionCallResult(request), nil
 		}
 		return connectorActionCallResult{
 			Request:    request,
@@ -119,9 +125,12 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 		}, nil
 	}
 	if permission.ExecutionRule == connectortargets.ActionPermissionApprovalRequired {
-		request, insertErr := s.insertConnectorActionRequest(ctx, runtime, call.TokenID, prepared, permission, connectors.ResultApprovalPending, "")
+		request, created, insertErr := s.insertConnectorActionRequest(ctx, runtime, call.TokenID, prepared, permission, connectors.ResultApprovalPending, "", call.IdempotencyKey)
 		if insertErr != nil {
 			return connectorActionCallResult{}, insertErr
+		}
+		if !created {
+			return replayedConnectorActionCallResult(request), nil
 		}
 		return connectorActionCallResult{
 			Request:    request,
@@ -137,9 +146,12 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 		}, nil
 	}
 
-	request, err := s.insertConnectorActionRequest(ctx, runtime, call.TokenID, prepared, permission, connectors.ResultRunning, "")
+	request, created, err := s.insertConnectorActionRequest(ctx, runtime, call.TokenID, prepared, permission, connectors.ResultRunning, "", call.IdempotencyKey)
 	if err != nil {
 		return connectorActionCallResult{}, err
+	}
+	if !created {
+		return replayedConnectorActionCallResult(request), nil
 	}
 	principal, err := tokenExecutionPrincipal(runtime, call.TokenID)
 	if err != nil {
@@ -231,9 +243,12 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 		return connectorActionCallResult{}, err
 	}
 
-	request, err := s.insertPreparedConnectorActionRequest(ctx, runtime, nil, prepared, connectors.ResultRunning, "", "", "")
+	request, created, err := s.insertPreparedConnectorActionRequest(ctx, runtime, nil, prepared, connectors.ResultRunning, "", "", "", call.IdempotencyKey)
 	if err != nil {
 		return connectorActionCallResult{}, err
+	}
+	if !created {
+		return replayedConnectorActionCallResult(request), nil
 	}
 	principal, err := localExecutionPrincipal(runtime)
 	if err != nil {
@@ -310,17 +325,18 @@ func (s *Server) insertConnectorActionRequest(
 	permission connectortargets.ActionPermission,
 	status connectors.ResultStatus,
 	errorText string,
-) (connectortargets.ActionRequest, error) {
+	idempotencyKey string,
+) (connectortargets.ActionRequest, bool, error) {
 	capturedAt := time.Now().UTC().Format(time.RFC3339)
 	token, err := runtime.tokens.Get(ctx, tokenID)
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
+		return connectortargets.ActionRequest{}, false, err
 	}
 	approvalContext, approvalHash, err := connectorApprovalContext(prepared, token, permission, capturedAt)
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
+		return connectortargets.ActionRequest{}, false, err
 	}
-	return s.insertPreparedConnectorActionRequest(ctx, runtime, &tokenID, prepared, status, errorText, approvalContext, approvalHash)
+	return s.insertPreparedConnectorActionRequest(ctx, runtime, &tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey)
 }
 
 func (s *Server) insertPreparedConnectorActionRequest(
@@ -332,7 +348,8 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	errorText string,
 	approvalContext string,
 	approvalHash string,
-) (connectortargets.ActionRequest, error) {
+	idempotencyKey string,
+) (connectortargets.ActionRequest, bool, error) {
 	payload, err := runtime.vault.EncryptJSON(connectorActionExecutionEnvelope{
 		Input:           prepared.Requested.Input,
 		Payload:         prepared.Action.Payload,
@@ -340,35 +357,75 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		Reason:          prepared.Requested.Reason,
 	})
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
+		return connectortargets.ActionRequest{}, false, err
 	}
-	request, err := connectortargets.NewStore(runtime.database).InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              tokenID,
-		TargetID:             prepared.Target.ID,
-		ProfileID:            prepared.Profile.ID,
-		ConnectorKind:        prepared.Target.ConnectorKind,
-		ActionName:           prepared.Action.ActionName,
-		Title:                s.redactForPersistence(ctx, runtime, prepared.Action.Title),
-		Summary:              s.redactForPersistence(ctx, runtime, prepared.Action.Summary),
-		Preview:              s.redactConnectorActionPreview(ctx, runtime, prepared.Action.Preview, prepared.ActionDefinition.SensitiveInputFields, prepared.ActionDefinition.OutputHint),
-		Source:               prepared.Requested.Source,
-		Input:                s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input, prepared.ActionDefinition.SensitiveInputFields),
-		EncryptedPayloadJSON: payload,
-		Reason:               s.redactForPersistence(ctx, runtime, prepared.Requested.Reason),
-		Status:               status,
-		ApprovalContext:      approvalContext,
-		ApprovalContextHash:  approvalHash,
+	identityHash, err := connectorActionIdempotencyIdentityHash(tokenID, prepared, idempotencyKey)
+	if err != nil {
+		return connectortargets.ActionRequest{}, false, err
+	}
+	request, created, err := connectortargets.NewStore(runtime.database).InsertActionRequestIdempotent(ctx, connectortargets.InsertActionRequestInput{
+		TokenID:                 tokenID,
+		TargetID:                prepared.Target.ID,
+		ProfileID:               prepared.Profile.ID,
+		ConnectorKind:           prepared.Target.ConnectorKind,
+		ActionName:              prepared.Action.ActionName,
+		Title:                   s.redactForPersistence(ctx, runtime, prepared.Action.Title),
+		Summary:                 s.redactForPersistence(ctx, runtime, prepared.Action.Summary),
+		Preview:                 s.redactConnectorActionPreview(ctx, runtime, prepared.Action.Preview, prepared.ActionDefinition.SensitiveInputFields, prepared.ActionDefinition.OutputHint),
+		Source:                  prepared.Requested.Source,
+		Input:                   s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input, prepared.ActionDefinition.SensitiveInputFields),
+		EncryptedPayloadJSON:    payload,
+		Reason:                  s.redactForPersistence(ctx, runtime, prepared.Requested.Reason),
+		Status:                  status,
+		ApprovalContext:         approvalContext,
+		ApprovalContextHash:     approvalHash,
+		IdempotencyKey:          strings.TrimSpace(idempotencyKey),
+		IdempotencyIdentityHash: identityHash,
 	})
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
+		return connectortargets.ActionRequest{}, false, err
+	}
+	if !created {
+		return request, false, nil
 	}
 	if errorText != "" {
 		if status == connectors.ResultBlocked {
-			return s.finishConnectorActionRequestWithAllowed(ctx, runtime, request.ID, status, nil, "", errorText, []connectors.ResultStatus{connectors.ResultBlocked}, prepared.ActionDefinition.OutputHint)
+			finished, finishErr := s.finishConnectorActionRequestWithAllowed(ctx, runtime, request.ID, status, nil, "", errorText, []connectors.ResultStatus{connectors.ResultBlocked}, prepared.ActionDefinition.OutputHint)
+			return finished, true, finishErr
 		}
-		return s.finishConnectorActionRequest(ctx, runtime, request.ID, status, nil, "", errorText, prepared.ActionDefinition.OutputHint)
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, status, nil, "", errorText, prepared.ActionDefinition.OutputHint)
+		return finished, true, finishErr
 	}
-	return request, nil
+	return request, true, nil
+}
+
+func connectorActionIdempotencyIdentityHash(tokenID *int64, prepared actions.PreparedRequest, key string) (string, error) {
+	if strings.TrimSpace(key) == "" {
+		return "", nil
+	}
+	identity := struct {
+		TokenID       *int64         `json:"token_id,omitempty"`
+		Source        string         `json:"source"`
+		TargetID      int64          `json:"target_id"`
+		ProfileID     int64          `json:"profile_id"`
+		ConnectorKind string         `json:"connector_kind"`
+		ActionName    string         `json:"action_name"`
+		Input         map[string]any `json:"input"`
+		Reason        string         `json:"reason"`
+	}{tokenID, prepared.Requested.Source, prepared.Target.ID, prepared.Profile.ID, prepared.Target.ConnectorKind, prepared.Action.ActionName, prepared.Requested.Input, prepared.Requested.Reason}
+	encoded, err := json.Marshal(identity)
+	if err != nil {
+		return "", fmt.Errorf("encode connector action idempotency identity: %w", err)
+	}
+	sum := sha256.Sum256(encoded)
+	return fmt.Sprintf("%x", sum[:]), nil
+}
+
+func replayedConnectorActionCallResult(request connectortargets.ActionRequest) connectorActionCallResult {
+	return connectorActionCallResult{Request: request, Result: connectors.ActionResult{
+		Status: request.Status, Output: request.Output, DisplayText: request.DisplayText, Error: request.Error,
+		Handles: connectors.ActionHandles{RequestID: request.ID, FollowupTool: "get_connector_action_request"},
+	}, Replayed: true}
 }
 
 func connectorActionFailureOutput(err error) any {

@@ -25,7 +25,7 @@ Before acting:
 2. Pick the relevant `target_ref`.
 3. Call `get_connector_help(target_ref)` the first time you use that connector.
 4. Call `get_connector_actions(target_ref)` and choose the narrowest action.
-5. Call `call_connector_action(target_ref, action_name, input, reason)`.
+5. Call `call_connector_action(target_ref, action_name, input, reason, idempotency_key)`.
 
 If no target is visible, say that the current token has no accessible connector
 targets. A target can be absent because its project is disabled for the token or
@@ -41,6 +41,9 @@ profile. Treat action errors as the current reachability/authorization signal.
 ## Reasons
 
 Every `call_connector_action` should include a short `reason`.
+Use one stable, unique `idempotency_key` for each logical action. Preserve that
+key while retrying an uncertain call. Never reuse it for a different target,
+action, input, or reason; the gateway rejects mismatched reuse.
 
 Good reasons:
 

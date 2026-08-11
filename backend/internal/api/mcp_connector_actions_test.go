@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -209,5 +210,59 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 	})
 	if action.Code != http.StatusOK || !strings.Contains(action.Body.String(), `"status":"blocked"`) {
 		t.Fatalf("disabled project action should be blocked: %d %s", action.Code, action.Body.String())
+	}
+}
+
+func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := t.Context()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "idempotent-connector"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	store := connectortargets.NewStore(fixture.db)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
+		ActionName:    postgresconnector.ActionGetSchemas,
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set permission: %v", err)
+	}
+	request := mcpConnectorActionCallRequest{
+		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		ActionName: postgresconnector.ActionGetSchemas, Reason: "inspect schema",
+		IdempotencyKey: "connector-request-1",
+	}
+	first := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first call: %d %s", first.Code, first.Body.String())
+	}
+	var firstResponse mcpConnectorActionResponse
+	if err := json.Unmarshal(first.Body.Bytes(), &firstResponse); err != nil {
+		t.Fatalf("decode first: %v", err)
+	}
+	second := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
+	if second.Code != http.StatusOK {
+		t.Fatalf("replay call: %d %s", second.Code, second.Body.String())
+	}
+	var secondResponse mcpConnectorActionResponse
+	if err := json.Unmarshal(second.Body.Bytes(), &secondResponse); err != nil {
+		t.Fatalf("decode replay: %v", err)
+	}
+	if secondResponse.RequestID != firstResponse.RequestID || !secondResponse.Replayed || secondResponse.Status != string(connectors.ResultApprovalPending) {
+		t.Fatalf("unexpected replay: first=%#v second=%#v", firstResponse, secondResponse)
+	}
+	request.Reason = "different reason"
+	conflict := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("drift status=%d body=%s", conflict.Code, conflict.Body.String())
+	}
+	var count int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM connector_action_requests WHERE token_id = ? AND idempotency_key = ?`, token.ID, request.IdempotencyKey).Scan(&count); err != nil {
+		t.Fatalf("count requests: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("request count=%d", count)
 	}
 }

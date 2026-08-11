@@ -6,20 +6,45 @@ export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:808
 export const mcpApiUrl =
   viteEnv.VITE_MCP_API_URL === undefined ? "http://localhost:3210" : normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
+const localActionRetryKeys = new Map();
+
 export async function apiGet(path) {
   const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
   return readResponse(response);
 }
 
 export async function apiPost(path, body, options = {}) {
+  const prepared = preparePostBody(path, body);
   const response = await fetch(`${apiUrl}${path}`, {
     method: "POST",
     headers: csrfHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(body),
+    body: JSON.stringify(prepared.body),
     signal: options.signal,
     credentials: "include",
   });
+  if (prepared.retrySignature && (response.ok || response.status < 500)) {
+    localActionRetryKeys.delete(prepared.retrySignature);
+  }
   return readResponse(response);
+}
+
+function preparePostBody(path, body) {
+  if (path !== "/api/connector-actions/local-run" || body?.idempotency_key) return { body, retrySignature: "" };
+  const retrySignature = stableRequestSignature(body || {});
+  let key = localActionRetryKeys.get(retrySignature);
+  if (!key) {
+    key = globalThis.crypto?.randomUUID?.() || `ui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localActionRetryKeys.set(retrySignature, key);
+  }
+  return { body: { ...body, idempotency_key: key }, retrySignature };
+}
+
+function stableRequestSignature(value) {
+  if (Array.isArray(value)) return `[${value.map(stableRequestSignature).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableRequestSignature(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 export async function apiPostForm(path, formData, options = {}) {

@@ -191,6 +191,52 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	}
 }
 
+func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	executions := 0
+	registry := connectors.NewRegistry()
+	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	runtime := &databaseRuntime{database: database, vault: secretVault, tokens: tokens.NewStore(database), registry: registry}
+	store := connectortargets.NewStore(database)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "idempotent-local", Config: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{TargetID: target.ID, ConnectorKind: localActionTestConnectorKind, Kind: "default", Label: "main", Public: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := connectorActionCall{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo", Input: map[string]any{"value": "once"}, Reason: "retry smoke",
+		IdempotencyKey: "local-request-1",
+	}
+	first, err := (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executions != 1 || first.Request.ID != second.Request.ID || !second.Replayed {
+		t.Fatalf("executions=%d first=%d second=%d replayed=%v", executions, first.Request.ID, second.Request.ID, second.Replayed)
+	}
+}
+
+type countingLocalActionTestConnector struct {
+	localActionTestConnector
+	executions *int
+}
+
+func (c countingLocalActionTestConnector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	*c.executions++
+	return c.localActionTestConnector.ExecuteAction(ctx, runtime, action)
+}
+
 func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
@@ -288,7 +334,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		},
 	}
 
-	request, err := server.insertConnectorActionRequest(context.Background(), runtime, tokenID, prepared, connectortargets.ActionPermission{}, connectors.ResultApprovalPending, "")
+	request, _, err := server.insertConnectorActionRequest(context.Background(), runtime, tokenID, prepared, connectortargets.ActionPermission{}, connectors.ResultApprovalPending, "", "")
 	if err != nil {
 		t.Fatalf("insert connector action request: %v", err)
 	}

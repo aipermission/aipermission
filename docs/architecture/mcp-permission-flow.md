@@ -16,7 +16,7 @@ Current MCP tools:
 list_connector_targets()
 get_connector_help(target_ref)
 get_connector_actions(target_ref)
-call_connector_action(target_ref, action_name, input?, reason?)
+call_connector_action(target_ref, action_name, input?, reason?, idempotency_key?)
 get_connector_action_request(request_id)
 list_vault_items(project_ref?)
 call_vault_action(project_ref, action_name, input, reason, idempotency_key)
@@ -64,7 +64,8 @@ Example call:
   "target_ref": "ssh:3:1",
   "action_name": "exec",
   "input": { "command": "ls" },
-  "reason": "Inspect the current directory."
+  "reason": "Inspect the current directory.",
+  "idempotency_key": "inventory-core-1-2026-08-11"
 }
 ```
 
@@ -76,13 +77,15 @@ Gateway flow:
 4. Require that project to be enabled for the token.
 5. Prepare the connector action.
 6. Check token permission for target/profile/action.
-7. Reject expired action grants.
-8. Check whether the global MCP runtime is started.
-9. If the runtime is stopped, return a stopped/error response.
-10. If the rule is `always_run`, execute the connector action.
-11. If the rule is `approval_required`, create a pending connector action approval.
-12. If the rule is `blocked`, reject the action without execution.
-13. Record project-snapshotted history and audit events.
+7. Return the original request when a matching idempotency key is replayed, or
+   reject a mismatched reuse with `409 Conflict`.
+8. Reject expired action grants.
+9. Check whether the global MCP runtime is started.
+10. If the runtime is stopped, return a stopped/error response.
+11. If the rule is `always_run`, execute the connector action.
+12. If the rule is `approval_required`, create a pending connector action approval.
+13. If the rule is `blocked`, reject the action without execution.
+14. Record project-snapshotted history and audit events.
 
 ## Approval Required
 

@@ -49,51 +49,55 @@ type ActionPermission struct {
 }
 
 type ActionRequest struct {
-	ID                   int64
-	TokenID              *int64
-	TokenName            string
-	TargetID             int64
-	TargetName           string
-	ProfileID            int64
-	ProfileLabel         string
-	ConnectorKind        string
-	ActionName           string
-	Title                string
-	Summary              string
-	Preview              map[string]any
-	Source               string
-	Input                map[string]any
-	EncryptedPayloadJSON string
-	Reason               string
-	Status               connectors.ResultStatus
-	Output               any
-	DisplayText          string
-	Error                string
-	ApprovalContext      string
-	ApprovalContextHash  string
-	ApprovalContextDrift string
-	SessionID            *int64
-	SessionGeneration    *int64
-	CreatedAt            string
-	CompletedAt          *string
+	ID                      int64
+	TokenID                 *int64
+	TokenName               string
+	TargetID                int64
+	TargetName              string
+	ProfileID               int64
+	ProfileLabel            string
+	ConnectorKind           string
+	ActionName              string
+	Title                   string
+	Summary                 string
+	Preview                 map[string]any
+	Source                  string
+	Input                   map[string]any
+	EncryptedPayloadJSON    string
+	Reason                  string
+	Status                  connectors.ResultStatus
+	Output                  any
+	DisplayText             string
+	Error                   string
+	ApprovalContext         string
+	ApprovalContextHash     string
+	ApprovalContextDrift    string
+	IdempotencyKey          string
+	IdempotencyIdentityHash string
+	SessionID               *int64
+	SessionGeneration       *int64
+	CreatedAt               string
+	CompletedAt             *string
 }
 
 type InsertActionRequestInput struct {
-	TokenID              *int64
-	TargetID             int64
-	ProfileID            int64
-	ConnectorKind        string
-	ActionName           string
-	Title                string
-	Summary              string
-	Preview              map[string]any
-	Source               string
-	Input                map[string]any
-	EncryptedPayloadJSON string
-	Reason               string
-	Status               connectors.ResultStatus
-	ApprovalContext      string
-	ApprovalContextHash  string
+	TokenID                 *int64
+	TargetID                int64
+	ProfileID               int64
+	ConnectorKind           string
+	ActionName              string
+	Title                   string
+	Summary                 string
+	Preview                 map[string]any
+	Source                  string
+	Input                   map[string]any
+	EncryptedPayloadJSON    string
+	Reason                  string
+	Status                  connectors.ResultStatus
+	ApprovalContext         string
+	ApprovalContextHash     string
+	IdempotencyKey          string
+	IdempotencyIdentityHash string
 }
 
 type FinishActionRequestInput struct {
@@ -360,24 +364,30 @@ func (s *Store) listActionPermissions(ctx context.Context, tokenID int64, now ti
 }
 
 func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionRequestInput) (ActionRequest, error) {
+	request, _, err := s.InsertActionRequestIdempotent(ctx, input)
+	return request, err
+}
+
+func (s *Store) InsertActionRequestIdempotent(ctx context.Context, input InsertActionRequestInput) (ActionRequest, bool, error) {
 	if s == nil || s.db == nil {
-		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+		return ActionRequest{}, false, fmt.Errorf("connector target store is not configured")
 	}
 	if err := validateActionRequestInput(input); err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	inputJSON, err := jsonObjectString(input.Input)
 	if err != nil {
-		return ActionRequest{}, ValidationError("action input must be a JSON object")
+		return ActionRequest{}, false, ValidationError("action input must be a JSON object")
 	}
 	previewJSON, err := jsonObjectString(input.Preview)
 	if err != nil {
-		return ActionRequest{}, ValidationError("action preview must be a JSON object")
+		return ActionRequest{}, false, ValidationError("action preview must be a JSON object")
 	}
 	now := nowString()
+	idempotencyScope := actionRequestIdempotencyScope(input.TokenID, input.Source)
 	tx, err := s.beginActionRequestTx(ctx)
 	if err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(ctx, `
@@ -385,9 +395,9 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 			token_id, target_id, profile_id, connector_kind, action_name, title, summary,
 			preview_json, source, input_json,
 			encrypted_payload_json, reason, status, approval_context,
-			approval_context_hash, created_at
+			approval_context_hash, idempotency_key, idempotency_identity_hash, idempotency_scope, created_at
 		)
-		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
 		WHERE
@@ -396,7 +406,8 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 				AND t.connector_kind = ?
 				AND p.connector_kind = t.connector_kind
 				AND t.status = 'active'
-				AND p.status = 'active'`,
+				AND p.status = 'active'
+		ON CONFLICT DO NOTHING`,
 		nullableInt64(input.TokenID),
 		input.ActionName,
 		strings.TrimSpace(input.Title),
@@ -409,36 +420,72 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 		string(input.Status),
 		strings.TrimSpace(input.ApprovalContext),
 		strings.TrimSpace(input.ApprovalContextHash),
+		strings.TrimSpace(input.IdempotencyKey),
+		strings.TrimSpace(input.IdempotencyIdentityHash),
+		idempotencyScope,
 		now,
 		input.TargetID,
 		input.ProfileID,
 		input.ConnectorKind,
 	)
 	if err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	if affected == 0 {
-		return ActionRequest{}, ErrTargetProfileNotFound
+		if strings.TrimSpace(input.IdempotencyKey) != "" {
+			existing, findErr := getActionRequestByIdempotencyWithExecutor(ctx, tx, idempotencyScope, input.IdempotencyKey)
+			if findErr == nil {
+				if existing.IdempotencyIdentityHash != strings.TrimSpace(input.IdempotencyIdentityHash) {
+					return ActionRequest{}, false, ErrActionRequestIdempotency
+				}
+				if commitErr := tx.Commit(); commitErr != nil {
+					return ActionRequest{}, false, commitErr
+				}
+				return existing, false, nil
+			}
+			if !errors.Is(findErr, ErrActionRequestNotFound) {
+				return ActionRequest{}, false, findErr
+			}
+		}
+		return ActionRequest{}, false, ErrTargetProfileNotFound
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	request, err := getActionRequestWithExecutor(ctx, tx, id)
 	if err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	if err := history.SyncConnectorActionRequestWithExecutor(ctx, tx, id); err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
-	return request, nil
+	return request, true, nil
+}
+
+func getActionRequestByIdempotencyWithExecutor(ctx context.Context, tx *sql.Tx, scope, key string) (ActionRequest, error) {
+	request, err := scanActionRequest(tx.QueryRowContext(ctx,
+		actionRequestSelectSQL()+` WHERE r.idempotency_scope = ? AND r.idempotency_key = ?`,
+		scope, strings.TrimSpace(key),
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	return request, err
+}
+
+func actionRequestIdempotencyScope(tokenID *int64, source string) string {
+	if tokenID != nil {
+		return fmt.Sprintf("token:%d", *tokenID)
+	}
+	return "source:" + actionRequestSource(source)
 }
 
 func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionRequestInput) (ActionRequest, error) {

@@ -33,10 +33,11 @@ type mcpConnectorActionGrant struct {
 }
 
 type mcpConnectorActionCallRequest struct {
-	TargetRef  string         `json:"target_ref"`
-	ActionName string         `json:"action_name"`
-	Input      map[string]any `json:"input,omitempty"`
-	Reason     string         `json:"reason,omitempty"`
+	TargetRef      string         `json:"target_ref"`
+	ActionName     string         `json:"action_name"`
+	Input          map[string]any `json:"input,omitempty"`
+	Reason         string         `json:"reason,omitempty"`
+	IdempotencyKey string         `json:"idempotency_key,omitempty"`
 }
 
 type mcpConnectorActionResponse struct {
@@ -54,6 +55,7 @@ type mcpConnectorActionResponse struct {
 	RetryAfterSeconds int            `json:"retry_after_seconds,omitempty"`
 	AssistantHint     string         `json:"assistant_hint,omitempty"`
 	OutputWithheld    bool           `json:"output_withheld,omitempty"`
+	Replayed          bool           `json:"replayed,omitempty"`
 }
 
 func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +192,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 	request.TargetRef = strings.TrimSpace(request.TargetRef)
 	request.ActionName = strings.TrimSpace(request.ActionName)
 	request.Reason = strings.TrimSpace(request.Reason)
+	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	if request.TargetRef == "" {
 		writeError(w, http.StatusBadRequest, "target_ref is required")
 		return
@@ -202,15 +205,24 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		writeErrorWithCode(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()), connectors.ErrorCode(err))
 		return
 	}
+	if len(request.IdempotencyKey) > 128 {
+		writeError(w, http.StatusBadRequest, "idempotency_key is too long")
+		return
+	}
 	result, err := s.callConnectorAction(r.Context(), auth.runtime, connectorActionCall{
-		Source:     commandRequestSourceMCP,
-		TokenID:    auth.TokenID,
-		TargetRef:  request.TargetRef,
-		ActionName: request.ActionName,
-		Input:      request.Input,
-		Reason:     request.Reason,
+		Source:         commandRequestSourceMCP,
+		TokenID:        auth.TokenID,
+		TargetRef:      request.TargetRef,
+		ActionName:     request.ActionName,
+		Input:          request.Input,
+		Reason:         request.Reason,
+		IdempotencyKey: request.IdempotencyKey,
 	})
 	if err != nil {
+		if errors.Is(err, connectortargets.ErrActionRequestIdempotency) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		if errors.Is(err, connectortargets.ErrInvalidTargetRef) || errors.Is(err, connectortargets.ErrTargetProfileNotFound) {
 			handleConnectorTargetError(w, err)
 			return
@@ -218,13 +230,20 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		writeErrorWithCode(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()), connectors.ErrorCode(err))
 		return
 	}
-	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, "mcp.connector_action."+string(result.Result.Status), map[string]any{
+	auditAction := "mcp.connector_action." + string(result.Result.Status)
+	if result.Replayed {
+		auditAction = "mcp.connector_action.replayed"
+	}
+	s.writeAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, auditAction, map[string]any{
 		"request_id":     result.Request.ID,
 		"target_ref":     request.TargetRef,
 		"connector_kind": result.Request.ConnectorKind,
 		"action_name":    request.ActionName,
+		"replayed":       result.Replayed,
 	})
-	writeJSON(w, http.StatusOK, connectorActionToMCPResponse(result.Request, result.Result))
+	response := connectorActionToMCPResponse(result.Request, result.Result)
+	response.Replayed = result.Replayed
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s mcpHandlers) mcpGetConnectorActionRequest(w http.ResponseWriter, r *http.Request) {

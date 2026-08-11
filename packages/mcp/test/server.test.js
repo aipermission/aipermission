@@ -73,5 +73,7 @@ test("connector tools route through the MCP connector API", async () => {
   assert.match(source, /apiGet\("\/api\/mcp\/connector-targets"/);
   assert.match(source, /apiGet\(`\/api\/mcp\/connector-help\?\$\{params\.toString\(\)\}`\)/);
   assert.match(source, /apiPost\("\/api\/mcp\/connector-actions\/call"/);
+  assert.match(source, /idempotency_key: z\.string\(\)\.min\(1\)\.max\(128\)\.optional\(\)/);
+  assert.match(source, /idempotency_key,/);
   assert.match(source, /apiGet\(`\/api\/mcp\/connector-action-requests\/\$\{request_id\}`\)/);
 });
