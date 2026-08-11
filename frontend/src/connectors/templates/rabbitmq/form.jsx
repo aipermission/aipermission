@@ -1,5 +1,6 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { sshProfileOptions } from "../_shared/network-transport-fields";
 import { HostPingButton } from "../host-ping-button";
 
 export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
@@ -119,15 +120,4 @@ export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets =
       </Field>
     </>
   );
-}
-
-function sshProfileOptions(targets) {
-  return (targets || [])
-    .filter((target) => target.connector_kind === "ssh")
-    .flatMap((target) =>
-      (target.profiles || []).map((profile) => ({
-        ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
-        label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
-      })),
-    );
 }
