@@ -21,17 +21,18 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   const [draft, setDraft] = useState({});
   const [save, setSave] = useState({ state: "idle", error: null });
   const [selectedProfileKey, setSelectedProfileKey] = useState("");
+  const tokenID = token?.id;
 
   useEffect(() => {
-    if (!token) {
+    if (!tokenID) {
       setLoad(emptyLoad);
       setDraft({});
       setSave({ state: "idle", error: null });
       setSelectedProfileKey("");
       return;
     }
-    void loadConnectorPermissions(token.id);
-  }, [token?.id]);
+    void loadConnectorPermissions(tokenID);
+  }, [tokenID]);
 
   const profileGroups = useMemo(() => {
     const groups = [];

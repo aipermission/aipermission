@@ -24,9 +24,10 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
   const [selectedProjectID, setSelectedProjectID] = useState(0);
   const [scopeSave, setScopeSave] = useState({ state: "idle", error: null });
   const [save, setSave] = useState({ state: "idle", error: null });
+  const tokenID = token?.id;
 
   useEffect(() => {
-    if (!token) {
+    if (!tokenID) {
       setLoad(emptyLoad);
       setScopeDraft({});
       setCapabilityDraft({});
@@ -35,8 +36,8 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
       setSave({ state: "idle", error: null });
       return;
     }
-    void loadVaultPermissions(token.id);
-  }, [token?.id]);
+    void loadVaultPermissions(tokenID);
+  }, [tokenID]);
 
   const selectedProject = useMemo(
     () => load.projects.find((project) => project.project_id === selectedProjectID) || null,

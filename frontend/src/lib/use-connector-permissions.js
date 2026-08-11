@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { apiGet, apiPut } from "./api";
 
 const emptyState = {
@@ -11,29 +11,32 @@ const emptyState = {
 export function useConnectorPermissions(initialTokens = []) {
   const [permissionState, setPermissionState] = useState(emptyState);
 
-  async function loadAllConnectorPermissions(tokenItems = initialTokens) {
-    if (tokenItems.length === 0) {
-      setPermissionState((current) => ({ ...current, state: "ready", data: {}, error: null }));
-      return {};
-    }
-    setPermissionState((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const entries = await Promise.all(
-        tokenItems.map(async (token) => {
-          const permissions = await apiGet(`/api/tokens/${token.id}/connector-permissions`);
-          return [token.id, permissions.items || []];
-        }),
-      );
-      const data = Object.fromEntries(entries);
-      setPermissionState((current) => ({ ...current, state: "ready", data, error: null }));
-      return data;
-    } catch (error) {
-      setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
-      return {};
-    }
-  }
+  const loadAllConnectorPermissions = useCallback(
+    async (tokenItems = initialTokens) => {
+      if (tokenItems.length === 0) {
+        setPermissionState((current) => ({ ...current, state: "ready", data: {}, error: null }));
+        return {};
+      }
+      setPermissionState((current) => ({ ...current, state: "loading", error: null }));
+      try {
+        const entries = await Promise.all(
+          tokenItems.map(async (token) => {
+            const permissions = await apiGet(`/api/tokens/${token.id}/connector-permissions`);
+            return [token.id, permissions.items || []];
+          }),
+        );
+        const data = Object.fromEntries(entries);
+        setPermissionState((current) => ({ ...current, state: "ready", data, error: null }));
+        return data;
+      } catch (error) {
+        setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
+        return {};
+      }
+    },
+    [initialTokens],
+  );
 
-  async function loadConnectorActions(targetOrKind) {
+  const loadConnectorActions = useCallback(async (targetOrKind) => {
     if (!targetOrKind) return [];
     setPermissionState((current) => ({ ...current, error: null }));
     try {
@@ -60,9 +63,9 @@ export function useConnectorPermissions(initialTokens = []) {
       setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
       return [];
     }
-  }
+  }, []);
 
-  async function replaceTokenConnectorPermissions(tokenID, permissions) {
+  const replaceTokenConnectorPermissions = useCallback(async (tokenID, permissions) => {
     try {
       const result = await apiPut(`/api/tokens/${tokenID}/connector-permissions`, {
         permissions: permissions.map(permissionInput),
@@ -81,7 +84,7 @@ export function useConnectorPermissions(initialTokens = []) {
       setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
       throw error;
     }
-  }
+  }, []);
 
   return {
     connectorPermissionState: permissionState,

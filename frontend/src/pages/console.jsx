@@ -11,7 +11,7 @@ import {
   RefreshCcw,
   TerminalSquare,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { apiGet, apiPost } from "../lib/api";
 import {
@@ -93,16 +93,15 @@ export function ConsolePage() {
 
   const selectedTargetRef = searchParams.get("target");
   const sessions = consoleSessions.data || [];
-  const targetItems = targets?.data || [];
-  const rawUnreadMessages = messages.data.filter(isUnreadMessage);
-  const pendingConnectorApprovals = (connectorActionApprovals?.data || []).filter((approval) => approval.status === "approval_pending");
+  const targetItems = useMemo(() => targets?.data || [], [targets?.data]);
+  const rawUnreadMessages = useMemo(() => messages.data.filter(isUnreadMessage), [messages.data]);
+  const pendingConnectorApprovals = useMemo(
+    () => (connectorActionApprovals?.data || []).filter((approval) => approval.status === "approval_pending"),
+    [connectorActionApprovals?.data],
+  );
   const defaultTargetRef = useMemo(
     () => defaultConsoleTargetRef(targetItems, rawUnreadMessages, pendingConnectorApprovals),
-    [
-      targetItems.map((target) => `${target.ref}:${target.runtime_id || ""}`).join(","),
-      rawUnreadMessages.map((message) => `${message.id}:${message.runtime_id}`).join(","),
-      pendingConnectorApprovals.map((approval) => `${approval.id}:${approval.target_ref}`).join(","),
-    ],
+    [targetItems, rawUnreadMessages, pendingConnectorApprovals],
   );
   const selectedTarget = useMemo(() => {
     if (!targetItems.length) return null;
@@ -143,13 +142,10 @@ export function ConsolePage() {
       : null;
   const selectedSession = selectedNamedLiveSession || runtimeSelectedSession;
   const selectedSessionLive = isLiveConsoleSession(selectedSession);
-  const selectedTargetProfiles = useMemo(
-    () => profilesForConnectorTarget(targetItems, selectedTarget),
-    [targetItems, selectedTarget?.connector_kind, selectedTarget?.target_id],
-  );
+  const selectedTargetProfiles = useMemo(() => profilesForConnectorTarget(targetItems, selectedTarget), [targetItems, selectedTarget]);
   const targetRows = useMemo(
     () => consoleTargetRows(targetItems, selectedTarget, selectedProfileByTarget),
-    [targetItems, selectedTarget?.ref, selectedProfileByTarget],
+    [targetItems, selectedTarget, selectedProfileByTarget],
   );
   const selectedTokenOptions = useMemo(() => {
     if (!selectedTarget) return [];
@@ -161,9 +157,10 @@ export function ConsolePage() {
       );
     });
   }, [tokens.data, connectorPermissionState.data, selectedTarget, selectedTargetProfiles, now]);
-  const selectedPendingConnectorApprovals = selectedTarget
-    ? pendingConnectorApprovals.filter((approval) => approval.target_ref === selectedTarget.ref)
-    : [];
+  const selectedPendingConnectorApprovals = useMemo(
+    () => (selectedTarget ? pendingConnectorApprovals.filter((approval) => approval.target_ref === selectedTarget.ref) : []),
+    [pendingConnectorApprovals, selectedTarget],
+  );
   const activeConnectorApproval =
     activeConnectorApprovalSnapshot && Number(activeConnectorApprovalSnapshot.id) === Number(activeConnectorApprovalID)
       ? activeConnectorApprovalSnapshot
@@ -219,12 +216,34 @@ export function ConsolePage() {
   }, [targetRows, targetItems, targetSearch]);
   const projectTargetGroups = useMemo(() => groupConsoleTargetsByProject(filteredTargets), [filteredTargets]);
 
+  const openConnectorApproval = useCallback(async (approval) => {
+    const generation = ++connectorApprovalLoadGeneration.current;
+    setActiveConnectorApprovalID(approval.id);
+    setActiveConnectorApprovalSnapshot({ ...approval, preview: {}, input: {} });
+    setConnectorApprovalNote("");
+    setConnectorApprovalAction({ state: "loading", error: null });
+    try {
+      const exact = await apiGet(`/api/connector-action-approvals/${approval.id}`);
+      if (generation !== connectorApprovalLoadGeneration.current) return;
+      setActiveConnectorApprovalSnapshot(exact);
+      setConnectorApprovalAction(
+        exact.status === "approval_pending"
+          ? { state: "idle", error: null }
+          : { state: "failed", error: "This connector approval is no longer pending. Refresh activity before taking another action." },
+      );
+    } catch (error) {
+      if (generation !== connectorApprovalLoadGeneration.current) return;
+      setConnectorApprovalAction({ state: "load_error", error: error.message });
+    }
+  }, []);
+  const attachSelectedConsoleSession = useEffectEvent((sessionID) => attachConsoleSession(sessionID));
+
   useEffect(() => {
     if (targetItems.length === 0 || !defaultTargetRef) return;
     if (!selectedTargetRef || !targetItems.some((target) => target.ref === selectedTargetRef)) {
       setSearchParams({ target: selectedTarget?.ref || defaultTargetRef }, { replace: true });
     }
-  }, [targetItems, selectedTargetRef, selectedTarget?.ref, defaultTargetRef, setSearchParams]);
+  }, [targetItems, selectedTargetRef, selectedTarget, defaultTargetRef, setSearchParams]);
 
   useEffect(() => {
     if (!selectedTarget?.profile_id) return;
@@ -232,17 +251,17 @@ export function ConsolePage() {
     setSelectedProfileByTarget((current) =>
       String(current[key] || "") === String(selectedTarget.profile_id) ? current : { ...current, [key]: Number(selectedTarget.profile_id) },
     );
-  }, [selectedTarget?.connector_kind, selectedTarget?.target_id, selectedTarget?.profile_id]);
+  }, [selectedTarget]);
 
   useEffect(() => {
     if (tokens.state !== "ready") return;
     loadAllConnectorPermissions(tokens.data);
-  }, [tokens.state, tokens.data.map((token) => token.id).join(",")]);
+  }, [tokens.state, tokens.data, loadAllConnectorPermissions]);
 
   useEffect(() => {
     if (!selectedTarget?.ref) return;
     loadConnectorActions(selectedTarget);
-  }, [selectedTarget?.ref]);
+  }, [selectedTarget, loadConnectorActions]);
 
   useEffect(() => {
     connectorApprovalLoadGeneration.current += 1;
@@ -258,7 +277,7 @@ export function ConsolePage() {
       if (current[selectedTarget.ref]) return current;
       return { ...current, [selectedTarget.ref]: newStructuredConsoleSession() };
     });
-  }, [selectedTarget?.ref, selectedTargetUsesLiveConsole]);
+  }, [selectedTarget, selectedTargetUsesLiveConsole]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 5000);
@@ -268,9 +287,9 @@ export function ConsolePage() {
   useEffect(() => {
     if (!selectedRuntimeTarget) return;
     if (selectedSessionLive) {
-      attachConsoleSession(selectedSession.id);
+      attachSelectedConsoleSession(selectedSession.id);
     }
-  }, [selectedRuntimeTarget?.id, selectedSession.id, selectedSession.status]);
+  }, [selectedRuntimeTarget, selectedSessionLive, selectedSession.id]);
 
   useEffect(() => {
     setRestartAction({ state: "idle", error: null });
@@ -297,11 +316,11 @@ export function ConsolePage() {
     }
   }, [
     activeConnectorApprovalID,
-    pendingConnectorApprovals.map((approval) => approval.id).join(","),
-    selectedPendingConnectorApprovals.map((approval) => approval.id).join(","),
+    pendingConnectorApprovals,
+    selectedPendingConnectorApprovals,
     dismissedConnectorApprovalIDs,
-    selectedPendingConnectorApprovals.length,
     connectorApprovalAction.state,
+    openConnectorApproval,
   ]);
 
   function selectTarget(target) {
@@ -321,27 +340,6 @@ export function ConsolePage() {
     if (!profileTarget) return;
     setSelectedProfileByTarget((current) => ({ ...current, [connectorTargetKey(selectedTarget)]: nextID }));
     setSearchParams({ target: profileTarget.ref });
-  }
-
-  async function openConnectorApproval(approval) {
-    const generation = ++connectorApprovalLoadGeneration.current;
-    setActiveConnectorApprovalID(approval.id);
-    setActiveConnectorApprovalSnapshot({ ...approval, preview: {}, input: {} });
-    setConnectorApprovalNote("");
-    setConnectorApprovalAction({ state: "loading", error: null });
-    try {
-      const exact = await apiGet(`/api/connector-action-approvals/${approval.id}`);
-      if (generation !== connectorApprovalLoadGeneration.current) return;
-      setActiveConnectorApprovalSnapshot(exact);
-      setConnectorApprovalAction(
-        exact.status === "approval_pending"
-          ? { state: "idle", error: null }
-          : { state: "failed", error: "This connector approval is no longer pending. Refresh activity before taking another action." },
-      );
-    } catch (error) {
-      if (generation !== connectorApprovalLoadGeneration.current) return;
-      setConnectorApprovalAction({ state: "load_error", error: error.message });
-    }
   }
 
   async function loadServerMessages() {
