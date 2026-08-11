@@ -1,14 +1,5 @@
 import {
   AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  Circle,
-  Clock,
-  Database,
-  FolderKanban,
-  PanelLeftClose,
-  PanelLeftOpen,
-  RefreshCcw,
   TerminalSquare,
 } from "lucide-react";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
@@ -24,19 +15,31 @@ import {
 import { useGateway } from "../lib/gateway-context";
 import { effectiveRule, permissionLifetimeLabel } from "../lib/permissions";
 import { useConnectorPermissions } from "../lib/use-connector-permissions";
-import { CountBadge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { ConnectorActionApprovalDialog } from "../components/console/connector-action-approval-dialog";
 import { ConnectorActivityDialog } from "../components/console/connector-activity-dialog";
+import { ConsoleRecoveryPanel } from "../components/console/console-recovery-panel";
+import {
+  ConsoleStatusDot,
+  ConsoleTargetSidebar,
+  consoleTargetRows,
+  defaultConsoleTargetRef,
+  groupConsoleTargetsByProject,
+  recoverableRunningActions,
+  selectedTargetStatus,
+  targetDisplayName,
+  targetProfileLabel,
+  targetSubtitle,
+  targetUsesLiveConsole,
+} from "../components/console/console-target-sidebar";
 import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
 import { PtyConsole } from "../components/console/pty-console";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
-import { emptySession, isLiveConsoleSession, isUnreadMessage, latestSessionForRuntime } from "../components/console/helpers";
+import { isLiveConsoleSession, isUnreadMessage } from "../components/console/helpers";
 import { useConsolePageState } from "../components/console/use-console-page-state";
-import { ConnectorIcon } from "../connectors/templates/common";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
 
 export function ConsolePage() {
@@ -513,80 +516,29 @@ export function ConsolePage() {
         gridTemplateColumns: `${targetsCompact ? "56px" : "360px"} minmax(0, 1fr) ${tokensCompact ? "56px" : "360px"}`,
       }}
     >
-      <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <div
-          className={`border-b border-stone-200 ${targetsCompact ? "grid gap-2 p-2" : "flex items-center justify-between gap-3 px-4 py-3"}`}
-        >
-          {targetsCompact ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-9 w-9 px-0"
-              title="Expand connectors"
-              onClick={() => setTargetsCompact(false)}
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </Button>
-          ) : (
-            <>
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <Database className="h-4 w-4" />
-                Connectors
-                <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">{targetRows.length}</span>
-              </h3>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-9 w-9 px-0"
-                title="Collapse connectors"
-                onClick={() => setTargetsCompact(true)}
-              >
-                <PanelLeftClose className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-        </div>
-        <div className={`grid content-start gap-1 overflow-auto ${targetsCompact ? "p-2" : "p-2"}`}>
-          {!targetsCompact ? (
-            <input
-              className="mb-2 h-9 rounded-md border border-stone-200 bg-white px-3 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-emerald-500"
-              placeholder="Search connectors"
-              value={targetSearch}
-              onChange={(event) => setTargetSearch(event.target.value)}
-            />
-          ) : null}
-          {projectTargetGroups.map((group) => (
-            <ConsoleProjectGroup
-              key={group.id}
-              group={group}
-              collapsed={Boolean(collapsedProjects[group.id])}
-              targetsCompact={targetsCompact}
-              onToggle={() => setCollapsedProjects((current) => ({ ...current, [group.id]: !current[group.id] }))}
-            >
-              {group.targets.map((target) => (
-                <TargetListItem
-                  key={connectorTargetKey(target)}
-                  target={target}
-                  profileTargets={profilesForConnectorTarget(targetItems, target)}
-                  liveConsoleTargets={liveConsoleTargets}
-                  sessions={sessions}
-                  selectedTarget={selectedTarget}
-                  targetsCompact={targetsCompact}
-                  pendingConnectorApprovals={pendingConnectorApprovals}
-                  connectorActionApprovals={connectorActionApprovals}
-                  unreadMessages={unreadMessages}
-                  onSelect={selectTarget}
-                />
-              ))}
-            </ConsoleProjectGroup>
-          ))}
-          {targets.state === "ready" && targetItems.length === 0 && !targetsCompact ? <Notice>No targets yet.</Notice> : null}
-          {targets.state === "ready" && targetRows.length > 0 && filteredTargets.length === 0 && !targetsCompact ? (
-            <Notice>No connectors match that search.</Notice>
-          ) : null}
-          {targets.state === "error" && !targetsCompact ? <Notice tone="bad">{targets.error}</Notice> : null}
-        </div>
-      </aside>
+      <ConsoleTargetSidebar
+        compact={targetsCompact}
+        onCompactChange={setTargetsCompact}
+        targetRows={targetRows}
+        search={targetSearch}
+        onSearch={setTargetSearch}
+        groups={projectTargetGroups}
+        collapsedProjects={collapsedProjects}
+        onToggleProject={(projectID) =>
+          setCollapsedProjects((current) => ({ ...current, [projectID]: !current[projectID] }))
+        }
+        targetItems={targetItems}
+        liveConsoleTargets={liveConsoleTargets}
+        sessions={sessions}
+        selectedTarget={selectedTarget}
+        pendingConnectorApprovals={pendingConnectorApprovals}
+        connectorActionApprovals={connectorActionApprovals}
+        unreadMessages={unreadMessages}
+        onSelect={selectTarget}
+        targetsState={targets.state}
+        targetsError={targets.error}
+        filteredTargetCount={filteredTargets.length}
+      />
 
       <section
         className={`grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border shadow-xl ${
@@ -811,297 +763,6 @@ export function ConsolePage() {
   );
 }
 
-function ConsoleProjectGroup({ group, collapsed, targetsCompact, onToggle, children }) {
-  return (
-    <div className="grid gap-1">
-      <button
-        type="button"
-        className={`${targetsCompact ? "grid h-8 w-10 place-items-center" : "flex h-8 items-center gap-2 px-2"} rounded-md text-left text-xs font-semibold text-stone-500 hover:bg-stone-100`}
-        title={`${group.name} (${group.targets.length})`}
-        onClick={onToggle}
-      >
-        {targetsCompact ? (
-          <FolderKanban className="h-4 w-4" />
-        ) : (
-          <>
-            {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            <FolderKanban className="h-3.5 w-3.5" />
-            <span className="min-w-0 flex-1 truncate">{group.name}</span>
-            <span className="shrink-0 text-[10px]">{group.targets.length}</span>
-          </>
-        )}
-      </button>
-      {!collapsed ? children : null}
-    </div>
-  );
-}
-
-function TargetListItem({
-  target,
-  profileTargets,
-  liveConsoleTargets,
-  sessions,
-  selectedTarget,
-  targetsCompact,
-  pendingConnectorApprovals,
-  connectorActionApprovals,
-  unreadMessages,
-  onSelect,
-}) {
-  const runtimeID = targetUsesLiveConsole(target) ? target.runtime_id : null;
-  const runtimeTarget = runtimeID ? liveConsoleTargets.data.find((item) => Number(item.id) === Number(runtimeID)) : null;
-  const session = runtimeID ? latestSessionForRuntime(sessions, runtimeID) || emptySession : emptySession;
-  const active = selectedTarget && connectorTargetKey(selectedTarget) === connectorTargetKey(target);
-  const refs = new Set((profileTargets?.length ? profileTargets : [target]).map((profile) => profile.ref));
-  const runtimeIDs = new Set(
-    (profileTargets?.length ? profileTargets : [target])
-      .map((profile) => profile.runtime_id)
-      .filter(Boolean)
-      .map((id) => Number(id)),
-  );
-  const connectorPendingCount = pendingConnectorApprovals.filter((approval) => refs.has(approval.target_ref)).length;
-  const connectorRunningCount = connectorActionApprovals.data.filter(
-    (approval) => approval.status === "running" && refs.has(approval.target_ref),
-  ).length;
-  const pendingCount = connectorPendingCount;
-  const runningCount = connectorRunningCount;
-  const unreadCount = runtimeIDs.size > 0 ? unreadMessages.filter((message) => runtimeIDs.has(Number(message.runtime_id))).length : 0;
-  const attentionCount = pendingCount + unreadCount;
-  const status = selectedTargetStatus({ target, session, pendingCount, runningCount });
-  const kindLabel = target.connector_kind;
-  const profileLabel = targetProfileLabel(target);
-  const badgeClass = active ? "border-emerald-700 bg-emerald-900/70 text-emerald-50" : "border-stone-200 bg-stone-50 text-stone-500";
-
-  return (
-    <button
-      type="button"
-      title={`${targetDisplayName(target)} ${targetSubtitle(target, runtimeTarget)}`}
-      className={`${targetsCompact ? "grid h-10 w-10 place-items-center px-0 py-0" : "grid gap-1.5 px-3 py-2 text-left"} rounded-md transition ${
-        active ? "bg-emerald-950 text-white" : "text-stone-700 hover:bg-stone-100"
-      }`}
-      onClick={() => onSelect(target)}
-    >
-      {targetsCompact ? (
-        <span className="relative grid h-full w-full place-items-center">
-          <ConnectorIcon kind={target.connector_kind} className="h-4 w-4" />
-          {attentionCount > 0 ? <CountBadge className="absolute -right-1 -top-1">{attentionCount}</CountBadge> : null}
-          <ConsoleStatusDot status={status} className="absolute right-1 top-1 h-2.5 w-2.5" />
-        </span>
-      ) : (
-        <>
-          <span className="flex min-w-0 items-center justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-2">
-              <ConnectorIcon
-                kind={target.connector_kind}
-                className={`h-3.5 w-3.5 shrink-0 ${active ? "text-emerald-100" : "text-stone-400"}`}
-              />
-              <span className="truncate text-sm font-semibold">{targetDisplayName(target)}</span>
-            </span>
-            <span className="flex shrink-0 items-center gap-1.5">
-              {attentionCount > 0 ? <CountBadge>{attentionCount}</CountBadge> : null}
-              <ConsoleStatusDot status={status} className={active && status === "offline" ? "text-red-200" : ""} />
-            </span>
-          </span>
-          <span className={`truncate text-xs ${active ? "text-emerald-100" : "text-stone-500"}`}>
-            {targetSubtitle(target, runtimeTarget)}
-          </span>
-          <span className="flex min-w-0 gap-1.5">
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass}`}>{kindLabel}</span>
-            <span className={`truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{profileLabel}</span>
-            {profileTargets?.length > 1 ? (
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>
-                {profileTargets.length} profiles
-              </span>
-            ) : null}
-          </span>
-        </>
-      )}
-    </button>
-  );
-}
-
-function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
-  const ageMs = Math.max(0, now - parseTimestamp(request.created_at));
-  const showRecoveryHint = ageMs >= 20000;
-  const panelClass =
-    theme === "light" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-amber-900/70 bg-amber-950/40 text-amber-50";
-  const mutedClass = theme === "light" ? "text-amber-900/80" : "text-amber-100/80";
-  const commandPreview = firstLine(request.command || request.input?.command || request.action_name || "connector action");
-  const sourceLabel = runningRequestLabel(request);
-
-  return (
-    <div className={`flex min-h-9 items-center gap-3 border-b px-4 py-2 text-xs ${panelClass}`}>
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <Clock className="h-3.5 w-3.5 shrink-0" />
-        <span className="shrink-0 font-semibold">{sourceLabel}</span>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}
-        >
-          {formatDuration(ageMs)}
-        </span>
-        {request.token_name ? (
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-100"}`}
-          >
-            {request.token_name}
-          </span>
-        ) : null}
-        <span className={`min-w-0 truncate font-mono ${mutedClass}`}>{commandPreview}</span>
-        {showRecoveryHint ? <span className="shrink-0 font-medium">Looks stuck? Restart opens a fresh console session.</span> : null}
-      </div>
-      {action.error ? <span className="max-w-80 truncate text-red-300">{action.error}</span> : null}
-      <Button
-        type="button"
-        variant="outline"
-        className={`h-7 shrink-0 px-2 text-xs ${
-          theme === "light"
-            ? "border-amber-400 bg-amber-100 text-amber-950 hover:bg-amber-200"
-            : "border-amber-700 bg-amber-950/70 text-amber-50 hover:bg-amber-900/70"
-        }`}
-        onClick={onRestart}
-        disabled={action.state === "running"}
-        title="Close the gateway-owned persistent console session and let the next command open a fresh one"
-      >
-        <RefreshCcw className="h-3.5 w-3.5" />
-        {action.state === "running" ? "Restarting..." : "Restart"}
-      </Button>
-    </div>
-  );
-}
-
-function runningRequestLabel(request) {
-  if (request?.action_name) return "Connector action running";
-  if (request?.source === "manual") return "Manual command running";
-  if (request?.source === "mcp") return "AI command running";
-  return "Command running";
-}
-
-function firstLine(value) {
-  const line = String(value || "")
-    .split(/\r?\n/, 1)[0]
-    .trim();
-  if (line.length <= 90) return line;
-  return `${line.slice(0, 87)}...`;
-}
-
-function parseTimestamp(value) {
-  const parsed = Date.parse(value || "");
-  return Number.isNaN(parsed) ? Date.now() : parsed;
-}
-
-function formatDuration(ms) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
-}
-
 function newStructuredConsoleSession() {
   return { active: true, startedAt: new Date().toISOString() };
-}
-
-function consoleTargetRows(targets, selectedTarget, selectedProfileByTarget = {}) {
-  const rows = [];
-  const byKey = new Map();
-  for (const target of targets) {
-    const key = connectorTargetKey(target);
-    if (!byKey.has(key)) {
-      byKey.set(key, []);
-      rows.push({ key, first: target });
-    }
-    byKey.get(key).push(target);
-  }
-  return rows.map(({ key, first }) => {
-    const profiles = byKey.get(key) || [first];
-    if (selectedTarget && connectorTargetKey(selectedTarget) === key) return selectedTarget;
-    const preferredID = selectedProfileByTarget[key];
-    return profiles.find((profile) => Number(profile.profile_id) === Number(preferredID)) || profiles[0] || first;
-  });
-}
-
-function groupConsoleTargetsByProject(targets) {
-  const groups = new Map();
-  for (const target of targets) {
-    const id = String(target.project_id || "ungrouped");
-    if (!groups.has(id)) {
-      groups.set(id, { id, name: target.project_name || "Ungrouped", targets: [] });
-    }
-    groups.get(id).targets.push(target);
-  }
-  return [...groups.values()];
-}
-
-function defaultConsoleTargetRef(targets, unreadMessages, pendingConnectorApprovals) {
-  if (!targets.length) return "";
-  const pendingConnector = pendingConnectorApprovals.find((approval) => targets.some((target) => target.ref === approval.target_ref));
-  if (pendingConnector) return pendingConnector.target_ref;
-  const unread = unreadMessages.find((message) =>
-    targets.some((target) => target.runtime_id && Number(target.runtime_id) === Number(message.runtime_id)),
-  );
-  if (unread) {
-    const target = targets.find((item) => item.runtime_id && Number(item.runtime_id) === Number(unread.runtime_id));
-    if (target) return target.ref;
-  }
-  return targets[0].ref;
-}
-
-function targetDisplayName(target) {
-  if (!target) return "Target";
-  const model = getConnectorModel(target.connector_kind);
-  return model?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "Target";
-}
-
-function targetSubtitle(target, runtimeTarget) {
-  if (!target) return "";
-  const model = getConnectorModel(target.connector_kind);
-  return model?.targetSubtitle?.({ target, runtimeTarget }) || `${target.connector_kind} profile ${target.profile_label || "default"}`;
-}
-
-function targetProfileLabel(target) {
-  if (!target) return "default";
-  const model = getConnectorModel(target.connector_kind);
-  return model?.targetProfileLabel?.({ target }) || target.profile_label || "default";
-}
-
-function targetUsesLiveConsole(target) {
-  if (!target) return false;
-  const model = getConnectorModel(target.connector_kind);
-  return Boolean(model?.usesLiveConsole?.({ target }));
-}
-
-function recoverableRunningActions(target) {
-  if (!target) return [];
-  const model = getConnectorModel(target.connector_kind);
-  const actions = model?.recoverableRunningActions?.({ target });
-  return Array.isArray(actions) ? actions.filter(Boolean).map(String) : [];
-}
-
-function selectedTargetStatus({ target, session, pendingCount = 0, runningCount = 0 }) {
-  if (pendingCount > 0 || runningCount > 0) return "busy";
-  if (target?.connector_kind && !targetUsesLiveConsole(target)) return "idle";
-  return selectedRuntimeTargetStatus({ session, pendingCount, runningCount });
-}
-
-function selectedRuntimeTargetStatus({ session, pendingCount = 0, runningCount = 0 }) {
-  if (pendingCount > 0 || runningCount > 0) return "busy";
-  if (session?.status === "connected" || session?.status === "connecting") return "idle";
-  return "offline";
-}
-
-function ConsoleStatusDot({ status, className = "" }) {
-  const colors = {
-    offline: "fill-red-500 text-red-500",
-    idle: "fill-emerald-500 text-emerald-500",
-    busy: "fill-amber-400 text-amber-400",
-  };
-  const label = {
-    offline: "No live session",
-    idle: "Target ready",
-    busy: "Pending or running work",
-  };
-  const title = label[status] || label.offline;
-  return <Circle className={`h-3 w-3 shrink-0 ${colors[status] || colors.offline} ${className}`} aria-label={title} title={title} />;
 }
