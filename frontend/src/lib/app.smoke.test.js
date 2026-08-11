@@ -130,6 +130,8 @@ const clickHouseConnectorModelSource = readFileSync(join(currentDir, "..", "conn
 const redisConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "redis", "form.jsx"), "utf8");
 const rabbitMQConnectorFormTemplateSource = readFileSync(join(currentDir, "..", "connectors", "templates", "rabbitmq", "form.jsx"), "utf8");
 const vaultPageSource = readFileSync(join(currentDir, "..", "pages", "vault.jsx"), "utf8");
+const vaultComponentsSource = readFileSync(join(currentDir, "..", "pages", "vault-components.jsx"), "utf8");
+const vaultFeatureSource = `${vaultPageSource}\n${vaultComponentsSource}`;
 const vaultSessionDialogSource = readFileSync(join(currentDir, "..", "components", "console", "vault-session-dialog.jsx"), "utf8");
 const ptyConsoleSource = readFileSync(join(currentDir, "..", "components", "console", "pty-console.jsx"), "utf8");
 const vaultActionApprovalDialogSource = readFileSync(
@@ -176,19 +178,19 @@ test("App keeps the primary route surface available", () => {
 });
 
 test("Vault keeps values behind explicit local actions", () => {
-  assert.match(vaultPageSource, /\/api\/vault-items/);
-  assert.match(vaultPageSource, /\/reveal/);
-  assert.match(vaultPageSource, /navigator\.clipboard\.writeText/);
-  assert.match(vaultPageSource, /Replace local value/);
-  assert.match(vaultPageSource, /Save generated value/);
-  assert.match(vaultPageSource, /\/generate-preview/);
-  assert.match(vaultPageSource, /Regenerate/);
-  assert.match(vaultPageSource, /generator_kind:/);
-  assert.match(vaultPageSource, /DateTimePicker/);
-  assert.match(vaultPageSource, /visibleTags/);
-  assert.match(vaultPageSource, /variant="outline" className="h-9 w-9 px-0"/);
-  assert.match(vaultPageSource, /expected_value_version/);
-  assert.match(vaultPageSource, /expected_metadata_revision/);
+  assert.match(vaultFeatureSource, /\/api\/vault-items/);
+  assert.match(vaultFeatureSource, /\/reveal/);
+  assert.match(vaultFeatureSource, /navigator\.clipboard\.writeText/);
+  assert.match(vaultFeatureSource, /Replace local value/);
+  assert.match(vaultFeatureSource, /Save generated value/);
+  assert.match(vaultFeatureSource, /\/generate-preview/);
+  assert.match(vaultFeatureSource, /Regenerate/);
+  assert.match(vaultFeatureSource, /generator_kind:/);
+  assert.match(vaultFeatureSource, /DateTimePicker/);
+  assert.match(vaultFeatureSource, /visibleTags/);
+  assert.match(vaultFeatureSource, /variant="outline" className="h-9 w-9 px-0"/);
+  assert.match(vaultFeatureSource, /expected_value_version/);
+  assert.match(vaultFeatureSource, /expected_metadata_revision/);
 });
 
 test("Projects group connector targets and scope token visibility", () => {

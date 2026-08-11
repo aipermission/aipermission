@@ -138,10 +138,5 @@
     "react-hooks/exhaustive-deps": {
       "count": 2
     }
-  },
-  "src/pages/vault.jsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 2
-    }
   }
 }
