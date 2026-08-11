@@ -35,6 +35,8 @@ const (
 	ActionUploadObject      = "upload_object"
 	ActionRenameObject      = "rename_object"
 	ActionDeleteObject      = "delete_object"
+	ActionPresignDownload   = "presign_download"
+	ActionPresignUpload     = "presign_upload"
 
 	defaultS3Scheme    = "https"
 	defaultS3Host      = "s3.amazonaws.com"
@@ -206,12 +208,14 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use upload_object with overwrite=false by default. If the object exists, ask the operator before retrying with overwrite=true.",
 			"Use rename_object only for intentional object moves. It copies to the destination key and then deletes the source key.",
 			"Use delete_object carefully; it is destructive and should normally require explicit approval.",
+			"Use presign_download or presign_upload only when the operator explicitly needs a short-lived URL for one exact object key.",
 		},
 		Warnings: []string{
 			"S3 objects may contain secrets or customer data. Redaction is best-effort; avoid reading object content unless explicitly approved.",
 			"download_object and upload_object are intentionally size-bounded in the connector action pipeline.",
 			"Do not put access keys, secret keys, signed URLs, or reusable tokens into action input. Store credentials in the selected credential profile.",
 			"S3 credential profiles decide what the object storage service itself allows.",
+			"Presigned URLs are temporary bearer credentials. Do not place them in reasons, inputs, logs, or messages beyond the intended recipient.",
 		},
 	}, nil
 }
@@ -302,6 +306,31 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key to delete."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+		},
+		{
+			Name:        ActionPresignDownload,
+			Label:       "Create download URL",
+			Description: "Create a short-lived signed GET URL for one existing object.",
+			Category:    "sharing",
+			Risk:        connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact existing object key."},
+				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldNumber, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000},
+		},
+		{
+			Name:        ActionPresignUpload,
+			Label:       "Create upload URL",
+			Description: "Create a short-lived signed PUT URL for one exact object key.",
+			Category:    "sharing",
+			Risk:        connectors.RiskWrite,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact destination object key."},
+				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldNumber, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
+				{Name: "overwrite", Label: "Allow overwrite", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless replacing an existing object is intentional."},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000},
 		},
 	}, nil
 }
@@ -406,6 +435,23 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["key"] = key
 		title = "Delete S3 object"
 		summary = key
+	case ActionPresignDownload, ActionPresignUpload:
+		key := normalizeObjectKey(input, "key")
+		if key == "" {
+			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		}
+		expiresSeconds := normalizeInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds)
+		input["key"] = key
+		input["expires_seconds"] = expiresSeconds
+		if req.ActionName == ActionPresignUpload {
+			risk = connectors.RiskWrite
+			input["overwrite"] = boolValue(input, "overwrite")
+			title = "Create S3 upload URL"
+		} else {
+			delete(input, "overwrite")
+			title = "Create S3 download URL"
+		}
+		summary = fmt.Sprintf("%s (%d seconds)", key, expiresSeconds)
 	default:
 		return connectors.PreparedAction{}, ErrUnsupportedAction
 	}
@@ -455,6 +501,10 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 		return executeRenameObject(ctx, client, action.Payload)
 	case ActionDeleteObject:
 		return executeDeleteObject(ctx, client, action.Payload)
+	case ActionPresignDownload:
+		return executePresignDownload(ctx, client, action.Payload)
+	case ActionPresignUpload:
+		return executePresignUpload(ctx, client, action.Payload)
 	default:
 		return connectors.ActionResult{}, ErrUnsupportedAction
 	}
