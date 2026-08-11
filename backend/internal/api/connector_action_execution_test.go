@@ -191,6 +191,56 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	}
 }
 
+func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	registry := connectors.NewRegistry()
+	if err := registry.Register(localActionTestConnector{}); err != nil {
+		t.Fatalf("register local test connector: %v", err)
+	}
+	runtime := &databaseRuntime{database: database, vault: secretVault, registry: registry}
+	store := connectortargets.NewStore(database)
+	target, err := store.CreateTarget(context.Background(), connectortargets.CreateTargetInput{
+		ConnectorKind: localActionTestConnectorKind,
+		Name:          "local-target",
+		Config:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("create local target: %v", err)
+	}
+	profile, err := store.CreateCredentialProfile(context.Background(), connectortargets.CreateCredentialProfileInput{
+		TargetID:      target.ID,
+		ConnectorKind: localActionTestConnectorKind,
+		Kind:          "default",
+		Label:         "main",
+		Public:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("create local profile: %v", err)
+	}
+	prepared, err := runtime.prepareConnectorAction(context.Background(), actions.PrepareRequest{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo",
+		Input:      map[string]any{"value": "hello"},
+	})
+	if err != nil {
+		t.Fatalf("prepare action: %v", err)
+	}
+	if _, err := store.UpdateCredentialProfile(context.Background(), connectortargets.UpdateCredentialProfileInput{
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: localActionTestConnectorKind,
+		Kind:          "default",
+		Label:         "changed",
+		Public:        map[string]any{},
+	}); err != nil {
+		t.Fatalf("update profile: %v", err)
+	}
+	if _, err := (&Server{}).snapshotPreparedConnectorAction(context.Background(), runtime, prepared); err == nil || !strings.Contains(err.Error(), "changed after action preparation") {
+		t.Fatalf("expected profile drift rejection, got %v", err)
+	}
+}
+
 func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)

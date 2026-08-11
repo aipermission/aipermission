@@ -192,6 +192,16 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 }
 
 func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (connectortargets.ActionRequest, error) {
+	release, err := runtime.vaultDelivery.acquire(ctx)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	claimHeld := true
+	defer func() {
+		if claimHeld {
+			release()
+		}
+	}()
 	store := connectortargets.NewStore(runtime.database)
 	item, err := store.GetActionRequest(ctx, id)
 	if err != nil {
@@ -327,17 +337,37 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 			return connectortargets.ActionRequest{}, err
 		}
 	}
+	principal, err := tokenExecutionPrincipal(runtime, tokenID)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	snapshot, err := s.snapshotPreparedConnectorAction(ctx, runtime, prepared)
+	if err != nil {
+		reason := "connector approval context changed; ask the AI to send a fresh request"
+		stale, staleErr := store.FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+			ID:              item.ID,
+			Status:          connectors.ResultStale,
+			Error:           reason,
+			ApprovalDrift:   "profile",
+			AllowedStatuses: connectorApprovalFinishStatuses(),
+		})
+		if staleErr != nil {
+			return connectortargets.ActionRequest{}, staleErr
+		}
+		if syncErr := history.NewStore(runtime.database).SyncConnectorActionRequest(context.Background(), stale.ID); syncErr != nil {
+			return stale, syncErr
+		}
+		return stale, fmt.Errorf("%s", reason)
+	}
 	if _, err := store.MarkActionRequestRunning(ctx, item.ID); err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
 	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, item.ID); err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	principal, err := tokenExecutionPrincipal(runtime, tokenID)
-	if err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
-	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared)
+	release()
+	claimHeld = false
+	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared, snapshot)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)
 		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultFailed, failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
