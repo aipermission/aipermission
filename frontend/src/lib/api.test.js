@@ -50,6 +50,8 @@ function response(body, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
-    async text() { return JSON.stringify(body); },
+    async text() {
+      return JSON.stringify(body);
+    },
   };
 }

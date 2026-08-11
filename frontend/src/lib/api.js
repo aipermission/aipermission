@@ -42,7 +42,10 @@ function preparePostBody(path, body) {
 function stableRequestSignature(value) {
   if (Array.isArray(value)) return `[${value.map(stableRequestSignature).join(",")}]`;
   if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableRequestSignature(value[key])}`).join(",")}}`;
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableRequestSignature(value[key])}`)
+      .join(",")}}`;
   }
   return JSON.stringify(value);
 }
