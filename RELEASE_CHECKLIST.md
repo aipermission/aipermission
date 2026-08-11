@@ -51,9 +51,11 @@ npm pack --dry-run
 - Confirm Dependabot is enabled for Go, npm, Docker, and GitHub Actions.
 - Confirm CodeQL is enabled for Go and JavaScript.
 - Confirm CI secret scanning passes.
-- Review the non-blocking container image vulnerability scan output.
+- Confirm the blocking HIGH/CRITICAL container image scans pass.
 - Confirm GitHub Actions are SHA-pinned and workflow permissions are minimal.
 - Confirm Docker base images are digest-pinned.
+- Confirm published GHCR image digests have BuildKit SBOM/provenance attestations
+  and a keyless Cosign signature from `publish-images.yml`.
 - Prefer the `Publish MCP Package` workflow with npm provenance for public releases.
 - Require npm 2FA for package publishing/settings in the `aipermission` npm organization.
 - Keep `@aipermission/mcp` as the real package and `aipermission` as the unscoped placeholder.
@@ -69,6 +71,14 @@ npm publish --access public --provenance
 
 cd ../npm-placeholder
 npm publish
+```
+
+Verify a published container signature with the release tag or digest:
+
+```bash
+cosign verify ghcr.io/aipermission/aipermission-backend:vX.Y.Z \
+  --certificate-identity-regexp '^https://github.com/aipermission/aipermission/.github/workflows/publish-images.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 ## Manual Smoke

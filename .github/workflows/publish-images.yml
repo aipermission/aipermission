@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
   packages: write
 
 jobs:
@@ -20,8 +21,6 @@ jobs:
       - name: Prepare tags
         id: meta
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
@@ -30,38 +29,57 @@ jobs:
       - name: Set up Docker Buildx
         run: docker buildx create --use
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+
       - name: Publish backend image
         run: |
+          version="${GITHUB_REF_NAME#v}"
           tags=(
-            --tag ghcr.io/aipermission/aipermission-backend:${{ steps.meta.outputs.tag }}
-            --tag ghcr.io/aipermission/aipermission-backend:${{ steps.meta.outputs.version }}
+            --tag "ghcr.io/aipermission/aipermission-backend:${{ steps.meta.outputs.tag }}"
+            --tag "ghcr.io/aipermission/aipermission-backend:${version}"
           )
-          if [[ "${{ steps.meta.outputs.version }}" != *-* ]]; then
-            tags+=(--tag ghcr.io/aipermission/aipermission-backend:latest)
+          if [[ "${version}" != *-* ]]; then
+            tags+=(--tag "ghcr.io/aipermission/aipermission-backend:latest")
           fi
           docker buildx build \
             --platform linux/amd64 \
             --provenance=mode=max \
             --sbom=true \
+            --metadata-file /tmp/backend-image-metadata.json \
             "${tags[@]}" \
             --push \
             ./backend
 
+      - name: Sign backend image digest
+        run: |
+          digest="$(jq -r '."containerimage.digest"' /tmp/backend-image-metadata.json)"
+          test "${digest#sha256:}" != "${digest}"
+          cosign sign --yes "ghcr.io/aipermission/aipermission-backend@${digest}"
+
       - name: Publish frontend image
         run: |
+          version="${GITHUB_REF_NAME#v}"
           tags=(
-            --tag ghcr.io/aipermission/aipermission-frontend:${{ steps.meta.outputs.tag }}
-            --tag ghcr.io/aipermission/aipermission-frontend:${{ steps.meta.outputs.version }}
+            --tag "ghcr.io/aipermission/aipermission-frontend:${{ steps.meta.outputs.tag }}"
+            --tag "ghcr.io/aipermission/aipermission-frontend:${version}"
           )
-          if [[ "${{ steps.meta.outputs.version }}" != *-* ]]; then
-            tags+=(--tag ghcr.io/aipermission/aipermission-frontend:latest)
+          if [[ "${version}" != *-* ]]; then
+            tags+=(--tag "ghcr.io/aipermission/aipermission-frontend:latest")
           fi
           docker buildx build \
             --platform linux/amd64 \
             --provenance=mode=max \
             --sbom=true \
+            --metadata-file /tmp/frontend-image-metadata.json \
             --build-arg VITE_API_URL="" \
             --build-arg VITE_MCP_API_URL="" \
             "${tags[@]}" \
             --push \
             ./frontend
+
+      - name: Sign frontend image digest
+        run: |
+          digest="$(jq -r '."containerimage.digest"' /tmp/frontend-image-metadata.json)"
+          test "${digest#sha256:}" != "${digest}"
+          cosign sign --yes "ghcr.io/aipermission/aipermission-frontend@${digest}"
