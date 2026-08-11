@@ -21,6 +21,8 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "monaco-editor"
+        versions: [">= 0.54.0, < 0.57.0"]
 
   - package-ecosystem: "npm"
     directory: "/packages/mcp"
