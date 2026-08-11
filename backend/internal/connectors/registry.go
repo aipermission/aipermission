@@ -189,6 +189,9 @@ func equalActionDefinition(left ActionDefinition, right ActionDefinition) bool {
 			return false
 		}
 	}
+	if !reflect.DeepEqual(left.OutputHint.TemporaryCapabilityFields, right.OutputHint.TemporaryCapabilityFields) {
+		return false
+	}
 	if !reflect.DeepEqual(left.SensitiveInputFields, right.SensitiveInputFields) {
 		return false
 	}

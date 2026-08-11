@@ -327,7 +327,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact existing object key."},
 				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldNumber, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000, TemporaryCapabilityFields: []string{"url"}},
 		},
 		{
 			Name:        ActionPresignUpload,
@@ -340,7 +340,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldNumber, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
 				{Name: "overwrite", Label: "Allow overwrite", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless replacing an existing object is intentional."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000, TemporaryCapabilityFields: []string{"url"}},
 		},
 		{
 			Name:        ActionListVersions,

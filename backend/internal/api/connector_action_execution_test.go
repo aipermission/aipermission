@@ -414,6 +414,45 @@ func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
 	}
 }
 
+func TestConnectorActionResultPreservesDeclaredTemporaryCapability(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	server := &Server{}
+	signedURL := "https://s3.example.test/object?X-Amz-Security-Token=session-token&X-Amz-Signature=signature"
+
+	redacted := server.redactConnectorActionResult(context.Background(), runtime, connectors.ActionResult{
+		Output: map[string]any{
+			"url":               signedURL,
+			"urls":              []string{signedURL},
+			"capability_meta":   map[string]any{"token": "nested-must-redact"},
+			"source_url":        "https://example.test/callback?token=must-redact",
+			"string_map":        map[string]string{"token": "map-must-redact"},
+			"secret_access_key": "must-not-leak",
+		},
+	}, connectors.OutputHint{TemporaryCapabilityFields: []string{"url", "urls", "capability_meta"}})
+
+	output := redacted.Output.(map[string]any)
+	if output["url"] != signedURL {
+		t.Fatalf("temporary capability was corrupted: %q", output["url"])
+	}
+	if output["secret_access_key"] != "[REDACTED]" {
+		t.Fatalf("credential field was not redacted: %#v", output["secret_access_key"])
+	}
+	if urls, ok := output["urls"].([]string); !ok || len(urls) != 1 || urls[0] != signedURL {
+		t.Fatalf("temporary capability list was corrupted: %#v", output["urls"])
+	}
+	if sourceURL := fmt.Sprint(output["source_url"]); strings.Contains(sourceURL, "must-redact") {
+		t.Fatalf("undeclared suffix field bypassed redaction: %q", sourceURL)
+	}
+	if metadata := fmt.Sprint(output["capability_meta"]); strings.Contains(metadata, "nested-must-redact") {
+		t.Fatalf("non-string capability-shaped output bypassed redaction: %q", metadata)
+	}
+	if stringMap := fmt.Sprint(output["string_map"]); strings.Contains(stringMap, "map-must-redact") {
+		t.Fatalf("string map bypassed redaction: %q", stringMap)
+	}
+}
+
 func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)

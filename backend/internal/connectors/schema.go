@@ -59,10 +59,11 @@ type CredentialSchema struct {
 // OutputHint gives core/UI a connector-provided hint for rendering and
 // redaction. Core still owns the actual redaction behavior.
 type OutputHint struct {
-	Format          string   `json:"format,omitempty"`
-	SensitiveFields []string `json:"sensitive_fields,omitempty"`
-	MaxRows         int      `json:"max_rows,omitempty"`
-	MaxBytes        int      `json:"max_bytes,omitempty"`
+	Format                    string   `json:"format,omitempty"`
+	SensitiveFields           []string `json:"sensitive_fields,omitempty"`
+	TemporaryCapabilityFields []string `json:"temporary_capability_fields,omitempty"`
+	MaxRows                   int      `json:"max_rows,omitempty"`
+	MaxBytes                  int      `json:"max_bytes,omitempty"`
 }
 
 // ValidateSchemaValues validates a connector target/action value map against
@@ -178,6 +179,31 @@ func ValidateActionDefinitions(actions []ActionDefinition, usage string) error {
 				return fmt.Errorf("%s action %q contains duplicate sensitive input field %q", usage, action.Name, field)
 			}
 			seenSensitiveFields[field] = true
+		}
+		seenSensitiveOutputFields := map[string]bool{}
+		for _, field := range action.OutputHint.SensitiveFields {
+			field = strings.TrimSpace(field)
+			if !ValidIdentifier(field) {
+				return fmt.Errorf("%s action %q contains invalid sensitive output field %q", usage, action.Name, field)
+			}
+			if seenSensitiveOutputFields[field] {
+				return fmt.Errorf("%s action %q contains duplicate sensitive output field %q", usage, action.Name, field)
+			}
+			seenSensitiveOutputFields[field] = true
+		}
+		seenCapabilityFields := map[string]bool{}
+		for _, field := range action.OutputHint.TemporaryCapabilityFields {
+			field = strings.TrimSpace(field)
+			if !ValidIdentifier(field) {
+				return fmt.Errorf("%s action %q contains invalid temporary capability field %q", usage, action.Name, field)
+			}
+			if seenSensitiveOutputFields[field] {
+				return fmt.Errorf("%s action %q temporary capability field %q is also marked sensitive", usage, action.Name, field)
+			}
+			if seenCapabilityFields[field] {
+				return fmt.Errorf("%s action %q contains duplicate temporary capability field %q", usage, action.Name, field)
+			}
+			seenCapabilityFields[field] = true
 		}
 	}
 	return nil
