@@ -10,22 +10,23 @@ import (
 )
 
 type targetProfileItem struct {
-	Ref           string         `json:"ref"`
-	ProjectID     int64          `json:"project_id"`
-	ProjectName   string         `json:"project_name"`
-	ProjectSlug   string         `json:"project_slug"`
-	ConnectorKind string         `json:"connector_kind"`
-	TargetID      int64          `json:"target_id"`
-	TargetName    string         `json:"target_name"`
-	ProfileID     int64          `json:"profile_id"`
-	ProfileKind   string         `json:"profile_kind"`
-	ProfileLabel  string         `json:"profile_label"`
-	RuntimeID     int64          `json:"runtime_id,omitempty"`
-	Config        map[string]any `json:"config,omitempty"`
-	Public        map[string]any `json:"public,omitempty"`
-	Status        string         `json:"status"`
-	CreatedAt     string         `json:"created_at"`
-	UpdatedAt     string         `json:"updated_at"`
+	Ref               string         `json:"ref"`
+	ProjectID         int64          `json:"project_id"`
+	ProjectName       string         `json:"project_name"`
+	ProjectSlug       string         `json:"project_slug"`
+	ConnectorKind     string         `json:"connector_kind"`
+	TargetID          int64          `json:"target_id"`
+	TargetName        string         `json:"target_name"`
+	ProfileID         int64          `json:"profile_id"`
+	ProfileKind       string         `json:"profile_kind"`
+	ProfileLabel      string         `json:"profile_label"`
+	RuntimeID         int64          `json:"runtime_id,omitempty"`
+	TransferRuntimeID int64          `json:"transfer_runtime_id,omitempty"`
+	Config            map[string]any `json:"config,omitempty"`
+	Public            map[string]any `json:"public,omitempty"`
+	Status            string         `json:"status"`
+	CreatedAt         string         `json:"created_at"`
+	UpdatedAt         string         `json:"updated_at"`
 }
 
 func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
@@ -96,19 +97,26 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 	store := connectortargets.NewStore(runtime.database)
 	for index := range items {
 		item := &items[index]
-		adapter := connectorLiveConsoleTargetAdapterFor(item.ConnectorKind)
-		if adapter == nil {
-			continue
+		if adapter := connectorLiveConsoleTargetAdapterFor(item.ConnectorKind); adapter != nil {
+			surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, adapter.LiveConsoleCapabilityKind())
+			if err != nil && !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
+				writeInternalError(w)
+				return
+			}
+			if err == nil {
+				item.RuntimeID = surface.ID
+			}
 		}
-		surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, adapter.LiveConsoleCapabilityKind())
-		if errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
-			continue
+		if connectorFileTransferAdapterFor(item.ConnectorKind) != nil {
+			surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, connectortargets.RuntimeCapabilityFileTransfer)
+			if err != nil && !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
+				writeInternalError(w)
+				return
+			}
+			if err == nil {
+				item.TransferRuntimeID = surface.ID
+			}
 		}
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		item.RuntimeID = surface.ID
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }

@@ -155,6 +155,10 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		runtimeInstanceID:  runtimeInstanceID,
 		vaultLeases:        vaultsessions.NewStore(),
 	}
+	if err := reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("reconcile connector runtime surfaces: %w", err)
+	}
 	settings, err := readSecuritySettingsFromDB(context.Background(), runtime)
 	if err != nil {
 		_ = database.Close()

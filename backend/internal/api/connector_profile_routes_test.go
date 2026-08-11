@@ -144,9 +144,24 @@ func TestSSHConnectorTargetWithProfileCreatesRuntimeSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runtime surface was not created for ssh target profile: %v", err)
 	}
+	transferSurface, err := connectortargets.NewStore(fixture.db).GetRuntimeSurfaceByProfile(ctx, "ssh", target.ID, target.Profiles[0].ID, connectortargets.RuntimeCapabilityFileTransfer)
+	if err != nil {
+		t.Fatalf("file transfer surface was not created for ssh target profile: %v", err)
+	}
 	listResponse := performJSON(handler, http.MethodGet, "/api/targets", "", nil)
-	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), `"runtime_id":`+strconv.FormatInt(surface.ID, 10)) {
+	if listResponse.Code != http.StatusOK ||
+		!strings.Contains(listResponse.Body.String(), `"runtime_id":`+strconv.FormatInt(surface.ID, 10)) ||
+		!strings.Contains(listResponse.Body.String(), `"transfer_runtime_id":`+strconv.FormatInt(transferSurface.ID, 10)) {
 		t.Fatalf("target list should expose precreated runtime surface: %d %s", listResponse.Code, listResponse.Body.String())
+	}
+	if _, err := fixture.db.Exec(`DELETE FROM connector_runtime_surfaces WHERE id = ?`, transferSurface.ID); err != nil {
+		t.Fatalf("delete transfer runtime surface: %v", err)
+	}
+	if err := reconcileConnectorRuntimeSurfaces(ctx, fixture.server.activeRuntime()); err != nil {
+		t.Fatalf("reconcile connector runtime surfaces: %v", err)
+	}
+	if _, err := connectortargets.NewStore(fixture.db).GetRuntimeSurfaceByProfile(ctx, "ssh", target.ID, target.Profiles[0].ID, connectortargets.RuntimeCapabilityFileTransfer); err != nil {
+		t.Fatalf("reconcile did not restore file transfer surface: %v", err)
 	}
 }
 

@@ -82,19 +82,20 @@ type connectorTargetResponse struct {
 }
 
 type profileSummary struct {
-	ID            int64                         `json:"id"`
-	TargetID      int64                         `json:"target_id"`
-	Ref           string                        `json:"ref"`
-	ConnectorKind string                        `json:"connector_kind"`
-	Kind          string                        `json:"kind"`
-	Label         string                        `json:"label"`
-	Public        map[string]any                `json:"public,omitempty"`
-	RiskLabel     string                        `json:"risk_label,omitempty"`
-	Actions       []connectors.ActionDefinition `json:"actions,omitempty"`
-	RuntimeID     int64                         `json:"runtime_id,omitempty"`
-	VaultSession  bool                          `json:"vault_session_supported"`
-	CreatedAt     string                        `json:"created_at"`
-	UpdatedAt     string                        `json:"updated_at"`
+	ID                int64                         `json:"id"`
+	TargetID          int64                         `json:"target_id"`
+	Ref               string                        `json:"ref"`
+	ConnectorKind     string                        `json:"connector_kind"`
+	Kind              string                        `json:"kind"`
+	Label             string                        `json:"label"`
+	Public            map[string]any                `json:"public,omitempty"`
+	RiskLabel         string                        `json:"risk_label,omitempty"`
+	Actions           []connectors.ActionDefinition `json:"actions,omitempty"`
+	RuntimeID         int64                         `json:"runtime_id,omitempty"`
+	TransferRuntimeID int64                         `json:"transfer_runtime_id,omitempty"`
+	VaultSession      bool                          `json:"vault_session_supported"`
+	CreatedAt         string                        `json:"created_at"`
+	UpdatedAt         string                        `json:"updated_at"`
 }
 
 func validateConnectorTargetSchema(connector connectors.Connector) error {
@@ -337,6 +338,18 @@ func (s connectorTargetHandlers) listConnectorTargetInventory(w http.ResponseWri
 				case surfaceErr == nil:
 					summary.RuntimeID = surface.ID
 					summary.VaultSession = requireSessionEnvironmentCapability(r.Context(), s.Server, runtime, surface.ID) == nil
+				case !errors.Is(surfaceErr, connectortargets.ErrRuntimeSurfaceNotFound):
+					handleConnectorTargetError(w, surfaceErr)
+					return
+				}
+			}
+			if connectorFileTransferAdapterFor(target.ConnectorKind) != nil {
+				surface, surfaceErr := store.GetRuntimeSurfaceByProfile(
+					r.Context(), target.ConnectorKind, target.ID, profile.ID, connectortargets.RuntimeCapabilityFileTransfer,
+				)
+				switch {
+				case surfaceErr == nil:
+					summary.TransferRuntimeID = surface.ID
 				case !errors.Is(surfaceErr, connectortargets.ErrRuntimeSurfaceNotFound):
 					handleConnectorTargetError(w, surfaceErr)
 					return
@@ -876,18 +889,30 @@ func (s connectorTargetHandlers) ensureConnectorRuntimeSurfacesForProfile(ctx co
 	if store == nil {
 		return nil
 	}
-	adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind)
-	if adapter == nil {
-		return nil
+	capabilities := []string{}
+	if adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
+		capabilities = append(capabilities, adapter.LiveConsoleCapabilityKind())
 	}
-	_, err := store.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
-		ConnectorKind:  target.ConnectorKind,
-		TargetID:       target.ID,
-		ProfileID:      profile.ID,
-		CapabilityKind: adapter.LiveConsoleCapabilityKind(),
-		Label:          profile.Label,
-	})
-	return err
+	if connectorFileTransferAdapterFor(target.ConnectorKind) != nil {
+		capabilities = append(capabilities, connectortargets.RuntimeCapabilityFileTransfer)
+	}
+	seen := map[string]struct{}{}
+	for _, capability := range capabilities {
+		if _, exists := seen[capability]; exists {
+			continue
+		}
+		seen[capability] = struct{}{}
+		if _, err := store.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+			ConnectorKind:  target.ConnectorKind,
+			TargetID:       target.ID,
+			ProfileID:      profile.ID,
+			CapabilityKind: capability,
+			Label:          profile.Label,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func connectorLifecycleApprovalDrift(profileID int64) string {
