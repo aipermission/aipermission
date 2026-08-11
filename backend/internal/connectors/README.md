@@ -203,6 +203,34 @@ The 0.2 connector line is a clean database baseline. Do not add runtime
 fallbacks for pre-0.2 preview schemas; important old data belongs in the
 separate versioned migration helper, not in gateway runtime code.
 
+## Real-Service Conformance
+
+Protocol compatibility is checked separately from the fast unit and gateway
+pipeline suites. Run the disposable real-service matrix with:
+
+```bash
+make connector-conformance
+```
+
+The target starts digest-pinned Postgres, Valkey, RabbitMQ, and MinIO fixtures
+on automatically assigned loopback ports, exercises real connector actions,
+and removes the containers, network, and volumes afterward. The same suite runs
+weekly and on demand in the `Connector Conformance` GitHub workflow; it is not
+part of every pull request while its image and runtime costs are being measured.
+
+The shared harness verifies connection testing, the advertised action contract,
+prepared-payload credential isolation, bounded execution, and terminal results.
+Service-specific tests should contain only target/profile fixture data and the
+smallest meaningful protocol action sequence. Permission, approval, history,
+and audit behavior remains covered by the generic gateway tests rather than
+being duplicated for every protocol service.
+
+When adding a compatible protocol connector, add its disposable service to
+`backend/testdata/connector-conformance/compose.yml` and a focused scenario in
+`internal/connectors/conformance`. Keep destructive checks confined to the
+ephemeral fixture and clean up created data even though the fixture volume is
+discarded.
+
 ## Adding A Connector
 
 For a new connector:
@@ -223,3 +251,5 @@ For a new connector:
 8. Add focused tests for validation, permission checks, approval-required flow,
    stale-context drift, history/audit persistence, and structured history
    search.
+9. For external protocol services, add a real-service conformance scenario or
+   document why a deterministic disposable fixture is not practical.
