@@ -674,25 +674,11 @@ func newRabbitClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 		Port:               port,
 		TransportTargetRef: strings.TrimSpace(stringValue(runtime.Target.Config, "transport_target_ref")),
 	}
-	httpTransport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
-			return transport.DialConnectorTCP(ctx, request)
-		},
-		ForceAttemptHTTP2:     false,
-		MaxIdleConns:          2,
-		IdleConnTimeout:       30 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
 	return &rabbitClient{
-		baseURL:  fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(host, strconv.Itoa(port))),
-		username: username,
-		password: password,
-		httpClient: &http.Client{
-			Timeout:   rabbitHTTPTimeout,
-			Transport: httpTransport,
-		},
+		baseURL:    fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(host, strconv.Itoa(port))),
+		username:   username,
+		password:   password,
+		httpClient: connectors.NewHTTPClient(transport, request, rabbitHTTPTimeout),
 	}, nil
 }
 
