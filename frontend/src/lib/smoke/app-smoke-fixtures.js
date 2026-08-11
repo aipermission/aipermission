@@ -28,6 +28,10 @@ export const settingsSource = [
   "history-retention-panel.jsx",
   "history-labels-panel.jsx",
   "maintenance-console-panel.jsx",
+  "backup-provider-panel.jsx",
+  "backup-provider-dialogs.jsx",
+  "backup-record-dialogs.jsx",
+  "use-backup-provider-state.js",
 ]
   .map((filename, index) =>
     readFileSync(
