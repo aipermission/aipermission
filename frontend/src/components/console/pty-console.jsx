@@ -9,6 +9,10 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
   const terminalRef = useRef(null);
   const lastTranscriptRef = useRef("");
   const latestTranscriptRef = useRef(session.transcript || "");
+  const onInputRef = useRef(onInput);
+  const onResizeRef = useRef(onResize);
+  onInputRef.current = onInput;
+  onResizeRef.current = onResize;
 
   useEffect(() => {
     const terminal = new Terminal({
@@ -27,7 +31,7 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
     terminal.focus();
     const fitAndResize = () => {
       fit.fit();
-      onResize(terminal.cols, terminal.rows);
+      onResizeRef.current(terminal.cols, terminal.rows);
     };
     fitAndResize();
     const frame = requestAnimationFrame(fitAndResize);
@@ -39,7 +43,7 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
     resizeObserver.observe(container);
 
     const disposable = terminal.onData((data) => {
-      onInput(data);
+      onInputRef.current(data);
     });
     const focusHandler = () => terminal.focus();
     container?.addEventListener("pointerdown", focusHandler);

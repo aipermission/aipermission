@@ -1,5 +1,5 @@
 import { Activity, Database, Eye, Gauge, RefreshCcw, Search, Send, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
@@ -62,6 +62,7 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   }, [items, query]);
   const activeDetail = detailMatchesSelection(detailIdentity, view, selectedName) ? detail : null;
   const offsetPartitions = actionableOffsetPartitions(activeDetail?.partitions);
+  const refreshListForEffect = useEffectEvent((nextView) => refreshList(nextView));
 
   useEffect(() => {
     currentTargetRef.current = target.ref;
@@ -82,7 +83,7 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
 
   useEffect(() => {
     if (!activeSession.active) return;
-    void refreshList("topics");
+    void refreshListForEffect("topics");
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
   async function runAction(actionName, input, reason, busy = "loading", channel = actionName) {

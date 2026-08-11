@@ -1,5 +1,5 @@
 import { ChevronRight, CircleCheck, Mail, PenLine, RefreshCcw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
@@ -45,6 +45,8 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   const [moveDialog, setMoveDialog] = useState({ open: false, destination: "", sourceFolder: "" });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [retryDialog, setRetryDialog] = useState({ open: false, fields: null, messageID: "" });
+  const refreshMailboxForEffect = useEffectEvent((options) => refreshMailbox(options));
+  const reconcilePendingActionForEffect = useEffectEvent((pending, resolution) => reconcilePendingAction(pending, resolution));
   const requestGeneration = useRef(0);
   const currentTargetRef = useRef(target.ref);
 
@@ -141,7 +143,7 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
 
   useEffect(() => {
     if (!activeSession.active || !imapEnabled) return;
-    void refreshMailbox({ preferredFolder: defaultFolder, subject: "" });
+    void refreshMailboxForEffect({ preferredFolder: defaultFolder, subject: "" });
   }, [activeSession.active, activeSession.startedAt, target.ref, imapEnabled]);
 
   useEffect(() => {
@@ -155,7 +157,7 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
       return next;
     });
     for (const { pending, resolution } of resolved) {
-      void reconcilePendingAction(pending, resolution);
+      void reconcilePendingActionForEffect(pending, resolution);
     }
   }, [activeItems, pendingActions]);
 

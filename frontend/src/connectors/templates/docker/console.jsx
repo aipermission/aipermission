@@ -1,5 +1,5 @@
 import { FileJson, LoaderCircle, Play, Power, RefreshCcw, RotateCcw, Square, TerminalSquare, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
@@ -81,6 +81,8 @@ export function DockerConnectorConsoleTemplate({
       ),
     );
   }, [activeResourceList, filter, resourceView]);
+  const refreshContainersForEffect = useEffectEvent(() => refreshContainers());
+  const refreshResourceForEffect = useEffectEvent((kind) => refreshResource(kind));
 
   useEffect(() => {
     setResourceView("containers");
@@ -96,12 +98,12 @@ export function DockerConnectorConsoleTemplate({
   }, [target.ref]);
 
   useEffect(() => {
-    void refreshContainers();
+    void refreshContainersForEffect();
   }, [target.ref]);
 
   useEffect(() => {
     if (resourceView === "containers") return;
-    void refreshResource(resourceView);
+    void refreshResourceForEffect(resourceView);
   }, [resourceView, target.ref]);
 
   useEffect(() => {

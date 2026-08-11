@@ -1,5 +1,5 @@
 import { Database, Eye, ListTree, RefreshCcw, Search, Send } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
@@ -46,6 +46,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
   );
   const latestAction = activeItems[0] || null;
   const filteredQueues = useMemo(() => filterQueues(queues, pattern), [queues, pattern]);
+  const refreshQueuesForEffect = useEffectEvent(() => refreshQueues());
 
   useEffect(() => {
     setVhost(target.config?.vhost || "/");
@@ -66,7 +67,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
 
   useEffect(() => {
     if (!activeSession.active) return;
-    void refreshQueues();
+    void refreshQueuesForEffect();
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
   async function runRabbitAction({ actionName, input, reason, busy = "running", suppressError = false }) {

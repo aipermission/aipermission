@@ -1,5 +1,5 @@
 import { Download, FolderOpen, Pause, Play, RefreshCcw, Upload } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { apiDownload, apiGet, apiPost, apiPostForm } from "../../../lib/api";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
@@ -45,24 +45,11 @@ export function FileTransferDialog({ open, server, onClose }) {
   const unsavedCompletedDownload = batch.item?.direction === "download" && batch.item.status === "completed" && !downloadSaved;
   const progress = useMemo(() => transferProgress(batch.item), [batch.item]);
   const canStart = server && queue.length > 0 && !batch.item && batch.state !== "starting";
-
-  useEffect(() => {
-    if (!open) {
-      resetDialog(defaultRemoteDir);
-      return;
-    }
-    setRemoteDir((current) => current || defaultRemoteDir);
-  }, [open, defaultRemoteDir]);
-
-  useEffect(() => {
-    if (!open || !batch.item || !["pending", "running", "paused"].includes(batch.item.status)) return undefined;
-    const timer = window.setInterval(() => {
-      void refreshBatch(batch.item.id, { silent: true });
-    }, 900);
-    return () => window.clearInterval(timer);
-  }, [open, batch.item?.id, batch.item?.status]);
-
-  useEffect(() => {
+  const batchItemID = batch.item?.id;
+  const batchItemStatus = batch.item?.status;
+  const resetDialogForEffect = useEffectEvent((nextRemoteDir) => resetDialog(nextRemoteDir));
+  const refreshBatchForEffect = useEffectEvent((id, options) => refreshBatch(id, options));
+  const updateCompletedBatchNotice = useEffectEvent(() => {
     if (!batch.item || batch.item.status !== "completed") return;
     if (batch.item.direction === "upload") {
       setNotice("Upload queue completed. Review the summary, then clear when ready.");
@@ -71,6 +58,26 @@ export function FileTransferDialog({ open, server, onClose }) {
     if (batch.item.direction === "download" && !downloadPrompted && !downloadSaved) {
       setNotice("Download queue completed. Click Save download to choose where to save it.");
     }
+  });
+
+  useEffect(() => {
+    if (!open) {
+      resetDialogForEffect(defaultRemoteDir);
+      return;
+    }
+    setRemoteDir((current) => current || defaultRemoteDir);
+  }, [open, defaultRemoteDir]);
+
+  useEffect(() => {
+    if (!open || !batchItemID || !["pending", "running", "paused"].includes(batchItemStatus)) return undefined;
+    const timer = window.setInterval(() => {
+      void refreshBatchForEffect(batchItemID, { silent: true });
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [open, batchItemID, batchItemStatus]);
+
+  useEffect(() => {
+    updateCompletedBatchNotice();
   }, [batch.item?.id, batch.item?.status, batch.item?.direction, downloadPrompted, downloadSaved]);
 
   function resetDialog(nextRemoteDir = defaultRemoteDir) {

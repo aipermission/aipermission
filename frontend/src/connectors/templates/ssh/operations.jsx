@@ -1,5 +1,5 @@
 import { FileText, Info, RefreshCcw, ShieldCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Dialog } from "../../../components/ui/dialog";
@@ -12,10 +12,11 @@ import * as model from "./model";
 
 export function SSHConnectorOperationsTemplate({ value, credentials, onChange, onOperationComplete }) {
   const operation = value?.connector_kind === "ssh" ? value : { open: false };
+  const checkDockerForEffect = useEffectEvent(() => checkDocker(operation.target, operation.profile));
 
   useEffect(() => {
     if (operation.open && operation.type === "docker-check" && (!operation.state || operation.state === "idle")) {
-      void checkDocker(operation.target, operation.profile);
+      void checkDockerForEffect();
     }
   }, [operation.open, operation.type, operation.state, operation.target?.id, operation.profile?.id]);
 

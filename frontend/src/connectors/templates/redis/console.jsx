@@ -1,5 +1,5 @@
 import { Database, Plus, RefreshCcw, Save, Search, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
@@ -57,6 +57,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   );
   const latestAction = activeItems[0] || null;
   const selectedCount = selectedKeys.length;
+  const scanKeysForEffect = useEffectEvent((options) => scanKeys(options));
 
   useEffect(() => {
     setCursor("0");
@@ -73,7 +74,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
 
   useEffect(() => {
     if (!activeSession.active) return;
-    void scanKeys({ reset: true });
+    void scanKeysForEffect({ reset: true });
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
   async function runRedisAction({ actionName, input, reason, busy = "running" }) {

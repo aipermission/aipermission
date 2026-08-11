@@ -1,5 +1,5 @@
 import { RefreshCcw, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
@@ -31,6 +31,7 @@ export function AuditLogsPage() {
     error: null,
   });
   const [selected, setSelected] = useState(null);
+  const loadAuditLogsForEffect = useEffectEvent((offset) => loadAuditLogs(offset));
 
   useEffect(() => {
     void loadProjects();
@@ -38,7 +39,7 @@ export function AuditLogsPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadAuditLogs(0);
+      void loadAuditLogsForEffect(0);
     }, 250);
     return () => window.clearTimeout(timer);
   }, [filters.query, filters.projectID, filters.actor, filters.connectorKind, filters.targetID]);

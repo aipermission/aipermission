@@ -1,5 +1,5 @@
 import { Download, RefreshCcw, Upload, UserPlus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Dialog } from "../../../components/ui/dialog";
@@ -72,6 +72,7 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
   );
   const scopeSummary = useMemo(() => readableScopeSummary(selectedScope, form.preset), [selectedScope, form.preset]);
   const canSubmit = Boolean(targetID && profileID && form.role_name.trim() && selectedScope);
+  const loadMetadataForEffect = useEffectEvent(() => loadMetadata());
 
   useEffect(() => {
     if (!value.open) return;
@@ -80,7 +81,7 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
     setScope({ all_schemas: true, schemas: {} });
     setState({ state: "idle", error: "", result: null });
     if (targetRef) {
-      void loadMetadata();
+      void loadMetadataForEffect();
     }
   }, [value.open, targetRef]);
 

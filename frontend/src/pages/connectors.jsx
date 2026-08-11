@@ -11,7 +11,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
@@ -79,6 +79,23 @@ export function ConnectorsPage() {
     () => projects.data.find((project) => project.slug === "ungrouped")?.id || projects.data[0]?.id || "",
     [projects.data],
   );
+  const refreshConnectorsForEffect = useEffectEvent(() => refreshConnectors());
+  const reconcileProfileSelections = useEffectEvent(() => {
+    setProfileSelections((current) => {
+      const next = {};
+      for (const target of targets.data || []) {
+        const key = targetProfileSelectionKey(target);
+        const profiles = target.profiles || [];
+        const currentID = current[key];
+        if (profiles.length === 0) continue;
+        next[key] = profiles.some((profile) => String(profile.id) === String(currentID)) ? String(currentID) : String(profiles[0].id);
+      }
+      return next;
+    });
+  });
+  const targetProfileSignature = targets.data
+    .map((target) => `${target.connector_kind}:${target.id}:${(target.profiles || []).map((profile) => profile.id).join(",")}`)
+    .join("|");
 
   useEffect(() => {
     setForm((current) => getConnectorModel(current.connector_kind)?.syncForm?.({ form: current, firstCredentialID }) || current);
@@ -86,36 +103,17 @@ export function ConnectorsPage() {
 
   useEffect(() => {
     void loadCatalog();
-    void refreshConnectors();
+    void refreshConnectorsForEffect();
+    const timers = testCooldownTimers.current;
     return () => {
-      for (const timer of testCooldownTimers.current.values()) window.clearTimeout(timer);
-      testCooldownTimers.current.clear();
+      for (const timer of timers.values()) window.clearTimeout(timer);
+      timers.clear();
     };
   }, []);
 
   useEffect(() => {
-    setProfileSelections((current) => {
-      const next = {};
-      for (const target of targets.data || []) {
-        const key = targetProfileSelectionKey(target);
-        const profiles = target.profiles || [];
-        const currentID = current[key];
-        if (profiles.length === 0) {
-          continue;
-        }
-        if (profiles.some((profile) => String(profile.id) === String(currentID))) {
-          next[key] = String(currentID);
-        } else {
-          next[key] = String(profiles[0].id);
-        }
-      }
-      return next;
-    });
-  }, [
-    targets.data
-      .map((target) => `${target.connector_kind}:${target.id}:${(target.profiles || []).map((profile) => profile.id).join(",")}`)
-      .join("|"),
-  ]);
+    reconcileProfileSelections();
+  }, [targetProfileSignature]);
 
   async function refreshConnectors() {
     await Promise.all([loadTargets(), loadProjects(), loadUnifiedTargets()]);
