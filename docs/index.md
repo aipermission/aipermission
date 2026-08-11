@@ -57,7 +57,7 @@ Start here:
 ## API And MCP Contracts
 
 - [REST API](api/rest-api.md)
-- [Generated OpenAPI Route Inventory](api/openapi.json)
+- [Generated OpenAPI Contract](api/openapi.json)
 - [MCP Tools](api/mcp-tools.md)
 
 ## Project Skills
