@@ -1,6 +1,6 @@
-import { Archive, Cloud, Download, Edit3, FileDown, Plus, RotateCcw, Terminal, Trash2, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { apiDelete, apiDownload, apiGet, apiPost, apiPut, apiUrl } from "../lib/api";
+import { Archive, Cloud, Download, Edit3, FileDown, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../lib/api";
 import { useAsyncAction } from "../lib/use-async-action";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -9,11 +9,11 @@ import { Checkbox, Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { formatRelativeAge } from "../lib/date-time";
 import { formatBytes } from "../lib/file-transfer-utils";
-import { PtyConsole } from "../components/console/pty-console";
 import { BackupRetentionPanel } from "../components/settings/backup-retention-panel";
 import { DatabaseSettingsPanel } from "../components/settings/database-settings-panel";
 import { HistoryLabelsPanel } from "../components/settings/history-labels-panel";
 import { HistoryRetentionPanel } from "../components/settings/history-retention-panel";
+import { MaintenanceConsolePanel } from "../components/settings/maintenance-console-panel";
 
 const emptyState = { state: "idle", error: null, message: null };
 const backupServiceGuideURL = "https://github.com/aipermission/aipermission/blob/main/docs/providers/aipermission-backup.md";
@@ -22,10 +22,6 @@ export function SettingsPage() {
   const [database, setDatabase] = useState({ state: "loading", data: null, error: null });
   const { actionState: backupState, runAction: runBackupAction } = useAsyncAction(emptyState);
   const { actionState: backupProviderState, runAction: runBackupProviderAction } = useAsyncAction(emptyState);
-  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
-  const [maintenanceOpenError, setMaintenanceOpenError] = useState("");
-  const maintenanceSocketRef = useRef(null);
-  const [maintenanceSession, setMaintenanceSession] = useState({ transcript: "", status: "closed", error: null, shell: "" });
   const [backupProviderCatalog, setBackupProviderCatalog] = useState({ state: "loading", data: [], error: null });
   const [backupProviders, setBackupProviders] = useState({ state: "loading", data: [], error: null });
   const [backupProviderDialogOpen, setBackupProviderDialogOpen] = useState(false);
@@ -80,13 +76,6 @@ export function SettingsPage() {
     void loadDatabase();
     void loadBackupProviderCatalog();
     void loadBackupProviders();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      maintenanceSocketRef.current?.close();
-      maintenanceSocketRef.current = null;
-    };
   }, []);
 
   const databaseName = database.data?.database_name || "Unknown";
@@ -397,119 +386,6 @@ export function SettingsPage() {
     }
   }
 
-  async function openMaintenanceConsole() {
-    setMaintenanceOpenError("");
-    try {
-      await apiPost("/api/settings/maintenance-console/open", {});
-      setMaintenanceSession((current) => ({ ...current, status: "connecting", error: null }));
-      setMaintenanceOpen(true);
-      window.setTimeout(() => connectMaintenanceConsole({ force: true }), 0);
-    } catch (error) {
-      setMaintenanceOpenError(error.message);
-    }
-  }
-
-  async function closeMaintenanceConsole() {
-    setMaintenanceOpen(false);
-    maintenanceSocketRef.current?.close();
-    maintenanceSocketRef.current = null;
-    setMaintenanceSession({ transcript: "", status: "closed", error: null, shell: "" });
-    try {
-      await apiPost("/api/settings/maintenance-console/close", {});
-    } catch {
-      // The dialog is already local UI state; failing to audit close should not trap the user.
-    }
-  }
-
-  async function reconnectMaintenanceConsole() {
-    setMaintenanceOpenError("");
-    try {
-      await apiPost("/api/settings/maintenance-console/open", {});
-      connectMaintenanceConsole({ force: true });
-    } catch (error) {
-      setMaintenanceOpenError(error.message);
-    }
-  }
-
-  function connectMaintenanceConsole(options = {}) {
-    const existing = maintenanceSocketRef.current;
-    if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
-      if (!options.force) return;
-      existing.close();
-    }
-    const socket = new WebSocket(maintenanceConsoleAttachUrl());
-    maintenanceSocketRef.current = socket;
-    setMaintenanceSession((current) => ({ ...current, status: "connecting", error: null }));
-    socket.onmessage = (event) => {
-      if (maintenanceSocketRef.current !== socket) return;
-      const message = JSON.parse(event.data);
-      if (message.type === "snapshot") {
-        setMaintenanceSession({
-          transcript: message.data || "",
-          status: message.status || "connected",
-          error: null,
-          shell: message.shell || "",
-        });
-      }
-      if (message.type === "ready") {
-        setMaintenanceSession((current) => ({
-          ...current,
-          status: message.status || "connected",
-          shell: message.shell || current.shell,
-          error: null,
-        }));
-      }
-      if (message.type === "output") {
-        setMaintenanceSession((current) => ({
-          ...current,
-          transcript: limitMaintenanceTranscript(`${current.transcript || ""}${message.data || ""}`),
-          status: message.status || "connected",
-          shell: message.shell || current.shell,
-          error: null,
-        }));
-      }
-      if (message.type === "error") {
-        setMaintenanceSession((current) => ({
-          ...current,
-          transcript: limitMaintenanceTranscript(`${current.transcript || ""}\r\n${message.data || "Maintenance console error"}\r\n`),
-          status: "error",
-          error: message.data || "Maintenance console error",
-        }));
-      }
-      if (message.type === "exit") {
-        setMaintenanceSession((current) => ({
-          ...current,
-          status: message.status || "closed",
-          error: message.data || "",
-        }));
-      }
-    };
-    socket.onerror = () => {
-      if (maintenanceSocketRef.current !== socket) return;
-      setMaintenanceSession((current) => ({ ...current, status: "error", error: "Maintenance console connection failed." }));
-    };
-    socket.onclose = () => {
-      if (maintenanceSocketRef.current !== socket) return;
-      maintenanceSocketRef.current = null;
-    };
-  }
-
-  function sendMaintenanceInput(data) {
-    const socket = maintenanceSocketRef.current;
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "input", data }));
-      return;
-    }
-    connectMaintenanceConsole();
-  }
-
-  function resizeMaintenanceConsole(cols, rows) {
-    const socket = maintenanceSocketRef.current;
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "resize", cols, rows }));
-    }
-  }
-
   return (
     <section className="mx-auto grid w-full max-w-2xl gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -673,24 +549,7 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Maintenance console</CardTitle>
-          <CardDescription>Open a realtime local terminal inside the AIPermission gateway runtime.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <Notice tone="warn">
-            Local UI-only diagnostics for the gateway runtime. It is not exposed to MCP, output is bounded in memory, and open/close
-            lifecycle events are audited.
-          </Notice>
-          <Button type="button" onClick={openMaintenanceConsole}>
-            <Terminal className="h-4 w-4" />
-            Open maintenance console
-          </Button>
-          {maintenanceOpenError ? <Notice tone="bad">{maintenanceOpenError}</Notice> : null}
-        </CardContent>
-      </Card>
-
+      <MaintenanceConsolePanel />
       <HistoryRetentionPanel />
       <HistoryLabelsPanel />
       <DatabaseSettingsPanel databaseName={databaseName} />
@@ -1203,62 +1062,12 @@ export function SettingsPage() {
           </div>
         </form>
       </Dialog>
-
-      <Dialog
-        open={maintenanceOpen}
-        title="Maintenance console"
-        description="Interactive local terminal inside the gateway container."
-        onClose={closeMaintenanceConsole}
-        size="wide"
-        className="h-[calc(100vh-100px)] !w-[85vw] !max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]"
-        bodyClassName="min-h-0 p-0"
-        closeOnOverlay={false}
-      >
-        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
-          <div className="border-b border-stone-200 p-4">
-            <Notice tone="warn" className="py-2 text-xs">
-              Local UI-only diagnostics for the gateway runtime. It is not exposed to MCP. Avoid printing secrets in this terminal.
-            </Notice>
-          </div>
-          <div className="min-h-0">
-            <PtyConsole session={maintenanceSession} onInput={sendMaintenanceInput} onResize={resizeMaintenanceConsole} theme="dark" />
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 px-4 py-3 text-xs text-stone-500">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 px-2 py-1 font-semibold text-stone-700">
-                <Terminal className="h-3.5 w-3.5" />
-                {maintenanceSession.status || "closed"}
-              </span>
-              {maintenanceSession.shell ? <span className="truncate font-mono">{maintenanceSession.shell}</span> : null}
-              {maintenanceSession.error || maintenanceOpenError ? (
-                <span className="truncate text-red-600">{maintenanceSession.error || maintenanceOpenError}</span>
-              ) : null}
-            </div>
-            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={reconnectMaintenanceConsole}>
-              Reconnect
-            </Button>
-          </div>
-        </div>
-      </Dialog>
     </section>
   );
 }
 
 function providerLabel(providerType, catalog) {
   return catalog.find((item) => item.provider_type === providerType)?.label || providerType;
-}
-
-function maintenanceConsoleAttachUrl() {
-  const url = new URL(apiUrl, window.location.origin);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = "/api/settings/maintenance-console/attach";
-  return url.toString();
-}
-
-function limitMaintenanceTranscript(value) {
-  const maxLength = 200000;
-  if (value.length <= maxLength) return value;
-  return value.slice(value.length - maxLength);
 }
 
 function formatTimestamp(value) {
