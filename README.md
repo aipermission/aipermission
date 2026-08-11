@@ -193,6 +193,8 @@ Implemented:
   prepared action payload drift
 - unread message badges and AI-to-user/user-to-AI notes
 - SQLCipher FTS4-backed searchable command history and audit log pages
+- transactional audit outbox for security-sensitive local mutations, with
+  idempotent searchable projection and durable retry health
 - queued SSH/SFTP upload and download from the local web UI
 - remote SFTP browser for upload folders and download file selection
 - pause/resume/cancel transfer queues with live progress, speed, ETA, checksum, server, and path metadata

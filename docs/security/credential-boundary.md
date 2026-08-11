@@ -173,7 +173,7 @@ Disallowed fields include:
 - private key passphrases
 - full database connection strings
 
-The planned transactional audit boundary preserves the same rule for both the
+The transactional audit boundary preserves the same rule for both the
 durable outbox and its searchable audit projection. Encryption at rest does not
 permit plaintext credential values in either record. See
 [ADR 0007: Transactional Audit Outbox](../adr/0007-transactional-audit-outbox.md).

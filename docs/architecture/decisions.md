@@ -132,5 +132,7 @@ Consequence:
 - Shared application services, not connectors, own the transaction and outbox.
 - Remote side effects use durable lifecycle transitions and do not claim
   exactly-once execution.
-- The current helper remains transitional until the staged migration in ADR
-  0007 is implemented.
+- `audit_outbox` is the durable record; `audit_logs` is its idempotent searchable
+  projection.
+- Read observations and external-side-effect telemetry remain explicitly
+  separate from the atomic local-mutation guarantee.
