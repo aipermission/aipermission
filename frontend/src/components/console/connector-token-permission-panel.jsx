@@ -1,5 +1,5 @@
 import { KeyRound, PanelRightClose, PanelRightOpen, RefreshCcw, TicketCheck } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   connectorTargetProfileLifetime,
   currentConnectorTargetProfilePermissions,
@@ -44,7 +44,7 @@ export function ConnectorTokenPermissionPanel({
   onRefresh,
   onOpenMessages,
 }) {
-  const activeTokens = tokens.data.filter((token) => !token.revoked_at);
+  const activeTokens = useMemo(() => tokens.data.filter((token) => !token.revoked_at), [tokens.data]);
   const [savingKey, setSavingKey] = useState("");
   const [openTokenID, setOpenTokenID] = useState(null);
   const [profileByToken, setProfileByToken] = useState({});
@@ -54,20 +54,18 @@ export function ConnectorTokenPermissionPanel({
   const compactPanelRef = useRef(null);
   const tokenIDsKey = activeTokens.map((token) => token.id).join(",");
   const load = connectorPermissionState || { state: "idle", data: {}, actionsByTargetRef: {}, error: null };
-  const permissionsByToken = load.data || {};
-  const targetProfiles = useMemo(
-    () => profilesForConnectorTarget(targets?.data || [], selectedTarget),
-    [targets?.data, selectedTarget?.connector_kind, selectedTarget?.target_id],
-  );
+  const permissionsByToken = useMemo(() => load.data || {}, [load.data]);
+  const targetProfiles = useMemo(() => profilesForConnectorTarget(targets?.data || [], selectedTarget), [targets?.data, selectedTarget]);
   const targetProfileSignature = targetProfiles.map((profile) => profile.profile_id).join(",");
+  const loadConnectorPermissionsForEffect = useEffectEvent(() => loadConnectorPermissions());
 
   useEffect(() => {
     if (!selectedTarget) {
       setProfileByToken({});
       return;
     }
-    void loadConnectorPermissions();
-  }, [selectedTarget?.connector_kind, selectedTarget?.target_id, targetProfileSignature, tokenIDsKey]);
+    void loadConnectorPermissionsForEffect();
+  }, [selectedTarget, targetProfileSignature, tokenIDsKey]);
 
   useEffect(() => {
     if (!selectedTarget || targetProfiles.length === 0) return;
@@ -87,7 +85,7 @@ export function ConnectorTokenPermissionPanel({
       }
       return changed ? next : current;
     });
-  }, [selectedTarget?.connector_kind, selectedTarget?.target_id, targetProfileSignature, tokenIDsKey]);
+  }, [selectedTarget, targetProfiles, activeTokens]);
 
   useEffect(() => {
     if (!openTokenID) return undefined;

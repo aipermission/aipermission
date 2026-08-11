@@ -11,9 +11,9 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState({});
   const [projectID, setProjectID] = useState("");
-  const items = state.options?.items || [];
-  const defaults = state.options?.defaults || [];
-  const projects = state.options?.projects || [];
+  const items = useMemo(() => state.options?.items || [], [state.options?.items]);
+  const defaults = useMemo(() => state.options?.defaults || [], [state.options?.defaults]);
+  const projects = useMemo(() => state.options?.projects || [], [state.options?.projects]);
   const projectNames = useMemo(() => Object.fromEntries(projects.map((project) => [Number(project.id), project.name])), [projects]);
   const availableItems = useMemo(() => {
     const byID = new Map(items.map((item) => [Number(item.id), item]));
@@ -46,13 +46,7 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
     setSelected(next);
     setQuery("");
     setProjectID(String(state.options?.target_project_id || projects[0]?.id || ""));
-  }, [
-    state.open,
-    state.runtime?.id,
-    state.options?.target_project_id,
-    defaults.map((item) => `${item.id}:${item.binding_revision}`).join(","),
-    projects.map((project) => project.id).join(","),
-  ]);
+  }, [state.open, state.runtime?.id, state.options?.target_project_id, defaults, projects]);
 
   const visibleItems = useMemo(() => {
     const needle = query.trim().toLowerCase();

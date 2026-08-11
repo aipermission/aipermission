@@ -6,7 +6,7 @@ import { Dialog } from "../ui/dialog";
 import { TerminalBlock } from "../ui/terminal-block";
 
 export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose }) {
-  const items = approvals?.data || [];
+  const items = useMemo(() => approvals?.data || [], [approvals?.data]);
   const [selectedID, setSelectedID] = useState(null);
   const selected = useMemo(() => {
     if (selectedID) return items.find((item) => Number(item.id) === Number(selectedID)) || items[0] || null;
