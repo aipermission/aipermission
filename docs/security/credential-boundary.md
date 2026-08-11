@@ -1,12 +1,14 @@
 # Credential Boundary
 
-The core security rule:
+The core credential-return guarantee:
 
-> Credentials never leave the local gateway.
+> Gateway-held credential values are never returned through MCP or REST
+> responses.
 
 The AI assistant, MCP client, and API token never receive SSH private keys, SSH
 passwords, database passwords, API credentials, or decrypted connection
-strings.
+strings. The gateway decrypts the selected credential in local process memory
+only while preparing or executing an allowed connector action.
 
 Connector targets use credential profiles. SSH profiles can reference
 gateway-generated or explicitly imported key material. Postgres and ClickHouse
@@ -14,7 +16,10 @@ profiles store database connection secrets. Mail profiles store IMAP/SMTP
 passwords or provider app passwords. Future connectors define their own
 credential schemas, but the boundary remains the same: credentials stay in the encrypted
 local gateway and are used only during approved or permitted connector action
-execution.
+execution. This guarantee does not make arbitrary connector output safe: a
+permitted command, query, log read, mailbox read, or object read can return
+sensitive target data. Output redaction is defense in depth and best effort,
+not a credential or data-loss-prevention guarantee.
 
 ## Stored Secrets
 

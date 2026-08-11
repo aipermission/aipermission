@@ -45,7 +45,7 @@ sessions, messages, history, and audit logs.
 | Principle | What it means |
 | --- | --- |
 | Local-only | The gateway runs on the developer's own machine and stays bound to localhost. |
-| Credential boundary | SSH keys, database passwords, API tokens, and connector secrets never leave the gateway. |
+| Credential boundary | Gateway-held SSH keys, database passwords, API tokens, and connector secret values are never returned through MCP or REST. |
 | Scoped tokens | Each AI/client token sees only the connector targets and actions explicitly granted to it. |
 | Human control | Commands can require Run / Decline approval before execution. |
 | Observable work | Users can watch live connector views, send notes, and review history. |

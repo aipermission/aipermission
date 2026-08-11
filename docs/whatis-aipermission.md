@@ -91,7 +91,10 @@ It is for:
 
 The user grants temporary, scoped access to selected connector targets and actions. The AI calls the gateway through MCP. The gateway checks token validity, target/profile/action permission, and execution rule. It either runs the action, asks the user for approval, or blocks the request.
 
-Credentials never leave the gateway.
+Gateway-held credential values are never returned through MCP or REST. The
+gateway uses them locally for permitted connector actions; permitted action
+output can still contain sensitive target data and redaction remains best
+effort.
 
 Saved token action permissions are separate from the live MCP execution switch.
 By default, each unlock starts with MCP execution stopped. The user starts MCP
@@ -317,8 +320,8 @@ If the SSH target is named `core-1`, the AI may see:
 }
 ```
 
-The SSH credential for `core-1` never leaves the gateway. The same rule applies
-to Postgres passwords and future connector secrets.
+The SSH credential value for `core-1` is never returned through MCP or REST.
+The same rule applies to Postgres passwords and future connector secrets.
 
 If the global MCP switch is stopped, new MCP command execution is blocked even
 when the token still has saved connector action permissions.
