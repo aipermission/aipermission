@@ -3,8 +3,9 @@ import test from "node:test";
 import { unlockSource, settingsSource, backupRetentionPanelSource, shellSource } from "./app-smoke-fixtures.js";
 
 test("Settings database delete requires a confirmation dialog and current password", () => {
-  assert.match(settingsSource, /onSubmit=\{requestDeleteDatabase\}/);
   assert.match(settingsSource, /setDeleteDialogOpen\(true\)/);
+  assert.match(settingsSource, /title="Delete database"/);
+  assert.match(settingsSource, /onSubmit=\{deleteDatabase\}/);
   assert.match(settingsSource, /autoFocusClose=\{false\}/);
   assert.match(settingsSource, /Current database password/);
   assert.match(settingsSource, /deletePasswordRef/);

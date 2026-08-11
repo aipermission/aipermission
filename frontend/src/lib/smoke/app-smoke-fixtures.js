@@ -21,7 +21,20 @@ export const connectorActivityDialogSource = readFileSync(
   join(currentDir, "..", "components", "console", "connector-activity-dialog.jsx"),
   "utf8",
 );
-export const settingsSource = readFileSync(join(currentDir, "..", "pages", "settings.jsx"), "utf8");
+export const settingsSource = [
+  "settings.jsx",
+  "database-settings-panel.jsx",
+  "password-settings-dialog.jsx",
+  "history-retention-panel.jsx",
+  "history-labels-panel.jsx",
+]
+  .map((filename, index) =>
+    readFileSync(
+      index === 0 ? join(currentDir, "..", "pages", filename) : join(currentDir, "..", "components", "settings", filename),
+      "utf8",
+    ),
+  )
+  .join("\n");
 export const backupRetentionPanelSource = readFileSync(
   join(currentDir, "..", "components", "settings", "backup-retention-panel.jsx"),
   "utf8",
