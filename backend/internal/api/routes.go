@@ -231,7 +231,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service": "aipermission",
 		"status":  "running",
-		"audit":   s.auditHealth.snapshot(),
+		"audit":   s.auditHealthSnapshot(r.Context()),
 		"config":  s.config.PublicStatusMinimal(),
 		"features": []string{
 			"local-docker-runtime",

@@ -169,6 +169,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 	runtime.securityLoaded = true
 	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	s.configureVaultSessionRuntime(runtime)
+	s.configureAuditDispatcher(runtime)
 	return runtime, nil
 }
 
@@ -332,6 +333,9 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) {
+	if runtime.auditDispatcher != nil {
+		runtime.auditDispatcher.Stop()
+	}
 	if runtime.vaultLeases != nil {
 		runtime.vaultLeases.Clear()
 	}

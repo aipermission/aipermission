@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -253,29 +254,43 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 	payloadJSON := s.redactForPersistence(ctx, runtime, string(payloadBytes))
 	connectorKind, projectID, targetID, profileID, actionRequestID := auditConnectorMetadata(payload)
 	projectID = resolveAuditProjectID(ctx, runtime.database, projectID, targetID, runtimeID)
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = runtime.database.ExecContext(ctx, `
-		INSERT INTO audit_logs (
-			actor_type, token_id, project_id, runtime_id, connector_kind, target_id, profile_id,
-			action_request_id, action, payload_json, created_at
-		)
-		VALUES (?, ?, NULLIF(?, 0), NULLIF(?, 0), ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?)`,
-		actorType,
-		nullableInt64(tokenID),
-		projectID,
-		runtimeID,
-		connectorKind,
-		targetID,
-		profileID,
-		actionRequestID,
-		action,
-		payloadJSON,
-		now,
-	)
+	_, err = (auditoutbox.Store{}).Append(ctx, runtime.database, auditoutbox.Event{
+		ActorType:       actorType,
+		TokenID:         tokenID,
+		ProjectID:       projectID,
+		RuntimeID:       runtimeID,
+		ConnectorKind:   connectorKind,
+		TargetID:        targetID,
+		ProfileID:       profileID,
+		ActionRequestID: actionRequestID,
+		Action:          action,
+		LifecyclePhase:  auditLifecyclePhase(action),
+		PayloadJSON:     payloadJSON,
+	})
 	if err != nil {
-		return fmt.Errorf("write audit log: %w", err)
+		return fmt.Errorf("append audit event: %w", err)
+	}
+	dispatcher := runtime.auditDispatcher
+	if dispatcher == nil {
+		dispatcher = auditoutbox.NewDispatcher(runtime.database)
+	}
+	if _, dispatchErr := dispatcher.DispatchOnce(ctx); dispatchErr != nil {
+		s.auditHealth.recordFailure(time.Now())
+		log.Printf("audit projection failed action=%q error=%v", action, dispatchErr)
+		dispatcher.Notify()
 	}
 	return nil
+}
+
+func auditLifecyclePhase(action string) string {
+	action = strings.TrimSpace(action)
+	if index := strings.LastIndexByte(action, '.'); index >= 0 && index+1 < len(action) {
+		switch phase := action[index+1:]; phase {
+		case "requested", "started", "completed", "failed", "declined", "canceled", "stale", "updated", "created", "deleted":
+			return phase
+		}
+	}
+	return "observed"
 }
 
 func auditConnectorMetadata(payload any) (string, int64, int64, int64, int64) {
