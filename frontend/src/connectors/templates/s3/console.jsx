@@ -10,6 +10,7 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost, saveBlob } from "../../../lib/api";
 import { S3PresignDialog } from "./presign-dialog";
+import { S3VersionsDialog, VersionsIcon } from "./versions-dialog";
 
 const defaultListLimit = 100;
 const defaultUploadDialog = {
@@ -39,6 +40,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const [uploadDialog, setUploadDialog] = useState(defaultUploadDialog);
   const [transferOpen, setTransferOpen] = useState(false);
   const [presignOpen, setPresignOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const [renameDialog, setRenameDialog] = useState(defaultRenameDialog);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
@@ -82,6 +84,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     setUploadDialog(defaultUploadDialog);
     setTransferOpen(false);
     setPresignOpen(false);
+    setVersionsOpen(false);
     setRenameDialog(defaultRenameDialog);
     setState({ state: "idle", error: "", message: "" });
   }, [target.ref, activeSession.active, activeSession.startedAt]);
@@ -602,6 +605,16 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
                     type="button"
                     variant="outline"
                     className="h-8 w-8 px-0"
+                    title="Object versions"
+                    disabled={!selectedKey || state.state !== "idle"}
+                    onClick={() => setVersionsOpen(true)}
+                  >
+                    <VersionsIcon />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 w-8 px-0"
                     title="Download object"
                     disabled={!selectedKey || state.state !== "idle"}
                     onClick={downloadSelected}
@@ -686,6 +699,19 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
         mutedClass={mutedClass}
         onClose={() => setPresignOpen(false)}
         onRun={runS3Action}
+      />
+      <S3VersionsDialog
+        open={versionsOpen}
+        objectKey={selectedKey}
+        theme={theme}
+        borderClass={borderClass}
+        mutedClass={mutedClass}
+        onClose={() => setVersionsOpen(false)}
+        onRun={runS3Action}
+        onChanged={async () => {
+          await refreshObjects({ reset: true });
+          if (selectedKey) await readObjectMetadata(selectedKey);
+        }}
       />
       <S3UploadDialog
         value={uploadDialog}
