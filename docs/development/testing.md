@@ -2,6 +2,12 @@
 
 Use the root `Makefile` for the common verification set.
 
+Direct backend tests require a C compiler and OpenSSL 3 development headers
+because the pinned SQLCipher wrapper uses CGO. Debian/Ubuntu contributors can
+install `build-essential libssl-dev`; the backend Docker build installs the
+same native dependency itself. CI uses the shared
+`.github/actions/setup-backend-native` action so all Go jobs stay aligned.
+
 ## Quick Checks
 
 ```bash

@@ -21,6 +21,12 @@ of scope for the core project.
 
 ## Development
 
+Backend development uses CGO and OpenSSL 3 for SQLCipher. On Debian/Ubuntu,
+install `build-essential` and `libssl-dev`. On macOS, install OpenSSL 3 with
+Homebrew and expose its include/library paths to CGO. Windows contributors can
+use the repository Docker build, which owns these native dependencies. The
+published runtime image includes `libssl3` explicitly.
+
 Install JavaScript workspaces from the repository root:
 
 ```bash
