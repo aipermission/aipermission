@@ -1,6 +1,33 @@
-export const appVersion = "0.2.23";
+export const appVersion = "0.2.24";
 
 export const changelogEntries = [
+  {
+    version: "0.2.24",
+    label: "Failure recovery and release integrity",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "Interrupted connector actions recover as outcome unknown so agents do not blindly retry a remote side effect whose result cannot be proven.",
+          "Pull requests now run browser smoke tests, while one canonical manifest keeps release metadata synchronized.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Connector action state and History projections now commit atomically, preventing lifecycle records from drifting apart.",
+          "Failed database rename and import operations recover or quarantine their target instead of leaving a misleading occupied database name.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Container releases scan, promote, verify, and sign the same registry digest after required source checks pass.",
+          "The embedded SQLCipher runtime now has a machine-readable native dependency inventory and runtime version assertion.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.23",
     label: "Maintenance hardening",
