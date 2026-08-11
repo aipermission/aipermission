@@ -43,7 +43,7 @@ jobs:
             frontend/package-lock.json
             packages/mcp/package-lock.json
 
-      - uses: github/codeql-action/init@9e3211c9a3b9311dfe05da2ed48eea3386f042dd
+      - uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
