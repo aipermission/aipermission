@@ -1,5 +1,7 @@
 package api
 
+//go:generate go run ../../cmd/openapi -routes routes.go -output ../../../docs/api/openapi.json
+
 import (
 	"net/http"
 	"time"

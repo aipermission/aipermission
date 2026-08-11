@@ -1,0 +1,3067 @@
+{
+  "info": {
+    "description": "Generated route inventory for the local-only gateway. Typed request and response schemas remain documented in rest-api.md until they are migrated into this contract.",
+    "title": "AIPermission Local REST API",
+    "version": "route-inventory-v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/audit-logs": {
+      "get": {
+        "operationId": "getApiAuditLogs",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "audit-logs"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/audit-logs/{id}": {
+      "get": {
+        "operationId": "getApiAuditLogsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "audit-logs"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/download": {
+      "get": {
+        "operationId": "getApiBackupDownload",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/freshness": {
+      "get": {
+        "operationId": "getApiBackupFreshness",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/import": {
+      "post": {
+        "operationId": "postApiBackupImport",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers": {
+      "get": {
+        "operationId": "getApiBackupProviders",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiBackupProviders",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/catalog": {
+      "get": {
+        "operationId": "getApiBackupProvidersCatalog",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}": {
+      "delete": {
+        "operationId": "deleteApiBackupProvidersById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiBackupProvidersById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/enable": {
+      "post": {
+        "operationId": "postApiBackupProvidersByIdEnable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/prune": {
+      "post": {
+        "operationId": "postApiBackupProvidersByIdPrune",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/records": {
+      "get": {
+        "operationId": "getApiBackupProvidersByIdRecords",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/records/delete": {
+      "post": {
+        "operationId": "postApiBackupProvidersByIdRecordsDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/records/{record_id}/download": {
+      "get": {
+        "operationId": "getApiBackupProvidersByIdRecordsByRecordIdDownload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/records/{record_id}/restore": {
+      "post": {
+        "operationId": "postApiBackupProvidersByIdRecordsByRecordIdRestore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/test": {
+      "post": {
+        "operationId": "postApiBackupProvidersByIdTest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/providers/{id}/upload": {
+      "post": {
+        "operationId": "postApiBackupProvidersByIdUpload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/remote/list": {
+      "post": {
+        "operationId": "postApiBackupRemoteList",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/backup/remote/restore": {
+      "post": {
+        "operationId": "postApiBackupRemoteRestore",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "backup"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-action-approvals": {
+      "get": {
+        "operationId": "getApiConnectorActionApprovals",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-action-approvals"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-action-approvals/{id}": {
+      "get": {
+        "operationId": "getApiConnectorActionApprovalsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-action-approvals"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-action-approvals/{id}/decline": {
+      "post": {
+        "operationId": "postApiConnectorActionApprovalsByIdDecline",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-action-approvals"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-action-approvals/{id}/run": {
+      "post": {
+        "operationId": "postApiConnectorActionApprovalsByIdRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-action-approvals"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-actions/local-run": {
+      "post": {
+        "operationId": "postApiConnectorActionsLocalRun",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-actions"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets": {
+      "get": {
+        "operationId": "getApiConnectorTargets",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiConnectorTargets",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/inventory": {
+      "get": {
+        "operationId": "getApiConnectorTargetsInventory",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/ping": {
+      "post": {
+        "operationId": "postApiConnectorTargetsPing",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/test": {
+      "post": {
+        "operationId": "postApiConnectorTargetsTest",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/with-profile": {
+      "post": {
+        "operationId": "postApiConnectorTargetsWithProfile",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}": {
+      "delete": {
+        "operationId": "deleteApiConnectorTargetsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "get": {
+        "operationId": "getApiConnectorTargetsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiConnectorTargetsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/operations/{operation}": {
+      "post": {
+        "operationId": "postApiConnectorTargetsByIdOperationsByOperation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/profiles": {
+      "get": {
+        "operationId": "getApiConnectorTargetsByIdProfiles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiConnectorTargetsByIdProfiles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/profiles/{profile_id}": {
+      "delete": {
+        "operationId": "deleteApiConnectorTargetsByIdProfilesByProfileId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiConnectorTargetsByIdProfilesByProfileId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/profiles/{profile_id}/actions": {
+      "get": {
+        "operationId": "getApiConnectorTargetsByIdProfilesByProfileIdActions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/profiles/{profile_id}/backup": {
+      "get": {
+        "operationId": "getApiConnectorTargetsByIdProfilesByProfileIdBackup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/profiles/{profile_id}/provision": {
+      "post": {
+        "operationId": "postApiConnectorTargetsByIdProfilesByProfileIdProvision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/profiles/{profile_id}/restore": {
+      "post": {
+        "operationId": "postApiConnectorTargetsByIdProfilesByProfileIdRestore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/profiles/{profile_id}/test": {
+      "post": {
+        "operationId": "postApiConnectorTargetsByIdProfilesByProfileIdTest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connector-targets/{id}/with-profile/{profile_id}": {
+      "put": {
+        "operationId": "putApiConnectorTargetsByIdWithProfileByProfileId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connector-targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connectors": {
+      "get": {
+        "operationId": "getApiConnectors",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connectors/{kind}": {
+      "get": {
+        "operationId": "getApiConnectorsByKind",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connectors/{kind}/credentials": {
+      "get": {
+        "operationId": "getApiConnectorsByKindCredentials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiConnectorsByKindCredentials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connectors/{kind}/credentials/import": {
+      "post": {
+        "operationId": "postApiConnectorsByKindCredentialsImport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connectors/{kind}/credentials/{id}": {
+      "delete": {
+        "operationId": "deleteApiConnectorsByKindCredentialsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "get": {
+        "operationId": "getApiConnectorsByKindCredentialsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiConnectorsByKindCredentialsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/bulk-exec": {
+      "post": {
+        "operationId": "postApiConsoleBulkExec",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/command-requests/{id}": {
+      "get": {
+        "operationId": "getApiConsoleCommandRequestsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/runtime-surfaces/{id}/restart": {
+      "post": {
+        "operationId": "postApiConsoleRuntimeSurfacesByIdRestart",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/sessions": {
+      "get": {
+        "operationId": "getApiConsoleSessions",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiConsoleSessions",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/sessions/{id}": {
+      "get": {
+        "operationId": "getApiConsoleSessionsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/sessions/{id}/attach": {
+      "get": {
+        "operationId": "getApiConsoleSessionsByIdAttach",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/sessions/{id}/close": {
+      "post": {
+        "operationId": "postApiConsoleSessionsByIdClose",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/sessions/{id}/input": {
+      "post": {
+        "operationId": "postApiConsoleSessionsByIdInput",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/targets/{id}/restart": {
+      "post": {
+        "operationId": "postApiConsoleTargetsByIdRestart",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/databases/change-password": {
+      "post": {
+        "operationId": "postApiDatabasesChangePassword",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "databases"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/databases/delete": {
+      "post": {
+        "operationId": "postApiDatabasesDelete",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "databases"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/databases/delete-locked": {
+      "post": {
+        "operationId": "postApiDatabasesDeleteLocked",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "databases"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/databases/rename": {
+      "post": {
+        "operationId": "postApiDatabasesRename",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "databases"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/databases/switch": {
+      "post": {
+        "operationId": "postApiDatabasesSwitch",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "databases"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches": {
+      "get": {
+        "operationId": "getApiFileTransferBatches",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches/{id}": {
+      "get": {
+        "operationId": "getApiFileTransferBatchesById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches/{id}/approve": {
+      "post": {
+        "operationId": "postApiFileTransferBatchesByIdApprove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches/{id}/cancel": {
+      "post": {
+        "operationId": "postApiFileTransferBatchesByIdCancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches/{id}/decline": {
+      "post": {
+        "operationId": "postApiFileTransferBatchesByIdDecline",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches/{id}/download": {
+      "get": {
+        "operationId": "getApiFileTransferBatchesByIdDownload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches/{id}/pause": {
+      "post": {
+        "operationId": "postApiFileTransferBatchesByIdPause",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches/{id}/queue": {
+      "post": {
+        "operationId": "postApiFileTransferBatchesByIdQueue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfer-batches/{id}/resume": {
+      "post": {
+        "operationId": "postApiFileTransferBatchesByIdResume",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfer-batches"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers": {
+      "get": {
+        "operationId": "getApiFileTransfers",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers/browse": {
+      "post": {
+        "operationId": "postApiFileTransfersBrowse",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers/download": {
+      "post": {
+        "operationId": "postApiFileTransfersDownload",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers/download-batch": {
+      "post": {
+        "operationId": "postApiFileTransfersDownloadBatch",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers/upload": {
+      "post": {
+        "operationId": "postApiFileTransfersUpload",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers/upload-batch": {
+      "post": {
+        "operationId": "postApiFileTransfersUploadBatch",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers/{id}": {
+      "get": {
+        "operationId": "getApiFileTransfersById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers/{id}/cancel": {
+      "post": {
+        "operationId": "postApiFileTransfersByIdCancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/file-transfers/{id}/download": {
+      "get": {
+        "operationId": "getApiFileTransfersByIdDownload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/history": {
+      "get": {
+        "operationId": "getApiHistory",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "history"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/history-labels": {
+      "get": {
+        "operationId": "getApiHistoryLabels",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "history-labels"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiHistoryLabels",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "history-labels"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/history-labels/{id}": {
+      "delete": {
+        "operationId": "deleteApiHistoryLabelsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "history-labels"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/history/targets": {
+      "get": {
+        "operationId": "getApiHistoryTargets",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "history"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/history/{id}": {
+      "get": {
+        "operationId": "getApiHistoryById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "history"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/history/{id}/labels": {
+      "post": {
+        "operationId": "postApiHistoryByIdLabels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "history"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/history/{id}/labels/{label_id}": {
+      "delete": {
+        "operationId": "deleteApiHistoryByIdLabelsByLabelId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "label_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "history"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/lock": {
+      "post": {
+        "operationId": "postApiLock",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "lock"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/connector-action-requests/{id}": {
+      "get": {
+        "operationId": "getApiMcpConnectorActionRequestsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/connector-actions": {
+      "get": {
+        "operationId": "getApiMcpConnectorActions",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/connector-actions/call": {
+      "post": {
+        "operationId": "postApiMcpConnectorActionsCall",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/connector-help": {
+      "get": {
+        "operationId": "getApiMcpConnectorHelp",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/connector-targets": {
+      "get": {
+        "operationId": "getApiMcpConnectorTargets",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/vault-action-requests/{id}": {
+      "get": {
+        "operationId": "getApiMcpVaultActionRequestsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/vault-action-requests/{id}/cancel": {
+      "post": {
+        "operationId": "postApiMcpVaultActionRequestsByIdCancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/vault-actions/call": {
+      "post": {
+        "operationId": "postApiMcpVaultActionsCall",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/vault-items": {
+      "get": {
+        "operationId": "getApiMcpVaultItems",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/messages": {
+      "get": {
+        "operationId": "getApiMessages",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "messages"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiMessages",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "messages"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/messages/read": {
+      "post": {
+        "operationId": "postApiMessagesRead",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "messages"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "operationId": "getApiProjects",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "projects"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiProjects",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "projects"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/projects/{id}": {
+      "delete": {
+        "operationId": "deleteApiProjectsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "projects"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiProjectsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "projects"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/maintenance-console/attach": {
+      "get": {
+        "operationId": "getApiSettingsMaintenanceConsoleAttach",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/maintenance-console/close": {
+      "post": {
+        "operationId": "postApiSettingsMaintenanceConsoleClose",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/maintenance-console/open": {
+      "post": {
+        "operationId": "postApiSettingsMaintenanceConsoleOpen",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/maintenance-console/status": {
+      "get": {
+        "operationId": "getApiSettingsMaintenanceConsoleStatus",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/mcp-runtime": {
+      "get": {
+        "operationId": "getApiSettingsMcpRuntime",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiSettingsMcpRuntime",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/redaction-rules": {
+      "get": {
+        "operationId": "getApiSettingsRedactionRules",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiSettingsRedactionRules",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/redaction-rules/{id}": {
+      "delete": {
+        "operationId": "deleteApiSettingsRedactionRulesById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiSettingsRedactionRulesById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/retention": {
+      "get": {
+        "operationId": "getApiSettingsRetention",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiSettingsRetention",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/retention/purge": {
+      "post": {
+        "operationId": "postApiSettingsRetentionPurge",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/security": {
+      "get": {
+        "operationId": "getApiSettingsSecurity",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiSettingsSecurity",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/status": {
+      "get": {
+        "operationId": "getApiStatus",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "status"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/targets": {
+      "get": {
+        "operationId": "getApiTargets",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "targets"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/tokens": {
+      "get": {
+        "operationId": "getApiTokens",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiTokens",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/tokens/{id}/connector-permissions": {
+      "get": {
+        "operationId": "getApiTokensByIdConnectorPermissions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiTokensByIdConnectorPermissions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/tokens/{id}/project-capabilities": {
+      "get": {
+        "operationId": "getApiTokensByIdProjectCapabilities",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiTokensByIdProjectCapabilities",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/tokens/{id}/project-scopes": {
+      "get": {
+        "operationId": "getApiTokensByIdProjectScopes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiTokensByIdProjectScopes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/tokens/{id}/revoke": {
+      "post": {
+        "operationId": "postApiTokensByIdRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "tokens"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/unlock": {
+      "post": {
+        "operationId": "postApiUnlock",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "unlock"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/unlock/setup": {
+      "post": {
+        "operationId": "postApiUnlockSetup",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "unlock"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/unlock/status": {
+      "get": {
+        "operationId": "getApiUnlockStatus",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "unlock"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-action-approvals": {
+      "get": {
+        "operationId": "getApiVaultActionApprovals",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-action-approvals"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-action-approvals/{id}/decline": {
+      "post": {
+        "operationId": "postApiVaultActionApprovalsByIdDecline",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-action-approvals"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-action-approvals/{id}/run": {
+      "post": {
+        "operationId": "postApiVaultActionApprovalsByIdRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-action-approvals"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-default-bindings": {
+      "get": {
+        "operationId": "getApiVaultDefaultBindings",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-default-bindings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiVaultDefaultBindings",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-default-bindings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-default-bindings/{id}/delete": {
+      "post": {
+        "operationId": "postApiVaultDefaultBindingsByIdDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-default-bindings"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-items": {
+      "get": {
+        "operationId": "getApiVaultItems",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-items"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "post": {
+        "operationId": "postApiVaultItems",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-items"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-items/{id}": {
+      "get": {
+        "operationId": "getApiVaultItemsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-items"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      },
+      "put": {
+        "operationId": "putApiVaultItemsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-items"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-items/{id}/delete": {
+      "post": {
+        "operationId": "postApiVaultItemsByIdDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-items"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-items/{id}/generate-preview": {
+      "post": {
+        "operationId": "postApiVaultItemsByIdGeneratePreview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-items"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-items/{id}/reveal": {
+      "post": {
+        "operationId": "postApiVaultItemsByIdReveal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-items"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-items/{id}/value": {
+      "post": {
+        "operationId": "postApiVaultItemsByIdValue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-items"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/vault-session-options": {
+      "get": {
+        "operationId": "getApiVaultSessionOptions",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "vault-session-options"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "health"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3210"
+    }
+  ],
+  "x-aipermission-contract-level": "route-inventory",
+  "x-aipermission-generated-from": "backend/internal/api/routes.go"
+}

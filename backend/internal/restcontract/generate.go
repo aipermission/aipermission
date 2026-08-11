@@ -1,0 +1,202 @@
+package restcontract
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"sort"
+	"strconv"
+	"strings"
+	"unicode"
+)
+
+type Route struct {
+	Method string
+	Path   string
+}
+
+func ParseRoutes(source []byte) ([]Route, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), "routes.go", source, 0)
+	if err != nil {
+		return nil, fmt.Errorf("parse routes source: %w", err)
+	}
+	routes := []Route{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		if err != nil {
+			return false
+		}
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if selector.Sel.Name == "Handle" {
+			err = fmt.Errorf("unsupported Handle route registration; use HandleFunc so the route contract can be generated")
+			return false
+		}
+		if selector.Sel.Name != "HandleFunc" {
+			return true
+		}
+		if len(call.Args) == 0 {
+			err = fmt.Errorf("HandleFunc route registration has no pattern")
+			return false
+		}
+		literal, ok := call.Args[0].(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING {
+			err = fmt.Errorf("HandleFunc route pattern must be a string literal")
+			return false
+		}
+		pattern, unquoteErr := strconv.Unquote(literal.Value)
+		if unquoteErr != nil {
+			err = fmt.Errorf("decode route pattern %s: %w", literal.Value, unquoteErr)
+			return false
+		}
+		method, path, ok := strings.Cut(strings.TrimSpace(pattern), " ")
+		if !ok || method == "" || !strings.HasPrefix(path, "/") {
+			err = fmt.Errorf("invalid route pattern %q", pattern)
+			return false
+		}
+		routes = append(routes, Route{Method: strings.ToUpper(method), Path: path})
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(routes) == 0 {
+		return nil, fmt.Errorf("no HandleFunc routes found")
+	}
+	sort.Slice(routes, func(i, j int) bool {
+		if routes[i].Path == routes[j].Path {
+			return routes[i].Method < routes[j].Method
+		}
+		return routes[i].Path < routes[j].Path
+	})
+	for index := 1; index < len(routes); index++ {
+		if routes[index] == routes[index-1] {
+			return nil, fmt.Errorf("duplicate route %s %s", routes[index].Method, routes[index].Path)
+		}
+	}
+	return routes, nil
+}
+
+func Generate(source []byte) ([]byte, error) {
+	routes, err := ParseRoutes(source)
+	if err != nil {
+		return nil, err
+	}
+	paths := map[string]map[string]any{}
+	operationIDs := map[string]Route{}
+	for _, route := range routes {
+		operationID := routeOperationID(route)
+		if previous, exists := operationIDs[operationID]; exists {
+			return nil, fmt.Errorf("operation id %q collides for %s %s and %s %s", operationID, previous.Method, previous.Path, route.Method, route.Path)
+		}
+		operationIDs[operationID] = route
+		operation := map[string]any{
+			"operationId": operationID,
+			"responses": map[string]any{
+				"default": map[string]any{"description": "See the REST API reference for status and response body details."},
+			},
+			"tags":                          []string{routeTag(route.Path)},
+			"x-aipermission-contract-level": "route-inventory",
+		}
+		if parameters := pathParameters(route.Path); len(parameters) > 0 {
+			operation["parameters"] = parameters
+		}
+		if paths[route.Path] == nil {
+			paths[route.Path] = map[string]any{}
+		}
+		paths[route.Path][strings.ToLower(route.Method)] = operation
+	}
+	spec := map[string]any{
+		"openapi": "3.1.0",
+		"info": map[string]any{
+			"title":       "AIPermission Local REST API",
+			"version":     "route-inventory-v1",
+			"description": "Generated route inventory for the local-only gateway. Typed request and response schemas remain documented in rest-api.md until they are migrated into this contract.",
+		},
+		"servers":                       []map[string]string{{"url": "http://localhost:3210"}},
+		"paths":                         paths,
+		"x-aipermission-generated-from": "backend/internal/api/routes.go",
+		"x-aipermission-contract-level": "route-inventory",
+	}
+	var output bytes.Buffer
+	encoder := json.NewEncoder(&output)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(spec); err != nil {
+		return nil, fmt.Errorf("encode OpenAPI route inventory: %w", err)
+	}
+	return output.Bytes(), nil
+}
+
+func routeOperationID(route Route) string {
+	parts := splitIdentifier(route.Path)
+	var output strings.Builder
+	output.WriteString(strings.ToLower(route.Method))
+	for _, part := range parts {
+		if strings.HasPrefix(part, "{") {
+			output.WriteString("By")
+			part = strings.Trim(part, "{}")
+		}
+		output.WriteString(upperCamel(part))
+	}
+	return output.String()
+}
+
+func splitIdentifier(value string) []string {
+	return strings.FieldsFunc(value, func(character rune) bool {
+		return !(unicode.IsLetter(character) || unicode.IsDigit(character) || character == '_' || character == '{' || character == '}')
+	})
+}
+
+func upperCamel(value string) string {
+	parts := strings.FieldsFunc(value, func(character rune) bool {
+		return !(unicode.IsLetter(character) || unicode.IsDigit(character))
+	})
+	for index, part := range parts {
+		if part == "" {
+			continue
+		}
+		runes := []rune(strings.ToLower(part))
+		runes[0] = unicode.ToUpper(runes[0])
+		parts[index] = string(runes)
+	}
+	return strings.Join(parts, "")
+}
+
+func routeTag(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return "root"
+	}
+	if parts[0] == "api" && len(parts) > 1 {
+		return parts[1]
+	}
+	return parts[0]
+}
+
+func pathParameters(path string) []map[string]any {
+	parameters := []map[string]any{}
+	for _, part := range strings.Split(path, "/") {
+		if !strings.HasPrefix(part, "{") || !strings.HasSuffix(part, "}") {
+			continue
+		}
+		name := strings.Trim(part, "{}")
+		typeName := "string"
+		if name == "id" || strings.HasSuffix(name, "_id") {
+			typeName = "integer"
+		}
+		parameters = append(parameters, map[string]any{
+			"name": name, "in": "path", "required": true,
+			"schema": map[string]string{"type": typeName},
+		})
+	}
+	return parameters
+}

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"os"
-	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/restcontract"
 )
 
 func TestRESTDocsMentionRegisteredRoutes(t *testing.T) {
@@ -17,16 +19,31 @@ func TestRESTDocsMentionRegisteredRoutes(t *testing.T) {
 		t.Fatalf("read rest docs: %v", err)
 	}
 	docText := string(docs)
-	routePattern := regexp.MustCompile(`HandleFunc\("([A-Z]+) ([^"]+)"`)
-	matches := routePattern.FindAllStringSubmatch(string(routesSource), -1)
-	if len(matches) == 0 {
-		t.Fatalf("expected registered routes")
+	routes, err := restcontract.ParseRoutes(routesSource)
+	if err != nil {
+		t.Fatalf("parse registered routes: %v", err)
 	}
-	for _, match := range matches {
-		method := match[1]
-		path := match[2]
-		if !strings.Contains(docText, path) {
-			t.Fatalf("REST docs do not mention registered route %s %s", method, path)
+	for _, route := range routes {
+		if !strings.Contains(docText, route.Path) {
+			t.Fatalf("REST docs do not mention registered route %s %s", route.Method, route.Path)
 		}
+	}
+}
+
+func TestGeneratedOpenAPIMatchesRegisteredRoutes(t *testing.T) {
+	routesSource, err := os.ReadFile("routes.go")
+	if err != nil {
+		t.Fatalf("read routes: %v", err)
+	}
+	expected, err := restcontract.Generate(routesSource)
+	if err != nil {
+		t.Fatalf("generate OpenAPI route inventory: %v", err)
+	}
+	current, err := os.ReadFile("../../../docs/api/openapi.json")
+	if err != nil {
+		t.Fatalf("read generated OpenAPI route inventory: %v", err)
+	}
+	if !bytes.Equal(current, expected) {
+		t.Fatal("generated OpenAPI route inventory is stale; run make rest-contract")
 	}
 }

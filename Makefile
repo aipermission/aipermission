@@ -1,4 +1,4 @@
-.PHONY: help hygiene backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -7,6 +7,7 @@ help:
 		'  make build           Build frontend and MCP package' \
 		'  make audit           Run frontend and MCP production audits' \
 		'  make hygiene         Run repository security and maintenance checks' \
+		'  make rest-contract   Regenerate the OpenAPI route inventory' \
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
 		'  make connector-conformance  Test protocol connectors against disposable real services' \
@@ -15,6 +16,12 @@ help:
 
 hygiene:
 	npm run hygiene
+
+rest-contract:
+	cd backend && go run ./cmd/openapi -routes internal/api/routes.go -output ../docs/api/openapi.json
+
+rest-contract-check:
+	cd backend && go run ./cmd/openapi -routes internal/api/routes.go -output ../docs/api/openapi.json -check
 
 backend-test:
 	cd backend && coverage=$$(mktemp) && trap 'rm -f "$$coverage"' EXIT; go test -coverprofile="$$coverage" ./... && go tool cover -func="$$coverage" | tail -1
@@ -85,7 +92,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene rest-contract-check backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build
