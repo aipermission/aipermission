@@ -1,8 +1,767 @@
 {
+  "components": {
+    "schemas": {
+      "AuditEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "action_request_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "actor_type": {
+            "type": "string"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "payload_json": {
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "project_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "target_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "target_name": {
+            "type": "string"
+          },
+          "token_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "token_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "actor_type",
+          "action",
+          "payload_json",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "AuditPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "next_offset": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offset": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "ConnectorActionApproval": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "type": "string"
+          },
+          "approval_context_hash": {
+            "type": "string"
+          },
+          "assistant_hint": {
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "display_text": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "input": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "output": {},
+          "preview": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "profile_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "profile_label": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "retry_after_seconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "failed",
+              "canceled",
+              "running",
+              "approval_pending",
+              "blocked",
+              "stale",
+              "declined",
+              "error",
+              "outcome_unknown",
+              "pending",
+              "paused",
+              "untracked"
+            ],
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "target_name": {
+            "type": "string"
+          },
+          "target_ref": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "token_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "token_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_id",
+          "target_name",
+          "target_ref",
+          "profile_id",
+          "profile_label",
+          "connector_kind",
+          "action_name",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ConnectorActionDefinition": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "output_hint": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "risk": {
+            "enum": [
+              "read",
+              "write",
+              "destructive",
+              "credential_sensitive"
+            ],
+            "type": "string"
+          },
+          "sensitive_input_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "description",
+          "risk",
+          "input_schema"
+        ],
+        "type": "object"
+      },
+      "ConnectorCredentialProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorActionDefinition"
+            },
+            "type": "array"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "public": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "risk_label": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "target_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "transfer_runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "vault_session_supported": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "target_id",
+          "connector_kind",
+          "kind",
+          "label",
+          "vault_session_supported",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ConnectorTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorCredentialProfile"
+            },
+            "type": "array"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "project_slug": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "project_name",
+          "project_slug",
+          "connector_kind",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "HistoryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "type": "string"
+          },
+          "activity_type": {
+            "type": "string"
+          },
+          "approval_required": {
+            "type": "boolean"
+          },
+          "bytes_done": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "bytes_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "exit_code": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "input_json": {
+            "type": "string"
+          },
+          "input_text": {
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "output_json": {
+            "type": "string"
+          },
+          "output_text": {
+            "type": "string"
+          },
+          "preview_json": {
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "profile_label": {
+            "type": "string"
+          },
+          "progress_current": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "progress_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_ref_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "source_ref_type": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "failed",
+              "canceled",
+              "running",
+              "approval_pending",
+              "blocked",
+              "stale",
+              "declined",
+              "error",
+              "outcome_unknown",
+              "pending",
+              "paused",
+              "untracked"
+            ],
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "target_name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "token_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "token_name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "user_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_ref_type",
+          "source_ref_id",
+          "connector_kind",
+          "activity_type",
+          "target_name",
+          "source",
+          "status",
+          "action_name",
+          "title",
+          "summary",
+          "progress_current",
+          "progress_total",
+          "bytes_done",
+          "bytes_total",
+          "approval_required",
+          "created_at",
+          "updated_at",
+          "labels"
+        ],
+        "type": "object"
+      },
+      "HistoryPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "next_offset": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offset": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "TargetProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "profile_kind": {
+            "type": "string"
+          },
+          "profile_label": {
+            "type": "string"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "project_slug": {
+            "type": "string"
+          },
+          "public": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "target_name": {
+            "type": "string"
+          },
+          "transfer_runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "project_id",
+          "project_name",
+          "project_slug",
+          "connector_kind",
+          "target_id",
+          "target_name",
+          "profile_id",
+          "profile_kind",
+          "profile_label",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      }
+    }
+  },
   "info": {
-    "description": "Generated route inventory for the local-only gateway. Typed request and response schemas remain documented in rest-api.md until they are migrated into this contract.",
+    "description": "Generated local REST contract. Shared response families are typed incrementally; remaining operations are explicitly marked as route inventory.",
     "title": "AIPermission Local REST API",
-    "version": "route-inventory-v1"
+    "version": "typed-contract-v1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -10,14 +769,31 @@
       "get": {
         "operationId": "getApiAuditLogs",
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "audit-logs"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/audit-logs/{id}": {
@@ -34,14 +810,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEntry"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "audit-logs"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/backup/download": {
@@ -49,7 +842,14 @@
         "operationId": "getApiBackupDownload",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -63,7 +863,14 @@
         "operationId": "getApiBackupFreshness",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -77,7 +884,14 @@
         "operationId": "postApiBackupImport",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -91,7 +905,14 @@
         "operationId": "getApiBackupProviders",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -103,7 +924,14 @@
         "operationId": "postApiBackupProviders",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -117,7 +945,14 @@
         "operationId": "getApiBackupProvidersCatalog",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -141,7 +976,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -163,7 +1005,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -187,7 +1036,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -211,7 +1067,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -235,7 +1098,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -259,7 +1129,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -291,7 +1168,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -323,7 +1207,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -347,7 +1238,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -369,7 +1267,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -393,7 +1298,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -417,7 +1329,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -441,7 +1360,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -465,7 +1391,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -479,7 +1412,14 @@
         "operationId": "postApiBackupRemoteList",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -493,7 +1433,14 @@
         "operationId": "postApiBackupRemoteRestore",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -506,14 +1453,34 @@
       "get": {
         "operationId": "getApiConnectorActionApprovals",
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorActionApproval"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "connector-action-approvals"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/connector-action-approvals/{id}": {
@@ -530,14 +1497,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorActionApproval"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "connector-action-approvals"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/connector-action-approvals/{id}/decline": {
@@ -554,14 +1538,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorActionApproval"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "connector-action-approvals"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/connector-action-approvals/{id}/run": {
@@ -578,14 +1579,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorActionApproval"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "connector-action-approvals"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/connector-actions/local-run": {
@@ -593,7 +1611,14 @@
         "operationId": "postApiConnectorActionsLocalRun",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -606,20 +1631,56 @@
       "get": {
         "operationId": "getApiConnectorTargets",
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/ConnectorTarget"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "connector-targets"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       },
       "post": {
         "operationId": "postApiConnectorTargets",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -633,7 +1694,14 @@
         "operationId": "getApiConnectorTargetsInventory",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -647,7 +1715,14 @@
         "operationId": "postApiConnectorTargetsPing",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -661,7 +1736,14 @@
         "operationId": "postApiConnectorTargetsTest",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -675,7 +1757,14 @@
         "operationId": "postApiConnectorTargetsWithProfile",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -699,7 +1788,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -720,14 +1816,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorTarget"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "connector-targets"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       },
       "put": {
         "operationId": "putApiConnectorTargetsById",
@@ -743,7 +1856,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -775,7 +1895,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -798,14 +1925,43 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/ConnectorCredentialProfile"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "connector-targets"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       },
       "post": {
         "operationId": "postApiConnectorTargetsByIdProfiles",
@@ -821,7 +1977,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -853,7 +2016,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -883,7 +2053,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -914,14 +2091,43 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/ConnectorActionDefinition"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "connector-targets"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/connector-targets/{id}/profiles/{profile_id}/backup": {
@@ -947,7 +2153,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -979,7 +2192,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1011,7 +2231,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1043,7 +2270,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1075,7 +2309,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1089,7 +2330,14 @@
         "operationId": "getApiConnectors",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1113,7 +2361,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1137,7 +2392,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1159,7 +2421,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1183,7 +2452,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1215,7 +2491,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1245,7 +2528,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1275,7 +2565,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1289,7 +2586,14 @@
         "operationId": "postApiConsoleBulkExec",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1313,7 +2617,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1337,7 +2648,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1351,7 +2669,14 @@
         "operationId": "getApiConsoleSessions",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1363,7 +2688,14 @@
         "operationId": "postApiConsoleSessions",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1387,7 +2719,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1411,7 +2750,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1435,7 +2781,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1459,7 +2812,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1483,7 +2843,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1497,7 +2864,14 @@
         "operationId": "postApiDatabasesChangePassword",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1511,7 +2885,14 @@
         "operationId": "postApiDatabasesDelete",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1525,7 +2906,14 @@
         "operationId": "postApiDatabasesDeleteLocked",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1539,7 +2927,14 @@
         "operationId": "postApiDatabasesRename",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1553,7 +2948,14 @@
         "operationId": "postApiDatabasesSwitch",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1567,7 +2969,14 @@
         "operationId": "getApiFileTransferBatches",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1591,7 +3000,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1615,7 +3031,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1639,7 +3062,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1663,7 +3093,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1687,7 +3124,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1711,7 +3155,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1735,7 +3186,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1759,7 +3217,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1773,7 +3238,14 @@
         "operationId": "getApiFileTransfers",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1787,7 +3259,14 @@
         "operationId": "postApiFileTransfersBrowse",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1801,7 +3280,14 @@
         "operationId": "postApiFileTransfersDownload",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1815,7 +3301,14 @@
         "operationId": "postApiFileTransfersDownloadBatch",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1829,7 +3322,14 @@
         "operationId": "postApiFileTransfersExpand",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1843,7 +3343,14 @@
         "operationId": "postApiFileTransfersUpload",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1857,7 +3364,14 @@
         "operationId": "postApiFileTransfersUploadBatch",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1881,7 +3395,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1905,7 +3426,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1929,7 +3457,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1942,14 +3477,31 @@
       "get": {
         "operationId": "getApiHistory",
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryPage"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "history"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/history-labels": {
@@ -1957,7 +3509,14 @@
         "operationId": "getApiHistoryLabels",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1969,7 +3528,14 @@
         "operationId": "postApiHistoryLabels",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -1993,7 +3559,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2007,7 +3580,14 @@
         "operationId": "getApiHistoryTargets",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2030,14 +3610,31 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryEntry"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "history"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/history/{id}/labels": {
@@ -2055,7 +3652,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2087,7 +3691,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2101,7 +3712,14 @@
         "operationId": "postApiLock",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2125,7 +3743,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2139,7 +3764,14 @@
         "operationId": "getApiMcpConnectorActions",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2153,7 +3785,14 @@
         "operationId": "postApiMcpConnectorActionsCall",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2167,7 +3806,14 @@
         "operationId": "getApiMcpConnectorHelp",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2181,7 +3827,14 @@
         "operationId": "getApiMcpConnectorTargets",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2205,7 +3858,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2229,7 +3889,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2243,7 +3910,14 @@
         "operationId": "postApiMcpVaultActionsCall",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2257,7 +3931,14 @@
         "operationId": "getApiMcpVaultItems",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2271,7 +3952,14 @@
         "operationId": "getApiMessages",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2283,7 +3971,14 @@
         "operationId": "postApiMessages",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2297,7 +3992,14 @@
         "operationId": "postApiMessagesRead",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2311,7 +4013,14 @@
         "operationId": "getApiProjects",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2323,7 +4032,14 @@
         "operationId": "postApiProjects",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2347,7 +4063,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2369,7 +4092,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2383,7 +4113,14 @@
         "operationId": "getApiSettingsMaintenanceConsoleAttach",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2397,7 +4134,14 @@
         "operationId": "postApiSettingsMaintenanceConsoleClose",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2411,7 +4155,14 @@
         "operationId": "postApiSettingsMaintenanceConsoleOpen",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2425,7 +4176,14 @@
         "operationId": "getApiSettingsMaintenanceConsoleStatus",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2439,7 +4197,14 @@
         "operationId": "getApiSettingsMcpRuntime",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2451,7 +4216,14 @@
         "operationId": "putApiSettingsMcpRuntime",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2465,7 +4237,14 @@
         "operationId": "getApiSettingsRedactionRules",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2477,7 +4256,14 @@
         "operationId": "postApiSettingsRedactionRules",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2501,7 +4287,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2523,7 +4316,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2537,7 +4337,14 @@
         "operationId": "getApiSettingsRetention",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2549,7 +4356,14 @@
         "operationId": "putApiSettingsRetention",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2563,7 +4377,14 @@
         "operationId": "postApiSettingsRetentionPurge",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2577,7 +4398,14 @@
         "operationId": "getApiSettingsSecurity",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2589,7 +4417,14 @@
         "operationId": "putApiSettingsSecurity",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2603,7 +4438,14 @@
         "operationId": "getApiStatus",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2616,14 +4458,34 @@
       "get": {
         "operationId": "getApiTargets",
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TargetProfile"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
           "targets"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/tokens": {
@@ -2631,7 +4493,14 @@
         "operationId": "getApiTokens",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2643,7 +4512,14 @@
         "operationId": "postApiTokens",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2667,7 +4543,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2689,7 +4572,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2713,7 +4603,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2735,7 +4632,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2759,7 +4663,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2781,7 +4692,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2805,7 +4723,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2819,7 +4744,14 @@
         "operationId": "postApiUnlock",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2833,7 +4765,14 @@
         "operationId": "postApiUnlockSetup",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2847,7 +4786,14 @@
         "operationId": "getApiUnlockStatus",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2861,7 +4807,14 @@
         "operationId": "getApiVaultActionApprovals",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2885,7 +4838,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2909,7 +4869,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2923,7 +4890,14 @@
         "operationId": "getApiVaultDefaultBindings",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2935,7 +4909,14 @@
         "operationId": "putApiVaultDefaultBindings",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2959,7 +4940,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2973,7 +4961,14 @@
         "operationId": "getApiVaultItems",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -2985,7 +4980,14 @@
         "operationId": "postApiVaultItems",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -3009,7 +5011,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -3031,7 +5040,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -3055,7 +5071,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -3079,7 +5102,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -3103,7 +5133,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -3127,7 +5164,14 @@
         ],
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -3141,7 +5185,14 @@
         "operationId": "getApiVaultSessionOptions",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
@@ -3155,7 +5206,14 @@
         "operationId": "getHealth",
         "responses": {
           "default": {
-            "description": "See the REST API reference for status and response body details."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
           }
         },
         "tags": [
