@@ -43,6 +43,3 @@
 - name: frontend
   color: 0e8a16
   description: React frontend changes.
-- name: docs
-  color: 0075ca
-  description: Documentation-only work.
