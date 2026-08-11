@@ -27,6 +27,7 @@ export const settingsSource = [
   "password-settings-dialog.jsx",
   "history-retention-panel.jsx",
   "history-labels-panel.jsx",
+  "maintenance-console-panel.jsx",
 ]
   .map((filename, index) =>
     readFileSync(

@@ -1,0 +1,199 @@
+import { Terminal } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { apiPost, apiUrl } from "../../lib/api";
+import { PtyConsole } from "../console/pty-console";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { Dialog } from "../ui/dialog";
+import { Notice } from "../ui/notice";
+
+const closedSession = { transcript: "", status: "closed", error: null, shell: "" };
+
+export function MaintenanceConsolePanel() {
+  const [open, setOpen] = useState(false);
+  const [openError, setOpenError] = useState("");
+  const socketRef = useRef(null);
+  const [session, setSession] = useState(closedSession);
+
+  useEffect(() => {
+    return () => {
+      socketRef.current?.close();
+      socketRef.current = null;
+    };
+  }, []);
+
+  async function openConsole() {
+    setOpenError("");
+    try {
+      await apiPost("/api/settings/maintenance-console/open", {});
+      setSession((current) => ({ ...current, status: "connecting", error: null }));
+      setOpen(true);
+      window.setTimeout(() => connect({ force: true }), 0);
+    } catch (error) {
+      setOpenError(error.message);
+    }
+  }
+
+  async function closeConsole() {
+    setOpen(false);
+    socketRef.current?.close();
+    socketRef.current = null;
+    setSession(closedSession);
+    try {
+      await apiPost("/api/settings/maintenance-console/close", {});
+    } catch {
+      // Local dialog state is already closed; an audit failure must not trap the user.
+    }
+  }
+
+  async function reconnect() {
+    setOpenError("");
+    try {
+      await apiPost("/api/settings/maintenance-console/open", {});
+      connect({ force: true });
+    } catch (error) {
+      setOpenError(error.message);
+    }
+  }
+
+  function connect(options = {}) {
+    const existing = socketRef.current;
+    if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
+      if (!options.force) return;
+      existing.close();
+    }
+    const socket = new WebSocket(maintenanceConsoleAttachUrl());
+    socketRef.current = socket;
+    setSession((current) => ({ ...current, status: "connecting", error: null }));
+    socket.onmessage = (event) => {
+      if (socketRef.current !== socket) return;
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch {
+        setSession((current) => ({ ...current, status: "error", error: "Maintenance console returned an invalid message." }));
+        return;
+      }
+      if (message.type === "snapshot") {
+        setSession({ transcript: message.data || "", status: message.status || "connected", error: null, shell: message.shell || "" });
+      }
+      if (message.type === "ready") {
+        setSession((current) => ({
+          ...current,
+          status: message.status || "connected",
+          shell: message.shell || current.shell,
+          error: null,
+        }));
+      }
+      if (message.type === "output") {
+        setSession((current) => ({
+          ...current,
+          transcript: limitTranscript(`${current.transcript || ""}${message.data || ""}`),
+          status: message.status || "connected",
+          shell: message.shell || current.shell,
+          error: null,
+        }));
+      }
+      if (message.type === "error") {
+        setSession((current) => ({
+          ...current,
+          transcript: limitTranscript(`${current.transcript || ""}\r\n${message.data || "Maintenance console error"}\r\n`),
+          status: "error",
+          error: message.data || "Maintenance console error",
+        }));
+      }
+      if (message.type === "exit") {
+        setSession((current) => ({ ...current, status: message.status || "closed", error: message.data || "" }));
+      }
+    };
+    socket.onerror = () => {
+      if (socketRef.current !== socket) return;
+      setSession((current) => ({ ...current, status: "error", error: "Maintenance console connection failed." }));
+    };
+    socket.onclose = () => {
+      if (socketRef.current === socket) socketRef.current = null;
+    };
+  }
+
+  function sendInput(data) {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "input", data }));
+      return;
+    }
+    connect();
+  }
+
+  function resize(cols, rows) {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "resize", cols, rows }));
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Maintenance console</CardTitle>
+          <CardDescription>Open a realtime local terminal inside the AIPermission gateway runtime.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <Notice tone="warn">
+            Local UI-only diagnostics for the gateway runtime. It is not exposed to MCP, output is bounded in memory, and open/close
+            lifecycle events are audited.
+          </Notice>
+          <Button type="button" onClick={openConsole}>
+            <Terminal className="h-4 w-4" />
+            Open maintenance console
+          </Button>
+          {openError ? <Notice tone="bad">{openError}</Notice> : null}
+        </CardContent>
+      </Card>
+      <Dialog
+        open={open}
+        title="Maintenance console"
+        description="Interactive local terminal inside the gateway container."
+        onClose={closeConsole}
+        size="wide"
+        className="h-[calc(100vh-100px)] !w-[85vw] !max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]"
+        bodyClassName="min-h-0 p-0"
+        closeOnOverlay={false}
+      >
+        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
+          <div className="border-b border-stone-200 p-4">
+            <Notice tone="warn" className="py-2 text-xs">
+              Local UI-only diagnostics for the gateway runtime. It is not exposed to MCP. Avoid printing secrets in this terminal.
+            </Notice>
+          </div>
+          <div className="min-h-0">
+            <PtyConsole session={session} onInput={sendInput} onResize={resize} theme="dark" />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 px-4 py-3 text-xs text-stone-500">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full border border-stone-200 px-2 py-1 font-semibold text-stone-700">
+                <Terminal className="h-3.5 w-3.5" />
+                {session.status || "closed"}
+              </span>
+              {session.shell ? <span className="truncate font-mono">{session.shell}</span> : null}
+              {session.error || openError ? <span className="truncate text-red-600">{session.error || openError}</span> : null}
+            </div>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={reconnect}>
+              Reconnect
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
+function maintenanceConsoleAttachUrl() {
+  const url = new URL(apiUrl, window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/api/settings/maintenance-console/attach";
+  return url.toString();
+}
+
+function limitTranscript(value) {
+  const maxLength = 200000;
+  return value.length <= maxLength ? value : value.slice(value.length - maxLength);
+}
