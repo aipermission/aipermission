@@ -80,3 +80,83 @@ func routes() { mux.HandleFunc("GET /api/items/{item_id}", get) }`)
 		t.Fatalf("unexpected path parameter: %+v", parameters[0])
 	}
 }
+
+func TestGenerateTypesSharedConnectorResponses(t *testing.T) {
+	source := []byte(`package api
+func routes() {
+	mux.HandleFunc("GET /api/targets", listTargets)
+	mux.HandleFunc("GET /api/history", listHistory)
+}`)
+	output, err := Generate(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(output, &document); err != nil {
+		t.Fatal(err)
+	}
+	components := document["components"].(map[string]any)
+	schemas := components["schemas"].(map[string]any)
+	for _, name := range []string{"Error", "TargetProfile", "ConnectorActionDefinition", "HistoryEntry", "AuditEntry"} {
+		if schemas[name] == nil {
+			t.Fatalf("missing shared schema %s", name)
+		}
+	}
+	paths := document["paths"].(map[string]any)
+	operation := paths["/api/history"].(map[string]any)["get"].(map[string]any)
+	if operation["x-aipermission-contract-level"] != "typed-response" {
+		t.Fatalf("history response is not typed: %+v", operation)
+	}
+	responses := operation["responses"].(map[string]any)
+	if responses["200"] == nil || responses["default"] == nil {
+		t.Fatalf("typed operation must expose success and error responses: %+v", responses)
+	}
+}
+
+func TestTypedContractsReferenceDefinedSchemas(t *testing.T) {
+	schemas := sharedSchemas()
+	for route, contract := range typedOperationContracts() {
+		walkSchemaRefs(t, route, contract.ResponseSchema, schemas)
+	}
+}
+
+func TestValidateTypedRoutesRejectsRemovedRoutes(t *testing.T) {
+	if err := ValidateTypedRoutes([]Route{{Method: "GET", Path: "/health"}}); err == nil || !strings.Contains(err.Error(), "unregistered route") {
+		t.Fatalf("expected stale typed route error, got %v", err)
+	}
+}
+
+func TestSharedSchemaRequiredFieldsExist(t *testing.T) {
+	for name, raw := range sharedSchemas() {
+		schema := raw.(map[string]any)
+		properties, _ := schema["properties"].(map[string]any)
+		required, _ := schema["required"].([]string)
+		for _, field := range required {
+			if properties[field] == nil {
+				t.Fatalf("schema %s requires undefined property %s", name, field)
+			}
+		}
+	}
+}
+
+func walkSchemaRefs(t *testing.T, route Route, value any, schemas map[string]any) {
+	t.Helper()
+	switch typed := value.(type) {
+	case map[string]any:
+		if ref, ok := typed["$ref"].(string); ok {
+			name := strings.TrimPrefix(ref, "#/components/schemas/")
+			if name == ref || schemas[name] == nil {
+				t.Fatalf("%s %s references undefined schema %q", route.Method, route.Path, ref)
+			}
+		}
+		for _, child := range typed {
+			walkSchemaRefs(t, route, child, schemas)
+		}
+	case []any:
+		for _, child := range typed {
+			walkSchemaRefs(t, route, child, schemas)
+		}
+	case []string:
+		return
+	}
+}

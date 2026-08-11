@@ -23,6 +23,9 @@ func TestRESTDocsMentionRegisteredRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse registered routes: %v", err)
 	}
+	if err := restcontract.ValidateTypedRoutes(routes); err != nil {
+		t.Fatalf("validate typed REST routes: %v", err)
+	}
 	for _, route := range routes {
 		if !strings.Contains(docText, route.Path) {
 			t.Fatalf("REST docs do not mention registered route %s %s", route.Method, route.Path)
