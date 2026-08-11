@@ -1,6 +1,33 @@
-export const appVersion = "0.2.24";
+export const appVersion = "0.2.25";
 
 export const changelogEntries = [
+  {
+    version: "0.2.25",
+    label: "S3 transfer and recovery controls",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "S3 connectors now support bounded multipart and recursive transfer queues with progress, pause, cancellation, and explicit overwrite controls.",
+          "Short-lived presigned URLs, object-version browsing and recovery, and guarded bucket lifecycle management are available through the shared connector workflow.",
+          "Encrypted backup providers can report quota usage and apply previewed keep-latest retention while protecting the final recovery version.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "SSH and S3 file transfers now share the same generic queue lifecycle while keeping transport behavior isolated inside each connector.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Presigned URLs are scoped to one exact object for at most one hour, and destructive lifecycle or version actions remain explicit permission boundaries.",
+          "Transfer queues enforce bounded object counts, per-object sizes, batch sizes, and approval-time revalidation before remote work begins.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.24",
     label: "Failure recovery and release integrity",
