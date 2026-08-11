@@ -11,7 +11,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
@@ -30,6 +30,8 @@ import {
 } from "../connectors/templates/common";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
+import { useConnectorEditor } from "../connectors/editor/use-connector-editor";
+import { connectorTestKey, useConnectorConnectionTests } from "../connectors/editor/use-connector-connection-tests";
 
 function emptyConnectorForm(kind, options = {}) {
   return getConnectorModel(kind)?.emptyForm?.(options) || { connector_kind: kind };
@@ -41,18 +43,12 @@ export function ConnectorsPage() {
   const [targets, setTargets] = useState({ state: "loading", data: [], error: null });
   const [projects, setProjects] = useState({ state: "loading", data: [], error: null });
   const defaultConnectorKind = supportedConnectorKinds[0] || "";
-  const [drawer, setDrawer] = useState({ open: false, mode: "create", kind: defaultConnectorKind, target: null });
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, target: null });
-  const [form, setForm] = useState(() => emptyConnectorForm(defaultConnectorKind));
-  const [state, setState] = useState({ state: "idle", error: null, message: "" });
-  const [tests, setTests] = useState({});
   const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [profileSelections, setProfileSelections] = useState({});
   const [toast, setToast] = useState("");
   const [connectorSearch, setConnectorSearch] = useState("");
   const [collapsedProjects, setCollapsedProjects] = useState({});
-  const testCooldownTimers = useRef(new Map());
   const catalogWarnings = useMemo(() => connectorCatalogWarnings(catalog), [catalog]);
   const availableConnectorKinds = useMemo(() => {
     if (catalog.state !== "ready") return [];
@@ -61,6 +57,22 @@ export function ConnectorsPage() {
   }, [catalog]);
 
   const firstCredentialID = useMemo(() => (credentials.data[0] ? String(credentials.data[0].id) : ""), [credentials.data]);
+  const defaultProjectID = useMemo(
+    () => projects.data.find((project) => project.slug === "ungrouped")?.id || projects.data[0]?.id || "",
+    [projects.data],
+  );
+  const editor = useConnectorEditor({
+    defaultKind: defaultConnectorKind,
+    firstCredentialID,
+    defaultProjectID,
+    emptyFormForKind: emptyConnectorForm,
+    modelForKind: getConnectorModel,
+    onRefresh: refreshConnectors,
+    onOperation: openConnectorOperation,
+  });
+  const connectionTests = useConnectorConnectionTests({ modelForKind: getConnectorModel, onOperation: openConnectorOperation });
+  const { drawer, deleteDialog, form, actionState: state } = editor;
+  const tests = connectionTests.tests;
   const activeConnectorModel = getConnectorModel(form.connector_kind);
   const activeCredential = useMemo(
     () => activeConnectorModel?.activeCredential?.({ credentials: credentials.data, form }) || null,
@@ -74,10 +86,6 @@ export function ConnectorsPage() {
         return { kind, label: item?.label || connectorKindLabel(kind) };
       }),
     [availableConnectorKinds, catalog.data],
-  );
-  const defaultProjectID = useMemo(
-    () => projects.data.find((project) => project.slug === "ungrouped")?.id || projects.data[0]?.id || "",
-    [projects.data],
   );
   const refreshConnectorsForEffect = useEffectEvent(() => refreshConnectors());
   const reconcileProfileSelections = useEffectEvent(() => {
@@ -98,17 +106,8 @@ export function ConnectorsPage() {
     .join("|");
 
   useEffect(() => {
-    setForm((current) => getConnectorModel(current.connector_kind)?.syncForm?.({ form: current, firstCredentialID }) || current);
-  }, [firstCredentialID]);
-
-  useEffect(() => {
     void loadCatalog();
     void refreshConnectorsForEffect();
-    const timers = testCooldownTimers.current;
-    return () => {
-      for (const timer of timers.values()) window.clearTimeout(timer);
-      timers.clear();
-    };
   }, []);
 
   useEffect(() => {
@@ -159,94 +158,13 @@ export function ConnectorsPage() {
     }
   }
 
-  function openCreateDrawer(kind = availableConnectorKinds[0] || defaultConnectorKind) {
-    setState({ state: "idle", error: null, message: "" });
-    setAddMenuOpen(false);
-    setForm({ ...emptyConnectorForm(kind, { firstCredentialID }), project_id: defaultProjectID });
-    setDrawer({ open: true, mode: "create", kind, target: null });
-  }
-
   function showUnderConstruction(label) {
     setToast(`${label} is under construction.`);
     window.setTimeout(() => setToast(""), 2200);
   }
 
-  function selectedProfileForTarget(target) {
-    const profiles = target?.profiles || [];
-    if (profiles.length === 1) return profiles[0];
-    const selectedID = profileSelections[targetProfileSelectionKey(target)];
-    return profiles.find((profile) => String(profile.id) === String(selectedID)) || null;
-  }
-
   function selectProfile(target, profileID) {
     setProfileSelections((current) => ({ ...current, [targetProfileSelectionKey(target)]: String(profileID || "") }));
-  }
-
-  function openEditDrawer(target, profile = selectedProfileForTarget(target)) {
-    const model = getConnectorModel(target.connector_kind);
-    if (!model?.formFromTarget) {
-      setState({ state: "error", error: `Connector model not found for ${target.connector_kind}.`, message: "" });
-      return;
-    }
-    if ((target.profiles || []).length > 0 && !profile) {
-      setState({ state: "error", error: "Select a credential profile before editing profile-bound settings.", message: "" });
-      return;
-    }
-    setState({ state: "idle", error: null, message: "" });
-    setForm({ ...model.formFromTarget({ target, profile }), project_id: target.project_id || defaultProjectID });
-    setDrawer({ open: true, mode: "edit", kind: target.connector_kind, target });
-  }
-
-  function setConnectorKind(kind) {
-    setState({ state: "idle", error: null, message: "" });
-    setForm((current) => ({ ...emptyConnectorForm(kind, { firstCredentialID }), project_id: current.project_id || defaultProjectID }));
-    setDrawer((current) => ({ ...current, kind }));
-  }
-
-  function updateForm(field, value) {
-    setForm((current) => ({ ...current, [field]: value }));
-  }
-
-  async function saveConnector(event) {
-    event.preventDefault();
-    const model = getConnectorModel(form.connector_kind);
-    if (!model?.save) {
-      setState({ state: "error", error: `Connector model not found for ${form.connector_kind}.`, message: "" });
-      return;
-    }
-    setState({ state: "saving", error: null, message: "" });
-    try {
-      await model.save({ mode: drawer.mode, form, target: drawer.target });
-      setDrawer({ open: false, mode: "create", kind: form.connector_kind, target: null });
-      setForm({ ...emptyConnectorForm(form.connector_kind, { firstCredentialID }), project_id: defaultProjectID });
-      setState({ state: "idle", error: null, message: drawer.mode === "edit" ? "Connector updated." : "Connector created." });
-      await refreshConnectors();
-    } catch (error) {
-      const operation = model.operationFromError?.(error, { mode: drawer.mode, form, target: drawer.target });
-      if (openConnectorOperation(operation)) {
-        setState({ state: "idle", error: null, message: "" });
-        return;
-      }
-      setState({ state: "error", error: error.message, message: "" });
-    }
-  }
-
-  async function deleteConnector(removeKey) {
-    if (!deleteDialog.target) return;
-    const model = getConnectorModel(deleteDialog.target.connector_kind);
-    if (!model?.deleteTarget) {
-      setState({ state: "error", error: `Connector model not found for ${deleteDialog.target.connector_kind}.`, message: "" });
-      return;
-    }
-    setState({ state: "deleting", error: null, message: "" });
-    try {
-      await model.deleteTarget({ target: deleteDialog.target, removeKey });
-      setDeleteDialog({ open: false, target: null });
-      setState({ state: "idle", error: null, message: "Connector deleted." });
-      await refreshConnectors();
-    } catch (error) {
-      setState({ state: "error", error: error.message, message: "" });
-    }
   }
 
   function openConnectorOperation(operation) {
@@ -257,59 +175,11 @@ export function ConnectorsPage() {
 
   async function completeConnectorOperation(result, operation) {
     if (result?.testKey) {
-      setConnectorTestResult(result.testKey, { state: result.test.ok ? "ok" : "error", error: result.test.error, data: result.test.data });
+      connectionTests.applyOperationResult(result.testKey, result.test);
       return;
     }
-    const kind = operation?.connector_kind || operation?.kind || form.connector_kind;
-    setDrawer({ open: false, mode: "create", kind, target: null });
-    setForm({ ...emptyConnectorForm(kind, { firstCredentialID }), project_id: defaultProjectID });
-    setState({ state: "idle", error: null, message: result?.message || "Connector updated." });
+    editor.completeOperation(result, operation);
     await refreshConnectors();
-  }
-
-  function setConnectorTestResult(testKey, value) {
-    const completedAt = Date.now();
-    setTests((current) => ({ ...current, [testKey]: { ...value, cooldown: true, completedAt } }));
-    window.clearTimeout(testCooldownTimers.current.get(testKey));
-    const timer = window.setTimeout(() => {
-      testCooldownTimers.current.delete(testKey);
-      setTests((current) => {
-        if (current[testKey]?.completedAt !== completedAt) return current;
-        return { ...current, [testKey]: { ...current[testKey], cooldown: false } };
-      });
-    }, 1500);
-    testCooldownTimers.current.set(testKey, timer);
-  }
-
-  async function testConnector(target, profile = selectedProfileForTarget(target)) {
-    const testKey = connectorTestKey(target, profile);
-    const model = getConnectorModel(target.connector_kind);
-    if (!model?.test) {
-      setTests((current) => ({
-        ...current,
-        [testKey]: { state: "error", error: `Connector model not found for ${target.connector_kind}.`, data: null },
-      }));
-      return;
-    }
-    if (!profile) {
-      setTests((current) => ({
-        ...current,
-        [testKey]: { state: "error", error: "Select a credential profile before testing.", data: null },
-      }));
-      return;
-    }
-    setTests((current) => ({ ...current, [testKey]: { state: "testing", error: null, data: null } }));
-    try {
-      const result = await model.test({ target, profile });
-      setConnectorTestResult(testKey, { state: result.ok ? "ok" : "error", error: result.error, data: result.data });
-    } catch (error) {
-      const operation = model.operationFromError?.(error, { operation: "test", target, profile, testKey });
-      if (openConnectorOperation(operation)) {
-        setTests((current) => ({ ...current, [testKey]: { state: "idle", error: null, data: null } }));
-        return;
-      }
-      setConnectorTestResult(testKey, { state: "error", error: error.message, data: null });
-    }
   }
 
   return (
@@ -332,7 +202,15 @@ export function ConnectorsPage() {
               Add connector
               <ChevronDown className="h-4 w-4" />
             </Button>
-            {addMenuOpen ? <AddConnectorMenu catalog={catalog} onAdd={openCreateDrawer} /> : null}
+            {addMenuOpen ? (
+              <AddConnectorMenu
+                catalog={catalog}
+                onAdd={(kind) => {
+                  setAddMenuOpen(false);
+                  editor.openCreate(kind);
+                }}
+              />
+            ) : null}
           </div>
         </div>
       </div>
@@ -366,11 +244,11 @@ export function ConnectorsPage() {
         profileSelections={profileSelections}
         tests={tests}
         onSelectProfile={selectProfile}
-        onTestConnector={testConnector}
+        onTestConnector={connectionTests.run}
         onOperation={setConnectorOperation}
         onUnderConstruction={showUnderConstruction}
-        onEdit={openEditDrawer}
-        onDelete={(target) => setDeleteDialog({ open: true, target })}
+        onEdit={editor.openEdit}
+        onDelete={editor.requestDelete}
       />
 
       <Drawer
@@ -381,13 +259,13 @@ export function ConnectorsPage() {
             ? "Update this connector and its default credential profile."
             : "Choose a connector type, then create its first default credential profile."
         }
-        onClose={() => setDrawer({ open: false, mode: "create", kind: defaultConnectorKind, target: null })}
+        onClose={editor.closeEditor}
       >
-        <form className="grid gap-4" onSubmit={saveConnector}>
+        <form className="grid gap-4" onSubmit={editor.save}>
           {drawer.mode === "create" ? (
             <Field>
               Connector type
-              <Select value={form.connector_kind} onChange={(event) => setConnectorKind(event.target.value)}>
+              <Select value={form.connector_kind} onChange={(event) => editor.selectKind(event.target.value)}>
                 {connectorOptions.map((option) => (
                   <option value={option.kind} key={option.kind}>
                     {option.label}
@@ -398,7 +276,7 @@ export function ConnectorsPage() {
           ) : null}
           <Field>
             Project
-            <Select value={form.project_id || ""} onChange={(event) => updateForm("project_id", event.target.value)} required>
+            <Select value={form.project_id || ""} onChange={(event) => editor.updateField("project_id", event.target.value)} required>
               <option value="" disabled>
                 Select project
               </option>
@@ -416,18 +294,14 @@ export function ConnectorsPage() {
               credentials={credentials.data}
               targets={targets.data.filter((target) => String(target.project_id || "") === String(form.project_id || ""))}
               activeCredential={activeCredential}
-              onChange={updateForm}
+              onChange={editor.updateField}
             />
           ) : (
             <ConnectorTemplateNotFound kind={form.connector_kind} slot="form" />
           )}
           {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDrawer({ open: false, mode: "create", kind: defaultConnectorKind, target: null })}
-            >
+            <Button type="button" variant="outline" onClick={editor.closeEditor}>
               Cancel
             </Button>
             <Button
@@ -456,12 +330,7 @@ export function ConnectorsPage() {
           />
         ) : null;
       })}
-      <DeleteConnectorDialog
-        value={deleteDialog}
-        state={state}
-        onDelete={deleteConnector}
-        onClose={() => setDeleteDialog({ open: false, target: null })}
-      />
+      <DeleteConnectorDialog value={deleteDialog} state={state} onDelete={editor.remove} onClose={editor.closeDelete} />
     </section>
   );
 }
@@ -608,11 +477,6 @@ function ProjectTargetRows({ project, targets, collapsed, onToggle, ...rowProps 
 
 function targetProfileSelectionKey(target) {
   return `${target?.connector_kind || ""}:${target?.id || ""}`;
-}
-
-function connectorTestKey(target, profile) {
-  const profileID = profile?.id || "target";
-  return `${target.connector_kind}:${target.id}:${profileID}`;
 }
 
 function ConnectorTargetRow(props) {
