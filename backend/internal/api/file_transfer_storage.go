@@ -95,6 +95,7 @@ func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchReco
 	archivePath := temp.Name()
 	zipWriter := zip.NewWriter(temp)
 	usedNames := map[string]int{}
+	archiveRoot := commonRemoteArchiveRoot(batch.Items)
 	for _, item := range batch.Items {
 		if item.Status != filetransfer.StatusCompleted {
 			continue
@@ -105,7 +106,7 @@ func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchReco
 			_ = os.Remove(archivePath)
 			return "", fmt.Errorf("download file is no longer available")
 		}
-		entryName := uniqueArchiveEntryName(item.FileName, item.RemotePath, usedNames)
+		entryName := uniqueArchiveEntryName(item.FileName, item.RemotePath, archiveRoot, usedNames)
 		if err := addFileToZip(zipWriter, item.TempPath, entryName); err != nil {
 			_ = zipWriter.Close()
 			_ = temp.Close()
@@ -125,25 +126,82 @@ func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchReco
 	return archivePath, nil
 }
 
-func uniqueArchiveEntryName(name string, remotePath string, used map[string]int) string {
-	base := safeFileName(name)
-	if base == "aipermission-file" && strings.TrimSpace(remotePath) != "" {
-		base = safeFileName(path.Base(remotePath))
-	}
+func uniqueArchiveEntryName(name string, remotePath string, archiveRoot string, used map[string]int) string {
+	base := relativeArchiveEntryPath(remotePath, archiveRoot)
 	if base == "" {
-		base = "aipermission-file"
+		base = safeArchiveEntryPath(name)
 	}
 	count := used[base]
 	used[base] = count + 1
 	if count == 0 {
 		return base
 	}
-	ext := filepath.Ext(base)
-	stem := strings.TrimSuffix(base, ext)
+	directory, fileName := path.Split(base)
+	ext := path.Ext(fileName)
+	stem := strings.TrimSuffix(fileName, ext)
 	if stem == "" {
 		stem = "file"
 	}
-	return fmt.Sprintf("%s-%d%s", stem, count+1, ext)
+	return directory + fmt.Sprintf("%s-%d%s", stem, count+1, ext)
+}
+
+func commonRemoteArchiveRoot(items []filetransfer.Record) string {
+	var common []string
+	initialized := false
+	for _, item := range items {
+		if item.Status != filetransfer.StatusCompleted {
+			continue
+		}
+		directory := strings.Trim(path.Dir("/"+strings.TrimLeft(item.RemotePath, "/")), "/")
+		parts := []string{}
+		if directory != "" && directory != "." {
+			parts = strings.Split(directory, "/")
+		}
+		if !initialized {
+			common = append([]string(nil), parts...)
+			initialized = true
+			continue
+		}
+		limit := len(common)
+		if len(parts) < limit {
+			limit = len(parts)
+		}
+		matched := 0
+		for matched < limit && common[matched] == parts[matched] {
+			matched++
+		}
+		common = common[:matched]
+	}
+	if len(common) == 0 {
+		return "/"
+	}
+	return "/" + strings.Join(common, "/")
+}
+
+func relativeArchiveEntryPath(remotePath string, archiveRoot string) string {
+	remote := path.Clean("/" + strings.TrimLeft(remotePath, "/"))
+	root := path.Clean("/" + strings.TrimLeft(archiveRoot, "/"))
+	relative := strings.TrimLeft(remote, "/")
+	if root != "/" {
+		prefix := strings.TrimRight(root, "/") + "/"
+		if !strings.HasPrefix(remote, prefix) {
+			return ""
+		}
+		relative = strings.TrimPrefix(remote, prefix)
+	}
+	return safeArchiveEntryPath(relative)
+}
+
+func safeArchiveEntryPath(value string) string {
+	cleaned := path.Clean(strings.TrimSpace(strings.ReplaceAll(value, "\\", "/")))
+	if cleaned == "." || cleaned == "/" || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "aipermission-file"
+	}
+	parts := strings.Split(strings.TrimLeft(cleaned, "/"), "/")
+	for index, part := range parts {
+		parts[index] = safeFileName(part)
+	}
+	return strings.Join(parts, "/")
 }
 
 func addFileToZip(zipWriter *zip.Writer, filePath string, name string) error {
@@ -160,7 +218,7 @@ func addFileToZip(zipWriter *zip.Writer, filePath string, name string) error {
 	if err != nil {
 		return fmt.Errorf("create archive header: %w", err)
 	}
-	header.Name = safeFileName(name)
+	header.Name = safeArchiveEntryPath(name)
 	if header.Name == "" {
 		header.Name = safeFileName(filepath.Base(filePath))
 	}

@@ -112,7 +112,8 @@ func targetMaterial(ctx context.Context, runtime connectorapi.GatewayRuntime, ru
 	if err != nil {
 		return sshTargetMaterial{}, sshkeys.PrivateKey{}, err
 	}
-	if surface.ConnectorKind != sshconnector.Kind || surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole {
+	if surface.ConnectorKind != sshconnector.Kind ||
+		(surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole && surface.CapabilityKind != connectortargets.RuntimeCapabilityFileTransfer) {
 		return sshTargetMaterial{}, sshkeys.PrivateKey{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	host := strings.TrimSpace(stringConfigValue(target.Config, "host"))
