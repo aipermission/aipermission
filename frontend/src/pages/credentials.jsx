@@ -2,7 +2,6 @@ import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
-import { useAsyncAction } from "../lib/use-async-action";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Drawer } from "../components/ui/drawer";
@@ -10,6 +9,7 @@ import { Notice } from "../components/ui/notice";
 import { ConnectorIcon, connectorKindLabel, connectorSummary } from "../connectors/templates/common";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
+import { useCredentialProfileEditor } from "../connectors/editor/use-credential-profile-editor";
 
 function emptyCredentialState(kind, options = {}) {
   return getConnectorModel(kind)?.emptyCredentialState?.(options) || {};
@@ -25,10 +25,15 @@ export function CredentialsPage() {
     return supportedConnectorKinds.filter((kind) => backendKinds.has(kind));
   }, [connectorCatalog.data]);
   const defaultConnectorKind = availableConnectorKinds[0] || supportedConnectorKinds[0] || "";
-  const [drawer, setDrawer] = useState({ open: false, kind: defaultConnectorKind, mode: "create", row: null });
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const [credentialState, setCredentialState] = useState(() => emptyCredentialState(defaultConnectorKind));
-  const { actionState: state, runAction } = useAsyncAction();
+  const editor = useCredentialProfileEditor({
+    defaultKind: defaultConnectorKind,
+    targets: connectorTargets.data,
+    emptyStateForKind: emptyCredentialState,
+    modelForKind: getConnectorModel,
+    onRefresh: refreshCredentials,
+  });
+  const { drawer, formState: credentialState, setFormState: setCredentialState, actionState: state } = editor;
 
   const CredentialFormTemplate = getConnectorTemplate(drawer.kind)?.CredentialForm || null;
   const activeModel = getConnectorModel(drawer.kind);
@@ -50,7 +55,7 @@ export function CredentialsPage() {
       setFormState: setCredentialState,
       formMode: drawer.mode,
       state,
-      onSubmit: saveCredential,
+      onSubmit: editor.save,
     }) || {};
 
   useEffect(() => {
@@ -87,55 +92,9 @@ export function CredentialsPage() {
     await Promise.all([loadCredentials(), loadConnectorCatalog(), loadConnectorTargets()]);
   }
 
-  function openCredentialDrawer(kind) {
+  function openCredentialEditor(row) {
     setAddMenuOpen(false);
-    setDrawer({ open: true, kind, mode: "create", row: null });
-    setCredentialState(emptyCredentialState(kind, { targets: connectorTargets.data }));
-  }
-
-  function openEditCredential(row) {
-    setAddMenuOpen(false);
-    setDrawer({ open: true, kind: row.connector_kind, mode: "edit", row });
-    setCredentialState(getConnectorModel(row.connector_kind)?.credentialStateFromRow?.({ row, targets: connectorTargets.data }) || {});
-  }
-
-  function closeDrawer() {
-    setDrawer({ open: false, kind: defaultConnectorKind, mode: "create", row: null });
-    setCredentialState(emptyCredentialState(defaultConnectorKind, { targets: connectorTargets.data }));
-  }
-
-  async function saveCredential(event, operation) {
-    event.preventDefault();
-    const model = getConnectorModel(drawer.kind);
-    if (!model?.saveCredential) return;
-    await runAction({
-      pending: operation === "import" ? "importing" : "saving",
-      successMessage: (result) => result?.message || "Credential saved.",
-      action: async () => {
-        const result = await model.saveCredential({
-          operation,
-          row: drawer.row,
-          formState: credentialState,
-          targets: connectorTargets.data,
-        });
-        closeDrawer();
-        await refreshCredentials();
-        return result;
-      },
-    });
-  }
-
-  async function deleteCredential(row) {
-    const model = getConnectorModel(row.connector_kind);
-    if (!model?.deleteCredential) return;
-    await runAction({
-      pending: "deleting",
-      successMessage: "Credential deleted.",
-      action: async () => {
-        await model.deleteCredential({ row });
-        await refreshCredentials();
-      },
-    });
+    editor.openEdit(row);
   }
 
   return (
@@ -151,7 +110,15 @@ export function CredentialsPage() {
             Add credential
             <ChevronDown className="h-4 w-4" />
           </Button>
-          {addMenuOpen ? <AddCredentialMenu kinds={availableConnectorKinds} onAdd={openCredentialDrawer} /> : null}
+          {addMenuOpen ? (
+            <AddCredentialMenu
+              kinds={availableConnectorKinds}
+              onAdd={(kind) => {
+                setAddMenuOpen(false);
+                editor.openCreate(kind);
+              }}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -183,8 +150,8 @@ export function CredentialsPage() {
               <CredentialRow
                 key={row.row_id}
                 row={row}
-                onEdit={openEditCredential}
-                onDelete={deleteCredential}
+                onEdit={openCredentialEditor}
+                onDelete={editor.remove}
                 busy={state.state !== "idle" && state.state !== "error"}
               />
             ))}
@@ -210,7 +177,7 @@ export function CredentialsPage() {
             ? "Update the connector credential profile metadata. Secrets are only replaced when you enter a new value."
             : "Choose the connector credential type, then fill the connector-specific profile form."
         }
-        onClose={closeDrawer}
+        onClose={editor.closeEditor}
       >
         {CredentialFormTemplate ? (
           <CredentialFormTemplate {...credentialFormProps} />
