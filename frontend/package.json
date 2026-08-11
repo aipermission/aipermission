@@ -11,7 +11,9 @@
     "lint:suppressions": "eslint . --prune-suppressions",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node scripts/run-tests.mjs",
+    "test": "npm run test:unit && npm run test:component",
+    "test:unit": "node scripts/run-tests.mjs",
+    "test:component": "vitest run --config vitest.config.js",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1"
   },
@@ -32,13 +34,18 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^10.8.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.9.0",
+    "jsdom": "^26.1.0",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.7.2",
-    "vite": "^6.4.3"
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
   }
 }

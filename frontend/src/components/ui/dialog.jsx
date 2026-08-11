@@ -63,7 +63,7 @@ export function Dialog({
       <button
         type="button"
         className="dialog-overlay absolute inset-0 bg-stone-950/45"
-        aria-label="Close dialog"
+        aria-label="Dismiss dialog"
         onClick={!closeDisabled && closeOnOverlay ? onClose : undefined}
       />
       <section
@@ -79,7 +79,15 @@ export function Dialog({
             </h2>
             {description ? <p className="mt-1 text-sm text-stone-500">{description}</p> : null}
           </div>
-          <Button ref={closeButtonRef} type="button" variant="ghost" className="h-9 w-9 px-0" onClick={onClose} disabled={closeDisabled}>
+          <Button
+            ref={closeButtonRef}
+            type="button"
+            variant="ghost"
+            className="h-9 w-9 px-0"
+            aria-label="Close dialog"
+            onClick={onClose}
+            disabled={closeDisabled}
+          >
             <X className="h-4 w-4" />
           </Button>
         </header>

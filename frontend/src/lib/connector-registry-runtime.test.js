@@ -22,8 +22,9 @@ test("connector template registry evaluates at runtime", async () => {
     server: { host: "127.0.0.1", port: 0, strictPort: false },
   });
   await server.listen();
-  const baseURL = server.resolvedUrls?.local?.[0];
-  assert.ok(baseURL, "vite dev server should expose a local URL");
+  const address = server.httpServer?.address();
+  assert.ok(address && typeof address !== "string", "vite dev server should expose a TCP address");
+  const baseURL = `http://127.0.0.1:${address.port}/`;
   let browser;
   try {
     browser = await chromium.launch();

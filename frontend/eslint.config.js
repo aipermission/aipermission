@@ -3,7 +3,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 const sourceFiles = ["src/**/*.{js,jsx}"];
-const nodeFiles = ["e2e/**/*.js", "scripts/**/*.mjs", "playwright.config.js", "vite.config.js"];
+const nodeFiles = ["e2e/**/*.js", "scripts/**/*.mjs", "playwright.config.js", "vite.config.js", "vitest.config.js"];
 
 export default [
   {
