@@ -55,6 +55,17 @@ type browseRemoteFilesResponse struct {
 	Entries []connectorapi.RemoteFileEntry `json:"entries"`
 }
 
+type expandRemoteFilesRequest struct {
+	RuntimeID int64  `json:"runtime_id"`
+	Path      string `json:"path"`
+}
+
+type expandRemoteFilesResponse struct {
+	Path       string                         `json:"path"`
+	Entries    []connectorapi.RemoteFileEntry `json:"entries"`
+	TotalBytes int64                          `json:"total_bytes"`
+}
+
 type remoteFileExistsResponse struct {
 	Error      string `json:"error"`
 	Code       string `json:"code"`
@@ -209,6 +220,52 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		Parent:  parent,
 		Entries: entries,
 	})
+}
+
+func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return
+	}
+	var request expandRemoteFilesRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	if request.RuntimeID < 1 {
+		writeError(w, http.StatusBadRequest, "runtime_id is required")
+		return
+	}
+	remotePath, err := normalizeRemoteDirectoryPath(request.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	baseAdapter, err := s.fileTransferAdapter(ctx, runtime, request.RuntimeID)
+	if err != nil {
+		handleConnectorTargetRuntimeError(w, err)
+		return
+	}
+	adapter, ok := baseAdapter.(connectorapi.RecursiveFileTransferAdapter)
+	if !ok {
+		writeError(w, http.StatusConflict, "this connector does not support recursive file selection")
+		return
+	}
+	entries, err := adapter.ListRecursiveFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath, 100, maxFileTransferBatchBytes)
+	if err != nil {
+		if writeConnectorError(w, baseAdapter, err) {
+			return
+		}
+		writeError(w, http.StatusBadGateway, connectorErrorMessage(baseAdapter, "recursive file selection failed", err))
+		return
+	}
+	var totalBytes int64
+	for _, entry := range entries {
+		totalBytes += entry.Size
+	}
+	writeJSON(w, http.StatusOK, expandRemoteFilesResponse{Path: remotePath, Entries: entries, TotalBytes: totalBytes})
 }
 
 func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.Request) {

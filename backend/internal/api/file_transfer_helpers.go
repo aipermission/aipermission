@@ -114,6 +114,33 @@ func normalizeRemoteDirectoryPath(value string) (string, error) {
 	return path.Clean(value), nil
 }
 
+func normalizeRelativeTransferPath(value string) (string, error) {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if value == "" || len([]rune(value)) > 4096 {
+		return "", fmt.Errorf("relative upload path is invalid")
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return "", fmt.Errorf("relative upload path cannot contain control characters")
+		}
+	}
+	if path.IsAbs(value) {
+		return "", fmt.Errorf("relative upload path must not be absolute")
+	}
+	cleaned := path.Clean(value)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("relative upload path cannot leave the selected directory")
+	}
+	return cleaned, nil
+}
+
+func joinRemoteRelativePath(remoteDir string, relativePath string) string {
+	if remoteDir == "/" {
+		return "/" + strings.TrimLeft(relativePath, "/")
+	}
+	return strings.TrimRight(remoteDir, "/") + "/" + strings.TrimLeft(relativePath, "/")
+}
+
 func safeFileName(value string) string {
 	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
 	value = path.Base(value)

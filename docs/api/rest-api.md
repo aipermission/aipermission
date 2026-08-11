@@ -517,23 +517,25 @@ POST /api/file-transfer-batches/{id}/queue
 POST /api/file-transfer-batches/{id}/approve
 POST /api/file-transfer-batches/{id}/decline
 POST /api/file-transfers/browse
+POST /api/file-transfers/expand
 POST /api/file-transfers/upload
 POST /api/file-transfers/upload-batch
 POST /api/file-transfers/download
 POST /api/file-transfers/download-batch
 ```
 
-File transfers are SSH connector operations and run over SFTP through the
-selected target/profile credential. AIPermission stores transfer metadata,
-status, progress, and checksum only. File contents are never stored in
-SQLCipher. Uploads and downloads use private short-lived temporary staging
-files under the local data directory.
+File transfers run through a connector profile's generic `file_transfer`
+runtime surface. SSH profiles provide that surface over SFTP; S3 profiles use
+bounded object transfers and multipart upload for larger files. AIPermission
+stores transfer metadata, status, progress, and checksum only. File contents
+are never stored in SQLCipher. Uploads and downloads use private short-lived
+temporary staging files under the local data directory.
 
-These endpoints are local UI endpoints for the SSH connector's SFTP transfer
-capability. They use the shared target/profile identity and are normalized into
-history/audit, but they are not generic connector-action REST endpoints. MCP
-file-transfer support is exposed through connector actions and still goes
-through token target/profile/action permission checks.
+These endpoints are local UI endpoints for connector transfer runtimes. They
+use the shared target/profile identity and are normalized into history/audit,
+but they are not connector-action REST endpoints. MCP file-transfer support is
+exposed through connector actions and still goes through token
+target/profile/action permission checks.
 
 The local UI can upload local files, download remote files, and pause/resume or
 cancel transfer queues. MCP uses the generic connector-action tools instead of
@@ -545,19 +547,31 @@ responses never include file contents, local temporary paths, archive staging
 paths, or local upload contents.
 
 `GET /api/file-transfers` returns paginated transfer history. Optional filters
-include `direction`, `status`, the SSH runtime `runtime_id`, and `q`:
+include `direction`, `status`, the connector transfer `runtime_id`, and `q`:
 
 ```txt
 GET /api/file-transfers?paginated=true&direction=download&status=completed&q=backup
 ```
 
-`POST /api/file-transfers/browse` lists one remote directory through SFTP so the
-local UI can select upload/download paths:
+`POST /api/file-transfers/browse` lists one remote directory or virtual object
+prefix through the selected connector transfer runtime so the local UI can
+select upload/download paths:
 
 ```json
 {
   "runtime_id": 3,
   "path": "/home/deploy"
+}
+```
+
+`POST /api/file-transfers/expand` expands one directory or virtual prefix into
+a bounded recursive file list. The connector must explicitly implement
+recursive listing. Expansion is limited to 100 files and 1 GiB total size:
+
+```json
+{
+  "runtime_id": 3,
+  "path": "/daily/reports"
 }
 ```
 
@@ -570,14 +584,14 @@ overwrite=false
 file=<browser selected file>
 ```
 
-Uploads are staged in a private local temporary directory and then copied to a
-temporary file beside the remote target. AIPermission moves the temporary remote
-file into place only after the upload completes. Canceling or failing an upload
-therefore avoids leaving a partial target file behind; the gateway also attempts
-to remove the temporary remote file. The local staging file is removed after the
-remote transfer finishes or fails. Uploads do not overwrite an existing regular
-remote file unless `overwrite=true` is sent after an explicit local UI
-confirmation. Existing directories or special files are rejected.
+Uploads are staged in a private local temporary directory. SSH transfers copy
+to a temporary remote file and move it into place after completion. S3
+transfers use a direct bounded PUT for small objects and multipart upload for
+objects larger than 16 MiB; failed or canceled multipart uploads are aborted.
+The local staging file is removed after the transfer finishes or fails.
+Uploads do not overwrite an existing remote file unless `overwrite=true` is
+sent after an explicit local UI confirmation. Existing directories or virtual
+prefixes are rejected.
 
 `POST /api/file-transfers/download` starts a remote file download:
 
@@ -606,15 +620,18 @@ remote_dir=/home/deploy
 overwrite=false
 files=<browser selected file>
 files=<another browser selected file>
+relative_paths=["reports/2026/a.csv","reports/2026/b.csv"]
 ```
 
 The backend stages each selected file in a private temporary directory, creates
 a batch record and per-file transfer records, then copies files sequentially
-over SFTP. If any target file already exists and `overwrite=false`, the endpoint
-returns `409 Conflict` with `code: "remote_files_exist"` and a `conflicts`
-array. The UI asks for explicit confirmation before retrying with
-`overwrite=true`. Duplicate target paths in the same queue are rejected before
-the transfer starts.
+through the selected connector transfer runtime. `relative_paths` is optional;
+when supplied, it must contain one safe relative path per uploaded file and
+preserves selected folder structure. If any target file already exists and
+`overwrite=false`, the endpoint returns `409 Conflict` with `code:
+"remote_files_exist"` and a `conflicts` array. The UI asks for explicit
+confirmation before retrying with `overwrite=true`. Duplicate target paths in
+the same queue are rejected before the transfer starts.
 
 `POST /api/file-transfers/download-batch` starts a queued remote download:
 
@@ -630,9 +647,9 @@ Remote files are downloaded sequentially to private temporary files. A single
 download is served as the downloaded file. Multiple completed downloads are
 packaged into a temporary zip, then served through `GET
 /api/file-transfer-batches/{id}/download`. Duplicate remote paths in the same
-queue are rejected. If multiple files have the same basename, the generated zip
-uses numeric suffixes to keep entries unique. A download batch is limited to
-1 GiB total remote file size.
+queue are rejected. Generated zip archives preserve paths relative to the
+downloaded files' common remote directory and add numeric suffixes only for
+colliding entries. A download batch is limited to 1 GiB total remote file size.
 
 `GET /api/file-transfer-batches/{id}` returns the batch record, aggregate
 progress, speed/ETA, and ordered per-file items. `POST

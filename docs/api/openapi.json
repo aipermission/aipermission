@@ -1824,6 +1824,20 @@
         "x-aipermission-contract-level": "route-inventory"
       }
     },
+    "/api/file-transfers/expand": {
+      "post": {
+        "operationId": "postApiFileTransfersExpand",
+        "responses": {
+          "default": {
+            "description": "See the REST API reference for status and response body details."
+          }
+        },
+        "tags": [
+          "file-transfers"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
     "/api/file-transfers/upload": {
       "post": {
         "operationId": "postApiFileTransfersUpload",

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -137,12 +138,28 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 		writeError(w, http.StatusBadRequest, "cannot upload more than 100 files at once")
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
+	relativePaths := []string{}
+	if raw := strings.TrimSpace(r.FormValue("relative_paths")); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &relativePaths); err != nil || len(relativePaths) != len(headers) {
+			writeError(w, http.StatusBadRequest, "relative_paths must match the uploaded files")
+			return filetransfer.BatchRecord{}, 0, false, false
+		}
+	}
 	fileNames := make([]string, 0, len(headers))
 	remotePaths := make([]string, 0, len(headers))
 	seenRemotePaths := map[string]bool{}
-	for _, header := range headers {
+	for index, header := range headers {
 		fileName := safeFileName(header.Filename)
-		remotePath := joinRemoteFilePath(remoteDir, fileName)
+		relativePath := fileName
+		if len(relativePaths) > 0 {
+			var err error
+			relativePath, err = normalizeRelativeTransferPath(relativePaths[index])
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return filetransfer.BatchRecord{}, 0, false, false
+			}
+		}
+		remotePath := joinRemoteRelativePath(remoteDir, relativePath)
 		if seenRemotePaths[remotePath] {
 			writeError(w, http.StatusBadRequest, "upload queue contains duplicate remote paths")
 			return filetransfer.BatchRecord{}, 0, false, false

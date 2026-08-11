@@ -55,6 +55,12 @@ type GatewayServer interface {
 	ConnectorRunTransferBatch(runtime GatewayRuntime, batchID int64, overwrite bool)
 }
 
+// RuntimeCapabilityServer exposes connector-owned runtime capabilities to
+// adapters that execute outside the connector action pipeline.
+type RuntimeCapabilityServer interface {
+	ConnectorRuntimeCapabilities(kind string, runtime GatewayRuntime) connectors.RuntimeCapabilityResolver
+}
+
 // TargetLifecycleGateway is passed to target/profile lifecycle adapters.
 type TargetLifecycleGateway interface {
 	ConnectorServer() GatewayServer
@@ -227,6 +233,10 @@ type FileTransferAdapter interface {
 	StatRemotePath(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string) (RemotePathStatus, error)
 	UploadFile(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error)
 	DownloadFile(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string, localPath string, options TransferOptions) (TransferResult, error)
+}
+
+type RecursiveFileTransferAdapter interface {
+	ListRecursiveFiles(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string, maxItems int, maxBytes int64) ([]RemoteFileEntry, error)
 }
 
 type ErrorPresenter interface {
