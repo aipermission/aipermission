@@ -16,7 +16,7 @@ hygiene:
 	npm run hygiene
 
 backend-test:
-	cd backend && go test ./...
+	cd backend && coverage=$$(mktemp) && trap 'rm -f "$$coverage"' EXIT; go test -coverprofile="$$coverage" ./... && go tool cover -func="$$coverage" | tail -1
 
 backend-race:
 	cd backend && go test -race ./...
