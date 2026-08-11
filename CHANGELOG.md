@@ -7,6 +7,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.25] - 2026-08-11
+
 ### Added
 
 - Added bounded S3 multipart upload and recursive file-transfer queues with
