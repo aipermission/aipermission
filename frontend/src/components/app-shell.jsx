@@ -1,7 +1,16 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router";
-import { apiGet, apiPost, apiPut, apiUrl } from "../lib/api";
+import { Outlet, useLocation } from "react-router";
+import { apiGet, apiPost, apiPut } from "../lib/api";
+import { BackupFreshnessNotices } from "./backup-freshness-notices";
 import { AppSidebar } from "./app-sidebar";
+import {
+  consoleSessionAttachUrl,
+  isActiveTransferBatch,
+  limitTranscript,
+  liveConsoleRuntimeTargets,
+  mergeConsoleSessionData,
+  normalizeCredentialResources,
+} from "./app-shell-runtime";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
 import { TransferCenter } from "./transfer-center";
 import { Button } from "./ui/button";
@@ -12,7 +21,7 @@ import { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog"
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
 import { reconcileVaultApprovalDialog } from "../lib/vault-approval-poll";
-import { formatRelativeAge } from "../lib/date-time";
+import { isLiveConsoleSession, isUnreadMessage, latestSessionForRuntime } from "./console/helpers";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
   function toggleTheme() {
@@ -275,7 +284,7 @@ export function Shell({ theme, setTheme }) {
     if (targets.state === "loading") {
       return { state: "loading", data: [], error: null };
     }
-    return { state: "ready", data: liveConsoleRuntimeTargets(targets.data), error: null };
+    return { state: "ready", data: liveConsoleRuntimeTargets(targets.data, getConnectorModel), error: null };
   }, [targets.state, targets.data, targets.error]);
 
   function patchConsoleSession(sessionID, updater) {
@@ -711,52 +720,7 @@ export function Shell({ theme, setTheme }) {
 
       <section className="lg:pl-72">
         <div className={`mx-auto grid gap-6 p-5 ${location.pathname === "/console" ? "max-w-none" : "max-w-7xl"}`}>
-          {backupFreshness.data.length > 0 ? (
-            <Notice tone="warn" className="flex flex-wrap items-center justify-between gap-3">
-              <span>
-                A newer encrypted backup is available
-                {backupFreshness.data.length === 1
-                  ? ` from ${formatRelativeAge(backupFreshness.data[0].latest_remote_at)}`
-                  : ` in ${backupFreshness.data.length} providers`}
-                . This local database may be stale.
-              </span>
-              <span className="flex items-center gap-3">
-                <Link className="font-semibold underline underline-offset-2" to="/settings">
-                  Review backups
-                </Link>
-                <button
-                  type="button"
-                  className="font-semibold text-stone-600 hover:text-stone-950"
-                  onClick={() => setBackupFreshness((current) => ({ ...current, data: [] }))}
-                >
-                  Dismiss
-                </button>
-              </span>
-            </Notice>
-          ) : null}
-          {backupFreshness.checkErrors.length > 0 || backupFreshness.error ? (
-            <Notice tone="warn" className="flex flex-wrap items-center justify-between gap-3">
-              <span>
-                Backup freshness could not be checked
-                {backupFreshness.checkErrors.length > 0
-                  ? ` for ${backupFreshness.checkErrors.length} provider${backupFreshness.checkErrors.length === 1 ? "" : "s"}`
-                  : ""}
-                . Review the provider connection before relying on the local copy.
-              </span>
-              <span className="flex items-center gap-3">
-                <Link className="font-semibold underline underline-offset-2" to="/settings">
-                  Review backups
-                </Link>
-                <button
-                  type="button"
-                  className="font-semibold text-stone-600 hover:text-stone-950"
-                  onClick={() => setBackupFreshness((current) => ({ ...current, checkErrors: [], error: null }))}
-                >
-                  Dismiss
-                </button>
-              </span>
-            </Notice>
-          ) : null}
+          <BackupFreshnessNotices value={backupFreshness} onChange={setBackupFreshness} />
           <Outlet
             context={{
               status,
@@ -797,68 +761,4 @@ export function Shell({ theme, setTheme }) {
       </section>
     </main>
   );
-}
-
-function normalizeCredentialResources(connectorKind, items) {
-  return (items || []).map((item) => {
-    const resourceKind = item.resource_kind || item.kind || "credential";
-    return {
-      ...item,
-      connector_kind: item.connector_kind || connectorKind,
-      resource_kind: resourceKind,
-      resource_ref: item.resource_ref || `${connectorKind}:${resourceKind}:${item.id || item.name || "unknown"}`,
-    };
-  });
-}
-
-function isUnreadMessage(message) {
-  return message.direction === "ai_to_user" && !message.consumed_at;
-}
-
-function isActiveTransferBatch(batch) {
-  return batch?.status === "pending_approval" || batch?.status === "pending" || batch?.status === "running" || batch?.status === "paused";
-}
-
-function consoleSessionAttachUrl(sessionID) {
-  const url = new URL(apiUrl, window.location.origin);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = `/api/console/sessions/${sessionID}/attach`;
-  return url.toString();
-}
-
-function limitTranscript(value) {
-  const maxLength = 200000;
-  if (value.length <= maxLength) return value;
-  return value.slice(value.length - maxLength);
-}
-
-function isLiveConsoleSession(session) {
-  return session?.status === "connecting" || session?.status === "connected";
-}
-
-function latestSessionForRuntime(sessions, runtimeID) {
-  return sessions.find((session) => Number(session.runtime_id) === Number(runtimeID)) || null;
-}
-
-function liveConsoleRuntimeTargets(targets) {
-  return (targets || [])
-    .filter((target) => {
-      const model = getConnectorModel(target.connector_kind);
-      return Boolean(model?.usesLiveConsole?.({ target }) && target.runtime_id && model?.liveConsoleRuntimeTarget);
-    })
-    .map((target) => {
-      const model = getConnectorModel(target.connector_kind);
-      return model.liveConsoleRuntimeTarget({ target });
-    });
-}
-
-function mergeConsoleSessionData(next, current) {
-  return next.map((session) => {
-    const local = current.find((item) => Number(item.id) === Number(session.id));
-    if (!local) return session;
-    if (isLiveConsoleSession(local) && (session.status === "connecting" || session.status === "connected")) {
-      return { ...session, transcript: local.transcript, status: local.status, error: local.error };
-    }
-    return session;
-  });
 }

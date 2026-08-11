@@ -44,7 +44,11 @@ export const backupRetentionPanelSource = readFileSync(
   join(currentDir, "..", "components", "settings", "backup-retention-panel.jsx"),
   "utf8",
 );
-export const shellSource = readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8");
+export const shellSource = [
+  readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8"),
+  readFileSync(join(currentDir, "..", "components", "app-shell-runtime.js"), "utf8"),
+  readFileSync(join(currentDir, "..", "components", "backup-freshness-notices.jsx"), "utf8"),
+].join("\n");
 export const historySource = readFileSync(join(currentDir, "..", "pages", "history.jsx"), "utf8");
 export const auditLogsSource = readFileSync(join(currentDir, "..", "pages", "audit-logs.jsx"), "utf8");
 export const consolePageSource = [
