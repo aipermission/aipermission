@@ -3,6 +3,7 @@ package connectors
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -111,7 +112,8 @@ type BackupArtifact struct {
 
 type RestoreRequest struct {
 	Filename string
-	Data     []byte
+	Content  io.Reader
+	Size     int64
 }
 
 // SecretAccessor resolves connector credential secrets at runtime.

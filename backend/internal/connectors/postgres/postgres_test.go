@@ -1,6 +1,7 @@
 package postgresconnector
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -343,6 +344,33 @@ func TestExecuteActionValidatesTargetConfigBeforeDial(t *testing.T) {
 	}, connectors.PreparedAction{ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("expected ErrInvalidConfig, got %v", err)
+	}
+}
+
+func TestRestoreRejectsInvalidStreamsBeforeConnecting(t *testing.T) {
+	connector := New()
+	tests := []struct {
+		name    string
+		request connectors.RestoreRequest
+		want    string
+	}{
+		{name: "missing stream", request: connectors.RestoreRequest{}, want: "empty"},
+		{
+			name: "oversized stream",
+			request: connectors.RestoreRequest{
+				Content: bytes.NewReader([]byte("select 1;")),
+				Size:    maxBackupBytes + 1,
+			},
+			want: "too large",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := connector.Restore(context.Background(), connectors.RuntimeContext{}, test.request)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Restore() error = %v, want %q", err, test.want)
+			}
+		})
 	}
 }
 

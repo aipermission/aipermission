@@ -725,10 +725,10 @@ func (Connector) Backup(ctx context.Context, runtime connectors.RuntimeContext, 
 }
 
 func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext, request connectors.RestoreRequest) (connectors.ActionResult, error) {
-	if len(request.Data) == 0 {
+	if request.Content == nil || request.Size == 0 {
 		return connectors.ActionResult{}, fmt.Errorf("restore SQL file is empty")
 	}
-	if len(request.Data) > maxBackupBytes {
+	if request.Size < 0 || request.Size > maxBackupBytes {
 		return connectors.ActionResult{}, fmt.Errorf("restore SQL file is too large; maximum restore size is 256 MiB")
 	}
 	ctx, cancel := context.WithTimeout(ctx, restoreTimeout)
@@ -749,7 +749,7 @@ func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext,
 	stderr.Limit = maxRestoreLog
 	cmd := exec.CommandContext(ctx, "psql", args...)
 	cmd.Env = invocation.Env
-	cmd.Stdin = bytes.NewReader(request.Data)
+	cmd.Stdin = io.LimitReader(request.Content, maxBackupBytes+1)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
