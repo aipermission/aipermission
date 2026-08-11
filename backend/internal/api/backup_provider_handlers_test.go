@@ -38,6 +38,7 @@ type fakeBackupService struct {
 	item      backups.ServiceBackup
 	data      []byte
 	listCalls int
+	retention backups.ServiceRetentionPolicy
 }
 
 func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testing.T) {
@@ -104,9 +105,53 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), record.ProviderFileID) || !strings.Contains(list.Body.String(), `"remote_sync":true`) {
 		t.Fatalf("record sync failed: %d %s", list.Code, list.Body.String())
 	}
+	storage := performJSON(handler, http.MethodGet, providerPath(created.ID, "/storage"), "", nil)
+	if storage.Code != http.StatusOK {
+		t.Fatalf("storage usage failed: %d %s", storage.Code, storage.Body.String())
+	}
+	storageUsage := decodeRouteResponse[backups.ServiceStorageUsage](t, storage.Body.Bytes())
+	if storageUsage.UsedBytes < 1 || !storageUsage.QuotaEnabled || storageUsage.BackupCount != 1 {
+		t.Fatalf("storage usage was incomplete: %#v", storageUsage)
+	}
+	retention := performJSON(handler, http.MethodGet, providerPath(created.ID, "/retention"), "", nil)
+	if retention.Code != http.StatusOK {
+		t.Fatalf("retention policy failed: %d %s", retention.Code, retention.Body.String())
+	}
+	retentionPolicy := decodeRouteResponse[backups.ServiceRetentionPolicy](t, retention.Body.Bytes())
+	if retentionPolicy.Enabled || retentionPolicy.KeepLatest != 0 {
+		t.Fatalf("unexpected default retention policy: %#v", retentionPolicy)
+	}
+	if invalid := performJSON(handler, http.MethodPost, providerPath(created.ID, "/retention/preview"), "", map[string]any{"keep_latest": 0}); invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid retention preview status = %d body=%s", invalid.Code, invalid.Body.String())
+	}
+	if invalid := performJSON(handler, http.MethodPut, providerPath(created.ID, "/retention"), "", updateBackupRetentionRequest{Enabled: false, KeepLatest: 1}); invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid disabled retention status = %d body=%s", invalid.Code, invalid.Body.String())
+	}
+	preview := performJSON(handler, http.MethodPost, providerPath(created.ID, "/retention/preview"), "", map[string]any{"keep_latest": 1})
+	if preview.Code != http.StatusOK {
+		t.Fatalf("retention preview failed: %d %s", preview.Code, preview.Body.String())
+	}
+	retentionPreview := decodeRouteResponse[backups.ServiceRetentionPreview](t, preview.Body.Bytes())
+	if retentionPreview.KeepLatest != 1 || retentionPreview.RetainCount != 1 || retentionPreview.DeleteCount != 0 {
+		t.Fatalf("unexpected retention preview: %#v", retentionPreview)
+	}
+	update := performJSON(handler, http.MethodPut, providerPath(created.ID, "/retention"), "", updateBackupRetentionRequest{
+		Enabled: true, KeepLatest: 1, ApplyNow: true,
+	})
+	if update.Code != http.StatusOK {
+		t.Fatalf("retention update failed: %d %s", update.Code, update.Body.String())
+	}
+	retentionUpdate := decodeRouteResponse[backups.ServiceRetentionUpdate](t, update.Body.Bytes())
+	if !retentionUpdate.Policy.Enabled || retentionUpdate.Policy.KeepLatest != 1 || retentionUpdate.DeletedCount != 0 {
+		t.Fatalf("unexpected retention update: %#v", retentionUpdate)
+	}
 	prune := performJSON(handler, http.MethodPost, providerPath(created.ID, "/prune"), "", pruneBackupProviderRequest{KeepLatest: 1})
-	if prune.Code != http.StatusOK || !strings.Contains(prune.Body.String(), `"keep_latest":1`) {
+	if prune.Code != http.StatusOK {
 		t.Fatalf("prune failed: %d %s", prune.Code, prune.Body.String())
+	}
+	pruneResult := decodeRouteResponse[backups.ServicePruneResult](t, prune.Body.Bytes())
+	if pruneResult.KeepLatest != 1 || pruneResult.DeletedCount != 0 {
+		t.Fatalf("unexpected prune result: %#v", pruneResult)
 	}
 	download := performJSON(handler, http.MethodGet, providerPath(created.ID, "/records/"+strconv.FormatInt(record.ID, 10)+"/download"), "", nil)
 	if download.Code != http.StatusOK || download.Body.Len() != int(record.SizeBytes) {
@@ -116,8 +161,12 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	listCallsBeforeDelete := remote.listCalls
 	remote.mu.Unlock()
 	deleteRecords := performJSON(handler, http.MethodPost, providerPath(created.ID, "/records/delete"), "", deleteBackupRecordsRequest{RecordIDs: []int64{record.ID}})
-	if deleteRecords.Code != http.StatusOK || !strings.Contains(deleteRecords.Body.String(), `"deleted_count":1`) {
+	if deleteRecords.Code != http.StatusOK {
 		t.Fatalf("selected delete failed: %d %s", deleteRecords.Code, deleteRecords.Body.String())
+	}
+	deleteResult := decodeRouteResponse[backups.ServiceDeleteResult](t, deleteRecords.Body.Bytes())
+	if deleteResult.DeletedCount != 1 || len(deleteResult.DeletedIDs) != 1 || deleteResult.DeletedIDs[0] != record.ProviderFileID {
+		t.Fatalf("unexpected selected delete result: %#v", deleteResult)
 	}
 	remote.mu.Lock()
 	listCallsAfterDelete := remote.listCalls
@@ -315,6 +364,28 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 				items = append(items, backups.ServiceStream{ID: service.item.StreamID, DatabaseName: service.item.DatabaseName})
 			}
 			json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": ""})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/storage":
+			remaining := int64(16<<20) - int64(len(service.data))
+			json.NewEncoder(w).Encode(backups.ServiceStorageUsage{
+				UsedBytes: int64(len(service.data)), QuotaEnabled: true, QuotaBytes: 16 << 20,
+				RemainingBytes: &remaining, BackupCount: testBoolToInt64(service.item.ID != ""), StreamCount: 1,
+			})
+		case strings.HasSuffix(r.URL.Path, "/retention") && r.Method == http.MethodGet:
+			policy := service.retention
+			if policy.StreamID == "" {
+				policy.StreamID = service.item.StreamID
+			}
+			json.NewEncoder(w).Encode(policy)
+		case strings.HasSuffix(r.URL.Path, "/retention/preview") && r.Method == http.MethodPost:
+			json.NewEncoder(w).Encode(backups.ServiceRetentionPreview{
+				StreamID: service.item.StreamID, KeepLatest: 1, RetainCount: testBoolToInt(service.item.ID != ""), RetainBytes: int64(len(service.data)),
+			})
+		case strings.HasSuffix(r.URL.Path, "/retention") && r.Method == http.MethodPut:
+			service.retention = backups.ServiceRetentionPolicy{StreamID: service.item.StreamID, Enabled: true, KeepLatest: 1}
+			json.NewEncoder(w).Encode(backups.ServiceRetentionUpdate{
+				Policy:  service.retention,
+				Preview: backups.ServiceRetentionPreview{StreamID: service.item.StreamID, KeepLatest: 1, RetainCount: testBoolToInt(service.item.ID != ""), RetainBytes: int64(len(service.data))},
+			})
 		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/streams/") && strings.HasSuffix(r.URL.Path, "/backups"):
 			data, err := io.ReadAll(r.Body)
 			if err != nil || len(data) == 0 {
@@ -358,6 +429,17 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 	}))
 	t.Cleanup(service.server.Close)
 	return service
+}
+
+func testBoolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func testBoolToInt64(value bool) int64 {
+	return int64(testBoolToInt(value))
 }
 
 func providerPath(id int64, suffix string) string {

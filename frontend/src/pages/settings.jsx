@@ -12,6 +12,7 @@ import { isValidDatabasePassword } from "../lib/password";
 import { formatRelativeAge } from "../lib/date-time";
 import { formatBytes } from "../lib/file-transfer-utils";
 import { PtyConsole } from "../components/console/pty-console";
+import { BackupRetentionPanel } from "../components/settings/backup-retention-panel";
 
 const emptyState = { state: "idle", error: null, message: null };
 const backupServiceGuideURL = "https://github.com/aipermission/aipermission/blob/main/docs/providers/aipermission-backup.md";
@@ -1108,6 +1109,7 @@ export function SettingsPage() {
             Remote providers store encrypted database files only. They do not receive MCP tokens, connector credentials, or the database
             password.
           </Notice>
+          {backupRecordsProvider ? <BackupRetentionPanel provider={backupRecordsProvider} onRecordsChanged={refreshBackupRecords} /> : null}
           <Field>
             Provider type
             <Select

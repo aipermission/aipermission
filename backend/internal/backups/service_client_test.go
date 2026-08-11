@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -81,6 +82,19 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 			json.NewEncoder(w).Encode(ServicePruneResult{StreamID: "stream-a", KeepLatest: 2, DeletedCount: 3})
 		case r.URL.Path == "/v1/streams/stream-a/backups/delete" && r.Method == http.MethodPost:
 			json.NewEncoder(w).Encode(ServiceDeleteResult{StreamID: "stream-a", DeletedIDs: []string{"bkp_123"}, DeletedCount: 1})
+		case r.URL.Path == "/v1/storage" && r.Method == http.MethodGet:
+			remaining := int64(4096)
+			json.NewEncoder(w).Encode(ServiceStorageUsage{UsedBytes: 1024, QuotaEnabled: true, QuotaBytes: 5120, RemainingBytes: &remaining, BackupCount: 1, StreamCount: 1})
+		case r.URL.Path == "/v1/streams/stream-a/retention" && r.Method == http.MethodGet:
+			json.NewEncoder(w).Encode(ServiceRetentionPolicy{StreamID: "stream-a", Enabled: true, KeepLatest: 10})
+		case r.URL.Path == "/v1/streams/stream-a/retention/preview" && r.Method == http.MethodPost:
+			json.NewEncoder(w).Encode(ServiceRetentionPreview{StreamID: "stream-a", KeepLatest: 5, RetainCount: 5, RetainBytes: 900, DeleteCount: 2, DeleteBytes: 124})
+		case r.URL.Path == "/v1/streams/stream-a/retention" && r.Method == http.MethodPut:
+			json.NewEncoder(w).Encode(ServiceRetentionUpdate{
+				Policy:       ServiceRetentionPolicy{StreamID: "stream-a", Enabled: true, KeepLatest: 5},
+				Preview:      ServiceRetentionPreview{StreamID: "stream-a", KeepLatest: 5, RetainCount: 5, RetainBytes: 900, DeleteCount: 2, DeleteBytes: 124},
+				DeletedCount: 2,
+			})
 		case r.URL.Path == "/redirect":
 			http.Redirect(w, r, serverURLForRedirect(r), http.StatusFound)
 		default:
@@ -115,6 +129,22 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 	if err != nil || deleted.DeletedCount != 1 {
 		t.Fatalf("delete: item=%#v err=%v", deleted, err)
 	}
+	usage, err := client.StorageUsage(context.Background())
+	if err != nil || usage.RemainingBytes == nil || *usage.RemainingBytes != 4096 {
+		t.Fatalf("storage usage: item=%#v err=%v", usage, err)
+	}
+	policy, err := client.GetRetentionPolicy(context.Background(), "stream-a")
+	if err != nil || !policy.Enabled || policy.KeepLatest != 10 {
+		t.Fatalf("retention policy: item=%#v err=%v", policy, err)
+	}
+	preview, err := client.PreviewRetention(context.Background(), "stream-a", 5)
+	if err != nil || preview.DeleteCount != 2 || preview.DeleteBytes != 124 {
+		t.Fatalf("retention preview: item=%#v err=%v", preview, err)
+	}
+	updated, err := client.UpdateRetention(context.Background(), "stream-a", true, 5, true)
+	if err != nil || updated.DeletedCount != 2 || updated.Policy.KeepLatest != 5 {
+		t.Fatalf("retention update: item=%#v err=%v", updated, err)
+	}
 	output := filepath.Join(t.TempDir(), "output.aipdb")
 	downloaded, err := client.Download(context.Background(), "stream-a", "bkp_123", output, 1024)
 	if err != nil || downloaded.Filename != "project-a.aipdb" {
@@ -147,6 +177,73 @@ func TestServiceClientRejectsOversizedDownload(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("partial download was not removed: %v", err)
+	}
+}
+
+func TestServiceClientRejectsUnboundedDownloadLimit(t *testing.T) {
+	client, err := NewServiceClient("http://localhost:8080", serviceTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Download(context.Background(), "stream-a", "bkp_123", filepath.Join(t.TempDir(), "backup.aipdb"), math.MaxInt64); err == nil {
+		t.Fatal("expected unbounded download limit rejection")
+	}
+}
+
+func TestServiceClientValidatesStreamRetentionMetadata(t *testing.T) {
+	invalidKeep := -1
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(servicePage[ServiceStream]{Items: []ServiceStream{{
+			ID: "stream-a", DatabaseName: "Project A", BackupCount: -1, RetentionKeepLatest: &invalidKeep,
+		}}})
+	}))
+	defer server.Close()
+	client, err := NewServiceClient(server.URL, serviceTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ListStreams(context.Background()); err == nil {
+		t.Fatal("expected invalid stream metadata rejection")
+	}
+}
+
+func TestServiceClientValidatesRetentionUpdateEcho(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(ServiceRetentionUpdate{
+			Policy:       ServiceRetentionPolicy{StreamID: "stream-a", Enabled: true, KeepLatest: 6},
+			Preview:      ServiceRetentionPreview{StreamID: "stream-a", KeepLatest: 6},
+			DeletedCount: 1,
+		})
+	}))
+	defer server.Close()
+	client, err := NewServiceClient(server.URL, serviceTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.UpdateRetention(context.Background(), "stream-a", true, 5, false); err == nil {
+		t.Fatal("expected mismatched retention response rejection")
+	}
+}
+
+func TestServiceClientRejectsMismatchedDownloadID(t *testing.T) {
+	payload := []byte("encrypted-aipdb")
+	digest := sha256.Sum256(payload)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-AIPermission-Backup-ID", "bkp_other")
+		w.Header().Set("X-AIPermission-SHA256", hex.EncodeToString(digest[:]))
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+	client, err := NewServiceClient(server.URL, serviceTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "bad-id.aipdb")
+	if _, err := client.Download(context.Background(), "stream-a", "bkp_123", path, 1024); err == nil {
+		t.Fatal("expected mismatched backup id rejection")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("invalid download was not removed: %v", err)
 	}
 }
 
