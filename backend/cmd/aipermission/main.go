@@ -19,6 +19,7 @@ import (
 )
 
 const shutdownTimeout = 10 * time.Second
+const migrationHTTPTimeout = 5 * time.Minute
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -52,9 +53,11 @@ func runGatewayServer(ctx context.Context) error {
 		Addr:              cfg.Address(),
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      0,
-		IdleTimeout:       60 * time.Second,
+		// Request middleware applies deadlines to ordinary routes. Global read
+		// and write deadlines would terminate consoles and large transfers.
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+		IdleTimeout:  60 * time.Second,
 	}
 	// Shutdown does not close hijacked connections such as console WebSockets.
 	// Closing gateway runtimes here releases them while HTTP shutdown drains.
@@ -73,8 +76,8 @@ func runMigrationServer(ctx context.Context) error {
 		Addr:              cfg.Address(),
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      0,
+		ReadTimeout:       migrationHTTPTimeout,
+		WriteTimeout:      migrationHTTPTimeout,
 		IdleTimeout:       60 * time.Second,
 	}, shutdownTimeout)
 }

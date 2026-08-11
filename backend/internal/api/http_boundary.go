@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) Handler() http.Handler {
-	return s.withCORS(http.HandlerFunc(s.serveHTTP))
+	return s.withCORS(withRequestDeadline(http.HandlerFunc(s.serveHTTP), ordinaryRequestTimeout))
 }
 
 func (s *Server) Close() {
@@ -126,7 +126,32 @@ func isLifecycleMutation(path string) bool {
 }
 
 func isStreamingRoute(path string) bool {
-	return strings.HasPrefix(path, "/api/console/sessions/") && strings.HasSuffix(path, "/attach")
+	return path == "/api/settings/maintenance-console/attach" ||
+		(strings.HasPrefix(path, "/api/console/sessions/") && strings.HasSuffix(path, "/attach"))
+}
+
+func isUnboundedRequestRoute(path string) bool {
+	if isStreamingRoute(path) {
+		return true
+	}
+	if path == "/api/backup/download" || path == "/api/backup/import" || path == "/api/backup/remote/restore" {
+		return true
+	}
+	if strings.HasPrefix(path, "/api/backup/providers/") &&
+		(strings.HasSuffix(path, "/upload") || strings.HasSuffix(path, "/download") || strings.HasSuffix(path, "/restore")) {
+		return true
+	}
+	if strings.HasPrefix(path, "/api/file-transfers/") && strings.HasSuffix(path, "/download") {
+		return true
+	}
+	if strings.HasPrefix(path, "/api/file-transfer-batches/") && strings.HasSuffix(path, "/download") {
+		return true
+	}
+	if path == "/api/file-transfers/upload" || path == "/api/file-transfers/upload-batch" {
+		return true
+	}
+	return strings.HasPrefix(path, "/api/connector-targets/") &&
+		(strings.HasSuffix(path, "/backup") || strings.HasSuffix(path, "/restore"))
 }
 
 func managesLifecycleLock(path string) bool {
