@@ -12,11 +12,26 @@ and this project uses semantic versioning for public releases.
 - Added one canonical release manifest plus a hygiene check that keeps the UI,
   frontend package, MCP package, MCP registry metadata, and changelog version
   aligned.
+- Pull request CI now runs the Playwright browser smoke suite and retains its
+  failure report for diagnosis.
+
+### Fixed
+
+- Connector action lifecycle updates now commit their canonical request and
+  History projection together. Interrupted running actions recover as
+  `outcome_unknown` so clients do not blindly retry a possibly completed remote
+  side effect.
+- Failed database rename operations reopen the original encrypted runtime, and
+  failed imports remove or quarantine unusable targets instead of leaving a
+  misleading occupied database name.
 
 ### Security
 
 - Added a machine-readable native dependency inventory and a runtime assertion
   for the SQLCipher version embedded by the Go driver.
+- Container publishing now scans the exact candidate registry digest before
+  promoting that same digest to release tags, and requires the tagged source
+  commit's CI checks to have passed.
 
 ## [0.2.23] - 2026-08-11
 
