@@ -96,6 +96,15 @@ test.beforeEach(async ({ page }) => {
     }
     await route.fulfill({ json: { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 } });
   });
+  await page.route("http://localhost:8080/api/backup/providers/catalog", async (route) => {
+    await route.fulfill({ json: { items: [{ provider_type: "aipermission_backup", label: "AIPermission Backup" }] } });
+  });
+  await page.route("http://localhost:8080/api/backup/providers", async (route) => {
+    await route.fulfill({ json: { items: [] } });
+  });
+  await page.route("http://localhost:8080/api/history-labels", async (route) => {
+    await route.fulfill({ json: [] });
+  });
   await page.route("http://localhost:8080/api/tokens/1/connector-permissions", async (route) => {
     if (route.request().method() === "PUT") {
       const body = route.request().postDataJSON();
@@ -175,6 +184,11 @@ test("renders settings retention controls", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Backup", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Maintenance console" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Change password" })).toBeVisible();
+  await page.getByRole("button", { name: "Add provider" }).click();
+  await expect(page.getByRole("dialog", { name: "Add backup provider" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
   await page.getByLabel("Command history days").fill("14");
   await page.getByLabel("Audit log days").fill("14");
   await page.getByRole("button", { name: "Save retention" }).click();
