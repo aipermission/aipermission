@@ -13,7 +13,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -210,9 +209,6 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
-	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, finished.ID); err != nil {
-		return connectorActionCallResult{}, err
-	}
 	return connectorActionCallResult{Request: finished, Permission: permission, Result: result}, nil
 }
 
@@ -303,9 +299,6 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
-	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, finished.ID); err != nil {
-		return connectorActionCallResult{}, err
-	}
 	return connectorActionCallResult{Request: finished, Result: result}, nil
 }
 
@@ -367,9 +360,6 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		ApprovalContextHash:  approvalHash,
 	})
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
-	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, request.ID); err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
 	if errorText != "" {
@@ -460,9 +450,6 @@ func (s *Server) captureConnectorActionSessionHandle(ctx context.Context, runtim
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	if err := history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, request.ID); err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
 	return request, nil
 }
 
@@ -504,7 +491,7 @@ func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, ru
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	return finished, history.NewStore(runtime.database).SyncConnectorActionRequest(ctx, finished.ID)
+	return finished, nil
 }
 
 func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool) any {

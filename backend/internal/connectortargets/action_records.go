@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 type ActionPermissionRule string
@@ -374,7 +375,12 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 		return ActionRequest{}, ValidationError("action preview must be a JSON object")
 	}
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.beginActionRequestTx(ctx)
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO connector_action_requests (
 			token_id, target_id, profile_id, connector_kind, action_name, title, summary,
 			preview_json, source, input_json,
@@ -422,7 +428,17 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 	if err != nil {
 		return ActionRequest{}, err
 	}
-	return s.GetActionRequest(ctx, id)
+	request, err := getActionRequestWithExecutor(ctx, tx, id)
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	if err := history.SyncConnectorActionRequestWithExecutor(ctx, tx, id); err != nil {
+		return ActionRequest{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ActionRequest{}, err
+	}
+	return request, nil
 }
 
 func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionRequestInput) (ActionRequest, error) {
@@ -457,23 +473,21 @@ func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionReque
 	for _, status := range allowedStatuses {
 		args = append(args, string(status))
 	}
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE connector_action_requests
-		SET status = ?, output_json = ?, display_text = ?, error = ?, approval_context_drift = ?, completed_at = ?
-		WHERE id = ? AND status IN (`+statusPlaceholders+`)`,
-		args...,
-	)
-	if err != nil {
-		return ActionRequest{}, err
-	}
-	affected, err := result.RowsAffected()
+	request, affected, err := s.mutateActionRequestAndSync(ctx, input.ID, func(tx *sql.Tx) (sql.Result, error) {
+		return tx.ExecContext(ctx, `
+			UPDATE connector_action_requests
+			SET status = ?, output_json = ?, display_text = ?, error = ?, approval_context_drift = ?, completed_at = ?
+			WHERE id = ? AND status IN (`+statusPlaceholders+`)`,
+			args...,
+		)
+	})
 	if err != nil {
 		return ActionRequest{}, err
 	}
 	if affected == 0 {
 		return s.GetActionRequest(ctx, input.ID)
 	}
-	return s.GetActionRequest(ctx, input.ID)
+	return request, nil
 }
 
 func (s *Store) SetActionRequestSessionHandle(ctx context.Context, id int64, sessionID int64, generation int64) (ActionRequest, error) {
@@ -522,7 +536,12 @@ func (s *Store) StaleActionRequestsForTarget(ctx context.Context, input StaleAct
 		where += " AND profile_id = ?"
 		args = append(args, input.ProfileID)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM connector_action_requests WHERE `+where, args...)
+	tx, err := s.beginActionRequestTx(ctx)
+	if err != nil {
+		return StaleActionRequestsForTargetResult{}, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM connector_action_requests WHERE `+where, args...)
 	if err != nil {
 		return StaleActionRequestsForTargetResult{}, err
 	}
@@ -543,7 +562,7 @@ func (s *Store) StaleActionRequestsForTarget(ctx context.Context, input StaleAct
 	}
 	updateArgs := []any{string(connectors.ResultStale), strings.TrimSpace(input.Error), strings.TrimSpace(input.ApprovalDrift), nowString()}
 	updateArgs = append(updateArgs, args...)
-	result, err := s.db.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		UPDATE connector_action_requests
 		SET status = ?, error = ?, approval_context_drift = ?, completed_at = COALESCE(completed_at, ?)
 		WHERE `+where,
@@ -554,7 +573,15 @@ func (s *Store) StaleActionRequestsForTarget(ctx context.Context, input StaleAct
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		affected = int64(len(ids))
+		return StaleActionRequestsForTargetResult{}, err
+	}
+	for _, id := range ids {
+		if err := history.SyncConnectorActionRequestWithExecutor(ctx, tx, id); err != nil {
+			return StaleActionRequestsForTargetResult{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return StaleActionRequestsForTargetResult{}, err
 	}
 	return StaleActionRequestsForTargetResult{IDs: ids, Affected: affected}, nil
 }
@@ -566,25 +593,23 @@ func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64) (ActionR
 	if id < 1 {
 		return ActionRequest{}, ErrActionRequestNotFound
 	}
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE connector_action_requests
-		SET status = ?, error = ''
-		WHERE id = ? AND status = ?`,
-		string(connectors.ResultRunning),
-		id,
-		string(connectors.ResultApprovalPending),
-	)
-	if err != nil {
-		return ActionRequest{}, err
-	}
-	affected, err := result.RowsAffected()
+	request, affected, err := s.mutateActionRequestAndSync(ctx, id, func(tx *sql.Tx) (sql.Result, error) {
+		return tx.ExecContext(ctx, `
+			UPDATE connector_action_requests
+			SET status = ?, error = ''
+			WHERE id = ? AND status = ?`,
+			string(connectors.ResultRunning),
+			id,
+			string(connectors.ResultApprovalPending),
+		)
+	})
 	if err != nil {
 		return ActionRequest{}, err
 	}
 	if affected == 0 {
 		return ActionRequest{}, ErrActionRequestNotPending
 	}
-	return s.GetActionRequest(ctx, id)
+	return request, nil
 }
 
 func (s *Store) DeclineActionRequest(ctx context.Context, id int64, message string) (ActionRequest, error) {
@@ -595,27 +620,78 @@ func (s *Store) DeclineActionRequest(ctx context.Context, id int64, message stri
 		return ActionRequest{}, ErrActionRequestNotFound
 	}
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE connector_action_requests
-		SET status = ?, error = ?, completed_at = ?
-		WHERE id = ? AND status = ?`,
-		string(connectors.ResultDeclined),
-		strings.TrimSpace(message),
-		now,
-		id,
-		string(connectors.ResultApprovalPending),
-	)
-	if err != nil {
-		return ActionRequest{}, err
-	}
-	affected, err := result.RowsAffected()
+	request, affected, err := s.mutateActionRequestAndSync(ctx, id, func(tx *sql.Tx) (sql.Result, error) {
+		return tx.ExecContext(ctx, `
+			UPDATE connector_action_requests
+			SET status = ?, error = ?, completed_at = ?
+			WHERE id = ? AND status = ?`,
+			string(connectors.ResultDeclined),
+			strings.TrimSpace(message),
+			now,
+			id,
+			string(connectors.ResultApprovalPending),
+		)
+	})
 	if err != nil {
 		return ActionRequest{}, err
 	}
 	if affected == 0 {
 		return ActionRequest{}, ErrActionRequestNotPending
 	}
-	return s.GetActionRequest(ctx, id)
+	return request, nil
+}
+
+func (s *Store) mutateActionRequestAndSync(ctx context.Context, id int64, mutate func(*sql.Tx) (sql.Result, error)) (ActionRequest, int64, error) {
+	tx, err := s.beginActionRequestTx(ctx)
+	if err != nil {
+		return ActionRequest{}, 0, err
+	}
+	defer tx.Rollback()
+	result, err := mutate(tx)
+	if err != nil {
+		return ActionRequest{}, 0, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return ActionRequest{}, 0, err
+	}
+	if affected != 1 {
+		return ActionRequest{}, affected, nil
+	}
+	request, err := getActionRequestWithExecutor(ctx, tx, id)
+	if err != nil {
+		return ActionRequest{}, 0, err
+	}
+	if err := history.SyncConnectorActionRequestWithExecutor(ctx, tx, id); err != nil {
+		return ActionRequest{}, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ActionRequest{}, 0, err
+	}
+	return request, affected, nil
+}
+
+func (s *Store) beginActionRequestTx(ctx context.Context) (*sql.Tx, error) {
+	starter, ok := s.db.(transactionStarter)
+	if !ok {
+		return nil, fmt.Errorf("connector action request store cannot start transactions")
+	}
+	tx, err := starter.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin connector action request transaction: %w", err)
+	}
+	return tx, nil
+}
+
+func getActionRequestWithExecutor(ctx context.Context, tx *sql.Tx, id int64) (ActionRequest, error) {
+	request, err := scanActionRequest(tx.QueryRowContext(ctx, actionRequestSelectSQL()+` WHERE r.id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	return request, nil
 }
 
 func (s *Store) GetActionRequest(ctx context.Context, id int64) (ActionRequest, error) {

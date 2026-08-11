@@ -95,13 +95,13 @@ func (s *Store) SyncVaultActionRequest(ctx context.Context, id int64) error {
 	return SyncVaultActionRequestWithExecutor(ctx, s.db, id)
 }
 
-type vaultActionHistoryExecutor interface {
+type projectionExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
 // SyncVaultActionRequestWithExecutor lets request state and its history
 // projection commit in the same database transaction.
-func SyncVaultActionRequestWithExecutor(ctx context.Context, executor vaultActionHistoryExecutor, id int64) error {
+func SyncVaultActionRequestWithExecutor(ctx context.Context, executor projectionExecutor, id int64) error {
 	if executor == nil {
 		return fmt.Errorf("history executor is not configured")
 	}
@@ -228,7 +228,16 @@ func (s *Store) SyncConnectorActionRequest(ctx context.Context, id int64) error 
 	if s == nil || s.db == nil {
 		return fmt.Errorf("history store is not configured")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	return SyncConnectorActionRequestWithExecutor(ctx, s.db, id)
+}
+
+// SyncConnectorActionRequestWithExecutor lets canonical connector request
+// state and its history projection commit in one database transaction.
+func SyncConnectorActionRequestWithExecutor(ctx context.Context, executor projectionExecutor, id int64) error {
+	if executor == nil {
+		return fmt.Errorf("history executor is not configured")
+	}
+	_, err := executor.ExecContext(ctx, `
 		INSERT INTO history_entries (
 			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, project_id, target_id,
 			profile_id, target_name, profile_label, source, status, action_name, title, summary,
