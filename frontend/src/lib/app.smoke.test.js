@@ -371,7 +371,8 @@ test("App applies the persisted theme before unlock and exposes bundled changelo
   assert.match(sidebarSource, /max-h-\[calc\(100vh-180px\)\] overflow-y-auto/);
   assert.match(shellSource, /data\?\.state === "unlocked"/);
   assert.match(shellSource, /document\.title = `\$\{runtimeLabel\} - \$\{databaseName\}`/);
-  assert.match(releaseSource, /appVersion = "0\.2\.22"/);
+  assert.match(releaseSource, /appVersion = "0\.2\.23"/);
+  assert.match(releaseSource, /Maintenance hardening/);
   assert.match(releaseSource, /Controlled Mail workflows/);
   assert.match(releaseSource, /Backup recovery cleanup/);
   assert.match(releaseSource, /Self-hosted encrypted backups/);

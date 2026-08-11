@@ -7,6 +7,45 @@ and this project uses semantic versioning once public releases begin.
 
 ## [Unreleased]
 
+## [0.2.23] - 2026-08-11
+
+### Changed
+
+- Split large backend and frontend modules by responsibility, established a
+  frontend formatting baseline, and reduced the enforced React hook suppression
+  budget to zero.
+- Added a generated OpenAPI route inventory derived from backend route
+  registration, with exact drift checks in the release gate.
+- Added maintainer-triggered real-service connector conformance for Postgres,
+  Valkey, RabbitMQ, and S3, plus project governance and ownership guidance.
+
+### Fixed
+
+- Gateway containers recover after host reboot, and owned console sessions now
+  recover from missing, expired, or stale Vault authorization leases.
+- Runtime audit records preserve target names, stale approval history remains
+  synchronized, and connector restore uploads stream bounded payloads instead
+  of buffering the full file in memory.
+
+### Security
+
+- Connector-owned HTTP transports ignore ambient proxy credentials, and
+  approval execution freezes the validated credential material at claim time.
+- Audit persistence failures are surfaced through degraded health state, while
+  connector credential/output boundary regression tests guard against returning
+  gateway-held secret values.
+- Container publishing now enforces vulnerability checks, SBOM and provenance
+  attestations, digest signing, and pinned CI dependencies.
+
+### Maintenance
+
+- Added source-size, test-coverage, formatting, REST-contract, and frontend
+  hook-debt checks to the maintenance/release workflow.
+- Updated verified Go, frontend, MCP, and container dependencies through
+  maintainer-authored commits.
+- Documented the proposed transactional audit outbox boundary for a future
+  atomic persistence implementation.
+
 ## [0.2.22] - 2026-08-03
 
 ### Added
