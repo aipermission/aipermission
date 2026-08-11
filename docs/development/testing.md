@@ -19,7 +19,7 @@ make release-check
 This runs:
 
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
-- release-version consistency checks
+- release-version and native-dependency inventory consistency checks
 - generated OpenAPI route inventory drift
 - backend unit tests with a visible aggregate coverage summary
 - backend race tests

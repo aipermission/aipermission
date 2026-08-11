@@ -17,7 +17,11 @@ The SQLite file is encrypted with a SQLCipher-compatible driver. The backend doe
 
 The database password is escaped before it is passed to SQLCipher PRAGMA key/rekey handling. Regression tests cover quotes and semicolons so user-entered password text cannot change SQL parsing.
 
-Backend tests also assert the SQLCipher runtime is active, the configured cipher page size is applied, KDF iterations are non-zero, and SQLite foreign keys are enabled on encrypted connections. Dependency updates are watched with `govulncheck` and Dependabot; the SQLCipher driver should stay on the newest available v4 module release.
+Backend tests also assert the inventoried SQLCipher runtime is active, the
+configured cipher page size is applied, KDF iterations are non-zero, and SQLite
+foreign keys are enabled on encrypted connections. Dependency updates are
+watched with `govulncheck` and Dependabot, while the embedded native runtime is
+tracked under the [native dependency inventory](native-dependencies.md).
 
 If no database exists, the first screen shows:
 

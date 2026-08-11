@@ -25,3 +25,4 @@ inside the database are also handled through the gateway vault layer.
 
 - [Storage Encryption](../security/storage-encryption.md)
 - [Credential Boundary](../security/credential-boundary.md)
+- [Native Dependency Inventory](../security/native-dependencies.md)

@@ -488,6 +488,9 @@ func TestOpenEncryptedAppliesSQLCipherPragmas(t *testing.T) {
 	if cipherVersion == "" {
 		t.Fatalf("SQLCipher version should not be empty")
 	}
+	if !strings.HasPrefix(cipherVersion, expectedSQLCipherVersion) {
+		t.Fatalf("expected SQLCipher runtime %s, got %q", expectedSQLCipherVersion, cipherVersion)
+	}
 
 	var cipherPageSize int
 	if err := database.QueryRow(`PRAGMA cipher_page_size`).Scan(&cipherPageSize); err != nil {

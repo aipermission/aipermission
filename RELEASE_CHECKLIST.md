@@ -58,6 +58,8 @@ npm pack --dry-run
 - Confirm `CHANGELOG.md` includes the release notes for the tag being published.
 - Confirm `release-manifest.json`, frontend metadata, MCP metadata, and the
   latest changelog entries pass `npm run version:check`.
+- Review the native dependency inventory and upstream native-code advisories;
+  `govulncheck` alone is not complete coverage for embedded C code.
 - Confirm Dependabot is enabled for Go, npm, Docker, and GitHub Actions.
 - Confirm CodeQL is enabled for Go and JavaScript.
 - Confirm CI secret scanning passes.

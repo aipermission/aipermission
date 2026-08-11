@@ -28,6 +28,8 @@ jobs:
         run: node scripts/maintenance-budget-check.js
       - name: Release version consistency
         run: node scripts/release-version.js --check
+      - name: Native dependency inventory
+        run: node scripts/native-dependency-check.js
 
   backend:
     name: Backend

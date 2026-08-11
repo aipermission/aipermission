@@ -31,6 +31,7 @@ Start here:
 - [SSH Key Model](security/ssh-key-model.md)
 - [Backup Restore](security/backup-restore.md)
 - [Storage Encryption](security/storage-encryption.md)
+- [Native Dependency Inventory](security/native-dependencies.md)
 
 ## Development
 
