@@ -40,6 +40,9 @@ const (
 	ActionListVersions      = "list_object_versions"
 	ActionRestoreVersion    = "restore_object_version"
 	ActionDeleteVersion     = "delete_object_version"
+	ActionGetLifecycle      = "get_bucket_lifecycle"
+	ActionReplaceLifecycle  = "replace_bucket_lifecycle"
+	ActionDeleteLifecycle   = "delete_bucket_lifecycle"
 
 	defaultS3Scheme    = "https"
 	defaultS3Host      = "s3.amazonaws.com"
@@ -213,6 +216,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use delete_object carefully; it is destructive and should normally require explicit approval.",
 			"Use presign_download or presign_upload only when the operator explicitly needs a short-lived URL for one exact object key.",
 			"Use list_object_versions before restoring or deleting one exact version. Restoring creates a new current version.",
+			"Read the current bucket lifecycle before changing it. replace_bucket_lifecycle deliberately replaces the complete policy with one bounded rule.",
 		},
 		Warnings: []string{
 			"S3 objects may contain secrets or customer data. Redaction is best-effort; avoid reading object content unless explicitly approved.",
@@ -221,6 +225,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"S3 credential profiles decide what the object storage service itself allows.",
 			"Presigned URLs are temporary bearer credentials. Do not place them in reasons, inputs, logs, or messages beyond the intended recipient.",
 			"delete_object_version permanently removes one stored version or delete marker and is destructive.",
+			"Lifecycle replacement and deletion can affect object retention. Treat both as destructive operations.",
 		},
 	}, nil
 }
@@ -373,6 +378,38 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact version ID returned by list_object_versions."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+		},
+		{
+			Name:        ActionGetLifecycle,
+			Label:       "Read bucket lifecycle",
+			Description: "Read the current bucket lifecycle policy and summarize its rules.",
+			Category:    "lifecycle",
+			Risk:        connectors.RiskRead,
+			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: 16000},
+		},
+		{
+			Name:        ActionReplaceLifecycle,
+			Label:       "Replace bucket lifecycle",
+			Description: "Replace the complete bucket lifecycle policy with one bounded expiration rule.",
+			Category:    "destructive",
+			Risk:        connectors.RiskDestructive,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{
+				{Name: "rule_id", Label: "Rule ID", Type: connectors.FieldString, Required: true, Default: defaultLifecycleRuleID, Description: "Stable identifier for the replacement rule."},
+				{Name: "prefix", Label: "Object prefix", Type: connectors.FieldString, Description: "Optional key prefix. Empty applies to the whole bucket."},
+				{Name: "expire_current_after_days", Label: "Expire current after days", Type: connectors.FieldNumber, Default: 0, Description: "0 disables current-version expiration."},
+				{Name: "expire_noncurrent_after_days", Label: "Expire noncurrent after days", Type: connectors.FieldNumber, Default: 0, Description: "0 disables noncurrent-version expiration."},
+				{Name: "abort_incomplete_multipart_days", Label: "Abort multipart after days", Type: connectors.FieldNumber, Default: 7, Description: "0 disables incomplete multipart cleanup."},
+				{Name: "enabled", Label: "Enabled", Type: connectors.FieldBoolean, Default: true, Description: "Store the replacement rule as enabled or disabled."},
+			}},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+		},
+		{
+			Name:        ActionDeleteLifecycle,
+			Label:       "Delete bucket lifecycle",
+			Description: "Delete the complete lifecycle policy from this bucket.",
+			Category:    "destructive",
+			Risk:        connectors.RiskDestructive,
+			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
 	}, nil
 }
@@ -527,6 +564,32 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			title = "Restore S3 object version"
 		}
 		summary = fmt.Sprintf("%s @ %s", key, versionID)
+	case ActionGetLifecycle:
+		title = "Read S3 bucket lifecycle"
+		summary = s3Bucket(req.Target)
+	case ActionReplaceLifecycle:
+		risk = connectors.RiskDestructive
+		if _, ok := input["rule_id"]; !ok {
+			input["rule_id"] = defaultLifecycleRuleID
+		}
+		if _, ok := input["enabled"]; !ok {
+			input["enabled"] = true
+		}
+		input["rule_id"] = strings.TrimSpace(stringValue(input, "rule_id"))
+		input["prefix"] = normalizeObjectPrefix(stringValue(input, "prefix"))
+		for _, field := range []string{"expire_current_after_days", "expire_noncurrent_after_days", "abort_incomplete_multipart_days"} {
+			input[field] = intValue(input, field)
+		}
+		input["enabled"] = boolValue(input, "enabled")
+		if err := validateLifecycleInput(input); err != nil {
+			return connectors.PreparedAction{}, err
+		}
+		title = "Replace S3 bucket lifecycle"
+		summary = fmt.Sprintf("Replace all rules with %q.", input["rule_id"])
+	case ActionDeleteLifecycle:
+		risk = connectors.RiskDestructive
+		title = "Delete S3 bucket lifecycle"
+		summary = fmt.Sprintf("Delete all lifecycle rules from %q.", s3Bucket(req.Target))
 	default:
 		return connectors.PreparedAction{}, ErrUnsupportedAction
 	}
@@ -586,6 +649,12 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 		return executeRestoreObjectVersion(ctx, client, action.Payload)
 	case ActionDeleteVersion:
 		return executeDeleteObjectVersion(ctx, client, action.Payload)
+	case ActionGetLifecycle:
+		return executeGetBucketLifecycle(ctx, client)
+	case ActionReplaceLifecycle:
+		return executeReplaceBucketLifecycle(ctx, client, action.Payload)
+	case ActionDeleteLifecycle:
+		return executeDeleteBucketLifecycle(ctx, client)
 	default:
 		return connectors.ActionResult{}, ErrUnsupportedAction
 	}
