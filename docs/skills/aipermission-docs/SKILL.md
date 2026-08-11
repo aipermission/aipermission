@@ -124,7 +124,8 @@ When updating docs, check whether the change touches:
 - Postgres connector behavior and query boundaries
 - Mail connector IMAP/SMTP setup, explicit read/unread behavior, hostile-content
   boundary, and `submission_unknown` retry warning
-- security boundary: credentials never leave gateway
+- security boundary: gateway-held credential values are never returned through
+  MCP or REST; permitted action output may still contain sensitive data
 - developer-tool positioning vs DevOps-platform positioning
 - local-only gateway positioning vs remote-hosted/LAN-shared positioning
 - project principles and `wontfix` boundaries
@@ -155,11 +156,12 @@ Do not describe the gateway as remotely hostable, LAN-shareable, or suitable for
 
 Always preserve these rules:
 
-- SSH passwords and private keys never leave the gateway.
+- SSH passwords and private-key values are never returned through MCP or REST.
 - Prefer the Dokploy-style SSH key model: gateway generates SSH keypairs and users paste the public key install command on their VPS.
 - Do not document SSH password collection as the preferred MVP path.
-- Database credentials never leave the gateway.
-- Mail IMAP/SMTP passwords and app passwords never leave the gateway.
+- Database credential values are never returned through MCP or REST.
+- Mail IMAP/SMTP password and app-password values are never returned through
+  MCP or REST.
 - MCP responses never include credentials.
 - API tokens are not SSH or DB credentials.
 - API tokens are masked in the UI and can be copied again for local MCP setup.
