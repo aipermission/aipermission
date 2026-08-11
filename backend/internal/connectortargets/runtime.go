@@ -14,7 +14,10 @@ type Resolver struct {
 	db *sql.DB
 }
 
-const RuntimeCapabilityLiveConsole = "live_console"
+const (
+	RuntimeCapabilityLiveConsole  = "live_console"
+	RuntimeCapabilityFileTransfer = "file_transfer"
+)
 
 type RuntimeSurface struct {
 	ID             int64
