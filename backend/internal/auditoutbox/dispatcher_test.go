@@ -83,6 +83,41 @@ func TestDispatcherPersistsFailureAndRecoversAfterRestart(t *testing.T) {
 	if delivered != 1 {
 		t.Fatal("restarted dispatcher did not recover pending event")
 	}
+	health, err = (auditoutbox.Store{}).Health(context.Background(), database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if health.PendingCount != 0 || health.LastDeliveryError != "" || health.LastDeliverySuccess == "" {
+		t.Fatalf("dispatcher health did not recover: %#v", health)
+	}
+}
+
+func TestDispatcherRecoversEventCommittedBeforeProcessRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.db")
+	database, err := db.OpenEncrypted(path, "test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := appendAuditEvent(t, database, "project.created")
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := db.OpenEncrypted(path, "test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if count, err := auditoutbox.NewDispatcher(reopened).DispatchOnce(context.Background()); err != nil || count != 1 {
+		t.Fatalf("restart dispatch count=%d error=%v", count, err)
+	}
+	var projected int
+	if err := reopened.QueryRow(`SELECT COUNT(*) FROM audit_logs WHERE event_id = ?`, event.EventID).Scan(&projected); err != nil {
+		t.Fatal(err)
+	}
+	if projected != 1 {
+		t.Fatalf("projected event count = %d", projected)
+	}
 }
 
 func openAuditDatabase(t *testing.T) *sql.DB {

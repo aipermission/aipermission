@@ -105,7 +105,13 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 	assertTableCount(t, fixture.db, "history_entries", 0)
 	assertTableCount(t, fixture.db, "console_sessions", 0)
 	assertTableCount(t, fixture.db, "message_queue", 0)
-	assertTableCount(t, fixture.db, "audit_logs", 1)
+	var settingsAuditCount int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_logs WHERE action = 'settings.retention.updated'`).Scan(&settingsAuditCount); err != nil {
+		t.Fatal(err)
+	}
+	if settingsAuditCount != 1 {
+		t.Fatalf("retention settings audit count = %d, want 1", settingsAuditCount)
+	}
 
 	purgeResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "audit", Days: 0})
 	if purgeResponse.Code != http.StatusBadRequest {

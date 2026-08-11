@@ -20,7 +20,7 @@ func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
 	t.Cleanup(func() { log.SetOutput(previous) })
 
 	server := &Server{}
-	server.writeAudit(context.Background(), nil, "user", nil, 17, "test.audit", map[string]any{
+	server.writeObservationAudit(context.Background(), nil, "user", nil, 17, "test.audit", map[string]any{
 		"unsupported": func() {},
 	})
 
@@ -66,5 +66,27 @@ func TestAuditHealthCountsConcurrentFailures(t *testing.T) {
 	health := state.snapshot()
 	if health.Status != "degraded" || health.FailureCount != 32 {
 		t.Fatalf("unexpected concurrent audit health: %+v", health)
+	}
+}
+
+func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	server := fixture.server
+	server.auditHealth.recordFailure(time.Now().Add(-time.Minute))
+	if _, err := fixture.db.Exec(`
+		UPDATE audit_dispatch_state
+		SET failure_count = 1, last_error = '',
+			last_failure_at = ?, last_success_at = ?, updated_at = ?
+		WHERE id = 1`,
+		time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano),
+		time.Now().UTC().Format(time.RFC3339Nano),
+		time.Now().UTC().Format(time.RFC3339Nano),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	health := server.auditHealthSnapshot(context.Background())
+	if health.Status != "ok" || health.FailureCount != 2 || health.LastDeliverySuccess == "" {
+		t.Fatalf("unexpected recovered audit health: %+v", health)
 	}
 }
