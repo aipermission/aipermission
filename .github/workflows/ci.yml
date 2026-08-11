@@ -38,7 +38,9 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Test
         working-directory: backend
-        run: go test ./...
+        run: |
+          go test -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tail -1
       - name: Race test
         working-directory: backend
         run: go test -race ./...

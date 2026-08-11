@@ -19,7 +19,7 @@ make release-check
 This runs:
 
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
-- backend unit tests
+- backend unit tests with a visible aggregate coverage summary
 - backend race tests
 - backend vet
 - backend govulncheck
