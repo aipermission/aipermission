@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   real-services:
-    name: Postgres, Valkey, RabbitMQ, and S3
+    name: ClickHouse, Postgres, Valkey, RabbitMQ, and S3
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

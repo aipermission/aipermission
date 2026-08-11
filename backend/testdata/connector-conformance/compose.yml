@@ -1,4 +1,19 @@
 services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.3-alpine@sha256:a4e8cf46e526a06f4f52d22f7fa8d07472b55d3c896d7ca3f159e249be38ae62
+    environment:
+      CLICKHOUSE_DB: aipermission
+      CLICKHOUSE_USER: aipermission
+      CLICKHOUSE_PASSWORD: conformance-only
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "127.0.0.1::9000"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "aipermission", "--password", "conformance-only", "--query", "SELECT 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 40
+
   postgres:
     image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
@@ -45,6 +60,8 @@ services:
       MINIO_ROOT_PASSWORD: conformance-secret-key
     ports:
       - "127.0.0.1::9000"
+    tmpfs:
+      - /data:size=256m,mode=0700
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
       interval: 2s
