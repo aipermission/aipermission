@@ -4,7 +4,9 @@
 
 ## Supported Versions
 
-The project is pre-1.0 and in active MVP testing. Security fixes are handled on the main branch until the first public release process is defined.
+The project is pre-1.0 and in active testing. Confirmed security fixes are
+coordinated privately when needed, then released through the documented public
+release process.
 
 ## Reporting A Vulnerability
 

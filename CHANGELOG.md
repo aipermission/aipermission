@@ -3,9 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project uses semantic versioning once public releases begin.
+and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
+
+### Changed
+
+- Added one canonical release manifest plus a hygiene check that keeps the UI,
+  frontend package, MCP package, MCP registry metadata, and changelog version
+  aligned.
 
 ## [0.2.23] - 2026-08-11
 
@@ -34,13 +40,14 @@ and this project uses semantic versioning once public releases begin.
 - Audit persistence failures are surfaced through degraded health state, while
   connector credential/output boundary regression tests guard against returning
   gateway-held secret values.
-- Container publishing now enforces vulnerability checks, SBOM and provenance
-  attestations, digest signing, and pinned CI dependencies.
+- CI blocks fixed HIGH/CRITICAL findings in locally built container images;
+  publishing adds SBOM/provenance attestations and digest signing, while CI
+  dependencies remain SHA-pinned.
 
 ### Maintenance
 
-- Added source-size, test-coverage, formatting, REST-contract, and frontend
-  hook-debt checks to the maintenance/release workflow.
+- Added source-size, coverage reporting, formatting, REST-contract, and
+  frontend hook-debt checks to the maintenance/release workflow.
 - Updated verified Go, frontend, MCP, and container dependencies through
   maintainer-authored commits.
 - Documented the proposed transactional audit outbox boundary for a future

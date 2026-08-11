@@ -19,6 +19,7 @@ make release-check
 This runs:
 
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
+- release-version consistency checks
 - generated OpenAPI route inventory drift
 - backend unit tests with a visible aggregate coverage summary
 - backend race tests
@@ -59,7 +60,7 @@ Then verify:
 9. Postgres Console can browse schemas/tables, prepare a `SELECT ... LIMIT`
    query from the browser, and run it through the structured activity surface.
 10. Postgres connector operations can create a managed scoped database role with
-   a random password saved as an encrypted credential profile.
+    a random password saved as an encrypted credential profile.
 11. Postgres connector operations can download a SQL dump and restore a SQL
     dump only after typing the connector target name exactly.
 12. A ClickHouse connector can connect directly and Over SSH through the native
