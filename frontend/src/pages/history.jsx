@@ -22,6 +22,7 @@ const statusOptions = [
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
   { value: "stale", label: "Stale" },
+  { value: "outcome_unknown", label: "Outcome unknown" },
   { value: "failed", label: "Failed" },
   { value: "declined", label: "Declined" },
   { value: "error", label: "Error" },
@@ -104,7 +105,7 @@ export function HistoryPage() {
       total: state.total,
       shown: data.length,
       active: data.filter((item) => ["pending", "pending_approval", "running", "paused"].includes(item.status)).length,
-      failed: data.filter((item) => ["failed", "error", "stale"].includes(item.status)).length,
+      failed: data.filter((item) => ["failed", "error", "stale", "outcome_unknown"].includes(item.status)).length,
     };
   }, [state.data, state.total]);
 

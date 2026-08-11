@@ -26,6 +26,7 @@ const (
 	ResultStale           ResultStatus = "stale"
 	ResultDeclined        ResultStatus = "declined"
 	ResultError           ResultStatus = "error"
+	ResultOutcomeUnknown  ResultStatus = "outcome_unknown"
 )
 
 // ConnectorHelp is AI-readable guidance for one target. It may mention actions,

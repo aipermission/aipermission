@@ -408,7 +408,7 @@ Example S3 list response shape:
   "connector_kind": "ssh",
   "action_name": "exec",
   "retry_after_seconds": 3,
-  "assistant_hint": "Wait 3 seconds, then poll this connector action request until it is completed, failed, declined, stale, or blocked."
+  "assistant_hint": "Wait 3 seconds, then poll this connector action request until it is completed, failed, declined, stale, blocked, or outcome_unknown."
 }
 ```
 
@@ -416,6 +416,13 @@ When the operator clicks Run, the gateway checks approval context drift before
 execution. If the token, permission, target/profile public metadata, connector
 kind/version, action definition, or action payload changes before approval, the
 request becomes `stale` and the AI must submit a fresh action request.
+
+## outcome_unknown
+
+`outcome_unknown` is terminal. It means the gateway restarted or lost its
+definitive lifecycle state after remote execution may have started. Do not retry
+the action automatically: inspect the target with a safe read action when
+possible, or ask the operator whether retrying is safe.
 
 ## running
 

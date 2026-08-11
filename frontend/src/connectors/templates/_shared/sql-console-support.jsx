@@ -464,7 +464,7 @@ export function ActivityStatusBadge({ status }) {
   const tone =
     status === "completed"
       ? "good"
-      : status === "failed" || status === "error" || status === "stale"
+      : status === "failed" || status === "error" || status === "stale" || status === "outcome_unknown"
         ? "bad"
         : status === "approval_pending" || status === "running"
           ? "warn"

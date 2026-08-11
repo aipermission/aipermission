@@ -312,7 +312,8 @@ func validActionRequestStatus(status connectors.ResultStatus) bool {
 		connectors.ResultBlocked,
 		connectors.ResultStale,
 		connectors.ResultDeclined,
-		connectors.ResultError:
+		connectors.ResultError,
+		connectors.ResultOutcomeUnknown:
 		return true
 	default:
 		return false
@@ -327,7 +328,8 @@ func validActionRequestTerminalStatus(status connectors.ResultStatus) bool {
 		connectors.ResultBlocked,
 		connectors.ResultStale,
 		connectors.ResultDeclined,
-		connectors.ResultError:
+		connectors.ResultError,
+		connectors.ResultOutcomeUnknown:
 		return true
 	default:
 		return false

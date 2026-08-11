@@ -1168,23 +1168,34 @@ func syncHistoryProjections(database *sql.DB) error {
 	return nil
 }
 
+const connectorActionOutcomeUnknownMessage = "gateway restarted while the connector action was running; inspect the target state before retrying because the remote outcome is unknown"
+
 func runMigrationMaintenance(database *sql.DB) error {
+	tx, err := database.Begin()
+	if err != nil {
+		return fmt.Errorf("begin migration maintenance: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	for _, statement := range []string{
 		`UPDATE console_sessions SET status = 'closed', error = 'gateway restarted', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('connecting', 'connected')`,
 		`UPDATE command_requests SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
-		`UPDATE connector_action_requests SET status = 'error', error = 'gateway restarted while connector action was running', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
+		`UPDATE connector_action_requests SET status = 'outcome_unknown', error = '` + connectorActionOutcomeUnknownMessage + `', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
 		`UPDATE vault_action_requests SET status = 'failed', error = 'gateway restarted while the Vault action was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status = 'running'`,
 		`UPDATE vault_session_leases SET status = 'revoked', updated_at = datetime('now') WHERE status = 'active'`,
 		`UPDATE file_transfers SET status = 'failed', error = 'gateway restarted while file transfer was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'pending_approval', 'running', 'paused')`,
 		`UPDATE file_transfer_batches SET status = 'failed', error = 'gateway restarted while file transfer queue was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'pending_approval', 'running', 'paused')`,
 		`UPDATE history_entries SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'command_request' AND status = 'running'`,
-		`UPDATE history_entries SET status = 'error', error = 'gateway restarted while connector action was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'connector_action_request' AND status = 'running'`,
+		`UPDATE history_entries SET status = 'outcome_unknown', error = '` + connectorActionOutcomeUnknownMessage + `', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'connector_action_request' AND status = 'running'`,
 		`UPDATE history_entries SET status = 'failed', error = 'gateway restarted while the Vault action was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'vault_action_request' AND status = 'running'`,
 		`UPDATE history_entries SET status = 'failed', error = 'gateway restarted while file transfer was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'file_transfer' AND status IN ('pending', 'pending_approval', 'running', 'paused')`,
 	} {
-		if _, err := database.Exec(statement); err != nil {
+		if _, err := tx.Exec(statement); err != nil {
 			return fmt.Errorf("run migration maintenance: %w", err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration maintenance: %w", err)
 	}
 	return nil
 }

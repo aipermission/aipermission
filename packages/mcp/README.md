@@ -148,8 +148,10 @@ disclose secrets. Never automatically retry `submission_unknown`.
 
 Connector responses can include `approval_pending` or `running`. Poll
 `get_connector_action_request(request_id)` until the request reaches a terminal
-status. MCP tool responses never include file contents, gateway temporary paths,
-archive staging paths, or local upload contents.
+status. `outcome_unknown` is terminal and means the gateway could not prove the
+remote outcome after interruption; inspect target state or ask the operator
+before retrying. MCP tool responses never include file contents, gateway
+temporary paths, archive staging paths, or local upload contents.
 
 ## Operator Skill
 
@@ -172,8 +174,9 @@ Supported clients:
 
 These instructions teach the agent how to discover connector targets, poll
 `approval_pending` and `running` connector action requests, handle `stale`
-approvals by sending a fresh request, write short reasons, use explicit file
-transfer paths, and avoid printing secrets. The default installer uses the
+approvals by sending a fresh request, avoid blind retries for `outcome_unknown`,
+write short reasons, use explicit file transfer paths, and avoid printing
+secrets. The default installer uses the
 operator instruction bundled in the npm package; `--source` accepts local file
 paths only and rejects HTTP(S) sources.
 
