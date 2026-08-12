@@ -6,7 +6,9 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
-import { apiPost } from "../../../lib/api";
+import { runGuardedConnectorAction } from "../_shared/action-runner";
+import { connectorConsoleTheme } from "../_shared/console-theme";
+import { useRequestGuard } from "../_shared/request-guard";
 
 const defaultQueueLimit = 250;
 const defaultPeekCount = 5;
@@ -29,17 +31,16 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
   const [publishPayload, setPublishPayload] = useState("");
   const [publishProperties, setPublishProperties] = useState('{"content_type":"application/json"}');
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
-  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
-  const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass =
-    theme === "light"
-      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
-      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
-  const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass =
-    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
+  const {
+    panel: panelClass,
+    muted: mutedClass,
+    border: borderClass,
+    subtlePanel: subtlePanelClass,
+    input: inputClass,
+    rowHover: rowHoverClass,
+    activeRow: activeRowClass,
+  } = connectorConsoleTheme(theme);
   const activeItems = useMemo(
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
     [approvals?.data, target.ref],
@@ -70,26 +71,31 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
     void refreshQueuesForEffect();
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
-  async function runRabbitAction({ actionName, input, reason, busy = "running", suppressError = false }) {
-    setState({ state: busy, error: "", message: "" });
-    try {
-      const item = await apiPost("/api/connector-actions/local-run", {
-        target_ref: target.ref,
-        action_name: actionName,
-        input,
-        reason,
-      });
-      setState({ state: "idle", error: "", message: item.display_text || "" });
-      await onRefreshActivity?.();
-      return item;
-    } catch (error) {
-      if (suppressError) {
-        setState({ state: "idle", error: "", message: "" });
-      } else {
-        setState({ state: "error", error: error.message || "RabbitMQ action failed.", message: "" });
-      }
-      throw error;
-    }
+  useEffect(() => {
+    if (activeQueue) return;
+    requestGuard.invalidate("queue-selection");
+    requestGuard.invalidate("get_queue");
+    requestGuard.invalidate("list_bindings");
+    requestGuard.invalidate("peek_messages");
+    setQueueDetail(null);
+    setBindings([]);
+    setMessages([]);
+  }, [activeQueue, requestGuard]);
+
+  async function runRabbitAction({ actionName, input, reason, busy = "running", suppressError = false, channel = actionName }) {
+    return runGuardedConnectorAction({
+      requestGuard,
+      channel,
+      targetRef: target.ref,
+      actionName,
+      input,
+      reason,
+      busy,
+      product: "RabbitMQ",
+      setState,
+      onRefreshActivity,
+      suppressError,
+    });
   }
 
   async function refreshQueues() {
@@ -100,18 +106,17 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
       reason: "manual RabbitMQ browser queue list",
       busy: "loading",
     });
+    if (!queueItem) return;
     const nextQueues = Array.isArray(queueItem.output?.queues) ? queueItem.output.queues : [];
     setQueues(nextQueues);
-    if (activeQueue && !nextQueues.some((queue) => queue.name === activeQueue)) {
-      setActiveQueue("");
-      setQueueDetail(null);
-      setBindings([]);
-      setMessages([]);
-    }
+    setActiveQueue((current) => (current && !nextQueues.some((queue) => queue.name === current) ? "" : current));
   }
 
   async function selectQueue(queueName) {
     if (!activeSession.active || !queueName) return;
+    const selection = requestGuard.begin("queue-selection");
+    requestGuard.invalidate("list_bindings");
+    requestGuard.invalidate("peek_messages");
     setActiveQueue(queueName);
     setDetailMode("inspect");
     setCustomRoutingKey(false);
@@ -123,6 +128,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
       reason: "manual RabbitMQ browser queue detail",
       busy: "reading",
     });
+    if (!detailItem || !selection.isCurrent()) return;
     setQueueDetail(detailItem.output || null);
     try {
       const bindingItem = await runRabbitAction({
@@ -132,6 +138,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
         busy: "reading",
         suppressError: true,
       });
+      if (!bindingItem || !selection.isCurrent()) return;
       setBindings(Array.isArray(bindingItem.output?.bindings) ? bindingItem.output.bindings : []);
     } catch {
       setBindings([]);
@@ -146,6 +153,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
       reason: "manual RabbitMQ browser message peek",
       busy: "peeking",
     });
+    if (!item) return;
     setMessages(Array.isArray(item.output?.messages) ? item.output.messages : []);
   }
 
@@ -179,7 +187,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
         return;
       }
     }
-    await runRabbitAction({
+    const published = await runRabbitAction({
       actionName: "publish_message",
       input: {
         vhost,
@@ -192,6 +200,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
       reason: "manual RabbitMQ browser message publish",
       busy: "publishing",
     });
+    if (!published) return;
     setPublishPayload("");
     await refreshQueues();
   }

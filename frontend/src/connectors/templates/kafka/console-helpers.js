@@ -1,7 +1,3 @@
-export function requestIsCurrent(versions, channel, version, targetRef, currentTargetRef) {
-  return versions.get(channel) === version && targetRef === currentTargetRef;
-}
-
 export function detailMatchesSelection(identity, view, name) {
   return Boolean(name) && identity === `${view}:${name}`;
 }

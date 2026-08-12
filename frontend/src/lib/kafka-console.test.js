@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { connectorActionError, connectorActionPending } from "../connectors/templates/_shared/action-result.js";
+import {
+  connectorActionError,
+  connectorActionPending,
+  requireCompletedConnectorAction,
+} from "../connectors/templates/_shared/action-result.js";
 import {
   actionableOffsetPartitions,
   detailMatchesSelection,
   offsetSelectionValue,
   parseOffsetSelection,
-  requestIsCurrent,
 } from "../connectors/templates/kafka/console-helpers.js";
 import { credentialPayload } from "../connectors/templates/kafka/model-helpers.js";
 
@@ -18,11 +21,10 @@ test("Kafka action helpers surface failed HTTP 200 responses", () => {
   assert.equal(connectorActionError(null, "missing result"), "missing result");
 });
 
-test("Kafka action helpers reject stale target and channel responses", () => {
-  const versions = new Map([["detail", 2]]);
-  assert.equal(requestIsCurrent(versions, "detail", 2, "kafka:1:1", "kafka:1:1"), true);
-  assert.equal(requestIsCurrent(versions, "detail", 1, "kafka:1:1", "kafka:1:1"), false);
-  assert.equal(requestIsCurrent(versions, "detail", 2, "kafka:1:1", "kafka:2:2"), false);
+test("completed action guard rejects failed results and withholds pending results", () => {
+  assert.equal(requireCompletedConnectorAction({ status: "completed", output: { ok: true } }).output.ok, true);
+  assert.equal(requireCompletedConnectorAction({ status: "approval_pending" }), null);
+  assert.throws(() => requireCompletedConnectorAction({ status: "blocked", error: "permission blocked" }), /permission blocked/);
 });
 
 test("Kafka detail actions stay bound to the selected view and item", () => {
