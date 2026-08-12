@@ -23,6 +23,7 @@ var errMCPExecutionStopped = errors.New("MCP execution is stopped")
 const (
 	connectorActionToolName          = "connector.call_action"
 	connectorActionApprovalHint      = "Wait 3 seconds, then poll this connector action request until it is completed, failed, declined, stale, blocked, or outcome_unknown."
+	connectorActionHandleError       = "connector action returned a session handle that could not be persisted; inspect the target state before retrying because the remote outcome is unknown"
 	connectorActionRunningHint       = "Wait 3 seconds, then call get_connector_action_request again. Use the connector-specific read or recovery actions when the connector exposes them."
 	connectorActionMissingPermission = "This token is not allowed to run this connector action for the selected target/profile"
 	connectorActionFinishTimeout     = 10 * time.Second
@@ -258,7 +259,14 @@ func (s *Server) executeInsertedConnectorAction(
 	}
 	request, err = s.captureConnectorActionSessionHandleIfReturned(ctx, runtime, request, result.Handles)
 	if err != nil {
-		return connectorActionCallResult{}, err
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultOutcomeUnknown, nil, "", connectorActionHandleError, prepared.ActionDefinition.OutputHint)
+		if finishErr != nil {
+			return connectorActionCallResult{}, errors.Join(err, finishErr)
+		}
+		return connectorActionCallResult{
+			Request: finished, Permission: options.Permission,
+			Result: connectors.ActionResult{Status: connectors.ResultOutcomeUnknown, Error: finished.Error},
+		}, nil
 	}
 	if status == connectors.ResultRunning {
 		if !connectorActionSupportsRunning(prepared) {
@@ -551,18 +559,19 @@ func connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {
 }
 
 func (s *Server) captureConnectorActionSessionHandle(ctx context.Context, runtime *databaseRuntime, requestID int64, handles connectors.ActionHandles) (connectortargets.ActionRequest, error) {
+	captureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), connectorActionFinishTimeout)
+	defer cancel()
 	var request connectortargets.ActionRequest
-	err := s.withAuditedMutation(
-		ctx, runtime, "gateway", nil, 0, "connector_action.session_handle.updated",
-		func() any { return connectorActionRequestAuditPayload(request) },
-		func(tx *sql.Tx) error {
-			var err error
-			request, err = connectortargets.NewTxStore(tx).SetActionRequestSessionHandle(
-				ctx, requestID, handles.SessionID, handles.SessionGeneration,
-			)
+	err := s.withAuditedTransaction(captureCtx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+		var err error
+		request, err = connectortargets.NewTxStore(tx).SetActionRequestSessionHandle(
+			captureCtx, requestID, handles.SessionID, handles.SessionGeneration,
+		)
+		if err != nil {
 			return err
-		},
-	)
+		}
+		return appendAudit(tx, "gateway", request.TokenID, 0, "connector_action.session_handle.updated", connectorActionRequestAuditPayload(request))
+	})
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -599,23 +608,22 @@ func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, ru
 		Error:       errorText,
 	}, hints...)
 	var finished connectortargets.ActionRequest
-	err := s.withAuditedMutation(
-		finishCtx, runtime, "gateway", nil, 0, "connector_action.request."+string(status),
-		func() any { return connectorActionRequestAuditPayload(finished) },
-		func(tx *sql.Tx) error {
-			var err error
-			var changed bool
-			finished, changed, err = connectortargets.NewTxStore(tx).FinishActionRequestWithChange(finishCtx, connectortargets.FinishActionRequestInput{
-				ID: requestID, Status: status, Output: redacted.Output,
-				DisplayText: redacted.DisplayText, Error: redacted.Error,
-				AllowedStatuses: allowedStatuses,
-			})
-			if err == nil && !changed {
-				return errAuditedMutationUnchanged
-			}
+	err := s.withAuditedTransaction(finishCtx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+		var err error
+		var changed bool
+		finished, changed, err = connectortargets.NewTxStore(tx).FinishActionRequestWithChange(finishCtx, connectortargets.FinishActionRequestInput{
+			ID: requestID, Status: status, Output: redacted.Output,
+			DisplayText: redacted.DisplayText, Error: redacted.Error,
+			AllowedStatuses: allowedStatuses,
+		})
+		if err == nil && !changed {
+			return errAuditedMutationUnchanged
+		}
+		if err != nil {
 			return err
-		},
-	)
+		}
+		return appendAudit(tx, "gateway", finished.TokenID, 0, "connector_action.request."+string(status), connectorActionRequestAuditPayload(finished))
+	})
 	if errors.Is(err, errAuditedMutationUnchanged) {
 		return finished, nil
 	}
