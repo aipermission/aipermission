@@ -7,6 +7,42 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.26] - 2026-08-12
+
+### Added
+
+- Added a bounded, redacted diagnostics export for local troubleshooting and
+  expanded typed REST contracts, connector conformance, browser coverage, and
+  critical backend coverage gates.
+- Added transactional audit outbox delivery so security-relevant domain
+  mutations and their audit records commit together and project idempotently.
+
+### Changed
+
+- Split large frontend runtime and connector-console modules, shared common
+  action, request, SQL, result, editor, and live-console primitives, and added
+  stale-response guards across asynchronous UI flows.
+- Backup integration now requires protocol v2 capabilities. Upgrade the backup
+  service to v0.2.0 before upgrading the AIPermission gateway.
+
+### Fixed
+
+- Canceled connector actions now finalize consistently, stale responses are
+  rejected across scope changes, unchanged runtime revisions remain stable,
+  and Vault lease repair runs only after audit recovery is available.
+- Gateway shutdown, bounded HTTP failures, MCP authentication backoff, audit
+  lifecycle accounting, diagnostic metadata, and encrypted database upgrade
+  recovery now preserve explicit and reviewable failure states.
+
+### Security
+
+- Vault and backup mutations are bound to the transactional audit outbox, and
+  connector action recovery is protected against ambiguous retries and stale
+  completion responses.
+- SQLCipher upgrades verify encrypted database compatibility, repository
+  history is scanned for secrets, diagnostics have redaction regression tests,
+  and CI maintenance checks enforce release integrity.
+
 ## [0.2.25] - 2026-08-11
 
 ### Added
