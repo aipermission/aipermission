@@ -126,6 +126,46 @@ func TestStoreTargetProfileByRuntimeIDUsesRuntimeSurface(t *testing.T) {
 	}
 }
 
+func TestEnsureRuntimeSurfacePreservesRevisionWhenUnchanged(t *testing.T) {
+	database := openTargetTestDB(t)
+	ctx := context.Background()
+	keyID := insertTargetTestSSHKey(t, database, "main")
+	store := NewStore(database)
+	target, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
+	input := EnsureRuntimeSurfaceInput{
+		ConnectorKind:  sshconnector.Kind,
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		CapabilityKind: RuntimeCapabilityLiveConsole,
+		Label:          profile.Label,
+	}
+	surface, err := store.EnsureRuntimeSurface(ctx, input)
+	if err != nil {
+		t.Fatalf("ensure runtime surface: %v", err)
+	}
+	const sentinel = "2026-08-12T08:00:00Z"
+	if _, err := database.Exec(`UPDATE connector_runtime_surfaces SET updated_at = ? WHERE id = ?`, sentinel, surface.ID); err != nil {
+		t.Fatalf("set runtime revision sentinel: %v", err)
+	}
+
+	unchanged, err := store.EnsureRuntimeSurface(ctx, input)
+	if err != nil {
+		t.Fatalf("ensure unchanged runtime surface: %v", err)
+	}
+	if unchanged.UpdatedAt != sentinel {
+		t.Fatalf("unchanged runtime surface revision = %q, want %q", unchanged.UpdatedAt, sentinel)
+	}
+
+	input.Label = "renamed"
+	changed, err := store.EnsureRuntimeSurface(ctx, input)
+	if err != nil {
+		t.Fatalf("ensure changed runtime surface: %v", err)
+	}
+	if changed.UpdatedAt == sentinel || changed.Label != "renamed" {
+		t.Fatalf("changed runtime surface was not revised: %#v", changed)
+	}
+}
+
 func TestStoreTargetProfileByRuntimeIDRejectsArchivedProfile(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()

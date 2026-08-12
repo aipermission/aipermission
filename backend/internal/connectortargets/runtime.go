@@ -95,7 +95,9 @@ func (s *Store) EnsureRuntimeSurface(ctx context.Context, input EnsureRuntimeSur
 		ON CONFLICT(connector_kind, target_id, profile_id, capability_kind) DO UPDATE SET
 			label = excluded.label,
 			status = 'active',
-			updated_at = excluded.updated_at`,
+			updated_at = excluded.updated_at
+		WHERE connector_runtime_surfaces.label <> excluded.label
+		   OR connector_runtime_surfaces.status <> 'active'`,
 		input.CapabilityKind,
 		label,
 		now,
