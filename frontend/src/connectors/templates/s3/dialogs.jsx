@@ -7,6 +7,29 @@ import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { joinObjectKey, normalizeObjectKey } from "./helpers";
 
+export const defaultUploadDialog = Object.freeze({
+  open: false,
+  mode: "files",
+  prefix: "",
+  files: [],
+  textKey: "",
+  textContent: "",
+  textContentType: "text/plain",
+  overwrite: false,
+  pending: false,
+  error: "",
+});
+export const defaultRenameDialog = Object.freeze({ open: false, value: "", pending: false, error: "" });
+export const defaultS3ConfirmDialog = Object.freeze({
+  open: false,
+  title: "",
+  description: "",
+  details: [],
+  action: null,
+  pending: false,
+  danger: false,
+});
+
 export function S3UploadDialog({
   value,
   theme,

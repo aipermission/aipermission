@@ -30,6 +30,14 @@ export function safeDownloadName(value) {
   return String(value || "s3-object").replaceAll(":", "-");
 }
 
+export function approvalsForTarget(items, targetRef) {
+  return (items || []).filter((item) => item.target_ref === targetRef);
+}
+
+export function visibleObjectBytes(objects) {
+  return (objects || []).reduce((total, object) => total + Number(object.size || 0), 0);
+}
+
 export function normalizeObjectKey(value) {
   return String(value || "")
     .trim()

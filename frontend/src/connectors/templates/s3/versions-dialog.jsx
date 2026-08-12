@@ -35,6 +35,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
         reason: "manual S3 object version list",
         busy: "reading versions",
       });
+      if (!item) return;
       const nextVersions = Array.isArray(item.output?.versions) ? item.output.versions : [];
       setVersions((current) => (reset ? nextVersions : [...current, ...nextVersions]));
       setNextCursor(item.output?.next_cursor || "");
@@ -50,17 +51,19 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
     setPending(true);
     setError("");
     try {
-      await onRun({
+      const item = await onRun({
         actionName: confirmation.action,
         input: { key: objectKey, version_id: confirmation.version.version_id },
         reason: `manual S3 object version ${confirmation.action === "restore_object_version" ? "restore" : "delete"}`,
         busy: confirmation.action === "restore_object_version" ? "restoring version" : "deleting version",
       });
+      if (!item) return;
       setConfirmation(null);
       await loadVersions({ reset: true });
       await onChanged?.();
     } catch (actionError) {
       setError(actionError.message || "Object version action failed.");
+    } finally {
       setPending(false);
     }
   }

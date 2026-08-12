@@ -47,6 +47,7 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
         reason: "manual S3 lifecycle review",
         busy: "reading lifecycle",
       });
+      if (!item) return;
       setPolicy(item.output || { configured: false, rules: [], raw_xml: "" });
     } catch (loadError) {
       setError(loadError.message || "Bucket lifecycle could not be read.");
@@ -66,7 +67,7 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
     setPending(true);
     setError("");
     try {
-      await onRun({
+      const item = await onRun({
         actionName: "replace_bucket_lifecycle",
         input: {
           rule_id: form.ruleId,
@@ -79,6 +80,10 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
         reason: "manual S3 lifecycle policy replacement",
         busy: "replacing lifecycle",
       });
+      if (!item) {
+        setPending(false);
+        return;
+      }
       setForm((current) => ({ ...current, acknowledged: false }));
       await loadPolicy();
     } catch (replaceError) {
@@ -92,12 +97,16 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
     setPending(true);
     setError("");
     try {
-      await onRun({
+      const item = await onRun({
         actionName: "delete_bucket_lifecycle",
         input: {},
         reason: "manual S3 lifecycle policy deletion",
         busy: "deleting lifecycle",
       });
+      if (!item) {
+        setPending(false);
+        return;
+      }
       setConfirmDelete(false);
       await loadPolicy();
     } catch (deleteError) {
