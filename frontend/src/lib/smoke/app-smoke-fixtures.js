@@ -24,7 +24,7 @@ export const connectorActivityDialogSource = readFileSync(
 export const settingsSource = [
   "settings.jsx",
   "database-settings-panel.jsx",
-  "password-settings-dialog.jsx",
+  "password-settings-panel.jsx",
   "history-retention-panel.jsx",
   "history-labels-panel.jsx",
   "maintenance-console-panel.jsx",

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { HistoryRetentionPanel } from "./history-retention-panel";
-import { PasswordSettingsPanel } from "./password-settings-dialog";
+import { PasswordSettingsPanel } from "./password-settings-panel";
 
 vi.mock("../../lib/api", () => ({
   apiDelete: vi.fn(),
