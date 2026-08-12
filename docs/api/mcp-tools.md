@@ -71,7 +71,12 @@ Supply a caller-stable `idempotency_key` for connector actions that may be
 retried. Repeating the same key with the same token, target/profile, action,
 input, and reason returns the original request and never executes twice or
 extends an approval lifetime. Reusing the key for a different logical request
-returns `409 Conflict`. Keys are limited to 128 characters.
+returns `409 Conflict`. Keys are limited to 128 UTF-8 bytes.
+
+Blocked and missing-permission results are idempotent too. If the operator
+changes the permission after a blocked result, create a new logical request
+with a new `idempotency_key`; retrying the old key deliberately replays the
+original blocked result.
 
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
 Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker,

@@ -44,6 +44,8 @@ Every `call_connector_action` should include a short `reason`.
 Use one stable, unique `idempotency_key` for each logical action. Preserve that
 key while retrying an uncertain call. Never reuse it for a different target,
 action, input, or reason; the gateway rejects mismatched reuse.
+Blocked and missing-permission outcomes are also replayed. After the operator
+changes permission, use a new key for the new logical attempt.
 
 Good reasons:
 
