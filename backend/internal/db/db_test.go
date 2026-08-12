@@ -216,6 +216,48 @@ func TestOpenEncryptedMigratesConnectorNativeBaseline(t *testing.T) {
 	}
 }
 
+func TestOpenEncryptedAppliesAuditRecoveryThenRepairsVaultSessionLeaseSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault-session-schema-drift.db")
+	database, err := openEncrypted(path, "correct-password", false)
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	for index := 0; index < 14; index++ {
+		if err := runSingleMigration(database, migrations[index]); err != nil {
+			t.Fatalf("apply migration %d: %v", migrations[index].version, err)
+		}
+	}
+	if _, err := database.Exec(`ALTER TABLE vault_session_leases DROP COLUMN environment_content_hash`); err != nil {
+		t.Fatalf("create schema drift: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close drifted db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("repair drifted db: %v", err)
+	}
+	defer reopened.Close()
+	if !columnExists(t, reopened, "vault_session_leases", "environment_content_hash") {
+		t.Fatal("vault_session_leases.environment_content_hash was not repaired")
+	}
+	for _, column := range []string{"next_attempt_at", "dead_lettered_at"} {
+		if !columnExists(t, reopened, "audit_outbox", column) {
+			t.Fatalf("audit recovery column %s is missing", column)
+		}
+	}
+	for _, version := range []int{14, 15} {
+		var count int
+		if err := reopened.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, version).Scan(&count); err != nil {
+			t.Fatalf("query migration %d: %v", version, err)
+		}
+		if count != 1 {
+			t.Fatalf("migration %d count=%d, want 1", version, count)
+		}
+	}
+}
+
 func TestSelfHostedBackupMigrationArchivesGoogleProviderAndClearsSecret(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "backup-provider.db")
 	database, err := openEncrypted(path, "correct-password", false)

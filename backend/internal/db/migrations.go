@@ -1253,6 +1253,11 @@ var migrations = []migration{
 			 END;`,
 		},
 	},
+	{
+		version:     15,
+		description: "repair Vault session lease environment binding",
+		preflight:   ensureVaultSessionLeaseEnvironmentHash,
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {
@@ -1438,6 +1443,39 @@ func requireGloballyUniqueVaultItemNames(tx *sql.Tx) error {
 			"active Vault item names must be globally unique before this upgrade; rename duplicate names first: %s",
 			strings.Join(names, ", "),
 		)
+	}
+	return nil
+}
+
+func ensureVaultSessionLeaseEnvironmentHash(tx *sql.Tx) error {
+	rows, err := tx.Query(`PRAGMA table_info(vault_session_leases)`)
+	if err != nil {
+		return fmt.Errorf("inspect vault_session_leases columns: %w", err)
+	}
+	hasColumn := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan vault_session_leases column: %w", err)
+		}
+		if name == "environment_content_hash" {
+			hasColumn = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close vault_session_leases columns: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate vault_session_leases columns: %w", err)
+	}
+	if hasColumn {
+		return nil
+	}
+	if _, err := tx.Exec(`ALTER TABLE vault_session_leases ADD COLUMN environment_content_hash TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add vault_session_leases environment binding: %w", err)
 	}
 	return nil
 }
