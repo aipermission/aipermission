@@ -12,14 +12,21 @@ import (
 )
 
 var criticalCoverageFloors = map[string]float64{
-	"internal/api":                 57.0,
-	"internal/auditoutbox":         60.0,
-	"internal/connectortargets":    63.0,
-	"internal/projectcapabilities": 74.0,
-	"internal/sessionenv":          64.0,
-	"internal/tokens":              82.0,
-	"internal/vault":               82.0,
-	"internal/vaultrequests":       62.0,
+	"internal/api":                   57.0,
+	"internal/auditoutbox":           60.0,
+	"internal/connectors/clickhouse": 58.0,
+	"internal/connectors/postgres":   31.0,
+	"internal/connectors/rabbitmq":   53.0,
+	"internal/connectors/redis":      62.0,
+	"internal/connectors/s3":         64.0,
+	"internal/connectors/sqlsafe":    63.0,
+	"internal/connectortargets":      63.0,
+	"internal/projectcapabilities":   74.0,
+	"internal/restcontract":          84.0,
+	"internal/sessionenv":            64.0,
+	"internal/tokens":                82.0,
+	"internal/vault":                 82.0,
+	"internal/vaultrequests":         62.0,
 }
 
 type coverageCount struct {

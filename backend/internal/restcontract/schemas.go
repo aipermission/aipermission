@@ -76,7 +76,7 @@ func sharedSchemas() map[string]any {
 		}, []string{"ref", "project_id", "project_name", "project_slug", "connector_kind", "target_id", "target_name", "profile_id", "profile_kind", "profile_label", "status", "created_at", "updated_at"}),
 		"ConnectorActionApproval": objectSchema(map[string]any{
 			"id":                    integerSchema(),
-			"token_id":              nullableIntegerSchema(),
+			"token_id":              integerSchema(),
 			"token_name":            stringSchema(),
 			"target_id":             integerSchema(),
 			"target_name":           stringSchema(),
@@ -96,11 +96,11 @@ func sharedSchemas() map[string]any {
 			"error":                 stringSchema(),
 			"approval_context_hash": stringSchema(),
 			"created_at":            dateTimeSchema(),
-			"completed_at":          nullableDateTimeSchema(),
+			"completed_at":          dateTimeSchema(),
 			"retry_after_seconds":   integerSchema(),
 			"assistant_hint":        stringSchema(),
 		}, []string{"id", "target_id", "target_name", "target_ref", "profile_id", "profile_label", "connector_kind", "action_name", "status", "created_at"}),
-		"HistoryEntry": historyEntrySchema(stringMap),
+		"HistoryEntry": historyEntrySchema(),
 		"AuditEntry":   auditEntrySchema(),
 		"HistoryPage":  pageSchema(refSchema("HistoryEntry")),
 		"AuditPage":    pageSchema(refSchema("AuditEntry")),
@@ -117,7 +117,7 @@ func sharedSchemas() map[string]any {
 
 func typedOperationContracts() map[Route]operationContract {
 	return map[Route]operationContract{
-		{Method: "GET", Path: "/api/targets"}:                                              okContract(arraySchema(refSchema("TargetProfile"))),
+		{Method: "GET", Path: "/api/targets"}:                                              okContract(itemsSchema(refSchema("TargetProfile"))),
 		{Method: "GET", Path: "/api/connector-targets"}:                                    okContract(itemsSchema(refSchema("ConnectorTarget"))),
 		{Method: "GET", Path: "/api/connector-targets/{id}"}:                               okContract(refSchema("ConnectorTarget")),
 		{Method: "GET", Path: "/api/connector-targets/{id}/profiles"}:                      okContract(itemsSchema(refSchema("ConnectorCredentialProfile"))),
@@ -186,43 +186,50 @@ func okContract(schema map[string]any) operationContract {
 	return operationContract{StatusCode: "200", ResponseSchema: schema}
 }
 
-func historyEntrySchema(freeObject map[string]any) map[string]any {
+func historyEntrySchema() map[string]any {
 	properties := map[string]any{
 		"id": integerSchema(), "source_ref_type": stringSchema(), "source_ref_id": integerSchema(),
-		"connector_kind": stringSchema(), "activity_type": stringSchema(), "token_id": nullableIntegerSchema(),
-		"token_name": stringSchema(), "project_id": nullableIntegerSchema(), "project_name": stringSchema(),
-		"runtime_id": nullableIntegerSchema(), "target_id": nullableIntegerSchema(), "profile_id": nullableIntegerSchema(),
+		"connector_kind": stringSchema(), "activity_type": stringSchema(), "token_id": integerSchema(),
+		"token_name": stringSchema(), "project_id": integerSchema(), "project_name": stringSchema(),
+		"runtime_id": integerSchema(), "target_id": integerSchema(), "profile_id": integerSchema(),
 		"target_name": stringSchema(), "profile_label": stringSchema(), "source": stringSchema(),
 		"status": actionStatusSchema(), "action_name": stringSchema(), "title": stringSchema(), "summary": stringSchema(),
 		"preview_json": stringSchema(), "input_text": stringSchema(), "input_json": stringSchema(),
 		"output_text": stringSchema(), "output_json": stringSchema(), "error": stringSchema(),
-		"exit_code": nullableIntegerSchema(), "progress_current": integerSchema(), "progress_total": integerSchema(),
+		"exit_code": integerSchema(), "progress_current": integerSchema(), "progress_total": integerSchema(),
 		"bytes_done": integerSchema(), "bytes_total": integerSchema(), "approval_required": boolSchema(),
-		"user_note": stringSchema(), "created_at": dateTimeSchema(), "started_at": nullableDateTimeSchema(),
-		"completed_at": nullableDateTimeSchema(), "updated_at": dateTimeSchema(), "labels": arraySchema(freeObject),
+		"user_note": stringSchema(), "created_at": dateTimeSchema(), "started_at": dateTimeSchema(),
+		"completed_at": dateTimeSchema(), "updated_at": dateTimeSchema(), "labels": arraySchema(historyLabelSchema()),
 	}
 	return objectSchema(properties, []string{"id", "source_ref_type", "source_ref_id", "connector_kind", "activity_type", "target_name", "source", "status", "action_name", "title", "summary", "progress_current", "progress_total", "bytes_done", "bytes_total", "approval_required", "created_at", "updated_at", "labels"})
 }
 
 func auditEntrySchema() map[string]any {
 	return objectSchema(map[string]any{
-		"id": integerSchema(), "actor_type": stringSchema(), "token_id": nullableIntegerSchema(), "token_name": stringSchema(),
-		"project_id": nullableIntegerSchema(), "project_name": stringSchema(), "runtime_id": nullableIntegerSchema(),
-		"connector_kind": stringSchema(), "target_id": nullableIntegerSchema(), "target_name": stringSchema(),
-		"profile_id": nullableIntegerSchema(), "action_request_id": nullableIntegerSchema(), "action": stringSchema(),
-		"payload_json": stringSchema(), "created_at": dateTimeSchema(),
-	}, []string{"id", "actor_type", "action", "payload_json", "created_at"})
+		"id": integerSchema(), "event_version": integerSchema(), "actor_type": stringSchema(), "token_id": integerSchema(), "token_name": stringSchema(),
+		"project_id": integerSchema(), "project_name": stringSchema(), "runtime_id": integerSchema(),
+		"connector_kind": stringSchema(), "target_id": integerSchema(), "target_name": stringSchema(),
+		"profile_id": integerSchema(), "action_request_id": integerSchema(), "action": stringSchema(),
+		"lifecycle_phase": stringSchema(), "payload_json": stringSchema(), "created_at": dateTimeSchema(),
+	}, []string{"id", "event_version", "actor_type", "action", "lifecycle_phase", "payload_json", "created_at"})
 }
 
 func pageSchema(item map[string]any) map[string]any {
 	return objectSchema(map[string]any{
 		"items": arraySchema(item), "total": integerSchema(), "limit": integerSchema(), "offset": integerSchema(),
-		"next_offset": nullableIntegerSchema(),
+		"next_offset": integerSchema(),
 	}, []string{"items", "total", "limit", "offset"})
 }
 
 func itemsSchema(item map[string]any) map[string]any {
 	return objectSchema(map[string]any{"items": arraySchema(item)}, []string{"items"})
+}
+
+func historyLabelSchema() map[string]any {
+	return objectSchema(map[string]any{
+		"id": integerSchema(), "name": stringSchema(), "color": stringSchema(),
+		"created_at": dateTimeSchema(), "updated_at": dateTimeSchema(),
+	}, []string{"id", "name", "color"})
 }
 
 func objectSchema(properties map[string]any, required []string) map[string]any {
@@ -240,12 +247,6 @@ func stringSchema() map[string]any   { return map[string]any{"type": "string"} }
 func integerSchema() map[string]any  { return map[string]any{"type": "integer", "format": "int64"} }
 func boolSchema() map[string]any     { return map[string]any{"type": "boolean"} }
 func dateTimeSchema() map[string]any { return map[string]any{"type": "string", "format": "date-time"} }
-func nullableIntegerSchema() map[string]any {
-	return map[string]any{"type": []string{"integer", "null"}, "format": "int64"}
-}
-func nullableDateTimeSchema() map[string]any {
-	return map[string]any{"type": []string{"string", "null"}, "format": "date-time"}
-}
 func refSchema(name string) map[string]any {
 	return map[string]any{"$ref": "#/components/schemas/" + name}
 }

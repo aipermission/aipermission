@@ -9,10 +9,7 @@
           },
           "action_request_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "actor_type": {
             "type": "string"
@@ -24,53 +21,45 @@
             "format": "date-time",
             "type": "string"
           },
+          "event_version": {
+            "format": "int64",
+            "type": "integer"
+          },
           "id": {
             "format": "int64",
             "type": "integer"
+          },
+          "lifecycle_phase": {
+            "type": "string"
           },
           "payload_json": {
             "type": "string"
           },
           "profile_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "project_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "project_name": {
             "type": "string"
           },
           "runtime_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "target_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "target_name": {
             "type": "string"
           },
           "token_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "token_name": {
             "type": "string"
@@ -78,8 +67,10 @@
         },
         "required": [
           "id",
+          "event_version",
           "actor_type",
           "action",
+          "lifecycle_phase",
           "payload_json",
           "created_at"
         ],
@@ -100,10 +91,7 @@
           },
           "next_offset": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "offset": {
             "format": "int64",
@@ -136,10 +124,7 @@
           },
           "completed_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "connector_kind": {
             "type": "string"
@@ -190,9 +175,11 @@
               "canceled",
               "running",
               "approval_pending",
+              "pending_approval",
               "blocked",
               "stale",
               "declined",
+              "expired",
               "error",
               "outcome_unknown",
               "pending",
@@ -219,10 +206,7 @@
           },
           "token_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "token_name": {
             "type": "string"
@@ -612,6 +596,10 @@
               "audit": {
                 "additionalProperties": false,
                 "properties": {
+                  "dead_letter_count": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
                   "failure_count": {
                     "format": "int64",
                     "type": "integer"
@@ -632,6 +620,7 @@
                   "status",
                   "failure_count",
                   "pending_count",
+                  "dead_letter_count",
                   "retried_event_count"
                 ],
                 "type": "object"
@@ -726,10 +715,7 @@
           },
           "completed_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "connector_kind": {
             "type": "string"
@@ -743,10 +729,7 @@
           },
           "exit_code": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "id": {
             "format": "int64",
@@ -760,8 +743,32 @@
           },
           "labels": {
             "items": {
-              "additionalProperties": true,
-              "properties": {},
+              "additionalProperties": false,
+              "properties": {
+                "color": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "id": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "color"
+              ],
               "type": "object"
             },
             "type": "array"
@@ -777,10 +784,7 @@
           },
           "profile_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "profile_label": {
             "type": "string"
@@ -795,20 +799,14 @@
           },
           "project_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "project_name": {
             "type": "string"
           },
           "runtime_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "source": {
             "type": "string"
@@ -822,10 +820,7 @@
           },
           "started_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "status": {
             "enum": [
@@ -834,9 +829,11 @@
               "canceled",
               "running",
               "approval_pending",
+              "pending_approval",
               "blocked",
               "stale",
               "declined",
+              "expired",
               "error",
               "outcome_unknown",
               "pending",
@@ -850,10 +847,7 @@
           },
           "target_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "target_name": {
             "type": "string"
@@ -863,10 +857,7 @@
           },
           "token_id": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "token_name": {
             "type": "string"
@@ -917,10 +908,7 @@
           },
           "next_offset": {
             "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
+            "type": "integer"
           },
           "offset": {
             "format": "int64",
@@ -4759,10 +4747,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/TargetProfile"
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/TargetProfile"
+                      },
+                      "type": "array"
+                    }
                   },
-                  "type": "array"
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
                 }
               }
             },
