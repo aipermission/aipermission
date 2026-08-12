@@ -22,9 +22,20 @@ import (
 
 const (
 	ServiceProviderType = "aipermission_backup"
-	ServiceProtocol     = "1"
+	ServiceProtocol     = "2"
 	maxServiceJSONBytes = 1 << 20
 )
+
+var requiredServiceCapabilities = []string{
+	"immutable_upload",
+	"list_streams",
+	"list_versions",
+	"download",
+	"prune_versions",
+	"delete_versions",
+	"storage_usage",
+	"automatic_retention",
+}
 
 type ServiceClient struct {
 	baseURL string
@@ -189,6 +200,15 @@ func (c *ServiceClient) Info(ctx context.Context) (ServiceInfo, error) {
 	}
 	if response.Service != "aipermission-backup" || response.ProtocolVersion != ServiceProtocol {
 		return ServiceInfo{}, ValidationError("backup service protocol is incompatible with this AIPermission version")
+	}
+	capabilities := make(map[string]struct{}, len(response.Capabilities))
+	for _, capability := range response.Capabilities {
+		capabilities[capability] = struct{}{}
+	}
+	for _, required := range requiredServiceCapabilities {
+		if _, ok := capabilities[required]; !ok {
+			return ServiceInfo{}, ValidationError("backup service is missing required capability " + required)
+		}
 	}
 	return response, nil
 }
