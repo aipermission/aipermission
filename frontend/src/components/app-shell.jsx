@@ -5,6 +5,7 @@ import { BackupFreshnessNotices } from "./backup-freshness-notices";
 import { AppSidebar } from "./app-sidebar";
 import {
   consoleSessionAttachUrl,
+  createPollGenerationGuard,
   isActiveTransferBatch,
   limitTranscript,
   liveConsoleRuntimeTargets,
@@ -55,35 +56,46 @@ export function Shell({ theme, setTheme }) {
   const consoleConnectionsRef = useRef({});
   const seenPendingTransferApprovalsRef = useRef(new Set());
   const seenPendingVaultApprovalsRef = useRef(new Set());
+  const pollGenerationGuard = useRef(createPollGenerationGuard()).current;
 
-  async function loadStatus() {
+  function pollIsCurrent(generation) {
+    return pollGenerationGuard.isCurrent(generation);
+  }
+
+  async function loadStatus(generation) {
     try {
       const data = await apiGet("/api/status");
+      if (!pollIsCurrent(generation)) return;
       setStatus({ state: "ready", data, error: null });
     } catch (error) {
+      if (!pollIsCurrent(generation)) return;
       setStatus({ state: "error", data: null, error: error.message });
     }
   }
 
-  async function loadDatabaseStatus() {
+  async function loadDatabaseStatus(generation) {
     try {
       const data = await apiGet("/api/unlock/status");
+      if (!pollIsCurrent(generation)) return;
       setDatabaseStatus({ state: "ready", data, error: null });
     } catch (error) {
+      if (!pollIsCurrent(generation)) return;
       setDatabaseStatus({ state: "error", data: null, error: error.message });
     }
   }
 
-  async function loadTargets() {
+  async function loadTargets(generation) {
     try {
       const data = await apiGet("/api/targets");
+      if (!pollIsCurrent(generation)) return;
       setTargets({ state: "ready", data: data.items || [], error: null });
     } catch (error) {
+      if (!pollIsCurrent(generation)) return;
       setTargets({ state: "error", data: [], error: error.message });
     }
   }
 
-  async function loadCredentials() {
+  async function loadCredentials(generation) {
     try {
       const results = await Promise.allSettled(
         supportedConnectorKinds.map(async (kind) => {
@@ -99,68 +111,82 @@ export function Shell({ theme, setTheme }) {
           result.status === "rejected" ? `${supportedConnectorKinds[index]}: ${result.reason?.message || result.reason}` : "",
         )
         .filter(Boolean);
+      if (!pollIsCurrent(generation)) return;
       setCredentials({ state: "ready", data, error: null, errors });
     } catch (error) {
+      if (!pollIsCurrent(generation)) return;
       setCredentials({ state: "error", data: [], error: error.message, errors: [] });
     }
   }
 
-  async function loadTokens() {
+  async function loadTokens(generation) {
     try {
       const data = await apiGet("/api/tokens");
+      if (!pollIsCurrent(generation)) return [];
       setTokens({ state: "ready", data, error: null });
       return data;
     } catch (error) {
+      if (!pollIsCurrent(generation)) return [];
       setTokens({ state: "error", data: [], error: error.message });
       return [];
     }
   }
 
-  async function loadConsoleSessions() {
+  async function loadConsoleSessions(generation) {
     try {
       const data = await apiGet("/api/console/sessions");
+      if (!pollIsCurrent(generation)) return;
       setConsoleSessions((current) => ({ state: "ready", data: mergeConsoleSessionData(data, current.data), error: null }));
       data.filter((session) => isLiveConsoleSession(session)).forEach((session) => attachConsoleSession(session.id));
     } catch (error) {
+      if (!pollIsCurrent(generation)) return;
       setConsoleSessions({ state: "error", data: [], error: error.message });
     }
   }
 
-  async function loadConnectorActionApprovals() {
+  async function loadConnectorActionApprovals(generation) {
     try {
       const data = await apiGet("/api/connector-action-approvals");
+      if (!pollIsCurrent(generation)) return;
       setConnectorActionApprovals({ state: "ready", data, error: null });
     } catch (error) {
+      if (!pollIsCurrent(generation)) return;
       setConnectorActionApprovals({ state: "error", data: [], error: error.message });
     }
   }
 
-  async function loadVaultActionApprovals() {
+  async function loadVaultActionApprovals(generation) {
     try {
       const data = await apiGet("/api/vault-action-approvals?status=approval_pending");
+      if (!pollIsCurrent(generation)) return;
       setVaultActionApprovals({ state: "ready", data, error: null });
       const pending = data.filter((item) => item.status === "approval_pending");
       setVaultActionDialog((current) => reconcileVaultApprovalDialog(current, pending, seenPendingVaultApprovalsRef.current));
     } catch (error) {
+      if (!pollIsCurrent(generation)) return;
       setVaultActionApprovals({ state: "error", data: [], error: error.message });
     }
   }
 
-  async function loadMessages() {
+  async function loadMessages(generation) {
     try {
       const data = await apiGet("/api/messages");
+      if (!pollIsCurrent(generation)) return;
       setMessages({ state: "ready", data, error: null });
     } catch (error) {
+      if (!pollIsCurrent(generation)) return;
       setMessages({ state: "error", data: [], error: error.message });
     }
   }
 
-  async function loadMCPRuntime() {
+  async function loadMCPRuntime(generation) {
     try {
       const data = await apiGet("/api/settings/mcp-runtime");
+      if (!pollIsCurrent(generation)) return { enabled: false, start_enabled: false };
       setMCPRuntime({ state: "ready", data, error: null });
       return data;
     } catch (error) {
+      if (!pollIsCurrent(generation)) return { enabled: false, start_enabled: false };
       setMCPRuntime({ state: "error", data: { enabled: false, start_enabled: false }, error: error.message });
       return { enabled: false, start_enabled: false };
     }
@@ -175,9 +201,10 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  async function loadFileTransferBatches(options = {}) {
+  async function loadFileTransferBatches(options = {}, generation) {
     try {
       const data = await apiGet("/api/file-transfer-batches?limit=30");
+      if (!pollIsCurrent(generation)) return [];
       const items = data.items || [];
       const pendingApprovals = items.filter((item) => item.status === "pending_approval");
       const hasNewPendingApproval = pendingApprovals.some((item) => !seenPendingTransferApprovalsRef.current.has(item.id));
@@ -188,60 +215,64 @@ export function Shell({ theme, setTheme }) {
       setFileTransferBatches({ state: "ready", data: items, error: null });
       return items;
     } catch (error) {
+      if (!pollIsCurrent(generation)) return [];
       setFileTransferBatches((current) => ({ state: "error", data: options.keepData ? current.data : [], error: error.message }));
       return [];
     }
   }
 
-  async function refreshAll() {
+  async function refreshAll(generation) {
     await Promise.all([
-      loadStatus(),
-      loadDatabaseStatus(),
-      loadMCPRuntime(),
-      loadTargets(),
-      loadCredentials(),
-      loadTokens(),
-      loadConsoleSessions(),
-      loadConnectorActionApprovals(),
-      loadVaultActionApprovals(),
-      loadMessages(),
-      loadFileTransferBatches({ keepData: true }),
+      loadStatus(generation),
+      loadDatabaseStatus(generation),
+      loadMCPRuntime(generation),
+      loadTargets(generation),
+      loadCredentials(generation),
+      loadTokens(generation),
+      loadConsoleSessions(generation),
+      loadConnectorActionApprovals(generation),
+      loadVaultActionApprovals(generation),
+      loadMessages(generation),
+      loadFileTransferBatches({ keepData: true }, generation),
     ]);
   }
 
-  const refreshCurrentRoute = useEffectEvent(async (pathname, firstLoad) => {
+  const refreshCurrentRoute = useEffectEvent(async (pathname, firstLoad, generation) => {
     if (firstLoad || pathname !== "/console") {
-      await refreshAll();
+      await refreshAll(generation);
       return;
     }
     await Promise.all([
-      loadStatus(),
-      loadDatabaseStatus(),
-      loadTargets(),
-      loadConsoleSessions(),
-      loadConnectorActionApprovals(),
-      loadVaultActionApprovals(),
-      loadMessages(),
-      loadFileTransferBatches({ keepData: true }),
+      loadStatus(generation),
+      loadDatabaseStatus(generation),
+      loadTargets(generation),
+      loadConsoleSessions(generation),
+      loadConnectorActionApprovals(generation),
+      loadVaultActionApprovals(generation),
+      loadMessages(generation),
+      loadFileTransferBatches({ keepData: true }, generation),
     ]);
   });
 
   useEffect(() => {
     let cancelled = false;
     let firstLoad = true;
+    let timer = 0;
+    const generation = pollGenerationGuard.begin();
     async function load() {
       if (cancelled) return;
       const initial = firstLoad;
       firstLoad = false;
-      await refreshCurrentRoute(location.pathname, initial);
+      await refreshCurrentRoute(location.pathname, initial, generation);
+      if (!cancelled) timer = window.setTimeout(load, 5000);
     }
-    load();
-    const timer = setInterval(load, 5000);
+    void load();
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      pollGenerationGuard.invalidate();
+      window.clearTimeout(timer);
     };
-  }, [location.pathname]);
+  }, [location.pathname, pollGenerationGuard]);
 
   useEffect(() => {
     void loadBackupFreshness();

@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../../lib/api";
 import { useAsyncAction } from "../../lib/use-async-action";
+import { backupRecordsActionBusy, parseBackupKeepLatest } from "./backup-state";
 
 const emptyState = { state: "idle", error: null, message: null };
 
 export function useBackupProviderState(database) {
   const { actionState: backupState, runAction: runBackupAction } = useAsyncAction(emptyState);
-  const { actionState: backupProviderState, runAction: runBackupProviderAction } = useAsyncAction(emptyState);
+  const {
+    actionState: backupProviderState,
+    runAction: runBackupProviderAction,
+    resetAction: resetBackupProviderAction,
+  } = useAsyncAction(emptyState);
   const [backupProviderCatalog, setBackupProviderCatalog] = useState({ state: "loading", data: [], error: null });
   const [backupProviders, setBackupProviders] = useState({ state: "loading", data: [], error: null });
   const [backupProviderDialogOpen, setBackupProviderDialogOpen] = useState(false);
@@ -62,6 +67,7 @@ export function useBackupProviderState(database) {
   }
 
   function openBackupProviderDialog(provider = null) {
+    resetBackupProviderAction();
     if (provider) {
       setBackupProviderEditingID(provider.id);
       setBackupProviderForm({
@@ -142,6 +148,7 @@ export function useBackupProviderState(database) {
   }
 
   function requestEnableBackupProvider(provider) {
+    resetBackupProviderAction();
     setBackupEnableTarget(provider);
     setBackupEnablePassword("");
   }
@@ -172,6 +179,11 @@ export function useBackupProviderState(database) {
     setBackupProviderArchiveTarget(null);
   }
 
+  function requestArchiveBackupProvider(provider) {
+    resetBackupProviderAction();
+    setBackupProviderArchiveTarget(provider);
+  }
+
   async function archiveBackupProvider(event) {
     event.preventDefault();
     const provider = backupProviderArchiveTarget;
@@ -188,6 +200,7 @@ export function useBackupProviderState(database) {
   }
 
   function requestUploadBackupProvider(provider) {
+    resetBackupProviderAction();
     setBackupUploadTarget(provider);
   }
 
@@ -213,6 +226,7 @@ export function useBackupProviderState(database) {
   }
 
   async function openBackupRecordsDialog(provider) {
+    resetBackupProviderAction();
     const requestID = backupRecordsRequest.current + 1;
     backupRecordsRequest.current = requestID;
     setBackupRecordsProvider(provider);
@@ -229,12 +243,7 @@ export function useBackupProviderState(database) {
   }
 
   function closeBackupRecordsDialog() {
-    if (
-      backupProviderState.state?.startsWith("restoring-") ||
-      backupProviderState.state === "pruning" ||
-      backupProviderState.state === "deleting-records"
-    )
-      return;
+    if (backupRecordsActionBusy(backupProviderState.state)) return;
     backupRecordsRequest.current += 1;
     setBackupPruneTarget(null);
     setBackupDeleteRecords([]);
@@ -262,6 +271,7 @@ export function useBackupProviderState(database) {
 
   function requestDeleteBackupRecords(records) {
     if (!records.length || records.length >= backupRecords.data.length) return;
+    resetBackupProviderAction();
     setBackupDeleteRecords(records);
   }
 
@@ -291,6 +301,7 @@ export function useBackupProviderState(database) {
 
   function requestPruneBackupRecords() {
     if (!backupRecordsProvider) return;
+    resetBackupProviderAction();
     setBackupPruneTarget(backupRecordsProvider);
     setBackupPruneKeepLatest("10");
   }
@@ -333,6 +344,7 @@ export function useBackupProviderState(database) {
   }
 
   function requestRestoreBackupRecord(record) {
+    resetBackupProviderAction();
     setRestoreRecordTarget(record);
     setRestoreRecordForm({
       database_name: suggestedRestoreDatabaseName(record),
@@ -404,7 +416,7 @@ export function useBackupProviderState(database) {
     requestEnableBackupProvider,
     closeEnableBackupProviderDialog,
     enableBackupProvider,
-    setBackupProviderArchiveTarget,
+    requestArchiveBackupProvider,
     closeBackupProviderArchiveDialog,
     archiveBackupProvider,
     requestUploadBackupProvider,
@@ -438,13 +450,6 @@ export function suggestedRestoreDatabaseName(record) {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return `${base || "restored-backup"}-restore`;
-}
-
-export function parseBackupKeepLatest(value) {
-  const text = String(value || "").trim();
-  if (!/^\d+$/.test(text)) return null;
-  const parsed = Number(text);
-  return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 1000 ? parsed : null;
 }
 
 function emptyBackupProviderForm() {

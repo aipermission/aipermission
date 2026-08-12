@@ -20,7 +20,7 @@ describe("OverwriteConfirmDialog", () => {
     expect(screen.getByText("/home/report.csv")).toBeInTheDocument();
     expect(screen.getByText("/home/archive/report.csv")).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: "Dismiss dialog" }));
+    expect(screen.queryByRole("button", { name: "Dismiss dialog" })).not.toBeInTheDocument();
     expect(onCancel).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Overwrite all" }));

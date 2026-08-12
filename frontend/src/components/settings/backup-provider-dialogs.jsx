@@ -204,6 +204,7 @@ export function BackupProviderDialogs({ state, database }) {
         size="md"
         closeDisabled={backupProviderState.state === `enabling-${backupEnableTarget?.id}`}
         closeOnOverlay={false}
+        autoFocusClose={false}
       >
         <form className="grid gap-4" onSubmit={enableBackupProvider}>
           <Notice tone="warn">

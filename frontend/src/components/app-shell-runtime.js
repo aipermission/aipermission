@@ -29,6 +29,22 @@ export function limitTranscript(value) {
   return value.length <= maxLength ? value : value.slice(value.length - maxLength);
 }
 
+export function createPollGenerationGuard() {
+  let current = 0;
+  return {
+    begin() {
+      current += 1;
+      return current;
+    },
+    isCurrent(generation) {
+      return generation === undefined || generation === current;
+    },
+    invalidate() {
+      current += 1;
+    },
+  };
+}
+
 export function liveConsoleRuntimeTargets(targets, getModel) {
   return (targets || [])
     .filter((target) => {

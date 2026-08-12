@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isActiveTransferBatch, limitTranscript, mergeConsoleSessionData, normalizeCredentialResources } from "./app-shell-runtime.js";
+import {
+  createPollGenerationGuard,
+  isActiveTransferBatch,
+  limitTranscript,
+  mergeConsoleSessionData,
+  normalizeCredentialResources,
+} from "./app-shell-runtime.js";
 
 test("shell runtime normalizes connector-owned credential resources", () => {
   assert.deepEqual(normalizeCredentialResources("postgres", [{ id: 7, kind: "role" }]), [
@@ -24,4 +30,15 @@ test("shell runtime preserves live transcripts and bounds accumulated output", (
   assert.equal(limitTranscript("x".repeat(200001)).length, 200000);
   assert.equal(isActiveTransferBatch({ status: "paused" }), true);
   assert.equal(isActiveTransferBatch({ status: "completed" }), false);
+});
+
+test("shell polling rejects older and disposed generations", () => {
+  const guard = createPollGenerationGuard();
+  const first = guard.begin();
+  const second = guard.begin();
+
+  assert.equal(guard.isCurrent(first), false);
+  assert.equal(guard.isCurrent(second), true);
+  guard.invalidate();
+  assert.equal(guard.isCurrent(second), false);
 });

@@ -62,9 +62,9 @@ describe("Dialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Open settings" }));
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: "Dismiss dialog" }));
 
     expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Dismiss dialog" })).not.toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

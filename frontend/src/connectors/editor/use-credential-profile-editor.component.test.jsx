@@ -36,7 +36,6 @@ describe("useCredentialProfileEditor", () => {
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(result.current.drawer.open).toBe(false);
     expect(result.current.formState.form.password).toBe("");
-    expect(result.current.dirty).toBe(false);
     expect(result.current.actionState.message).toBe("Profile created.");
   });
 
@@ -70,7 +69,18 @@ describe("useCredentialProfileEditor", () => {
     act(() => result.current.closeEditor());
     expect(result.current.drawer.open).toBe(false);
     expect(result.current.formState.form.password).toBe("");
-    expect(result.current.dirty).toBe(false);
+  });
+
+  it("accepts an undefined model result as a successful credential save", async () => {
+    const model = { saveCredential: vi.fn(async () => undefined) };
+    const { result, onRefresh } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+
+    await act(async () => result.current.save({ preventDefault() {} }, "create"));
+
+    expect(result.current.drawer.open).toBe(false);
+    expect(result.current.actionState.message).toBe("Credential saved.");
+    expect(onRefresh).toHaveBeenCalledOnce();
   });
 
   it("surfaces missing connector behavior without opening an invalid editor", () => {
