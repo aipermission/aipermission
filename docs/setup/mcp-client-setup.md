@@ -56,7 +56,7 @@ npx -y @aipermission/mcp init \
 
 This form asks for the token through a hidden prompt. Prefer this over passing tokens as shell arguments.
 
-The generated MCP config contains a bearer token. Keep it private. For project-local config files such as `.mcp.json`, `.cursor/mcp.json`, and `.vscode/mcp.json`, the init command refuses to write into files already tracked by Git unless `--force` is passed. For untracked project-local configs, it adds the file to `.git/info/exclude` when it detects a Git repository. This protects the local checkout without changing the project's shared `.gitignore`. If a token config is committed or shared, revoke that token in the web UI.
+The generated MCP config contains a bearer token and pins the exact MCP package version that wrote it. Keep it private. For project-local config files such as `.mcp.json`, `.cursor/mcp.json`, and `.vscode/mcp.json`, the init command refuses to write into files already tracked by Git unless `--force` is passed. For untracked project-local configs, it adds the file to `.git/info/exclude` when it detects a Git repository. This protects the local checkout without changing the project's shared `.gitignore`. If a token config is committed or shared, revoke that token in the web UI. Re-run init when you intentionally upgrade the package used by that client.
 
 Full automation can pass the token through stdin:
 
@@ -88,7 +88,7 @@ MCP server config shape:
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp"],
+      "args": ["-y", "@aipermission/mcp@0.2.26"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",

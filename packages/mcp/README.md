@@ -31,7 +31,7 @@ npx -y @aipermission/mcp init \
   --name aipermission
 ```
 
-The init command prompts for your AIPermission API token and writes the MCP client configuration for the selected provider.
+The init command prompts for your AIPermission API token and writes the MCP client configuration for the selected provider. Generated runtime configs pin the exact package version that wrote them; re-run init when you intentionally upgrade a client.
 
 The generated MCP config contains a bearer token. Keep it private. For project-local configs such as `.mcp.json`, `.cursor/mcp.json`, and `.vscode/mcp.json`, the init command refuses to write into files already tracked by Git unless `--force` is passed. For untracked project-local configs, it adds the file to `.git/info/exclude` when it detects a Git repository. Use `--print` if you prefer to copy the config manually. If a token config is committed or shared, revoke that token in the AIPermission UI.
 
@@ -42,7 +42,7 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp"],
+      "args": ["-y", "@aipermission/mcp@0.2.26"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",

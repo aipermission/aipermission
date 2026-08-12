@@ -1,4 +1,5 @@
 import { mcpApiUrl } from "../../lib/api";
+import { mcpPackageName, mcpPackageSpecifier } from "../../lib/mcp-package";
 import { CopyButton } from "../ui/copy-button";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
@@ -94,7 +95,7 @@ function installTargetName(value) {
 
 function installCommand(provider, name) {
   const printFlag = provider === "custom" ? " \\\n  --print" : "";
-  return `npx -y @aipermission/mcp init \\
+  return `npx -y ${mcpPackageName} init \\
   --provider ${provider} \\
   --name ${name}${printFlag}`;
 }
@@ -105,7 +106,7 @@ function manualConfigJSON(name, token) {
       mcpServers: {
         [name]: {
           command: "npx",
-          args: ["-y", "@aipermission/mcp"],
+          args: ["-y", mcpPackageSpecifier],
           env: {
             NODE_ENV: "production",
             AIPERMISSION_API_URL: mcpApiUrl,

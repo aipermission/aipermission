@@ -374,7 +374,7 @@ npx -y @aipermission/mcp init \
   --name aipermission
 ```
 
-The init command asks for the API token with a hidden prompt. Avoid passing tokens in shell arguments unless you intentionally accept shell-history exposure. For project-local MCP configs, init refuses to write into files already tracked by Git unless `--force` is passed; use `--print` if you prefer to copy the config manually.
+The init command asks for the API token with a hidden prompt and pins the generated runtime config to the exact MCP package version that wrote it. Avoid passing tokens in shell arguments unless you intentionally accept shell-history exposure. For project-local MCP configs, init refuses to write into files already tracked by Git unless `--force` is passed; use `--print` if you prefer to copy the config manually. Re-run init when you intentionally upgrade the MCP package used by a client.
 
 Example MCP config:
 
@@ -383,7 +383,7 @@ Example MCP config:
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp"],
+      "args": ["-y", "@aipermission/mcp@0.2.26"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",
