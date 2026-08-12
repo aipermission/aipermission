@@ -1,0 +1,77 @@
+name: Feature request
+description: Propose an improvement aligned with AIPermission's local-only permission gateway.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AIPermission is intentionally local-only, single-user, developer-focused, connector-based, and human-in-the-loop. Read the [Project Principles](https://github.com/aipermission/aipermission/blob/main/docs/project-principles.md) before proposing hosted SaaS, team RBAC, LAN-accessible gateways, or cloud-managed execution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the concrete workflow or limitation, not only the desired implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Developer use case
+      description: Explain who needs this, what they are trying to accomplish, and why current behavior is insufficient.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest complete behavior that would solve the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include existing connectors, tools, or workflows you evaluated.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options:
+        - Connector or connector action
+        - Permission or approval workflow
+        - Console or local UI
+        - History, audit, or diagnostics
+        - Backup or local data management
+        - MCP package or agent experience
+        - Documentation or contributor experience
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and permission impact
+      description: Explain effects on credentials, execution, token permissions, approvals, audit, history, or backups. Write "None identified" when appropriate.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Project alignment
+      options:
+        - label: This proposal keeps the gateway local-only and single-user.
+          required: true
+        - label: This proposal preserves explicit token permissions, human approval boundaries, History, and Audit where execution or data access is involved.
+          required: true
+        - label: This proposal does not require hosted SaaS, multi-user RBAC, LAN exposure, or cloud-managed execution.
+          required: true
+

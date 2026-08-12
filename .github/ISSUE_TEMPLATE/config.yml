@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/aipermission/aipermission/security/advisories/new
+    about: Privately report credential exposure, unintended execution, or another security vulnerability.
+  - name: Read the project principles
+    url: https://github.com/aipermission/aipermission/blob/main/docs/project-principles.md
+    about: Check AIPermission's local-only, single-user, developer-focused boundaries before proposing architectural changes.
