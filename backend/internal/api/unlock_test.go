@@ -31,6 +31,39 @@ func newLockedAPITestServer(t *testing.T) *Server {
 	}, WithConnectorRegistry(testConnectorRegistry(t)))
 }
 
+func TestRuntimeCloseMarksRunningConnectorActionsOutcomeUnknown(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,
+		ActionName: "runtime_close_fixture", Source: commandRequestSourceManual, Status: connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.markRunningConnectorActionsOutcomeUnknown(runtime); err != nil {
+		t.Fatal(err)
+	}
+	finished, err := store.GetActionRequest(t.Context(), request.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finished.Status != connectors.ResultOutcomeUnknown || finished.Error != dbpkg.ConnectorActionOutcomeUnknownMessage {
+		t.Fatalf("running request was not closed safely: %#v", finished)
+	}
+	var auditCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE action = 'connector_action.request.outcome_unknown'`).Scan(&auditCount); err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 {
+		t.Fatalf("outcome_unknown audit events=%d, want 1", auditCount)
+	}
+}
+
 func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	server := newLockedAPITestServer(t)
 	handler := server.Handler()

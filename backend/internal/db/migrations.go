@@ -1203,6 +1203,56 @@ var migrations = []migration{
 			 END;`,
 		},
 	},
+	{
+		version:     14,
+		description: "audit delivery recovery and command lifecycle projection",
+		statements: []string{
+			`ALTER TABLE audit_logs ADD COLUMN event_version INTEGER NOT NULL DEFAULT 1;`,
+			`ALTER TABLE audit_logs ADD COLUMN lifecycle_phase TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE audit_outbox ADD COLUMN next_attempt_at TEXT;`,
+			`ALTER TABLE audit_outbox ADD COLUMN dead_lettered_at TEXT;`,
+			`DROP INDEX idx_audit_outbox_pending;`,
+			`CREATE INDEX idx_audit_outbox_pending
+				ON audit_outbox(dead_lettered_at, delivered_at, next_attempt_at, id);`,
+			`CREATE TRIGGER audit_command_request_created
+			 AFTER INSERT ON command_requests
+			 BEGIN
+				INSERT INTO audit_outbox (
+					event_id, event_version, actor_type, token_id, project_id, runtime_id,
+					connector_kind, target_id, profile_id, action, lifecycle_phase,
+					payload_json, occurred_at, created_at
+				)
+				SELECT lower(hex(randomblob(16))), 1, 'gateway', NEW.token_id, ct.project_id, NEW.runtime_id,
+					rs.connector_kind, rs.target_id, rs.profile_id, 'console.command.' || NEW.status,
+					NEW.status, printf(
+						'{"request_id":%d,"runtime_id":%d,"source":"%s","status":"%s"}',
+						NEW.id, NEW.runtime_id, NEW.source, NEW.status
+					), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+				FROM connector_runtime_surfaces rs
+				JOIN connector_targets ct ON ct.id = rs.target_id
+				WHERE rs.id = NEW.runtime_id;
+			 END;`,
+			`CREATE TRIGGER audit_command_request_status_changed
+			 AFTER UPDATE OF status ON command_requests
+			 WHEN OLD.status <> NEW.status
+			 BEGIN
+				INSERT INTO audit_outbox (
+					event_id, event_version, actor_type, token_id, project_id, runtime_id,
+					connector_kind, target_id, profile_id, action, lifecycle_phase,
+					payload_json, occurred_at, created_at
+				)
+				SELECT lower(hex(randomblob(16))), 1, 'gateway', NEW.token_id, ct.project_id, NEW.runtime_id,
+					rs.connector_kind, rs.target_id, rs.profile_id, 'console.command.' || NEW.status,
+					NEW.status, printf(
+						'{"request_id":%d,"runtime_id":%d,"source":"%s","previous_status":"%s","status":"%s"}',
+						NEW.id, NEW.runtime_id, NEW.source, OLD.status, NEW.status
+					), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+				FROM connector_runtime_surfaces rs
+				JOIN connector_targets ct ON ct.id = rs.target_id
+				WHERE rs.id = NEW.runtime_id;
+			 END;`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {

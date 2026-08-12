@@ -64,22 +64,28 @@ func (s backupHandlers) updateBackupProviderRetention(w http.ResponseWriter, r *
 		writeError(w, http.StatusBadRequest, "enabled retention requires keep_latest between 1 and 1000; disabled retention requires 0")
 		return
 	}
+	streamID := stringFromMap(provider.Public, "stream_id")
+	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "backup.provider.retention.update_requested", map[string]any{
+		"provider_id": provider.ID, "provider_type": provider.ProviderType,
+		"stream_id": streamID, "enabled": request.Enabled,
+		"keep_latest": request.KeepLatest, "apply_now": request.ApplyNow,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	result, err := client.UpdateRetention(
-		r.Context(), stringFromMap(provider.Public, "stream_id"),
+		r.Context(), streamID,
 		request.Enabled, request.KeepLatest, request.ApplyNow,
 	)
 	if err != nil {
 		handleBackupServiceError(w, err)
 		return
 	}
-	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "backup.provider.retention.updated", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.retention.updated", map[string]any{
 		"provider_id": provider.ID, "provider_type": provider.ProviderType,
 		"stream_id": result.Policy.StreamID, "enabled": result.Policy.Enabled,
 		"keep_latest": result.Policy.KeepLatest, "apply_now": request.ApplyNow,
 		"deleted_count": result.DeletedCount,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
+	})
 	writeJSON(w, http.StatusOK, result)
 }

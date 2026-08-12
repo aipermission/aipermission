@@ -131,7 +131,9 @@ the insert but before delivery bookkeeping therefore converges safely on the
 next attempt.
 
 Delivered outbox rows may be removed only by an explicit retention policy.
-Undelivered rows are never treated as ordinary audit retention candidates.
+Dead-letter rows are terminal delivery failures and may be removed by that same
+explicit policy after its cutoff. Pending or retryable undelivered rows are
+never retention candidates.
 
 ## Health And Operations
 
@@ -160,7 +162,9 @@ The implemented boundary is deliberately layered:
    described above.
 5. Read observations and external side-effect telemetry may still use a
    best-effort audit event. They do not describe a committed local mutation and
-   are not presented as an atomic guarantee.
+   are not presented as an atomic guarantee. When an observation accompanies a
+   trigger-owned durable lifecycle event, its action name ends in `_observed`
+   so operators can distinguish telemetry from the committed transition.
 
 Existing `audit_logs` rows remain valid and have a null event id. The migration
 does not rewrite or synthesize historical events.

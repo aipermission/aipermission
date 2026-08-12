@@ -55,6 +55,7 @@ type AuditHealth struct {
 	Status            string `json:"status"`
 	FailureCount      uint64 `json:"failure_count"`
 	PendingCount      int64  `json:"pending_count"`
+	DeadLetterCount   int64  `json:"dead_letter_count"`
 	RetriedEventCount int64  `json:"retried_event_count"`
 }
 

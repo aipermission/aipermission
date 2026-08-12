@@ -163,6 +163,7 @@ func vaultActionAuditIdentity(ctx context.Context, runtime *databaseRuntime, req
 	if err := runtime.database.QueryRowContext(ctx, `
 		SELECT token_id, runtime_id FROM vault_action_requests WHERE id = ?`, requestID,
 	).Scan(&tokenID, &runtimeID); err != nil {
+		log.Printf("resolve Vault action audit identity request_id=%d error=%v", requestID, err)
 		return nil, 0
 	}
 	return &tokenID, runtimeID.Int64

@@ -146,8 +146,9 @@ func diagnosticsReportSchema() map[string]any {
 		"migration_count": integerSchema(), "migration_state": stringSchema(), "sqlcipher_version": stringSchema(),
 	}, []string{"encrypted", "schema_version", "supported_schema_version", "migration_count", "migration_state", "sqlcipher_version"})
 	audit := objectSchema(map[string]any{
-		"status": stringSchema(), "failure_count": integerSchema(), "pending_count": integerSchema(), "retried_event_count": integerSchema(),
-	}, []string{"status", "failure_count", "pending_count", "retried_event_count"})
+		"status": stringSchema(), "failure_count": integerSchema(), "pending_count": integerSchema(),
+		"dead_letter_count": integerSchema(), "retried_event_count": integerSchema(),
+	}, []string{"status", "failure_count", "pending_count", "dead_letter_count", "retried_event_count"})
 	runtime := objectSchema(map[string]any{
 		"gateway": stringSchema(), "database": stringSchema(), "mcp": stringSchema(), "audit": audit,
 		"running_actions": integerSchema(), "pending_approvals": integerSchema(),
@@ -253,5 +254,5 @@ func enumSchema(values ...string) map[string]any {
 }
 
 func actionStatusSchema() map[string]any {
-	return enumSchema("completed", "failed", "canceled", "running", "approval_pending", "blocked", "stale", "declined", "error", "outcome_unknown", "pending", "paused", "untracked")
+	return enumSchema("completed", "failed", "canceled", "running", "approval_pending", "pending_approval", "blocked", "stale", "declined", "expired", "error", "outcome_unknown", "pending", "paused", "untracked")
 }

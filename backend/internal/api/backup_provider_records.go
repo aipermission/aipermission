@@ -88,34 +88,41 @@ func (s backupHandlers) uploadProviderBackup(w http.ResponseWriter, r *http.Requ
 	defer os.Remove(snapshot.Path)
 	streamID := stringFromMap(provider.Public, "stream_id")
 	remoteName := stringFromMap(provider.Public, "database_name")
+	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "backup.provider.upload_requested", map[string]any{
+		"provider_id": provider.ID, "provider_type": provider.ProviderType,
+		"stream_id": streamID, "database_name": remoteName, "size_bytes": fileSize(snapshot.Path),
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	backup, err := client.Upload(r.Context(), streamID, remoteName, backupSourceInstallationID(s.config.DataPath), snapshot.Path)
 	if err != nil {
 		handleBackupServiceError(w, err)
 		return
 	}
 	var record backups.Record
-	err = s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "backup.provider.uploaded",
-		func() any {
-			return map[string]any{
-				"provider_id": provider.ID, "provider_type": provider.ProviderType,
-				"provider_file_id": backup.ID, "filename": backup.Filename, "size_bytes": backup.SizeBytes,
-				"retention_deleted_count": backup.RetentionDeletedCount,
-			}
-		},
-		func(tx *sql.Tx) error {
-			var err error
-			record, err = upsertServiceBackupRecord(r.Context(), runtime, backups.NewTxStore(tx), provider, backup)
-			if err != nil {
-				return err
-			}
-			return backups.WriteServiceBaseline(r.Context(), tx, stringFromMap(provider.Public, "base_url"), streamID, backup)
-		},
-	)
+	tx, err := runtime.database.BeginTx(r.Context(), nil)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
+	defer tx.Rollback()
+	record, err = upsertServiceBackupRecord(r.Context(), runtime, backups.NewTxStore(tx), provider, backup)
+	if err == nil {
+		err = backups.WriteServiceBaseline(r.Context(), tx, stringFromMap(provider.Public, "base_url"), streamID, backup)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		handleBackupProviderError(w, err)
+		return
+	}
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.uploaded", map[string]any{
+		"provider_id": provider.ID, "provider_type": provider.ProviderType,
+		"provider_file_id": backup.ID, "filename": backup.Filename, "size_bytes": backup.SizeBytes,
+		"retention_deleted_count": backup.RetentionDeletedCount,
+	})
 	writeJSON(w, http.StatusCreated, backupRecordToResponse(record))
 }
 
@@ -133,7 +140,15 @@ func (s backupHandlers) pruneProviderBackups(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "keep_latest must be between 1 and 1000")
 		return
 	}
-	result, err := client.PruneBackups(r.Context(), stringFromMap(provider.Public, "stream_id"), request.KeepLatest)
+	streamID := stringFromMap(provider.Public, "stream_id")
+	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "backup.provider.prune_requested", map[string]any{
+		"provider_id": provider.ID, "provider_type": provider.ProviderType,
+		"stream_id": streamID, "keep_latest": request.KeepLatest,
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
+	result, err := client.PruneBackups(r.Context(), streamID, request.KeepLatest)
 	if err != nil {
 		handleBackupServiceError(w, err)
 		return
@@ -143,13 +158,10 @@ func (s backupHandlers) pruneProviderBackups(w http.ResponseWriter, r *http.Requ
 		handleBackupServiceError(w, err)
 		return
 	}
-	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "backup.provider.pruned", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.pruned", map[string]any{
 		"provider_id": provider.ID, "provider_type": provider.ProviderType,
 		"stream_id": result.StreamID, "keep_latest": result.KeepLatest, "deleted_count": result.DeletedCount,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
+	})
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -192,27 +204,27 @@ func (s backupHandlers) deleteProviderBackupRecords(w http.ResponseWriter, r *ht
 		}
 		providerFileIDs = append(providerFileIDs, record.ProviderFileID)
 	}
+	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "backup.provider.records.delete_requested", map[string]any{
+		"provider_id": provider.ID, "provider_type": provider.ProviderType,
+		"stream_id": streamID, "record_ids": request.RecordIDs, "record_count": len(request.RecordIDs),
+	}); err != nil {
+		writeInternalError(w)
+		return
+	}
 	result, err := client.DeleteBackups(r.Context(), streamID, providerFileIDs)
 	if err != nil {
 		handleBackupServiceError(w, err)
 		return
 	}
-	err = s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "backup.provider.records.deleted",
-		func() any {
-			return map[string]any{
-				"provider_id": provider.ID, "provider_type": provider.ProviderType,
-				"stream_id": result.StreamID, "record_ids": request.RecordIDs, "deleted_count": result.DeletedCount,
-			}
-		},
-		func(tx *sql.Tx) error {
-			return backups.NewTxStore(tx).MarkProviderRecordsDeleted(r.Context(), provider.ID, result.DeletedIDs)
-		},
-	)
+	err = backups.NewStore(runtime.database).MarkProviderRecordsDeleted(r.Context(), provider.ID, result.DeletedIDs)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "backup.provider.records.deleted", map[string]any{
+		"provider_id": provider.ID, "provider_type": provider.ProviderType,
+		"stream_id": result.StreamID, "record_ids": request.RecordIDs, "deleted_count": result.DeletedCount,
+	})
 	writeJSON(w, http.StatusOK, result)
 }
 

@@ -240,17 +240,17 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 
 func validateStagedUploadSize(size int64, currentBatchBytes int64) (int64, error) {
 	if size < 0 || size > maxFileTransferObjectBytes {
-		return currentBatchBytes, fmt.Errorf("upload object cannot exceed 512 MiB")
+		return currentBatchBytes, fmt.Errorf("upload object cannot exceed %s", formatFileTransferLimit(maxFileTransferObjectBytes))
 	}
 	if currentBatchBytes > maxFileTransferBatchBytes-size {
-		return currentBatchBytes, fmt.Errorf("upload batch cannot exceed 1 GiB total size")
+		return currentBatchBytes, fmt.Errorf("upload batch cannot exceed %s total size", formatFileTransferLimit(maxFileTransferBatchBytes))
 	}
 	return currentBatchBytes + size, nil
 }
 
 func validateDownloadObjectSize(size int64) error {
 	if size < 0 || size > maxFileTransferObjectBytes {
-		return fmt.Errorf("download object cannot exceed 512 MiB")
+		return fmt.Errorf("download object cannot exceed %s", formatFileTransferLimit(maxFileTransferObjectBytes))
 	}
 	return nil
 }
@@ -406,7 +406,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 		totalSize += size
 		if totalSize > maxFileTransferBatchBytes {
 			cleanupTempPaths(tempPaths)
-			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusRequestEntityTooLarge, "download batch cannot exceed 1 GiB total size")
+			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusRequestEntityTooLarge, "download batch cannot exceed "+formatFileTransferLimit(maxFileTransferBatchBytes)+" total size")
 		}
 		tempPath, err := s.reserveDownloadTempFile()
 		if err != nil {

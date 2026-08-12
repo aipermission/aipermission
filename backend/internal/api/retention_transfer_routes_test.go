@@ -165,6 +165,111 @@ func TestRetentionDisabledKeepsOldRecordsAndManualPurgeDeletes(t *testing.T) {
 	}
 }
 
+func TestRetentionPurgeHidesDatabaseErrors(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339)
+	if _, err := fixture.db.Exec(`INSERT INTO audit_logs (actor_type, action, payload_json, created_at) VALUES ('user', 'old.audit', '{}', ?)`, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(`
+		CREATE TRIGGER reject_retention_audit_delete BEFORE DELETE ON audit_logs
+		BEGIN SELECT RAISE(ABORT, 'private sqlite failure detail'); END`); err != nil {
+		t.Fatal(err)
+	}
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "audit", Days: 7})
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "private sqlite failure detail") {
+		t.Fatalf("response leaked database error: %s", response.Body.String())
+	}
+}
+
+func TestAuditRetentionPurgesTerminalOutboxRowsOnly(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339Nano)
+	for _, row := range []struct {
+		eventID        string
+		deliveredAt    any
+		deadLetteredAt any
+	}{
+		{eventID: "delivered-old", deliveredAt: old},
+		{eventID: "dead-letter-old", deadLetteredAt: old},
+		{eventID: "pending-old"},
+	} {
+		if _, err := fixture.db.Exec(`
+			INSERT INTO audit_outbox (
+				event_id, event_version, actor_type, action, payload_json,
+				occurred_at, created_at, delivered_at, dead_lettered_at
+			) VALUES (?, 1, 'user', 'test.audit', '{}', ?, ?, ?, ?)`,
+			row.eventID, old, old, row.deliveredAt, row.deadLetteredAt,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deleted, err := purgeRetentionTarget(context.Background(), fixture.server.activeRuntime(), "audit", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 2 {
+		t.Fatalf("deleted=%d, want 2 terminal outbox rows", deleted)
+	}
+	var pending int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE event_id = 'pending-old'`).Scan(&pending); err != nil {
+		t.Fatal(err)
+	}
+	if pending != 1 {
+		t.Fatal("audit retention removed a pending outbox event")
+	}
+}
+
+func TestHistoryRetentionSummarizesFileTransferDeletionWithoutPerRowAudit(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	server := fixture.createKeyAndServer(t, "worker-1")
+	runtime := fixture.server.activeRuntime()
+	record, err := runtime.fileTransfers.Create(context.Background(), filetransfer.CreateRequest{
+		RuntimeID:  server.ID,
+		Direction:  filetransfer.DirectionUpload,
+		Source:     filetransfer.SourceUI,
+		RemotePath: "/tmp/old.txt",
+		FileName:   "old.txt",
+		SizeBytes:  3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := runtime.fileTransfers.MarkRunning(context.Background(), record.ID); err != nil || !ok {
+		t.Fatalf("mark running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := runtime.fileTransfers.Complete(context.Background(), record.ID, 3, "checksum"); err != nil || !ok {
+		t.Fatalf("complete transfer: ok=%v err=%v", ok, err)
+	}
+	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339Nano)
+	if _, err := fixture.db.Exec(`UPDATE file_transfers SET created_at = ?, completed_at = ?, updated_at = ? WHERE id = ?`, old, old, old, record.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "history", Days: 7})
+	if response.Code != http.StatusOK {
+		t.Fatalf("history purge failed: %d %s", response.Code, response.Body.String())
+	}
+	assertTableCount(t, fixture.db, "file_transfers", 0)
+	var perRowAuditCount int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE action = 'file_transfer.removed'`).Scan(&perRowAuditCount); err != nil {
+		t.Fatal(err)
+	}
+	if perRowAuditCount != 0 {
+		t.Fatalf("retention emitted %d per-row file transfer audit events", perRowAuditCount)
+	}
+	var summaryCount int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_logs WHERE action = 'settings.retention.purged'`).Scan(&summaryCount); err != nil {
+		t.Fatal(err)
+	}
+	if summaryCount != 1 {
+		t.Fatalf("retention summary audit count=%d, want 1", summaryCount)
+	}
+}
+
 func TestFileTransferRoutes(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	server := fixture.createKeyAndServer(t, "worker-1")

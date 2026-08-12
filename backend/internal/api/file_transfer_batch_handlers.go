@@ -109,7 +109,6 @@ func (s fileTransferHandlers) pauseFileTransferBatch(w http.ResponseWriter, r *h
 		writeError(w, http.StatusConflict, "file transfer batch is not running")
 		return
 	}
-	s.writeObservationAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.paused", map[string]any{"batch_id": id})
 	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
@@ -171,7 +170,6 @@ func (s fileTransferHandlers) cancelFileTransferBatch(w http.ResponseWriter, r *
 	}
 	if changed {
 		s.cleanupBatchTemps(runtime, id)
-		s.writeObservationAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.canceled", map[string]any{"batch_id": id})
 	}
 	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
 	if err != nil {
@@ -217,11 +215,6 @@ func (s fileTransferHandlers) updateFileTransferBatchQueue(w http.ResponseWriter
 			_ = os.Remove(item.TempPath)
 		}
 	}
-	s.writeObservationAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.queue_updated", map[string]any{
-		"batch_id": id,
-		"items":    len(request.ItemIDs),
-		"removed":  len(removed),
-	})
 	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)

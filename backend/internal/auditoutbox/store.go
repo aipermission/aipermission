@@ -42,6 +42,7 @@ type Event struct {
 
 type Health struct {
 	PendingCount        int64
+	DeadLetterCount     int64
 	OldestPendingAt     string
 	RetriedEventCount   int64
 	FailureCount        int64
@@ -117,8 +118,13 @@ func (Store) Health(ctx context.Context, database *sql.DB) (Health, error) {
 		SELECT COUNT(*), COALESCE(MIN(created_at), ''),
 			COALESCE(SUM(CASE WHEN attempt_count > 0 THEN 1 ELSE 0 END), 0)
 		FROM audit_outbox
-		WHERE delivered_at IS NULL`).Scan(&health.PendingCount, &health.OldestPendingAt, &health.RetriedEventCount); err != nil {
+		WHERE delivered_at IS NULL AND dead_lettered_at IS NULL`).Scan(&health.PendingCount, &health.OldestPendingAt, &health.RetriedEventCount); err != nil {
 		return Health{}, fmt.Errorf("read audit outbox backlog: %w", err)
+	}
+	if err := database.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM audit_outbox
+		WHERE delivered_at IS NULL AND dead_lettered_at IS NOT NULL`).Scan(&health.DeadLetterCount); err != nil {
+		return Health{}, fmt.Errorf("read audit dead-letter count: %w", err)
 	}
 	if err := database.QueryRowContext(ctx, `
 		SELECT failure_count, last_error, COALESCE(last_failure_at, ''), COALESCE(last_success_at, '')

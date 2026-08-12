@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path"
 	"strings"
@@ -21,6 +22,21 @@ const (
 	fileTransferBatchTimeout         = 6 * time.Hour
 	fileTransferTempTTL              = 30 * time.Minute
 )
+
+func formatFileTransferLimit(size int64) string {
+	const (
+		mib = int64(1 << 20)
+		gib = int64(1 << 30)
+	)
+	switch {
+	case size >= gib && size%gib == 0:
+		return fmt.Sprintf("%d GiB", size/gib)
+	case size >= mib && size%mib == 0:
+		return fmt.Sprintf("%d MiB", size/mib)
+	default:
+		return fmt.Sprintf("%d bytes", size)
+	}
+}
 
 type startDownloadRequest struct {
 	RuntimeID  int64  `json:"runtime_id"`
@@ -321,11 +337,6 @@ func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.
 	}
 	if changed {
 		s.removeTransferTemp(runtime, id)
-		s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.canceled", map[string]any{
-			"transfer_id": id,
-			"direction":   item.Direction,
-			"remote_path": item.RemotePath,
-		})
 	}
 	updated, err := runtime.fileTransfers.Get(r.Context(), id)
 	if err != nil {
