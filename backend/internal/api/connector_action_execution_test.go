@@ -627,6 +627,42 @@ func TestFinishConnectorActionRequestIgnoresCanceledRequestContext(t *testing.T)
 	}
 }
 
+func TestCaptureConnectorActionSessionHandleIgnoresCanceledRequestContext(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+		Status: connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	updated, err := server.captureConnectorActionSessionHandleIfReturned(canceled, runtime, request, connectors.ActionHandles{
+		SessionID: 41, SessionGeneration: 2,
+	})
+	if err != nil {
+		t.Fatalf("capture with canceled request context: %v", err)
+	}
+	if updated.SessionID == nil || *updated.SessionID != 41 || updated.SessionGeneration == nil || *updated.SessionGeneration != 2 {
+		t.Fatalf("unexpected session handle: %#v", updated)
+	}
+	var auditedTokenID int64
+	if err := database.QueryRow(`SELECT token_id FROM audit_outbox WHERE action = 'connector_action.session_handle.updated'`).Scan(&auditedTokenID); err != nil {
+		t.Fatal(err)
+	}
+	if auditedTokenID != tokenID {
+		t.Fatalf("audit token_id=%d, want %d", auditedTokenID, tokenID)
+	}
+}
+
 func TestFinishConnectorActionRequestDoesNotAuditLateCompletion(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
