@@ -365,7 +365,7 @@ func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
 	if status != "outcome_unknown" {
 		t.Fatalf("expected restarted connector action outcome to be unknown, got %q", status)
 	}
-	if message != connectorActionOutcomeUnknownMessage {
+	if message != ConnectorActionOutcomeUnknownMessage {
 		t.Fatalf("unexpected error message: %q", message)
 	}
 	if err := reopened.QueryRow(`SELECT status, error FROM history_entries WHERE source_ref_type = 'connector_action_request' LIMIT 1`).Scan(&status, &message); err != nil {
@@ -374,7 +374,7 @@ func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
 	if status != "outcome_unknown" {
 		t.Fatalf("expected restarted connector action history outcome to be unknown, got %q", status)
 	}
-	if message != connectorActionOutcomeUnknownMessage {
+	if message != ConnectorActionOutcomeUnknownMessage {
 		t.Fatalf("unexpected history entry error message: %q", message)
 	}
 }
@@ -513,8 +513,21 @@ func TestOpenEncryptedAppliesSQLCipherPragmas(t *testing.T) {
 	if err := database.QueryRow(`PRAGMA kdf_iter`).Scan(&kdfIterations); err != nil {
 		t.Fatalf("query SQLCipher KDF iterations: %v", err)
 	}
-	if kdfIterations <= 0 {
-		t.Fatalf("SQLCipher KDF iterations should be positive, got %d", kdfIterations)
+	if kdfIterations != expectedKDFIterations {
+		t.Fatalf("expected SQLCipher KDF iterations %d, got %d", expectedKDFIterations, kdfIterations)
+	}
+	assertSQLCipherPragma(t, database, "cipher_hmac_algorithm", "HMAC_SHA512")
+	assertSQLCipherPragma(t, database, "cipher_kdf_algorithm", "PBKDF2_HMAC_SHA512")
+}
+
+func assertSQLCipherPragma(t *testing.T, database *sql.DB, name string, expected string) {
+	t.Helper()
+	var actual string
+	if err := database.QueryRow(`PRAGMA ` + name).Scan(&actual); err != nil {
+		t.Fatalf("query SQLCipher %s: %v", name, err)
+	}
+	if actual != expected {
+		t.Fatalf("expected SQLCipher %s %q, got %q", name, expected, actual)
 	}
 }
 

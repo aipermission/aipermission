@@ -16,7 +16,7 @@ import (
 
 const Legacy010To020ID = "legacy_0_1_to_0_2"
 
-const migrationRequestTimeout = 5 * time.Minute
+const RequestTimeout = 5 * time.Minute
 
 type Server struct {
 	config Config
@@ -54,7 +54,7 @@ func NewServer(config Config) *Server {
 
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), migrationRequestTimeout)
+		ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 		defer cancel()
 		s.mux.ServeHTTP(w, r.WithContext(ctx))
 	})
