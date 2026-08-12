@@ -56,6 +56,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
         reason: `manual S3 presigned ${mode} URL`,
         busy: "signing",
       });
+      if (!item) return;
       setResult(item.output || null);
     } catch (runError) {
       setError(runError.message || "Presigned URL creation failed.");

@@ -1,18 +1,26 @@
 import { CornerUpLeft, Database, Download, Folder, Link2, Pencil, Plus, RefreshCcw, Search, Trash2, Upload } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { apiPost, saveBlob } from "../../../lib/api";
+import { saveBlob } from "../../../lib/api";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { S3PresignDialog } from "./presign-dialog";
 import { S3VersionsDialog, VersionsIcon } from "./versions-dialog";
 import { LifecycleIcon, S3LifecycleDialog } from "./lifecycle-dialog";
-import { S3ConfirmDialog, S3RenameDialog, S3UploadDialog } from "./dialogs";
+import {
+  defaultRenameDialog,
+  defaultS3ConfirmDialog,
+  defaultUploadDialog,
+  S3ConfirmDialog,
+  S3RenameDialog,
+  S3UploadDialog,
+} from "./dialogs";
 import {
   base64Blob,
+  approvalsForTarget,
   fileToBase64,
   filenameFromKey,
   joinObjectKey,
@@ -20,26 +28,13 @@ import {
   parentPrefix,
   safeDownloadName,
   shortDate,
+  visibleObjectBytes,
 } from "./helpers";
+import { S3EndpointFooter } from "./endpoint-footer";
 import { S3MetadataPanel } from "./metadata-panel";
-import { requireCompletedConnectorAction } from "../_shared/action-result";
+import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
-import { createRequestGuard } from "../_shared/request-guard";
-
-const defaultListLimit = 100;
-const defaultUploadDialog = {
-  open: false,
-  mode: "files",
-  prefix: "",
-  files: [],
-  textKey: "",
-  textContent: "",
-  textContentType: "text/plain",
-  overwrite: false,
-  pending: false,
-  error: "",
-};
-const defaultRenameDialog = { open: false, value: "", pending: false, error: "" };
+import { useRequestGuard } from "../_shared/request-guard";
 
 export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
   const activeSession = session || { active: false, startedAt: "" };
@@ -57,18 +52,9 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [lifecycleOpen, setLifecycleOpen] = useState(false);
   const [renameDialog, setRenameDialog] = useState(defaultRenameDialog);
-  const [confirmDialog, setConfirmDialog] = useState({
-    open: false,
-    title: "",
-    description: "",
-    details: [],
-    action: null,
-    pending: false,
-    danger: false,
-  });
+  const [confirmDialog, setConfirmDialog] = useState(defaultS3ConfirmDialog);
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const requestGuard = useRef(createRequestGuard()).current;
-  requestGuard.setScope(`${target.ref}:${activeSession.startedAt || "inactive"}`);
+  const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
   const {
     panel: panelClass,
     muted: mutedClass,
@@ -78,13 +64,9 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     rowHover: rowHoverClass,
     activeRow: activeRowClass,
   } = connectorConsoleTheme(theme);
-  const activeItems = useMemo(
-    () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
-    [approvals?.data, target.ref],
-  );
-  const latestAction = activeItems[0] || null;
+  const latestAction = approvalsForTarget(approvals?.data, target.ref)[0] || null;
   const selectedObject = objects.find((item) => item.key === selectedKey) || null;
-  const visibleBytes = useMemo(() => objects.reduce((total, object) => total + Number(object.size || 0), 0), [objects]);
+  const visibleBytes = visibleObjectBytes(objects);
   const refreshObjectsForEffect = useEffectEvent((options) => refreshObjects(options));
 
   useEffect(() => {
@@ -110,8 +92,6 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     void refreshObjectsForEffect({ reset: true });
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
-  useEffect(() => () => requestGuard.dispose(), [requestGuard]);
-
   useEffect(() => {
     if (selectedKey) return;
     requestGuard.invalidate("metadata");
@@ -120,52 +100,26 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   }, [requestGuard, selectedKey]);
 
   async function runS3Action({ actionName, input, reason, busy = "running", suppressError = false, channel = actionName }) {
-    const request = requestGuard.begin(channel);
-    setState({ state: busy, error: "", message: "" });
-    try {
-      const response = await apiPost("/api/connector-actions/local-run", {
-        target_ref: target.ref,
-        action_name: actionName,
-        input,
-        reason,
-      });
-      if (!request.isCurrent()) return null;
-      const item = requireCompletedConnectorAction(response, "S3 action failed.");
-      if (!item) {
-        setState({ state: "idle", error: "", message: response.display_text || "S3 action is awaiting approval." });
-        void onRefreshActivity?.();
-        return null;
-      }
-      setState({ state: "idle", error: "", message: item.display_text || "" });
-      try {
-        await onRefreshActivity?.();
-      } catch (refreshError) {
-        if (request.isCurrent()) {
-          setState({
-            state: "idle",
-            error: `Action completed, but activity refresh failed: ${refreshError.message || "unknown error"}`,
-            message: item.display_text || "",
-          });
-        }
-      }
-      if (!request.isCurrent()) return null;
-      return item;
-    } catch (error) {
-      if (!request.isCurrent()) return null;
-      if (suppressError) {
-        setState({ state: "idle", error: "", message: "" });
-      } else {
-        setState({ state: "error", error: error.message || "S3 action failed.", message: "" });
-      }
-      throw error;
-    }
+    return runGuardedConnectorAction({
+      requestGuard,
+      channel,
+      targetRef: target.ref,
+      actionName,
+      input,
+      reason,
+      busy,
+      product: "S3",
+      setState,
+      onRefreshActivity,
+      suppressError,
+    });
   }
 
   async function refreshObjects({ reset = true, token = "", nextPrefix = prefix, nextSearch = search } = {}) {
     if (!activeSession.active) return;
     const item = await runS3Action({
       actionName: "list_objects",
-      input: { prefix: nextPrefix, search: nextSearch, cursor: reset ? "" : token, limit: defaultListLimit },
+      input: { prefix: nextPrefix, search: nextSearch, cursor: reset ? "" : token, limit: 100 },
       reason: "manual S3 browser object list",
       busy: "loading",
       channel: "objects",
@@ -337,7 +291,10 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
             reason: "manual S3 browser object upload",
             busy: "uploading",
           });
-          if (!uploaded) return;
+          if (!uploaded) {
+            setUploadDialog((current) => ({ ...current, pending: false }));
+            return;
+          }
           lastKey = item.key;
         }
       }
@@ -353,7 +310,10 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
           reason: "manual S3 browser object upload",
           busy: "uploading",
         });
-        if (!uploaded) return;
+        if (!uploaded) {
+          setUploadDialog((current) => ({ ...current, pending: false }));
+          return;
+        }
         lastKey = textKey;
       }
       setUploadDialog(defaultUploadDialog);
@@ -392,7 +352,10 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
         reason: "manual S3 browser object rename",
         busy: "renaming",
       });
-      if (!renamed) return;
+      if (!renamed) {
+        setRenameDialog((current) => ({ ...current, pending: false }));
+        return;
+      }
       setRenameDialog(defaultRenameDialog);
       setSelectedKey("");
       setMetadata(null);
@@ -417,11 +380,12 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
           reason: "manual S3 browser object delete",
           busy: "deleting",
         });
-        if (!deleted) return;
+        if (!deleted) return false;
         setSelectedKey("");
         setMetadata(null);
         setMetadataSearch("");
         await refreshObjects({ reset: true });
+        return true;
       },
     });
   }
@@ -447,8 +411,12 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     if (!confirmDialog.action) return;
     setConfirmDialog((current) => ({ ...current, pending: true }));
     try {
-      await confirmDialog.action();
-      setConfirmDialog({ open: false, title: "", description: "", details: [], action: null, pending: false, danger: false });
+      const completed = await confirmDialog.action();
+      if (completed === false) {
+        setConfirmDialog((current) => ({ ...current, pending: false }));
+        return;
+      }
+      setConfirmDialog(defaultS3ConfirmDialog);
     } catch {
       setConfirmDialog((current) => ({ ...current, pending: false }));
     }
@@ -815,28 +783,9 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
       <S3ConfirmDialog
         value={confirmDialog}
         theme={theme}
-        onClose={() =>
-          setConfirmDialog({ open: false, title: "", description: "", details: [], action: null, pending: false, danger: false })
-        }
+        onClose={() => setConfirmDialog(defaultS3ConfirmDialog)}
         onConfirm={confirmPendingAction}
       />
-    </div>
-  );
-}
-
-function S3EndpointFooter({ target, borderClass, mutedClass }) {
-  const scheme = target.config?.scheme || "https";
-  const host = target.config?.host || "s3.amazonaws.com";
-  const port = target.config?.port || (scheme === "http" ? 80 : 443);
-  const bucket = target.config?.bucket || "bucket";
-  const mode =
-    target.config?.connection_mode === "over_ssh" ? `over ssh · ${target.config?.transport_target_ref || "transport"}` : "direct";
-  return (
-    <div className={`flex items-center justify-between gap-3 border-t px-4 py-2 text-xs ${borderClass} ${mutedClass}`}>
-      <span>S3 transport</span>
-      <span className="truncate">
-        {scheme}://{host}:{port}/{bucket} · {mode}
-      </span>
     </div>
   );
 }
