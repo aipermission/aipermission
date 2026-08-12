@@ -62,49 +62,39 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 	if !ok {
 		return
 	}
-	appendAudit := s.prepareAuditAppender(r.Context(), runtime)
-	tx, err := runtime.database.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	defer tx.Rollback()
-	txStore := connectortargets.NewTxStore(tx)
-	if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-		if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, txStore, target); err != nil {
-			handleConnectorTargetError(w, err)
-			return
+	var profile connectortargets.CredentialProfile
+	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+		txStore := connectortargets.NewTxStore(tx)
+		if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
+			if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, txStore, target); err != nil {
+				return err
+			}
 		}
-	}
-	profile, err := txStore.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
-		TargetID:            target.ID,
-		ConnectorKind:       target.ConnectorKind,
-		Kind:                preparedProfile.Kind,
-		Label:               preparedProfile.Label,
-		Public:              preparedProfile.Public,
-		EncryptedSecretJSON: preparedProfile.EncryptedSecretJSON,
-		RiskLabel:           preparedProfile.RiskLabel,
+		var err error
+		profile, err = txStore.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
+			TargetID:            target.ID,
+			ConnectorKind:       target.ConnectorKind,
+			Kind:                preparedProfile.Kind,
+			Label:               preparedProfile.Label,
+			Public:              preparedProfile.Public,
+			EncryptedSecretJSON: preparedProfile.EncryptedSecretJSON,
+			RiskLabel:           preparedProfile.RiskLabel,
+		})
+		if err != nil {
+			return err
+		}
+		if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+			return err
+		}
+		return appendAudit(tx, "user", nil, 0, "connector.profile.created", map[string]any{
+			"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
+			"kind": profile.Kind, "label": profile.Label,
+		})
 	})
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := appendAudit(tx, "user", nil, 0, "connector.profile.created", map[string]any{
-		"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
-		"kind": profile.Kind, "label": profile.Label,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeInternalError(w)
-		return
-	}
-	s.projectAuditEvents(r.Context(), runtime)
 	writeJSON(w, http.StatusCreated, profileToSummary(profile))
 }
 
@@ -162,41 +152,33 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		return
 	}
 	defer release()
-	appendAudit := s.prepareAuditAppender(r.Context(), runtime)
-	tx, err := runtime.database.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	defer tx.Rollback()
-	txStore := connectortargets.NewTxStore(tx)
-	profile, err := txStore.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
-		TargetID:            target.ID,
-		ProfileID:           profileID,
-		ConnectorKind:       target.ConnectorKind,
-		Kind:                preparedProfile.Kind,
-		Label:               preparedProfile.Label,
-		Public:              preparedProfile.Public,
-		EncryptedSecretJSON: preparedProfile.EncryptedSecretPtr,
-		RiskLabel:           preparedProfile.RiskLabel,
+	var profile connectortargets.CredentialProfile
+	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+		txStore := connectortargets.NewTxStore(tx)
+		var err error
+		profile, err = txStore.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
+			TargetID:            target.ID,
+			ProfileID:           profileID,
+			ConnectorKind:       target.ConnectorKind,
+			Kind:                preparedProfile.Kind,
+			Label:               preparedProfile.Label,
+			Public:              preparedProfile.Public,
+			EncryptedSecretJSON: preparedProfile.EncryptedSecretPtr,
+			RiskLabel:           preparedProfile.RiskLabel,
+		})
+		if err != nil {
+			return err
+		}
+		if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+			return err
+		}
+		return appendAudit(tx, "user", nil, 0, "connector.profile.updated", map[string]any{
+			"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
+			"kind": profile.Kind, "label": profile.Label,
+		})
 	})
 	if err != nil {
 		handleConnectorTargetError(w, err)
-		return
-	}
-	if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := appendAudit(tx, "user", nil, 0, "connector.profile.updated", map[string]any{
-		"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
-		"kind": profile.Kind, "label": profile.Label,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeInternalError(w)
 		return
 	}
 	if err := s.invalidateVaultSessionsForTargetProfile(
@@ -206,13 +188,10 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
-	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, profile.ID, "connector credential profile was updated; ask the AI to send a fresh request", false)
-	if err != nil {
+	if _, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, profile.ID, "connector credential profile was updated; ask the AI to send a fresh request", false); err != nil {
 		writeInternalError(w)
 		return
 	}
-	_ = staleRequests
-	s.projectAuditEvents(r.Context(), runtime)
 	writeJSON(w, http.StatusOK, profileToSummary(profile))
 }
 
@@ -274,12 +253,10 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
-	staleRequests, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, targetID, profileID, "connector credential profile was deleted; ask the AI to send a fresh request", true)
-	if err != nil {
+	if _, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, targetID, profileID, "connector credential profile was deleted; ask the AI to send a fresh request", true); err != nil {
 		writeInternalError(w)
 		return
 	}
-	_ = staleRequests
 	w.WriteHeader(http.StatusNoContent)
 }
 

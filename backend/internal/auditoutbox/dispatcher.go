@@ -14,6 +14,8 @@ const (
 	defaultBatchSize    = 100
 	defaultPollInterval = 2 * time.Second
 	maxDeliveryError    = 1000
+	maxDeliveryAttempts = 8
+	maxRetryDelay       = 5 * time.Minute
 )
 
 type queuedEvent struct {
@@ -30,6 +32,9 @@ type queuedEvent struct {
 	Action          string
 	PayloadJSON     string
 	OccurredAt      string
+	EventVersion    int
+	LifecyclePhase  string
+	AttemptCount    int
 }
 
 type Dispatcher struct {
@@ -113,62 +118,81 @@ func (dispatcher *Dispatcher) DispatchOnce(ctx context.Context) (int, error) {
 	dispatcher.dispatchMu.Lock()
 	defer dispatcher.dispatchMu.Unlock()
 
-	tx, err := dispatcher.database.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin audit projection: %w", err)
-	}
-	defer tx.Rollback()
-	events, err := loadPendingEvents(ctx, tx, dispatcher.batchSize)
+	events, err := loadPendingEvents(ctx, dispatcher.database, dispatcher.batchSize)
 	if err != nil {
 		return 0, err
 	}
 	if len(events) == 0 {
 		return 0, nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	delivered := 0
+	var firstErr error
 	for _, event := range events {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO audit_logs (
-				event_id, actor_type, token_id, project_id, runtime_id, connector_kind,
-				target_id, profile_id, action_request_id, action, payload_json, created_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(event_id) WHERE event_id IS NOT NULL DO NOTHING`,
-			event.EventID, event.ActorType, nullInt64Value(event.TokenID), nullInt64Value(event.ProjectID),
-			nullInt64Value(event.RuntimeID), event.ConnectorKind, nullInt64Value(event.TargetID),
-			nullInt64Value(event.ProfileID), nullInt64Value(event.ActionRequestID), event.Action,
-			event.PayloadJSON, event.OccurredAt,
-		); err != nil {
-			_ = tx.Rollback()
-			return 0, dispatcher.failDelivery(ctx, events, fmt.Errorf("project audit event %s: %w", event.EventID, err))
+		if err := dispatcher.dispatchEvent(ctx, event); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE audit_outbox
-			SET delivered_at = ?, last_error = '', last_attempt_at = ?
-			WHERE id = ? AND delivered_at IS NULL`, now, now, event.ID); err != nil {
-			_ = tx.Rollback()
-			return 0, dispatcher.failDelivery(ctx, events, fmt.Errorf("mark audit event %s delivered: %w", event.EventID, err))
-		}
+		delivered++
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if firstErr != nil {
+		return delivered, firstErr
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := dispatcher.database.ExecContext(ctx, `
 		UPDATE audit_dispatch_state
-		SET last_error = '', last_success_at = ?, updated_at = ?
+		SET failure_count = 0, last_error = '', last_success_at = ?, updated_at = ?
 		WHERE id = 1`, now, now); err != nil {
-		_ = tx.Rollback()
-		return 0, dispatcher.failDelivery(ctx, events, fmt.Errorf("record audit delivery success: %w", err))
+		return delivered, fmt.Errorf("record audit delivery success: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return 0, dispatcher.failDelivery(ctx, events, fmt.Errorf("commit audit projection: %w", err))
-	}
-	return len(events), nil
+	return delivered, nil
 }
 
-func loadPendingEvents(ctx context.Context, tx *sql.Tx, limit int) ([]queuedEvent, error) {
-	rows, err := tx.QueryContext(ctx, `
+func (dispatcher *Dispatcher) dispatchEvent(ctx context.Context, event queuedEvent) error {
+	tx, err := dispatcher.database.BeginTx(ctx, nil)
+	if err != nil {
+		return dispatcher.failDelivery(ctx, event, fmt.Errorf("begin audit projection: %w", err))
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO audit_logs (
+			event_id, event_version, actor_type, token_id, project_id, runtime_id, connector_kind,
+			target_id, profile_id, action_request_id, action, lifecycle_phase, payload_json, created_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(event_id) WHERE event_id IS NOT NULL DO NOTHING`,
+		event.EventID, event.EventVersion, event.ActorType, nullInt64Value(event.TokenID), nullInt64Value(event.ProjectID),
+		nullInt64Value(event.RuntimeID), event.ConnectorKind, nullInt64Value(event.TargetID),
+		nullInt64Value(event.ProfileID), nullInt64Value(event.ActionRequestID), event.Action,
+		event.LifecyclePhase, event.PayloadJSON, event.OccurredAt,
+	); err != nil {
+		_ = tx.Rollback()
+		return dispatcher.failDelivery(ctx, event, fmt.Errorf("project audit event %s: %w", event.EventID, err))
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE audit_outbox
+		SET delivered_at = ?, last_error = '', last_attempt_at = ?, next_attempt_at = NULL
+		WHERE id = ? AND delivered_at IS NULL AND dead_lettered_at IS NULL`, now, now, event.ID); err != nil {
+		_ = tx.Rollback()
+		return dispatcher.failDelivery(ctx, event, fmt.Errorf("mark audit event %s delivered: %w", event.EventID, err))
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return dispatcher.failDelivery(ctx, event, fmt.Errorf("commit audit projection: %w", err))
+	}
+	return nil
+}
+
+func loadPendingEvents(ctx context.Context, database *sql.DB, limit int) ([]queuedEvent, error) {
+	rows, err := database.QueryContext(ctx, `
 		SELECT id, event_id, actor_type, token_id, project_id, runtime_id, connector_kind,
-			target_id, profile_id, action_request_id, action, payload_json, occurred_at
+			target_id, profile_id, action_request_id, action, payload_json, occurred_at,
+			event_version, lifecycle_phase, attempt_count
 		FROM audit_outbox
-		WHERE delivered_at IS NULL
+		WHERE delivered_at IS NULL AND dead_lettered_at IS NULL
+			AND (next_attempt_at IS NULL OR julianday(next_attempt_at) <= julianday('now'))
 		ORDER BY id ASC
 		LIMIT ?`, limit)
 	if err != nil {
@@ -182,6 +206,7 @@ func loadPendingEvents(ctx context.Context, tx *sql.Tx, limit int) ([]queuedEven
 			&event.ID, &event.EventID, &event.ActorType, &event.TokenID, &event.ProjectID,
 			&event.RuntimeID, &event.ConnectorKind, &event.TargetID, &event.ProfileID,
 			&event.ActionRequestID, &event.Action, &event.PayloadJSON, &event.OccurredAt,
+			&event.EventVersion, &event.LifecyclePhase, &event.AttemptCount,
 		); err != nil {
 			return nil, fmt.Errorf("scan pending audit event: %w", err)
 		}
@@ -193,31 +218,57 @@ func loadPendingEvents(ctx context.Context, tx *sql.Tx, limit int) ([]queuedEven
 	return events, nil
 }
 
-func (dispatcher *Dispatcher) failDelivery(ctx context.Context, events []queuedEvent, deliveryErr error) error {
+func (dispatcher *Dispatcher) failDelivery(ctx context.Context, event queuedEvent, deliveryErr error) error {
 	message := strings.TrimSpace(deliveryErr.Error())
-	if len(message) > maxDeliveryError {
-		message = message[:maxDeliveryError]
+	message = truncateUTF8(message, maxDeliveryError)
+	nowTime := time.Now().UTC()
+	now := nowTime.Format(time.RFC3339Nano)
+	attempts := event.AttemptCount + 1
+	var nextAttempt any
+	var deadLettered any
+	if attempts >= maxDeliveryAttempts {
+		deadLettered = now
+	} else {
+		nextAttempt = nowTime.Add(deliveryRetryDelay(attempts)).Format(time.RFC3339Nano)
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	ids := make([]any, 0, len(events)+3)
-	placeholders := make([]string, 0, len(events))
-	for _, event := range events {
-		placeholders = append(placeholders, "?")
-		ids = append(ids, event.ID)
+	if _, err := dispatcher.database.ExecContext(ctx, `
+		UPDATE audit_outbox
+		SET attempt_count = attempt_count + 1, last_error = ?, last_attempt_at = ?,
+			next_attempt_at = ?, dead_lettered_at = ?
+		WHERE id = ? AND delivered_at IS NULL AND dead_lettered_at IS NULL`,
+		message, now, nextAttempt, deadLettered, event.ID,
+	); err != nil {
+		return fmt.Errorf("%v; record audit delivery retry: %w", deliveryErr, err)
 	}
-	if len(ids) > 0 {
-		args := []any{message, now}
-		args = append(args, ids...)
-		_, _ = dispatcher.database.ExecContext(ctx, `
-			UPDATE audit_outbox
-			SET attempt_count = attempt_count + 1, last_error = ?, last_attempt_at = ?
-			WHERE delivered_at IS NULL AND id IN (`+strings.Join(placeholders, ",")+`)`, args...)
-	}
-	_, _ = dispatcher.database.ExecContext(ctx, `
+	if _, err := dispatcher.database.ExecContext(ctx, `
 		UPDATE audit_dispatch_state
 		SET failure_count = failure_count + 1, last_error = ?, last_failure_at = ?, updated_at = ?
-		WHERE id = 1`, message, now, now)
+		WHERE id = 1`, message, now, now); err != nil {
+		return fmt.Errorf("%v; record audit dispatcher failure: %w", deliveryErr, err)
+	}
 	return deliveryErr
+}
+
+func deliveryRetryDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	delay := defaultPollInterval * time.Duration(1<<min(attempt-1, 8))
+	if delay > maxRetryDelay {
+		return maxRetryDelay
+	}
+	return delay
+}
+
+func truncateUTF8(value string, maxBytes int) string {
+	if len(value) <= maxBytes {
+		return value
+	}
+	value = value[:maxBytes]
+	for len(value) > 0 && !strings.Valid(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
 func nullInt64Value(value sql.NullInt64) any {

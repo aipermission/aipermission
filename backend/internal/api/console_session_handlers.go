@@ -99,7 +99,7 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, connectorErrorMessage(adapter, "console session failed", err))
 		return
 	}
-	s.writeObservationAudit(r.Context(), runtime, "user", nil, item.RuntimeID, "console.session.created", map[string]any{
+	s.writeObservationAudit(r.Context(), runtime, "user", nil, item.RuntimeID, "console.session.created_observed", map[string]any{
 		"session_id":               item.ID,
 		"name":                     item.Name,
 		"close_existing":           request.CloseExisting,
@@ -226,7 +226,7 @@ func (s consoleHandlers) closeConsoleSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if runtimeID, err := consoleSessionRuntimeID(r.Context(), runtime, id); err == nil {
-		s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.closed", map[string]any{
+		s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.closed_observed", map[string]any{
 			"session_id": id,
 		})
 	}

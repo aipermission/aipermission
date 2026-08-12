@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
@@ -20,8 +21,13 @@ func TestDispatcherProjectsAndMarksEventDelivered(t *testing.T) {
 		t.Fatalf("dispatch count=%d error=%v", count, err)
 	}
 	var projectedID string
-	if err := database.QueryRow(`SELECT event_id FROM audit_logs WHERE event_id = ?`, event.EventID).Scan(&projectedID); err != nil {
+	var eventVersion int
+	var lifecyclePhase string
+	if err := database.QueryRow(`SELECT event_id, event_version, lifecycle_phase FROM audit_logs WHERE event_id = ?`, event.EventID).Scan(&projectedID, &eventVersion, &lifecyclePhase); err != nil {
 		t.Fatal(err)
+	}
+	if eventVersion != auditoutbox.EventVersion || lifecyclePhase != "created" {
+		t.Fatalf("projected metadata version=%d phase=%q", eventVersion, lifecyclePhase)
 	}
 	var deliveredAt string
 	if err := database.QueryRow(`SELECT delivered_at FROM audit_outbox WHERE event_id = ?`, event.EventID).Scan(&deliveredAt); err != nil {
@@ -72,6 +78,9 @@ func TestDispatcherPersistsFailureAndRecoversAfterRestart(t *testing.T) {
 	if _, err := database.Exec(`DROP TRIGGER reject_audit_projection`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.Exec(`UPDATE audit_outbox SET next_attempt_at = datetime('now', '-1 second') WHERE event_id = ?`, event.EventID); err != nil {
+		t.Fatal(err)
+	}
 	restarted := auditoutbox.NewDispatcher(database)
 	if count, err := restarted.DispatchOnce(context.Background()); err != nil || count != 1 {
 		t.Fatalf("restart dispatch count=%d error=%v", count, err)
@@ -87,8 +96,72 @@ func TestDispatcherPersistsFailureAndRecoversAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if health.PendingCount != 0 || health.LastDeliveryError != "" || health.LastDeliverySuccess == "" {
+	if health.PendingCount != 0 || health.FailureCount != 0 || health.LastDeliveryError != "" || health.LastDeliverySuccess == "" {
 		t.Fatalf("dispatcher health did not recover: %#v", health)
+	}
+}
+
+func TestDispatcherReportsRetryBookkeepingFailure(t *testing.T) {
+	database := openAuditDatabase(t)
+	appendAuditEvent(t, database, "project.created")
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_audit_projection BEFORE INSERT ON audit_logs
+		BEGIN SELECT RAISE(ABORT, 'injected projection failure'); END;
+		CREATE TRIGGER reject_audit_retry BEFORE UPDATE ON audit_outbox
+		BEGIN SELECT RAISE(ABORT, 'injected retry bookkeeping failure'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := auditoutbox.NewDispatcher(database).DispatchOnce(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "record audit delivery retry") {
+		t.Fatalf("unexpected dispatcher error: %v", err)
+	}
+}
+
+func TestDispatcherContinuesPastPoisonEventAndDeadLettersIt(t *testing.T) {
+	database := openAuditDatabase(t)
+	poison := appendAuditEvent(t, database, "poison.event")
+	healthy := appendAuditEvent(t, database, "healthy.event")
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_poison_audit_projection BEFORE INSERT ON audit_logs
+		WHEN NEW.action = 'poison.event'
+		BEGIN SELECT RAISE(ABORT, 'injected poison event'); END`); err != nil {
+		t.Fatal(err)
+	}
+	dispatcher := auditoutbox.NewDispatcher(database)
+	delivered, err := dispatcher.DispatchOnce(context.Background())
+	if err == nil || delivered != 1 {
+		t.Fatalf("first dispatch delivered=%d error=%v", delivered, err)
+	}
+	var healthyDelivered int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE event_id = ? AND delivered_at IS NOT NULL`, healthy.EventID).Scan(&healthyDelivered); err != nil {
+		t.Fatal(err)
+	}
+	if healthyDelivered != 1 {
+		t.Fatal("healthy event was blocked by poison event")
+	}
+
+	for attempt := 1; attempt < 8; attempt++ {
+		if _, err := database.Exec(`UPDATE audit_outbox SET next_attempt_at = datetime('now', '-1 second') WHERE event_id = ?`, poison.EventID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dispatcher.DispatchOnce(context.Background()); err == nil {
+			t.Fatalf("attempt %d unexpectedly succeeded", attempt+1)
+		}
+	}
+	var attempts int
+	var deadLettered sql.NullString
+	if err := database.QueryRow(`SELECT attempt_count, dead_lettered_at FROM audit_outbox WHERE event_id = ?`, poison.EventID).Scan(&attempts, &deadLettered); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 8 || !deadLettered.Valid {
+		t.Fatalf("poison event attempts=%d dead_lettered=%v", attempts, deadLettered.Valid)
+	}
+	health, err := (auditoutbox.Store{}).Health(context.Background(), database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if health.PendingCount != 0 || health.DeadLetterCount != 1 {
+		t.Fatalf("unexpected dead-letter health: %#v", health)
 	}
 }
 
@@ -133,7 +206,7 @@ func openAuditDatabase(t *testing.T) *sql.DB {
 func appendAuditEvent(t *testing.T, database *sql.DB, action string) auditoutbox.Event {
 	t.Helper()
 	event, err := (auditoutbox.Store{}).Append(context.Background(), database, auditoutbox.Event{
-		ActorType: "user", Action: action, PayloadJSON: `{}`,
+		ActorType: "user", Action: action, LifecyclePhase: "created", PayloadJSON: `{}`,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -333,9 +335,6 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) {
-	if runtime.auditDispatcher != nil {
-		runtime.auditDispatcher.Stop()
-	}
 	if runtime.vaultLeases != nil {
 		runtime.vaultLeases.Clear()
 	}
@@ -345,14 +344,44 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) {
 	if err := s.cancelRunningCommandRequests(context.Background(), runtime, "workspace locked while command was running"); err != nil {
 		log.Printf("mark running command requests failed workspace=%s error=%v", runtime.id, err)
 	}
+	if err := s.markRunningConnectorActionsOutcomeUnknown(runtime); err != nil {
+		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.id, err)
+	}
 	if runtime.fileTransfers != nil {
 		runtime.cancelAllFileTransfers()
 		if err := runtime.fileTransfers.FailActive(context.Background(), "workspace locked while file transfer was running", "workspace locked while file transfer queue was running"); err != nil {
 			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.id, err)
 		}
 	}
+	if runtime.auditDispatcher != nil {
+		runtime.auditDispatcher.Stop()
+	}
 	if runtime.database != nil {
 		_ = runtime.database.Close()
+	}
+}
+
+func (s *Server) markRunningConnectorActionsOutcomeUnknown(runtime *databaseRuntime) error {
+	store := connectortargets.NewStore(runtime.database)
+	for {
+		requests, err := store.ListActionRequests(context.Background(), connectortargets.ActionRequestFilter{
+			Status: string(connectors.ResultRunning),
+			Limit:  100,
+		})
+		if err != nil {
+			return err
+		}
+		if len(requests) == 0 {
+			return nil
+		}
+		for _, request := range requests {
+			if _, err := s.finishConnectorActionRequest(
+				context.Background(), runtime, request.ID, connectors.ResultOutcomeUnknown,
+				nil, "", db.ConnectorActionOutcomeUnknownMessage,
+			); err != nil {
+				return err
+			}
+		}
 	}
 }
 

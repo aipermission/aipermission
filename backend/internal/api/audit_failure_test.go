@@ -86,7 +86,20 @@ func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
 	}
 
 	health := server.auditHealthSnapshot(context.Background())
-	if health.Status != "ok" || health.FailureCount != 2 || health.LastDeliverySuccess == "" {
+	if health.Status != "ok" || health.FailureCount != 1 || health.LastDeliverySuccess == "" {
 		t.Fatalf("unexpected recovered audit health: %+v", health)
+	}
+}
+
+func TestAuditHealthAllowsFreshPendingDelivery(t *testing.T) {
+	now := time.Now().UTC()
+	if pendingAuditBacklogIsStale(now.Add(-auditPendingGracePeriod/2).Format(time.RFC3339Nano), now) {
+		t.Fatal("fresh audit backlog should not degrade health")
+	}
+	if !pendingAuditBacklogIsStale(now.Add(-auditPendingGracePeriod-time.Second).Format(time.RFC3339Nano), now) {
+		t.Fatal("stale audit backlog should degrade health")
+	}
+	if !pendingAuditBacklogIsStale("invalid timestamp", now) {
+		t.Fatal("invalid audit backlog timestamp should fail closed")
 	}
 }

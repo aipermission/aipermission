@@ -25,6 +25,7 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 		MCPEnabled:             runtime.isMCPStarted(),
 		Audit: diagnostics.AuditHealth{
 			Status: audit.Status, FailureCount: audit.FailureCount, PendingCount: audit.PendingCount,
+			DeadLetterCount:   audit.DeadLetterCount,
 			RetriedEventCount: audit.RetriedEventCount,
 		},
 	})

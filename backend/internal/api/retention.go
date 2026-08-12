@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -118,7 +120,12 @@ func (s retentionHandlers) purgeRetention(w http.ResponseWriter, r *http.Request
 		},
 	)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		var invalid errInvalidQuery
+		if errors.As(err, &invalid) {
+			writeError(w, http.StatusBadRequest, invalid.Error())
+			return
+		}
+		writeInternalError(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, purgeRetentionResponse{Target: request.Target, Days: request.Days, Deleted: deleted})
@@ -173,7 +180,19 @@ func validateRetentionSettings(settings retentionSettingsResponse) error {
 }
 
 func applyRetentionSettings(ctx context.Context, runtime *databaseRuntime, settings retentionSettingsResponse) (map[string]int64, error) {
-	return applyRetentionSettingsWithExecutor(ctx, runtime.database, settings)
+	executor, commit, rollback, err := sqldb.Transaction(ctx, runtime.database, nil, "retention settings")
+	if err != nil {
+		return nil, err
+	}
+	defer rollback()
+	deleted, err := applyRetentionSettingsWithExecutor(ctx, executor, settings)
+	if err != nil {
+		return nil, err
+	}
+	if err := commit(); err != nil {
+		return nil, fmt.Errorf("commit retention settings: %w", err)
+	}
+	return deleted, nil
 }
 
 func applyRetentionSettingsWithExecutor(ctx context.Context, executor auditoutbox.DBTX, settings retentionSettingsResponse) (map[string]int64, error) {
@@ -197,7 +216,19 @@ func applyRetentionSettingsWithExecutor(ctx context.Context, executor auditoutbo
 }
 
 func purgeRetentionTarget(ctx context.Context, runtime *databaseRuntime, target string, days int) (int64, error) {
-	return purgeRetentionTargetWithExecutor(ctx, runtime.database, target, days)
+	executor, commit, rollback, err := sqldb.Transaction(ctx, runtime.database, nil, "retention purge")
+	if err != nil {
+		return 0, err
+	}
+	defer rollback()
+	deleted, err := purgeRetentionTargetWithExecutor(ctx, executor, target, days)
+	if err != nil {
+		return 0, err
+	}
+	if err := commit(); err != nil {
+		return 0, fmt.Errorf("commit retention purge: %w", err)
+	}
+	return deleted, nil
 }
 
 func purgeRetentionTargetWithExecutor(ctx context.Context, executor auditoutbox.DBTX, target string, days int) (int64, error) {
@@ -205,7 +236,19 @@ func purgeRetentionTargetWithExecutor(ctx context.Context, executor auditoutbox.
 	case "history":
 		return purgeHistoryRetentionWithExecutor(ctx, executor, days)
 	case "audit":
-		return execRetentionDeleteWithCutoff(ctx, executor, `DELETE FROM audit_logs WHERE julianday(created_at) < julianday('now', ?)`, "-"+strconv.Itoa(days)+" days")
+		cutoff := "-" + strconv.Itoa(days) + " days"
+		deleted, err := execRetentionDeleteWithCutoff(ctx, executor, `DELETE FROM audit_logs WHERE julianday(created_at) < julianday('now', ?)`, cutoff)
+		if err != nil {
+			return 0, err
+		}
+		outboxDeleted, err := execRetentionDeleteWithCutoff(ctx, executor, `
+			DELETE FROM audit_outbox
+			WHERE (delivered_at IS NOT NULL AND julianday(delivered_at) < julianday('now', ?))
+				OR (dead_lettered_at IS NOT NULL AND julianday(dead_lettered_at) < julianday('now', ?))`, cutoff, cutoff)
+		if err != nil {
+			return 0, err
+		}
+		return deleted + outboxDeleted, nil
 	case "console":
 		return execRetentionDeleteWithCutoff(ctx, executor, `DELETE FROM console_sessions WHERE closed_at IS NOT NULL AND julianday(closed_at) < julianday('now', ?)`, "-"+strconv.Itoa(days)+" days")
 	case "messages":
@@ -216,7 +259,7 @@ func purgeRetentionTargetWithExecutor(ctx context.Context, executor auditoutbox.
 }
 
 func purgeHistoryRetention(ctx context.Context, runtime *databaseRuntime, days int) (int64, error) {
-	return purgeHistoryRetentionWithExecutor(ctx, runtime.database, days)
+	return purgeRetentionTarget(ctx, runtime, "history", days)
 }
 
 func purgeHistoryRetentionWithExecutor(ctx context.Context, executor auditoutbox.DBTX, days int) (int64, error) {
@@ -225,7 +268,6 @@ func purgeHistoryRetentionWithExecutor(ctx context.Context, executor auditoutbox
 	for _, statement := range []string{
 		`DELETE FROM command_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM connector_action_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
-		`DELETE FROM file_transfers WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM file_transfer_batches WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM history_entries WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 	} {
@@ -235,7 +277,32 @@ func purgeHistoryRetentionWithExecutor(ctx context.Context, executor auditoutbox
 		}
 		total += deleted
 	}
+	deleted, err := purgeFileTransfersWithoutPerRowAudit(ctx, executor, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	total += deleted
 	return total, nil
+}
+
+// Retention emits one audited summary for the purge transaction. The normal
+// delete trigger remains authoritative for individual user-driven removals.
+func purgeFileTransfersWithoutPerRowAudit(ctx context.Context, executor sqldb.Executor, cutoff string) (int64, error) {
+	var outboxWatermark int64
+	if err := executor.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM audit_outbox`).Scan(&outboxWatermark); err != nil {
+		return 0, fmt.Errorf("read audit outbox watermark: %w", err)
+	}
+	deleted, err := execRetentionDeleteWithCutoff(ctx, executor,
+		`DELETE FROM file_transfers WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := executor.ExecContext(ctx, `
+		DELETE FROM audit_outbox
+		WHERE id > ? AND actor_type = 'gateway' AND action = 'file_transfer.removed'`, outboxWatermark); err != nil {
+		return 0, fmt.Errorf("remove retention-generated file transfer audit events: %w", err)
+	}
+	return deleted, nil
 }
 
 func execRetentionDelete(ctx context.Context, runtime *databaseRuntime, statement string, days int) (int64, error) {
@@ -244,8 +311,12 @@ func execRetentionDelete(ctx context.Context, runtime *databaseRuntime, statemen
 
 func execRetentionDeleteWithCutoff(ctx context.Context, executor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
-}, statement string, cutoff string) (int64, error) {
-	result, err := executor.ExecContext(ctx, statement, cutoff)
+}, statement string, cutoffs ...string) (int64, error) {
+	arguments := make([]any, len(cutoffs))
+	for index, cutoff := range cutoffs {
+		arguments[index] = cutoff
+	}
+	result, err := executor.ExecContext(ctx, statement, arguments...)
 	if err != nil {
 		return 0, err
 	}

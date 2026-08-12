@@ -31,7 +31,7 @@ func TestCollectProducesGoldenRedactedReport(t *testing.T) {
 		SupportedSchemaVersion: dbpkg.CurrentSchemaVersion(),
 		MCPEnabled:             true,
 		Audit: AuditHealth{
-			Status: "degraded", FailureCount: 2, PendingCount: 3, RetriedEventCount: 4,
+			Status: "degraded", FailureCount: 2, PendingCount: 3, DeadLetterCount: 1, RetriedEventCount: 4,
 		},
 		Now: func() time.Time { return time.Date(2026, 8, 11, 12, 34, 56, 0, time.UTC) },
 	})

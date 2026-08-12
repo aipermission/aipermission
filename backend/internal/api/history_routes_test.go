@@ -391,7 +391,7 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 		"action_request_id": int64(777),
 		"detail":            "connector audit metadata",
 	})
-	connectorAuditResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs?connector_kind=ssh&target_id="+strconv.FormatInt(server.TargetID, 10), "", nil)
+	connectorAuditResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs?q=connector+audit+metadata&connector_kind=ssh&target_id="+strconv.FormatInt(server.TargetID, 10), "", nil)
 	if connectorAuditResponse.Code != http.StatusOK {
 		t.Fatalf("connector audit filter failed: %d %s", connectorAuditResponse.Code, connectorAuditResponse.Body.String())
 	}

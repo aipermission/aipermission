@@ -17,6 +17,7 @@ import (
 
 type auditLogRecord struct {
 	ID              int64  `json:"id"`
+	EventVersion    int    `json:"event_version"`
 	ActorType       string `json:"actor_type"`
 	TokenID         *int64 `json:"token_id,omitempty"`
 	TokenName       string `json:"token_name,omitempty"`
@@ -29,6 +30,7 @@ type auditLogRecord struct {
 	ProfileID       *int64 `json:"profile_id,omitempty"`
 	ActionRequestID *int64 `json:"action_request_id,omitempty"`
 	Action          string `json:"action"`
+	LifecyclePhase  string `json:"lifecycle_phase"`
 	PayloadJSON     string `json:"payload_json"`
 	CreatedAt       string `json:"created_at"`
 }
@@ -112,9 +114,9 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	queryArgs := append(append([]any{}, args...), page.Limit, page.Offset)
 	rows, err := runtime.database.QueryContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id,
+		SELECT a.id, a.event_version, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id,
 			COALESCE(ct.name, profile_ct.name, ''), a.connector_kind, a.target_id, a.profile_id, a.action_request_id,
-			a.action, substr(a.payload_json, 1, 500), a.created_at
+			a.action, a.lifecycle_phase, substr(a.payload_json, 1, 500), a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
 		LEFT JOIN projects project ON project.id = a.project_id
@@ -159,9 +161,9 @@ func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row := runtime.database.QueryRowContext(r.Context(), `
-		SELECT a.id, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id,
+		SELECT a.id, a.event_version, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id,
 			COALESCE(ct.name, profile_ct.name, ''), a.connector_kind, a.target_id, a.profile_id, a.action_request_id,
-			a.action, a.payload_json, a.created_at
+			a.action, a.lifecycle_phase, a.payload_json, a.created_at
 		FROM audit_logs a
 		LEFT JOIN api_tokens t ON t.id = a.token_id
 		LEFT JOIN projects project ON project.id = a.project_id
@@ -196,6 +198,7 @@ func scanAuditLog(scanner interface {
 	var actionRequestID sql.NullInt64
 	if err := scanner.Scan(
 		&item.ID,
+		&item.EventVersion,
 		&item.ActorType,
 		&tokenID,
 		&item.TokenName,
@@ -208,6 +211,7 @@ func scanAuditLog(scanner interface {
 		&profileID,
 		&actionRequestID,
 		&item.Action,
+		&item.LifecyclePhase,
 		&item.PayloadJSON,
 		&item.CreatedAt,
 	); err != nil {
@@ -262,7 +266,7 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 	}
 	dispatcher := runtime.auditDispatcher
 	if dispatcher == nil {
-		dispatcher = auditoutbox.NewDispatcher(runtime.database)
+		return nil
 	}
 	if _, dispatchErr := dispatcher.DispatchOnce(ctx); dispatchErr != nil {
 		s.auditHealth.recordFailure(time.Now())
@@ -332,7 +336,9 @@ func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRunt
 	}
 }
 
-func (s *Server) prepareAuditAppender(ctx context.Context, runtime *databaseRuntime) func(*sql.Tx, string, *int64, int64, string, any) error {
+type auditAppender func(*sql.Tx, string, *int64, int64, string, any) error
+
+func (s *Server) prepareAuditAppender(ctx context.Context, runtime *databaseRuntime) auditAppender {
 	redact := s.prepareAuditRedactor(ctx, runtime)
 	return func(tx *sql.Tx, actorType string, tokenID *int64, runtimeID int64, action string, payload any) error {
 		event, err := s.buildAuditEventWithRedactor(ctx, tx, actorType, tokenID, runtimeID, action, payload, redact)
@@ -342,6 +348,32 @@ func (s *Server) prepareAuditAppender(ctx context.Context, runtime *databaseRunt
 		_, err = (auditoutbox.Store{}).Append(ctx, tx, event)
 		return err
 	}
+}
+
+func (s *Server) withAuditedTransaction(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	mutate func(*sql.Tx, auditAppender) error,
+) error {
+	if runtime == nil || runtime.database == nil {
+		return fmt.Errorf("audit database is unavailable")
+	}
+	// Preparing the redactor reads runtime configuration. Do that before the
+	// transaction reserves SQLCipher's single database connection.
+	appendAudit := s.prepareAuditAppender(ctx, runtime)
+	tx, err := runtime.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin audited mutation: %w", err)
+	}
+	defer tx.Rollback()
+	if err := mutate(tx, appendAudit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit audited mutation: %w", err)
+	}
+	s.projectAuditEvents(ctx, runtime)
+	return nil
 }
 
 func (s *Server) withAuditedMutation(
@@ -357,27 +389,12 @@ func (s *Server) withAuditedMutation(
 	if runtime == nil || runtime.database == nil {
 		return fmt.Errorf("audit database is unavailable")
 	}
-	redact := s.prepareAuditRedactor(ctx, runtime)
-	tx, err := runtime.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin audited mutation: %w", err)
-	}
-	defer tx.Rollback()
-	if err := mutate(tx); err != nil {
-		return err
-	}
-	event, err := s.buildAuditEventWithRedactor(ctx, tx, actorType, tokenID, runtimeID, action, payload(), redact)
-	if err != nil {
-		return err
-	}
-	if _, err := (auditoutbox.Store{}).Append(ctx, tx, event); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit audited mutation: %w", err)
-	}
-	s.projectAuditEvents(ctx, runtime)
-	return nil
+	return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+		if err := mutate(tx); err != nil {
+			return err
+		}
+		return appendAudit(tx, actorType, tokenID, runtimeID, action, payload())
+	})
 }
 
 func (s *Server) projectAuditEvents(ctx context.Context, runtime *databaseRuntime) {
@@ -386,7 +403,7 @@ func (s *Server) projectAuditEvents(ctx context.Context, runtime *databaseRuntim
 	}
 	dispatcher := runtime.auditDispatcher
 	if dispatcher == nil {
-		dispatcher = auditoutbox.NewDispatcher(runtime.database)
+		return
 	}
 	if _, err := dispatcher.DispatchOnce(ctx); err != nil {
 		s.auditHealth.recordFailure(time.Now())

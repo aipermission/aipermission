@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	currentSchemaVersion     = 13
+	currentSchemaVersion     = 14
 	expectedSQLCipherVersion = "4.16.0"
 )
 

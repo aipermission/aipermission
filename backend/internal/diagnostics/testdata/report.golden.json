@@ -27,6 +27,7 @@
       "status": "degraded",
       "failure_count": 2,
       "pending_count": 3,
+      "dead_letter_count": 1,
       "retried_event_count": 4
     },
     "running_actions": 0,

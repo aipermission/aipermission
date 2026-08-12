@@ -8,6 +8,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 )
 
+const auditPendingGracePeriod = 30 * time.Second
+
 type auditHealthState struct {
 	mu            sync.RWMutex
 	failureCount  uint64
@@ -19,6 +21,7 @@ type auditHealthResponse struct {
 	FailureCount        uint64 `json:"failure_count"`
 	LastFailureAt       string `json:"last_failure_at,omitempty"`
 	PendingCount        int64  `json:"pending_count"`
+	DeadLetterCount     int64  `json:"dead_letter_count"`
 	OldestPendingAt     string `json:"oldest_pending_at,omitempty"`
 	RetriedEventCount   int64  `json:"retried_event_count"`
 	LastDeliveryError   string `json:"last_delivery_error,omitempty"`
@@ -38,8 +41,11 @@ func (s *Server) auditHealthSnapshot(ctx context.Context) auditHealthResponse {
 		response.LastDeliveryError = err.Error()
 		return response
 	}
-	response.FailureCount += uint64(durable.FailureCount)
+	if durable.FailureCount > int64(response.FailureCount) {
+		response.FailureCount = uint64(durable.FailureCount)
+	}
 	response.PendingCount = durable.PendingCount
+	response.DeadLetterCount = durable.DeadLetterCount
 	response.OldestPendingAt = durable.OldestPendingAt
 	response.RetriedEventCount = durable.RetriedEventCount
 	response.LastDeliveryError = durable.LastDeliveryError
@@ -48,10 +54,21 @@ func (s *Server) auditHealthSnapshot(ctx context.Context) auditHealthResponse {
 	if response.LastFailureAt != "" && !timestampAfter(response.LastFailureAt, durable.LastDeliverySuccess) {
 		response.Status = "ok"
 	}
-	if durable.PendingCount > 0 || timestampAfter(durable.LastDeliveryErrorAt, durable.LastDeliverySuccess) {
+	if durable.DeadLetterCount > 0 || pendingAuditBacklogIsStale(durable.OldestPendingAt, time.Now().UTC()) || timestampAfter(durable.LastDeliveryErrorAt, durable.LastDeliverySuccess) {
 		response.Status = "degraded"
 	}
 	return response
+}
+
+func pendingAuditBacklogIsStale(oldestPendingAt string, now time.Time) bool {
+	if oldestPendingAt == "" {
+		return false
+	}
+	oldest, err := time.Parse(time.RFC3339Nano, oldestPendingAt)
+	if err != nil {
+		return true
+	}
+	return !oldest.After(now.Add(-auditPendingGracePeriod))
 }
 
 func timestampAfter(value string, baseline string) bool {
@@ -76,7 +93,7 @@ func (state *auditHealthState) recordFailure(now time.Time) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	state.failureCount++
-	state.lastFailureAt = now.UTC().Format(time.RFC3339)
+	state.lastFailureAt = now.UTC().Format(time.RFC3339Nano)
 }
 
 func (state *auditHealthState) snapshot() auditHealthResponse {

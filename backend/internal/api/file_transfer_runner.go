@@ -202,17 +202,8 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 		}
 		s.scheduleBatchItemTempCleanup(batch)
 	}
-	if ok, err := runtime.fileTransfers.CompleteBatch(context.Background(), batchID); err != nil {
+	if _, err := runtime.fileTransfers.CompleteBatch(context.Background(), batchID); err != nil {
 		log.Printf("complete file transfer batch failed batch=%d error=%v", batchID, err)
-	} else if ok {
-		s.writeObservationAudit(context.Background(), runtime, "user", nil, batch.RuntimeID, "file_transfer.batch.completed", map[string]any{
-			"batch_id":        batchID,
-			"direction":       batch.Direction,
-			"items":           len(batch.Items),
-			"completed_items": batch.CompletedItems,
-			"failed_items":    batch.FailedItems,
-			"canceled_items":  batch.CanceledItems,
-		})
 	}
 }
 
@@ -238,7 +229,7 @@ func (s fileTransferHandlers) validateDownloadBatchBeforeRun(ctx context.Context
 			return fmt.Errorf("%s: %w", item.RemotePath, err)
 		}
 		if totalSize > maxFileTransferBatchBytes-status.Size {
-			return fmt.Errorf("download batch cannot exceed 1 GiB total size")
+			return fmt.Errorf("download batch cannot exceed %s total size", formatFileTransferLimit(maxFileTransferBatchBytes))
 		}
 		totalSize += status.Size
 		sizes[item.ID] = status.Size
@@ -308,15 +299,6 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 	if item.Direction == filetransfer.DirectionDownload && item.BatchID == 0 {
 		s.scheduleTransferTempCleanup(item.TempPath)
 	}
-	s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.completed", map[string]any{
-		"transfer_id":     transferID,
-		"batch_id":        item.BatchID,
-		"direction":       item.Direction,
-		"remote_path":     item.RemotePath,
-		"bytes":           result.Bytes,
-		"checksum_sha256": result.ChecksumSHA256,
-		"duration_ms":     result.DurationMS,
-	})
 }
 
 func (s fileTransferHandlers) transferProgress(runtime *databaseRuntime, transferID int64) connectorapi.TransferProgress {
@@ -443,15 +425,6 @@ func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transfe
 	if !changed {
 		return
 	}
-	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
-	if readErr == nil {
-		s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.failed", map[string]any{
-			"transfer_id": transferID,
-			"direction":   item.Direction,
-			"remote_path": item.RemotePath,
-			"error":       message,
-		})
-	}
 }
 
 func (s fileTransferHandlers) cancelFileTransferRecord(runtime *databaseRuntime, transferID int64, message string) {
@@ -462,14 +435,6 @@ func (s fileTransferHandlers) cancelFileTransferRecord(runtime *databaseRuntime,
 	}
 	if !changed {
 		return
-	}
-	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
-	if readErr == nil {
-		s.writeObservationAudit(context.Background(), runtime, "user", nil, item.RuntimeID, "file_transfer.canceled", map[string]any{
-			"transfer_id": transferID,
-			"direction":   item.Direction,
-			"remote_path": item.RemotePath,
-		})
 	}
 }
 
