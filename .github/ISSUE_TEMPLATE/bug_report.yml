@@ -60,9 +60,8 @@ body:
     id: docker
     attributes:
       label: Docker version
-      placeholder: Docker Engine 28.3.2 / Docker Desktop 4.43
-    validations:
-      required: true
+      description: Include this when the issue involves the Docker runtime; otherwise enter N/A.
+      placeholder: Docker Engine 28.3.2 / Docker Desktop 4.43 / N/A
 
   - type: input
     id: client
