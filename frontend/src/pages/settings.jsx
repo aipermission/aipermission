@@ -4,6 +4,7 @@ import { BackupProviderDialogs } from "../components/settings/backup-provider-di
 import { BackupProviderPanel } from "../components/settings/backup-provider-panel";
 import { BackupRecordDialogs } from "../components/settings/backup-record-dialogs";
 import { DatabaseSettingsPanel } from "../components/settings/database-settings-panel";
+import { DiagnosticsPanel } from "../components/settings/diagnostics-panel";
 import { HistoryLabelsPanel } from "../components/settings/history-labels-panel";
 import { HistoryRetentionPanel } from "../components/settings/history-retention-panel";
 import { MaintenanceConsolePanel } from "../components/settings/maintenance-console-panel";
@@ -40,6 +41,7 @@ export function SettingsPage() {
       {database.state === "error" ? <Notice tone="bad">{database.error}</Notice> : null}
       <BackupProviderPanel state={backupProvider} />
       <MaintenanceConsolePanel />
+      <DiagnosticsPanel />
       <HistoryRetentionPanel />
       <HistoryLabelsPanel />
       <DatabaseSettingsPanel databaseName={databaseName} />
