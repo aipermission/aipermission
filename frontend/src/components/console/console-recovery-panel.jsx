@@ -14,11 +14,15 @@ export function ConsoleRecoveryPanel({ request, now, theme, action, onRestart })
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <Clock className="h-3.5 w-3.5 shrink-0" />
         <span className="shrink-0 font-semibold">{runningRequestLabel(request)}</span>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}>
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-200"}`}
+        >
           {formatDuration(ageMs)}
         </span>
         {request.token_name ? (
-          <span className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-100"}`}>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 ${theme === "light" ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-100"}`}
+          >
             {request.token_name}
           </span>
         ) : null}
@@ -53,7 +57,9 @@ function runningRequestLabel(request) {
 }
 
 function firstLine(value) {
-  const line = String(value || "").split(/\r?\n/, 1)[0].trim();
+  const line = String(value || "")
+    .split(/\r?\n/, 1)[0]
+    .trim();
   return line.length <= 90 ? line : `${line.slice(0, 87)}...`;
 }
 

@@ -176,10 +176,7 @@ export const sharedSQLConsoleSupportSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "_shared", "sql-console-support.jsx"),
   "utf8",
 );
-export const sharedSQLEditorSource = readFileSync(
-  join(currentDir, "..", "connectors", "templates", "_shared", "sql-editor.jsx"),
-  "utf8",
-);
+export const sharedSQLEditorSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "sql-editor.jsx"), "utf8");
 export const sharedNetworkTransportSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "_shared", "network-transport-fields.jsx"),
   "utf8",

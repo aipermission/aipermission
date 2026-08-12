@@ -1,12 +1,4 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  Circle,
-  Database,
-  FolderKanban,
-  PanelLeftClose,
-  PanelLeftOpen,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Circle, Database, FolderKanban, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { connectorTargetKey, profilesForConnectorTarget } from "../../lib/connector-permissions";
 import { ConnectorIcon } from "../../connectors/templates/common";
 import { getConnectorModel } from "../../connectors/templates/registry";
@@ -50,7 +42,13 @@ export function ConsoleTargetSidebar({
               Connectors
               <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">{targetRows.length}</span>
             </h3>
-            <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse connectors" onClick={() => onCompactChange(true)}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 w-9 px-0"
+              title="Collapse connectors"
+              onClick={() => onCompactChange(true)}
+            >
               <PanelLeftClose className="h-4 w-4" />
             </Button>
           </>
@@ -143,7 +141,12 @@ function TargetListItem({
   const active = selectedTarget && connectorTargetKey(selectedTarget) === connectorTargetKey(target);
   const profiles = profileTargets?.length ? profileTargets : [target];
   const refs = new Set(profiles.map((profile) => profile.ref));
-  const runtimeIDs = new Set(profiles.map((profile) => profile.runtime_id).filter(Boolean).map(Number));
+  const runtimeIDs = new Set(
+    profiles
+      .map((profile) => profile.runtime_id)
+      .filter(Boolean)
+      .map(Number),
+  );
   const pendingCount = pendingConnectorApprovals.filter((approval) => refs.has(approval.target_ref)).length;
   const runningCount = connectorActionApprovals.data.filter(
     (approval) => approval.status === "running" && refs.has(approval.target_ref),
@@ -188,7 +191,9 @@ function TargetListItem({
             {targetSubtitle(target, runtimeTarget)}
           </span>
           <span className="flex min-w-0 gap-1.5">
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass}`}>{target.connector_kind}</span>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${badgeClass}`}>
+              {target.connector_kind}
+            </span>
             <span className={`truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{profileLabel}</span>
             {profileTargets?.length > 1 ? (
               <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badgeClass}`}>
@@ -247,7 +252,9 @@ export function defaultConsoleTargetRef(targets, unreadMessages, pendingConnecto
 
 export function targetDisplayName(target) {
   if (!target) return "Target";
-  return getConnectorModel(target.connector_kind)?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "Target";
+  return (
+    getConnectorModel(target.connector_kind)?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "Target"
+  );
 }
 
 export function targetSubtitle(target, runtimeTarget) {
