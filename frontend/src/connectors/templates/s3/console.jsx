@@ -23,6 +23,7 @@ import {
 } from "./helpers";
 import { S3MetadataPanel } from "./metadata-panel";
 import { requireCompletedConnectorAction } from "../_shared/action-result";
+import { connectorConsoleTheme } from "../_shared/console-theme";
 import { createRequestGuard } from "../_shared/request-guard";
 
 const defaultListLimit = 100;
@@ -68,17 +69,15 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const requestGuard = useRef(createRequestGuard()).current;
   requestGuard.setScope(`${target.ref}:${activeSession.startedAt || "inactive"}`);
-  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
-  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
-  const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass =
-    theme === "light"
-      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
-      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
-  const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass =
-    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const {
+    panel: panelClass,
+    muted: mutedClass,
+    border: borderClass,
+    subtlePanel: subtlePanelClass,
+    input: inputClass,
+    rowHover: rowHoverClass,
+    activeRow: activeRowClass,
+  } = connectorConsoleTheme(theme);
   const activeItems = useMemo(
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
     [approvals?.data, target.ref],

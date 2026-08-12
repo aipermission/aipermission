@@ -5,6 +5,7 @@ import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
 import { apiPost } from "../../../lib/api";
 import { connectorActionCode, connectorActionError, connectorActionPending } from "../_shared/action-result";
+import { connectorConsoleTheme } from "../_shared/console-theme";
 import { ComposeDialog } from "./compose-dialog";
 import { MailActionResultDialog } from "./action-result-dialog";
 import {
@@ -50,15 +51,14 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   const requestGeneration = useRef(0);
   const currentTargetRef = useRef(target.ref);
 
-  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
-  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
-  const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass =
-    theme === "light"
-      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
-      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
-  const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
+  const {
+    panel: panelClass,
+    muted: mutedClass,
+    border: borderClass,
+    subtlePanel: subtlePanelClass,
+    input: inputClass,
+    rowHover: rowHoverClass,
+  } = connectorConsoleTheme(theme);
   const activeRowClass =
     theme === "light" ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
   const resultClass =
