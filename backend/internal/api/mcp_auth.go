@@ -60,12 +60,11 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 		matches = append(matches, auth)
 	}
 	if len(matches) > 1 {
-		s.mcpIPAuthLimiter.recordFailure(ipLimitKey)
-		s.mcpTokenAuthLimiter.recordFailure(tokenLimitKey)
 		writeError(w, http.StatusConflict, "API token matches multiple unlocked databases; lock or revoke duplicate token copies before using MCP")
 		return mcpAuthContext{}, false
 	}
 	if len(matches) == 1 {
+		s.mcpIPAuthLimiter.recordSuccess(ipLimitKey)
 		s.mcpTokenAuthLimiter.recordSuccess(tokenLimitKey)
 		return matches[0], true
 	}
@@ -81,7 +80,7 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 }
 
 func mcpTokenRateLimitKey(tokenValue string) string {
-	tokenHash := tokens.HashToken(tokenValue)
+	tokenHash := strings.TrimPrefix(tokens.HashToken(tokenValue), "sha256:")
 	const fingerprintLength = 24
 	if len(tokenHash) > fingerprintLength {
 		tokenHash = tokenHash[:fingerprintLength]
