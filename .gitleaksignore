@@ -6,5 +6,5 @@ f6333dbf404a6fe3f8403912d77f7d55fbeb2961:backend/internal/api/redaction_test.go:
 731d34bc3180ddf08a59f56ffe6637b1b6974187:backend/internal/console/console_sessions_test.go:curl-auth-header:242
 c895c108bd5597e823bf99ca29ce677dc37ae88d:backend/internal/console/console_manual_capture_test.go:curl-auth-header:152
 # Synthetic credential-shaped values in the typed action-result redaction regression.
-f319bf7f0b7a1b90254f5268bb692f38456b8f2b:backend/internal/api/connector_action_execution_test.go:generic-api-key:516
-f319bf7f0b7a1b90254f5268bb692f38456b8f2b:backend/internal/api/connector_action_execution_test.go:generic-api-key:535
+73ad5ed41048fb08eda90490d27f56b49713bbae:backend/internal/api/connector_action_execution_test.go:generic-api-key:516
+73ad5ed41048fb08eda90490d27f56b49713bbae:backend/internal/api/connector_action_execution_test.go:generic-api-key:535
