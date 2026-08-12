@@ -1,6 +1,31 @@
-export const appVersion = "0.2.25";
+export const appVersion = "0.2.26";
 
 export const changelogEntries = [
+  {
+    version: "0.2.26",
+    label: "Runtime integrity and recovery hardening",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "Large frontend and connector-console modules now share focused runtime primitives with stronger asynchronous state handling.",
+          "Backup integration now requires the v0.2.0 protocol capabilities before gateway operations can proceed.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Canceled actions, stale connector responses, Vault lease repair, gateway shutdown, and encrypted database upgrades now preserve explicit recovery states.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Transactional audit outbox delivery binds Vault and backup mutations to durable audit records, while diagnostics and CI add stronger redaction and release-integrity checks.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.25",
     label: "S3 transfer and recovery controls",
