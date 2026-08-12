@@ -1,6 +1,6 @@
-import { CopyButton } from "../../../components/ui/copy-button";
-import { Input } from "../../../components/ui/form";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { HighlightedText } from "../_shared/highlighted-text";
+import { ConnectorResultHeader, DarkSummaryGrid } from "../_shared/result-sections";
 import {
   arrayOrString,
   formatDockerLogs,
@@ -23,19 +23,17 @@ export function DockerResultView({ item, search, onSearch, inputClass }) {
     const rawValue = JSON.stringify(output, null, 2);
     return (
       <div className="grid min-h-0 grid-rows-[auto_minmax(0,450px)_auto_minmax(0,1fr)] overflow-hidden">
-        <DockerResultHeader title={title} subtitle={subtitle} />
+        <ConnectorResultHeader title={title} subtitle={subtitle} />
         <DockerInspectSummary output={output} />
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">Docker inspect raw data</p>
-          <div className="flex min-w-0 items-center justify-end gap-2">
-            <Input
-              className={`h-8 w-56 text-xs ${inputClass || ""}`}
-              value={search}
-              onChange={(event) => onSearch?.(event.target.value)}
-              placeholder="Search raw data"
-            />
-            <CopyButton value={rawValue} variant="outline" className="h-8 px-2 text-xs" />
-          </div>
+        <div className="mt-3">
+          <ConnectorResultHeader
+            title="Docker inspect raw data"
+            copyValue={rawValue}
+            search={search}
+            onSearch={onSearch}
+            inputClass={inputClass}
+            searchPlaceholder="Search raw data"
+          />
         </div>
         <div className="mt-2 grid min-h-0 overflow-hidden">
           <TerminalBlock className="min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]" surface="dark">
@@ -47,7 +45,7 @@ export function DockerResultView({ item, search, onSearch, inputClass }) {
   }
   return (
     <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
-      <DockerResultHeader
+      <ConnectorResultHeader
         title={title}
         subtitle={subtitle}
         copyValue={copyValue}
@@ -72,52 +70,6 @@ export function DockerResultView({ item, search, onSearch, inputClass }) {
       </TerminalBlock>
     </div>
   );
-}
-
-function DockerResultHeader({ title, subtitle, copyValue, search, onSearch, inputClass }) {
-  return (
-    <div className="mb-2 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">{title}</p>
-        {subtitle ? <p className="truncate text-xs text-stone-500">{subtitle}</p> : null}
-      </div>
-      <div className="flex min-w-0 items-center justify-end gap-2">
-        {onSearch ? (
-          <Input
-            className={`h-8 w-56 text-xs ${inputClass || ""}`}
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder="Search logs"
-          />
-        ) : null}
-        {copyValue ? <CopyButton value={copyValue} variant="outline" className="h-8 px-2 text-xs" /> : null}
-      </div>
-    </div>
-  );
-}
-
-function HighlightedText({ text, query }) {
-  const value = String(text || "");
-  const needle = String(query || "");
-  if (!needle.trim()) return value;
-  const lowerValue = value.toLowerCase();
-  const lowerNeedle = needle.toLowerCase();
-  const parts = [];
-  let index = 0;
-  let matchIndex = lowerValue.indexOf(lowerNeedle, index);
-  let key = 0;
-  while (matchIndex !== -1) {
-    if (matchIndex > index) parts.push(value.slice(index, matchIndex));
-    parts.push(
-      <mark key={`m-${key++}`} className="rounded bg-yellow-300 px-0.5 text-stone-950">
-        {value.slice(matchIndex, matchIndex + needle.length)}
-      </mark>,
-    );
-    index = matchIndex + needle.length;
-    matchIndex = lowerValue.indexOf(lowerNeedle, index);
-  }
-  if (index < value.length) parts.push(value.slice(index));
-  return parts;
 }
 
 function dockerResultTitle(item) {
@@ -185,18 +137,7 @@ function DockerInspectSummary({ output }) {
     ["Labels", Object.keys(labels).length ? `${Object.keys(labels).length} labels` : ""],
   ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
 
-  return (
-    <div className="min-h-0 overflow-auto rounded-md border border-stone-700 bg-[#1a1a1a] p-3">
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {rows.map(([label, value]) => (
-          <div key={label} className="min-w-0 rounded border border-stone-700 bg-[#202020] p-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-500">{label}</p>
-            <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-stone-100">{String(value)}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  return <DarkSummaryGrid rows={rows.map(([label, value]) => ({ label, value }))} />;
 }
 
 export function DockerResourceDetail({ resourceView, item, search, onSearch, inputClass }) {
@@ -204,30 +145,19 @@ export function DockerResourceDetail({ resourceView, item, search, onSearch, inp
   const rows = resourceDetailRows(resourceView, item);
   return (
     <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
-      <DockerResultHeader title={`${resourceSingular(resourceView)} metadata`} subtitle={resourceSecondary(resourceView, item)} />
-      <div className="mb-3 min-h-0 overflow-auto rounded-md border border-stone-700 bg-[#1a1a1a] p-3">
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map(([label, value]) => (
-            <div key={label} className="min-w-0 rounded border border-stone-700 bg-[#202020] p-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-500">{label}</p>
-              <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-stone-100">{String(value)}</p>
-            </div>
-          ))}
-        </div>
+      <ConnectorResultHeader title={`${resourceSingular(resourceView)} metadata`} subtitle={resourceSecondary(resourceView, item)} />
+      <div className="mb-3 min-h-0 overflow-hidden">
+        <DarkSummaryGrid rows={rows.map(([label, value]) => ({ label, value }))} />
       </div>
       <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">{resourceSingular(resourceView)} raw data</p>
-          <div className="flex min-w-0 items-center justify-end gap-2">
-            <Input
-              className={`h-8 w-56 text-xs ${inputClass || ""}`}
-              value={search}
-              onChange={(event) => onSearch?.(event.target.value)}
-              placeholder="Search raw data"
-            />
-            <CopyButton value={rawValue} variant="outline" className="h-8 px-2 text-xs" />
-          </div>
-        </div>
+        <ConnectorResultHeader
+          title={`${resourceSingular(resourceView)} raw data`}
+          copyValue={rawValue}
+          search={search}
+          onSearch={onSearch}
+          inputClass={inputClass}
+          searchPlaceholder="Search raw data"
+        />
         <TerminalBlock className="min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]" surface="dark">
           <HighlightedText text={rawValue} query={search} />
         </TerminalBlock>

@@ -10,6 +10,9 @@ export const resourceTabs = Object.freeze([
 export function resourceKey(tab, item) {
   if (!item) return "";
   if (tab === "nodes") return item.name || "";
+  if (tab === "events") {
+    return [item.namespace, item.object, item.reason, item.last_timestamp, item.count, item.message].map((value) => value || "").join("/");
+  }
   return `${item.namespace || ""}/${item.kind || tab}/${item.name || item.reason || item.message || ""}`;
 }
 
