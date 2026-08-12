@@ -74,4 +74,3 @@ body:
           required: true
         - label: This proposal does not require hosted SaaS, multi-user RBAC, LAN exposure, or cloud-managed execution.
           required: true
-

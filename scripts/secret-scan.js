@@ -15,6 +15,9 @@ const fixturePatterns = [
   /(^|\/)docs\/api\/rest-api\.md$/,
   /(^|\/)docs\/security\/threat-model\.md$/,
 ];
+// Test sources intentionally contain synthetic credential-shaped strings for
+// redaction coverage. Full-history Gitleaks still scans these paths; this fast
+// scanner skips them to avoid maintaining a second fixture allowlist.
 const allowedEncryptedFixtures = new Set([
   "backend/internal/db/testdata/aipermission-schema13-sqlcipher-4.4.2.aipdb",
   "backend/internal/db/testdata/sqlcipher-4.4.2.aipdb",
@@ -53,7 +56,8 @@ for (const file of tracked) {
   let content;
   try {
     content = readFileSync(file, "utf8");
-  } catch {
+  } catch (error) {
+    findings.push(`${file}: could not read tracked file (${error instanceof Error ? error.message : String(error)})`);
     continue;
   }
   for (const pattern of secretPatterns) {
