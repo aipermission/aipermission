@@ -216,6 +216,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
 
   async function readObjectMetadata(key) {
     setSelectedKey(key);
+    setMetadata(null);
     setMetadataSearch("");
     const item = await runS3Action({
       actionName: "get_object_metadata",
