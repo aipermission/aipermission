@@ -93,6 +93,9 @@ console transcripts, messages, or audit records include secrets.
 Mitigations:
 
 - basic redaction is enabled by default for common token, password, API-key, bearer-token, and private-key patterns before connector action history, console transcripts, messages, and audit payloads are persisted or returned through MCP
+- structured connector output is converted to bounded canonical JSON before
+  recursive redaction, so typed values and custom JSON marshalers cannot bypass
+  traversal; encrypted history and MCP reuse the same redacted projection
 - Security can add custom regex redaction rules on top of the built-in basic rules
 - approval execution uses a separate encrypted raw action payload so redaction cannot change the connector action that runs after approval
 - approval-required connector actions store an approval-context snapshot and become
@@ -102,6 +105,8 @@ Mitigations:
 - docs and approval dialogs warn that connector input, command text, output, notes, transcripts, and audit payloads may be persisted
 - operator instructions tell agents to avoid printing secrets
 - users can prefer existence checks and redacted output commands
+- output projection failures after remote execution become `outcome_unknown`
+  so agents do not automatically repeat a possibly completed side effect
 
 Known risk: redaction is best-effort and pattern-based, including custom regex rules. It is not a guarantee that every secret shape will be detected. Do not print secrets into connector action input, console output, command text, reasons, or messages.
 

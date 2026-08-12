@@ -7,6 +7,27 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.27] - 2026-08-12
+
+### Changed
+
+- Generated MCP runtime configurations now pin the exact package version that
+  created them, while explicit install and upgrade commands remain unpinned.
+
+### Fixed
+
+- Connector results that cannot be safely projected after remote execution now
+  finish as `outcome_unknown` instead of inviting an unsafe automatic retry.
+
+### Security
+
+- Every connector action result now crosses one canonical JSON boundary before
+  persistence or MCP projection, with global byte, depth, node, string, and key
+  limits plus recursive redaction for typed and custom-marshaled values.
+- Persisted connector output and the matching MCP response now reuse the same
+  canonical redacted projection, preventing representation drift or typed-value
+  redaction bypasses.
+
 ## [0.2.26] - 2026-08-12
 
 ### Added
