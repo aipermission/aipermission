@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
@@ -6,7 +7,12 @@ import { pathToFileURL } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
 
-const PACKAGE_NAME = "@aipermission/mcp";
+const require = createRequire(import.meta.url);
+const packageMetadata = require("../package.json");
+
+export const PACKAGE_NAME = packageMetadata.name;
+export const PACKAGE_VERSION = packageMetadata.version;
+export const PACKAGE_SPECIFIER = `${PACKAGE_NAME}@${PACKAGE_VERSION}`;
 const useColor = output.isTTY && !process.env.NO_COLOR;
 const color = {
   reset: useColor ? "\x1b[0m" : "",
@@ -287,7 +293,7 @@ async function readStdin() {
 export function buildMCPServerConfig({ apiUrl, token }) {
   return {
     command: "npx",
-    args: ["-y", PACKAGE_NAME],
+    args: ["-y", PACKAGE_SPECIFIER],
     env: {
       NODE_ENV: "production",
       AIPERMISSION_API_URL: apiUrl,

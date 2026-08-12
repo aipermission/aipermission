@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { buildMCPServerConfig, normalizeURL, parseFlags, sanitizeName, tomlKey, tomlString, writeJSONMCPConfig, writeProviderConfig } from "../src/init.js";
+import { buildMCPServerConfig, normalizeURL, PACKAGE_SPECIFIER, parseFlags, sanitizeName, tomlKey, tomlString, writeJSONMCPConfig, writeProviderConfig } from "../src/init.js";
 import { codexSkillPath, loadSkill, normalizeClient, renderInstruction, skillPathForClient } from "../src/install-skill.js";
 import { normalizeLocalAPIURL } from "../src/local-url.js";
+
+const require = createRequire(import.meta.url);
+const packageMetadata = require("../package.json");
 
 test("parseFlags supports kebab-case, inline values, and booleans", () => {
   assert.deepEqual(
@@ -29,9 +33,11 @@ test("sanitizeName keeps MCP-safe names", () => {
 });
 
 test("buildMCPServerConfig creates npx based bridge config", () => {
+  assert.equal(PACKAGE_SPECIFIER, `@aipermission/mcp@${packageMetadata.version}`);
+  assert.match(PACKAGE_SPECIFIER, /^@aipermission\/mcp@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
   assert.deepEqual(buildMCPServerConfig({ apiUrl: "http://localhost:3210", token: "TOKEN" }), {
     command: "npx",
-    args: ["-y", "@aipermission/mcp"],
+    args: ["-y", PACKAGE_SPECIFIER],
     env: {
       NODE_ENV: "production",
       AIPERMISSION_API_URL: "http://localhost:3210",

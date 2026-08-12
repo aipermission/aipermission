@@ -1,29 +1,29 @@
 import { PlugZap } from "lucide-react";
 import { mcpApiUrl } from "../lib/api";
+import { mcpPackageName, mcpPackageSpecifier } from "../lib/mcp-package";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { CopyButton } from "../components/ui/copy-button";
 import { Notice } from "../components/ui/notice";
 import { TerminalBlock } from "../components/ui/terminal-block";
 
-const packageName = "@aipermission/mcp";
-const initCommand = `npx -y ${packageName} init \\
+const initCommand = `npx -y ${mcpPackageName} init \\
   --provider codex \\
   --name aipermission-default`;
-const skillInstallCommand = `npx -y ${packageName} install-skill --client codex
-npx -y ${packageName} install-skill --client claude-code
-npx -y ${packageName} install-skill --client cursor
-npx -y ${packageName} install-skill --client vscode
-npx -y ${packageName} install-skill --client windsurf
-npx -y ${packageName} install-skill --client antigravity
-npx -y ${packageName} install-skill --client gemini`;
+const skillInstallCommand = `npx -y ${mcpPackageName} install-skill --client codex
+npx -y ${mcpPackageName} install-skill --client claude-code
+npx -y ${mcpPackageName} install-skill --client cursor
+npx -y ${mcpPackageName} install-skill --client vscode
+npx -y ${mcpPackageName} install-skill --client windsurf
+npx -y ${mcpPackageName} install-skill --client antigravity
+npx -y ${mcpPackageName} install-skill --client gemini`;
 
 const manualConfig = JSON.stringify(
   {
     mcpServers: {
       "aipermission-default": {
         command: "npx",
-        args: ["-y", packageName],
+        args: ["-y", mcpPackageSpecifier],
         env: {
           NODE_ENV: "production",
           AIPERMISSION_API_URL: mcpApiUrl,
@@ -59,7 +59,7 @@ export function MCPSetupPage() {
         </div>
         <Badge tone="good" className="gap-1">
           <PlugZap className="h-3.5 w-3.5" />
-          {packageName}
+          {mcpPackageName}
         </Badge>
       </div>
 
@@ -155,7 +155,9 @@ export function MCPSetupPage() {
         <Card>
           <CardHeader>
             <CardTitle>Manual JSON</CardTitle>
-            <CardDescription>Use this for custom MCP clients that accept a JSON config.</CardDescription>
+            <CardDescription>
+              Use this for custom MCP clients that accept a JSON config. Runtime configs pin the current package version.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <CodeBlock value={manualConfig} />
