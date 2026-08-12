@@ -4,7 +4,9 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/form";
-import { apiPost } from "../../../lib/api";
+import { runGuardedConnectorAction } from "../_shared/action-runner";
+import { connectorConsoleTheme } from "../_shared/console-theme";
+import { useRequestGuard } from "../_shared/request-guard";
 import { DockerContainerConsolePanel, dockerConsoleSessionName } from "./container-console-panel";
 import {
   resourceKey,
@@ -46,6 +48,7 @@ export function DockerConnectorConsoleTemplate({
   const [resultSearch, setResultSearch] = useState("");
   const [pendingConsoleName, setPendingConsoleName] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
+  const requestGuard = useRequestGuard(target.ref);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     title: "",
@@ -54,17 +57,15 @@ export function DockerConnectorConsoleTemplate({
     actionName: "",
     pending: false,
   });
-  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
-  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
-  const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass =
-    theme === "light"
-      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
-      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
-  const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass =
-    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const {
+    panel: panelClass,
+    muted: mutedClass,
+    border: borderClass,
+    subtlePanel: subtlePanelClass,
+    input: inputClass,
+    rowHover: rowHoverClass,
+    activeRow: activeRowClass,
+  } = connectorConsoleTheme(theme);
   const activeItems = useMemo(
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
     [approvals?.data, target.ref],
@@ -125,23 +126,29 @@ export function DockerConnectorConsoleTemplate({
     }
   }, [pendingConsoleName, selectedContainerConsoleLive]);
 
-  async function runDockerAction({ actionName, input = {}, reason, busy = "running", showResult = true }) {
-    setState({ state: busy, error: "", message: "" });
-    try {
-      const item = await apiPost("/api/connector-actions/local-run", {
-        target_ref: target.ref,
-        action_name: actionName,
-        input,
-        reason,
-      });
-      setState({ state: "idle", error: "", message: showResult ? item.display_text || "" : "" });
-      if (showResult) setResult(item);
-      await onRefreshActivity?.();
-      return item;
-    } catch (error) {
-      setState({ state: "error", error: error.message || "Docker action failed.", message: "" });
-      throw error;
-    }
+  useEffect(() => {
+    if (!pendingConsoleName) return undefined;
+    const timeout = window.setTimeout(() => setPendingConsoleName(""), 15000);
+    return () => window.clearTimeout(timeout);
+  }, [pendingConsoleName]);
+
+  async function runDockerAction({ actionName, input = {}, reason, busy = "running", showResult = true, channel = actionName }) {
+    return runGuardedConnectorAction({
+      requestGuard,
+      channel,
+      targetRef: target.ref,
+      actionName,
+      input,
+      reason,
+      busy,
+      product: "Docker",
+      setState,
+      onRefreshActivity,
+      successMessage: (item) => (showResult ? item.display_text || "" : ""),
+      onCompleted: (item) => {
+        if (showResult) setResult(item);
+      },
+    });
   }
 
   async function refreshContainers() {
@@ -151,7 +158,9 @@ export function DockerConnectorConsoleTemplate({
       reason: "manual Docker browser container list",
       busy: "loading",
       showResult: false,
+      channel: "list:containers",
     });
+    if (!item) return;
     const next = item.output?.containers || [];
     setContainers(next);
     setSelectedID((current) =>
@@ -172,7 +181,9 @@ export function DockerConnectorConsoleTemplate({
       reason: `manual Docker browser ${kind} list`,
       busy: "loading",
       showResult: false,
+      channel: `list:${kind}`,
     });
+    if (!item) return;
     const next = item.output?.[outputKey] || [];
     setResources((current) => ({ ...current, [kind]: next }));
     setSelectedResourceID((current) => (current && next.some((entry) => resourceKey(kind, entry) === current) ? current : ""));
@@ -186,6 +197,7 @@ export function DockerConnectorConsoleTemplate({
       input: { container: container.name || container.id, tail: Number(tail) || 200 },
       reason: "manual Docker browser logs read",
       busy: "loading",
+      channel: "detail",
     });
   }
 
@@ -266,6 +278,7 @@ export function DockerConnectorConsoleTemplate({
       input: { container: container.name || container.id },
       reason: "manual Docker browser inspect",
       busy: "loading",
+      channel: "detail",
     });
   }
 
@@ -294,12 +307,17 @@ export function DockerConnectorConsoleTemplate({
       input.timeout_seconds = 10;
     }
     try {
-      await runDockerAction({
+      const completed = await runDockerAction({
         actionName: confirmDialog.actionName,
         input,
         reason: "manual Docker browser lifecycle action",
         busy: "writing",
+        channel: "lifecycle",
       });
+      if (!completed) {
+        setConfirmDialog((current) => ({ ...current, pending: false }));
+        return;
+      }
       setConfirmDialog({ open: false, title: "", description: "", details: [], actionName: "", pending: false });
       await refreshContainers();
     } catch {

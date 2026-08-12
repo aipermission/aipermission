@@ -1,11 +1,13 @@
 import { RefreshCcw, RotateCcw, Search, TerminalSquare, TriangleAlert } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { apiPost } from "../../../lib/api";
+import { runGuardedConnectorAction } from "../_shared/action-runner";
+import { connectorConsoleTheme } from "../_shared/console-theme";
+import { useRequestGuard } from "../_shared/request-guard";
 import {
   resourceKey,
   resourceSearchValues,
@@ -39,24 +41,25 @@ export function KubernetesConnectorConsoleTemplate({
   const [filter, setFilter] = useState("");
   const [resources, setResources] = useState({});
   const [selectedKey, setSelectedKey] = useState("");
+  const selectedKeyRef = useRef("");
   const [detail, setDetail] = useState(null);
   const [logs, setLogs] = useState("");
   const [resultSearch, setResultSearch] = useState("");
   const [viewMode, setViewMode] = useState("details");
   const [pendingConsoleName, setPendingConsoleName] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
+  const requestGuard = useRequestGuard(target.ref);
+  selectedKeyRef.current = selectedKey;
   const [confirmRestart, setConfirmRestart] = useState({ open: false, pending: false, workload: null });
-  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
-  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
-  const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass =
-    theme === "light"
-      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
-      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
-  const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass =
-    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const {
+    panel: panelClass,
+    muted: mutedClass,
+    border: borderClass,
+    subtlePanel: subtlePanelClass,
+    input: inputClass,
+    rowHover: rowHoverClass,
+    activeRow: activeRowClass,
+  } = connectorConsoleTheme(theme);
   const activeItems = useMemo(
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
     [approvals?.data, target.ref],
@@ -105,22 +108,25 @@ export function KubernetesConnectorConsoleTemplate({
     }
   }, [pendingConsoleName, selectedPodConsoleLive]);
 
-  async function runKubeAction({ actionName, input = {}, reason, busy = "running" }) {
-    setState({ state: busy, error: "", message: "" });
-    try {
-      const item = await apiPost("/api/connector-actions/local-run", {
-        target_ref: target.ref,
-        action_name: actionName,
-        input,
-        reason,
-      });
-      setState({ state: "idle", error: "", message: item.display_text || "" });
-      await onRefreshActivity?.();
-      return item;
-    } catch (error) {
-      setState({ state: "error", error: error.message || "Kubernetes action failed.", message: "" });
-      throw error;
-    }
+  useEffect(() => {
+    if (!pendingConsoleName) return undefined;
+    const timeout = window.setTimeout(() => setPendingConsoleName(""), 15000);
+    return () => window.clearTimeout(timeout);
+  }, [pendingConsoleName]);
+
+  async function runKubeAction({ actionName, input = {}, reason, busy = "running", channel = actionName }) {
+    return runGuardedConnectorAction({
+      requestGuard,
+      channel,
+      targetRef: target.ref,
+      actionName,
+      input,
+      reason,
+      busy,
+      product: "Kubernetes",
+      setState,
+      onRefreshActivity,
+    });
   }
 
   async function refreshNamespaces() {
@@ -128,16 +134,18 @@ export function KubernetesConnectorConsoleTemplate({
       actionName: "list_namespaces",
       reason: "manual Kubernetes browser namespace list",
       busy: "loading",
+      channel: "namespaces",
     });
+    if (!item) return;
     const next = Array.isArray(item.output?.namespaces) ? item.output.namespaces : [];
     setNamespaces(next);
   }
 
-  async function refreshResource(nextTab = tab) {
+  async function refreshResource(nextTab = tab, nextNamespace = namespace) {
     const config = resourceTabs.find((item) => item.key === nextTab) || resourceTabs[0];
     const input = {};
-    if (!["nodes"].includes(config.key) && namespace) {
-      input.namespace = namespace;
+    if (!["nodes"].includes(config.key) && nextNamespace) {
+      input.namespace = nextNamespace;
     }
     if (config.key === "events") {
       input.limit = 250;
@@ -147,11 +155,14 @@ export function KubernetesConnectorConsoleTemplate({
       input,
       reason: `manual Kubernetes browser ${config.key} list`,
       busy: "loading",
+      channel: `list:${config.key}`,
     });
+    if (!item) return;
     const next = Array.isArray(item.output?.[config.output]) ? item.output[config.output] : [];
     setResources((current) => ({ ...current, [config.key]: next }));
-    setSelectedKey((current) => (current && next.some((entry) => resourceKey(config.key, entry) === current) ? current : ""));
-    if (!next.some((entry) => resourceKey(config.key, entry) === selectedKey)) {
+    const retainedKey = next.some((entry) => resourceKey(config.key, entry) === selectedKeyRef.current) ? selectedKeyRef.current : "";
+    setSelectedKey(retainedKey);
+    if (!retainedKey) {
       setDetail(null);
       setLogs("");
     }
@@ -188,7 +199,8 @@ export function KubernetesConnectorConsoleTemplate({
       return;
     }
     if (tab === "pods") {
-      await describeResource({ resource_type: "pod", namespace: resource.namespace, name: resource.name });
+      const described = await describeResource({ resource_type: "pod", namespace: resource.namespace, name: resource.name });
+      if (!described) return;
       if (nextViewMode === "console") return;
       try {
         await readLogs(resource);
@@ -212,8 +224,11 @@ export function KubernetesConnectorConsoleTemplate({
       input,
       reason: "manual Kubernetes browser resource detail",
       busy: "reading",
+      channel: "detail",
     });
+    if (!item) return null;
     setDetail(item);
+    return item;
   }
 
   async function readLogs(resource = selectedResource) {
@@ -223,7 +238,9 @@ export function KubernetesConnectorConsoleTemplate({
       input: { namespace: resource.namespace, pod: resource.name, tail: 300 },
       reason: "manual Kubernetes browser pod logs",
       busy: "reading",
+      channel: "detail",
     });
+    if (!item) return;
     setLogs(item.output?.logs || item.display_text || "");
     setViewMode("details");
   }
@@ -262,12 +279,17 @@ export function KubernetesConnectorConsoleTemplate({
     if (!workload) return;
     setConfirmRestart((current) => ({ ...current, pending: true }));
     try {
-      await runKubeAction({
+      const completed = await runKubeAction({
         actionName: "rollout_restart",
         input: { namespace: workload.namespace, deployment: workload.name },
         reason: "manual Kubernetes browser rollout restart",
         busy: "writing",
+        channel: "restart",
       });
+      if (!completed) {
+        setConfirmRestart((current) => ({ ...current, pending: false }));
+        return;
+      }
       setConfirmRestart({ open: false, pending: false, workload: null });
       await refreshResource("workloads");
     } catch {
@@ -336,10 +358,12 @@ export function KubernetesConnectorConsoleTemplate({
             <Select
               value={namespace}
               onChange={(event) => {
-                setNamespace(event.target.value);
+                const nextNamespace = event.target.value;
+                setNamespace(nextNamespace);
                 setSelectedKey("");
                 setDetail(null);
                 setLogs("");
+                void refreshResource(tab, nextNamespace);
               }}
             >
               <option value="">All allowed namespaces</option>
@@ -440,7 +464,7 @@ export function KubernetesConnectorConsoleTemplate({
                 selectedRuntimeTarget={selectedRuntimeTarget}
                 session={session}
                 sessionLive={selectedPodConsoleLive}
-                pending={pendingConsoleName === expectedConsoleSessionName || (state.state !== "idle" && !selectedPodConsoleLive)}
+                pending={pendingConsoleName === expectedConsoleSessionName}
                 theme={theme}
                 mutedClass={mutedClass}
                 borderClass={borderClass}
