@@ -74,6 +74,8 @@ export function ConsolePage() {
   const [connectorApprovalNote, setConnectorApprovalNote] = useState("");
   const [connectorApprovalAction, setConnectorApprovalAction] = useState({ state: "idle", error: null });
   const connectorApprovalLoadGeneration = useRef(0);
+  const messageLoadGeneration = useRef(0);
+  const selectedRuntimeIDRef = useRef("");
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [messagesState, setMessagesState] = useState({ state: "idle", data: [], error: null });
   const [messageText, setMessageText] = useState("");
@@ -112,6 +114,7 @@ export function ConsolePage() {
     return targetItems.find((target) => target.ref === defaultTargetRef) || targetItems[0];
   }, [targetItems, selectedTargetRef, defaultTargetRef]);
   const selectedRuntimeID = targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.runtime_id || "") : "";
+  selectedRuntimeIDRef.current = selectedRuntimeID;
   const selectedConnectorTemplate = selectedTarget ? getConnectorTemplate(selectedTarget.connector_kind) : null;
   const selectedTargetUsesLiveConsole = targetUsesLiveConsole(selectedTarget);
   const SelectedConnectorConsoleTemplate = selectedConnectorTemplate?.Console || null;
@@ -344,11 +347,15 @@ export function ConsolePage() {
 
   async function loadServerMessages() {
     if (!selectedRuntimeTarget) return;
+    const requestRuntimeID = String(selectedRuntimeTarget.id);
+    const generation = ++messageLoadGeneration.current;
     setMessagesState((current) => ({ ...current, state: "loading", error: null }));
     try {
       const data = await apiGet(`/api/messages?runtime_id=${selectedRuntimeTarget.id}`);
+      if (generation !== messageLoadGeneration.current || requestRuntimeID !== selectedRuntimeIDRef.current) return;
       setMessagesState({ state: "ready", data, error: null });
     } catch (error) {
+      if (generation !== messageLoadGeneration.current || requestRuntimeID !== selectedRuntimeIDRef.current) return;
       setMessagesState({ state: "error", data: [], error: error.message });
     }
   }

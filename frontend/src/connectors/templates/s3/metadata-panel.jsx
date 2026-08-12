@@ -2,6 +2,7 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/form";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { formatBytes } from "../../../lib/file-transfer-utils";
+import { HighlightedText } from "../_shared/highlighted-text";
 
 export function S3MetadataPanel({
   metadata,
@@ -96,28 +97,4 @@ function S3MetadataSummary({ cards }) {
       </div>
     </div>
   );
-}
-
-function HighlightedText({ text, query }) {
-  const value = String(text || "");
-  const needle = String(query || "");
-  if (!needle.trim()) return value;
-  const lowerValue = value.toLowerCase();
-  const lowerNeedle = needle.toLowerCase();
-  const parts = [];
-  let index = 0;
-  let matchIndex = lowerValue.indexOf(lowerNeedle, index);
-  let key = 0;
-  while (matchIndex !== -1) {
-    if (matchIndex > index) parts.push(value.slice(index, matchIndex));
-    parts.push(
-      <mark key={`m-${key++}`} className="rounded bg-yellow-300 px-0.5 text-stone-950">
-        {value.slice(matchIndex, matchIndex + needle.length)}
-      </mark>,
-    );
-    index = matchIndex + needle.length;
-    matchIndex = lowerValue.indexOf(lowerNeedle, index);
-  }
-  if (index < value.length) parts.push(value.slice(index));
-  return parts;
 }

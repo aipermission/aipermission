@@ -4,6 +4,9 @@ import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Notice } from "../../../components/ui/notice";
 import { apiPost } from "../../../lib/api";
+import { requireCompletedConnectorAction } from "./action-result";
+import { connectorConsoleTheme } from "./console-theme";
+import { useRequestGuard } from "./request-guard";
 import { extractTableSuggestions, normalizeConnectorOutput, pendingMetadataReferences, tableReferenceKey } from "./sql-console-data";
 
 import {
@@ -41,16 +44,16 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
   const metadataSessionRef = useRef("");
   const metadataRowsRef = useRef([]);
   const columnMetadataRequestsRef = useRef(new Set());
-  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
-  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
-  const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass =
-    theme === "light"
-      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
-      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
-  const hoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
+  const {
+    panel: panelClass,
+    muted: mutedClass,
+    border: borderClass,
+    subtlePanel: subtlePanelClass,
+    input: inputClass,
+    rowHover: hoverClass,
+  } = connectorConsoleTheme(theme);
   const activeSession = session || { active: false, startedAt: "" };
+  const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
   const refreshActivityFromEffect = useEffectEvent(() => onRefreshActivity?.());
   const rawItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
   const items = useMemo(() => {
@@ -92,7 +95,7 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
     const sessionKey = `${target.ref}:${activeSession.startedAt || "active"}`;
     if (metadataSessionRef.current === sessionKey) return undefined;
     metadataSessionRef.current = sessionKey;
-    let canceled = false;
+    const request = requestGuard.begin("metadata");
     setMetadata({ state: "loading", tables: [], error: "", truncated: false });
     apiPost("/api/connector-actions/local-run", {
       target_ref: target.ref,
@@ -103,18 +106,24 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
       },
       reason: connector.metadataReason,
     })
-      .then(async (item) => {
-        if (canceled) return;
+      .then(async (response) => {
+        if (!request.isCurrent()) return;
+        const item = requireCompletedConnectorAction(response, "Could not load metadata suggestions.");
+        if (!item) {
+          setMetadata({ state: "pending", tables: [], error: "Metadata request is awaiting approval.", truncated: false });
+          await refreshActivityFromEffect();
+          return;
+        }
         const output = normalizeConnectorOutput(item.output);
         setMetadata({ state: "ready", tables: extractTableSuggestions(output), error: "", truncated: Boolean(output?.truncated) });
         await refreshActivityFromEffect();
       })
       .catch((error) => {
-        if (canceled) return;
+        if (!request.isCurrent()) return;
         setMetadata({ state: "error", tables: [], error: error.message || "Could not load metadata suggestions.", truncated: false });
       });
     return () => {
-      canceled = true;
+      requestGuard.invalidate("metadata");
     };
   }, [
     target.ref,
@@ -124,6 +133,7 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
     connector.metadataSQL,
     connector.metadataMaxRows,
     connector.metadataReason,
+    requestGuard,
   ]);
 
   useEffect(() => {
@@ -136,35 +146,43 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
         const requestKey = tableReferenceKey(reference);
         if (requestKeys.has(requestKey)) continue;
         requestKeys.add(requestKey);
+        const request = requestGuard.begin(`metadata:${requestKey}`);
         apiPost("/api/connector-actions/local-run", {
           target_ref: target.ref,
           action_name: connector.describeAction,
           input: connector.describeInput(reference),
           reason: connector.metadataReason,
         })
-          .then(async (item) => {
-            if (columnMetadataRequestsRef.current !== requestKeys) return;
+          .then(async (response) => {
+            if (columnMetadataRequestsRef.current !== requestKeys || !request.isCurrent()) return;
+            const item = requireCompletedConnectorAction(response, "Could not load column metadata.");
+            if (!item) {
+              requestKeys.delete(requestKey);
+              await refreshActivityFromEffect();
+              return;
+            }
             const nextRows = mergeMetadataRows(metadataRowsRef.current, extractTableSuggestions(item.output));
             metadataRowsRef.current = nextRows;
             setMetadata((current) => ({ ...current, state: "ready", tables: nextRows, error: "" }));
             await refreshActivityFromEffect();
           })
           .catch(() => {
-            requestKeys.delete(requestKey);
+            if (request.isCurrent()) requestKeys.delete(requestKey);
           });
       }
     }, 250);
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activeSession.active, sql, target.ref, connector]);
+  }, [activeSession.active, sql, target.ref, connector, requestGuard]);
 
   async function runQuery(event) {
     event?.preventDefault?.();
     if (!activeSession.active || !sql.trim()) return;
+    const request = requestGuard.begin("query");
     setRunState({ state: "running", error: "" });
     try {
-      const item = await apiPost("/api/connector-actions/local-run", {
+      const response = await apiPost("/api/connector-actions/local-run", {
         target_ref: target.ref,
         action_name: connector.queryAction,
         input: {
@@ -173,13 +191,21 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
         },
         reason: connector.manualReason,
       });
+      if (!request.isCurrent()) return;
+      const item = requireCompletedConnectorAction(response, "Query failed.");
+      if (!item) {
+        setRunState({ state: "idle", error: response.display_text || "Query is awaiting approval." });
+        void onRefreshActivity?.();
+        return;
+      }
       setSelectedID(item.request_id || null);
       setRunState({ state: "idle", error: "" });
       await onRefreshActivity?.();
     } catch (error) {
+      if (!request.isCurrent()) return;
       setRunState({ state: "error", error: error.message || "Query failed." });
     } finally {
-      setEditorFocusTick((current) => current + 1);
+      if (request.isCurrent()) setEditorFocusTick((current) => current + 1);
     }
   }
 

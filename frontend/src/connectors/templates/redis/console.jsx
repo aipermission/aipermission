@@ -7,7 +7,9 @@ import { Dialog } from "../../../components/ui/dialog";
 import { Checkbox, Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
-import { apiPost } from "../../../lib/api";
+import { runGuardedConnectorAction } from "../_shared/action-runner";
+import { connectorConsoleTheme } from "../_shared/console-theme";
+import { useRequestGuard } from "../_shared/request-guard";
 import { serverProductLabel, validateStringWrite } from "./model";
 
 const defaultPattern = "*";
@@ -40,17 +42,16 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const [resultMode, setResultMode] = useState("value");
   const [confirmDialog, setConfirmDialog] = useState(emptyConfirmDialog);
-  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
-  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
-  const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass =
-    theme === "light"
-      ? "border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
-      : "border-stone-700 bg-[#1a1a1a] text-stone-100 placeholder:text-stone-500";
-  const rowHoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeRowClass =
-    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
+  const {
+    panel: panelClass,
+    muted: mutedClass,
+    border: borderClass,
+    subtlePanel: subtlePanelClass,
+    input: inputClass,
+    rowHover: rowHoverClass,
+    activeRow: activeRowClass,
+  } = connectorConsoleTheme(theme);
   const activeItems = useMemo(
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
     [approvals?.data, target.ref],
@@ -77,22 +78,19 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
     void scanKeysForEffect({ reset: true });
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
-  async function runRedisAction({ actionName, input, reason, busy = "running" }) {
-    setState({ state: busy, error: "", message: "" });
-    try {
-      const item = await apiPost("/api/connector-actions/local-run", {
-        target_ref: target.ref,
-        action_name: actionName,
-        input,
-        reason,
-      });
-      setState({ state: "idle", error: "", message: item.display_text || "" });
-      await onRefreshActivity?.();
-      return item;
-    } catch (error) {
-      setState({ state: "idle", error: error.message || `${product} action failed.`, message: "" });
-      throw error;
-    }
+  async function runRedisAction({ actionName, input, reason, busy = "running", channel = actionName }) {
+    return runGuardedConnectorAction({
+      requestGuard,
+      channel,
+      targetRef: target.ref,
+      actionName,
+      input,
+      reason,
+      busy,
+      product,
+      setState,
+      onRefreshActivity,
+    });
   }
 
   async function scanKeys({ reset = false } = {}) {
@@ -105,6 +103,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
       reason: `manual ${product} browser key scan`,
       busy: "scanning",
     });
+    if (!item) return;
     const output = item.output || {};
     const nextKeys = Array.isArray(output.keys) ? output.keys : [];
     setCursor(String(output.next_cursor || "0"));
@@ -112,6 +111,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   }
 
   function startNewKey() {
+    requestGuard.invalidate("get_key");
     setActiveKey("");
     setKeyResult(null);
     setValueDraft("");
@@ -131,6 +131,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
       reason: `manual ${product} browser key read`,
       busy: "reading",
     });
+    if (!item) return;
     const output = item.output || {};
     setKeyResult(output);
     setValueDraft(valueToEditableText(output));
@@ -157,16 +158,18 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
         { label: "TTL", value: ttlSeconds > 0 ? `${ttlSeconds}s` : "persistent" },
       ],
       onConfirm: async () => {
-        await runRedisAction({
+        const written = await runRedisAction({
           actionName: "set_string",
           input: { key, value, ttl_seconds: ttlSeconds },
           reason: `manual ${product} browser string write`,
           busy: "writing",
         });
+        if (!written) return false;
         setNewKey("");
         setNewValue("");
         setKeys((current) => uniqueStrings([...current, key]).sort());
         await loadKey(key);
+        return true;
       },
     });
   }
@@ -185,13 +188,15 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
         { label: "TTL", value: normalizedTTL < 0 ? "persistent" : `${normalizedTTL}s` },
       ],
       onConfirm: async () => {
-        await runRedisAction({
+        const updated = await runRedisAction({
           actionName: "expire_key",
           input: { key: activeKey, ttl_seconds: normalizedTTL },
           reason: `manual ${product} browser TTL update`,
           busy: "writing",
         });
+        if (!updated) return false;
         await loadKey(activeKey);
+        return true;
       },
     });
   }
@@ -209,12 +214,13 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
         .map((key) => ({ label: "Key", value: key }))
         .concat(keysToDelete.length > 8 ? [{ label: "More", value: `${keysToDelete.length - 8} additional key(s)` }] : []),
       onConfirm: async () => {
-        await runRedisAction({
+        const deleted = await runRedisAction({
           actionName: "delete_keys",
           input: { keys: keysToDelete },
           reason: `manual ${product} browser key delete`,
           busy: "deleting",
         });
+        if (!deleted) return false;
         setKeys((current) => current.filter((key) => !keysToDelete.includes(key)));
         setSelectedKeys([]);
         if (keysToDelete.includes(activeKey)) {
@@ -222,6 +228,7 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
           setKeyResult(null);
           setValueDraft("");
         }
+        return true;
       },
     });
   }
@@ -234,7 +241,11 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
     if (!confirmDialog.onConfirm) return;
     setConfirmDialog((current) => ({ ...current, pending: true }));
     try {
-      await confirmDialog.onConfirm();
+      const completed = await confirmDialog.onConfirm();
+      if (completed === false) {
+        setConfirmDialog((current) => ({ ...current, pending: false }));
+        return;
+      }
       setConfirmDialog(emptyConfirmDialog);
     } catch (error) {
       setConfirmDialog((current) => ({ ...current, pending: false, error: error.message || `${product} action failed.` }));

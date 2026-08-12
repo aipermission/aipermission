@@ -13,3 +13,13 @@ export function connectorActionPending(item) {
 export function connectorActionCode(item) {
   return String(item?.output?.code || "");
 }
+
+export function requireCompletedConnectorAction(item, fallback = "Connector action failed.") {
+  const error = connectorActionError(item, fallback);
+  if (error) {
+    const failure = new Error(error);
+    failure.actionItem = item;
+    throw failure;
+  }
+  return connectorActionPending(item) ? null : item;
+}

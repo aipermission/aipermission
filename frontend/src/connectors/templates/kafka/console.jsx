@@ -1,20 +1,15 @@
 import { Activity, Database, Eye, Gauge, RefreshCcw, Search, Send, Users } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
-import { apiPost } from "../../../lib/api";
-import { connectorActionError, connectorActionPending } from "../_shared/action-result";
-import {
-  actionableOffsetPartitions,
-  detailMatchesSelection,
-  offsetSelectionValue,
-  parseOffsetSelection,
-  requestIsCurrent,
-} from "./console-helpers";
+import { runGuardedConnectorAction } from "../_shared/action-runner";
+import { connectorConsoleTheme } from "../_shared/console-theme";
+import { useRequestGuard } from "../_shared/request-guard";
+import { actionableOffsetPartitions, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection } from "./console-helpers";
 import { KafkaOffsetDialog, KafkaPublishDialog } from "./write-dialogs";
 
 const defaultRead = Object.freeze({ partition: "0", start_position: "recent", offset: "0", max_records: "20" });
@@ -36,16 +31,16 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   const [publishDialog, setPublishDialog] = useState({ open: false, form: defaultPublish, error: "" });
   const [offsetDialog, setOffsetDialog] = useState({ open: false, form: defaultOffset, error: "" });
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const requestVersions = useRef(new Map());
-  const currentTargetRef = useRef(target.ref);
-  const panelClass = theme === "light" ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100";
-  const mutedClass = theme === "light" ? "text-stone-500" : "text-stone-400";
-  const borderClass = theme === "light" ? "border-stone-200" : "border-stone-700";
-  const subtlePanelClass = theme === "light" ? "bg-stone-50" : "bg-[#252526]";
-  const inputClass = theme === "light" ? "border-stone-300 bg-white text-stone-900" : "border-stone-700 bg-[#1a1a1a] text-stone-100";
-  const hoverClass = theme === "light" ? "hover:bg-stone-50" : "hover:bg-stone-800/60";
-  const activeClass =
-    theme === "light" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-emerald-700 bg-emerald-950/40 text-emerald-100";
+  const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
+  const {
+    panel: panelClass,
+    muted: mutedClass,
+    border: borderClass,
+    subtlePanel: subtlePanelClass,
+    input: inputClass,
+    rowHover: hoverClass,
+    activeRow: activeClass,
+  } = connectorConsoleTheme(theme);
   const latestAction = useMemo(
     () => (approvals?.data || []).find((item) => item.target_ref === target.ref) || null,
     [approvals?.data, target.ref],
@@ -65,8 +60,6 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   const refreshListForEffect = useEffectEvent((nextView) => refreshList(nextView));
 
   useEffect(() => {
-    currentTargetRef.current = target.ref;
-    requestVersions.current.clear();
     setView("topics");
     setQuery("");
     setTopics([]);
@@ -87,39 +80,21 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
   async function runAction(actionName, input, reason, busy = "loading", channel = actionName) {
-    const version = (requestVersions.current.get(channel) || 0) + 1;
-    const requestTargetRef = target.ref;
-    requestVersions.current.set(channel, version);
-    setState({ state: busy, error: "", message: "" });
     try {
-      const item = await apiPost("/api/connector-actions/local-run", {
-        target_ref: target.ref,
-        action_name: actionName,
+      const item = await runGuardedConnectorAction({
+        requestGuard,
+        channel,
+        targetRef: target.ref,
+        actionName,
         input,
         reason,
+        busy,
+        product,
+        setState,
+        onRefreshActivity,
       });
-      if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
-      const actionError = connectorActionError(item, `${product} action failed.`);
-      if (actionError) throw new Error(actionError);
-      const message = item.display_text || "";
-      const pending = connectorActionPending(item);
-      try {
-        await onRefreshActivity?.();
-      } catch (refreshError) {
-        if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
-        setState({
-          state: "idle",
-          error: `Action ${pending ? "is pending" : "completed"}, but activity refresh failed: ${refreshError.message || "unknown error"}`,
-          message,
-        });
-        return pending ? null : item.output || {};
-      }
-      if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
-      setState({ state: "idle", error: "", message: message || (pending ? `${product} action is awaiting approval.` : "") });
-      return pending ? null : item.output || {};
-    } catch (error) {
-      if (!requestIsCurrent(requestVersions.current, channel, version, requestTargetRef, currentTargetRef.current)) return null;
-      setState({ state: "idle", error: error.message || `${product} action failed.`, message: "" });
+      return item?.output || null;
+    } catch {
       return null;
     }
   }
