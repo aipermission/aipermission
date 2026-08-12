@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 const (
@@ -148,7 +148,7 @@ func writeRetentionSettings(ctx context.Context, runtime *databaseRuntime, setti
 	return writeRetentionSettingsWithExecutor(ctx, runtime.database, settings)
 }
 
-func writeRetentionSettingsWithExecutor(ctx context.Context, executor auditoutbox.DBTX, settings retentionSettingsResponse) error {
+func writeRetentionSettingsWithExecutor(ctx context.Context, executor sqldb.Executor, settings retentionSettingsResponse) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	for key, value := range map[string]int{
 		historyRetentionDaysKey: settings.HistoryDays,
@@ -195,7 +195,7 @@ func applyRetentionSettings(ctx context.Context, runtime *databaseRuntime, setti
 	return deleted, nil
 }
 
-func applyRetentionSettingsWithExecutor(ctx context.Context, executor auditoutbox.DBTX, settings retentionSettingsResponse) (map[string]int64, error) {
+func applyRetentionSettingsWithExecutor(ctx context.Context, executor sqldb.Executor, settings retentionSettingsResponse) (map[string]int64, error) {
 	deleted := map[string]int64{}
 	for target, days := range map[string]int{
 		"history":  settings.HistoryDays,
@@ -231,7 +231,7 @@ func purgeRetentionTarget(ctx context.Context, runtime *databaseRuntime, target 
 	return deleted, nil
 }
 
-func purgeRetentionTargetWithExecutor(ctx context.Context, executor auditoutbox.DBTX, target string, days int) (int64, error) {
+func purgeRetentionTargetWithExecutor(ctx context.Context, executor sqldb.Executor, target string, days int) (int64, error) {
 	switch target {
 	case "history":
 		return purgeHistoryRetentionWithExecutor(ctx, executor, days)
@@ -262,7 +262,7 @@ func purgeHistoryRetention(ctx context.Context, runtime *databaseRuntime, days i
 	return purgeRetentionTarget(ctx, runtime, "history", days)
 }
 
-func purgeHistoryRetentionWithExecutor(ctx context.Context, executor auditoutbox.DBTX, days int) (int64, error) {
+func purgeHistoryRetentionWithExecutor(ctx context.Context, executor sqldb.Executor, days int) (int64, error) {
 	cutoff := "-" + strconv.Itoa(days) + " days"
 	total := int64(0)
 	for _, statement := range []string{

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 const (
@@ -216,7 +216,7 @@ func insertRedactionRule(ctx context.Context, runtime *databaseRuntime, request 
 	return insertRedactionRuleWithExecutor(ctx, runtime.database, request)
 }
 
-func insertRedactionRuleWithExecutor(ctx context.Context, executor auditoutbox.DBTX, request redactionRuleRequest) (redactionRule, error) {
+func insertRedactionRuleWithExecutor(ctx context.Context, executor sqldb.Executor, request redactionRuleRequest) (redactionRule, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := executor.ExecContext(ctx, `
 		INSERT INTO redaction_rules (name, pattern, enabled, created_at, updated_at)
@@ -241,7 +241,7 @@ func updateRedactionRuleRecord(ctx context.Context, runtime *databaseRuntime, id
 	return updateRedactionRuleRecordWithExecutor(ctx, runtime.database, id, request)
 }
 
-func updateRedactionRuleRecordWithExecutor(ctx context.Context, executor auditoutbox.DBTX, id int64, request redactionRuleRequest) (redactionRule, error) {
+func updateRedactionRuleRecordWithExecutor(ctx context.Context, executor sqldb.Executor, id int64, request redactionRuleRequest) (redactionRule, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := executor.ExecContext(ctx, `
 		UPDATE redaction_rules
@@ -270,7 +270,7 @@ func deleteRedactionRuleRecord(ctx context.Context, runtime *databaseRuntime, id
 	return deleteRedactionRuleRecordWithExecutor(ctx, runtime.database, id)
 }
 
-func deleteRedactionRuleRecordWithExecutor(ctx context.Context, executor auditoutbox.DBTX, id int64) (bool, error) {
+func deleteRedactionRuleRecordWithExecutor(ctx context.Context, executor sqldb.Executor, id int64) (bool, error) {
 	result, err := executor.ExecContext(ctx, `DELETE FROM redaction_rules WHERE id = ?`, id)
 	if err != nil {
 		return false, err
@@ -283,7 +283,7 @@ func getRedactionRule(ctx context.Context, runtime *databaseRuntime, id int64) (
 	return getRedactionRuleWithExecutor(ctx, runtime.database, id)
 }
 
-func getRedactionRuleWithExecutor(ctx context.Context, executor auditoutbox.DBTX, id int64) (redactionRule, error) {
+func getRedactionRuleWithExecutor(ctx context.Context, executor sqldb.Executor, id int64) (redactionRule, error) {
 	row := executor.QueryRowContext(ctx, `
 		SELECT id, name, pattern, enabled, created_at, updated_at
 		FROM redaction_rules
