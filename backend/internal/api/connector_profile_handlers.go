@@ -327,6 +327,11 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		})
 		return
 	}
+	redactedDetails, err := s.redactedConnectorValue(r.Context(), runtime, result.Details, connectorSensitiveOutputFields(), nil)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	writeJSON(w, http.StatusOK, connectorTargetTestResponse{
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
@@ -334,7 +339,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		OK:            result.Status == connectors.TestOK,
 		Status:        string(result.Status),
 		Message:       s.redactForPersistence(r.Context(), runtime, result.Message),
-		Details:       redactedMapValue(s.redactedConnectorValue(r.Context(), runtime, result.Details, connectorSensitiveOutputFields(), nil)),
+		Details:       redactedMapValue(redactedDetails),
 		DurationMS:    time.Since(start).Milliseconds(),
 	})
 }
