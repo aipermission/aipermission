@@ -3,22 +3,15 @@ package connectortargets
 import (
 	"context"
 	"database/sql"
-	"fmt"
+
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 type Store struct {
-	db storeDB
+	db sqldb.Executor
 }
 
-type storeDB interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
-
-type transactionStarter interface {
-	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
-}
+type storeDB = sqldb.Executor
 
 type ValidationError string
 
@@ -34,14 +27,6 @@ func NewTxStore(tx *sql.Tx) *Store {
 	return &Store{db: tx}
 }
 
-func (s *Store) transaction(ctx context.Context, label string) (storeDB, func() error, func(), error) {
-	starter, ok := s.db.(transactionStarter)
-	if !ok {
-		return s.db, func() error { return nil }, func() {}, nil
-	}
-	tx, err := starter.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("begin %s: %w", label, err)
-	}
-	return tx, tx.Commit, func() { _ = tx.Rollback() }, nil
+func (s *Store) transaction(ctx context.Context, label string) (sqldb.Executor, func() error, func(), error) {
+	return sqldb.Transaction(ctx, s.db, nil, label)
 }

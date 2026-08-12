@@ -10,18 +10,14 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 const (
 	EventVersion    = 1
 	MaxPayloadBytes = 64 * 1024
 )
-
-type DBTX interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
 
 type Event struct {
 	EventID         string
@@ -61,7 +57,7 @@ func NewEventID() (string, error) {
 	return hex.EncodeToString(value[:]), nil
 }
 
-func (Store) Append(ctx context.Context, executor DBTX, event Event) (Event, error) {
+func (Store) Append(ctx context.Context, executor sqldb.Executor, event Event) (Event, error) {
 	if executor == nil {
 		return Event{}, errors.New("audit outbox executor is unavailable")
 	}

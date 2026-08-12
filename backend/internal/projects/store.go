@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 const UngroupedSlug = "ungrouped"
@@ -26,11 +28,7 @@ type Store struct {
 	begin func(context.Context, *sql.TxOptions) (*sql.Tx, error)
 }
 
-type storeDB interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
+type storeDB = sqldb.Executor
 
 type Project struct {
 	ID          int64  `json:"id"`

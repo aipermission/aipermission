@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -36,17 +37,12 @@ var validSecretTypes = map[string]bool{
 }
 
 type Store struct {
-	db            storeDB
-	begin         func(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	db            sqldb.Executor
 	vault         *vault.Vault
 	workspaceUUID string
 }
 
-type storeDB interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
+type storeDB = sqldb.Executor
 
 type Item struct {
 	ID                  int64          `json:"id"`
@@ -147,22 +143,15 @@ func NewStore(db *sql.DB, secretVault *vault.Vault, workspaceUUID string) (*Stor
 	if workspaceUUID == "" {
 		return nil, fmt.Errorf("workspace UUID is required")
 	}
-	return &Store{db: db, begin: db.BeginTx, vault: secretVault, workspaceUUID: workspaceUUID}, nil
+	return &Store{db: db, vault: secretVault, workspaceUUID: workspaceUUID}, nil
 }
 
 func (s *Store) WithTx(tx *sql.Tx) *Store {
 	return &Store{db: tx, vault: s.vault, workspaceUUID: s.workspaceUUID}
 }
 
-func (s *Store) transaction(ctx context.Context, options *sql.TxOptions) (storeDB, func() error, func(), error) {
-	if s.begin == nil {
-		return s.db, func() error { return nil }, func() {}, nil
-	}
-	tx, err := s.begin(ctx, options)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return tx, tx.Commit, func() { _ = tx.Rollback() }, nil
+func (s *Store) transaction(ctx context.Context, options *sql.TxOptions) (sqldb.Executor, func() error, func(), error) {
+	return sqldb.Transaction(ctx, s.db, options, "")
 }
 
 func EnsureWorkspaceUUID(ctx context.Context, db *sql.DB) (string, error) {
