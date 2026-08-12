@@ -79,14 +79,27 @@ func assertConnection(t *testing.T, connector connectors.Connector, runtime conn
 	if !ok {
 		t.Fatalf("connector %q does not implement TestableConnector", connector.Kind())
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-	defer cancel()
-	result, err := testable.TestConnection(ctx, runtime)
-	if err != nil {
-		t.Fatalf("test %s connection: %v", connector.Kind(), err)
-	}
-	if result.Status != connectors.TestOK {
-		t.Fatalf("%s connection status = %q: %s (%#v)", connector.Kind(), result.Status, result.Message, result.Details)
+	deadline := time.Now().Add(20 * time.Second)
+	var result connectors.TestResult
+	var err error
+	for {
+		attemptContext, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		result, err = testable.TestConnection(attemptContext, runtime)
+		cancel()
+		if err == nil && result.Status == connectors.TestOK {
+			return
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				t.Fatalf("test %s connection: %v", connector.Kind(), err)
+			}
+			t.Fatalf("%s connection status = %q: %s (%#v)", connector.Kind(), result.Status, result.Message, result.Details)
+		}
+		select {
+		case <-t.Context().Done():
+			t.Fatalf("test %s connection: %v", connector.Kind(), t.Context().Err())
+		case <-time.After(250 * time.Millisecond):
+		}
 	}
 }
 

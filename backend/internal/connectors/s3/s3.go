@@ -969,7 +969,10 @@ func newS3ClientWithTimeout(ctx context.Context, runtime connectors.RuntimeConte
 	if err != nil || strings.TrimSpace(secretKey) == "" {
 		return nil, fmt.Errorf("%w: secret_access_key is required", ErrMissingSecret)
 	}
-	sessionToken, _ := runtime.Secrets.GetSecret(ctx, "session_token")
+	sessionToken, err := runtime.Secrets.GetSecret(ctx, "session_token")
+	if err != nil && !errors.Is(err, connectors.ErrSecretNotFound) {
+		return nil, fmt.Errorf("read session_token: %w", err)
+	}
 	client := &s3Client{
 		scheme:       s3Scheme(runtime.Target),
 		host:         s3Host(runtime.Target),

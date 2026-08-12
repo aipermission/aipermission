@@ -28,7 +28,7 @@ func TestS3RealService(t *testing.T) {
 			ID: 4, TargetID: 4, ConnectorKind: s3connector.Kind, Kind: "access_key", Label: "conformance",
 			Public: map[string]any{"access_key_id": "conformance-access"},
 		},
-		Secrets:      fixtureSecrets{"secret_access_key": "conformance-secret-key"},
+		Secrets:      fixtureSecrets{"secret_access_key": "conformance-secret-key", "session_token": ""},
 		Capabilities: fixtureCapabilities{},
 	}
 
