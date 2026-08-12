@@ -11,6 +11,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
@@ -21,7 +22,7 @@ type vaultActionRunResult struct {
 
 func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
 	redact := s.prepareAuditRedactor(ctx, runtime)
-	return vaultrequests.NewStore(runtime.database).WithMutationHook(func(ctx context.Context, executor vaultrequests.Executor, item vaultrequests.Request) error {
+	return vaultrequests.NewStore(runtime.database).WithMutationHook(func(ctx context.Context, executor sqldb.Executor, item vaultrequests.Request) error {
 		event, err := s.buildAuditEventWithRedactor(
 			ctx, executor, "gateway", int64Ptr(item.TokenID), valueOrZero(item.RuntimeID),
 			"vault.action_request."+item.Status, vaultActionAuditPayload(item, item.UserNote), redact,

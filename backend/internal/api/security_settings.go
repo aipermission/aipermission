@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -145,7 +145,7 @@ func writeSecuritySettings(ctx context.Context, runtime *databaseRuntime, settin
 	return nil
 }
 
-func writeSecuritySettingsWithExecutor(ctx context.Context, executor auditoutbox.DBTX, settings securitySettingsResponse) error {
+func writeSecuritySettingsWithExecutor(ctx context.Context, executor sqldb.Executor, settings securitySettingsResponse) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	reusableValue := "false"
 	if settings.ReusableTokens {

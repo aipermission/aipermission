@@ -13,6 +13,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 type auditLogRecord struct {
@@ -279,7 +280,7 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 func (s *Server) buildAuditEvent(
 	ctx context.Context,
 	runtime *databaseRuntime,
-	executor auditoutbox.DBTX,
+	executor sqldb.Executor,
 	actorType string,
 	tokenID *int64,
 	runtimeID int64,
@@ -292,7 +293,7 @@ func (s *Server) buildAuditEvent(
 
 func (s *Server) buildAuditEventWithRedactor(
 	ctx context.Context,
-	executor auditoutbox.DBTX,
+	executor sqldb.Executor,
 	actorType string,
 	tokenID *int64,
 	runtimeID int64,
@@ -453,7 +454,7 @@ func auditConnectorMetadata(payload any) (string, int64, int64, int64, int64) {
 	return connectorKind, projectID, targetID, profileID, actionRequestID
 }
 
-func resolveAuditProjectID(ctx context.Context, executor auditoutbox.DBTX, projectID int64, targetID int64, runtimeID int64) int64 {
+func resolveAuditProjectID(ctx context.Context, executor sqldb.Executor, projectID int64, targetID int64, runtimeID int64) int64 {
 	if projectID > 0 || executor == nil {
 		return projectID
 	}

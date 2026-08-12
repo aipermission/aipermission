@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 const defaultHistoryLabelColor = "#0f766e"
@@ -258,7 +258,7 @@ func (s *Server) getHistoryLabel(ctx context.Context, runtime *databaseRuntime, 
 	return getHistoryLabelWithExecutor(ctx, runtime.database, id)
 }
 
-func getHistoryLabelWithExecutor(ctx context.Context, executor auditoutbox.DBTX, id int64) (historyLabelRecord, error) {
+func getHistoryLabelWithExecutor(ctx context.Context, executor sqldb.Executor, id int64) (historyLabelRecord, error) {
 	var label historyLabelRecord
 	err := executor.QueryRowContext(ctx, `
 		SELECT id, name, color, created_at, updated_at
@@ -273,7 +273,7 @@ func (s *Server) createOrGetHistoryLabel(ctx context.Context, runtime *databaseR
 	return createOrGetHistoryLabelWithExecutor(ctx, runtime.database, name, color)
 }
 
-func createOrGetHistoryLabelWithExecutor(ctx context.Context, executor auditoutbox.DBTX, name string, color string) (historyLabelRecord, bool, error) {
+func createOrGetHistoryLabelWithExecutor(ctx context.Context, executor sqldb.Executor, name string, color string) (historyLabelRecord, bool, error) {
 	name, err := normalizeHistoryLabelName(name)
 	if err != nil {
 		return historyLabelRecord{}, false, err
