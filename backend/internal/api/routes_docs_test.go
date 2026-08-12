@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -30,6 +31,29 @@ func TestRESTDocsMentionRegisteredRoutes(t *testing.T) {
 		if !strings.Contains(docText, route.Path) {
 			t.Fatalf("REST docs do not mention registered route %s %s", route.Method, route.Path)
 		}
+	}
+}
+
+func TestTypedRESTListResponsesConformToPublishedSchemas(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	tests := []struct {
+		path         string
+		contractPath string
+	}{
+		{path: "/api/targets", contractPath: "/api/targets"},
+		{path: "/api/connector-targets", contractPath: "/api/connector-targets"},
+		{path: "/api/connector-action-approvals", contractPath: "/api/connector-action-approvals"},
+		{path: "/api/history", contractPath: "/api/history"},
+		{path: "/api/audit-logs", contractPath: "/api/audit-logs"},
+		{path: "/api/settings/diagnostics", contractPath: "/api/settings/diagnostics"},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			response := performJSON(fixture.server.Handler(), http.MethodGet, test.path, "", nil)
+			if err := restcontract.ValidateTypedResponse(http.MethodGet, test.contractPath, response.Code, response.Body.Bytes()); err != nil {
+				t.Fatalf("response does not conform: %v\n%s", err, response.Body.String())
+			}
+		})
 	}
 }
 

@@ -27,8 +27,13 @@ This runs:
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
 - pinned Gitleaks scanning across current files and complete Git history, with
   exact synthetic-fixture fingerprints allowlisted in `.gitleaksignore`
-- a scheduled informational issue for direct Go and npm major upgrades; it does
-  not create or merge bot-authored dependency commits
+- a fast tracked-file pattern scan; test sources with synthetic secret-shaped
+  fixtures are intentionally skipped there and remain covered by the
+  full-history Gitleaks scan
+- a scheduled informational issue for direct npm majors and Go majors reported
+  on an existing module path; path-changing Go majors such as `/v2` remain a
+  manual maintainer review, and the workflow never creates or merges
+  bot-authored dependency commits
 - release-version and native-dependency inventory consistency checks
 - generated OpenAPI route and typed-schema drift
 - backend unit tests with an aggregate summary and reviewed floors for auth,
@@ -43,6 +48,15 @@ This runs:
 - frontend production npm audit
 - MCP package tests
 - MCP package build
+
+The reviewed backend coverage floors are enforced by
+`backend/cmd/coveragecheck` after the full package test run. That command is the
+single source of truth for the numeric thresholds; it currently protects the
+API, audit outbox, connector target, project capability, REST contract,
+session environment, token, Vault, Vault request, SQL safety, and selected
+built-in connector packages. A new security-sensitive package should be added
+there once its baseline coverage is established.
+
 - MCP production npm audit
 - MCP package dry pack
 - unscoped placeholder package dry pack

@@ -139,6 +139,30 @@ func TestSharedSchemaRequiredFieldsExist(t *testing.T) {
 	}
 }
 
+func TestValidateTypedResponseRejectsShapeAndStatusDrift(t *testing.T) {
+	valid := []byte(`{"items":[]}`)
+	if err := ValidateTypedResponse("GET", "/api/targets", 200, valid); err != nil {
+		t.Fatalf("valid target response: %v", err)
+	}
+	if err := ValidateTypedResponse("GET", "/api/targets", 200, []byte(`[]`)); err == nil {
+		t.Fatal("bare target array should violate the response envelope")
+	}
+	if err := ValidateTypedResponse("GET", "/api/targets", 201, valid); err == nil {
+		t.Fatal("wrong response status should violate the contract")
+	}
+}
+
+func TestValidateTypedResponseRejectsUndocumentedAndInvalidFields(t *testing.T) {
+	invalidStatus := []byte(`{"items":[{"id":1,"source_ref_type":"test","source_ref_id":1,"connector_kind":"ssh","activity_type":"command","target_name":"test","source":"mcp","status":"invented","action_name":"exec","title":"test","summary":"test","progress_current":0,"progress_total":0,"bytes_done":0,"bytes_total":0,"approval_required":false,"created_at":"2026-08-12T10:00:00Z","updated_at":"2026-08-12T10:00:00Z","labels":[]}],"total":1,"limit":50,"offset":0}`)
+	if err := ValidateTypedResponse("GET", "/api/history", 200, invalidStatus); err == nil || !strings.Contains(err.Error(), "outside enum") {
+		t.Fatalf("invalid history status error = %v", err)
+	}
+	extraField := []byte(`{"items":[],"total":0,"limit":50,"offset":0,"surprise":true}`)
+	if err := ValidateTypedResponse("GET", "/api/history", 200, extraField); err == nil || !strings.Contains(err.Error(), "undocumented property") {
+		t.Fatalf("undocumented field error = %v", err)
+	}
+}
+
 func walkSchemaRefs(t *testing.T, route Route, value any, schemas map[string]any) {
 	t.Helper()
 	switch typed := value.(type) {
