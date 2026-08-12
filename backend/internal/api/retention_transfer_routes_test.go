@@ -211,8 +211,15 @@ func TestAuditRetentionPurgesTerminalOutboxRowsOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if deleted != 2 {
-		t.Fatalf("deleted=%d, want 2 terminal outbox rows", deleted)
+	if deleted != 0 {
+		t.Fatalf("visible audit log deletions=%d, want 0", deleted)
+	}
+	var terminal int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE event_id IN ('delivered-old', 'dead-letter-old')`).Scan(&terminal); err != nil {
+		t.Fatal(err)
+	}
+	if terminal != 0 {
+		t.Fatalf("terminal outbox rows retained=%d", terminal)
 	}
 	var pending int
 	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE event_id = 'pending-old'`).Scan(&pending); err != nil {

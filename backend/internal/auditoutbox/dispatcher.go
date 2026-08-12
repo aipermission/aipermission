@@ -172,12 +172,22 @@ func (dispatcher *Dispatcher) dispatchEvent(ctx context.Context, event queuedEve
 		_ = tx.Rollback()
 		return dispatcher.failDelivery(ctx, event, fmt.Errorf("project audit event %s: %w", event.EventID, err))
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE audit_outbox
-		SET delivered_at = ?, last_error = '', last_attempt_at = ?, next_attempt_at = NULL
-		WHERE id = ? AND delivered_at IS NULL AND dead_lettered_at IS NULL`, now, now, event.ID); err != nil {
+	result, err := tx.ExecContext(ctx, `
+			UPDATE audit_outbox
+			SET delivered_at = ?, last_error = '', last_attempt_at = ?, next_attempt_at = NULL
+			WHERE id = ? AND delivered_at IS NULL AND dead_lettered_at IS NULL`, now, now, event.ID)
+	if err != nil {
 		_ = tx.Rollback()
 		return dispatcher.failDelivery(ctx, event, fmt.Errorf("mark audit event %s delivered: %w", event.EventID, err))
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("read audit event %s delivery result: %w", event.EventID, err)
+	}
+	if affected != 1 {
+		_ = tx.Rollback()
+		return fmt.Errorf("audit event %s was no longer pending during delivery", event.EventID)
 	}
 	if err := tx.Commit(); err != nil {
 		_ = tx.Rollback()
