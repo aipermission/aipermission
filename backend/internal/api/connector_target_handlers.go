@@ -662,14 +662,11 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.invalidateVaultSessionsForTargetProfile(
+	if err := s.afterConnectorCredentialLifecycleChange(
 		r.Context(), runtime, target.ID, 0,
 		"connector target changed; send a fresh Vault request",
+		"connector target was updated; ask the AI to send a fresh request", false,
 	); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if _, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, 0, "connector target was updated; ask the AI to send a fresh request", false); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -787,14 +784,11 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.invalidateVaultSessionsForTargetProfile(
+	if err := s.afterConnectorCredentialLifecycleChange(
 		r.Context(), runtime, target.ID, 0,
 		"connector target or credential profile changed; send a fresh Vault request",
+		"connector target or credential profile was updated; ask the AI to send a fresh request", false,
 	); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if _, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, 0, "connector target or credential profile was updated; ask the AI to send a fresh request", false); err != nil {
 		writeInternalError(w)
 		return
 	}

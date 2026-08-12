@@ -89,36 +89,21 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
-	if err != nil {
+	var permissions []connectortargets.ActionPermission
+	changed, err := s.mutateTokenWithVaultInvalidation(r.Context(), runtime, tokenID, "token.connector_permissions.updated", func() any {
+		return map[string]any{"token_id": tokenID, "permissions": connectorPermissionResponses(permissions)}
+	}, "connector action permission changed; send a fresh request", func(tx *sql.Tx) (bool, error) {
+		nextPermissions, mutationChanged, replaceErr := connectortargets.NewTxStore(tx).ReplaceActionPermissionsWithChange(r.Context(), tokenID, inputs)
+		permissions = nextPermissions
+		return mutationChanged, replaceErr
+	})
+	if errors.Is(err, errVaultDeliveryCanceled) {
 		writeError(w, http.StatusRequestTimeout, "connector permission update was canceled")
 		return
-	}
-	defer release()
-	var permissions []connectortargets.ActionPermission
-	changed := false
-	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "token.connector_permissions.updated", func() any {
-		return map[string]any{"token_id": tokenID, "permissions": connectorPermissionResponses(permissions)}
-	}, func(tx *sql.Tx) error {
-		var replaceErr error
-		permissions, changed, replaceErr = connectortargets.NewTxStore(tx).ReplaceActionPermissionsWithChange(r.Context(), tokenID, inputs)
-		if replaceErr == nil && !changed {
-			return errAuditedMutationUnchanged
-		}
-		return replaceErr
-	})
-	if errors.Is(err, errAuditedMutationUnchanged) {
-		err = nil
 	}
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
-	}
-	if changed {
-		if err := s.invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "connector action permission changed; send a fresh request"); err != nil {
-			writeInternalError(w)
-			return
-		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": connectorPermissionResponses(permissions), "changed": changed,

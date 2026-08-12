@@ -62,14 +62,6 @@ func (s vaultItemHandlers) saveVaultDefaultBinding(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if err := s.writeRequiredVaultAudit(r, runtime, "vault.binding.update.requested", map[string]any{
-		"vault_item_id": request.VaultItemID, "source_project_id": request.SourceProjectID,
-		"target_id": request.TargetID, "profile_id": request.ProfileID,
-		"expected_binding_revision": request.ExpectedBindingRevision,
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault binding update was canceled")

@@ -332,18 +332,19 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	if itemCount != 1 {
 		t.Fatalf("generated Vault item count = %d", itemCount)
 	}
-	var startAudits, completeAudits int
+	var startAudits, completeAudits, itemCreatedAudits int
 	if err := fixture.db.QueryRow(`
 		SELECT
 			SUM(CASE WHEN action = 'mcp.vault_action.request.created' THEN 1 ELSE 0 END),
-			SUM(CASE WHEN action = 'mcp.vault_action.completed' THEN 1 ELSE 0 END)
+			SUM(CASE WHEN action = 'mcp.vault_action.completed' THEN 1 ELSE 0 END),
+			SUM(CASE WHEN action = 'vault.item.created' THEN 1 ELSE 0 END)
 		FROM audit_logs
 		WHERE token_id = ?`, token.ID,
-	).Scan(&startAudits, &completeAudits); err != nil {
+	).Scan(&startAudits, &completeAudits, &itemCreatedAudits); err != nil {
 		t.Fatal(err)
 	}
-	if startAudits != 1 || completeAudits != 1 {
-		t.Fatalf("always Vault audit counts = start:%d completed:%d", startAudits, completeAudits)
+	if startAudits != 1 || completeAudits != 1 || itemCreatedAudits != 1 {
+		t.Fatalf("always Vault audit counts = start:%d completed:%d item_created:%d", startAudits, completeAudits, itemCreatedAudits)
 	}
 }
 

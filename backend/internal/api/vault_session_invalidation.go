@@ -10,6 +10,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
+const vaultSessionInvalidationTimeout = 15 * time.Second
+
 func (s *Server) invalidateVaultMutationAfterCommit(
 	ctx context.Context,
 	runtime *databaseRuntime,
@@ -63,10 +65,13 @@ func (s *Server) invalidateVaultTokenSessions(ctx context.Context, runtime *data
 		}
 		sessionIDs = append(sessionIDs, sessionID)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	runtime.vaultLeases.RevokeToken(tokenID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var invalidationErrors []error
 	if _, err := runtime.database.ExecContext(ctx, `
@@ -80,17 +85,27 @@ func (s *Server) invalidateVaultTokenSessions(ctx context.Context, runtime *data
 	if err := s.vaultRequestStore(ctx, runtime).StalePendingForToken(ctx, tokenID, reason); err != nil {
 		invalidationErrors = append(invalidationErrors, err)
 	}
-	principal, err := localExecutionPrincipal(runtime)
-	if err != nil {
+	if err := finishVaultTokenSessionInvalidation(ctx, runtime, tokenID, sessionIDs); err != nil {
 		invalidationErrors = append(invalidationErrors, err)
-		return errors.Join(invalidationErrors...)
-	}
-	for _, sessionID := range sessionIDs {
-		if err := runtime.consoleSessions.Close(ctx, principal, sessionID); err != nil {
-			invalidationErrors = append(invalidationErrors, fmt.Errorf("close token Vault session %d: %w", sessionID, err))
-		}
 	}
 	return errors.Join(invalidationErrors...)
+}
+
+func finishVaultTokenSessionInvalidation(ctx context.Context, runtime *databaseRuntime, tokenID int64, sessionIDs []int64) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), vaultSessionInvalidationTimeout)
+	defer cancel()
+	runtime.vaultLeases.RevokeToken(tokenID)
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		return err
+	}
+	var closeErrors []error
+	for _, sessionID := range sessionIDs {
+		if err := runtime.consoleSessions.Close(cleanupCtx, principal, sessionID); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close token Vault session %d: %w", sessionID, err))
+		}
+	}
+	return errors.Join(closeErrors...)
 }
 
 func (s *Server) invalidateVaultProjectSessions(ctx context.Context, runtime *databaseRuntime, projectID int64, reason string) error {
@@ -117,15 +132,8 @@ func (s *Server) invalidateVaultProjectSessions(ctx context.Context, runtime *da
 		return err
 	}
 	closeErr := closeVaultSessionReferences(ctx, runtime, references)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, revokeErr := runtime.database.ExecContext(ctx, `
-		UPDATE vault_session_leases
-		SET status = 'revoked', updated_at = ?
-		WHERE project_id = ? AND status = 'active'`,
-		now, projectID,
-	)
 	staleErr := s.vaultRequestStore(ctx, runtime).StalePendingForProject(ctx, projectID, reason)
-	return errors.Join(closeErr, revokeErr, staleErr)
+	return errors.Join(closeErr, staleErr)
 }
 
 func revokeAllPersistedVaultLeases(ctx context.Context, runtime *databaseRuntime) error {

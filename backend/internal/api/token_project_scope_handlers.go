@@ -51,36 +51,21 @@ func (s tokenHandlers) updateTokenProjectScopes(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
-	if err != nil {
+	var items []projectstore.TokenScope
+	changed, err := s.mutateTokenWithVaultInvalidation(r.Context(), runtime, tokenID, "token.project_scopes.updated", func() any {
+		return map[string]any{"token_id": tokenID, "enabled_project_ids": request.EnabledProjectIDs}
+	}, "project visibility changed; send a fresh Vault request", func(tx *sql.Tx) (bool, error) {
+		nextItems, mutationChanged, replaceErr := projectstore.NewTxStore(tx).ReplaceTokenScopesWithChange(r.Context(), tokenID, request.EnabledProjectIDs)
+		items = nextItems
+		return mutationChanged, replaceErr
+	})
+	if errors.Is(err, errVaultDeliveryCanceled) {
 		writeError(w, http.StatusRequestTimeout, "project scope update was canceled")
 		return
-	}
-	defer release()
-	var items []projectstore.TokenScope
-	changed := false
-	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "token.project_scopes.updated", func() any {
-		return map[string]any{"token_id": tokenID, "enabled_project_ids": request.EnabledProjectIDs}
-	}, func(tx *sql.Tx) error {
-		var replaceErr error
-		items, changed, replaceErr = projectstore.NewTxStore(tx).ReplaceTokenScopesWithChange(r.Context(), tokenID, request.EnabledProjectIDs)
-		if replaceErr == nil && !changed {
-			return errAuditedMutationUnchanged
-		}
-		return replaceErr
-	})
-	if errors.Is(err, errAuditedMutationUnchanged) {
-		err = nil
 	}
 	if err != nil {
 		handleProjectError(w, err)
 		return
-	}
-	if changed {
-		if err := s.invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "project visibility changed; send a fresh Vault request"); err != nil {
-			writeInternalError(w)
-			return
-		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "changed": changed})
 }

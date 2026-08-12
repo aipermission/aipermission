@@ -69,36 +69,21 @@ func (s tokenHandlers) updateTokenProjectCapabilities(w http.ResponseWriter, r *
 			ExecutionRule: capability.ExecutionRule, ExpiresAt: capability.ExpiresAt,
 		})
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
-	if err != nil {
+	var items []projectcapabilities.Capability
+	changed, err := s.mutateTokenWithVaultInvalidation(r.Context(), runtime, tokenID, "token.project_capabilities.updated", func() any {
+		return map[string]any{"token_id": tokenID, "capabilities": items}
+	}, "Vault project capability changed; send a fresh request", func(tx *sql.Tx) (bool, error) {
+		nextItems, mutationChanged, replaceErr := projectcapabilities.NewTxStore(tx).ReplaceWithChange(r.Context(), tokenID, inputs)
+		items = nextItems
+		return mutationChanged, replaceErr
+	})
+	if errors.Is(err, errVaultDeliveryCanceled) {
 		writeError(w, http.StatusRequestTimeout, "Vault capability update was canceled")
 		return
-	}
-	defer release()
-	var items []projectcapabilities.Capability
-	changed := false
-	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "token.project_capabilities.updated", func() any {
-		return map[string]any{"token_id": tokenID, "capabilities": items}
-	}, func(tx *sql.Tx) error {
-		var replaceErr error
-		items, changed, replaceErr = projectcapabilities.NewTxStore(tx).ReplaceWithChange(r.Context(), tokenID, inputs)
-		if replaceErr == nil && !changed {
-			return errAuditedMutationUnchanged
-		}
-		return replaceErr
-	})
-	if errors.Is(err, errAuditedMutationUnchanged) {
-		err = nil
 	}
 	if err != nil {
 		handleProjectCapabilityError(w, err)
 		return
-	}
-	if changed {
-		if err := s.invalidateVaultTokenSessions(r.Context(), runtime, tokenID, "Vault project capability changed; send a fresh request"); err != nil {
-			writeInternalError(w)
-			return
-		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"definitions": projectcapabilities.Definitions(),
