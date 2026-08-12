@@ -9,10 +9,8 @@ export function BackupFreshnessNotices({ value, onChange }) {
         <Notice tone="warn" className="flex flex-wrap items-center justify-between gap-3">
           <span>
             A newer encrypted backup is available
-            {value.data.length === 1
-              ? ` from ${formatRelativeAge(value.data[0].latest_remote_at)}`
-              : ` in ${value.data.length} providers`}
-            . This local database may be stale.
+            {value.data.length === 1 ? ` from ${formatRelativeAge(value.data[0].latest_remote_at)}` : ` in ${value.data.length} providers`}.
+            This local database may be stale.
           </span>
           <NoticeActions onDismiss={() => onChange((current) => ({ ...current, data: [] }))} />
         </Notice>
@@ -21,10 +19,8 @@ export function BackupFreshnessNotices({ value, onChange }) {
         <Notice tone="warn" className="flex flex-wrap items-center justify-between gap-3">
           <span>
             Backup freshness could not be checked
-            {value.checkErrors.length > 0
-              ? ` for ${value.checkErrors.length} provider${value.checkErrors.length === 1 ? "" : "s"}`
-              : ""}
-            . Review the provider connection before relying on the local copy.
+            {value.checkErrors.length > 0 ? ` for ${value.checkErrors.length} provider${value.checkErrors.length === 1 ? "" : "s"}` : ""}.
+            Review the provider connection before relying on the local copy.
           </span>
           <NoticeActions onDismiss={() => onChange((current) => ({ ...current, checkErrors: [], error: null }))} />
         </Notice>

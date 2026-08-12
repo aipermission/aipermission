@@ -1,12 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  resourceKey,
-  resourceSearchValues,
-  resourceTitle,
-  resourceTone,
-  resourceTypeForWorkload,
-} from "./helpers.js";
+import { resourceKey, resourceSearchValues, resourceTitle, resourceTone, resourceTypeForWorkload } from "./helpers.js";
 
 test("Kubernetes resource helpers keep pod selection and filtering stable", () => {
   const pod = {

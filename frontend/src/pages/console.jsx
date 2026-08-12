@@ -1,7 +1,4 @@
-import {
-  AlertTriangle,
-  TerminalSquare,
-} from "lucide-react";
+import { AlertTriangle, TerminalSquare } from "lucide-react";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { apiGet, apiPost } from "../lib/api";
@@ -524,9 +521,7 @@ export function ConsolePage() {
         onSearch={setTargetSearch}
         groups={projectTargetGroups}
         collapsedProjects={collapsedProjects}
-        onToggleProject={(projectID) =>
-          setCollapsedProjects((current) => ({ ...current, [projectID]: !current[projectID] }))
-        }
+        onToggleProject={(projectID) => setCollapsedProjects((current) => ({ ...current, [projectID]: !current[projectID] }))}
         targetItems={targetItems}
         liveConsoleTargets={liveConsoleTargets}
         sessions={sessions}
