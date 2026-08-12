@@ -3,6 +3,7 @@ package s3connector
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,6 +15,14 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
+
+func TestNewS3ClientPropagatesOptionalSessionTokenFailure(t *testing.T) {
+	runtime := s3TestRuntime(t, "http://127.0.0.1:9000")
+	runtime.Secrets = sessionTokenFailureSecrets{err: errors.New("vault unavailable")}
+	if _, err := newS3Client(context.Background(), runtime); err == nil || !strings.Contains(err.Error(), "vault unavailable") {
+		t.Fatalf("session token failure = %v", err)
+	}
+}
 
 func TestPrepareUploadRedactsContentPreview(t *testing.T) {
 	connector := New()
@@ -370,6 +379,15 @@ type staticSecrets map[string]string
 
 func (secrets staticSecrets) GetSecret(_ context.Context, name string) (string, error) {
 	return secrets[name], nil
+}
+
+type sessionTokenFailureSecrets struct{ err error }
+
+func (secrets sessionTokenFailureSecrets) GetSecret(_ context.Context, name string) (string, error) {
+	if name == "secret_access_key" {
+		return "test-secret", nil
+	}
+	return "", secrets.err
 }
 
 type s3TestCapabilities struct{}

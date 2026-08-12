@@ -101,7 +101,7 @@ type secretAccessor map[string]any
 func (values secretAccessor) GetSecret(_ context.Context, name string) (string, error) {
 	value, ok := values[name]
 	if !ok || value == nil {
-		return "", fmt.Errorf("connector secret %q not found", name)
+		return "", fmt.Errorf("%w: %q", connectors.ErrSecretNotFound, name)
 	}
 	if text, ok := value.(string); ok {
 		return text, nil
