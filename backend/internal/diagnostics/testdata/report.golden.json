@@ -1,0 +1,78 @@
+{
+  "report_format_version": "1",
+  "generated_at": "2026-08-11T12:34:56Z",
+  "application": {
+    "service": "aipermission",
+    "version": "support-test"
+  },
+  "architecture": {
+    "os": "test",
+    "arch": "test",
+    "go_version": "test"
+  },
+  "database": {
+    "encrypted": true,
+    "schema_version": 13,
+    "supported_schema_version": 13,
+    "migration_count": 13,
+    "migration_state": "current",
+    "sqlcipher_version": "test"
+  },
+  "connectors": [],
+  "runtime": {
+    "gateway": "running",
+    "database": "unlocked",
+    "mcp": "started",
+    "audit": {
+      "status": "degraded",
+      "failure_count": 2,
+      "pending_count": 3,
+      "retried_event_count": 4
+    },
+    "running_actions": 0,
+    "pending_approvals": 0,
+    "open_consoles": 0,
+    "open_transfers": 0
+  },
+  "outcomes": {
+    "unknown_total": 1,
+    "unknown_last_24_hours": 1
+  },
+  "recent_errors": [
+    {
+      "connector_kind": "postgres",
+      "activity_type": "action",
+      "status": "outcome_unknown",
+      "category": "outcome_unknown",
+      "count": 1,
+      "latest_at": "2026-08-11T00:00:00Z"
+    },
+    {
+      "connector_kind": "ssh",
+      "activity_type": "action",
+      "status": "failed",
+      "category": "network",
+      "count": 1,
+      "latest_at": "2026-08-11T00:00:00Z"
+    }
+  ],
+  "redaction": {
+    "policy": "strict_allowlist",
+    "excluded_by_design": [
+      "credentials",
+      "tokens",
+      "endpoints",
+      "target_addresses",
+      "target_names",
+      "profile_names",
+      "database_names",
+      "commands",
+      "action_payloads",
+      "message_content",
+      "raw_output",
+      "raw_errors",
+      "private_paths"
+    ],
+    "error_detail": "category_only"
+  }
+}
