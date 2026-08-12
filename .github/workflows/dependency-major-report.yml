@@ -9,6 +9,10 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: deferred-major-dependency-report
+  cancel-in-progress: false
+
 jobs:
   report:
     name: Review direct major updates

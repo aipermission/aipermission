@@ -11,5 +11,6 @@ const report = renderReport([
 ]);
 assert.match(report, /\| npm \| `frontend` \| `example` \| `1\.4\.0` \| `2\.0\.0` \|/);
 assert.match(report, /never create or merge bot-authored commits/);
+assert.match(report, /new `\/vN` module path remain a manual maintainer review/);
 
 console.log("Dependency major report tests passed.");

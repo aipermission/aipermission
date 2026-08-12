@@ -133,4 +133,3 @@ body:
           required: true
         - label: This report does not describe a vulnerability that could expose credentials or permit unintended execution.
           required: true
-

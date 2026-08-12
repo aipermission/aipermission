@@ -6,9 +6,23 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const sourceBudgets = [
   { directory: "backend", extensions: new Set([".go"]), maxLines: 1500 },
-  { directory: "frontend/src", extensions: new Set([".js", ".jsx", ".ts", ".tsx"]), maxLines: 1800 },
-  { directory: "packages/mcp/src", extensions: new Set([".js", ".ts"]), maxLines: 1200 },
+  {
+    directory: "frontend/src",
+    extensions: new Set([".js", ".jsx", ".ts", ".tsx"]),
+    maxLines: 800,
+  },
+  {
+    directory: "packages/mcp/src",
+    extensions: new Set([".js", ".ts"]),
+    maxLines: 1200,
+  },
 ];
+const sourceBudgetOverrides = new Map([
+  // Ordered schema history is intentionally kept in one auditable migration ledger.
+  ["backend/internal/db/migrations.go", 1600],
+  // This file is a static release-note catalog rather than executable UI logic.
+  ["frontend/src/lib/release.js", 1000],
+]);
 const suppressionBudget = 0;
 const criticalSuppressionPaths = [
   "src/components/console/connector-token-permission-panel.jsx",
@@ -29,12 +43,20 @@ function walk(directory) {
 for (const budget of sourceBudgets) {
   const directory = path.join(root, budget.directory);
   for (const file of walk(directory)) {
-    if (!budget.extensions.has(path.extname(file)) || file.endsWith("_test.go") || file.includes(".test.")) {
+    if (
+      !budget.extensions.has(path.extname(file)) ||
+      file.endsWith("_test.go") ||
+      file.includes(".test.")
+    ) {
       continue;
     }
     const lines = fs.readFileSync(file, "utf8").split("\n").length;
-    if (lines > budget.maxLines) {
-      failures.push(`${path.relative(root, file)} has ${lines} lines; budget is ${budget.maxLines}`);
+    const relativePath = path.relative(root, file);
+    const maxLines = sourceBudgetOverrides.get(relativePath) || budget.maxLines;
+    if (lines > maxLines) {
+      failures.push(
+        `${relativePath} has ${lines} lines; budget is ${maxLines}`,
+      );
     }
   }
 }
@@ -51,7 +73,9 @@ for (const [file, rules] of Object.entries(suppressions)) {
   }
 }
 if (suppressionCount > suppressionBudget) {
-  failures.push(`frontend hook suppressions total ${suppressionCount}; budget is ${suppressionBudget}`);
+  failures.push(
+    `frontend hook suppressions total ${suppressionCount}; budget is ${suppressionBudget}`,
+  );
 }
 
 if (failures.length > 0) {
@@ -62,4 +86,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Maintenance budgets passed: ${suppressionCount}/${suppressionBudget} frontend hook suppressions.`);
+console.log(
+  `Maintenance budgets passed: ${suppressionCount}/${suppressionBudget} frontend hook suppressions.`,
+);

@@ -84,6 +84,7 @@ function renderReport(updates) {
     }
   }
   lines.push("", "Docker base images, GitHub Actions, and native dependencies remain separately pinned and manually reviewed.", "");
+  lines.push("Go detection covers updates reported on an existing module path. Major versions that require a new `/vN` module path remain a manual maintainer review.", "");
   return lines.join("\n");
 }
 

@@ -38,8 +38,8 @@ For every SQLCipher wrapper or native runtime update:
    runtime version together.
 3. Run encrypted database create, reopen, rekey, snapshot, import, and migration
    tests against representative `.aipdb` fixtures.
-4. Confirm `PRAGMA cipher_version`, cipher page size, KDF iterations, and foreign
-   keys in backend tests.
+4. Confirm `PRAGMA cipher_version`, the exact cipher page size, KDF iteration
+   count, HMAC/KDF algorithms, and foreign keys in backend tests.
 5. Document any encryption-format or compatibility change in the release notes
    and backup/restore documentation.
 

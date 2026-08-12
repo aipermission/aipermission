@@ -29,6 +29,12 @@ async function githubJSON(url) {
 }
 
 async function main() {
+  if (!/^[0-9a-f]{7,40}$/i.test(String(inventory.wrapper_commit || ""))) {
+    throw new Error("native dependency inventory wrapper_commit must be a non-empty Git commit");
+  }
+  if (!/^\d+\.\d+\.\d+$/.test(String(inventory.reviewed_upstream_runtime_version || ""))) {
+    throw new Error("native dependency inventory reviewed_upstream_runtime_version must be a semantic version");
+  }
   const [wrapper, release] = await Promise.all([
     githubJSON(
       "https://api.github.com/repos/SE-I-T-Digital/go-sqlcipher/commits/main",
