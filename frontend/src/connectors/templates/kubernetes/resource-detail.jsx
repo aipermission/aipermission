@@ -1,7 +1,7 @@
-import { FileJson, LoaderCircle } from "lucide-react";
-import { CopyButton } from "../../../components/ui/copy-button";
-import { Input } from "../../../components/ui/form";
+import { LoaderCircle } from "lucide-react";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { HighlightedText } from "../_shared/highlighted-text";
+import { ConnectorResultHeader } from "../_shared/result-sections";
 import { resourceSubtitle } from "./helpers";
 
 export function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearch, inputClass, mutedClass }) {
@@ -20,7 +20,7 @@ export function KubernetesResourceDetail({ tab, resource, detail, logs, search, 
   const showLogSurface = tab === "pods";
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,600px)_auto_minmax(0,1fr)] overflow-hidden">
-      <KubernetesResultHeader
+      <ConnectorResultHeader
         title={topTitle}
         subtitle={topSubtitle}
         copyValue={topCopyValue}
@@ -53,20 +53,15 @@ export function KubernetesResourceDetail({ tab, resource, detail, logs, search, 
           ) : null}
         </div>
       )}
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <FileJson className="h-3.5 w-3.5 text-stone-500" />
-          <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">Kubernetes raw data</p>
-        </div>
-        <div className="flex min-w-0 items-center justify-end gap-2">
-          <Input
-            className={`h-8 w-56 text-xs ${inputClass || ""}`}
-            value={search}
-            onChange={(event) => onSearch?.(event.target.value)}
-            placeholder="Search raw data"
-          />
-          <CopyButton value={rawValue} variant="outline" className="h-8 px-2 text-xs" />
-        </div>
+      <div className="mt-3">
+        <ConnectorResultHeader
+          title="Kubernetes raw data"
+          copyValue={rawValue}
+          search={search}
+          onSearch={onSearch}
+          inputClass={inputClass}
+          searchPlaceholder="Search raw data"
+        />
       </div>
       <div className="mt-2 grid h-full min-h-0 overflow-hidden">
         <TerminalBlock className="h-full min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]" surface="dark">
@@ -92,50 +87,6 @@ export function KubernetesHeaderStatus({ state, mutedClass }) {
   return <p className={`mt-1 min-h-4 text-[11px] ${mutedClass}`}>&nbsp;</p>;
 }
 
-function KubernetesResultHeader({ title, subtitle, copyValue, search, onSearch, inputClass, searchPlaceholder }) {
-  return (
-    <div className="mb-2 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="truncate text-xs font-semibold uppercase tracking-wide text-stone-500">{title}</p>
-        {subtitle ? <p className="truncate text-xs text-stone-500">{subtitle}</p> : null}
-      </div>
-      <div className="flex min-w-0 items-center justify-end gap-2">
-        <Input
-          className={`h-8 w-56 text-xs ${inputClass || ""}`}
-          value={search}
-          onChange={(event) => onSearch?.(event.target.value)}
-          placeholder={searchPlaceholder || "Search"}
-        />
-        {copyValue ? <CopyButton value={copyValue} variant="outline" className="h-8 px-2 text-xs" /> : null}
-      </div>
-    </div>
-  );
-}
-
-function HighlightedText({ text, query }) {
-  const value = String(text || "");
-  const needle = String(query || "");
-  if (!needle.trim()) return value;
-  const lowerValue = value.toLowerCase();
-  const lowerNeedle = needle.toLowerCase();
-  const parts = [];
-  let index = 0;
-  let matchIndex = lowerValue.indexOf(lowerNeedle, index);
-  let key = 0;
-  while (matchIndex !== -1) {
-    if (matchIndex > index) parts.push(value.slice(index, matchIndex));
-    parts.push(
-      <mark key={`m-${key++}`} className="rounded bg-yellow-300 px-0.5 text-stone-950">
-        {value.slice(matchIndex, matchIndex + needle.length)}
-      </mark>,
-    );
-    index = matchIndex + needle.length;
-    matchIndex = lowerValue.indexOf(lowerNeedle, index);
-  }
-  if (index < value.length) parts.push(value.slice(index));
-  return parts;
-}
-
 function kubernetesTopTitle(tab) {
   if (tab === "pods") return "Pod logs";
   if (tab === "nodes") return "Node metadata";
@@ -157,11 +108,11 @@ function kubernetesMetadataText(tab, resource) {
     .join("\n");
 }
 
-function KubernetesSummaryCards({ tab, resource, detail, mutedClass }) {
+function KubernetesSummaryCards({ tab, resource, mutedClass }) {
   if (!resource) {
     return <p className={`text-sm ${mutedClass}`}>No resource selected.</p>;
   }
-  const rows = summaryRows(tab, resource, detail);
+  const rows = summaryRows(tab, resource);
   return (
     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
       {rows.map((row) => (
