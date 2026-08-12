@@ -186,13 +186,6 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 		writeInternalError(w)
 		return
 	}
-	s.writeObservationAudit(r.Context(), runtime, "user", item.TokenID, 0, "connector_action.decline", map[string]any{
-		"request_id":     item.ID,
-		"target_ref":     connectortargets.ConnectorTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID),
-		"connector_kind": item.ConnectorKind,
-		"action_name":    item.ActionName,
-		"note":           request.UserNote != "",
-	})
 	writeJSON(w, http.StatusOK, connectorActionApprovalItemFromRequest(item))
 }
 

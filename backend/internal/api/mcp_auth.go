@@ -60,6 +60,8 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 		matches = append(matches, auth)
 	}
 	if len(matches) > 1 {
+		s.mcpIPAuthLimiter.recordSuccess(ipLimitKey)
+		s.mcpTokenAuthLimiter.recordSuccess(tokenLimitKey)
 		writeError(w, http.StatusConflict, "API token matches multiple unlocked databases; lock or revoke duplicate token copies before using MCP")
 		return mcpAuthContext{}, false
 	}

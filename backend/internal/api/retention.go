@@ -241,14 +241,14 @@ func purgeRetentionTargetWithExecutor(ctx context.Context, executor sqldb.Execut
 		if err != nil {
 			return 0, err
 		}
-		outboxDeleted, err := execRetentionDeleteWithCutoff(ctx, executor, `
+		_, err = execRetentionDeleteWithCutoff(ctx, executor, `
 			DELETE FROM audit_outbox
 			WHERE (delivered_at IS NOT NULL AND julianday(delivered_at) < julianday('now', ?))
 				OR (dead_lettered_at IS NOT NULL AND julianday(dead_lettered_at) < julianday('now', ?))`, cutoff, cutoff)
 		if err != nil {
 			return 0, err
 		}
-		return deleted + outboxDeleted, nil
+		return deleted, nil
 	case "console":
 		return execRetentionDeleteWithCutoff(ctx, executor, `DELETE FROM console_sessions WHERE closed_at IS NOT NULL AND julianday(closed_at) < julianday('now', ?)`, "-"+strconv.Itoa(days)+" days")
 	case "messages":
