@@ -1,0 +1,136 @@
+name: Bug report
+description: Report reproducible behavior that is broken in AIPermission.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve AIPermission. Before submitting, remove credentials, private endpoints, message bodies, action payloads, and other sensitive data.
+
+        Security-sensitive reports belong in a [private GitHub Security Advisory](https://github.com/aipermission/aipermission/security/advisories/new), not a public issue.
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and its impact.
+      placeholder: A concise description of the failure.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Use a minimal, sanitized sequence that consistently reproduces the problem.
+      placeholder: |
+        1. Create or select ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: AIPermission version
+      placeholder: v0.2.24 or commit SHA
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Host operating system
+      placeholder: Ubuntu 24.04, macOS 15, or Windows 11 with WSL2
+    validations:
+      required: true
+
+  - type: input
+    id: docker
+    attributes:
+      label: Docker version
+      placeholder: Docker Engine 28.3.2 / Docker Desktop 4.43
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Browser and MCP client
+      description: Include versions when relevant.
+      placeholder: Firefox 141; Codex 0.x
+
+  - type: dropdown
+    id: install_state
+    attributes:
+      label: Installation state
+      options:
+        - Fresh database
+        - Upgraded database
+        - Imported or restored database
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: previous_version
+    attributes:
+      label: Previous version
+      description: Required only when the problem appeared after an upgrade.
+      placeholder: v0.2.23
+
+  - type: input
+    id: connector
+    attributes:
+      label: Connector and action
+      description: Include connector kind, action name, and Direct or Over SSH mode when applicable.
+      placeholder: postgres / query_readonly / direct
+
+  - type: input
+    id: request
+    attributes:
+      label: Result status and request ID
+      description: Copy only non-sensitive status metadata from History or the UI.
+      placeholder: failed_timeout / request 1234
+
+  - type: dropdown
+    id: fresh_database
+    attributes:
+      label: Reproducible with a fresh database?
+      options:
+        - "Yes"
+        - "No"
+        - Not tested
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Include timestamps when relevant. Do not include secrets, endpoints, private paths, message bodies, action inputs, or database contents.
+      render: shell
+
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Safety checks
+      options:
+        - label: I am running AIPermission on localhost, not over LAN or the public internet.
+          required: true
+        - label: I removed SSH keys, tokens, passwords, Vault values, backup files, connection strings, message bodies, action payloads, and sensitive output.
+          required: true
+        - label: This report does not describe a vulnerability that could expose credentials or permit unintended execution.
+          required: true
+
