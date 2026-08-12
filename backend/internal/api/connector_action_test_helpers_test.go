@@ -30,12 +30,14 @@ func openAPITestDB(t *testing.T) *sql.DB {
 
 func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vault.Vault) *databaseRuntime {
 	t.Helper()
-	return &databaseRuntime{
+	runtime := &databaseRuntime{
 		database: database,
 		vault:    secretVault,
 		tokens:   tokens.NewStore(database),
 		registry: testConnectorRegistry(t),
 	}
+	runtime.setMCPStarted(true)
+	return runtime
 }
 
 func openAPITestVault(t *testing.T) *vault.Vault {
@@ -166,6 +168,11 @@ func (localActionTestConnector) GetActionList(context.Context, connectors.Target
 			Label:    "Value",
 			Type:     connectors.FieldString,
 			Required: true,
+		}, {
+			Name:    "mode",
+			Label:   "Mode",
+			Type:    connectors.FieldString,
+			Default: "safe",
 		}}},
 	}}, nil
 }

@@ -56,6 +56,9 @@ type PreparedRequest struct {
 	ActionDefinition connectors.ActionDefinition
 	Action           connectors.PreparedAction
 	Requested        PrepareRequest
+	// IdempotencyInput preserves the caller-supplied shape before schema
+	// defaults are applied, so changing a payload while reusing a key conflicts.
+	IdempotencyInput map[string]any
 	Dependencies     []ResolvedDependency
 }
 
@@ -110,6 +113,10 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 	if connectors.SchemaContainsSecret(actionDefinition.InputSchema) {
 		return PreparedRequest{}, fmt.Errorf("connector action input schema %q includes secret fields; store secrets in credential profiles instead", request.ActionName)
 	}
+	idempotencyInput := request.Input
+	if idempotencyInput == nil {
+		idempotencyInput = map[string]any{}
+	}
 	input, err := connectors.NormalizeSchemaValues(actionDefinition.InputSchema, request.Input)
 	if err != nil {
 		return PreparedRequest{}, err
@@ -149,6 +156,7 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 		ActionDefinition: actionDefinition,
 		Action:           prepared,
 		Requested:        request,
+		IdempotencyInput: idempotencyInput,
 		Dependencies:     dependencies,
 	}, nil
 }

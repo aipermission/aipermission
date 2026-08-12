@@ -168,6 +168,9 @@ func TestConnectDistinguishesMissingOptionalPasswordFromProviderFailure(t *testi
 	if !errors.Is(err, providerErr) || !strings.Contains(err.Error(), "resolve clickhouse password") {
 		t.Fatalf("connect error = %v, want wrapped provider failure", err)
 	}
+	if status := classifyTestError(err); status != connectors.TestUnknownError {
+		t.Fatalf("provider failure status=%s, want unknown_error", status)
+	}
 }
 
 func TestClickHouseTLSConfig(t *testing.T) {

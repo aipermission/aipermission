@@ -596,6 +596,9 @@ func payloadInt(payload map[string]any, name string, fallback int) int {
 }
 
 func classifyTestError(err error) connectors.TestStatus {
+	if errors.Is(err, connectors.ErrSecretProvider) {
+		return connectors.TestUnknownError
+	}
 	message := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(message, "password authentication failed"),

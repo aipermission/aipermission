@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -224,6 +225,10 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 	}
 	if executions != 1 || first.Request.ID != second.Request.ID || !second.Replayed {
 		t.Fatalf("executions=%d first=%d second=%d replayed=%v", executions, first.Request.ID, second.Request.ID, second.Replayed)
+	}
+	call.Input = map[string]any{"value": "once", "mode": "safe"}
+	if _, err := (&Server{}).runLocalConnectorAction(t.Context(), runtime, call); !errors.Is(err, connectortargets.ErrActionRequestIdempotency) {
+		t.Fatalf("explicit default must not replay a request that omitted it: %v", err)
 	}
 }
 
@@ -592,5 +597,63 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	}
 	if !strings.Contains(outputJSON, `"name":"safe"`) {
 		t.Fatalf("structured connector output leaked sensitive field values: %s", outputJSON)
+	}
+}
+
+func TestFinishConnectorActionRequestIgnoresCanceledRequestContext(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+		Status: connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	finished, err := server.finishConnectorActionRequest(canceled, runtime, request.ID, connectors.ResultCompleted, map[string]any{"ok": true}, "done", "")
+	if err != nil {
+		t.Fatalf("finish with canceled request context: %v", err)
+	}
+	if finished.Status != connectors.ResultCompleted {
+		t.Fatalf("status=%s", finished.Status)
+	}
+}
+
+func TestFinishConnectorActionRequestDoesNotAuditLateCompletion(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+		Status: connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.finishConnectorActionRequest(t.Context(), runtime, request.ID, connectors.ResultCompleted, nil, "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.finishConnectorActionRequest(t.Context(), runtime, request.ID, connectors.ResultFailed, nil, "", "late failure"); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE action IN ('connector_action.request.completed', 'connector_action.request.failed')`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("terminal audit events=%d, want 1", count)
 	}
 }

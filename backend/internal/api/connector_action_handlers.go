@@ -45,7 +45,7 @@ func (s connectorActionHandlers) runLocalConnectorAction(w http.ResponseWriter, 
 		writeError(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), runtime, err.Error()))
 		return
 	}
-	if len(request.IdempotencyKey) > 128 {
+	if len(request.IdempotencyKey) > connectortargets.MaxIdempotencyKeyBytes {
 		writeError(w, http.StatusBadRequest, "idempotency_key is too long")
 		return
 	}

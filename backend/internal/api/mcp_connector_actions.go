@@ -181,9 +181,6 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	if s.rejectStoppedMCP(w, auth.runtime) {
-		return
-	}
 	var request mcpConnectorActionCallRequest
 	if err := decodeJSON(w, r, &request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json body")
@@ -205,7 +202,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		writeErrorWithCode(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), auth.runtime, err.Error()), connectors.ErrorCode(err))
 		return
 	}
-	if len(request.IdempotencyKey) > 128 {
+	if len(request.IdempotencyKey) > connectortargets.MaxIdempotencyKeyBytes {
 		writeError(w, http.StatusBadRequest, "idempotency_key is too long")
 		return
 	}
@@ -219,6 +216,10 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		IdempotencyKey: request.IdempotencyKey,
 	})
 	if err != nil {
+		if errors.Is(err, errMCPExecutionStopped) {
+			writeStoppedMCP(w)
+			return
+		}
 		if errors.Is(err, connectortargets.ErrActionRequestIdempotency) {
 			writeError(w, http.StatusConflict, err.Error())
 			return
