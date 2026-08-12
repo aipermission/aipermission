@@ -24,6 +24,17 @@ test("request guard rejects requests after target scope changes or disposal", ()
   assert.equal(currentTarget.isCurrent(), false);
 });
 
+test("request guard rejects an old response after scope returns to the same value", () => {
+  const guard = createRequestGuard("target:a");
+  const firstA = guard.begin("detail");
+  guard.setScope("target:b");
+  guard.setScope("target:a");
+  const currentA = guard.begin("detail");
+
+  assert.equal(firstA.isCurrent(), false);
+  assert.equal(currentA.isCurrent(), true);
+});
+
 test("request guard can reactivate without reviving disposed requests", () => {
   const guard = createRequestGuard("target:1");
   const disposed = guard.begin("list");

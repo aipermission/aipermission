@@ -13,6 +13,7 @@ export function createRequestGuard(initialScope = "") {
     setScope(nextScope) {
       if (scope === nextScope) return;
       scope = nextScope;
+      lifecycle += 1;
       versions.clear();
     },
     begin(channel) {
