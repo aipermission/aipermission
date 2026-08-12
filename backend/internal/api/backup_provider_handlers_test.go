@@ -83,7 +83,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	}
 
 	testResponse := performJSON(handler, http.MethodPost, providerPath(created.ID, "/test"), "", map[string]any{})
-	if testResponse.Code != http.StatusOK || !strings.Contains(testResponse.Body.String(), `"protocol_version":"1"`) {
+	if testResponse.Code != http.StatusOK || !strings.Contains(testResponse.Body.String(), `"protocol_version":"`+backups.ServiceProtocol+`"`) {
 		t.Fatalf("provider test failed: %d %s", testResponse.Code, testResponse.Body.String())
 	}
 	wrongPassword := performJSON(handler, http.MethodPost, providerPath(created.ID, "/enable"), "", enableBackupProviderRequest{CurrentPassword: "wrong-password"})
@@ -370,7 +370,22 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 		defer service.mu.Unlock()
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/info":
-			json.NewEncoder(w).Encode(backups.ServiceInfo{Service: "aipermission-backup", Version: "test", ProtocolVersion: backups.ServiceProtocol, MaxUploadBytes: maxImportBodyBytes})
+			json.NewEncoder(w).Encode(backups.ServiceInfo{
+				Service:         "aipermission-backup",
+				Version:         "test",
+				ProtocolVersion: backups.ServiceProtocol,
+				Capabilities: []string{
+					"immutable_upload",
+					"list_streams",
+					"list_versions",
+					"download",
+					"prune_versions",
+					"delete_versions",
+					"storage_usage",
+					"automatic_retention",
+				},
+				MaxUploadBytes: maxImportBodyBytes,
+			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/streams":
 			items := []backups.ServiceStream{}
 			if service.item.ID != "" {

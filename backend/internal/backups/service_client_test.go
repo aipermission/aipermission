@@ -67,7 +67,9 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 		}
 		switch {
 		case r.URL.Path == "/v1/info":
-			json.NewEncoder(w).Encode(ServiceInfo{Service: "aipermission-backup", ProtocolVersion: ServiceProtocol})
+			json.NewEncoder(w).Encode(ServiceInfo{
+				Service: "aipermission-backup", ProtocolVersion: ServiceProtocol, Capabilities: requiredServiceCapabilities,
+			})
 		case r.URL.Path == "/v1/streams":
 			json.NewEncoder(w).Encode(servicePage[ServiceStream]{Items: []ServiceStream{{ID: "stream-a", DatabaseName: "Project A"}}})
 		case r.URL.Path == "/v1/streams/stream-a/backups" && r.Method == http.MethodPost:
@@ -158,6 +160,22 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 	request, _ := client.request(context.Background(), http.MethodGet, "/redirect", nil, false)
 	if _, err := client.client.Do(request); err == nil || !strings.Contains(err.Error(), "redirects are not allowed") {
 		t.Fatalf("expected redirect rejection, got %v", err)
+	}
+}
+
+func TestServiceClientRejectsMissingRequiredCapability(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(ServiceInfo{
+			Service: "aipermission-backup", ProtocolVersion: ServiceProtocol, Capabilities: []string{"immutable_upload"},
+		})
+	}))
+	defer server.Close()
+	client, err := NewServiceClient(server.URL, serviceTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Info(context.Background()); err == nil || !strings.Contains(err.Error(), "missing required capability") {
+		t.Fatalf("expected missing capability rejection, got %v", err)
 	}
 }
 
