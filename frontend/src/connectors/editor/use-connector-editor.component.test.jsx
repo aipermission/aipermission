@@ -23,13 +23,12 @@ function renderEditor(model) {
 }
 
 describe("useConnectorEditor", () => {
-  it("tracks dirty state, saves through the connector model, and clears sensitive form state", async () => {
+  it("saves through the connector model and clears sensitive form state", async () => {
     const model = { save: vi.fn(async () => {}), syncForm: ({ form }) => form };
     const { result, onRefresh } = renderEditor(model);
 
     act(() => result.current.openCreate("example"));
     act(() => result.current.updateField("name", "Production"));
-    expect(result.current.dirty).toBe(true);
 
     await act(async () => result.current.save({ preventDefault: vi.fn() }));
 
@@ -41,7 +40,6 @@ describe("useConnectorEditor", () => {
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(result.current.drawer.open).toBe(false);
     expect(result.current.form.name).toBe("");
-    expect(result.current.dirty).toBe(false);
     expect(result.current.actionState.message).toBe("Connector created.");
   });
 
@@ -56,8 +54,7 @@ describe("useConnectorEditor", () => {
 
     await act(async () => result.current.save({ preventDefault() {} }));
     expect(result.current.drawer.open).toBe(true);
-    expect(result.current.actionState).toEqual({ state: "error", error: "API unavailable", message: "" });
-    expect(result.current.dirty).toBe(true);
+    expect(result.current.actionState).toEqual({ state: "error", error: "API unavailable", message: null });
 
     await act(async () => result.current.save({ preventDefault() {} }));
     expect(model.save).toHaveBeenCalledTimes(2);
@@ -76,7 +73,20 @@ describe("useConnectorEditor", () => {
     act(() => result.current.closeEditor());
     expect(result.current.drawer.open).toBe(false);
     expect(result.current.actionState.state).toBe("idle");
-    expect(result.current.dirty).toBe(false);
+  });
+
+  it("does not report a persisted connector as a save failure when refresh fails", async () => {
+    const model = { save: vi.fn(async () => undefined), syncForm: ({ form }) => form };
+    const { result, onRefresh } = renderEditor(model);
+    onRefresh.mockRejectedValueOnce(new Error("refresh unavailable"));
+    act(() => result.current.openCreate("example"));
+
+    await act(async () => result.current.save({ preventDefault() {} }));
+
+    expect(result.current.drawer.open).toBe(false);
+    expect(result.current.actionState.state).toBe("idle");
+    expect(result.current.actionState.message).toBe("Connector created.");
+    expect(result.current.actionState.error).toMatch(/Saved successfully.*refresh unavailable/);
   });
 
   it("hands connector-owned recovery operations back to the route", async () => {

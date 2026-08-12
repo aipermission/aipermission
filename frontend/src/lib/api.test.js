@@ -46,6 +46,49 @@ test("local connector action retries retain idempotency after server failures", 
   }
 });
 
+test("local connector action retry keys expire after a bounded window", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  const keys = [];
+  let now = 1000;
+  Date.now = () => now;
+  globalThis.fetch = async (_url, options) => {
+    keys.push(JSON.parse(options.body).idempotency_key);
+    throw new TypeError("network disconnected");
+  };
+  const body = { target_ref: "fixture:expiry", action_name: "inspect", input: {}, reason: "test" };
+  try {
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
+    now += 6 * 60 * 1000;
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
+    assert.notEqual(keys[0], keys[1]);
+  } finally {
+    Date.now = originalNow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("local connector action retry keys evict the oldest uncertain request", async () => {
+  const originalFetch = globalThis.fetch;
+  const firstKeys = [];
+  globalThis.fetch = async (_url, options) => {
+    firstKeys.push(JSON.parse(options.body).idempotency_key);
+    throw new TypeError("network disconnected");
+  };
+  const first = { target_ref: "fixture:lru:0", action_name: "inspect", input: {}, reason: "test" };
+  try {
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", first));
+    for (let index = 1; index <= 128; index += 1) {
+      const body = { ...first, target_ref: `fixture:lru:${index}` };
+      await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
+    }
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", first));
+    assert.notEqual(firstKeys[0], firstKeys.at(-1));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function response(body, status = 200) {
   return {
     ok: status >= 200 && status < 300,

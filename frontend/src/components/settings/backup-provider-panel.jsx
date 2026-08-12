@@ -18,7 +18,7 @@ export function BackupProviderPanel({ state }) {
     testBackupProvider,
     disableBackupProvider,
     requestEnableBackupProvider,
-    setBackupProviderArchiveTarget,
+    requestArchiveBackupProvider,
   } = state;
 
   return (
@@ -154,7 +154,7 @@ export function BackupProviderPanel({ state }) {
                       type="button"
                       variant="outline"
                       className="h-9 px-2 text-xs"
-                      onClick={() => setBackupProviderArchiveTarget(provider)}
+                      onClick={() => requestArchiveBackupProvider(provider)}
                       disabled={backupProviderState.state === "archiving"}
                     >
                       <Archive className="h-4 w-4" />

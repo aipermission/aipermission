@@ -493,7 +493,8 @@ export function KubernetesConnectorConsoleTemplate({
         open={confirmRestart.open}
         onClose={() => setConfirmRestart({ open: false, pending: false, workload: null })}
         title="Rollout restart deployment"
-        maxWidth="max-w-lg"
+        size="md"
+        closeDisabled={confirmRestart.pending}
       >
         <div className="grid gap-4">
           <Notice tone="warn">

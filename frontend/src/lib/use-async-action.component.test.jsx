@@ -33,4 +33,43 @@ describe("useAsyncAction", () => {
     act(() => result.current.resetAction());
     expect(result.current.actionState).toEqual(idleActionState);
   });
+
+  it("does not let an older action overwrite the latest action state", async () => {
+    let resolveFirst;
+    let resolveSecond;
+    const first = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    const second = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+    const { result } = renderHook(() => useAsyncAction());
+
+    act(() => {
+      void result.current.runAction({ pending: "first", successMessage: "first done", action: () => first });
+      void result.current.runAction({ pending: "second", successMessage: "second done", action: () => second });
+    });
+    expect(result.current.actionState.state).toBe("second");
+
+    await act(async () => resolveFirst("old"));
+    expect(result.current.actionState.state).toBe("second");
+
+    await act(async () => resolveSecond("new"));
+    expect(result.current.actionState).toEqual({ state: "idle", error: null, message: "second done" });
+  });
+
+  it("invalidates an in-flight action when reset", async () => {
+    let resolveAction;
+    const action = new Promise((resolve) => {
+      resolveAction = resolve;
+    });
+    const { result } = renderHook(() => useAsyncAction());
+
+    act(() => {
+      void result.current.runAction({ successMessage: "late", action: () => action });
+      result.current.resetAction();
+    });
+    await act(async () => resolveAction("done"));
+    expect(result.current.actionState).toEqual(idleActionState);
+  });
 });

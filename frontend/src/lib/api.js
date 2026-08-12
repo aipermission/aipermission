@@ -7,6 +7,8 @@ export const mcpApiUrl =
   viteEnv.VITE_MCP_API_URL === undefined ? "http://localhost:3210" : normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 const localActionRetryKeys = new Map();
+const localActionRetryKeyTTL = 5 * 60 * 1000;
+const maxLocalActionRetryKeys = 128;
 
 export async function apiGet(path) {
   const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
@@ -31,12 +33,30 @@ export async function apiPost(path, body, options = {}) {
 function preparePostBody(path, body) {
   if (path !== "/api/connector-actions/local-run" || body?.idempotency_key) return { body, retrySignature: "" };
   const retrySignature = stableRequestSignature(body || {});
-  let key = localActionRetryKeys.get(retrySignature);
-  if (!key) {
-    key = globalThis.crypto?.randomUUID?.() || `ui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    localActionRetryKeys.set(retrySignature, key);
+  const now = Date.now();
+  pruneLocalActionRetryKeys(now);
+  let entry = localActionRetryKeys.get(retrySignature);
+  if (!entry) {
+    entry = {
+      key: globalThis.crypto?.randomUUID?.() || `ui-${now}-${Math.random().toString(16).slice(2)}`,
+      expiresAt: now + localActionRetryKeyTTL,
+    };
+    localActionRetryKeys.set(retrySignature, entry);
+    trimLocalActionRetryKeys();
   }
-  return { body: { ...body, idempotency_key: key }, retrySignature };
+  return { body: { ...body, idempotency_key: entry.key }, retrySignature };
+}
+
+function pruneLocalActionRetryKeys(now) {
+  for (const [signature, entry] of localActionRetryKeys) {
+    if (entry.expiresAt <= now) localActionRetryKeys.delete(signature);
+  }
+}
+
+function trimLocalActionRetryKeys() {
+  while (localActionRetryKeys.size > maxLocalActionRetryKeys) {
+    localActionRetryKeys.delete(localActionRetryKeys.keys().next().value);
+  }
 }
 
 function stableRequestSignature(value) {

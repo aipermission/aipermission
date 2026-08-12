@@ -60,12 +60,11 @@ export function Dialog({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4">
-      <button
-        type="button"
-        className="dialog-overlay absolute inset-0 bg-stone-950/45"
-        aria-label="Dismiss dialog"
-        onClick={!closeDisabled && closeOnOverlay ? onClose : undefined}
-      />
+      {!closeDisabled && closeOnOverlay ? (
+        <button type="button" className="dialog-overlay absolute inset-0 bg-stone-950/45" aria-label="Dismiss dialog" onClick={onClose} />
+      ) : (
+        <div className="dialog-overlay absolute inset-0 bg-stone-950/45" aria-hidden="true" />
+      )}
       <section
         role="dialog"
         aria-modal="true"

@@ -1,6 +1,7 @@
 import { Terminal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { apiPost, apiUrl } from "../../lib/api";
+import { limitTranscript } from "../app-shell-runtime";
 import { PtyConsole } from "../console/pty-console";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -191,9 +192,4 @@ function maintenanceConsoleAttachUrl() {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/api/settings/maintenance-console/attach";
   return url.toString();
-}
-
-function limitTranscript(value) {
-  const maxLength = 200000;
-  return value.length <= maxLength ? value : value.slice(value.length - maxLength);
 }

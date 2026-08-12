@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPut } from "./api";
 
 const emptyState = {
@@ -10,11 +10,25 @@ const emptyState = {
 
 export function useConnectorPermissions(initialTokens = []) {
   const [permissionState, setPermissionState] = useState(emptyState);
+  const mountedRef = useRef(false);
+  const permissionLoadRef = useRef(0);
+  const actionLoadRefs = useRef(new Map());
+
+  useEffect(() => {
+    const actionLoads = actionLoadRefs.current;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      permissionLoadRef.current += 1;
+      actionLoads.clear();
+    };
+  }, []);
 
   const loadAllConnectorPermissions = useCallback(
     async (tokenItems = initialTokens) => {
+      const generation = ++permissionLoadRef.current;
       if (tokenItems.length === 0) {
-        setPermissionState((current) => ({ ...current, state: "ready", data: {}, error: null }));
+        if (mountedRef.current) setPermissionState((current) => ({ ...current, state: "ready", data: {}, error: null }));
         return {};
       }
       setPermissionState((current) => ({ ...current, state: "loading", error: null }));
@@ -26,9 +40,11 @@ export function useConnectorPermissions(initialTokens = []) {
           }),
         );
         const data = Object.fromEntries(entries);
+        if (!mountedRef.current || generation !== permissionLoadRef.current) return data;
         setPermissionState((current) => ({ ...current, state: "ready", data, error: null }));
         return data;
       } catch (error) {
+        if (!mountedRef.current || generation !== permissionLoadRef.current) return {};
         setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
         return {};
       }
@@ -39,15 +55,20 @@ export function useConnectorPermissions(initialTokens = []) {
   const loadConnectorActions = useCallback(async (targetOrKind) => {
     if (!targetOrKind) return [];
     setPermissionState((current) => ({ ...current, error: null }));
+    let request = null;
     try {
       if (typeof targetOrKind === "object") {
         const target = targetOrKind;
         const targetID = target.target_id || target.id;
         const profileID = target.profile_id || (target.profiles?.length === 1 ? target.profiles[0]?.id : "");
         if (!targetID || !profileID) return [];
+        const cacheKey = connectorActionCacheKey(target, profileID);
+        const generation = (actionLoadRefs.current.get(cacheKey) || 0) + 1;
+        actionLoadRefs.current.set(cacheKey, generation);
+        request = { cacheKey, generation };
         const result = await apiGet(`/api/connector-targets/${targetID}/profiles/${profileID}/actions`);
         const actions = result.items || [];
-        const cacheKey = connectorActionCacheKey(target, profileID);
+        if (!mountedRef.current || actionLoadRefs.current.get(cacheKey) !== generation) return actions;
         setPermissionState((current) => ({
           ...current,
           actionsByTargetRef: {
@@ -60,6 +81,7 @@ export function useConnectorPermissions(initialTokens = []) {
       }
       return [];
     } catch (error) {
+      if (!mountedRef.current || (request && actionLoadRefs.current.get(request.cacheKey) !== request.generation)) return [];
       setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
       return [];
     }

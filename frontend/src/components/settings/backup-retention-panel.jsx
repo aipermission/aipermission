@@ -5,10 +5,11 @@ import { formatBytes } from "../../lib/file-transfer-utils";
 import { Button } from "../ui/button";
 import { Checkbox, Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
+import { parseBackupKeepLatest } from "./backup-state";
 
 const defaultKeepLatest = 10;
 
-export function BackupRetentionPanel({ provider, onRecordsChanged }) {
+export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange }) {
   const [state, setState] = useState({ status: "loading", storage: null, policy: null, error: "" });
   const [form, setForm] = useState({ enabled: false, keepLatest: String(defaultKeepLatest), applyNow: true });
   const [preview, setPreview] = useState(null);
@@ -24,8 +25,14 @@ export function BackupRetentionPanel({ provider, onRecordsChanged }) {
     void loadForEffect();
   }, [provider.id]);
 
-  const keepLatest = parseKeepLatest(form.keepLatest);
+  const keepLatest = parseBackupKeepLatest(form.keepLatest);
   const previewMatches = preview?.keep_latest === keepLatest;
+  const busy = action.status === "previewing" || action.status === "saving";
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
 
   function updateForm(patch) {
     setForm((current) => ({ ...current, ...patch }));
@@ -215,9 +222,4 @@ function Metric({ label, value }) {
       <p className="mt-1 text-sm font-medium text-stone-900">{value}</p>
     </div>
   );
-}
-
-function parseKeepLatest(value) {
-  const parsed = Number.parseInt(String(value), 10);
-  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 1000 ? parsed : null;
 }

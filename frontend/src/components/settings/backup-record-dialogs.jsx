@@ -1,13 +1,16 @@
 import { Download, RotateCcw, Trash2 } from "lucide-react";
-import { formatRelativeAge } from "../../lib/date-time";
+import { useState } from "react";
+import { formatLocalTimestamp, formatRelativeAge } from "../../lib/date-time";
 import { formatBytes } from "../../lib/file-transfer-utils";
 import { BackupRetentionPanel } from "./backup-retention-panel";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Checkbox, Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
+import { backupRecordsActionBusy } from "./backup-state";
 
 export function BackupRecordDialogs({ state }) {
+  const [retentionBusy, setRetentionBusy] = useState(false);
   const {
     backupProviderState,
     backupRecordsProvider,
@@ -45,17 +48,19 @@ export function BackupRecordDialogs({ state }) {
         title="Remote backup records"
         description={backupRecordsProvider ? `Backups uploaded through ${backupRecordsProvider.name}.` : "Remote backup records."}
         onClose={closeBackupRecordsDialog}
-        closeDisabled={
-          backupProviderState.state?.startsWith("restoring-") ||
-          backupProviderState.state === "pruning" ||
-          backupProviderState.state === "deleting-records"
-        }
+        closeDisabled={backupRecordsActionBusy(backupProviderState.state) || retentionBusy}
         closeOnOverlay={false}
         size="wide"
         className="!max-w-4xl"
       >
         <div className="grid gap-4">
-          {backupRecordsProvider ? <BackupRetentionPanel provider={backupRecordsProvider} onRecordsChanged={refreshBackupRecords} /> : null}
+          {backupRecordsProvider ? (
+            <BackupRetentionPanel
+              provider={backupRecordsProvider}
+              onRecordsChanged={refreshBackupRecords}
+              onBusyChange={setRetentionBusy}
+            />
+          ) : null}
           <Notice>
             Download a remote <code>.aipdb</code> file for manual import, or restore it as a new local database. Restores never overwrite
             the currently open database.
@@ -73,13 +78,19 @@ export function BackupRecordDialogs({ state }) {
                   variant="danger"
                   className="h-9 px-3 text-xs"
                   onClick={() => requestDeleteBackupRecords(selectedBackupRecords)}
-                  disabled={backupProviderState.state === "deleting-records"}
+                  disabled={backupProviderState.state === "deleting-records" || retentionBusy}
                 >
                   <Trash2 className="h-4 w-4" />
                   Delete selected ({selectedBackupRecordIDs.length})
                 </Button>
               ) : backupRecords.data.length > 1 ? (
-                <Button type="button" variant="outline" className="h-9 px-3 text-xs" onClick={selectOlderBackupRecords}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 px-3 text-xs"
+                  onClick={selectOlderBackupRecords}
+                  disabled={retentionBusy}
+                >
                   Select older
                 </Button>
               ) : null}
@@ -88,7 +99,7 @@ export function BackupRecordDialogs({ state }) {
                 variant="outline"
                 className="h-9 px-3 text-xs"
                 onClick={requestPruneBackupRecords}
-                disabled={backupRecords.state !== "ready" || backupRecords.data.length === 0}
+                disabled={retentionBusy || backupRecords.state !== "ready" || backupRecords.data.length === 0}
               >
                 <Trash2 className="h-4 w-4" />
                 Prune
@@ -98,7 +109,7 @@ export function BackupRecordDialogs({ state }) {
                 variant="outline"
                 className="h-9 px-3 text-xs"
                 onClick={refreshBackupRecords}
-                disabled={backupRecords.state === "loading"}
+                disabled={retentionBusy || backupRecords.state === "loading"}
               >
                 <RotateCcw className="h-4 w-4" />
                 Refresh
@@ -134,7 +145,12 @@ export function BackupRecordDialogs({ state }) {
                           {formatBytes(record.size_bytes)} · {formatRelativeAge(record.backup_created_at || record.uploaded_at)} · from{" "}
                           {record.source_machine || "unknown machine"}
                         </p>
-                        <p className="mt-1 text-[11px] text-stone-400">{formatTimestamp(record.backup_created_at || record.uploaded_at)}</p>
+                        <p className="mt-1 text-[11px] text-stone-400">
+                          {formatLocalTimestamp(record.backup_created_at || record.uploaded_at) ||
+                            record.backup_created_at ||
+                            record.uploaded_at ||
+                            "unknown time"}
+                        </p>
                         <p className="mt-1 truncate font-mono text-[11px] text-stone-400">{record.checksum_sha256 || "no checksum"}</p>
                       </div>
                     </div>
@@ -144,7 +160,7 @@ export function BackupRecordDialogs({ state }) {
                         variant="outline"
                         className="h-9 px-3 text-xs"
                         onClick={() => downloadBackupRecord(record)}
-                        disabled={backupProviderState.state === `downloading-record-${record.id}`}
+                        disabled={retentionBusy || backupProviderState.state === `downloading-record-${record.id}`}
                       >
                         <Download className="h-4 w-4 shrink-0" />
                         {backupProviderState.state === `downloading-record-${record.id}` ? "Saving..." : "Download"}
@@ -154,7 +170,7 @@ export function BackupRecordDialogs({ state }) {
                         variant="outline"
                         className="h-9 px-3 text-xs"
                         onClick={() => requestRestoreBackupRecord(record)}
-                        disabled={backupProviderState.state?.startsWith("restoring-")}
+                        disabled={retentionBusy || backupProviderState.state?.startsWith("restoring-")}
                       >
                         <RotateCcw className="h-4 w-4 shrink-0" />
                         Restore
@@ -164,7 +180,7 @@ export function BackupRecordDialogs({ state }) {
                         variant="danger"
                         className="h-9 w-9 px-0"
                         onClick={() => requestDeleteBackupRecords([record])}
-                        disabled={backupRecords.data.length <= 1 || backupProviderState.state === "deleting-records"}
+                        disabled={retentionBusy || backupRecords.data.length <= 1 || backupProviderState.state === "deleting-records"}
                         title={backupRecords.data.length <= 1 ? "The last recovery version must remain" : "Delete backup version"}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -344,11 +360,4 @@ export function BackupRecordDialogs({ state }) {
       </Dialog>
     </>
   );
-}
-
-function formatTimestamp(value) {
-  if (!value) return "unknown time";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
 }

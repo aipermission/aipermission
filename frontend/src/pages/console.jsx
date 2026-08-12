@@ -409,9 +409,11 @@ export function ConsolePage() {
   async function approveActiveConnectorRequest() {
     if (!activeConnectorApproval) return;
     const approval = activeConnectorApproval;
+    const generation = connectorApprovalLoadGeneration.current;
     setConnectorApprovalAction({ state: "running", error: null });
     try {
       const item = await runConnectorActionApproval(approval.id, connectorApprovalNote);
+      if (generation !== connectorApprovalLoadGeneration.current) return;
       if (item?.status === "error" || item?.status === "failed" || item?.status === "stale") {
         setActiveConnectorApprovalSnapshot({ ...approval, ...item });
         setConnectorApprovalAction({
@@ -430,6 +432,7 @@ export function ConsolePage() {
       setConnectorApprovalNote("");
       setConnectorApprovalAction({ state: "idle", error: null });
     } catch (error) {
+      if (generation !== connectorApprovalLoadGeneration.current) return;
       setActiveConnectorApprovalSnapshot(approval);
       setConnectorApprovalAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: error.message });
     }
@@ -437,12 +440,15 @@ export function ConsolePage() {
 
   async function declineActiveConnectorRequest() {
     if (!activeConnectorApproval) return;
+    const approval = activeConnectorApproval;
+    const generation = connectorApprovalLoadGeneration.current;
     setConnectorApprovalAction({ state: "declining", error: null });
     try {
-      await declineConnectorActionApproval(activeConnectorApproval.id, connectorApprovalNote);
+      await declineConnectorActionApproval(approval.id, connectorApprovalNote);
+      if (generation !== connectorApprovalLoadGeneration.current) return;
       setDismissedConnectorApprovalIDs((current) => {
         const next = { ...current };
-        delete next[activeConnectorApproval.id];
+        delete next[approval.id];
         return next;
       });
       setActiveConnectorApprovalID(null);
@@ -450,6 +456,7 @@ export function ConsolePage() {
       setConnectorApprovalNote("");
       setConnectorApprovalAction({ state: "idle", error: null });
     } catch (error) {
+      if (generation !== connectorApprovalLoadGeneration.current) return;
       setConnectorApprovalAction({ state: "error", error: error.message });
     }
   }
@@ -680,6 +687,10 @@ export function ConsolePage() {
                   onResize={(cols, rows) => selectedSession.id && resizeConsoleSession(selectedSession.id, cols, rows)}
                   theme={theme}
                 />
+              ) : selectedTargetUsesLiveConsole && selectedRuntimeTarget && consoleSessions.state === "loading" ? (
+                <div className={`grid h-full place-items-center p-4 text-sm ${theme === "light" ? "text-stone-500" : "text-stone-300"}`}>
+                  Loading console sessions...
+                </div>
               ) : selectedTargetUsesLiveConsole && selectedRuntimeTarget ? (
                 <NoLiveSession
                   target={selectedRuntimeTarget}
