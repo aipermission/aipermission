@@ -327,7 +327,7 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB, e
 		var err error
 		password, err = runtime.Secrets.GetSecret(ctx, "password")
 		if err != nil && !errors.Is(err, connectors.ErrSecretNotFound) {
-			return nil, fmt.Errorf("resolve clickhouse password: %w", err)
+			return nil, fmt.Errorf("%w: resolve clickhouse password: %w", connectors.ErrSecretProvider, err)
 		}
 	}
 	host := targetString(runtime.Target.Config, "host")
@@ -573,6 +573,9 @@ func targetSummary(target connectors.TargetView, action string) string {
 }
 
 func classifyTestError(err error) connectors.TestStatus {
+	if errors.Is(err, connectors.ErrSecretProvider) {
+		return connectors.TestUnknownError
+	}
 	message := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(message, "authentication"), strings.Contains(message, "password"), strings.Contains(message, "code: 516"):

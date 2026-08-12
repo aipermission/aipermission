@@ -253,6 +253,28 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 	if secondResponse.RequestID != firstResponse.RequestID || !secondResponse.Replayed || secondResponse.Status != string(connectors.ResultApprovalPending) {
 		t.Fatalf("unexpected replay: first=%#v second=%#v", firstResponse, secondResponse)
 	}
+	if secondResponse.Error != "Waiting for user approval." {
+		t.Fatalf("approval replay error = %q", secondResponse.Error)
+	}
+	fixture.server.activeRuntime().setMCPStarted(false)
+	stoppedReplay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
+	if stoppedReplay.Code != http.StatusOK || !strings.Contains(stoppedReplay.Body.String(), `"replayed":true`) {
+		t.Fatalf("stopped MCP replay: %d %s", stoppedReplay.Code, stoppedReplay.Body.String())
+	}
+	newRequest := request
+	newRequest.IdempotencyKey = "connector-request-while-stopped"
+	stoppedNew := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, newRequest)
+	if stoppedNew.Code != http.StatusOK || !strings.Contains(stoppedNew.Body.String(), `"status":"stopped"`) {
+		t.Fatalf("stopped MCP new call: %d %s", stoppedNew.Code, stoppedNew.Body.String())
+	}
+	fixture.server.activeRuntime().setMCPStarted(true)
+	if _, err := fixture.db.Exec(`UPDATE connector_targets SET status = 'archived' WHERE id = ?`, target.ID); err != nil {
+		t.Fatalf("archive target: %v", err)
+	}
+	archivedReplay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
+	if archivedReplay.Code != http.StatusOK || !strings.Contains(archivedReplay.Body.String(), `"replayed":true`) {
+		t.Fatalf("archived target replay: %d %s", archivedReplay.Code, archivedReplay.Body.String())
+	}
 	request.Reason = "different reason"
 	conflict := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
 	if conflict.Code != http.StatusConflict {

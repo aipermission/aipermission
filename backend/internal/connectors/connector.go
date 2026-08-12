@@ -121,6 +121,11 @@ type RestoreRequest struct {
 // absent optional secret from a vault or decryption failure.
 var ErrSecretNotFound = errors.New("connector secret not found")
 
+// ErrSecretProvider identifies a Vault/decryption failure while resolving a
+// configured credential. Connection tests must not classify it as a remote
+// authentication failure.
+var ErrSecretProvider = errors.New("connector secret provider failed")
+
 // SecretAccessor resolves connector credential secrets at runtime.
 type SecretAccessor interface {
 	GetSecret(ctx context.Context, name string) (string, error)

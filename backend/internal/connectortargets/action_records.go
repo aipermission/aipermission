@@ -450,6 +450,21 @@ func (s *Store) InsertActionRequestIdempotent(ctx context.Context, input InsertA
 			if !errors.Is(findErr, ErrActionRequestNotFound) {
 				return ActionRequest{}, false, findErr
 			}
+			var activePair int
+			if pairErr := executor.QueryRowContext(ctx, `
+				SELECT COUNT(*)
+				FROM connector_targets t
+				JOIN connector_credential_profiles p ON p.target_id = t.id
+				WHERE t.id = ? AND p.id = ? AND t.connector_kind = ?
+					AND p.connector_kind = t.connector_kind
+					AND t.status = 'active' AND p.status = 'active'`,
+				input.TargetID, input.ProfileID, input.ConnectorKind,
+			).Scan(&activePair); pairErr != nil {
+				return ActionRequest{}, false, pairErr
+			}
+			if activePair > 0 {
+				return ActionRequest{}, false, ErrActionRequestInsertConflict
+			}
 		}
 		return ActionRequest{}, false, ErrTargetProfileNotFound
 	}
@@ -468,6 +483,16 @@ func (s *Store) InsertActionRequestIdempotent(ctx context.Context, input InsertA
 		return ActionRequest{}, false, err
 	}
 	return request, true, nil
+}
+
+func (s *Store) GetActionRequestByIdempotency(ctx context.Context, tokenID *int64, source, key string) (ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+	}
+	if strings.TrimSpace(key) == "" {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	return getActionRequestByIdempotencyWithExecutor(ctx, s.db, actionRequestIdempotencyScope(tokenID, source), key)
 }
 
 func getActionRequestByIdempotencyWithExecutor(ctx context.Context, executor storeDB, scope, key string) (ActionRequest, error) {
@@ -489,22 +514,29 @@ func actionRequestIdempotencyScope(tokenID *int64, source string) string {
 }
 
 func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionRequestInput) (ActionRequest, error) {
+	request, _, err := s.FinishActionRequestWithChange(ctx, input)
+	return request, err
+}
+
+// FinishActionRequestWithChange reports whether the terminal transition was
+// applied. Lifecycle callers use the flag to avoid auditing late completions.
+func (s *Store) FinishActionRequestWithChange(ctx context.Context, input FinishActionRequestInput) (ActionRequest, bool, error) {
 	if s == nil || s.db == nil {
-		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+		return ActionRequest{}, false, fmt.Errorf("connector target store is not configured")
 	}
 	if input.ID < 1 {
-		return ActionRequest{}, ErrActionRequestNotFound
+		return ActionRequest{}, false, ErrActionRequestNotFound
 	}
 	if !validActionRequestTerminalStatus(input.Status) {
-		return ActionRequest{}, ValidationError("invalid terminal action request status")
+		return ActionRequest{}, false, ValidationError("invalid terminal action request status")
 	}
 	outputJSON, err := jsonValueString(input.Output)
 	if err != nil {
-		return ActionRequest{}, ValidationError("action output must be valid JSON")
+		return ActionRequest{}, false, ValidationError("action output must be valid JSON")
 	}
 	allowedStatuses, err := finishAllowedStatuses(input.AllowedStatuses)
 	if err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	statusPlaceholders := strings.TrimRight(strings.Repeat("?,", len(allowedStatuses)), ",")
 	now := nowString()
@@ -529,12 +561,13 @@ func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionReque
 		)
 	})
 	if err != nil {
-		return ActionRequest{}, err
+		return ActionRequest{}, false, err
 	}
 	if affected == 0 {
-		return s.GetActionRequest(ctx, input.ID)
+		request, err := s.GetActionRequest(ctx, input.ID)
+		return request, false, err
 	}
-	return request, nil
+	return request, true, nil
 }
 
 func (s *Store) SetActionRequestSessionHandle(ctx context.Context, id int64, sessionID int64, generation int64) (ActionRequest, error) {

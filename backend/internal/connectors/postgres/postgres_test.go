@@ -333,6 +333,23 @@ func TestExecuteActionRequiresCredentialSecrets(t *testing.T) {
 	}
 }
 
+func TestConnectPreservesCredentialProviderFailure(t *testing.T) {
+	providerErr := errors.New("vault lease expired")
+	_, err := connect(context.Background(), connectors.RuntimeContext{
+		Target: connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{
+			"connection_mode": "direct", "host": "127.0.0.1", "port": 5432, "database": "app",
+		}},
+		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
+		Secrets: failingPostgresSecrets{err: providerErr},
+	})
+	if !errors.Is(err, providerErr) || !errors.Is(err, connectors.ErrSecretProvider) {
+		t.Fatalf("connect error=%v, want provider failure", err)
+	}
+	if status := classifyTestError(err); status != connectors.TestUnknownError {
+		t.Fatalf("provider failure status=%s, want unknown_error", status)
+	}
+}
+
 func TestExecuteActionValidatesTargetConfigBeforeDial(t *testing.T) {
 	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
 		Target: connectors.TargetView{
@@ -429,7 +446,13 @@ type fakeSecrets map[string]string
 func (s fakeSecrets) GetSecret(_ context.Context, name string) (string, error) {
 	value, ok := s[name]
 	if !ok {
-		return "", ErrMissingSecret
+		return "", connectors.ErrSecretNotFound
 	}
 	return value, nil
+}
+
+type failingPostgresSecrets struct{ err error }
+
+func (s failingPostgresSecrets) GetSecret(context.Context, string) (string, error) {
+	return "", s.err
 }

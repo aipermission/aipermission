@@ -15,15 +15,18 @@ import (
 )
 
 var (
-	ErrInvalidTargetRef         = errors.New("invalid connector target ref")
-	ErrTargetNotFound           = errors.New("connector target not found")
-	ErrTargetProfileNotFound    = errors.New("connector target profile not found")
-	ErrRuntimeSurfaceNotFound   = errors.New("connector runtime surface not found")
-	ErrActionPermissionNotFound = errors.New("connector action permission not found")
-	ErrActionRequestNotFound    = errors.New("connector action request not found")
-	ErrActionRequestNotPending  = errors.New("connector action request is not pending")
-	ErrActionRequestIdempotency = errors.New("connector action idempotency key was already used for a different request")
+	ErrInvalidTargetRef            = errors.New("invalid connector target ref")
+	ErrTargetNotFound              = errors.New("connector target not found")
+	ErrTargetProfileNotFound       = errors.New("connector target profile not found")
+	ErrRuntimeSurfaceNotFound      = errors.New("connector runtime surface not found")
+	ErrActionPermissionNotFound    = errors.New("connector action permission not found")
+	ErrActionRequestNotFound       = errors.New("connector action request not found")
+	ErrActionRequestNotPending     = errors.New("connector action request is not pending")
+	ErrActionRequestIdempotency    = errors.New("connector action idempotency key was already used for a different request")
+	ErrActionRequestInsertConflict = errors.New("connector action request could not be inserted; retry with the same idempotency key")
 )
+
+const MaxIdempotencyKeyBytes = 128
 
 func jsonObjectString(value map[string]any) (string, error) {
 	if value == nil {
@@ -295,7 +298,7 @@ func validateActionRequestInput(input InsertActionRequestInput) error {
 	if !validActionRequestStatus(input.Status) {
 		return ValidationError("invalid action request status")
 	}
-	if len(strings.TrimSpace(input.IdempotencyKey)) > 128 {
+	if len(strings.TrimSpace(input.IdempotencyKey)) > MaxIdempotencyKeyBytes {
 		return ValidationError("idempotency_key is too long")
 	}
 	if strings.TrimSpace(input.IdempotencyKey) != "" && strings.TrimSpace(input.IdempotencyIdentityHash) == "" {

@@ -2,6 +2,7 @@ package postgresconnector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,6 +23,9 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn,
 		return nil, fmt.Errorf("%w: password", ErrMissingSecret)
 	}
 	password, err := runtime.Secrets.GetSecret(ctx, "password")
+	if err != nil && !errors.Is(err, connectors.ErrSecretNotFound) {
+		return nil, fmt.Errorf("%w: resolve postgres password: %w", connectors.ErrSecretProvider, err)
+	}
 	if err != nil || strings.TrimSpace(password) == "" {
 		return nil, fmt.Errorf("%w: password", ErrMissingSecret)
 	}
