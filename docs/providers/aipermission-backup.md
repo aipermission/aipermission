@@ -139,7 +139,10 @@ can be used.
   at least the newest version and requires confirmation in the local UI.
 - Automatic retention is also stream-scoped and destructive. Preview it before
   enabling or applying it; changing the keep-latest count never authorizes
-  deletion of the final recovery version.
+  deletion of the final recovery version. When storage is at its configured
+  quota, a successful explicit upload may temporarily use the bytes that the
+  same stream's retention policy will release; the metadata commit then keeps
+  the final retained set within quota.
 - Selected-version cleanup is also explicit, stream-scoped, limited to 100
   unique versions per request, and confirmed in the local UI. Deleting the
   final remaining version is rejected.
