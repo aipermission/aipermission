@@ -8,6 +8,7 @@ import (
 
 const ordinaryRequestTimeout = 45 * time.Second
 const remoteBrowseRequestTimeout = 75 * time.Second
+const connectorActionRequestTimeout = 90 * time.Second
 
 func withRequestDeadline(next http.Handler, timeout time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +35,8 @@ func requestTimeoutForPath(path string, fallback time.Duration) time.Duration {
 	switch path {
 	case "/api/file-transfers/browse", "/api/file-transfers/expand":
 		return remoteBrowseRequestTimeout
+	case "/api/connector-actions/local-run", "/api/mcp/connector-actions/call":
+		return connectorActionRequestTimeout
 	default:
 		return fallback
 	}

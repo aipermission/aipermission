@@ -127,7 +127,7 @@ func (l *authRateLimiter) delay(key string) time.Duration {
 	if entry.lockedUntil.After(time.Now()) {
 		return time.Until(entry.lockedUntil)
 	}
-	if entry.failures < l.delayFailures || time.Since(entry.lastSeen) > 10*time.Minute {
+	if entry.failures < l.delayFailures {
 		return 0
 	}
 	shift := entry.failures - l.delayFailures
@@ -148,6 +148,8 @@ func (l *authRateLimiter) pruneLocked(now time.Time) {
 		}
 	}
 	for len(l.entries) > maxAuthRateLimitEntries {
+		// Capacity eviction intentionally favors bounded memory over preserving
+		// backoff for the least recently observed identity.
 		var oldestKey string
 		var oldest time.Time
 		for key, entry := range l.entries {

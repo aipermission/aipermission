@@ -96,6 +96,17 @@ func TestRemoteBrowseKeepsItsLongerBoundedDeadline(t *testing.T) {
 	}
 }
 
+func TestConnectorActionsOutliveTheirInternalExecutionTimeout(t *testing.T) {
+	for _, path := range []string{"/api/connector-actions/local-run", "/api/mcp/connector-actions/call"} {
+		if got := requestTimeoutForPath(path, ordinaryRequestTimeout); got != connectorActionRequestTimeout {
+			t.Fatalf("connector action timeout for %s = %s, want %s", path, got, connectorActionRequestTimeout)
+		}
+	}
+	if connectorActionRequestTimeout <= maxConnectorCommandTimeout {
+		t.Fatalf("connector action timeout %s must exceed command timeout %s", connectorActionRequestTimeout, maxConnectorCommandTimeout)
+	}
+}
+
 func TestOrdinaryRouteAppliesTransportDeadlines(t *testing.T) {
 	writer := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
 	deadlineSeen := make(chan [2]time.Time, 1)

@@ -33,6 +33,9 @@ func TestMCPTokenRateLimitFingerprintIsNonReversibleAndStable(t *testing.T) {
 	if strings.Contains(first, token) || len(first) >= len("mcp-token:")+64 {
 		t.Fatalf("fingerprint exposes raw or full token hash: %q", first)
 	}
+	if strings.Contains(first, "sha256:") || len(strings.TrimPrefix(first, "mcp-token:")) != 24 {
+		t.Fatalf("fingerprint should contain exactly 24 digest characters: %q", first)
+	}
 }
 
 func TestMCPTokenAuthenticationBackoffIsIndependent(t *testing.T) {

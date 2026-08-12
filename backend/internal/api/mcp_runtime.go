@@ -124,9 +124,13 @@ func (s *Server) rejectStoppedMCP(w http.ResponseWriter, runtime *databaseRuntim
 	if runtime.isMCPStarted() {
 		return false
 	}
+	writeStoppedMCP(w)
+	return true
+}
+
+func writeStoppedMCP(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "stopped",
 		"error":  "MCP execution is stopped in the local gateway. Start MCP from the web UI before running commands.",
 	})
-	return true
 }

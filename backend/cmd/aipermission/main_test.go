@@ -91,7 +91,7 @@ func TestServeHTTPBoundsShutdownAndClosesListener(t *testing.T) {
 	close(releaseRequest)
 }
 
-func TestServeHTTPRunsRegisteredRuntimeCleanup(t *testing.T) {
+func TestServeHTTPRunsRegisteredShutdownCallbacks(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -107,6 +107,6 @@ func TestServeHTTPRunsRegisteredRuntimeCleanup(t *testing.T) {
 	select {
 	case <-cleanupCalled:
 	case <-time.After(time.Second):
-		t.Fatal("registered runtime cleanup was not called")
+		t.Fatal("registered shutdown callback was not called")
 	}
 }
