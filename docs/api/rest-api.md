@@ -837,6 +837,7 @@ GET    /api/settings/maintenance-console/status
 POST   /api/settings/maintenance-console/open
 GET    /api/settings/maintenance-console/attach
 POST   /api/settings/maintenance-console/close
+GET    /api/settings/diagnostics
 ```
 
 Token create returns the token value once. `expires_at` is optional and must be
@@ -907,6 +908,14 @@ same browser terminal component as SSH console sessions. The API exposes
 `open`, websocket `attach`, and `close`; lifecycle events are audited, but the
 terminal transcript is kept as bounded in-memory UI state rather than stored as
 command history.
+
+`GET /api/settings/diagnostics` downloads a bounded JSON support report after
+normal local UI-session authentication. The strict allowlist includes release,
+architecture, schema, connector-version, runtime-health, aggregate
+`outcome_unknown`, and categorized recent-error metadata. It excludes raw error
+text together with credentials, tokens, endpoints, target/profile/database
+names, addresses, commands, action payloads, message content, raw output, and
+private paths. Creating the report writes a metadata-only Audit event.
 
 Connector permission update shape:
 

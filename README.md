@@ -200,6 +200,9 @@ Implemented:
 - pause/resume/cancel transfer queues with live progress, speed, ETA, checksum, server, and path metadata
 - configurable local data retention for unified history, audit logs, console sessions, and messages
 - Settings-only realtime Maintenance Console for local gateway diagnostics
+- bounded, strictly allowlisted JSON support diagnostics with no raw commands,
+  payloads, output, errors, credentials, endpoints, or private names
+  ([support guide](docs/support-diagnostics.md))
 - SQLCipher-backed full SQLite database encryption
 - first-run database password setup and unlock screen
 - local browser session cookie for the web REST API after unlock
