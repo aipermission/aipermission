@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -47,11 +48,7 @@ type Store struct {
 	vault *vault.Vault
 }
 
-type storeDB interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
+type storeDB = sqldb.Executor
 
 func NewStore(db *sql.DB, secretVault ...*vault.Vault) *Store {
 	store := &Store{db: db, begin: db.BeginTx}

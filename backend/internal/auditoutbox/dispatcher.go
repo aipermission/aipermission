@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -265,7 +266,7 @@ func truncateUTF8(value string, maxBytes int) string {
 		return value
 	}
 	value = value[:maxBytes]
-	for len(value) > 0 && !strings.Valid(value) {
+	for len(value) > 0 && !utf8.ValidString(value) {
 		value = value[:len(value)-1]
 	}
 	return value

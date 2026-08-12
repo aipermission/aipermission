@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 type SessionSelection struct {
@@ -201,7 +202,7 @@ func (s *Store) MarkSessionItemsUsed(ctx context.Context, items []SessionItem) e
 	return nil
 }
 
-func resolveSessionItem(ctx context.Context, tx storeDB, selection SessionSelection) (SessionItem, string, int, string, error) {
+func resolveSessionItem(ctx context.Context, tx sqldb.Executor, selection SessionSelection) (SessionItem, string, int, string, error) {
 	var item SessionItem
 	var encrypted, expiresAt, status string
 	var encryptionVersion, sourceActive, assigned int

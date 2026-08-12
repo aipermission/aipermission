@@ -219,17 +219,11 @@ func (s *Store) ReplaceActionPermissions(ctx context.Context, tokenID int64, inp
 	if err := s.validateActionPermissions(ctx, tokenID, inputs); err != nil {
 		return nil, err
 	}
-	executor := s.db
-	var tx *sql.Tx
-	if starter, ok := s.db.(transactionStarter); ok {
-		var err error
-		tx, err = starter.BeginTx(ctx, nil)
-		if err != nil {
-			return nil, fmt.Errorf("begin connector permission update: %w", err)
-		}
-		defer tx.Rollback()
-		executor = tx
+	executor, commit, rollback, err := s.transaction(ctx, "connector permission update")
+	if err != nil {
+		return nil, err
 	}
+	defer rollback()
 
 	if _, err := executor.ExecContext(ctx, `DELETE FROM token_connector_action_permissions WHERE token_id = ?`, tokenID); err != nil {
 		return nil, fmt.Errorf("clear connector action permissions: %w", err)
@@ -258,10 +252,8 @@ func (s *Store) ReplaceActionPermissions(ctx context.Context, tokenID int64, inp
 	if err != nil {
 		return nil, err
 	}
-	if tx != nil {
-		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("commit connector permission update: %w", err)
-		}
+	if err := commit(); err != nil {
+		return nil, fmt.Errorf("commit connector permission update: %w", err)
 	}
 	return items, nil
 }
