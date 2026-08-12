@@ -8,7 +8,7 @@ import { CopyButton } from "../ui/copy-button";
 import { Dialog } from "../ui/dialog";
 import { Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
-import { PasswordSettingsPanel } from "./password-settings-dialog";
+import { PasswordSettingsPanel } from "./password-settings-panel";
 
 export function DatabaseSettingsPanel({ databaseName }) {
   const [renameName, setRenameName] = useState(databaseName);
@@ -33,7 +33,7 @@ export function DatabaseSettingsPanel({ databaseName }) {
       successMessage: "Database renamed. Unlock it again to continue.",
       action: async () => {
         try {
-          return await apiPost("/api/databases/rename", { database_name: renameName, current_password: renamePassword });
+          return await apiPost("/api/databases/rename", { database_name: renameName.trim(), current_password: renamePassword });
         } finally {
           setRenamePassword("");
         }
