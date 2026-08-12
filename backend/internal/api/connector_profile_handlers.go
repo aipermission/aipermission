@@ -181,14 +181,11 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.invalidateVaultSessionsForTargetProfile(
+	if err := s.afterConnectorCredentialLifecycleChange(
 		r.Context(), runtime, target.ID, profile.ID,
 		"connector credential profile changed; send a fresh Vault request",
+		"connector credential profile was updated; ask the AI to send a fresh request", false,
 	); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if _, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, target.ID, profile.ID, "connector credential profile was updated; ask the AI to send a fresh request", false); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -246,14 +243,11 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if err := s.invalidateVaultSessionsForTargetProfile(
+	if err := s.afterConnectorCredentialLifecycleChange(
 		r.Context(), runtime, targetID, profileID,
 		"connector credential profile was deleted; send a fresh Vault request",
+		"connector credential profile was deleted; ask the AI to send a fresh request", true,
 	); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if _, err := s.staleConnectorActionRequestsForTarget(r.Context(), runtime, targetID, profileID, "connector credential profile was deleted; ask the AI to send a fresh request", true); err != nil {
 		writeInternalError(w)
 		return
 	}

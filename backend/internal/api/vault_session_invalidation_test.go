@@ -283,3 +283,102 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 		t.Fatalf("no-op authorization update revoked the in-memory Vault lease: %v", err)
 	}
 }
+
+func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := t.Context()
+	runtime := fixture.server.activeRuntime()
+	project, err := projectstore.NewStore(fixture.db).Get(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := fixture.createKeyAndServer(t, "vault-atomic-authorization")
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-atomic-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := connectortargets.NewStore(fixture.db).SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: target.TargetID, ProfileID: target.ProfileID,
+		ActionName: sshconnector.ActionExec, ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("set initial connector permission: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := fixture.db.ExecContext(ctx, `
+		INSERT INTO console_sessions (
+			runtime_id, generation, principal_kind, principal_token_id,
+			workspace_id, runtime_instance_id, environment_content_hash,
+			approval_context_hash, name, status, created_at, updated_at
+		) VALUES (?, 1, 'mcp_token', ?, ?, ?, 'environment-hash',
+		          'approval-hash', 'Vault atomic session', 'connected', ?, ?)`,
+		target.ID, token.ID, runtime.workspaceUUID, runtime.runtimeInstanceID, now, now,
+	)
+	if err != nil {
+		t.Fatalf("insert Vault console session: %v", err)
+	}
+	sessionID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease := vaultsessions.Lease{
+		WorkspaceID: runtime.workspaceUUID, RuntimeInstanceID: runtime.runtimeInstanceID,
+		TokenID: token.ID, RuntimeID: target.ID, SessionID: sessionID, SessionGeneration: 1,
+		EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
+		ExpiresAt: time.Now().UTC().Add(time.Hour),
+	}
+	if err := runtime.vaultLeases.Grant(lease); err != nil {
+		t.Fatalf("grant Vault lease: %v", err)
+	}
+	if err := persistVaultLease(ctx, runtime, project.ID, lease); err != nil {
+		t.Fatalf("persist Vault lease: %v", err)
+	}
+	if _, err := fixture.db.ExecContext(ctx, `
+		CREATE TRIGGER fail_vault_lease_revocation
+		BEFORE UPDATE OF status ON vault_session_leases
+		WHEN NEW.status = 'revoked'
+		BEGIN
+			SELECT RAISE(ABORT, 'injected Vault lease revocation failure');
+		END`); err != nil {
+		t.Fatalf("create lease failure trigger: %v", err)
+	}
+
+	response := performJSON(
+		fixture.server.Handler(),
+		http.MethodPut,
+		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions",
+		"",
+		updateConnectorPermissionsRequest{Permissions: []connectorPermissionInput{{
+			TargetID: target.TargetID, ProfileID: target.ProfileID,
+			ActionName: sshconnector.ActionExec, ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
+		}}},
+	)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("authorization update should fail atomically: %d %s", response.Code, response.Body.String())
+	}
+	permissions, err := connectortargets.NewStore(fixture.db).ListActionPermissions(ctx, token.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(permissions) != 1 || permissions[0].ExecutionRule != connectortargets.ActionPermissionAlwaysRun {
+		t.Fatalf("permission mutation was not rolled back: %#v", permissions)
+	}
+	var leaseStatus string
+	if err := fixture.db.QueryRowContext(ctx, `SELECT status FROM vault_session_leases WHERE session_id = ?`, sessionID).Scan(&leaseStatus); err != nil {
+		t.Fatal(err)
+	}
+	if leaseStatus != "active" {
+		t.Fatalf("lease mutation was not rolled back: %q", leaseStatus)
+	}
+	principal, err := executionprincipal.MCPToken(token.ID, runtime.workspaceUUID, runtime.runtimeInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization := console.SessionAuthorization{
+		Handle:                 console.SessionHandle{ID: sessionID, RuntimeID: target.ID, Generation: 1},
+		EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
+	}
+	if err := runtime.vaultLeases.Authorize(ctx, principal, authorization, console.OperationObserve); err != nil {
+		t.Fatalf("rolled-back update changed the in-memory lease: %v", err)
+	}
+}

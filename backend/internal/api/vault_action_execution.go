@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
@@ -76,12 +77,23 @@ func executeVaultGenerate(
 	if err != nil {
 		return nil, err
 	}
-	item, err := store.Create(ctx, projectvault.CreateInput{
+	createInput := projectvault.CreateInput{
 		Name: input.Name, OwnerProjectID: request.ProjectID, SharedProjectIDs: input.SharedProjectIDs,
 		SecretType: input.SecretType, Provider: input.Provider, Environment: input.Environment,
 		Description: input.Description, ExpiresAt: input.ExpiresAt,
 		ExpiryWarningDays: input.ExpiryWarningDays, Source: "generated",
 		GeneratorKind: input.GeneratorKind, Tags: input.Tags, UsageNotes: input.projectUsageNotes(),
+	}
+	var item projectvault.Item
+	err = server.withAuditedMutation(ctx, runtime, "mcp", &request.TokenID, 0, "vault.item.created", func() any {
+		return map[string]any{
+			"vault_item_id": item.ID, "owner_project_id": item.OwnerProjectID,
+			"secret_type": item.SecretType, "source": item.Source,
+		}
+	}, func(tx *sql.Tx) error {
+		var createErr error
+		item, createErr = store.WithTx(tx).Create(ctx, createInput)
+		return createErr
 	})
 	if err != nil {
 		return nil, err

@@ -27,6 +27,17 @@ import (
 const backupAPITestPassword = "M7!river-Quartz_92fox"
 const backupAPITestToken = "backup-api-test-token-with-more-than-thirty-two-characters"
 
+func assertAuditActionCount(t *testing.T, database *sql.DB, action string, want int) {
+	t.Helper()
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM audit_logs WHERE action = ?`, action).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != want {
+		t.Fatalf("audit action %s count=%d, want %d", action, count, want)
+	}
+}
+
 type backupAPITestFixture struct {
 	server *Server
 	db     *sql.DB
@@ -100,6 +111,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if err != nil || baseline == nil || baseline.BackupID != record.ProviderFileID {
 		t.Fatalf("upload did not advance the encrypted local baseline: %#v err=%v", baseline, err)
 	}
+	assertAuditActionCount(t, fixture.db, "backup.provider.uploaded", 1)
 
 	list := performJSON(handler, http.MethodGet, providerPath(created.ID, "/records"), "", nil)
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), record.ProviderFileID) || !strings.Contains(list.Body.String(), `"remote_sync":true`) {
@@ -174,6 +186,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if listCallsAfterDelete != listCallsBeforeDelete {
 		t.Fatal("selected delete performed a second remote request after the confirmed deletion")
 	}
+	assertAuditActionCount(t, fixture.db, "backup.provider.records.deleted", 1)
 	list = performJSON(handler, http.MethodGet, providerPath(created.ID, "/records"), "", nil)
 	listed := decodeRouteResponse[struct {
 		Items []backupRecordResponse `json:"items"`
