@@ -104,6 +104,14 @@ func sharedSchemas() map[string]any {
 		"AuditEntry":   auditEntrySchema(),
 		"HistoryPage":  pageSchema(refSchema("HistoryEntry")),
 		"AuditPage":    pageSchema(refSchema("AuditEntry")),
+		"DiagnosticsConnector": objectSchema(map[string]any{
+			"kind": stringSchema(), "version": stringSchema(),
+		}, []string{"kind", "version"}),
+		"DiagnosticsErrorSummary": objectSchema(map[string]any{
+			"connector_kind": stringSchema(), "activity_type": stringSchema(), "status": stringSchema(),
+			"category": stringSchema(), "count": integerSchema(), "latest_at": dateTimeSchema(),
+		}, []string{"connector_kind", "activity_type", "status", "category", "count"}),
+		"DiagnosticsReport": diagnosticsReportSchema(),
 	}
 }
 
@@ -122,7 +130,40 @@ func typedOperationContracts() map[Route]operationContract {
 		{Method: "GET", Path: "/api/history/{id}"}:                                         okContract(refSchema("HistoryEntry")),
 		{Method: "GET", Path: "/api/audit-logs"}:                                           okContract(refSchema("AuditPage")),
 		{Method: "GET", Path: "/api/audit-logs/{id}"}:                                      okContract(refSchema("AuditEntry")),
+		{Method: "GET", Path: "/api/settings/diagnostics"}:                                 okContract(refSchema("DiagnosticsReport")),
 	}
+}
+
+func diagnosticsReportSchema() map[string]any {
+	application := objectSchema(map[string]any{
+		"service": stringSchema(), "version": stringSchema(),
+	}, []string{"service", "version"})
+	architecture := objectSchema(map[string]any{
+		"os": stringSchema(), "arch": stringSchema(), "go_version": stringSchema(),
+	}, []string{"os", "arch", "go_version"})
+	database := objectSchema(map[string]any{
+		"encrypted": boolSchema(), "schema_version": integerSchema(), "supported_schema_version": integerSchema(),
+		"migration_count": integerSchema(), "migration_state": stringSchema(), "sqlcipher_version": stringSchema(),
+	}, []string{"encrypted", "schema_version", "supported_schema_version", "migration_count", "migration_state", "sqlcipher_version"})
+	audit := objectSchema(map[string]any{
+		"status": stringSchema(), "failure_count": integerSchema(), "pending_count": integerSchema(), "retried_event_count": integerSchema(),
+	}, []string{"status", "failure_count", "pending_count", "retried_event_count"})
+	runtime := objectSchema(map[string]any{
+		"gateway": stringSchema(), "database": stringSchema(), "mcp": stringSchema(), "audit": audit,
+		"running_actions": integerSchema(), "pending_approvals": integerSchema(),
+		"open_consoles": integerSchema(), "open_transfers": integerSchema(),
+	}, []string{"gateway", "database", "mcp", "audit", "running_actions", "pending_approvals", "open_consoles", "open_transfers"})
+	outcomes := objectSchema(map[string]any{
+		"unknown_total": integerSchema(), "unknown_last_24_hours": integerSchema(),
+	}, []string{"unknown_total", "unknown_last_24_hours"})
+	redaction := objectSchema(map[string]any{
+		"policy": stringSchema(), "excluded_by_design": arraySchema(stringSchema()), "error_detail": stringSchema(),
+	}, []string{"policy", "excluded_by_design", "error_detail"})
+	return objectSchema(map[string]any{
+		"report_format_version": stringSchema(), "generated_at": dateTimeSchema(), "application": application,
+		"architecture": architecture, "database": database, "connectors": arraySchema(refSchema("DiagnosticsConnector")),
+		"runtime": runtime, "outcomes": outcomes, "recent_errors": arraySchema(refSchema("DiagnosticsErrorSummary")), "redaction": redaction,
+	}, []string{"report_format_version", "generated_at", "application", "architecture", "database", "connectors", "runtime", "outcomes", "recent_errors", "redaction"})
 }
 
 // ValidateTypedRoutes ensures the hand-reviewed typed subset cannot silently

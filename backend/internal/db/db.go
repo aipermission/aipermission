@@ -16,6 +16,11 @@ const (
 	expectedSQLCipherVersion = "4.16.0"
 )
 
+// CurrentSchemaVersion returns the newest schema understood by this build.
+func CurrentSchemaVersion() int {
+	return currentSchemaVersion
+}
+
 func OpenEncrypted(path string, password string) (*sql.DB, error) {
 	return openEncrypted(path, password, true)
 }

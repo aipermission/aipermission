@@ -71,6 +71,21 @@ function setVersion(version) {
       "frontend appVersion",
     ),
   );
+
+  const backendVersionPath = path.join(
+    root,
+    "backend/internal/buildinfo/version.go",
+  );
+  const backendVersionSource = fs.readFileSync(backendVersionPath, "utf8");
+  fs.writeFileSync(
+    backendVersionPath,
+    replaceRequired(
+      backendVersionSource,
+      /^const Version = "[^"]+"$/m,
+      `const Version = "${version}"`,
+      "backend build version",
+    ),
+  );
 }
 
 function checkVersion() {
@@ -131,6 +146,15 @@ function checkVersion() {
     releaseSource.match(
       /changelogEntries = \[\s*\{\s*version: "([^"]+)"/s,
     )?.[1],
+  ]);
+
+  const backendVersionSource = fs.readFileSync(
+    path.join(root, "backend/internal/buildinfo/version.go"),
+    "utf8",
+  );
+  values.push([
+    "backend build version",
+    backendVersionSource.match(/^const Version = "([^"]+)"$/m)?.[1],
   ]);
 
   const changelog = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");

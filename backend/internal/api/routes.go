@@ -29,6 +29,7 @@ type targetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 type vaultActionApprovalHandlers struct{ *Server }
 type maintenanceConsoleHandlers struct{ *Server }
+type diagnosticsHandlers struct{ *Server }
 
 func (s *Server) routes() {
 	unlock := unlockHandlers{s}
@@ -55,6 +56,7 @@ func (s *Server) routes() {
 	mcp := mcpHandlers{s}
 	vaultApprovals := vaultActionApprovalHandlers{s}
 	maintenanceConsole := maintenanceConsoleHandlers{s}
+	diagnostics := diagnosticsHandlers{s}
 
 	s.mux.HandleFunc("GET /health", s.health)
 	s.mux.HandleFunc("GET /api/status", s.status)
@@ -71,6 +73,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/settings/maintenance-console/open", maintenanceConsole.open)
 	s.mux.HandleFunc("GET /api/settings/maintenance-console/attach", maintenanceConsole.attach)
 	s.mux.HandleFunc("POST /api/settings/maintenance-console/close", maintenanceConsole.close)
+	s.mux.HandleFunc("GET /api/settings/diagnostics", diagnostics.download)
 	s.mux.HandleFunc("GET /api/unlock/status", unlock.unlockStatus)
 	s.mux.HandleFunc("POST /api/unlock/setup", unlock.setupUnlock)
 	s.mux.HandleFunc("POST /api/unlock", unlock.unlock)

@@ -423,6 +423,272 @@
         ],
         "type": "object"
       },
+      "DiagnosticsConnector": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "version"
+        ],
+        "type": "object"
+      },
+      "DiagnosticsErrorSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "activity_type": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "latest_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "connector_kind",
+          "activity_type",
+          "status",
+          "category",
+          "count"
+        ],
+        "type": "object"
+      },
+      "DiagnosticsReport": {
+        "additionalProperties": false,
+        "properties": {
+          "application": {
+            "additionalProperties": false,
+            "properties": {
+              "service": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "service",
+              "version"
+            ],
+            "type": "object"
+          },
+          "architecture": {
+            "additionalProperties": false,
+            "properties": {
+              "arch": {
+                "type": "string"
+              },
+              "go_version": {
+                "type": "string"
+              },
+              "os": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "os",
+              "arch",
+              "go_version"
+            ],
+            "type": "object"
+          },
+          "connectors": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsConnector"
+            },
+            "type": "array"
+          },
+          "database": {
+            "additionalProperties": false,
+            "properties": {
+              "encrypted": {
+                "type": "boolean"
+              },
+              "migration_count": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "migration_state": {
+                "type": "string"
+              },
+              "schema_version": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "sqlcipher_version": {
+                "type": "string"
+              },
+              "supported_schema_version": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "encrypted",
+              "schema_version",
+              "supported_schema_version",
+              "migration_count",
+              "migration_state",
+              "sqlcipher_version"
+            ],
+            "type": "object"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "outcomes": {
+            "additionalProperties": false,
+            "properties": {
+              "unknown_last_24_hours": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "unknown_total": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "unknown_total",
+              "unknown_last_24_hours"
+            ],
+            "type": "object"
+          },
+          "recent_errors": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticsErrorSummary"
+            },
+            "type": "array"
+          },
+          "redaction": {
+            "additionalProperties": false,
+            "properties": {
+              "error_detail": {
+                "type": "string"
+              },
+              "excluded_by_design": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "policy": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "policy",
+              "excluded_by_design",
+              "error_detail"
+            ],
+            "type": "object"
+          },
+          "report_format_version": {
+            "type": "string"
+          },
+          "runtime": {
+            "additionalProperties": false,
+            "properties": {
+              "audit": {
+                "additionalProperties": false,
+                "properties": {
+                  "failure_count": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "pending_count": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "retried_event_count": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "failure_count",
+                  "pending_count",
+                  "retried_event_count"
+                ],
+                "type": "object"
+              },
+              "database": {
+                "type": "string"
+              },
+              "gateway": {
+                "type": "string"
+              },
+              "mcp": {
+                "type": "string"
+              },
+              "open_consoles": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "open_transfers": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "pending_approvals": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "running_actions": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "gateway",
+              "database",
+              "mcp",
+              "audit",
+              "running_actions",
+              "pending_approvals",
+              "open_consoles",
+              "open_transfers"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "report_format_version",
+          "generated_at",
+          "application",
+          "architecture",
+          "database",
+          "connectors",
+          "runtime",
+          "outcomes",
+          "recent_errors",
+          "redaction"
+        ],
+        "type": "object"
+      },
       "Error": {
         "additionalProperties": false,
         "properties": {
@@ -4106,6 +4372,37 @@
           "projects"
         ],
         "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/diagnostics": {
+      "get": {
+        "operationId": "getApiSettingsDiagnostics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsReport"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/settings/maintenance-console/attach": {
