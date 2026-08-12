@@ -149,6 +149,7 @@ func collectRecentErrors(ctx context.Context, database *sql.DB) ([]RecentErrorSu
 
 	type summaryKey struct{ connectorKind, activityType, status, category string }
 	grouped := map[summaryKey]RecentErrorSummary{}
+	latestRowConsumed := map[summaryKey]bool{}
 	for rows.Next() {
 		var connectorKind, activityType, status, errorText, updatedAt string
 		if err := rows.Scan(&connectorKind, &activityType, &status, &errorText, &updatedAt); err != nil {
@@ -166,8 +167,9 @@ func collectRecentErrors(ctx context.Context, database *sql.DB) ([]RecentErrorSu
 		summary.Status = key.status
 		summary.Category = key.category
 		summary.Count++
-		if summary.LatestAt == "" {
+		if !latestRowConsumed[key] {
 			summary.LatestAt = safeTimestamp(updatedAt)
+			latestRowConsumed[key] = true
 		}
 		grouped[key] = summary
 	}
