@@ -323,7 +323,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared, snapshot)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)
-		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultFailed, failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectorActionExecutionFailureStatus(err), failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
 			return connectortargets.ActionRequest{}, finishErr
 		}
@@ -376,7 +376,6 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		status = connectors.ResultFailed
 		result.Error = "connector returned approval_pending after approval was already granted"
 	}
-	result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
 	finished, err := s.finishConnectorActionRequest(
 		context.Background(), runtime, item.ID, status,
 		result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint,

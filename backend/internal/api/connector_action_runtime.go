@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -242,16 +243,16 @@ func (s *Server) executeInsertedConnectorAction(
 		if finishErr != nil {
 			return connectorActionCallResult{}, finishErr
 		}
-		return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: connectors.ResultFailed, Output: finished.Output, Error: finished.Error}}, nil
+		return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Output: finished.Output, Error: finished.Error}}, nil
 	}
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared, snapshot)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)
-		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectorActionExecutionFailureStatus(err), failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
 			return connectorActionCallResult{}, finishErr
 		}
-		return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: connectors.ResultFailed, Output: finished.Output, Error: finished.Error}}, nil
+		return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Output: finished.Output, Error: finished.Error}}, nil
 	}
 	status := result.Status
 	if status == "" {
@@ -287,7 +288,6 @@ func (s *Server) executeInsertedConnectorAction(
 		if result.Handles.FollowupTool == "" {
 			result.Handles.FollowupTool = options.FollowupTool
 		}
-		result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
 		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared, principal, result.Handles)
 		return connectorActionCallResult{Request: request, Permission: options.Permission, Result: result}, nil
 	}
@@ -295,7 +295,6 @@ func (s *Server) executeInsertedConnectorAction(
 		status = connectors.ResultFailed
 		result.Error = options.ApprovalPendingError
 	}
-	result = s.redactConnectorActionResult(context.Background(), runtime, result, prepared.ActionDefinition.OutputHint)
 	finished, err := s.finishConnectorActionRequest(
 		ctx, runtime, request.ID, status,
 		result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint,
@@ -303,6 +302,10 @@ func (s *Server) executeInsertedConnectorAction(
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
+	result.Output = finished.Output
+	result.DisplayText = finished.DisplayText
+	result.Error = finished.Error
+	result.Status = finished.Status
 	return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: result}, nil
 }
 
@@ -339,6 +342,14 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	approvalHash string,
 	idempotencyKey string,
 ) (connectortargets.ActionRequest, bool, error) {
+	redactedPreview, err := s.redactConnectorActionPreview(ctx, runtime, prepared.Action.Preview, prepared.ActionDefinition.SensitiveInputFields, prepared.ActionDefinition.OutputHint)
+	if err != nil {
+		return connectortargets.ActionRequest{}, false, err
+	}
+	redactedInput, err := s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input, prepared.ActionDefinition.SensitiveInputFields)
+	if err != nil {
+		return connectortargets.ActionRequest{}, false, err
+	}
 	payload, err := runtime.vault.EncryptJSON(connectorActionExecutionEnvelope{
 		Input:           prepared.Requested.Input,
 		Payload:         prepared.Action.Payload,
@@ -360,9 +371,9 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		ActionName:              prepared.Action.ActionName,
 		Title:                   s.redactForPersistence(ctx, runtime, prepared.Action.Title),
 		Summary:                 s.redactForPersistence(ctx, runtime, prepared.Action.Summary),
-		Preview:                 s.redactConnectorActionPreview(ctx, runtime, prepared.Action.Preview, prepared.ActionDefinition.SensitiveInputFields, prepared.ActionDefinition.OutputHint),
+		Preview:                 redactedPreview,
 		Source:                  prepared.Requested.Source,
-		Input:                   s.redactConnectorActionInput(ctx, runtime, prepared.Requested.Input, prepared.ActionDefinition.SensitiveInputFields),
+		Input:                   redactedInput,
 		EncryptedPayloadJSON:    payload,
 		Reason:                  s.redactForPersistence(ctx, runtime, prepared.Requested.Reason),
 		Status:                  status,
@@ -533,7 +544,11 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 	if err := validateConnectorActionResult(result); err != nil {
 		return connectors.ActionResult{}, err
 	}
-	return result, nil
+	redacted, err := s.redactConnectorActionResult(ctx, runtime, result, prepared.ActionDefinition.OutputHint)
+	if err != nil {
+		return connectors.ActionResult{}, fmt.Errorf("process connector action result: %w", err)
+	}
+	return redacted, nil
 }
 
 func validateConnectorActionResult(result connectors.ActionResult) error {
@@ -543,6 +558,13 @@ func validateConnectorActionResult(result connectors.ActionResult) error {
 		return errors.New("connector returned an incomplete session handle")
 	}
 	return nil
+}
+
+func connectorActionExecutionFailureStatus(err error) connectors.ResultStatus {
+	if errors.Is(err, actionresult.ErrInvalidOutput) {
+		return connectors.ResultOutcomeUnknown
+	}
+	return connectors.ResultFailed
 }
 
 func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
@@ -602,13 +624,16 @@ func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *data
 func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, allowedStatuses []connectors.ResultStatus, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), connectorActionFinishTimeout)
 	defer cancel()
-	redacted := s.redactConnectorActionResult(finishCtx, runtime, connectors.ActionResult{
+	redacted, err := s.redactConnectorActionResult(finishCtx, runtime, connectors.ActionResult{
 		Output:      output,
 		DisplayText: displayText,
 		Error:       errorText,
 	}, hints...)
+	if err != nil {
+		return connectortargets.ActionRequest{}, fmt.Errorf("process connector action result: %w", err)
+	}
 	var finished connectortargets.ActionRequest
-	err := s.withAuditedTransaction(finishCtx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+	err = s.withAuditedTransaction(finishCtx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 		var err error
 		var changed bool
 		finished, changed, err = connectortargets.NewTxStore(tx).FinishActionRequestWithChange(finishCtx, connectortargets.FinishActionRequestInput{
@@ -641,98 +666,39 @@ func connectorActionRequestAuditPayload(request connectortargets.ActionRequest) 
 	}
 }
 
-func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool) any {
-	switch typed := value.(type) {
-	case string:
-		return s.redactForPersistence(ctx, runtime, typed)
-	case []any:
-		out := make([]any, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, s.redactedConnectorValue(ctx, runtime, item, sensitiveFields, capabilityFields))
-		}
-		return out
-	case []string:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, s.redactForPersistence(ctx, runtime, item))
-		}
-		return out
-	case []map[string]any:
-		out := make([]map[string]any, 0, len(typed))
-		for _, item := range typed {
-			redacted, _ := s.redactedConnectorValue(ctx, runtime, item, sensitiveFields, capabilityFields).(map[string]any)
-			out = append(out, redacted)
-		}
-		return out
-	case map[string]string:
-		out := make(map[string]string, len(typed))
-		for key, item := range typed {
-			if connectorOutputFieldSensitive(key, sensitiveFields) {
-				out[key] = "[REDACTED]"
-				continue
-			}
-			if connectorOutputFieldDeclared(key, capabilityFields) {
-				out[key] = s.redactCustom(ctx, runtime, item)
-				continue
-			}
-			out[key] = s.redactForPersistence(ctx, runtime, item)
-		}
-		return out
-	case map[string]any:
-		out := make(map[string]any, len(typed))
-		for key, item := range typed {
-			if connectorOutputFieldSensitive(key, sensitiveFields) {
-				out[key] = "[REDACTED]"
-				continue
-			}
-			if connectorOutputFieldDeclared(key, capabilityFields) {
-				// Temporary capabilities are intentionally returned to the
-				// authorized caller. Preserve their signed syntax while still
-				// honoring operator-defined custom redaction rules.
-				out[key] = s.redactedTemporaryCapabilityValue(ctx, runtime, item, sensitiveFields)
-				continue
-			}
-			out[key] = s.redactedConnectorValue(ctx, runtime, item, sensitiveFields, capabilityFields)
-		}
-		return out
-	default:
-		return value
-	}
+func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool) (any, error) {
+	return actionresult.CanonicalizeAndRedact(value, actionresult.DefaultLimits(), actionresult.RedactionOptions{
+		SensitiveField: func(key string) bool {
+			return connectorOutputFieldSensitive(key, sensitiveFields)
+		},
+		TemporaryCapabilityField: func(key string) bool {
+			return connectorOutputFieldDeclared(key, capabilityFields)
+		},
+		RedactText: func(value string) string {
+			return s.redactForPersistence(ctx, runtime, value)
+		},
+		RedactCapability: func(value string) string {
+			return s.redactCustom(ctx, runtime, value)
+		},
+	})
 }
 
-func (s *Server) redactedTemporaryCapabilityValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool) any {
-	switch typed := value.(type) {
-	case string:
-		return s.redactCustom(ctx, runtime, typed)
-	case []string:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, s.redactCustom(ctx, runtime, item))
-		}
-		return out
-	case []any:
-		out := make([]any, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, s.redactedTemporaryCapabilityValue(ctx, runtime, item, sensitiveFields))
-		}
-		return out
-	default:
-		return s.redactedConnectorValue(ctx, runtime, value, sensitiveFields, nil)
-	}
-}
-
-func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) connectors.ActionResult {
+func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
 	sensitiveFields := connectorSensitiveOutputFields(hints...)
 	capabilityFields := connectorTemporaryCapabilityFields(hints...)
 	result.DisplayText = s.redactForPersistence(ctx, runtime, result.DisplayText)
 	result.Error = s.redactForPersistence(ctx, runtime, result.Error)
-	result.Output = s.redactedConnectorValue(ctx, runtime, result.Output, sensitiveFields, capabilityFields)
-	return result
+	redacted, err := s.redactedConnectorValue(ctx, runtime, result.Output, sensitiveFields, capabilityFields)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	result.Output = redacted
+	return result, nil
 }
 
-func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databaseRuntime, input map[string]any, sensitiveInputFields []string) map[string]any {
+func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databaseRuntime, input map[string]any, sensitiveInputFields []string) (map[string]any, error) {
 	if input == nil {
-		return map[string]any{}
+		return map[string]any{}, nil
 	}
 	fields := connectorSensitiveOutputFields()
 	for _, field := range sensitiveInputFields {
@@ -741,16 +707,20 @@ func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databa
 			fields[normalized] = true
 		}
 	}
-	redacted, ok := s.redactedConnectorValue(ctx, runtime, input, fields, nil).(map[string]any)
-	if !ok || redacted == nil {
-		return map[string]any{}
+	value, err := s.redactedConnectorValue(ctx, runtime, input, fields, nil)
+	if err != nil {
+		return nil, err
 	}
-	return redacted
+	redacted, ok := value.(map[string]any)
+	if !ok || redacted == nil {
+		return nil, actionresult.ErrInvalidValue
+	}
+	return redacted, nil
 }
 
-func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *databaseRuntime, preview map[string]any, sensitiveFields []string, hints ...connectors.OutputHint) map[string]any {
+func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *databaseRuntime, preview map[string]any, sensitiveFields []string, hints ...connectors.OutputHint) (map[string]any, error) {
 	if preview == nil {
-		return map[string]any{}
+		return map[string]any{}, nil
 	}
 	fields := connectorSensitiveOutputFields(hints...)
 	for _, field := range sensitiveFields {
@@ -758,11 +728,15 @@ func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *data
 			fields[normalized] = true
 		}
 	}
-	redacted, ok := s.redactedConnectorValue(ctx, runtime, preview, fields, nil).(map[string]any)
-	if !ok || redacted == nil {
-		return map[string]any{}
+	value, err := s.redactedConnectorValue(ctx, runtime, preview, fields, nil)
+	if err != nil {
+		return nil, err
 	}
-	return redacted
+	redacted, ok := value.(map[string]any)
+	if !ok || redacted == nil {
+		return nil, actionresult.ErrInvalidValue
+	}
+	return redacted, nil
 }
 
 func connectorTemporaryCapabilityFields(hints ...connectors.OutputHint) map[string]bool {

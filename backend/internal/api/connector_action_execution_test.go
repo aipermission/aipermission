@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
@@ -14,6 +15,13 @@ import (
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
+
+type typedConnectorResultItem struct {
+	Message  string            `json:"message"`
+	Command  string            `json:"command"`
+	Labels   map[string]string `json:"labels"`
+	Password string            `json:"password"`
+}
 
 func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
 	database := openAPITestDB(t)
@@ -450,18 +458,106 @@ func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert running request: %v", err)
 	}
-	redacted := server.redactConnectorActionResult(context.Background(), runtime, connectors.ActionResult{
+	redacted, err := server.redactConnectorActionResult(context.Background(), runtime, connectors.ActionResult{
 		Status:      connectors.ResultRunning,
 		Output:      map[string]any{"rows": []map[string]any{{"session_token": "raw-token", "name": "safe"}}},
 		DisplayText: "Bearer raw-bearer-token",
 		Error:       "password=super-secret",
 	}, connectors.OutputHint{SensitiveFields: []string{"session_token"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	response := connectorActionToMCPResponse(request, redacted)
 	payload := fmt.Sprint(response.Output, response.DisplayText, response.Error)
 	for _, secret := range []string{"raw-token", "raw-bearer-token", "super-secret"} {
 		if strings.Contains(payload, secret) {
 			t.Fatalf("running response leaked %q: %#v", secret, response)
 		}
+	}
+}
+
+func TestFinishConnectorActionRequestCanonicalizesTypedOutputBeforePersistence(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	server := &Server{}
+	if _, err := insertRedactionRule(t.Context(), runtime, redactionRuleRequest{
+		Name: "typed output token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
+	}); err != nil {
+		t.Fatalf("insert custom redaction rule: %v", err)
+	}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+		Status: connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatalf("insert action request: %v", err)
+	}
+
+	finished, err := server.finishConnectorActionRequest(
+		t.Context(), runtime, request.ID, connectors.ResultCompleted,
+		map[string]any{"events": []typedConnectorResultItem{{
+			Message:  "Bearer raw-bearer-token internal_abc123",
+			Command:  "password=command-secret",
+			Labels:   map[string]string{"authorization": "Bearer label-token", "safe": "visible"},
+			Password: "field-secret",
+		}}},
+		"done", "",
+	)
+	if err != nil {
+		t.Fatalf("finish typed action output: %v", err)
+	}
+
+	encoded := fmt.Sprint(finished.Output)
+	for _, secret := range []string{"raw-bearer-token", "internal_abc123", "command-secret", "label-token", "field-secret"} {
+		if strings.Contains(encoded, secret) {
+			t.Fatalf("finished output leaked %q: %s", secret, encoded)
+		}
+	}
+	if !strings.Contains(encoded, "visible") || !strings.Contains(encoded, "[REDACTED]") {
+		t.Fatalf("finished output lost safe data or markers: %s", encoded)
+	}
+
+	var requestOutput, historyOutput string
+	if err := database.QueryRow(`SELECT output_json FROM connector_action_requests WHERE id = ?`, request.ID).Scan(&requestOutput); err != nil {
+		t.Fatalf("read request output: %v", err)
+	}
+	if err := database.QueryRow(`SELECT output_json FROM history_entries WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, request.ID).Scan(&historyOutput); err != nil {
+		t.Fatalf("read history output: %v", err)
+	}
+	if requestOutput != historyOutput {
+		t.Fatalf("history projection drifted from request: request=%s history=%s", requestOutput, historyOutput)
+	}
+	for _, secret := range []string{"raw-bearer-token", "internal_abc123", "command-secret", "label-token", "field-secret"} {
+		if strings.Contains(requestOutput, secret) {
+			t.Fatalf("persisted output leaked %q: %s", secret, requestOutput)
+		}
+	}
+	response := connectorActionToMCPResponse(finished, connectors.ActionResult{Status: finished.Status, Output: finished.Output})
+	if fmt.Sprint(response.Output) != fmt.Sprint(finished.Output) {
+		t.Fatalf("MCP output drifted from persisted projection: response=%#v finished=%#v", response.Output, finished.Output)
+	}
+}
+
+func TestConnectorActionResultRejectsOversizedTypedOutput(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	_, err := (&Server{}).redactConnectorActionResult(t.Context(), runtime, connectors.ActionResult{
+		Output: []typedConnectorResultItem{{Message: strings.Repeat("x", actionresult.MaxStringBytes+1)}},
+	})
+	if !errors.Is(err, actionresult.ErrInvalidOutput) {
+		t.Fatalf("oversized typed output error = %v", err)
+	}
+	if status := connectorActionExecutionFailureStatus(err); status != connectors.ResultOutcomeUnknown {
+		t.Fatalf("invalid output status = %s", status)
+	}
+	if status := connectorActionExecutionFailureStatus(errors.New("connection failed")); status != connectors.ResultFailed {
+		t.Fatalf("ordinary execution error status = %s", status)
 	}
 }
 
@@ -472,7 +568,7 @@ func TestConnectorActionResultPreservesDeclaredTemporaryCapability(t *testing.T)
 	server := &Server{}
 	signedURL := "https://s3.example.test/object?X-Amz-Security-Token=session-token&X-Amz-Signature=signature"
 
-	redacted := server.redactConnectorActionResult(context.Background(), runtime, connectors.ActionResult{
+	redacted, err := server.redactConnectorActionResult(context.Background(), runtime, connectors.ActionResult{
 		Output: map[string]any{
 			"url":               signedURL,
 			"urls":              []string{signedURL},
@@ -482,6 +578,9 @@ func TestConnectorActionResultPreservesDeclaredTemporaryCapability(t *testing.T)
 			"secret_access_key": "must-not-leak",
 		},
 	}, connectors.OutputHint{TemporaryCapabilityFields: []string{"url", "urls", "capability_meta"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	output := redacted.Output.(map[string]any)
 	if output["url"] != signedURL {
@@ -490,7 +589,7 @@ func TestConnectorActionResultPreservesDeclaredTemporaryCapability(t *testing.T)
 	if output["secret_access_key"] != "[REDACTED]" {
 		t.Fatalf("credential field was not redacted: %#v", output["secret_access_key"])
 	}
-	if urls, ok := output["urls"].([]string); !ok || len(urls) != 1 || urls[0] != signedURL {
+	if urls, ok := output["urls"].([]any); !ok || len(urls) != 1 || urls[0] != signedURL {
 		t.Fatalf("temporary capability list was corrupted: %#v", output["urls"])
 	}
 	if sourceURL := fmt.Sprint(output["source_url"]); strings.Contains(sourceURL, "must-redact") {
