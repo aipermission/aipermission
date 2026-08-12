@@ -112,7 +112,17 @@ or customer data. Authorized Mail actions may persist that data in encrypted
 history and encrypted `.aipdb` backups. Use finite retention and avoid asking
 agents to reproduce message content unless it is needed for the task.
 
-Basic redaction is enabled by default for common secret patterns before history, transcripts, messages, MCP response fields, and audit payloads are persisted or returned. Redaction is best-effort and can be extended with custom regex rules in Security.
+Basic redaction is enabled by default for common secret patterns before history,
+transcripts, messages, MCP response fields, and audit payloads are persisted or
+returned. Structured connector output first crosses a canonical JSON boundary
+with global byte, depth, node, string, and key limits. The gateway then applies
+the same recursive redaction to typed, map, slice, and custom-marshaled output
+and reuses that exact projection for encrypted history and MCP. Redaction is
+best-effort and can be extended with custom regex rules in Security.
+
+If a connector has already performed remote work but its result cannot cross
+the canonical output boundary, the gateway records `outcome_unknown`. Agents
+must not blindly retry that action because its side effect may have completed.
 
 The gateway is designed only for a localhost trust boundary. Docker Compose publishes host ports on `127.0.0.1`, and the backend rejects non-local remote clients plus non-localhost Host headers. The backend also refuses to start when `AIPERMISSION_BACKEND_HOST` is `0.0.0.0` or any non-loopback address.
 

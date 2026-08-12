@@ -143,6 +143,21 @@ In the 0.2 baseline, `RuntimeContext.Events` is reserved/no-op and
 `ActionResult.Metadata` is not persisted or returned through MCP. Put
 operator- or AI-visible structured data in `ActionResult.Output`.
 
+`ActionResult.Output` may use a typed Go struct, map, slice, pointer, or custom
+JSON marshaler, but it must encode as JSON. Before persistence or external
+projection, the gateway converts it to canonical JSON primitives, recursively
+redacts every string leaf and declared sensitive field, and validates the final
+redacted projection again. The global boundary rejects output above 4 MiB,
+deeper than 32 levels, larger than 100,000 nodes, or containing a string or
+object key above 1 MiB. Connector-specific `OutputHint` limits should normally
+be much smaller and remain part of the connector's own execution contract.
+
+The canonical redacted value is the single projection reused by encrypted
+history and the MCP result. A connector must not depend on concrete Go types
+surviving this boundary. If output cannot cross it after a remote action has
+already executed, the request finishes as `outcome_unknown`; callers must
+inspect state before retrying because the side effect may have completed.
+
 Target schemas must be non-secret. Use target schemas for endpoint metadata
 such as host, port, database name, or API base URL. Use credential schemas for
 passwords, tokens, private keys, tenant secrets, and anything that should be

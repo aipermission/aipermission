@@ -1,6 +1,28 @@
-export const appVersion = "0.2.26";
+export const appVersion = "0.2.27";
 
 export const changelogEntries = [
+  {
+    version: "0.2.27",
+    label: "Connector result boundary hardening",
+    sections: [
+      {
+        title: "Changed",
+        items: ["Generated MCP runtime configurations now pin the exact package version that created them."],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Connector output projection failures after remote execution now finish as outcome unknown instead of suggesting an unsafe retry.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "All connector results now pass through one bounded canonical JSON and recursive redaction boundary before encrypted history or MCP projection.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.26",
     label: "Runtime integrity and recovery hardening",
@@ -948,28 +970,6 @@ export const changelogEntries = [
           "Console side panels can collapse for narrower screens.",
           "Browser title shows MCP runtime state and active database name after unlock.",
           "Database deletion now uses the unlock form password, then asks for the database name before deleting.",
-        ],
-      },
-    ],
-  },
-  {
-    version: "0.1.0-rc.1",
-    label: "Public RC",
-    sections: [
-      {
-        title: "Added",
-        items: [
-          "Local-only Docker gateway with React UI on http://localhost:3210.",
-          "SQLCipher-encrypted named databases with unlock, switch, import, backup, rename, delete, and password-change flows.",
-          "Gateway-owned SSH keys, SSH host fingerprint approval, token-scoped MCP execution, approvals, console sessions, history, and audit logs.",
-        ],
-      },
-      {
-        title: "Security",
-        items: [
-          "Private SSH keys and reusable token values stay inside the local encrypted gateway.",
-          "API tokens are stored as hashes and shown once by default.",
-          "Approval-required raw commands are encrypted separately so display redaction cannot mutate execution payloads.",
         ],
       },
     ],

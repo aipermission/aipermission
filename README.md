@@ -383,7 +383,7 @@ Example MCP config:
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp@0.2.26"],
+      "args": ["-y", "@aipermission/mcp@0.2.27"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",
