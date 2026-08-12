@@ -14,8 +14,8 @@ func TestHandlerAddsBoundedMigrationRequestDeadline(t *testing.T) {
 		if !ok {
 			t.Fatal("migration request has no deadline")
 		}
-		if remaining := time.Until(deadline); remaining <= 0 || remaining > migrationRequestTimeout {
-			t.Fatalf("migration deadline = %s, want at most %s", remaining, migrationRequestTimeout)
+		if remaining := time.Until(deadline); remaining <= 0 || remaining > RequestTimeout {
+			t.Fatalf("migration deadline = %s, want at most %s", remaining, RequestTimeout)
 		}
 	})
 	server.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/deadline", nil))

@@ -22,15 +22,28 @@ readable before a native runtime update is accepted.
 The database password is escaped before it is passed to SQLCipher PRAGMA key/rekey handling. Regression tests cover quotes and semicolons so user-entered password text cannot change SQL parsing.
 
 Backend tests also assert the inventoried SQLCipher runtime is active, the
-configured cipher page size is applied, KDF iterations are non-zero, and SQLite
-foreign keys are enabled on encrypted connections. Dependency updates are
+configured 4096-byte cipher page size and 256,000 PBKDF2-HMAC-SHA512 iterations
+are applied, HMAC-SHA512 page authentication is active, and SQLite foreign keys
+are enabled on encrypted connections. Dependency updates are
 watched with `govulncheck` and Dependabot, while the embedded native runtime is
 tracked under the [native dependency inventory](native-dependencies.md).
 
-Native runtime updates never rewrite the only database copy. The current
-runtime opens the prior SQLCipher 4 format directly. Any future format migration
-must first create and independently validate an encrypted snapshot, migrate a
-separate copy, and preserve a documented rollback path.
+Schema migrations never rewrite the only database copy. Before opening a
+supported older schema, the gateway creates an encrypted sibling file named
+`<database>.pre-migration-v<version>-<timestamp>.aipdb` with owner-only
+permissions. It uses the same database password and remains available if the
+migration fails. To recover, stop the gateway, preserve the failed database,
+rename the pre-migration snapshot to a normal `.aipdb` filename, and open it
+with a gateway version that supports the snapshot schema. A successful upgrade
+does not delete this rollback copy automatically; remove it only after the new
+database has been verified or retain it as an encrypted recovery artifact.
+
+Databases created with non-default SQLCipher 4 parameters are not guessed open:
+the same symptom can mean a wrong password, corruption, or custom cipher/KDF
+settings. Open such a file with the exact legacy runtime and parameters that
+created it, export or normalize it to the documented SQLCipher 4 defaults, then
+import the normalized encrypted copy. Preserve the original file first. The
+gateway intentionally has no UI switch that weakens or probes cipher settings.
 
 If no database exists, the first screen shows:
 

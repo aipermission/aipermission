@@ -55,6 +55,16 @@ func TestSQLCipher442ApplicationFixtureOpensViaProductionPath(t *testing.T) {
 		t.Fatalf("open SQLCipher 4.4.2 application fixture: %v", err)
 	}
 	defer database.Close()
+	snapshots, err := filepath.Glob(path + ".pre-migration-v13-*.aipdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) != 1 {
+		t.Fatalf("pre-migration snapshots = %d, want 1", len(snapshots))
+	}
+	if err := ValidateEncrypted(snapshots[0], legacySQLCipherFixturePassword); err != nil {
+		t.Fatalf("validate encrypted pre-migration snapshot: %v", err)
+	}
 
 	var value string
 	if err := database.QueryRow(`SELECT value FROM settings WHERE key = 'sqlcipher_compatibility_fixture'`).Scan(&value); err != nil {

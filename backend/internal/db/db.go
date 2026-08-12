@@ -6,7 +6,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/SE-I-T-Digital/go-sqlcipher"
 )
@@ -14,6 +16,7 @@ import (
 const (
 	currentSchemaVersion     = 14
 	expectedSQLCipherVersion = "4.16.0"
+	expectedKDFIterations    = 256000
 )
 
 // CurrentSchemaVersion returns the newest schema understood by this build.
@@ -69,19 +72,47 @@ func openEncrypted(path string, password string, runMigrations bool) (*sql.DB, e
 		_ = database.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	if _, err := database.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		_ = database.Close()
-		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
-	}
-
 	if runMigrations {
+		snapshotPath, err := createPreMigrationSnapshot(database, path)
+		if err != nil {
+			_ = database.Close()
+			return nil, err
+		}
 		if err := migrate(database); err != nil {
 			_ = database.Close()
+			if snapshotPath != "" {
+				return nil, fmt.Errorf("%w; encrypted pre-migration snapshot retained at %s", err, snapshotPath)
+			}
 			return nil, err
 		}
 	}
 
 	return database, nil
+}
+
+func createPreMigrationSnapshot(database *sql.DB, databasePath string) (string, error) {
+	var migrationTableExists int
+	if err := database.QueryRow(`
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'table' AND name = 'schema_migrations'`).Scan(&migrationTableExists); err != nil {
+		return "", fmt.Errorf("inspect migration metadata: %w", err)
+	}
+	if migrationTableExists == 0 {
+		return "", nil
+	}
+	var version int
+	if err := database.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
+		return "", fmt.Errorf("read schema version before migration: %w", err)
+	}
+	if version < 1 || version >= currentSchemaVersion {
+		return "", nil
+	}
+	timestamp := time.Now().UTC().Format("20060102T150405.000000000Z")
+	targetPath := databasePath + ".pre-migration-v" + strconv.Itoa(version) + "-" + timestamp + ".aipdb"
+	if err := Snapshot(database, targetPath); err != nil {
+		return "", fmt.Errorf("create encrypted pre-migration snapshot: %w", err)
+	}
+	return targetPath, nil
 }
 
 func LooksLikePlainSQLite(path string) bool {
