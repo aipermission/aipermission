@@ -708,7 +708,7 @@ func TestFTS4SearchIndexesTrackHistoryAndAuditRows(t *testing.T) {
 func TestSnapshotCreatesConsistentEncryptedCopy(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "secure.db")
-	snapshotPath := filepath.Join(dir, "snapshots", "secure-copy.aipdb")
+	snapshotPath := filepath.Join(dir, "snapshots", "secure-copy'; SELECT 1; --.aipdb")
 	password := "SnapshotPassword123"
 	database, err := OpenEncrypted(path, password)
 	if err != nil {

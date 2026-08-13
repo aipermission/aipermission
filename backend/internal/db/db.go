@@ -149,7 +149,7 @@ func Snapshot(database *sql.DB, targetPath string) error {
 		return fmt.Errorf("create snapshot directory: %w", err)
 	}
 	_ = os.Remove(targetPath)
-	if _, err := database.Exec(`VACUUM INTO '` + quoteSQLString(targetPath) + `'`); err != nil {
+	if _, err := database.Exec(`VACUUM INTO ?`, targetPath); err != nil {
 		_ = os.Remove(targetPath)
 		return fmt.Errorf("snapshot encrypted sqlite: %w", err)
 	}
@@ -158,10 +158,6 @@ func Snapshot(database *sql.DB, targetPath string) error {
 		return fmt.Errorf("chmod sqlite snapshot: %w", err)
 	}
 	return nil
-}
-
-func quoteSQLString(value string) string {
-	return strings.ReplaceAll(value, `'`, `''`)
 }
 
 func quoteSQLDoubleQuotedString(value string) string {
