@@ -258,6 +258,77 @@ func TestOpenEncryptedAppliesAuditRecoveryThenRepairsVaultSessionLeaseSchema(t *
 	}
 }
 
+func TestOpenEncryptedRepairsRecordedAuditRecoverySchemaDrift(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit-recovery-schema-drift.db")
+	database, err := openEncrypted(path, "correct-password", false)
+	if err != nil {
+		t.Fatalf("open encrypted db: %v", err)
+	}
+	for index := 0; index < 13; index++ {
+		if err := runSingleMigration(database, migrations[index]); err != nil {
+			t.Fatalf("apply migration %d: %v", migrations[index].version, err)
+		}
+	}
+	if _, err := database.Exec(
+		`INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, datetime('now'))`,
+		migrations[13].version,
+		migrations[13].description,
+	); err != nil {
+		t.Fatalf("record drifted audit recovery migration: %v", err)
+	}
+	if err := runSingleMigration(database, migrations[14]); err != nil {
+		t.Fatalf("apply migration %d: %v", migrations[14].version, err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close drifted db: %v", err)
+	}
+
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatalf("repair drifted db: %v", err)
+	}
+	defer reopened.Close()
+
+	for table, columns := range map[string][]string{
+		"audit_logs":   {"event_version", "lifecycle_phase"},
+		"audit_outbox": {"next_attempt_at", "dead_lettered_at"},
+	} {
+		for _, column := range columns {
+			if !columnExists(t, reopened, table, column) {
+				t.Fatalf("%s.%s was not repaired", table, column)
+			}
+		}
+	}
+
+	var pendingIndexSQL string
+	if err := reopened.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_audit_outbox_pending'`).Scan(&pendingIndexSQL); err != nil {
+		t.Fatalf("read repaired pending index: %v", err)
+	}
+	for _, column := range []string{"dead_lettered_at", "delivered_at", "next_attempt_at"} {
+		if !strings.Contains(pendingIndexSQL, column) {
+			t.Fatalf("repaired pending index does not include %s: %s", column, pendingIndexSQL)
+		}
+	}
+
+	for _, trigger := range []string{"audit_command_request_created", "audit_command_request_status_changed"} {
+		var count int
+		if err := reopened.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = ?`, trigger).Scan(&count); err != nil {
+			t.Fatalf("read repaired trigger %s: %v", trigger, err)
+		}
+		if count != 1 {
+			t.Fatalf("repaired trigger %s count=%d, want 1", trigger, count)
+		}
+	}
+
+	var migrationCount int
+	if err := reopened.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 16`).Scan(&migrationCount); err != nil {
+		t.Fatalf("read audit schema repair migration: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("audit schema repair migration count=%d, want 1", migrationCount)
+	}
+}
+
 func TestSelfHostedBackupMigrationArchivesGoogleProviderAndClearsSecret(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "backup-provider.db")
 	database, err := openEncrypted(path, "correct-password", false)

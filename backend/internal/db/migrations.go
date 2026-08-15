@@ -723,6 +723,45 @@ var historyProjectionStatements = []string{
 	LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind;`,
 }
 
+const auditCommandRequestCreatedTrigger = `CREATE TRIGGER audit_command_request_created
+	 AFTER INSERT ON command_requests
+	 BEGIN
+		INSERT INTO audit_outbox (
+			event_id, event_version, actor_type, token_id, project_id, runtime_id,
+			connector_kind, target_id, profile_id, action, lifecycle_phase,
+			payload_json, occurred_at, created_at
+		)
+		SELECT lower(hex(randomblob(16))), 1, 'gateway', NEW.token_id, ct.project_id, NEW.runtime_id,
+			rs.connector_kind, rs.target_id, rs.profile_id, 'console.command.' || NEW.status,
+			NEW.status, printf(
+				'{"request_id":%d,"runtime_id":%d,"source":"%s","status":"%s"}',
+				NEW.id, NEW.runtime_id, NEW.source, NEW.status
+			), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		FROM connector_runtime_surfaces rs
+		JOIN connector_targets ct ON ct.id = rs.target_id
+		WHERE rs.id = NEW.runtime_id;
+	 END;`
+
+const auditCommandRequestStatusChangedTrigger = `CREATE TRIGGER audit_command_request_status_changed
+	 AFTER UPDATE OF status ON command_requests
+	 WHEN OLD.status <> NEW.status
+	 BEGIN
+		INSERT INTO audit_outbox (
+			event_id, event_version, actor_type, token_id, project_id, runtime_id,
+			connector_kind, target_id, profile_id, action, lifecycle_phase,
+			payload_json, occurred_at, created_at
+		)
+		SELECT lower(hex(randomblob(16))), 1, 'gateway', NEW.token_id, ct.project_id, NEW.runtime_id,
+			rs.connector_kind, rs.target_id, rs.profile_id, 'console.command.' || NEW.status,
+			NEW.status, printf(
+				'{"request_id":%d,"runtime_id":%d,"source":"%s","previous_status":"%s","status":"%s"}',
+				NEW.id, NEW.runtime_id, NEW.source, OLD.status, NEW.status
+			), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		FROM connector_runtime_surfaces rs
+		JOIN connector_targets ct ON ct.id = rs.target_id
+		WHERE rs.id = NEW.runtime_id;
+	 END;`
+
 var migrations = []migration{
 	{
 		version:     connectorNativeBaselineVersion,
@@ -1214,49 +1253,28 @@ var migrations = []migration{
 			`DROP INDEX idx_audit_outbox_pending;`,
 			`CREATE INDEX idx_audit_outbox_pending
 				ON audit_outbox(dead_lettered_at, delivered_at, next_attempt_at, id);`,
-			`CREATE TRIGGER audit_command_request_created
-			 AFTER INSERT ON command_requests
-			 BEGIN
-				INSERT INTO audit_outbox (
-					event_id, event_version, actor_type, token_id, project_id, runtime_id,
-					connector_kind, target_id, profile_id, action, lifecycle_phase,
-					payload_json, occurred_at, created_at
-				)
-				SELECT lower(hex(randomblob(16))), 1, 'gateway', NEW.token_id, ct.project_id, NEW.runtime_id,
-					rs.connector_kind, rs.target_id, rs.profile_id, 'console.command.' || NEW.status,
-					NEW.status, printf(
-						'{"request_id":%d,"runtime_id":%d,"source":"%s","status":"%s"}',
-						NEW.id, NEW.runtime_id, NEW.source, NEW.status
-					), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-				FROM connector_runtime_surfaces rs
-				JOIN connector_targets ct ON ct.id = rs.target_id
-				WHERE rs.id = NEW.runtime_id;
-			 END;`,
-			`CREATE TRIGGER audit_command_request_status_changed
-			 AFTER UPDATE OF status ON command_requests
-			 WHEN OLD.status <> NEW.status
-			 BEGIN
-				INSERT INTO audit_outbox (
-					event_id, event_version, actor_type, token_id, project_id, runtime_id,
-					connector_kind, target_id, profile_id, action, lifecycle_phase,
-					payload_json, occurred_at, created_at
-				)
-				SELECT lower(hex(randomblob(16))), 1, 'gateway', NEW.token_id, ct.project_id, NEW.runtime_id,
-					rs.connector_kind, rs.target_id, rs.profile_id, 'console.command.' || NEW.status,
-					NEW.status, printf(
-						'{"request_id":%d,"runtime_id":%d,"source":"%s","previous_status":"%s","status":"%s"}',
-						NEW.id, NEW.runtime_id, NEW.source, OLD.status, NEW.status
-					), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-				FROM connector_runtime_surfaces rs
-				JOIN connector_targets ct ON ct.id = rs.target_id
-				WHERE rs.id = NEW.runtime_id;
-			 END;`,
+			auditCommandRequestCreatedTrigger,
+			auditCommandRequestStatusChangedTrigger,
 		},
 	},
 	{
 		version:     15,
 		description: "repair Vault session lease environment binding",
 		preflight:   ensureVaultSessionLeaseEnvironmentHash,
+	},
+	{
+		version:     16,
+		description: "repair audit delivery recovery schema",
+		preflight:   ensureAuditRecoverySchema,
+		statements: []string{
+			`DROP INDEX IF EXISTS idx_audit_outbox_pending;`,
+			`CREATE INDEX idx_audit_outbox_pending
+				ON audit_outbox(dead_lettered_at, delivered_at, next_attempt_at, id);`,
+			`DROP TRIGGER IF EXISTS audit_command_request_created;`,
+			`DROP TRIGGER IF EXISTS audit_command_request_status_changed;`,
+			auditCommandRequestCreatedTrigger,
+			auditCommandRequestStatusChangedTrigger,
+		},
 	},
 }
 
@@ -1448,34 +1466,43 @@ func requireGloballyUniqueVaultItemNames(tx *sql.Tx) error {
 }
 
 func ensureVaultSessionLeaseEnvironmentHash(tx *sql.Tx) error {
-	rows, err := tx.Query(`PRAGMA table_info(vault_session_leases)`)
-	if err != nil {
-		return fmt.Errorf("inspect vault_session_leases columns: %w", err)
+	return ensureColumn(
+		tx,
+		"vault_session_leases",
+		"environment_content_hash",
+		`ALTER TABLE vault_session_leases ADD COLUMN environment_content_hash TEXT NOT NULL DEFAULT ''`,
+	)
+}
+
+func ensureAuditRecoverySchema(tx *sql.Tx) error {
+	required := []struct {
+		table     string
+		column    string
+		statement string
+	}{
+		{"audit_logs", "event_version", `ALTER TABLE audit_logs ADD COLUMN event_version INTEGER NOT NULL DEFAULT 1`},
+		{"audit_logs", "lifecycle_phase", `ALTER TABLE audit_logs ADD COLUMN lifecycle_phase TEXT NOT NULL DEFAULT ''`},
+		{"audit_outbox", "next_attempt_at", `ALTER TABLE audit_outbox ADD COLUMN next_attempt_at TEXT`},
+		{"audit_outbox", "dead_lettered_at", `ALTER TABLE audit_outbox ADD COLUMN dead_lettered_at TEXT`},
 	}
-	hasColumn := false
-	for rows.Next() {
-		var cid, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue any
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("scan vault_session_leases column: %w", err)
+	for _, item := range required {
+		if err := ensureColumn(tx, item.table, item.column, item.statement); err != nil {
+			return err
 		}
-		if name == "environment_content_hash" {
-			hasColumn = true
-		}
 	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close vault_session_leases columns: %w", err)
+	return nil
+}
+
+func ensureColumn(tx *sql.Tx, table string, column string, statement string) error {
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&count); err != nil {
+		return fmt.Errorf("inspect %s.%s: %w", table, column, err)
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate vault_session_leases columns: %w", err)
-	}
-	if hasColumn {
+	if count > 0 {
 		return nil
 	}
-	if _, err := tx.Exec(`ALTER TABLE vault_session_leases ADD COLUMN environment_content_hash TEXT NOT NULL DEFAULT ''`); err != nil {
-		return fmt.Errorf("add vault_session_leases environment binding: %w", err)
+	if _, err := tx.Exec(statement); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
 	}
 	return nil
 }
