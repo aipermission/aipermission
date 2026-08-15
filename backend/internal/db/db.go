@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	currentSchemaVersion     = 15
+	currentSchemaVersion     = 16
 	expectedSQLCipherVersion = "4.16.0"
 	expectedKDFIterations    = 256000
 )
