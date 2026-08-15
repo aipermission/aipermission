@@ -23,6 +23,11 @@ type runtimeExecutor struct {
 
 type sessionEnvironmentCapability struct{}
 
+type consoleCommandSessions interface {
+	EnsureReady(context.Context, executionprincipal.Principal, int64) (console.SessionHandle, error)
+	Exec(context.Context, executionprincipal.Principal, int64, string) (console.ExecResult, error)
+}
+
 func (sessionEnvironmentCapability) ConnectorRuntimeCapability() string {
 	return connectors.SessionEnvironmentCapabilityName
 }
@@ -73,9 +78,7 @@ func (e runtimeExecutor) executeCommand(principal executionprincipal.Principal, 
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), initialExecTimeout)
-	defer cancel()
-	result, err := sessions.Exec(ctx, principal, runtimeID, command)
+	result, err := executeConsoleCommand(sessions, principal, runtimeID, command, consoleConnectTimeout, initialExecTimeout)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -104,6 +107,22 @@ func (e runtimeExecutor) executeCommand(principal executionprincipal.Principal, 
 		response.Handles.FollowupTool = "get_connector_action_request"
 	}
 	return response, nil
+}
+
+func executeConsoleCommand(sessions consoleCommandSessions, principal executionprincipal.Principal, runtimeID int64, command string, connectTimeout time.Duration, commandTimeout time.Duration) (console.ExecResult, error) {
+	connectCtx, cancelConnect := context.WithTimeout(context.Background(), connectTimeout)
+	_, err := sessions.EnsureReady(connectCtx, principal, runtimeID)
+	cancelConnect()
+	if err != nil {
+		return console.ExecResult{}, fmt.Errorf("start SSH console session: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	result, err := sessions.Exec(ctx, principal, runtimeID, command)
+	if err != nil {
+		return console.ExecResult{}, err
+	}
+	return result, nil
 }
 
 func (e runtimeExecutor) readConsole(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
