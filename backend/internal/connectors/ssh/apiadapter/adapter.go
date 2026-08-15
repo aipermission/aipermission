@@ -18,6 +18,7 @@ import (
 )
 
 const (
+	consoleConnectTimeout    = 15 * time.Second
 	initialExecTimeout       = 3 * time.Second
 	backgroundCommandTimeout = 30 * time.Minute
 	maxConfigParseBytes      = 256 * 1024
