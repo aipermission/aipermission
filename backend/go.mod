@@ -18,7 +18,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/pkg/sftp v1.13.11
-	github.com/twmb/franz-go v1.21.5
+	github.com/twmb/franz-go v1.21.6
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260729023516-cc159eb5ddb9
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1
