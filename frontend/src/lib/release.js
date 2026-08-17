@@ -1,6 +1,27 @@
-export const appVersion = "0.2.27";
+export const appVersion = "0.2.28";
 
 export const changelogEntries = [
+  {
+    version: "0.2.28",
+    label: "Production lease and runtime recovery",
+    sections: [
+      {
+        title: "Changed",
+        items: ["Go, Kafka, frontend lint metadata, and CodeQL pins received reviewed patch-level maintenance updates."],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Encrypted databases repair incomplete audit recovery schema changes during unlock.",
+          "Long SSH commands keep valid Vault authorization leases and no longer inherit the connection deadline.",
+        ],
+      },
+      {
+        title: "Security",
+        items: ["The Go 1.26.6 baseline resolves standard-library findings detected by release vulnerability and container scans."],
+      },
+    ],
+  },
   {
     version: "0.2.27",
     label: "Connector result boundary hardening",
@@ -948,28 +969,6 @@ export const changelogEntries = [
           "History label cleanup from Settings without deleting command history records.",
           "On-demand Docker quick checks from SSH connector targets.",
           "Docker container details and tail-configurable Docker logs dialogs.",
-        ],
-      },
-    ],
-  },
-  {
-    version: "0.1.1",
-    label: "Dogfooding polish",
-    sections: [
-      {
-        title: "Added",
-        items: [
-          "Manual update checks from the Changelog dialog.",
-          "Bulk token permission updates across all servers.",
-          "Optional approval-run notes that are delivered back to the AI.",
-        ],
-      },
-      {
-        title: "Changed",
-        items: [
-          "Console side panels can collapse for narrower screens.",
-          "Browser title shows MCP runtime state and active database name after unlock.",
-          "Database deletion now uses the unlock form password, then asks for the database name before deleting.",
         ],
       },
     ],

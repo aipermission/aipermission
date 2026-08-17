@@ -7,6 +7,31 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.28] - 2026-08-18
+
+### Changed
+
+- Updated the Go toolchain and container build baseline to 1.26.6, Franz-Go to
+  1.21.6, frontend lint globals to 17.11.0, and the pinned CodeQL action to
+  4.37.7.
+
+### Fixed
+
+- Encrypted databases now repair recorded-but-incomplete audit recovery schema
+  changes, including missing outbox columns, indexes, and command lifecycle
+  triggers.
+- SSH connection establishment and command execution now use separate
+  deadlines, so a slow command no longer inherits the connector dial timeout.
+- Long-running commands in Vault-authorized sessions now revalidate with a
+  fresh bounded context after dispatch, preserving valid leases and returning
+  an explicit unknown outcome only when the result truly cannot be projected.
+
+### Security
+
+- Go 1.26.6 resolves the standard-library vulnerabilities detected by release
+  `govulncheck` and container scanning in URL, TLS, HTTP, XML, ASN.1, and
+  template processing paths.
+
 ## [0.2.27] - 2026-08-12
 
 ### Changed
