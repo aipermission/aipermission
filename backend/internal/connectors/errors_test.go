@@ -28,3 +28,20 @@ func TestClassifiedErrorIgnoresEmptyInputs(t *testing.T) {
 		t.Fatalf("plain error returned code %q", code)
 	}
 }
+
+func TestClassifiedActionErrorCopiesStatusAndDetails(t *testing.T) {
+	details := map[string]any{"retry_safe": false}
+	err := ClassifyActionError("outcome_unknown", ResultOutcomeUnknown, details, errors.New("uncertain outcome"))
+	details["retry_safe"] = true
+	if ErrorStatus(err) != ResultOutcomeUnknown {
+		t.Fatalf("unexpected error status %q", ErrorStatus(err))
+	}
+	returned := ErrorDetails(err)
+	if returned["retry_safe"] != false {
+		t.Fatalf("classified details changed with caller map: %#v", returned)
+	}
+	returned["retry_safe"] = true
+	if ErrorDetails(err)["retry_safe"] != false {
+		t.Fatal("returned error details mutated classified state")
+	}
+}

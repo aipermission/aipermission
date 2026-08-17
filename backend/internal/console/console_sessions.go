@@ -14,18 +14,19 @@ import (
 )
 
 const (
-	maxConsoleTranscriptLength  = 200000
-	maxConsoleSnapshotLength    = 50000
-	maxConsoleChunkLength       = 32768
-	maxConsolePendingFlushSize  = maxConsoleChunkLength * 4
-	maxActiveConsoleSessions    = 32
-	maxConsoleClientsPerSession = 8
-	maxConsoleInputBytes        = 65536
-	maxPTYClientMessageBytes    = maxConsoleInputBytes + 4096
-	ptyPongWait                 = 75 * time.Second
-	ptyPingInterval             = 25 * time.Second
-	ptyInputMinInterval         = 20 * time.Millisecond
-	ptyResizeMinInterval        = 100 * time.Millisecond
+	maxConsoleTranscriptLength   = 200000
+	maxConsoleSnapshotLength     = 50000
+	maxConsoleChunkLength        = 32768
+	maxConsolePendingFlushSize   = maxConsoleChunkLength * 4
+	maxActiveConsoleSessions     = 32
+	maxConsoleClientsPerSession  = 8
+	maxConsoleInputBytes         = 65536
+	maxPTYClientMessageBytes     = maxConsoleInputBytes + 4096
+	ptyPongWait                  = 75 * time.Second
+	ptyPingInterval              = 25 * time.Second
+	ptyInputMinInterval          = 20 * time.Millisecond
+	ptyResizeMinInterval         = 100 * time.Millisecond
+	postExecAuthorizationTimeout = 5 * time.Second
 )
 
 var ErrCommandActive = errors.New("another command is already running on this console session")
@@ -35,6 +36,7 @@ var ErrSessionChanged = errors.New("console session changed")
 var ErrClientLimit = errors.New("console session client limit reached")
 var ErrInputTooLarge = errors.New("console input is too large")
 var ErrUnauthorized = errors.New("execution principal is not authorized for this console session")
+var ErrCommandOutcomeUnknown = errors.New("command was dispatched but its outcome could not be authorized")
 
 type InactiveError struct {
 	Status string

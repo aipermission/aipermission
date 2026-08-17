@@ -381,6 +381,9 @@ func connectorActionRequestToMCPResponse(request connectortargets.ActionRequest)
 		response.RetryAfterSeconds = 3
 		response.AssistantHint = connectorActionRunningHintForRequest(request)
 	}
+	if request.Status == connectors.ResultOutcomeUnknown {
+		response.AssistantHint = "Do not retry this action automatically. The command may have been dispatched; inspect the target with read_console or an equivalent read-only action first."
+	}
 	return response
 }
 

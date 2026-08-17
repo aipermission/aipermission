@@ -242,6 +242,96 @@ func TestConsoleSessionManagerSerializesAuthorizationWithInputWrite(t *testing.T
 	}
 }
 
+func TestConsoleSessionManagerReportsUnknownOutcomeWhenObserveAuthorizationChangesAfterDispatch(t *testing.T) {
+	local := testExecutionPrincipal()
+	token, err := executionprincipal.MCPToken(9, local.WorkspaceID, local.RuntimeInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionCtx, cancelSession := context.WithCancel(context.Background())
+	defer cancelSession()
+	stdin := &recordingWriteCloser{}
+	manager := &Manager{sessions: map[int64]*managedConsoleSession{}}
+	session := &managedConsoleSession{
+		id: 4, runtimeID: 5, generation: 6, status: "connected",
+		ctx: sessionCtx, principal: token, environmentContentHash: "vault-context",
+		approvalContextHash: "approval-context", stdin: stdin,
+		clients: map[*websocket.Conn]*sync.Mutex{}, manager: manager,
+	}
+	manager.sessions[session.id] = session
+	manager.authorize = func(
+		_ context.Context,
+		_ executionprincipal.Principal,
+		_ SessionAuthorization,
+		operation SessionOperation,
+		run func() error,
+	) error {
+		if operation == OperationObserve {
+			return ErrUnauthorized
+		}
+		return run()
+	}
+
+	execCtx, cancelExec := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancelExec()
+	result, err := manager.Exec(execCtx, token, session.runtimeID, "printf dispatched")
+	if !errors.Is(err, ErrCommandOutcomeUnknown) {
+		t.Fatalf("post-dispatch authorization error = %v", err)
+	}
+	if !result.Running || result.SessionID != session.id || result.Generation != session.generation {
+		t.Fatalf("unknown outcome lost dispatch metadata: %#v", result)
+	}
+	if !strings.Contains(stdin.String(), "printf dispatched") {
+		t.Fatalf("command was not dispatched before authorization changed: %q", stdin.String())
+	}
+}
+
+func TestConsoleSessionManagerUsesFreshObserveContextAfterExecutionTimeout(t *testing.T) {
+	local := testExecutionPrincipal()
+	token, err := executionprincipal.MCPToken(9, local.WorkspaceID, local.RuntimeInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionCtx, cancelSession := context.WithCancel(context.Background())
+	defer cancelSession()
+	stdin := &recordingWriteCloser{}
+	manager := &Manager{sessions: map[int64]*managedConsoleSession{}}
+	session := &managedConsoleSession{
+		id: 7, runtimeID: 8, generation: 9, status: "connected",
+		ctx: sessionCtx, principal: token, environmentContentHash: "vault-context",
+		approvalContextHash: "approval-context", stdin: stdin,
+		clients: map[*websocket.Conn]*sync.Mutex{}, manager: manager,
+	}
+	manager.sessions[session.id] = session
+	observeCalls := 0
+	manager.authorize = func(
+		authorizeCtx context.Context,
+		_ executionprincipal.Principal,
+		_ SessionAuthorization,
+		operation SessionOperation,
+		run func() error,
+	) error {
+		if operation == OperationObserve {
+			observeCalls++
+			return authorizeCtx.Err()
+		}
+		return run()
+	}
+
+	execCtx, cancelExec := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancelExec()
+	result, err := manager.Exec(execCtx, token, session.runtimeID, "sleep 5")
+	if err != nil {
+		t.Fatalf("long command observe authorization = %v", err)
+	}
+	if !result.Running || result.SessionID != session.id || result.Generation != session.generation {
+		t.Fatalf("long command result = %#v", result)
+	}
+	if observeCalls != 1 {
+		t.Fatalf("observe authorization calls = %d", observeCalls)
+	}
+}
+
 func TestManagedConsoleSessionRedactsVaultValueAcrossOutputChunks(t *testing.T) {
 	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
 		Name: "MY_PROJECT_TOKEN", Value: []byte("secret-value"),

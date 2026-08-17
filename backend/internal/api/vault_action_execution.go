@@ -159,7 +159,7 @@ func executeVaultSessionApply(
 					return errors.New(message)
 				}
 				if _, err := validateVaultApprovalAuthorization(validateCtx, server, runtime, request, approval); err != nil {
-					return revoke("Vault authorization context changed")
+					return revoke("Vault authorization context changed: " + err.Error())
 				}
 				if err := store.RevalidateSession(validateCtx, approval.Items); err != nil {
 					return revoke("Vault item context changed")

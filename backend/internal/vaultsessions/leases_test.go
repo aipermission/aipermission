@@ -3,6 +3,7 @@ package vaultsessions
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,7 +70,7 @@ func TestLeaseDoesNotOutliveHardTTL(t *testing.T) {
 		Handle:                 console.SessionHandle{ID: 3, RuntimeID: 2, Generation: 4},
 		EnvironmentContentHash: "environment", ApprovalContextHash: "context",
 	}
-	if err := store.Authorize(context.Background(), principal, session, console.OperationObserve); !errors.Is(err, ErrUnauthorized) {
+	if err := store.Authorize(context.Background(), principal, session, console.OperationObserve); !errors.Is(err, ErrUnauthorized) || !strings.Contains(err.Error(), "lease expired") {
 		t.Fatalf("expired hard TTL = %v", err)
 	}
 }
@@ -99,7 +100,7 @@ func TestLeaseRevokesItselfWhenLiveContextValidationFails(t *testing.T) {
 		Handle:                 console.SessionHandle{ID: 12, RuntimeID: 11, Generation: 13},
 		EnvironmentContentHash: "environment", ApprovalContextHash: "context",
 	}
-	if err := store.Authorize(context.Background(), principal, session, console.OperationExecute); !errors.Is(err, ErrUnauthorized) {
+	if err := store.Authorize(context.Background(), principal, session, console.OperationExecute); !errors.Is(err, ErrUnauthorized) || !strings.Contains(err.Error(), "context drifted") {
 		t.Fatalf("drifted lease = %v", err)
 	}
 	if validations != 1 {

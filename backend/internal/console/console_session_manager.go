@@ -393,8 +393,13 @@ func (m *Manager) Exec(ctx context.Context, principal executionprincipal.Princip
 	if execErr != nil && !errors.Is(execErr, ErrCommandActive) {
 		return result, execErr
 	}
-	if err := m.authorizeOperation(ctx, principal, session, OperationObserve, nil); err != nil {
-		return ExecResult{}, err
+	observeCtx, cancelObserve := context.WithTimeout(context.WithoutCancel(ctx), postExecAuthorizationTimeout)
+	defer cancelObserve()
+	if err := m.authorizeOperation(observeCtx, principal, session, OperationObserve, nil); err != nil {
+		if errors.Is(execErr, ErrCommandActive) {
+			return result, execErr
+		}
+		return result, fmt.Errorf("%w: inspect the console before retrying: %v", ErrCommandOutcomeUnknown, err)
 	}
 	return result, execErr
 }
