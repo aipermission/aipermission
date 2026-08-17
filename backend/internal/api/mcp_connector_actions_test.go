@@ -288,3 +288,16 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 		t.Fatalf("request count=%d", count)
 	}
 }
+
+func TestMCPConnectorActionOutcomeUnknownForbidsAutomaticRetry(t *testing.T) {
+	response := connectorActionRequestToMCPResponse(connectortargets.ActionRequest{
+		ID: 42, Status: connectors.ResultOutcomeUnknown,
+		ConnectorKind: "ssh", TargetID: 7, ProfileID: 8, ActionName: "exec",
+	})
+	if response.RetryAfterSeconds != 0 {
+		t.Fatalf("outcome_unknown retry_after_seconds = %d", response.RetryAfterSeconds)
+	}
+	if !strings.Contains(response.AssistantHint, "Do not retry") || !strings.Contains(response.AssistantHint, "read_console") {
+		t.Fatalf("outcome_unknown assistant hint = %q", response.AssistantHint)
+	}
+}

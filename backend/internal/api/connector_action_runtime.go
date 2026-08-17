@@ -502,7 +502,12 @@ func connectorActionFailureOutput(err error) any {
 	if code == "" {
 		return nil
 	}
-	return map[string]any{"code": code}
+	details := connectors.ErrorDetails(err)
+	if details == nil {
+		details = map[string]any{}
+	}
+	details["code"] = code
+	return details
 }
 
 func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, prepared actions.PreparedRequest) (connectorActionExecutionSnapshot, error) {
@@ -561,6 +566,10 @@ func validateConnectorActionResult(result connectors.ActionResult) error {
 }
 
 func connectorActionExecutionFailureStatus(err error) connectors.ResultStatus {
+	switch connectors.ErrorStatus(err) {
+	case connectors.ResultFailed, connectors.ResultError, connectors.ResultOutcomeUnknown:
+		return connectors.ErrorStatus(err)
+	}
 	if errors.Is(err, actionresult.ErrInvalidOutput) {
 		return connectors.ResultOutcomeUnknown
 	}

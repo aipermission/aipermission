@@ -559,6 +559,19 @@ func TestConnectorActionResultRejectsOversizedTypedOutput(t *testing.T) {
 	if status := connectorActionExecutionFailureStatus(errors.New("connection failed")); status != connectors.ResultFailed {
 		t.Fatalf("ordinary execution error status = %s", status)
 	}
+	unknown := connectors.ClassifyActionError(
+		"command_outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"command_dispatched": true, "retry_safe": false, "output_withheld": true},
+		errors.New("authorization changed after dispatch"),
+	)
+	if status := connectorActionExecutionFailureStatus(unknown); status != connectors.ResultOutcomeUnknown {
+		t.Fatalf("dispatched command status = %s", status)
+	}
+	output, ok := connectorActionFailureOutput(unknown).(map[string]any)
+	if !ok || output["command_dispatched"] != true || output["retry_safe"] != false || output["output_withheld"] != true {
+		t.Fatalf("dispatched command failure metadata = %#v", output)
+	}
 }
 
 func TestConnectorActionResultPreservesDeclaredTemporaryCapability(t *testing.T) {

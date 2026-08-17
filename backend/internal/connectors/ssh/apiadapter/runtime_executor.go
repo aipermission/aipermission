@@ -120,6 +120,18 @@ func executeConsoleCommand(sessions consoleCommandSessions, principal executionp
 	defer cancel()
 	result, err := sessions.Exec(ctx, principal, runtimeID, command)
 	if err != nil {
+		if errors.Is(err, console.ErrCommandOutcomeUnknown) {
+			return result, connectors.ClassifyActionError(
+				"command_outcome_unknown",
+				connectors.ResultOutcomeUnknown,
+				map[string]any{
+					"command_dispatched": true,
+					"retry_safe":         false,
+					"output_withheld":    true,
+				},
+				err,
+			)
+		}
 		return console.ExecResult{}, err
 	}
 	return result, nil

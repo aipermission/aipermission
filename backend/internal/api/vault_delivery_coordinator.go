@@ -15,6 +15,9 @@ func (c *vaultDeliveryCoordinator) acquire(ctx context.Context) (func(), error) 
 	if c == nil {
 		return nil, errors.New("Vault delivery coordinator is not configured")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c.once.Do(func() {
 		c.gate = make(chan struct{}, 1)
 		c.gate <- struct{}{}

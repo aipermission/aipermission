@@ -3,6 +3,7 @@ package vaultsessions
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -85,17 +86,22 @@ func (s *Store) Authorize(ctx context.Context, principal executionprincipal.Prin
 	}
 	now := s.now().UTC()
 	s.mu.Lock()
-	s.removeExpiredLocked(now)
 	item, ok := s.leases[keyFor(lease)]
-	if !ok || !item.ExpiresAt.After(now) {
+	if !ok {
 		s.mu.Unlock()
 		return ErrUnauthorized
 	}
+	if !item.ExpiresAt.After(now) {
+		delete(s.leases, keyFor(lease))
+		s.mu.Unlock()
+		return fmt.Errorf("%w: lease expired", ErrUnauthorized)
+	}
+	s.removeExpiredLocked(now)
 	s.mu.Unlock()
 	if item.Validate != nil {
 		if err := item.Validate(ctx); err != nil {
 			s.RevokeSession(session.Handle)
-			return ErrUnauthorized
+			return fmt.Errorf("%w: %v", ErrUnauthorized, err)
 		}
 	}
 	s.mu.RLock()
