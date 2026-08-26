@@ -128,6 +128,10 @@ function checkVersion() {
       readJSON("package-lock.json").packages.frontend.version,
     ],
     [
+      "root package-lock MCP workspace",
+      readJSON("package-lock.json").packages["packages/mcp"].version,
+    ],
+    [
       "packages/mcp/package.json",
       readJSON("packages/mcp/package.json").version,
     ],
