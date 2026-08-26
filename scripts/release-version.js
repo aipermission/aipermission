@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const semverPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
@@ -37,7 +38,10 @@ function updatePinnedMCPConfigDocs(version) {
     if (!pattern.test(source)) {
       throw new Error(`could not update pinned MCP config in ${relativePath}`);
     }
-    fs.writeFileSync(filePath, source.replace(pattern, `@aipermission/mcp@${version}`));
+    fs.writeFileSync(
+      filePath,
+      source.replace(pattern, `@aipermission/mcp@${version}`),
+    );
   }
 }
 
@@ -78,18 +82,6 @@ function setVersion(version) {
   writeJSON("packages/mcp/server.json", mcpServer);
   updatePinnedMCPConfigDocs(version);
 
-  const releasePath = path.join(root, "frontend/src/lib/release.js");
-  const releaseSource = fs.readFileSync(releasePath, "utf8");
-  fs.writeFileSync(
-    releasePath,
-    replaceRequired(
-      releaseSource,
-      /^export const appVersion = "[^"]+";/m,
-      `export const appVersion = "${version}";`,
-      "frontend appVersion",
-    ),
-  );
-
   const backendVersionPath = path.join(
     root,
     "backend/internal/buildinfo/version.go",
@@ -107,6 +99,13 @@ function setVersion(version) {
 }
 
 function checkVersion() {
+  execFileSync(
+    process.execPath,
+    [path.join(root, "scripts/release-notes.js"), "--check"],
+    {
+      stdio: "inherit",
+    },
+  );
   const version = readJSON("release-manifest.json").version;
   if (!semverPattern.test(version)) {
     throw new Error(
@@ -151,19 +150,15 @@ function checkVersion() {
     ]);
   }
 
-  const releaseSource = fs.readFileSync(
-    path.join(root, "frontend/src/lib/release.js"),
-    "utf8",
-  );
-  values.push([
-    "frontend appVersion",
-    releaseSource.match(/^export const appVersion = "([^"]+)";/m)?.[1],
-  ]);
+  const frontendRelease = readJSON("frontend/src/lib/release.generated.json");
+  values.push(["frontend appVersion", frontendRelease.version]);
   values.push([
     "frontend latest changelog entry",
-    releaseSource.match(
-      /changelogEntries = \[\s*\{\s*version: "([^"]+)"/s,
-    )?.[1],
+    frontendRelease.entries?.[0]?.version,
+  ]);
+  values.push([
+    "canonical latest release note",
+    readJSON("release-notes.json").releases?.[0]?.version,
   ]);
 
   const backendVersionSource = fs.readFileSync(
@@ -178,7 +173,9 @@ function checkVersion() {
     const source = fs.readFileSync(path.join(root, relativePath), "utf8");
     values.push([
       `${relativePath} pinned MCP config`,
-      source.match(/@aipermission\/mcp@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/)?.[1],
+      source.match(
+        /@aipermission\/mcp@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/,
+      )?.[1],
     ]);
   }
 
@@ -201,7 +198,7 @@ try {
   if (process.argv[2] === "--set") {
     setVersion(process.argv[3] || "");
     console.log(
-      "Release package metadata updated. Add the matching changelog and in-app release entry, then run --check.",
+      "Release package metadata updated. Add the matching canonical release note, run node scripts/release-notes.js, then run --check.",
     );
   } else if (process.argv.length > 2 && process.argv[2] !== "--check") {
     throw new Error("usage: release-version.js [--check | --set X.Y.Z]");

@@ -1,0 +1,242 @@
+{
+  "version": "0.2.28",
+  "entries": [
+    {
+      "version": "0.2.28",
+      "label": "Production lease and runtime recovery",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Updated the Go toolchain and container build baseline to 1.26.6, Franz-Go to 1.21.6, frontend lint globals to 17.11.0, and the pinned CodeQL action to 4.37.7."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Encrypted databases now repair recorded-but-incomplete audit recovery schema changes, including missing outbox columns, indexes, and command lifecycle triggers.",
+            "SSH connection establishment and command execution now use separate deadlines, so a slow command no longer inherits the connector dial timeout.",
+            "Long-running commands in Vault-authorized sessions now revalidate with a fresh bounded context after dispatch, preserving valid leases and returning an explicit unknown outcome only when the result truly cannot be projected."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Go 1.26.6 resolves the standard-library vulnerabilities detected by release `govulncheck` and container scanning in URL, TLS, HTTP, XML, ASN.1, and template processing paths."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.2.27",
+      "label": "Connector result boundary hardening",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Generated MCP runtime configurations now pin the exact package version that created them, while explicit install and upgrade commands remain unpinned."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Connector results that cannot be safely projected after remote execution now finish as `outcome_unknown` instead of inviting an unsafe automatic retry."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Every connector action result now crosses one canonical JSON boundary before persistence or MCP projection, with global byte, depth, node, string, and key limits plus recursive redaction for typed and custom-marshaled values.",
+            "Persisted connector output and the matching MCP response now reuse the same canonical redacted projection, preventing representation drift or typed-value redaction bypasses."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.2.26",
+      "label": "Runtime integrity and recovery hardening",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Added a bounded, redacted diagnostics export for local troubleshooting and expanded typed REST contracts, connector conformance, browser coverage, and critical backend coverage gates.",
+            "Added transactional audit outbox delivery so security-relevant domain mutations and their audit records commit together and project idempotently."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Split large frontend runtime and connector-console modules, shared common action, request, SQL, result, editor, and live-console primitives, and added stale-response guards across asynchronous UI flows.",
+            "Backup integration now requires protocol v2 capabilities. Upgrade the backup service to v0.2.0 before upgrading the AIPermission gateway."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Canceled connector actions now finalize consistently, stale responses are rejected across scope changes, unchanged runtime revisions remain stable, and Vault lease repair runs only after audit recovery is available.",
+            "Gateway shutdown, bounded HTTP failures, MCP authentication backoff, audit lifecycle accounting, diagnostic metadata, and encrypted database upgrade recovery now preserve explicit and reviewable failure states."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Vault and backup mutations are bound to the transactional audit outbox, and connector action recovery is protected against ambiguous retries and stale completion responses.",
+            "SQLCipher upgrades verify encrypted database compatibility, repository history is scanned for secrets, diagnostics have redaction regression tests, and CI maintenance checks enforce release integrity."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.2.25",
+      "label": "S3 transfer and recovery controls",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Added bounded S3 multipart upload and recursive file-transfer queues with progress, pause, cancellation, overwrite checks, and explicit count/byte limits.",
+            "Added short-lived S3 download/upload URLs, object-version browsing and deliberate restore/delete actions, plus bucket lifecycle visibility and guarded policy replacement/deletion.",
+            "Added automatic encrypted-backup retention with preview/final-version protection and provider quota/usage visibility."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Generalized connector file-transfer runtimes so SSH and S3 use the same queue lifecycle without moving connector-specific transport behavior into shared API code."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Presigned URLs are limited to one exact key and at most one hour. Lifecycle replacement, lifecycle deletion, and version deletion are explicit destructive connector actions."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.2.24",
+      "label": "Failure recovery and release integrity",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Added one canonical release manifest plus a hygiene check that keeps the UI, frontend package, MCP package, MCP registry metadata, and changelog version aligned.",
+            "Pull request CI now runs the Playwright browser smoke suite and retains its failure report for diagnosis."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Connector action lifecycle updates now commit their canonical request and History projection together. Interrupted running actions recover as `outcome_unknown` so clients do not blindly retry a possibly completed remote side effect.",
+            "Failed database rename operations reopen the original encrypted runtime, and failed imports remove or quarantine unusable targets instead of leaving a misleading occupied database name."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Added a machine-readable native dependency inventory and a runtime assertion for the SQLCipher version embedded by the Go driver.",
+            "Container publishing now scans the exact candidate registry digest before promoting that same digest to release tags, and requires the tagged source commit's CI checks to have passed."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.2.23",
+      "label": "Maintenance hardening",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Split large backend and frontend modules by responsibility, established a frontend formatting baseline, and reduced the enforced React hook suppression budget to zero.",
+            "Added a generated OpenAPI route inventory derived from backend route registration, with exact drift checks in the release gate.",
+            "Added maintainer-triggered real-service connector conformance for Postgres, Valkey, RabbitMQ, and S3, plus project governance and ownership guidance."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Gateway containers recover after host reboot, and owned console sessions now recover from missing, expired, or stale Vault authorization leases.",
+            "Runtime audit records preserve target names, stale approval history remains synchronized, and connector restore uploads stream bounded payloads instead of buffering the full file in memory."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Connector-owned HTTP transports ignore ambient proxy credentials, and approval execution freezes the validated credential material at claim time.",
+            "Audit persistence failures are surfaced through degraded health state, while connector credential/output boundary regression tests guard against returning gateway-held secret values.",
+            "CI blocks fixed HIGH/CRITICAL findings in locally built container images; publishing adds SBOM/provenance attestations and digest signing, while CI dependencies remain SHA-pinned."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Added source-size, coverage reporting, formatting, REST-contract, and frontend hook-debt checks to the maintenance/release workflow.",
+            "Updated verified Go, frontend, MCP, and container dependencies through maintainer-authored commits.",
+            "Documented the proposed transactional audit outbox boundary for a future atomic persistence implementation."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.2.22",
+      "label": "Controlled Mail workflows",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Added an isolated IMAP and SMTP Mail connector with bounded folder browsing, message search and reading, read-state changes, safe moves, archive and Trash workflows, compose, and reply.",
+            "Added direct TLS and generic Over SSH transport support with independent IMAP and SMTP connection diagnostics."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Connector approval snapshots now bind generic execution context and dependent transport target/profile revisions, requiring fresh approval after drift.",
+            "Mail content is rendered as bounded untrusted data, with complete outbound approval projections and explicit protocol/result limits."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Mail authentication requires verified TLS; plaintext IMAP/SMTP transports, POP3, and attachment download are intentionally unsupported.",
+            "Recipient, folder, message-reference, MIME, response-size, and timeout boundaries are revalidated during execution, while BCC remains envelope-only.",
+            "SMTP acceptance uncertainty is reported without unsafe automatic retry hints."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Updated the pinned unprivileged nginx runtime image, Go compression library, Lucide icon package, and Playwright test package through maintainer-authored dependency commits."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.2.21",
+      "label": "Backup recovery cleanup",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Added exact single and selected remote backup deletion from Settings, with local record reconciliation after confirmed service deletion.",
+            "Added encrypted per-service recovery baselines and an unlock-time warning when the remote backup service contains a newer recovery version."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Remote restore versions are grouped by source installation and show both relative and exact timestamps for safer recovery selection.",
+            "Backup cleanup can combine explicit selection with the existing keep-last-N retention workflow."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "The backup service refuses to delete the final recovery version in a stream.",
+            "Freshness baselines stay inside the encrypted local database and advance only after a successful upload or restore; sync checks never mark unseen backups as reviewed.",
+            "Failed remote freshness checks are shown explicitly instead of being treated as an up-to-date result."
+          ]
+        }
+      ]
+    }
+  ]
+}

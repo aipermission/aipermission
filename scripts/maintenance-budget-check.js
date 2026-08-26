@@ -20,8 +20,6 @@ const sourceBudgets = [
 const sourceBudgetOverrides = new Map([
   // Ordered schema history is intentionally kept in one auditable migration ledger.
   ["backend/internal/db/migrations.go", 1600],
-  // This file is a static release-note catalog rather than executable UI logic.
-  ["frontend/src/lib/release.js", 1000],
 ]);
 const suppressionBudget = 0;
 const criticalSuppressionPaths = [
