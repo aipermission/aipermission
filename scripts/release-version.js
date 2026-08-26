@@ -63,6 +63,7 @@ function setVersion(version) {
 
   const rootLock = readJSON("package-lock.json");
   rootLock.packages.frontend.version = version;
+  rootLock.packages["packages/mcp"].version = version;
   writeJSON("package-lock.json", rootLock);
 
   const mcpPackage = readJSON("packages/mcp/package.json");
