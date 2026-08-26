@@ -30,6 +30,8 @@ and this project uses semantic versioning for public releases.
 
 - The Mail SMTP client update keeps dynamic authentication responses out of format
   strings and adds SMTPUTF8 address handling.
+- The frontend runtime image upgrades Alpine OpenSSL packages to the patched release
+  detected by the container security gate.
 - SQLCipher 4.18.0 was reviewed with no published GitHub security advisories; the pinned
   wrapper and active SQLCipher 4.16.0 runtime remain unchanged.
 
