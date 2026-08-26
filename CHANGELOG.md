@@ -9,6 +9,30 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.29] - 2026-08-26
+
+### Changed
+
+- REST contract generation now combines core routes with connector-owned adapter routes,
+  keeping runtime registration, OpenAPI, and documentation tests on one inventory.
+- Release content now lives in one structured source that generates the complete
+  changelog and the bounded in-app release artifact.
+- Updated go-smtp to 0.25.0, lucide-react to 1.33.0, testing-library user-event to
+  14.6.5, and the pinned CodeQL action to 4.37.8.
+
+### Fixed
+
+- Release checks now detect and update MCP workspace version drift in the root lockfile.
+- Generated release artifacts fail validation when stale, out of order, duplicated, or
+  inconsistent with the release manifest.
+
+### Security
+
+- The Mail SMTP client update keeps dynamic authentication responses out of format
+  strings and adds SMTPUTF8 address handling.
+- SQLCipher 4.18.0 was reviewed with no published GitHub security advisories; the pinned
+  wrapper and active SQLCipher 4.16.0 runtime remain unchanged.
+
 ## [0.2.28] - 2026-08-18
 
 ### Changed
