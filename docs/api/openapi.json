@@ -4718,6 +4718,69 @@
         "x-aipermission-contract-level": "route-inventory"
       }
     },
+    "/api/ssh-config/discover": {
+      "get": {
+        "operationId": "getApiSshConfigDiscover",
+        "responses": {
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "ssh-config"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/ssh-config/parse": {
+      "post": {
+        "operationId": "postApiSshConfigParse",
+        "responses": {
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "ssh-config"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/ssh-host-keys/approve": {
+      "post": {
+        "operationId": "postApiSshHostKeysApprove",
+        "responses": {
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "ssh-host-keys"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
     "/api/status": {
       "get": {
         "operationId": "getApiStatus",
@@ -5523,5 +5586,5 @@
     }
   ],
   "x-aipermission-contract-level": "route-inventory",
-  "x-aipermission-generated-from": "backend/internal/api/routes.go"
+  "x-aipermission-generated-from": "core and connector adapter route catalogs"
 }

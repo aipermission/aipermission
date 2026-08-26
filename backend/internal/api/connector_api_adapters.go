@@ -48,11 +48,20 @@ func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *datab
 }
 
 func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
-	for _, info := range server.connectorRegistry().List() {
-		adapter, _ := connectorAPIAdapterFor(info.Kind).(connectorapi.RouteRegistrar)
-		if adapter != nil {
-			adapter.RegisterRoutes(mux, server)
-		}
+	connectorInfos := server.connectorRegistry().List()
+	kinds := make([]string, 0, len(connectorInfos))
+	for _, info := range connectorInfos {
+		kinds = append(kinds, info.Kind)
+	}
+	routes, err := connectorapi.RouteDefinitions(kinds)
+	if err != nil {
+		panic(err)
+	}
+	for _, route := range routes {
+		handler := route.Handler
+		mux.HandleFunc(route.Pattern(), func(w http.ResponseWriter, r *http.Request) {
+			handler(server, w, r)
+		})
 	}
 }
 

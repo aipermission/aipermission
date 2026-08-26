@@ -30,19 +30,12 @@ func init() {
 	connectorapi.Register(sshconnector.Kind, adapter{})
 }
 
-func (a adapter) RegisterRoutes(mux connectorapi.RouteMux, server connectorapi.GatewayServer) {
-	if mux == nil {
-		return
+func (a adapter) Routes() []connectorapi.RouteDefinition {
+	return []connectorapi.RouteDefinition{
+		{Method: "POST", Path: "/api/ssh-host-keys/approve", Handler: a.approveHostKey},
+		{Method: "GET", Path: "/api/ssh-config/discover", Handler: a.discoverConfig},
+		{Method: "POST", Path: "/api/ssh-config/parse", Handler: a.parseConfig},
 	}
-	mux.HandleFunc("POST /api/ssh-host-keys/approve", func(w http.ResponseWriter, r *http.Request) {
-		a.approveHostKey(server, w, r)
-	})
-	mux.HandleFunc("GET /api/ssh-config/discover", func(w http.ResponseWriter, r *http.Request) {
-		a.discoverConfig(server, w, r)
-	})
-	mux.HandleFunc("POST /api/ssh-config/parse", func(w http.ResponseWriter, r *http.Request) {
-		a.parseConfig(server, w, r)
-	})
 }
 
 func (adapter) RuntimeCapabilities(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime) map[string]connectors.RuntimeCapability {

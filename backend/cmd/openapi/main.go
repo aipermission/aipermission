@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/restcontract"
 )
 
@@ -19,7 +21,27 @@ func main() {
 	if err != nil {
 		fatalf("read routes: %v", err)
 	}
-	output, err := restcontract.Generate(source)
+	routes, err := restcontract.ParseRoutes(source)
+	if err != nil {
+		fatalf("parse core routes: %v", err)
+	}
+	registry, err := builtin.NewRegistry()
+	if err != nil {
+		fatalf("load built-in connectors: %v", err)
+	}
+	connectorInfos := registry.List()
+	kinds := make([]string, 0, len(connectorInfos))
+	for _, info := range connectorInfos {
+		kinds = append(kinds, info.Kind)
+	}
+	adapterRoutes, err := connectorapi.RouteDefinitions(kinds)
+	if err != nil {
+		fatalf("load connector adapter routes: %v", err)
+	}
+	for _, route := range adapterRoutes {
+		routes = append(routes, restcontract.Route{Method: route.Method, Path: route.Path})
+	}
+	output, err := restcontract.GenerateRoutes(routes)
 	if err != nil {
 		fatalf("generate contract: %v", err)
 	}
