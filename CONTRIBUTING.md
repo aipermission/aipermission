@@ -108,6 +108,21 @@ Run the full local stack:
 docker compose up -d --build
 ```
 
+## Release Notes
+
+`release-notes.json` is the canonical source for public release content. Do not
+edit `CHANGELOG.md` or `frontend/src/lib/release.generated.json` directly.
+After changing the canonical source, regenerate and verify both artifacts:
+
+```bash
+npm run release-notes
+npm run release-notes:check
+npm run version:check
+```
+
+The frontend intentionally bundles only the latest entries; the generated
+`CHANGELOG.md` remains the complete public history.
+
 ## Pull Requests
 
 Contributions are submitted for distribution under the repository's

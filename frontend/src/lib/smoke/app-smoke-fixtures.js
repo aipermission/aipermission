@@ -12,6 +12,7 @@ export const nginxSource = readFileSync(join(currentDir, "..", "..", "nginx.conf
 export const sidebarSource = readFileSync(join(currentDir, "..", "components", "app-sidebar.jsx"), "utf8");
 export const unlockSource = readFileSync(join(currentDir, "..", "pages", "unlock.jsx"), "utf8");
 export const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
+export const releaseData = JSON.parse(readFileSync(join(currentDir, "release.generated.json"), "utf8"));
 export const releaseManifest = JSON.parse(readFileSync(join(currentDir, "..", "..", "..", "release-manifest.json"), "utf8"));
 export const connectorApprovalDialogSource = readFileSync(
   join(currentDir, "..", "components", "console", "connector-action-approval-dialog.jsx"),

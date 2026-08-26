@@ -34,7 +34,8 @@ This runs:
   on an existing module path; path-changing Go majors such as `/v2` remain a
   manual maintainer review, and the workflow never creates or merges
   bot-authored dependency commits
-- release-version and native-dependency inventory consistency checks
+- canonical release-note artifact, release-version, and native-dependency
+  inventory consistency checks
 - generated OpenAPI route and typed-schema drift
 - backend unit tests with an aggregate summary and reviewed floors for auth,
   permission, approval, Vault, session injection, target lifecycle, and audit
