@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/restcontract"
 )
 
@@ -20,10 +21,7 @@ func TestRESTDocsMentionRegisteredRoutes(t *testing.T) {
 		t.Fatalf("read rest docs: %v", err)
 	}
 	docText := string(docs)
-	routes, err := restcontract.ParseRoutes(routesSource)
-	if err != nil {
-		t.Fatalf("parse registered routes: %v", err)
-	}
+	routes := registeredRESTContractRoutes(t, routesSource)
 	if err := restcontract.ValidateTypedRoutes(routes); err != nil {
 		t.Fatalf("validate typed REST routes: %v", err)
 	}
@@ -62,7 +60,8 @@ func TestGeneratedOpenAPIMatchesRegisteredRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read routes: %v", err)
 	}
-	expected, err := restcontract.Generate(routesSource)
+	routes := registeredRESTContractRoutes(t, routesSource)
+	expected, err := restcontract.GenerateRoutes(routes)
 	if err != nil {
 		t.Fatalf("generate OpenAPI route inventory: %v", err)
 	}
@@ -73,4 +72,30 @@ func TestGeneratedOpenAPIMatchesRegisteredRoutes(t *testing.T) {
 	if !bytes.Equal(current, expected) {
 		t.Fatal("generated OpenAPI route inventory is stale; run make rest-contract")
 	}
+}
+
+func registeredRESTContractRoutes(t *testing.T, routesSource []byte) []restcontract.Route {
+	t.Helper()
+	routes, err := restcontract.ParseRoutes(routesSource)
+	if err != nil {
+		t.Fatalf("parse registered routes: %v", err)
+	}
+	registry := testConnectorRegistry(t)
+	connectorInfos := registry.List()
+	kinds := make([]string, 0, len(connectorInfos))
+	for _, info := range connectorInfos {
+		kinds = append(kinds, info.Kind)
+	}
+	adapterRoutes, err := connectorapi.RouteDefinitions(kinds)
+	if err != nil {
+		t.Fatalf("load connector adapter routes: %v", err)
+	}
+	for _, route := range adapterRoutes {
+		routes = append(routes, restcontract.Route{Method: route.Method, Path: route.Path})
+	}
+	routes, err = restcontract.NormalizeRoutes(routes)
+	if err != nil {
+		t.Fatalf("normalize registered routes: %v", err)
+	}
+	return routes
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 
@@ -33,9 +34,17 @@ var (
 // connectors can register one from their own connector package.
 type Adapter interface{}
 
-// RouteMux is the minimal HTTP router surface connector setup adapters can use.
-type RouteMux interface {
-	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+// RouteDefinition is the canonical runtime and documentation contract for a
+// connector-owned HTTP route.
+type RouteDefinition struct {
+	Method  string
+	Path    string
+	Handler func(GatewayServer, http.ResponseWriter, *http.Request)
+}
+
+// Pattern returns the Go 1.22 ServeMux method/path pattern.
+func (r RouteDefinition) Pattern() string {
+	return strings.TrimSpace(r.Method) + " " + strings.TrimSpace(r.Path)
 }
 
 // GatewayRuntime exposes only connector-safe runtime resources from the
@@ -116,6 +125,47 @@ func For(kind string) Adapter {
 	return adapters[strings.TrimSpace(kind)]
 }
 
+// RouteDefinitions returns validated connector-owned routes for the requested
+// connector kinds. The result is deterministic so runtime registration,
+// generated contracts, and tests share one inventory.
+func RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
+	routes := []RouteDefinition{}
+	seen := map[string]string{}
+	for _, rawKind := range kinds {
+		kind := strings.TrimSpace(rawKind)
+		adapter, _ := For(kind).(RouteRegistrar)
+		if adapter == nil {
+			continue
+		}
+		for _, route := range adapter.Routes() {
+			route.Method = strings.ToUpper(strings.TrimSpace(route.Method))
+			route.Path = strings.TrimSpace(route.Path)
+			if route.Method == "" {
+				return nil, fmt.Errorf("connector adapter %q route method is required", kind)
+			}
+			if !strings.HasPrefix(route.Path, "/") {
+				return nil, fmt.Errorf("connector adapter %q route path %q must start with /", kind, route.Path)
+			}
+			if route.Handler == nil {
+				return nil, fmt.Errorf("connector adapter %q route %s %s has no handler", kind, route.Method, route.Path)
+			}
+			key := route.Pattern()
+			if owner, exists := seen[key]; exists {
+				return nil, fmt.Errorf("connector adapters %q and %q both register %s", owner, kind, key)
+			}
+			seen[key] = kind
+			routes = append(routes, route)
+		}
+	}
+	sort.Slice(routes, func(i, j int) bool {
+		if routes[i].Path == routes[j].Path {
+			return routes[i].Method < routes[j].Method
+		}
+		return routes[i].Path < routes[j].Path
+	})
+	return routes, nil
+}
+
 // RuntimeAdapter lets a connector provide gateway-owned async/runtime services.
 type RuntimeAdapter interface {
 	RuntimeCapabilities(server GatewayServer, runtime GatewayRuntime) map[string]connectors.RuntimeCapability
@@ -125,9 +175,10 @@ type RuntimeAdapter interface {
 }
 
 // RouteRegistrar lets a connector own compatibility/setup routes without
-// placing connector-specific handlers in the generic API package.
+// placing connector-specific handlers in the generic API package. Runtime
+// registration and generated REST documentation consume the same definitions.
 type RouteRegistrar interface {
-	RegisterRoutes(mux RouteMux, server GatewayServer)
+	Routes() []RouteDefinition
 }
 
 // RuntimeResourceProvider lets a connector initialize encrypted local resource

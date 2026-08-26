@@ -30,6 +30,16 @@ func routes() {
 	}
 }
 
+func TestNormalizeRoutesRejectsDuplicatesAcrossCatalogs(t *testing.T) {
+	routes := []Route{
+		{Method: "get", Path: "/api/items"},
+		{Method: "GET", Path: "/api/items"},
+	}
+	if _, err := NormalizeRoutes(routes); err == nil || !strings.Contains(err.Error(), "duplicate route GET /api/items") {
+		t.Fatalf("expected combined catalog duplicate error, got %v", err)
+	}
+}
+
 func TestParseRoutesRejectsRegistrationsThatCouldEscapeTheContract(t *testing.T) {
 	tests := []struct {
 		name   string

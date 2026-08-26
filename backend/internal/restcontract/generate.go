@@ -68,25 +68,50 @@ func ParseRoutes(source []byte) ([]Route, error) {
 	if err != nil {
 		return nil, err
 	}
+	return NormalizeRoutes(routes)
+}
+
+// NormalizeRoutes validates, sorts, and deduplicates a combined core and
+// connector-owned route inventory.
+func NormalizeRoutes(routes []Route) ([]Route, error) {
 	if len(routes) == 0 {
-		return nil, fmt.Errorf("no HandleFunc routes found")
+		return nil, fmt.Errorf("no routes found")
 	}
-	sort.Slice(routes, func(i, j int) bool {
-		if routes[i].Path == routes[j].Path {
-			return routes[i].Method < routes[j].Method
+	normalized := make([]Route, 0, len(routes))
+	for _, route := range routes {
+		route.Method = strings.ToUpper(strings.TrimSpace(route.Method))
+		route.Path = strings.TrimSpace(route.Path)
+		if route.Method == "" || !strings.HasPrefix(route.Path, "/") {
+			return nil, fmt.Errorf("invalid route %q %q", route.Method, route.Path)
 		}
-		return routes[i].Path < routes[j].Path
+		normalized = append(normalized, route)
+	}
+	sort.Slice(normalized, func(i, j int) bool {
+		if normalized[i].Path == normalized[j].Path {
+			return normalized[i].Method < normalized[j].Method
+		}
+		return normalized[i].Path < normalized[j].Path
 	})
-	for index := 1; index < len(routes); index++ {
-		if routes[index] == routes[index-1] {
-			return nil, fmt.Errorf("duplicate route %s %s", routes[index].Method, routes[index].Path)
+	for index := 1; index < len(normalized); index++ {
+		if normalized[index] == normalized[index-1] {
+			return nil, fmt.Errorf("duplicate route %s %s", normalized[index].Method, normalized[index].Path)
 		}
 	}
-	return routes, nil
+	return normalized, nil
 }
 
 func Generate(source []byte) ([]byte, error) {
 	routes, err := ParseRoutes(source)
+	if err != nil {
+		return nil, err
+	}
+	return GenerateRoutes(routes)
+}
+
+// GenerateRoutes emits OpenAPI from a combined core and connector-owned route
+// inventory.
+func GenerateRoutes(routes []Route) ([]byte, error) {
+	routes, err := NormalizeRoutes(routes)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +156,7 @@ func Generate(source []byte) ([]byte, error) {
 		"servers":                       []map[string]string{{"url": "http://localhost:3210"}},
 		"components":                    map[string]any{"schemas": sharedSchemas()},
 		"paths":                         paths,
-		"x-aipermission-generated-from": "backend/internal/api/routes.go",
+		"x-aipermission-generated-from": "core and connector adapter route catalogs",
 		"x-aipermission-contract-level": "route-inventory",
 	}
 	var output bytes.Buffer
