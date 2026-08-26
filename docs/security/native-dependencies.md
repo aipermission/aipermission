@@ -10,12 +10,12 @@ with `backend/go.mod` and the runtime version assertion in `internal/db`.
 
 ## SQLCipher
 
-| Component                                      | Pinned version                                | Notes                                                     |
-| ---------------------------------------------- | --------------------------------------------- | --------------------------------------------------------- |
-| `github.com/SE-I-T-Digital/go-sqlcipher`       | commit `8f19266d2b27`                          | Go SQLite driver containing the amalgamated native source |
-| SQLCipher runtime                              | `4.16.0 community`                            | Verified with `PRAGMA cipher_version` in backend tests    |
-| OpenSSL provider                               | `3.x` from the pinned Debian image repository | Exact package version is captured in the image SBOM       |
-| Latest official SQLCipher reviewed for update  | `4.17.0`                                      | Not claimed as active until the wrapper embeds it         |
+| Component                                     | Pinned version                                | Notes                                                       |
+| --------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------- |
+| `github.com/SE-I-T-Digital/go-sqlcipher`      | commit `8f19266d2b27`                         | Go SQLite driver containing the amalgamated native source   |
+| SQLCipher runtime                             | `4.16.0 community`                            | Verified with `PRAGMA cipher_version` in backend tests      |
+| OpenSSL provider                              | `3.x` from the pinned Debian image repository | Exact package version is captured in the image SBOM         |
+| Latest official SQLCipher reviewed for update | `4.18.0`                                      | Reviewed 2026-08-26; not active until the wrapper embeds it |
 
 The backend does not rely on an untracked system SQLCipher library. The wrapper
 module contains the native SQLite/SQLCipher amalgamation compiled into the Go
@@ -27,6 +27,13 @@ matching development headers explicitly.
 The committed SQLCipher 4.4.2 fixture contains synthetic data only. Its checked
 hash protects the compatibility baseline from accidental regeneration. The
 active runtime must open it before an update can be accepted.
+
+The 4.18.0 upstream review found no published GitHub security advisories. The
+release moves to SQLite 3.53.4, avoids one Windows crash under non-default
+logging with `cipher_memory_security`, and fixes an optimized GCC relocation
+error. The pinned Go wrapper has not advanced and still embeds SQLCipher
+4.16.0, so this review does not change AIPermission's active runtime or database
+compatibility baseline.
 
 ## Update Policy
 
