@@ -31,6 +31,22 @@ func TestTargetSchemaExposesRedisAndValkeyProducts(t *testing.T) {
 	}
 }
 
+func TestSetStringMarksOnlyValueAsSensitiveInput(t *testing.T) {
+	actions, err := Connector{}.GetActionList(context.Background(), connectors.TargetView{}, connectors.CredentialProfileView{})
+	if err != nil {
+		t.Fatalf("actions: %v", err)
+	}
+	for _, action := range actions {
+		if action.Name == ActionSetString {
+			if !reflect.DeepEqual(action.SensitiveInputFields, []string{"value"}) {
+				t.Fatalf("sensitive fields = %#v", action.SensitiveInputFields)
+			}
+			return
+		}
+	}
+	t.Fatal("set_string action was not found")
+}
+
 func TestRESPReaderRejectsOversizedOrMalformedFrames(t *testing.T) {
 	tests := []struct {
 		name     string

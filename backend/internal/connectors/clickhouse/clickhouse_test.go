@@ -42,6 +42,9 @@ func TestConnectorSchemaAndActions(t *testing.T) {
 		if action.Name != expected[index] || action.Risk != connectors.RiskRead || action.Label == "" || action.Description == "" {
 			t.Fatalf("unexpected action %d: %#v", index, action)
 		}
+		if action.Name == ActionQueryReadonly && len(action.SensitiveInputFields) != 0 {
+			t.Fatalf("readonly SQL must remain visible for meaningful approval: %#v", action.SensitiveInputFields)
+		}
 	}
 }
 
