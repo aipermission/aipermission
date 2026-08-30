@@ -273,10 +273,16 @@ func (s backupHandlers) enableProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "current database password is required")
 		return
 	}
+	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
+	if !ok {
+		return
+	}
 	if err := dbpkg.ValidateEncrypted(runtime.path, request.CurrentPassword); err != nil {
+		attempt.failure()
 		writeError(w, http.StatusUnauthorized, "invalid current database password")
 		return
 	}
+	attempt.success()
 	if err := validateRemoteBackupPassword(request.CurrentPassword, s.activeDatabaseDisplayName()); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

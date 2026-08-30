@@ -127,6 +127,10 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeError(w, http.StatusBadRequest, "database password is required")
 		return
 	}
+	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
+	if !ok {
+		return
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -161,12 +165,15 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 	if err != nil {
 		_ = os.Remove(tmpPath)
 		if message := dbpkg.UnsupportedSchemaMessage(err); message != "" {
+			attempt.success()
 			writeError(w, http.StatusConflict, message)
 			return
 		}
+		attempt.failure()
 		writeError(w, http.StatusBadRequest, "invalid database password or database file")
 		return
 	}
+	attempt.success()
 	if _, err := gatewaySecretFromDatabase(testDB, s.config.GatewaySecret); err != nil {
 		_ = testDB.Close()
 		_ = os.Remove(tmpPath)
