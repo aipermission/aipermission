@@ -6,6 +6,7 @@ import {
   limitTranscript,
   mergeConsoleSessionData,
   normalizeCredentialResources,
+  parseConsoleSocketMessage,
 } from "./app-shell-runtime.js";
 
 test("shell runtime normalizes connector-owned credential resources", () => {
@@ -41,4 +42,12 @@ test("shell polling rejects older and disposed generations", () => {
   assert.equal(guard.isCurrent(second), true);
   guard.invalidate();
   assert.equal(guard.isCurrent(second), false);
+});
+
+test("console socket parser accepts typed objects and rejects malformed frames", () => {
+  assert.deepEqual(parseConsoleSocketMessage('{"type":"output","data":"ready"}'), { type: "output", data: "ready" });
+
+  for (const value of ["{", "null", "[]", '{"data":"missing type"}', new Uint8Array([1])]) {
+    assert.equal(parseConsoleSocketMessage(value), null);
+  }
 });

@@ -29,6 +29,17 @@ export function limitTranscript(value) {
   return value.length <= maxLength ? value : value.slice(value.length - maxLength);
 }
 
+export function parseConsoleSocketMessage(value) {
+  if (typeof value !== "string") return null;
+  try {
+    const message = JSON.parse(value);
+    if (!message || typeof message !== "object" || Array.isArray(message) || typeof message.type !== "string") return null;
+    return message;
+  } catch {
+    return null;
+  }
+}
+
 export function createPollGenerationGuard() {
   let current = 0;
   return {
