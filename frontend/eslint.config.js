@@ -54,12 +54,6 @@ export default [
     },
   },
   {
-    files: ["src/connectors/templates/redis/console.jsx"],
-    rules: {
-      complexity: ["error", { max: 51 }],
-    },
-  },
-  {
     files: ["src/connectors/templates/s3/console.jsx"],
     rules: {
       "max-lines-per-function": ["error", { max: 727, skipBlankLines: true, skipComments: true, IIFEs: true }],
