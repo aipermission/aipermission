@@ -53,6 +53,9 @@ jobs:
           go test -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out | tail -1
           go run ./cmd/coveragecheck -profile coverage.out
+      - name: Function budgets
+        working-directory: backend
+        run: go run ./cmd/function-budget
       - name: Recovery drill
         run: make recovery-drill
       - name: Bounded security fuzzing

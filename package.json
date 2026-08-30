@@ -12,7 +12,7 @@
     "test": "make test",
     "build": "make build",
     "audit": "make audit",
-    "hygiene": "node scripts/secret-scan.js && node scripts/line-ending-check.js && node scripts/maintenance-budget-check.js && node scripts/dependency-major-report.test.js && node scripts/release-notes.test.js && node --test scripts/verify-release-source.test.js && node scripts/release-version.js --check && node scripts/native-dependency-check.js",
+    "hygiene": "node scripts/secret-scan.js && node scripts/line-ending-check.js && node scripts/maintenance-budget-check.js && cd backend && go run ./cmd/function-budget && cd .. && node scripts/dependency-major-report.test.js && node scripts/release-notes.test.js && node --test scripts/verify-release-source.test.js && node scripts/release-version.js --check && node scripts/native-dependency-check.js",
     "security:history": "sh scripts/gitleaks-history-scan.sh",
     "maintenance:majors": "node scripts/dependency-major-report.js",
     "test:maintenance:majors": "node scripts/dependency-major-report.test.js",
