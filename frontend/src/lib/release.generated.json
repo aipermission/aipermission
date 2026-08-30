@@ -1,6 +1,32 @@
 {
-  "version": "0.2.30",
+  "version": "0.2.31",
   "entries": [
+    {
+      "version": "0.2.31",
+      "label": "Connector security boundaries",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "New ClickHouse, Redis / Valkey, and RabbitMQ targets prefer verified TLS for remote Direct endpoints while preserving explicit local, Over SSH, and existing saved transport choices."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Redis, RabbitMQ, and ClickHouse now distinguish optional missing secrets from Vault or secret-provider failures instead of silently downgrading failed credential resolution.",
+            "Kubernetes normal actions and live pod consoles now share one connector-owned kubectl command validator that rejects shell syntax before execution."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Every database-password verification route now shares one metadata-free rate-limit scope, preventing endpoint rotation from bypassing unlock throttling.",
+            "Redis string values and RabbitMQ message payloads and properties are redacted from persisted approval previews, history, audit, and MCP projections while exact encrypted execution payloads remain available to the action runner."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.30",
       "label": "Release and authorization boundary hardening",
@@ -190,43 +216,6 @@
           "items": [
             "Added a machine-readable native dependency inventory and a runtime assertion for the SQLCipher version embedded by the Go driver.",
             "Container publishing now scans the exact candidate registry digest before promoting that same digest to release tags, and requires the tagged source commit's CI checks to have passed."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.23",
-      "label": "Maintenance hardening",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Split large backend and frontend modules by responsibility, established a frontend formatting baseline, and reduced the enforced React hook suppression budget to zero.",
-            "Added a generated OpenAPI route inventory derived from backend route registration, with exact drift checks in the release gate.",
-            "Added maintainer-triggered real-service connector conformance for Postgres, Valkey, RabbitMQ, and S3, plus project governance and ownership guidance."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Gateway containers recover after host reboot, and owned console sessions now recover from missing, expired, or stale Vault authorization leases.",
-            "Runtime audit records preserve target names, stale approval history remains synchronized, and connector restore uploads stream bounded payloads instead of buffering the full file in memory."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Connector-owned HTTP transports ignore ambient proxy credentials, and approval execution freezes the validated credential material at claim time.",
-            "Audit persistence failures are surfaced through degraded health state, while connector credential/output boundary regression tests guard against returning gateway-held secret values.",
-            "CI blocks fixed HIGH/CRITICAL findings in locally built container images; publishing adds SBOM/provenance attestations and digest signing, while CI dependencies remain SHA-pinned."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Added source-size, coverage reporting, formatting, REST-contract, and frontend hook-debt checks to the maintenance/release workflow.",
-            "Updated verified Go, frontend, MCP, and container dependencies through maintainer-authored commits.",
-            "Documented the proposed transactional audit outbox boundary for a future atomic persistence implementation."
           ]
         }
       ]

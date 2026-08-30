@@ -9,6 +9,29 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.31] - 2026-08-30
+
+### Changed
+
+- New ClickHouse, Redis / Valkey, and RabbitMQ targets prefer verified TLS for remote
+  Direct endpoints while preserving explicit local, Over SSH, and existing saved
+  transport choices.
+
+### Fixed
+
+- Redis, RabbitMQ, and ClickHouse now distinguish optional missing secrets from Vault or
+  secret-provider failures instead of silently downgrading failed credential resolution.
+- Kubernetes normal actions and live pod consoles now share one connector-owned kubectl
+  command validator that rejects shell syntax before execution.
+
+### Security
+
+- Every database-password verification route now shares one metadata-free rate-limit
+  scope, preventing endpoint rotation from bypassing unlock throttling.
+- Redis string values and RabbitMQ message payloads and properties are redacted from
+  persisted approval previews, history, audit, and MCP projections while exact encrypted
+  execution payloads remain available to the action runner.
+
 ## [0.2.30] - 2026-08-30
 
 ### Changed
