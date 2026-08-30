@@ -9,6 +9,40 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.34] - 2026-08-31
+
+### Changed
+
+- Console connection lifecycle, Redis browser state, migration maintenance, token
+  dialogs, and genuinely shared credential profile fields now live in smaller
+  behavior-owned modules.
+- Contributor architecture and approval-flow diagrams now document the generic connector
+  pipeline, while canonical recovery guidance explains safe retry and failure handling.
+
+### Fixed
+
+- Malformed console WebSocket frames now produce a bounded warning without terminating
+  an otherwise healthy session.
+- Token revocation keeps explicit success feedback visible, generated token values clear
+  at lifecycle boundaries, and Redis confirmations cannot carry across target changes.
+- Legacy database migration output is staged and published without overwriting an
+  existing destination, with interrupted attempts cleaned up safely.
+
+### Security
+
+- Non-interactive MCP initialization now requires an explicit provider and protects
+  tracked project configuration in normal repositories, linked worktrees, and
+  submodules.
+- The security policy now documents supported versions, bounded approval decryption,
+  single-user deployment expectations, and clearer private vulnerability reporting.
+
+### Maintenance
+
+- Offline Markdown link validation and Go and frontend function-complexity budgets now
+  run in repository hygiene checks.
+- Deterministic recovery drills now cover the self-hosted backup download path and
+  interrupted legacy migration publication.
+
 ## [0.2.33] - 2026-08-31
 
 ### Maintenance
