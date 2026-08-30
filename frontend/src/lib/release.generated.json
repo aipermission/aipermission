@@ -1,6 +1,32 @@
 {
-  "version": "0.2.29",
+  "version": "0.2.30",
   "entries": [
+    {
+      "version": "0.2.30",
+      "label": "Release and authorization boundary hardening",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Container and MCP publication now verify the exact tagged source commit, release metadata, mandatory CI and CodeQL results, package tests, builds, and pack output before publishing.",
+            "Real-service connector conformance and native dependency freshness remain visible advisory release signals instead of unreliable unconditional external-service gates."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Direct API server construction now returns workspace and runtime identity initialization failures instead of starting with incomplete execution identity."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Malformed non-empty token, connector-permission, and project-capability expiry values now fail closed while an explicit empty expiry remains permanent.",
+            "The local HTTP boundary now rejects missing or malformed Host and RemoteAddr values and accepts only parsed loopback request origins."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.29",
       "label": "Release contract and dependency maintenance",
@@ -201,40 +227,6 @@
             "Added source-size, coverage reporting, formatting, REST-contract, and frontend hook-debt checks to the maintenance/release workflow.",
             "Updated verified Go, frontend, MCP, and container dependencies through maintainer-authored commits.",
             "Documented the proposed transactional audit outbox boundary for a future atomic persistence implementation."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.22",
-      "label": "Controlled Mail workflows",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "Added an isolated IMAP and SMTP Mail connector with bounded folder browsing, message search and reading, read-state changes, safe moves, archive and Trash workflows, compose, and reply.",
-            "Added direct TLS and generic Over SSH transport support with independent IMAP and SMTP connection diagnostics."
-          ]
-        },
-        {
-          "title": "Changed",
-          "items": [
-            "Connector approval snapshots now bind generic execution context and dependent transport target/profile revisions, requiring fresh approval after drift.",
-            "Mail content is rendered as bounded untrusted data, with complete outbound approval projections and explicit protocol/result limits."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Mail authentication requires verified TLS; plaintext IMAP/SMTP transports, POP3, and attachment download are intentionally unsupported.",
-            "Recipient, folder, message-reference, MIME, response-size, and timeout boundaries are revalidated during execution, while BCC remains envelope-only.",
-            "SMTP acceptance uncertainty is reported without unsafe automatic retry hints."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Updated the pinned unprivileged nginx runtime image, Go compression library, Lucide icon package, and Playwright test package through maintainer-authored dependency commits."
           ]
         }
       ]
