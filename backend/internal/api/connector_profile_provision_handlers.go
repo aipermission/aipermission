@@ -114,7 +114,7 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 			if err != nil {
 				return err
 			}
-			return ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile)
+			return s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile)
 		},
 	)
 	if err != nil {

@@ -67,13 +67,17 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 		t.Fatalf("new vault: %v", err)
 	}
 	tokenStore := tokens.NewStore(database)
+	catalog := newTestConnectorCatalog(t)
 	srv, err := NewServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
-	}, database, secretVault, tokenStore, WithConnectorRegistry(testConnectorRegistry(t)))
+	}, database, secretVault, tokenStore,
+		WithConnectorRegistry(catalog.connectors),
+		WithConnectorAdapterRegistry(catalog.adapters),
+	)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}

@@ -40,11 +40,15 @@ func runGatewayServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	registry, err := builtin.NewRegistry()
+	catalog, err := builtin.NewCatalog()
 	if err != nil {
 		return err
 	}
-	server := api.NewLockedServer(cfg, api.WithConnectorRegistry(registry))
+	server := api.NewLockedServer(
+		cfg,
+		api.WithConnectorRegistry(catalog.Connectors),
+		api.WithConnectorAdapterRegistry(catalog.Adapters),
+	)
 	defer server.Close()
 
 	log.Printf("aipermission backend listening on %s", cfg.Address())

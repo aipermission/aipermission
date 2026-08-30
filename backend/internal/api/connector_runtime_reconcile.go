@@ -6,7 +6,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime *databaseRuntime) error {
+func (s *Server) reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime *databaseRuntime) error {
 	if runtime == nil || runtime.database == nil {
 		return nil
 	}
@@ -21,7 +21,7 @@ func reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime *databaseRun
 			return err
 		}
 		for _, profile := range profiles {
-			if err := ensureConnectorRuntimeSurfacesForProfile(ctx, store, target, profile); err != nil {
+			if err := s.ensureConnectorRuntimeSurfacesForProfile(ctx, store, target, profile); err != nil {
 				return err
 			}
 		}

@@ -157,7 +157,7 @@ func TestSSHConnectorTargetWithProfileCreatesRuntimeSurface(t *testing.T) {
 	if _, err := fixture.db.Exec(`DELETE FROM connector_runtime_surfaces WHERE id = ?`, transferSurface.ID); err != nil {
 		t.Fatalf("delete transfer runtime surface: %v", err)
 	}
-	if err := reconcileConnectorRuntimeSurfaces(ctx, fixture.server.activeRuntime()); err != nil {
+	if err := fixture.server.reconcileConnectorRuntimeSurfaces(ctx, fixture.server.activeRuntime()); err != nil {
 		t.Fatalf("reconcile connector runtime surfaces: %v", err)
 	}
 	if _, err := connectortargets.NewStore(fixture.db).GetRuntimeSurfaceByProfile(ctx, "ssh", target.ID, target.Profiles[0].ID, connectortargets.RuntimeCapabilityFileTransfer); err != nil {

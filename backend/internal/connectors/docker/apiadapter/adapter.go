@@ -18,8 +18,8 @@ import (
 
 type adapter struct{}
 
-func init() {
-	connectorapi.Register(dockerconnector.Kind, adapter{})
+func New() connectorapi.Adapter {
+	return adapter{}
 }
 
 func (adapter) LiveConsoleCapabilityKind() string {

@@ -21,8 +21,8 @@ var kubeConsoleNamePattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
 type adapter struct{}
 
-func init() {
-	connectorapi.Register(kubernetesconnector.Kind, adapter{})
+func New() connectorapi.Adapter {
+	return adapter{}
 }
 
 func (adapter) LiveConsoleCapabilityKind() string {

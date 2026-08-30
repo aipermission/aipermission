@@ -91,49 +91,76 @@ type CredentialResourceGateway interface {
 	ConnectorServer() GatewayServer
 }
 
-var (
+type Registry struct {
 	mu       sync.RWMutex
-	adapters = map[string]Adapter{}
-)
+	adapters map[string]Adapter
+}
+
+func NewRegistry() *Registry {
+	return &Registry{adapters: map[string]Adapter{}}
+}
 
 // Register installs one connector-owned gateway adapter.
 //
-// Adapter registration is expected to happen at package init time for built-in
-// runtime-backed connectors. Duplicate registrations are programmer errors:
-// silently replacing an adapter would make connector capabilities depend on
-// import order.
-func Register(kind string, adapter Adapter) {
+// Duplicate registrations are rejected so explicit catalog construction cannot
+// silently replace capabilities based on registration order.
+func (r *Registry) Register(kind string, adapter Adapter) error {
 	kind = strings.TrimSpace(kind)
 	if kind == "" {
-		panic("connector adapter kind is required")
+		return errors.New("connector adapter kind is required")
 	}
 	if adapter == nil {
-		panic(fmt.Sprintf("connector adapter %q is nil", kind))
+		return fmt.Errorf("connector adapter %q is nil", kind)
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	if _, exists := adapters[kind]; exists {
-		panic(fmt.Sprintf("connector adapter %q already registered", kind))
+	if r == nil {
+		return errors.New("connector adapter registry is not configured")
 	}
-	adapters[kind] = adapter
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.adapters == nil {
+		r.adapters = map[string]Adapter{}
+	}
+	if _, exists := r.adapters[kind]; exists {
+		return fmt.Errorf("connector adapter %q already registered", kind)
+	}
+	r.adapters[kind] = adapter
+	return nil
 }
 
 // For returns the registered adapter for a connector kind.
-func For(kind string) Adapter {
-	mu.RLock()
-	defer mu.RUnlock()
-	return adapters[strings.TrimSpace(kind)]
+func (r *Registry) For(kind string) Adapter {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.adapters[strings.TrimSpace(kind)]
+}
+
+// Kinds returns a deterministic snapshot of registered connector kinds.
+func (r *Registry) Kinds() []string {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	kinds := make([]string, 0, len(r.adapters))
+	for kind := range r.adapters {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	return kinds
 }
 
 // RouteDefinitions returns validated connector-owned routes for the requested
 // connector kinds. The result is deterministic so runtime registration,
 // generated contracts, and tests share one inventory.
-func RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
+func (r *Registry) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
 	routes := []RouteDefinition{}
 	seen := map[string]string{}
 	for _, rawKind := range kinds {
 		kind := strings.TrimSpace(rawKind)
-		adapter, _ := For(kind).(RouteRegistrar)
+		adapter, _ := r.For(kind).(RouteRegistrar)
 		if adapter == nil {
 			continue
 		}

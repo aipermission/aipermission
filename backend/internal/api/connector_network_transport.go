@@ -67,7 +67,7 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 		if projectErr != nil {
 			return nil, projectErr
 		}
-		adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
+		adapter, _ := transport.server.connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
 		if adapter == nil {
 			return nil, fmt.Errorf("%s connector does not expose TCP transport", kind)
 		}

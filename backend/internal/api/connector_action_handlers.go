@@ -80,7 +80,7 @@ func (s connectorActionHandlers) runLocalConnectorAction(w http.ResponseWriter, 
 		"action_name":    request.ActionName,
 		"replayed":       result.Replayed,
 	})
-	response := connectorActionToMCPResponse(result.Request, result.Result)
+	response := connectorActionToMCPResponse(s.connectorAdapterRegistry(), result.Request, result.Result)
 	response.Replayed = result.Replayed
 	writeJSON(w, http.StatusOK, response)
 }

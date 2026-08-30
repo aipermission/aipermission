@@ -50,7 +50,7 @@ func validateVaultApprovalAuthorization(
 		return capability, nil
 	}
 	permission, actionName, err := currentVaultLiveConsolePermission(
-		ctx, runtime, request.TokenID, approval.TargetID, approval.ProfileID, approval.ConnectorKind,
+		ctx, server, runtime, request.TokenID, approval.TargetID, approval.ProfileID, approval.ConnectorKind,
 	)
 	if err != nil || actionName != approval.ConnectorActionName ||
 		string(permission.ExecutionRule) != approval.ConnectorExecutionRule ||
@@ -87,13 +87,14 @@ func isExecutableVaultRule(rule string) bool {
 
 func currentVaultLiveConsolePermission(
 	ctx context.Context,
+	server *Server,
 	runtime *databaseRuntime,
 	tokenID int64,
 	targetID int64,
 	profileID int64,
 	connectorKind string,
 ) (connectortargets.ActionPermission, string, error) {
-	liveConsole, ok := connectorAPIAdapterFor(connectorKind).(connectorapi.LiveConsoleAdapter)
+	liveConsole, ok := server.connectorAPIAdapterFor(connectorKind).(connectorapi.LiveConsoleAdapter)
 	if !ok {
 		return connectortargets.ActionPermission{}, "", errors.New("this connector does not expose a live console action")
 	}

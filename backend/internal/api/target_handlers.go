@@ -97,7 +97,7 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 	store := connectortargets.NewStore(runtime.database)
 	for index := range items {
 		item := &items[index]
-		if adapter := connectorLiveConsoleTargetAdapterFor(item.ConnectorKind); adapter != nil {
+		if adapter := s.connectorLiveConsoleTargetAdapterFor(item.ConnectorKind); adapter != nil {
 			surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, adapter.LiveConsoleCapabilityKind())
 			if err != nil && !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 				writeInternalError(w)
@@ -107,7 +107,7 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 				item.RuntimeID = surface.ID
 			}
 		}
-		if connectorFileTransferAdapterFor(item.ConnectorKind) != nil {
+		if s.connectorFileTransferAdapterFor(item.ConnectorKind) != nil {
 			surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, connectortargets.RuntimeCapabilityFileTransfer)
 			if err != nil && !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 				writeInternalError(w)

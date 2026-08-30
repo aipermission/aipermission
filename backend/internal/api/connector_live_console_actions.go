@@ -17,7 +17,7 @@ func (r *databaseRuntime) prepareLiveConsoleConnectorAction(ctx context.Context,
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
-	adapter, ok := connectorAPIAdapterFor(target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
+	adapter, ok := r.connectorAPIAdapterFor(target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
 	if !ok || adapter.LiveConsoleActionName() == "" {
 		return actions.PreparedRequest{}, connectortargets.ErrInvalidTargetRef
 	}
@@ -28,7 +28,7 @@ func (r *databaseRuntime) prepareLiveConsoleConnectorAction(ctx context.Context,
 
 func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (string, error) {
 	for _, info := range runtime.connectorRegistry().List() {
-		adapter := connectorLiveConsoleTargetAdapterFor(info.Kind)
+		adapter, _ := runtime.connectorAPIAdapterFor(info.Kind).(connectorapi.LiveConsoleTargetAdapter)
 		if adapter == nil {
 			continue
 		}

@@ -17,7 +17,7 @@ func (s *Server) runtimeConsoleOpener(runtime *databaseRuntime) console.RuntimeO
 		if err != nil {
 			return nil, err
 		}
-		adapter := connectorLiveConsoleTransportAdapterFor(target.ConnectorKind)
+		adapter := s.connectorLiveConsoleTransportAdapterFor(target.ConnectorKind)
 		if adapter == nil {
 			return nil, connectortargets.ErrInvalidTargetRef
 		}

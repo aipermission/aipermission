@@ -270,7 +270,7 @@ func (s *Server) executeInsertedConnectorAction(
 		}, nil
 	}
 	if status == connectors.ResultRunning {
-		if !connectorActionSupportsRunning(prepared) {
+		if !s.connectorActionSupportsRunning(prepared) {
 			finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultError, nil, "", options.UnsupportedRunningError, prepared.ActionDefinition.OutputHint)
 			if finishErr != nil {
 				return connectorActionCallResult{}, finishErr
@@ -577,15 +577,15 @@ func connectorActionExecutionFailureStatus(err error) connectors.ResultStatus {
 }
 
 func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
-	adapter := connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
+	adapter := s.connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
 	if adapter == nil || !adapter.SupportsRunning(prepared) {
 		return
 	}
 	adapter.FinishRunning(s, runtime, requestID, prepared, principal, handles)
 }
 
-func connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {
-	adapter := connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
+func (s *Server) connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {
+	adapter := s.connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
 	return adapter != nil && adapter.SupportsRunning(prepared)
 }
 

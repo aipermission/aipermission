@@ -15,46 +15,39 @@ func (a testRouteAdapter) Routes() []RouteDefinition {
 func testRouteHandler(GatewayServer, http.ResponseWriter, *http.Request) {}
 
 func TestRegisterRejectsDuplicateAdapter(t *testing.T) {
-	const kind = "duplicate_test"
-	Register(kind, struct{}{})
-
-	defer func() {
-		mu.Lock()
-		delete(adapters, kind)
-		mu.Unlock()
-		if recovered := recover(); recovered == nil {
-			t.Fatal("expected duplicate adapter registration panic")
-		}
-	}()
-
-	Register(kind, struct{}{})
+	registry := NewRegistry()
+	if err := registry.Register("duplicate_test", struct{}{}); err != nil {
+		t.Fatalf("register adapter: %v", err)
+	}
+	if err := registry.Register("duplicate_test", struct{}{}); err == nil || !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("expected duplicate registration error, got %v", err)
+	}
 }
 
 func TestRouteDefinitionsValidateSortAndRejectDuplicates(t *testing.T) {
 	const firstKind = "route_catalog_first_test"
 	const secondKind = "route_catalog_second_test"
-	Register(firstKind, testRouteAdapter{
+	registry := NewRegistry()
+	if err := registry.Register(firstKind, testRouteAdapter{
 		{Method: "post", Path: "/api/z-last", Handler: testRouteHandler},
 		{Method: "GET", Path: "/api/a-first", Handler: testRouteHandler},
-	})
-	Register(secondKind, testRouteAdapter{
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(secondKind, testRouteAdapter{
 		{Method: "POST", Path: "/api/z-last", Handler: testRouteHandler},
-	})
-	t.Cleanup(func() {
-		mu.Lock()
-		delete(adapters, firstKind)
-		delete(adapters, secondKind)
-		mu.Unlock()
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	routes, err := RouteDefinitions([]string{firstKind})
+	routes, err := registry.RouteDefinitions([]string{firstKind})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(routes) != 2 || routes[0].Pattern() != "GET /api/a-first" || routes[1].Pattern() != "POST /api/z-last" {
 		t.Fatalf("unexpected routes: %+v", routes)
 	}
-	if _, err := RouteDefinitions([]string{firstKind, secondKind}); err == nil || !strings.Contains(err.Error(), "both register POST /api/z-last") {
+	if _, err := registry.RouteDefinitions([]string{firstKind, secondKind}); err == nil || !strings.Contains(err.Error(), "both register POST /api/z-last") {
 		t.Fatalf("expected duplicate route error, got %v", err)
 	}
 }
@@ -72,13 +65,11 @@ func TestRouteDefinitionsRejectInvalidDefinitions(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			kind := "route_catalog_invalid_" + test.name
-			Register(kind, testRouteAdapter{test.route})
-			t.Cleanup(func() {
-				mu.Lock()
-				delete(adapters, kind)
-				mu.Unlock()
-			})
-			if _, err := RouteDefinitions([]string{kind}); err == nil || !strings.Contains(err.Error(), test.want) {
+			registry := NewRegistry()
+			if err := registry.Register(kind, testRouteAdapter{test.route}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := registry.RouteDefinitions([]string{kind}); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("expected %q error, got %v", test.want, err)
 			}
 		})
