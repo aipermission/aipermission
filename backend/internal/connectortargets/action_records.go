@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
@@ -191,13 +192,11 @@ func (s *Store) GetActionPermission(ctx context.Context, tokenID int64, targetID
 				AND p.action_name = ?
 				AND t.status = 'active'
 				AND cp.status = 'active'
-				AND cp.connector_kind = t.connector_kind
-				AND (COALESCE(p.expires_at, '') = '' OR p.expires_at > ?)`,
+				AND cp.connector_kind = t.connector_kind`,
 		tokenID,
 		targetID,
 		profileID,
 		actionName,
-		now.UTC().Format(time.RFC3339),
 	)
 	permission, err := scanActionPermission(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -205,6 +204,9 @@ func (s *Store) GetActionPermission(ctx context.Context, tokenID int64, targetID
 	}
 	if err != nil {
 		return ActionPermission{}, err
+	}
+	if !expirypolicy.Active(permission.ExpiresAt, now) {
+		return ActionPermission{}, ErrActionPermissionNotFound
 	}
 	return permission, nil
 }
@@ -333,16 +335,14 @@ func (s *Store) listActionPermissions(ctx context.Context, tokenID int64, now ti
 		JOIN projects project ON project.id = t.project_id AND project.status = 'active'
 		JOIN token_project_scopes scope ON scope.token_id = p.token_id AND scope.project_id = t.project_id
 		JOIN connector_credential_profiles cp ON cp.id = p.profile_id AND cp.target_id = p.target_id
-			WHERE
-				p.token_id = ?
-				AND t.status = 'active'
-				AND cp.status = 'active'
-				AND cp.connector_kind = t.connector_kind
-				AND (COALESCE(p.expires_at, '') = '' OR p.expires_at > ?)
-				`+scopeFilter+`
+		WHERE
+			p.token_id = ?
+			AND t.status = 'active'
+			AND cp.status = 'active'
+			AND cp.connector_kind = t.connector_kind
+			`+scopeFilter+`
 		ORDER BY t.connector_kind, t.name, cp.label, p.action_name`,
 		tokenID,
-		now.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list connector action permissions: %w", err)
@@ -354,6 +354,9 @@ func (s *Store) listActionPermissions(ctx context.Context, tokenID int64, now ti
 		item, err := scanActionPermission(rows)
 		if err != nil {
 			return nil, err
+		}
+		if !expirypolicy.Active(item.ExpiresAt, now) {
+			continue
 		}
 		permissions = append(permissions, item)
 	}

@@ -96,6 +96,30 @@ func TestReplaceRejectsExpiredAndDuplicateCapabilities(t *testing.T) {
 	}
 }
 
+func TestEffectiveCapabilityRejectsMalformedExpiry(t *testing.T) {
+	db := openCapabilityTestDB(t)
+	ctx := context.Background()
+	tokenID, projectID := seedCapabilityFixture(t, db)
+	store := NewStore(db)
+	if _, err := store.Replace(ctx, tokenID, []SetInput{{
+		ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleAlwaysRun,
+	}}); err != nil {
+		t.Fatalf("create capability: %v", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE token_project_capabilities
+		SET expires_at = 'not-a-timestamp'
+		WHERE token_id = ? AND project_id = ? AND capability_name = ?`,
+		tokenID, projectID, VaultMetadataRead,
+	); err != nil {
+		t.Fatalf("corrupt capability expiry: %v", err)
+	}
+
+	if _, err := store.Effective(ctx, tokenID, projectID, VaultMetadataRead, time.Now()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("malformed capability expiry should fail closed, got %v", err)
+	}
+}
+
 func TestCapabilityRevisionDoesNotResetAfterRemoval(t *testing.T) {
 	db := openCapabilityTestDB(t)
 	ctx := context.Background()

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 )
 
 const approvalContextSchemaVersion = "connector-action-v2"
@@ -14,12 +16,5 @@ func sha256Hex(value string) string {
 }
 
 func expired(value string, now time.Time) bool {
-	if value == "" {
-		return false
-	}
-	parsed, err := time.Parse(time.RFC3339, value)
-	if err != nil {
-		return false
-	}
-	return !parsed.After(now)
+	return !expirypolicy.Active(value, now)
 }

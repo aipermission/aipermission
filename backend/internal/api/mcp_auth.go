@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -38,23 +39,26 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 	runtimes := s.unlockedRuntimeSnapshot()
 	matches := []mcpAuthContext{}
 	tokenHash := tokens.HashToken(tokenValue)
+	now := time.Now().UTC()
 	for _, runtime := range runtimes {
 		var auth mcpAuthContext
+		var expiresAt string
 		err := runtime.database.QueryRowContext(r.Context(), `
-				SELECT id, name
-				FROM api_tokens
-				WHERE token_hash = ?
-					AND COALESCE(revoked_at, '') = ''
-					AND (COALESCE(expires_at, '') = '' OR expires_at > ?)`,
+			SELECT id, name, COALESCE(expires_at, '')
+			FROM api_tokens
+			WHERE token_hash = ?
+				AND COALESCE(revoked_at, '') = ''`,
 			tokenHash,
-			time.Now().UTC().Format(time.RFC3339),
-		).Scan(&auth.TokenID, &auth.Name)
+		).Scan(&auth.TokenID, &auth.Name, &expiresAt)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
 		if err != nil {
 			writeInternalError(w)
 			return mcpAuthContext{}, false
+		}
+		if !expirypolicy.Active(expiresAt, now) {
+			continue
 		}
 		auth.runtime = runtime
 		matches = append(matches, auth)
