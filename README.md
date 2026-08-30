@@ -713,7 +713,10 @@ because it owns a live terminal, SFTP file transfer, host-key approval, and
 gateway-owned key resources. New runtime capabilities require a reviewed
 adapter contract before touching generic API routes. Adapter contracts live in
 `internal/connectorapi`; connectors should not create their own parallel
-server/runtime/lifecycle interfaces.
+server/runtime/lifecycle interfaces. Built-in adapters use explicit
+constructors and catalog registration; package `init()` registration and blank
+side-effect imports are intentionally avoided so gateway instances and tests do
+not share hidden adapter state.
 
 See [Add A Connector](docs/development/add-a-connector.md) for the contributor
 checklist, required template files, security invariants, and the exact places a

@@ -70,6 +70,14 @@ capabilities must be expressed through the typed `internal/connectorapi`
 interfaces so runtime-integrated connectors do not invent parallel server,
 runtime, lifecycle, or credential-resource contracts.
 
+Built-in runtime adapters are constructed explicitly. Each connector-owned
+adapter package exposes a constructor, `internal/connectors/builtin` registers
+those constructors beside the structured connector catalog, and the gateway
+receives both registries as one catalog. Do not use package `init()` functions,
+blank imports, or package-global adapter maps; explicit construction keeps test
+instances isolated and makes the complete runtime surface reviewable in one
+place.
+
 ## Backend Boundaries
 
 - `internal/api`: HTTP routes, MCP handlers, UI session/CSRF, approval/message flows, and workspace lifecycle orchestration.
@@ -81,11 +89,11 @@ runtime, lifecycle, or credential-resource contracts.
   shared action request model.
 - `internal/actions`: shared action execution service used by structured
   connectors after permission checks.
-- `internal/api/connector_api_adapters.go`: gateway-owned connector capability
-  adapters. Generic API handlers ask these adapters whether a connector
-  supports live-console runtime ids, draft tests, target operations, async
-  finalization, or other gateway-owned behavior. They should not branch on a
-  connector kind directly.
+- `internal/api/connector_api_adapters.go`: generic gateway resolution for
+  connector-owned capability adapters. API handlers ask the resolved adapter
+  whether a connector supports live-console runtime ids, draft tests, target
+  operations, async finalization, or other gateway-owned behavior. They should
+  not branch on a connector kind directly.
 - `internal/history`: unified history projection for command, action, and file
   transfer activity.
 - `internal/console`: persistent SSH console sessions, PTY websocket attach, AI command execution inside a shell session, transcript display cleanup, and transcript redaction before persistence. Console persistence uses a bounded session snapshot plus append-only transcript chunks so long-running sessions do not rewrite one large transcript row on every flush.

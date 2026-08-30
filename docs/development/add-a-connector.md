@@ -216,9 +216,10 @@ fresh action request.
 
 Synchronous connector actions can return `completed`, `failed`, or `error`
 directly from `ExecuteAction`. Long-running `running` actions require an
-explicit runtime adapter in `internal/api` so polling, output finalization,
-redaction, history sync, and MCP assistant hints stay centralized. Do not
-invent connector-local polling tables.
+explicit connector-owned runtime adapter built on the typed
+`internal/connectorapi` contracts. The generic gateway resolves that adapter so
+polling, output finalization, redaction, history sync, and MCP assistant hints
+stay centralized. Do not invent connector-local polling tables.
 
 `RuntimeContext.Capabilities` is reserved for reviewed gateway-owned runtime
 adapters. Normal structured connectors should not depend on arbitrary gateway
@@ -345,12 +346,15 @@ frontend/src/connectors/templates/<kind>/metadata.json
 frontend/src/connectors/templates/<kind>/index.jsx
 ```
 
-Backend registration is explicit in the Go binary. Runtime-backed built-ins add
-their adapter side-effect import in the same built-in registry file so there is
-one visible registration point. Frontend registration is folder-based and
-auto-discovered. Adding a connector should require connector files, tests, and
-docs, but it should not require new generic route handlers, permission tables,
-history tables, audit tables, or MCP tool families.
+Backend registration is explicit in the Go binary. Runtime-backed built-ins
+expose an adapter constructor from their connector-owned package and register
+it in `RegisterAdapters` beside the structured connector catalog. The gateway
+receives both registries through `builtin.NewCatalog`; package `init()`
+registration and blank side-effect imports are not allowed. Frontend
+registration is folder-based and auto-discovered. Adding a connector should
+require connector files, tests, and docs, but it should not require new generic
+route handlers, permission tables, history tables, audit tables, or MCP tool
+families.
 
 Connector versions are part of approval-context drift checks. Bump the backend
 connector `Version()` and the frontend `metadata.json` version whenever you add
@@ -555,8 +559,9 @@ Exact checklist for built-in connector registration:
 - backend implementation and focused tests under
   `backend/internal/connectors/<kind>/`
 - backend registration in `backend/internal/connectors/builtin/registry.go`
-- runtime-backed adapter import in `backend/internal/connectors/builtin/registry.go`
-  when a reviewed `connectorapi` adapter is required
+- runtime-backed adapter constructor and explicit `RegisterAdapters` entry in
+  `backend/internal/connectors/builtin/registry.go` when a reviewed
+  `connectorapi` adapter is required
 - backend registry coverage in
   `backend/internal/connectors/builtin/registry_test.go`
 - frontend templates under `frontend/src/connectors/templates/<kind>/`
