@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -81,7 +82,8 @@ type databaseRuntime struct {
 }
 
 type serverOptions struct {
-	registry *connectors.Registry
+	registry                   *connectors.Registry
+	runtimeInstanceIDGenerator func() (string, error)
 }
 
 type ServerOption func(*serverOptions)
@@ -92,8 +94,17 @@ func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
 	}
 }
 
+func withRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOption {
+	return func(options *serverOptions) {
+		options.runtimeInstanceIDGenerator = generator
+	}
+}
+
 func resolveServerOptions(options []ServerOption) serverOptions {
-	resolved := serverOptions{registry: connectors.NewRegistry()}
+	resolved := serverOptions{
+		registry:                   connectors.NewRegistry(),
+		runtimeInstanceIDGenerator: executionprincipal.NewRuntimeInstanceID,
+	}
 	for _, option := range options {
 		if option != nil {
 			option(&resolved)
@@ -102,10 +113,13 @@ func resolveServerOptions(options []ServerOption) serverOptions {
 	if resolved.registry == nil {
 		resolved.registry = connectors.NewRegistry()
 	}
+	if resolved.runtimeInstanceIDGenerator == nil {
+		resolved.runtimeInstanceIDGenerator = executionprincipal.NewRuntimeInstanceID
+	}
 	return resolved
 }
 
-func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) *Server {
+func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) (*Server, error) {
 	activeID := dbpkg.DefaultDatabaseID(cfg.DataPath)
 	resolved := resolveServerOptions(options)
 	registry := resolved.registry
@@ -144,14 +158,21 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		batchControls:      map[int64]*transferControl{},
 		vaultLeases:        vaultsessions.NewStore(),
 	}
-	runtime.workspaceUUID, _ = projectvault.EnsureWorkspaceUUID(context.Background(), database)
-	runtime.runtimeInstanceID, _ = executionprincipal.NewRuntimeInstanceID()
+	var err error
+	runtime.workspaceUUID, err = projectvault.EnsureWorkspaceUUID(context.Background(), database)
+	if err != nil {
+		return nil, fmt.Errorf("initialize workspace identity: %w", err)
+	}
+	runtime.runtimeInstanceID, err = resolved.runtimeInstanceIDGenerator()
+	if err != nil {
+		return nil, fmt.Errorf("initialize runtime identity: %w", err)
+	}
 	runtime.consoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
 	server.configureVaultSessionRuntime(runtime)
 	server.configureAuditDispatcher(runtime)
 	server.workspaces[activeID] = runtime
 	server.routes()
-	return server
+	return server, nil
 }
 
 func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {

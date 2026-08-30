@@ -345,10 +345,13 @@ func newBackupAPITestFixture(t *testing.T, password string) backupAPITestFixture
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := NewServer(config.Config{
+	srv, err := NewServer(config.Config{
 		Host: "127.0.0.1", Port: "8080", DataPath: path,
 		GatewaySecret: "backup-api-test-gateway-secret", AllowedOrigins: []string{"http://localhost:3001"},
 	}, database, secretVault, tokens.NewStore(database))
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
 	authorizeTestUISession(srv)
 	t.Cleanup(func() { srv.Close() })
 	return backupAPITestFixture{server: srv, db: database}

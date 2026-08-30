@@ -67,13 +67,16 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 		t.Fatalf("new vault: %v", err)
 	}
 	tokenStore := tokens.NewStore(database)
-	srv := NewServer(config.Config{
+	srv, err := NewServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
 	}, database, secretVault, tokenStore, WithConnectorRegistry(testConnectorRegistry(t)))
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
 	sshKeyStore := testSSHKeyStore(t, srv.activeRuntime())
 	srv.activeRuntime().setMCPStarted(true)
 	authorizeTestUISession(srv)
