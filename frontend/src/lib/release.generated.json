@@ -1,6 +1,28 @@
 {
-  "version": "0.2.32",
+  "version": "0.2.33",
   "entries": [
+    {
+      "version": "0.2.33",
+      "label": "Release confidence and recovery drills",
+      "sections": [
+        {
+          "title": "Maintenance",
+          "items": [
+            "Critical backend packages and frontend authorization/session surfaces now have explicit coverage floors enforced by CI and release checks.",
+            "A real encrypted backend browser flow now verifies Prompt approval, connector completion, stale-context rejection, lock/unlock, and backend restart recovery.",
+            "Deterministic recovery drills now exercise encrypted backup/import, wrong-password rejection, legacy migration fixtures, and gateway-secret continuity across restart.",
+            "Bounded fuzz gates now protect approval contexts, SQL safety, redaction, Redis parsing, transfer paths, backup metadata, and connector payload normalization."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Read-only SQL validation now rejects unterminated quoted values, identifiers, dollar quotes, and block comments instead of passing malformed input to a connector.",
+            "Connector number fields now reject NaN and infinite values before canonical approval hashing or JSON persistence."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.32",
       "label": "Approval pipeline and connector isolation",
@@ -183,32 +205,6 @@
           "items": [
             "Vault and backup mutations are bound to the transactional audit outbox, and connector action recovery is protected against ambiguous retries and stale completion responses.",
             "SQLCipher upgrades verify encrypted database compatibility, repository history is scanned for secrets, diagnostics have redaction regression tests, and CI maintenance checks enforce release integrity."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.25",
-      "label": "S3 transfer and recovery controls",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "Added bounded S3 multipart upload and recursive file-transfer queues with progress, pause, cancellation, overwrite checks, and explicit count/byte limits.",
-            "Added short-lived S3 download/upload URLs, object-version browsing and deliberate restore/delete actions, plus bucket lifecycle visibility and guarded policy replacement/deletion.",
-            "Added automatic encrypted-backup retention with preview/final-version protection and provider quota/usage visibility."
-          ]
-        },
-        {
-          "title": "Changed",
-          "items": [
-            "Generalized connector file-transfer runtimes so SSH and S3 use the same queue lifecycle without moving connector-specific transport behavior into shared API code."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Presigned URLs are limited to one exact key and at most one hour. Lifecycle replacement, lifecycle deletion, and version deletion are explicit destructive connector actions."
           ]
         }
       ]
