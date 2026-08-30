@@ -129,6 +129,11 @@ Implemented:
   returning secret values through MCP
 - generic connector network transport so protocol connectors can use Direct or
   reviewed Over SSH TCP paths without importing SSH-specific code
+- new ClickHouse, Redis / Valkey, and RabbitMQ targets use an `Auto` transport
+  security mode: remote Direct endpoints prefer verified TLS, while loopback,
+  Docker/Podman host aliases, and reviewed Over SSH endpoints retain their
+  explicit local plaintext path; existing saved and explicit choices are not
+  rewritten during upgrade
 - generic connector command transport so structured connectors can run reviewed
   command templates through connector transports without importing SSH-specific
   code
@@ -423,6 +428,14 @@ network transport, and bounds query time, rows, cells, and persisted output.
 Use a dedicated read-only ClickHouse user and keep exploratory analytics on
 `approval_required`; connector validation is defense in depth, not a SQL
 sandbox or a replacement for database grants.
+
+New ClickHouse, Redis / Valkey, and RabbitMQ forms default transport security
+to `Auto`. Remote Direct hostnames and non-loopback IPs use certificate and
+hostname verification. Loopback addresses, `host.docker.internal`,
+`host.containers.internal`, and Over SSH targets use their local plaintext
+default. Select the explicit verified or plaintext option when the endpoint
+differs from that policy. Existing targets without the new setting keep their
+previous behavior until edited.
 
 For Redis or Valkey, call `get_connector_actions(target_ref)` to discover
 actions such as `scan_keys`, `get_key`, `set_string`, `expire_key`, and
