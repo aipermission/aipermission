@@ -45,7 +45,8 @@ var (
 	ErrInvalidConfig     = errors.New("kubernetes connector target config is invalid")
 	ErrScopeDenied       = errors.New("kubernetes namespace is outside this credential profile scope")
 
-	kubeNamePattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+	kubeNamePattern       = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+	kubectlCommandPattern = regexp.MustCompile(`^[A-Za-z0-9_./+-]+$`)
 )
 
 // Connector describes Kubernetes as a read-heavy connector over bounded kubectl
@@ -94,7 +95,7 @@ func (Connector) TargetSchema() connectors.Schema {
 			Label:       "kubectl command",
 			Type:        connectors.FieldString,
 			Default:     defaultKubectlCommand,
-			Description: "kubectl command on the remote host. Keep this as kubectl unless the host uses a wrapper path.",
+			Description: "kubectl executable name or wrapper path on the remote host. Shell arguments and operators are not accepted.",
 		},
 		{
 			Name:        "context",
@@ -109,6 +110,11 @@ func (Connector) TargetSchema() connectors.Schema {
 			Description: "Optional default namespace for actions that need one.",
 		},
 	}}
+}
+
+func (Connector) ValidateTargetConfig(config map[string]any) error {
+	_, err := KubectlCommand(connectors.TargetView{Config: config})
+	return err
 }
 
 func (Connector) CredentialSchemas() []connectors.CredentialSchema {
@@ -352,9 +358,9 @@ func newKubeClient(runtime connectors.RuntimeContext) (*kubeClient, error) {
 	if transport == nil {
 		return nil, ErrMissingTransport
 	}
-	command := strings.TrimSpace(stringValue(runtime.Target.Config, "kubectl_command"))
-	if command == "" {
-		command = defaultKubectlCommand
+	command, err := KubectlCommand(runtime.Target)
+	if err != nil {
+		return nil, err
 	}
 	return &kubeClient{
 		runtime:   runtime,
@@ -363,6 +369,19 @@ func newKubeClient(runtime connectors.RuntimeContext) (*kubeClient, error) {
 		context:   strings.TrimSpace(stringValue(runtime.Target.Config, "context")),
 		scope:     kubeScopeFromProfile(runtime.Profile),
 	}, nil
+}
+
+// KubectlCommand resolves and validates the connector-owned executable used by
+// both bounded actions and live-console sessions.
+func KubectlCommand(target connectors.TargetView) (string, error) {
+	command := strings.TrimSpace(stringValue(target.Config, "kubectl_command"))
+	if command == "" {
+		command = defaultKubectlCommand
+	}
+	if len(command) > 1024 || !kubectlCommandPattern.MatchString(command) {
+		return "", fmt.Errorf("%w: kubectl_command must be an executable name or wrapper path", ErrInvalidConfig)
+	}
+	return command, nil
 }
 
 func (client *kubeClient) baseCommand() string {
