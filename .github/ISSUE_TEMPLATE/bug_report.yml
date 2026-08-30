@@ -44,7 +44,7 @@ body:
     id: version
     attributes:
       label: AIPermission version
-      placeholder: v0.2.24 or commit SHA
+      placeholder: vX.Y.Z or commit SHA
     validations:
       required: true
 
@@ -87,7 +87,7 @@ body:
     attributes:
       label: Previous version
       description: Required only when the problem appeared after an upgrade.
-      placeholder: v0.2.23
+      placeholder: vX.Y.Z or commit SHA
 
   - type: input
     id: connector
@@ -121,6 +121,13 @@ body:
       description: Include timestamps when relevant. Do not include secrets, endpoints, private paths, message bodies, action inputs, or database contents.
       render: shell
 
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Optional. Paste non-sensitive fields or attach the bounded Settings > Support diagnostics JSON after reviewing it. Never attach a database, raw logs, or terminal transcript.
+      placeholder: Database status, gateway state, connector kind, and failed check names only.
+
   - type: checkboxes
     id: boundaries
     attributes:
@@ -129,6 +136,4 @@ body:
         - label: I am running AIPermission on localhost, not over LAN or the public internet.
           required: true
         - label: I removed SSH keys, tokens, passwords, Vault values, backup files, connection strings, message bodies, action payloads, and sensitive output.
-          required: true
-        - label: This report does not describe a vulnerability that could expose credentials or permit unintended execution.
           required: true

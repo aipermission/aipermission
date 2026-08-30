@@ -85,7 +85,7 @@ This is slow, tiring, and error-prone. Worse, it can tempt people to paste SSH k
 It is for:
 
 - solo developers
-- small teams
+- developers in small teams, with each developer running an independent local instance
 - founders running their own infrastructure
 - freelance developers
 - full-stack developers using Codex, Claude Code, Cursor, Windsurf, VS Code, Gemini CLI, or similar tools

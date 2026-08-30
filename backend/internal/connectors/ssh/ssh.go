@@ -149,7 +149,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 		ConnectorID: Kind,
 		Usage: []string{
 			"Use exec for shell commands. Include a short reason so the operator can approve or audit the action.",
-			"Use read_console only for always-run targets when you need live persistent console output.",
+			"Use read_console when you need live persistent console output and the token has permission for that action; always_run is useful for repeated polling, but Prompt is also supported.",
 			"Use restart_console_session when a persistent console appears stuck before sending more commands.",
 			"Use browse_remote_files before file transfers when the remote path is uncertain.",
 			"Use start_file_download for remote-to-local transfer queues.",
