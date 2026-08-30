@@ -1,6 +1,6 @@
 {
   "name": "aipermission-frontend",
-  "version": "0.2.30",
+  "version": "0.2.31",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
