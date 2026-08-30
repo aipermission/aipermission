@@ -275,7 +275,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				}},
 				{Name: "properties", Label: "Properties", Type: connectors.FieldJSON, Description: "Optional AMQP properties JSON object."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+			SensitiveInputFields: []string{"payload", "properties"},
+			OutputHint:           connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
 	}, nil
 }

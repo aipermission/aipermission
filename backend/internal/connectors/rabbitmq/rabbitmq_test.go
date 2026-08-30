@@ -329,3 +329,19 @@ func TestActionListNames(t *testing.T) {
 		t.Fatalf("names = %#v", names)
 	}
 }
+
+func TestPublishMarksPayloadAndPropertiesAsSensitiveInput(t *testing.T) {
+	actions, err := Connector{}.GetActionList(context.Background(), connectors.TargetView{}, connectors.CredentialProfileView{})
+	if err != nil {
+		t.Fatalf("actions: %v", err)
+	}
+	for _, action := range actions {
+		if action.Name == ActionPublish {
+			if !reflect.DeepEqual(action.SensitiveInputFields, []string{"payload", "properties"}) {
+				t.Fatalf("sensitive fields = %#v", action.SensitiveInputFields)
+			}
+			return
+		}
+	}
+	t.Fatal("publish_message action was not found")
+}

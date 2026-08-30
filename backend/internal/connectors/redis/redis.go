@@ -233,7 +233,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{Name: "value", Label: "Value", Type: connectors.FieldMultiline, Required: true},
 				{Name: "ttl_seconds", Label: "TTL seconds", Type: connectors.FieldNumber, Description: "Optional positive TTL."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+			SensitiveInputFields: []string{"value"},
+			OutputHint:           connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
 		{
 			Name:        ActionExpireKey,
