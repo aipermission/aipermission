@@ -128,12 +128,13 @@ layer. The adapter is responsible for polling/finalizing the action, redacting
 intermediate responses, syncing history, and providing MCP assistant hints.
 Connector packages should not add their own request lifecycle tables.
 
-Connector-specific gateway capabilities live behind adapter contracts in
-`internal/api/connector_api_adapters.go`. SSH uses those contracts for
-persistent PTY sessions, SFTP/file transfer, host-key approval,
-generated/imported gateway keys, and remote authorized_keys cleanup. The generic
-HTTP handlers should ask the adapter what the connector supports; they should
-not branch on `kind == "ssh"` or `kind == "postgres"`.
+Connector-specific gateway capabilities use the adapter contracts in
+`internal/connectorapi`. Connector-owned adapter implementations are resolved
+through the generic bridge in `internal/api/connector_api_adapters.go`. SSH uses
+those contracts for persistent PTY sessions, SFTP/file transfer, host-key
+approval, generated/imported gateway keys, and remote authorized_keys cleanup.
+The generic HTTP handlers should ask the adapter what the connector supports;
+they should not branch on `kind == "ssh"` or `kind == "postgres"`.
 
 Adapter contracts are typed in `internal/connectorapi`. Runtime-backed
 connectors receive `GatewayRuntime` and `GatewayServer`; lifecycle adapters
@@ -247,9 +248,10 @@ For a new connector:
 
 1. Add `internal/connectors/<kind>` with a small implementation of the connector
    contract.
-2. Register it in the backend connector registry. Runtime-backed connectors
-   also add their adapter side-effect import in that same built-in registry
-   file; do not create a hidden second adapter registration list.
+2. Register it explicitly in `internal/connectors/builtin/registry.go`.
+   Runtime-backed connectors expose an adapter constructor from their own
+   package and add that constructor to `RegisterAdapters`; package `init()`
+   registration and blank side-effect imports are not allowed.
 3. Store target/profile data through `internal/connectortargets`; do not create
    connector-specific permission tables.
 4. Add frontend templates under `frontend/src/connectors/templates/<kind>`.
