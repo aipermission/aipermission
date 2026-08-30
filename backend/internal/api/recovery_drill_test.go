@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -9,8 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/config"
+	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 )
 
 func TestRecoveryDrillEncryptedBackupWrongPasswordAndGatewaySecret(t *testing.T) {
@@ -96,6 +101,98 @@ func TestRecoveryDrillEncryptedBackupWrongPasswordAndGatewaySecret(t *testing.T)
 	assertRecoveryMarker(t, restarted)
 	if restarted.config.GatewaySecret != originalGatewaySecret {
 		t.Fatalf("restart used fallback secret %q instead of stored secret", restarted.config.GatewaySecret)
+	}
+}
+
+func TestRecoveryDrillSelfHostedBackupDownloadAndRestart(t *testing.T) {
+	const (
+		databasePassword      = "RemoteRecoveryPassword123"
+		originalGatewaySecret = "remote-recovery-original-secret-0123456789"
+		fallbackGatewaySecret = "remote-recovery-fallback-secret-0123456789"
+	)
+	remote := newFakeBackupService(t)
+	sourcePath := filepath.Join(t.TempDir(), "remote-recovery.aipdb")
+	sourceDatabase, err := dbpkg.OpenEncrypted(sourcePath, databasePassword)
+	if err != nil {
+		t.Fatalf("create remote recovery source: %v", err)
+	}
+	if _, err := sourceDatabase.Exec(`
+		INSERT INTO settings (key, value, updated_at)
+		VALUES
+			('gateway_secret', ?, datetime('now')),
+			('recovery_drill_marker', 'preserved', datetime('now'))
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		originalGatewaySecret,
+	); err != nil {
+		t.Fatalf("seed remote recovery source: %v", err)
+	}
+	if err := sourceDatabase.Close(); err != nil {
+		t.Fatalf("close remote recovery source: %v", err)
+	}
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read remote recovery source: %v", err)
+	}
+	digest := sha256.Sum256(data)
+	remote.mu.Lock()
+	remote.data = data
+	remote.item = backups.ServiceBackup{
+		ID:                   "bkp_recovery_drill",
+		StreamID:             "recovery-drill-stream",
+		DatabaseName:         "Remote Recovery Source",
+		SourceInstallationID: "recovery-drill-installation",
+		Filename:             "remote-recovery.aipdb",
+		SizeBytes:            int64(len(data)),
+		SHA256:               hex.EncodeToString(digest[:]),
+		CreatedAt:            time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	remote.mu.Unlock()
+
+	dataPath := filepath.Join(t.TempDir(), "aipermission.aipdb")
+	cfg := config.Config{
+		Host:           "127.0.0.1",
+		Port:           "8080",
+		DataPath:       dataPath,
+		GatewaySecret:  fallbackGatewaySecret,
+		AllowedOrigins: []string{"http://localhost:3001"},
+	}
+	server := NewLockedServer(cfg)
+	serverClosed := false
+	t.Cleanup(func() {
+		if !serverClosed {
+			server.Close()
+		}
+	})
+	restore := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/restore", "", transientBackupRestoreRequest{
+		BaseURL:          remote.server.URL,
+		Token:            backupAPITestToken,
+		StreamID:         remote.item.StreamID,
+		BackupID:         remote.item.ID,
+		DatabaseName:     "Remote Recovered",
+		DatabasePassword: databasePassword,
+	})
+	if restore.Code != http.StatusOK || !strings.Contains(restore.Body.String(), `"database_id":"remote-recovered"`) {
+		t.Fatalf("restore self-hosted recovery backup: %d %s", restore.Code, restore.Body.String())
+	}
+	assertRecoveryMarker(t, server)
+	if server.config.GatewaySecret != originalGatewaySecret {
+		t.Fatalf("remote restore used fallback gateway secret %q", server.config.GatewaySecret)
+	}
+	server.Close()
+	serverClosed = true
+
+	restarted := NewLockedServer(cfg)
+	defer restarted.Close()
+	unlock := performJSON(restarted.Handler(), http.MethodPost, "/api/unlock", "", unlockRequest{
+		DatabaseID: "remote-recovered",
+		Password:   databasePassword,
+	})
+	if unlock.Code != http.StatusOK {
+		t.Fatalf("unlock remote recovery after restart: %d %s", unlock.Code, unlock.Body.String())
+	}
+	assertRecoveryMarker(t, restarted)
+	if restarted.config.GatewaySecret != originalGatewaySecret {
+		t.Fatalf("remote recovery restart used fallback gateway secret %q", restarted.config.GatewaySecret)
 	}
 }
 
