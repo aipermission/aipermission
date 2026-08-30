@@ -12,7 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
-func TestMigrateLegacy010To020CopiesMinimumSSHConfiguration(t *testing.T) {
+func TestRecoveryDrillLegacy010To020CopiesMinimumSSHConfiguration(t *testing.T) {
 	ctx := context.Background()
 	dataPath := filepath.Join(t.TempDir(), "aipermission.db")
 	sourceID, sourcePath, err := db.NewDatabasePath(dataPath, "Legacy")
