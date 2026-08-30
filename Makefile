@@ -1,4 +1,4 @@
-.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-coverage frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -12,6 +12,7 @@ help:
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
 		'  make frontend-coverage  Enforce critical frontend per-file coverage floors' \
+		'  make frontend-e2e-real  Run critical browser flows against a real encrypted backend' \
 		'  make connector-conformance  Test protocol connectors against disposable real services' \
 		'  make release-check   Run the local RC verification set' \
 		'  make docker-up       Build and start the local Docker stack'
@@ -75,6 +76,9 @@ frontend-coverage:
 frontend-e2e:
 	cd frontend && npm run test:e2e
 
+frontend-e2e-real:
+	cd frontend && npm run test:e2e:real
+
 frontend-build:
 	cd frontend && npm run build
 
@@ -102,7 +106,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-coverage frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build

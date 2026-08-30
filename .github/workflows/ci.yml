@@ -76,6 +76,11 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: "1.26.6"
+          cache-dependency-path: backend/go.sum
+      - uses: ./.github/actions/setup-backend-native
       - name: Install
         working-directory: frontend
         run: npm ci --workspaces=false
@@ -97,6 +102,9 @@ jobs:
       - name: End-to-end test
         working-directory: frontend
         run: npm run test:e2e
+      - name: Real-backend browser test
+        working-directory: frontend
+        run: npm run test:e2e:real
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
