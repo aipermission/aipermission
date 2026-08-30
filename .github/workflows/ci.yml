@@ -26,6 +26,10 @@ jobs:
         run: sh scripts/gitleaks-history-scan.sh
       - name: Line ending check
         run: node scripts/line-ending-check.js
+      - name: Markdown links
+        run: |
+          node scripts/markdown-link-check.test.js
+          node scripts/markdown-link-check.js
       - name: Go toolchain consistency
         run: node scripts/go-toolchain-check.js
       - name: Maintenance budgets
