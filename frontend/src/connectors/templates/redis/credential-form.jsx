@@ -1,7 +1,8 @@
 import { Database, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
-import { Field, Input, Select } from "../../../components/ui/form";
+import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { CredentialProfileFields } from "../_shared/credential-profile-fields";
 import { connectorProductLabel, serverProductLabel } from "./model";
 
 export function RedisCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
@@ -20,34 +21,16 @@ export function RedisCredentialFormTemplate({ targets, form, formMode = "create"
             : `Create a ${product} profile, then bind tokens to this profile from Console or Tokens.`}
         </Notice>
       )}
-      <Field>
-        Connector target
-        <Select
-          value={form.target_id}
-          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
-          disabled={editing}
-          required
-        >
-          <option value="" disabled>
-            Select {connectorProductLabel} target
-          </option>
-          {redisTargets.map((target) => (
-            <option value={target.id} key={target.id}>
-              {target.name} · {serverProductLabel(target)} · {target.config?.host}:{target.config?.port}/{target.config?.database || 0}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field>
-          Profile label
-          <Input value={form.profile_label} onChange={(event) => onChange({ ...form, profile_label: event.target.value })} required />
-        </Field>
-        <Field>
-          Risk label
-          <Input value={form.risk_label} onChange={(event) => onChange({ ...form, risk_label: event.target.value })} />
-        </Field>
-      </div>
+      <CredentialProfileFields
+        targets={redisTargets}
+        form={form}
+        editing={editing}
+        onChange={onChange}
+        targetPlaceholder={`Select ${connectorProductLabel} target`}
+        targetOptionLabel={(target) =>
+          `${target.name} · ${serverProductLabel(target)} · ${target.config?.host}:${target.config?.port}/${target.config?.database || 0}`
+        }
+      />
       <Field>
         Username
         <Input

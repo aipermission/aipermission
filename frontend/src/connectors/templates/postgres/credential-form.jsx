@@ -1,7 +1,8 @@
 import { Database, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
-import { Field, Input, Select } from "../../../components/ui/form";
+import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { CredentialProfileFields } from "../_shared/credential-profile-fields";
 
 export function PostgresCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
   const postgresTargets = targets.filter((target) => target.connector_kind === "postgres");
@@ -20,34 +21,14 @@ export function PostgresCredentialFormTemplate({ targets, form, formMode = "crea
               : "Create a dedicated Postgres profile, then bind tokens to this profile from Console or Tokens."}
         </Notice>
       )}
-      <Field>
-        Connector target
-        <Select
-          value={form.target_id}
-          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
-          disabled={editing}
-          required
-        >
-          <option value="" disabled>
-            Select Postgres target
-          </option>
-          {postgresTargets.map((target) => (
-            <option value={target.id} key={target.id}>
-              {target.name} · {target.config?.host}:{target.config?.port}/{target.config?.database}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field>
-          Profile label
-          <Input value={form.profile_label} onChange={(event) => onChange({ ...form, profile_label: event.target.value })} required />
-        </Field>
-        <Field>
-          Risk label
-          <Input value={form.risk_label} onChange={(event) => onChange({ ...form, risk_label: event.target.value })} />
-        </Field>
-      </div>
+      <CredentialProfileFields
+        targets={postgresTargets}
+        form={form}
+        editing={editing}
+        onChange={onChange}
+        targetPlaceholder="Select Postgres target"
+        targetOptionLabel={(target) => `${target.name} · ${target.config?.host}:${target.config?.port}/${target.config?.database}`}
+      />
       <Field>
         Username
         <Input
