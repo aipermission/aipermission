@@ -373,7 +373,7 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 		return finished, nil
 	}
 	if status == connectors.ResultRunning {
-		if !connectorActionSupportsRunning(prepared) {
+		if !s.connectorActionSupportsRunning(prepared) {
 			finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
 			if finishErr != nil {
 				return connectortargets.ActionRequest{}, finishErr

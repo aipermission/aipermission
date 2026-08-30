@@ -392,7 +392,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if historyInputJSON != inputJSON {
 		t.Fatalf("history input drifted from redacted request input: history=%s request=%s", historyInputJSON, inputJSON)
 	}
-	mcpResponse := connectorActionRequestToMCPResponse(request)
+	mcpResponse := connectorActionRequestToMCPResponse(nil, request)
 	approvalResponse := connectorActionApprovalItemFromRequest(request)
 	if mcpResponse.Input["access_token"] != "[REDACTED]" || approvalResponse.Input["access_token"] != "[REDACTED]" {
 		t.Fatalf("response input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
@@ -467,7 +467,7 @@ func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response := connectorActionToMCPResponse(request, redacted)
+	response := connectorActionToMCPResponse(nil, request, redacted)
 	payload := fmt.Sprint(response.Output, response.DisplayText, response.Error)
 	for _, secret := range []string{"raw-token", "raw-bearer-token", "super-secret"} {
 		if strings.Contains(payload, secret) {
@@ -537,7 +537,7 @@ func TestFinishConnectorActionRequestCanonicalizesTypedOutputBeforePersistence(t
 			t.Fatalf("persisted output leaked %q: %s", secret, requestOutput)
 		}
 	}
-	response := connectorActionToMCPResponse(finished, connectors.ActionResult{Status: finished.Status, Output: finished.Output})
+	response := connectorActionToMCPResponse(nil, finished, connectors.ActionResult{Status: finished.Status, Output: finished.Output})
 	if fmt.Sprint(response.Output) != fmt.Sprint(finished.Output) {
 		t.Fatalf("MCP output drifted from persisted projection: response=%#v finished=%#v", response.Output, finished.Output)
 	}
@@ -681,7 +681,7 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	if historyError != finished.Error {
 		t.Fatalf("history error drifted from finished request: history=%q finished=%q", historyError, finished.Error)
 	}
-	response := connectorActionToMCPResponse(finished, connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error})
+	response := connectorActionToMCPResponse(nil, finished, connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error})
 	if strings.Contains(response.Error, "super-secret") || strings.Contains(response.Error, "abcdefghijklmnopqrstuvwxyz") {
 		t.Fatalf("mcp response leaked secret: %q", response.Error)
 	}

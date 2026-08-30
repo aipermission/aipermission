@@ -20,7 +20,7 @@ func (s fileTransferHandlers) fileTransferAdapter(ctx context.Context, runtime *
 	if err != nil {
 		return nil, err
 	}
-	adapter := connectorFileTransferAdapterFor(target.ConnectorKind)
+	adapter := s.connectorFileTransferAdapterFor(target.ConnectorKind)
 	if adapter == nil {
 		return nil, connectortargets.ErrInvalidTargetRef
 	}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
@@ -102,7 +103,7 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 					handleConnectorTargetError(w, err)
 					return
 				}
-				item.Metadata = connectorMCPMetadata(target, profile)
+				item.Metadata = s.connectorMCPMetadata(target, profile)
 			}
 			itemsByRef[ref] = item
 			order = append(order, ref)
@@ -120,8 +121,8 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, items)
 }
 
-func connectorMCPMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
-	if adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
+func (s mcpHandlers) connectorMCPMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
+	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
 		return adapter.LiveConsoleTargetMetadata(target, profile)
 	}
 	return nil
@@ -242,7 +243,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		"action_name":    request.ActionName,
 		"replayed":       result.Replayed,
 	})
-	response := connectorActionToMCPResponse(result.Request, result.Result)
+	response := connectorActionToMCPResponse(s.connectorAdapterRegistry(), result.Request, result.Result)
 	response.Replayed = result.Replayed
 	writeJSON(w, http.StatusOK, response)
 }
@@ -269,7 +270,7 @@ func (s mcpHandlers) mcpGetConnectorActionRequest(w http.ResponseWriter, r *http
 		writeError(w, http.StatusNotFound, "connector action request not found")
 		return
 	}
-	response := connectorActionRequestToMCPResponse(request)
+	response := connectorActionRequestToMCPResponse(s.connectorAdapterRegistry(), request)
 	if !connectorActionVaultPollAuthorized(r.Context(), auth.runtime, auth.TokenID, request) {
 		response.Output = nil
 		response.DisplayText = ""
@@ -347,8 +348,8 @@ func permittedConnectorActions(ctx context.Context, runtime *databaseRuntime, to
 	return allowed, nil
 }
 
-func connectorActionToMCPResponse(request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
-	response := connectorActionRequestToMCPResponse(request)
+func connectorActionToMCPResponse(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
+	response := connectorActionRequestToMCPResponse(adapterRegistry, request)
 	response.Output = result.Output
 	if result.DisplayText != "" {
 		response.DisplayText = result.DisplayText
@@ -359,7 +360,7 @@ func connectorActionToMCPResponse(request connectortargets.ActionRequest, result
 	return response
 }
 
-func connectorActionRequestToMCPResponse(request connectortargets.ActionRequest) mcpConnectorActionResponse {
+func connectorActionRequestToMCPResponse(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) mcpConnectorActionResponse {
 	response := mcpConnectorActionResponse{
 		Status:        string(request.Status),
 		RequestID:     request.ID,
@@ -379,7 +380,7 @@ func connectorActionRequestToMCPResponse(request connectortargets.ActionRequest)
 	}
 	if request.Status == connectors.ResultRunning {
 		response.RetryAfterSeconds = 3
-		response.AssistantHint = connectorActionRunningHintForRequest(request)
+		response.AssistantHint = connectorActionRunningHintForRequest(adapterRegistry, request)
 	}
 	if request.Status == connectors.ResultOutcomeUnknown {
 		response.AssistantHint = "Do not retry this action automatically. The command may have been dispatched; inspect the target with read_console or an equivalent read-only action first."
@@ -387,8 +388,9 @@ func connectorActionRequestToMCPResponse(request connectortargets.ActionRequest)
 	return response
 }
 
-func connectorActionRunningHintForRequest(request connectortargets.ActionRequest) string {
-	if adapter := connectorRuntimeAdapterFor(request.ConnectorKind); adapter != nil {
+func connectorActionRunningHintForRequest(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) string {
+	adapter, _ := adapterRegistry.For(request.ConnectorKind).(connectorapi.RuntimeAdapter)
+	if adapter != nil {
 		if hint := strings.TrimSpace(adapter.RunningHint(request)); hint != "" {
 			return hint
 		}

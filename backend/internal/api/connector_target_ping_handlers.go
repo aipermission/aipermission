@@ -78,7 +78,7 @@ func (s connectorTargetHandlers) pingConnectorTargetHost(w http.ResponseWriter, 
 			writeError(w, http.StatusBadRequest, "transport target ref is required for over_ssh")
 			return
 		}
-		if err := validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, map[string]any{
+		if err := s.validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, map[string]any{
 			"connection_mode":      request.Mode,
 			"transport_target_ref": request.TransportTargetRef,
 		}); err != nil {

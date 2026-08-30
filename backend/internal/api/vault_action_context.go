@@ -190,7 +190,7 @@ func buildVaultApprovalContext(
 		approval.ConnectorKind = snapshot.ConnectorKind
 		approval.TargetContextHash = snapshot.TargetContextHash
 		approval.ExpectedPeerIdentities = append([]string(nil), snapshot.PeerIdentities...)
-		permission, actionName, err := currentVaultLiveConsolePermission(ctx, runtime, tokenID, target.ID, profile.ID, target.ConnectorKind)
+		permission, actionName, err := currentVaultLiveConsolePermission(ctx, server, runtime, tokenID, target.ID, profile.ID, target.ConnectorKind)
 		if err != nil {
 			return vaultApprovalContext{}, "", nil, err
 		}

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/restcontract"
 )
 
@@ -80,13 +79,13 @@ func registeredRESTContractRoutes(t *testing.T, routesSource []byte) []restcontr
 	if err != nil {
 		t.Fatalf("parse registered routes: %v", err)
 	}
-	registry := testConnectorRegistry(t)
-	connectorInfos := registry.List()
+	catalog := newTestConnectorCatalog(t)
+	connectorInfos := catalog.connectors.List()
 	kinds := make([]string, 0, len(connectorInfos))
 	for _, info := range connectorInfos {
 		kinds = append(kinds, info.Kind)
 	}
-	adapterRoutes, err := connectorapi.RouteDefinitions(kinds)
+	adapterRoutes, err := catalog.adapters.RouteDefinitions(kinds)
 	if err != nil {
 		t.Fatalf("load connector adapter routes: %v", err)
 	}

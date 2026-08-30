@@ -9,12 +9,16 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
-func connectorAPIAdapterFor(kind string) connectorapi.Adapter {
-	return connectorapi.For(kind)
+func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
+	return s.connectorAdapterRegistry().For(kind)
 }
 
-func connectorRuntimeAdapterFor(kind string) connectorapi.RuntimeAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.RuntimeAdapter)
+func (runtime *databaseRuntime) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
+	return runtime.connectorAdapterRegistry().For(kind)
+}
+
+func (s *Server) connectorRuntimeAdapterFor(kind string) connectorapi.RuntimeAdapter {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.RuntimeAdapter)
 	return adapter
 }
 
@@ -32,7 +36,7 @@ func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *datab
 		commandTransport := connectorCommandTransport{server: server, runtime: runtime}
 		capabilities[commandTransport.ConnectorRuntimeCapability()] = commandTransport
 	}
-	adapter := connectorRuntimeAdapterFor(kind)
+	adapter := server.connectorRuntimeAdapterFor(kind)
 	if adapter != nil {
 		for name, capability := range adapter.RuntimeCapabilities(server, runtime) {
 			if name == "" || capability == nil {
@@ -53,7 +57,7 @@ func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	for _, info := range connectorInfos {
 		kinds = append(kinds, info.Kind)
 	}
-	routes, err := connectorapi.RouteDefinitions(kinds)
+	routes, err := server.connectorAdapterRegistry().RouteDefinitions(kinds)
 	if err != nil {
 		panic(err)
 	}
@@ -65,13 +69,13 @@ func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	}
 }
 
-func connectorRuntimeResources(registrySource *connectors.Registry, database *sql.DB, secretVault *vault.Vault) map[string]any {
+func connectorRuntimeResources(registrySource *connectors.Registry, adapterRegistry *connectorapi.Registry, database *sql.DB, secretVault *vault.Vault) map[string]any {
 	resources := map[string]any{}
 	if registrySource == nil {
 		return resources
 	}
 	for _, info := range registrySource.List() {
-		provider, _ := connectorAPIAdapterFor(info.Kind).(connectorapi.RuntimeResourceProvider)
+		provider, _ := adapterRegistry.For(info.Kind).(connectorapi.RuntimeResourceProvider)
 		if provider == nil {
 			continue
 		}
@@ -85,52 +89,52 @@ func connectorRuntimeResources(registrySource *connectors.Registry, database *sq
 	return resources
 }
 
-func connectorDraftTesterFor(kind string) connectorapi.DraftTester {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.DraftTester)
+func (s *Server) connectorDraftTesterFor(kind string) connectorapi.DraftTester {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.DraftTester)
 	return adapter
 }
 
-func connectorTargetDeleterFor(kind string) connectorapi.TargetDeleter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.TargetDeleter)
+func (s *Server) connectorTargetDeleterFor(kind string) connectorapi.TargetDeleter {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TargetDeleter)
 	return adapter
 }
 
-func connectorCredentialProfileLifecycleAdapterFor(kind string) connectorapi.CredentialProfileLifecycleAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CredentialProfileLifecycleAdapter)
+func (s *Server) connectorCredentialProfileLifecycleAdapterFor(kind string) connectorapi.CredentialProfileLifecycleAdapter {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.CredentialProfileLifecycleAdapter)
 	return adapter
 }
 
-func connectorCredentialProfileTesterFor(kind string) connectorapi.CredentialProfileTester {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CredentialProfileTester)
+func (s *Server) connectorCredentialProfileTesterFor(kind string) connectorapi.CredentialProfileTester {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.CredentialProfileTester)
 	return adapter
 }
 
-func connectorTargetOperationRunnerFor(kind string) connectorapi.TargetOperationRunner {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.TargetOperationRunner)
+func (s *Server) connectorTargetOperationRunnerFor(kind string) connectorapi.TargetOperationRunner {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TargetOperationRunner)
 	return adapter
 }
 
-func connectorCredentialCanonicalizerFor(kind string) connectorapi.CredentialCanonicalizer {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CredentialCanonicalizer)
+func (s *Server) connectorCredentialCanonicalizerFor(kind string) connectorapi.CredentialCanonicalizer {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.CredentialCanonicalizer)
 	return adapter
 }
 
-func connectorLiveConsoleTargetAdapterFor(kind string) connectorapi.LiveConsoleTargetAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.LiveConsoleTargetAdapter)
+func (s *Server) connectorLiveConsoleTargetAdapterFor(kind string) connectorapi.LiveConsoleTargetAdapter {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.LiveConsoleTargetAdapter)
 	return adapter
 }
 
-func connectorLiveConsoleTransportAdapterFor(kind string) connectorapi.LiveConsoleTransportAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.LiveConsoleTransportAdapter)
+func (s *Server) connectorLiveConsoleTransportAdapterFor(kind string) connectorapi.LiveConsoleTransportAdapter {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.LiveConsoleTransportAdapter)
 	return adapter
 }
 
-func connectorFileTransferAdapterFor(kind string) connectorapi.FileTransferAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.FileTransferAdapter)
+func (s *Server) connectorFileTransferAdapterFor(kind string) connectorapi.FileTransferAdapter {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.FileTransferAdapter)
 	return adapter
 }
 
-func connectorCredentialResourceAdapterFor(kind string) connectorapi.CredentialResourceAdapter {
-	adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.CredentialResourceAdapter)
+func (s *Server) connectorCredentialResourceAdapterFor(kind string) connectorapi.CredentialResourceAdapter {
+	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.CredentialResourceAdapter)
 	return adapter
 }

@@ -131,7 +131,7 @@ func (s consoleHandlers) bulkConsoleTarget(ctx context.Context, runtime *databas
 		return bulkConsoleTarget{}, err
 	}
 	name := target.Name
-	if adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
+	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
 		metadata := adapter.LiveConsoleTargetMetadata(connectors.TargetView{
 			ID:            target.ID,
 			ConnectorKind: target.ConnectorKind,
@@ -253,5 +253,5 @@ func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *databaseRun
 	if err != nil {
 		return nil
 	}
-	return connectorAPIAdapterFor(target.ConnectorKind)
+	return s.connectorAPIAdapterFor(target.ConnectorKind)
 }

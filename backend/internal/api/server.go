@@ -10,6 +10,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
@@ -30,6 +31,7 @@ type Server struct {
 	vault                *vault.Vault
 	tokens               *tokens.Store
 	registry             *connectors.Registry
+	adapterRegistry      *connectorapi.Registry
 	mux                  *http.ServeMux
 	mu                   sync.RWMutex
 	lifecycleMu          sync.RWMutex
@@ -55,6 +57,7 @@ type databaseRuntime struct {
 	vault              *vault.Vault
 	tokens             *tokens.Store
 	registry           *connectors.Registry
+	adapterRegistry    *connectorapi.Registry
 	connectorResources map[string]any
 	fileTransfers      *filetransfer.Store
 	consoleSessions    *console.Manager
@@ -83,6 +86,7 @@ type databaseRuntime struct {
 
 type serverOptions struct {
 	registry                   *connectors.Registry
+	adapterRegistry            *connectorapi.Registry
 	runtimeInstanceIDGenerator func() (string, error)
 }
 
@@ -91,6 +95,12 @@ type ServerOption func(*serverOptions)
 func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
 	return func(options *serverOptions) {
 		options.registry = registry
+	}
+}
+
+func WithConnectorAdapterRegistry(registry *connectorapi.Registry) ServerOption {
+	return func(options *serverOptions) {
+		options.adapterRegistry = registry
 	}
 }
 
@@ -103,6 +113,7 @@ func withRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOpti
 func resolveServerOptions(options []ServerOption) serverOptions {
 	resolved := serverOptions{
 		registry:                   connectors.NewRegistry(),
+		adapterRegistry:            connectorapi.NewRegistry(),
 		runtimeInstanceIDGenerator: executionprincipal.NewRuntimeInstanceID,
 	}
 	for _, option := range options {
@@ -112,6 +123,9 @@ func resolveServerOptions(options []ServerOption) serverOptions {
 	}
 	if resolved.registry == nil {
 		resolved.registry = connectors.NewRegistry()
+	}
+	if resolved.adapterRegistry == nil {
+		resolved.adapterRegistry = connectorapi.NewRegistry()
 	}
 	if resolved.runtimeInstanceIDGenerator == nil {
 		resolved.runtimeInstanceIDGenerator = executionprincipal.NewRuntimeInstanceID
@@ -132,6 +146,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		vault:                secretVault,
 		tokens:               tokenStore,
 		registry:             registry,
+		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
 		maintenanceConsole:   newMaintenanceConsoleRuntime(),
 		authLimiter:          newAuthRateLimiter(),
@@ -150,7 +165,8 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		vault:              secretVault,
 		tokens:             tokenStore,
 		registry:           registry,
-		connectorResources: connectorRuntimeResources(registry, database, secretVault),
+		adapterRegistry:    resolved.adapterRegistry,
+		connectorResources: connectorRuntimeResources(registry, resolved.adapterRegistry, database, secretVault),
 		fileTransfers:      filetransfer.NewStore(database),
 		transferCancels:    map[int64]context.CancelFunc{},
 		batchCancels:       map[int64]context.CancelFunc{},
@@ -183,6 +199,7 @@ func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 		activeDatabase:       dbpkg.DefaultDatabaseID(cfg.DataPath),
 		workspaces:           map[string]*databaseRuntime{},
 		registry:             resolved.registry,
+		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
 		maintenanceConsole:   newMaintenanceConsoleRuntime(),
 		authLimiter:          newAuthRateLimiter(),
@@ -204,9 +221,23 @@ func (s *Server) connectorRegistry() *connectors.Registry {
 	return connectors.NewRegistry()
 }
 
+func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
+	if s != nil && s.adapterRegistry != nil {
+		return s.adapterRegistry
+	}
+	return connectorapi.NewRegistry()
+}
+
 func (runtime *databaseRuntime) connectorRegistry() *connectors.Registry {
 	if runtime != nil && runtime.registry != nil {
 		return runtime.registry
 	}
 	return connectors.NewRegistry()
+}
+
+func (runtime *databaseRuntime) connectorAdapterRegistry() *connectorapi.Registry {
+	if runtime != nil && runtime.adapterRegistry != nil {
+		return runtime.adapterRegistry
+	}
+	return connectorapi.NewRegistry()
 }

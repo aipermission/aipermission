@@ -22,13 +22,17 @@ import (
 
 func newLockedAPITestServer(t *testing.T) *Server {
 	t.Helper()
+	catalog := newTestConnectorCatalog(t)
 	return NewLockedServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
-	}, WithConnectorRegistry(testConnectorRegistry(t)))
+	},
+		WithConnectorRegistry(catalog.connectors),
+		WithConnectorAdapterRegistry(catalog.adapters),
+	)
 }
 
 func TestRuntimeCloseMarksRunningConnectorActionsOutcomeUnknown(t *testing.T) {

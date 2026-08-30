@@ -147,7 +147,8 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		vault:              secretVault,
 		tokens:             tokens.NewStore(database, secretVault),
 		registry:           s.connectorRegistry(),
-		connectorResources: connectorRuntimeResources(s.connectorRegistry(), database, secretVault),
+		adapterRegistry:    s.connectorAdapterRegistry(),
+		connectorResources: connectorRuntimeResources(s.connectorRegistry(), s.connectorAdapterRegistry(), database, secretVault),
 		fileTransfers:      filetransfer.NewStore(database),
 		transferCancels:    map[int64]context.CancelFunc{},
 		batchCancels:       map[int64]context.CancelFunc{},
@@ -157,7 +158,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		runtimeInstanceID:  runtimeInstanceID,
 		vaultLeases:        vaultsessions.NewStore(),
 	}
-	if err := reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
+	if err := s.reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
 		_ = database.Close()
 		return nil, fmt.Errorf("reconcile connector runtime surfaces: %w", err)
 	}

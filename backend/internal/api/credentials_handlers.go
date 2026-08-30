@@ -11,7 +11,7 @@ func (s credentialHandlers) listCredentials(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	adapter, ok := credentialResourceAdapter(w, r)
+	adapter, ok := s.credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
@@ -23,7 +23,7 @@ func (s credentialHandlers) createCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	adapter, ok := credentialResourceAdapter(w, r)
+	adapter, ok := s.credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
@@ -35,7 +35,7 @@ func (s credentialHandlers) importCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	adapter, ok := credentialResourceAdapter(w, r)
+	adapter, ok := s.credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
@@ -47,7 +47,7 @@ func (s credentialHandlers) getCredential(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	adapter, ok := credentialResourceAdapter(w, r)
+	adapter, ok := s.credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
@@ -59,7 +59,7 @@ func (s credentialHandlers) updateCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	adapter, ok := credentialResourceAdapter(w, r)
+	adapter, ok := s.credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
@@ -71,15 +71,15 @@ func (s credentialHandlers) deleteCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	adapter, ok := credentialResourceAdapter(w, r)
+	adapter, ok := s.credentialResourceAdapter(w, r)
 	if !ok {
 		return
 	}
 	adapter.DeleteCredentialResource(s, w, r, runtime)
 }
 
-func credentialResourceAdapter(w http.ResponseWriter, r *http.Request) (connectorapi.CredentialResourceAdapter, bool) {
-	adapter := connectorCredentialResourceAdapterFor(r.PathValue("kind"))
+func (s credentialHandlers) credentialResourceAdapter(w http.ResponseWriter, r *http.Request) (connectorapi.CredentialResourceAdapter, bool) {
+	adapter := s.connectorCredentialResourceAdapterFor(r.PathValue("kind"))
 	if adapter == nil {
 		writeError(w, http.StatusNotFound, "connector credential resources are not supported")
 		return nil, false

@@ -14,8 +14,8 @@ import (
 
 type adapter struct{}
 
-func init() {
-	connectorapi.Register(s3connector.Kind, adapter{})
+func New() connectorapi.Adapter {
+	return adapter{}
 }
 
 func (adapter) BrowseRemoteFiles(ctx context.Context, server connectorapi.GatewayServer, gatewayRuntime connectorapi.GatewayRuntime, runtimeID int64, remotePath string) ([]connectorapi.RemoteFileEntry, error) {

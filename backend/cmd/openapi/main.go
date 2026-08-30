@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/restcontract"
 )
@@ -25,16 +24,16 @@ func main() {
 	if err != nil {
 		fatalf("parse core routes: %v", err)
 	}
-	registry, err := builtin.NewRegistry()
+	catalog, err := builtin.NewCatalog()
 	if err != nil {
 		fatalf("load built-in connectors: %v", err)
 	}
-	connectorInfos := registry.List()
+	connectorInfos := catalog.Connectors.List()
 	kinds := make([]string, 0, len(connectorInfos))
 	for _, info := range connectorInfos {
 		kinds = append(kinds, info.Kind)
 	}
-	adapterRoutes, err := connectorapi.RouteDefinitions(kinds)
+	adapterRoutes, err := catalog.Adapters.RouteDefinitions(kinds)
 	if err != nil {
 		fatalf("load connector adapter routes: %v", err)
 	}

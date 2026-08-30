@@ -74,7 +74,7 @@ func (s vaultItemHandlers) saveVaultDefaultBinding(w http.ResponseWriter, r *htt
 		handleConnectorTargetError(w, err)
 		return
 	}
-	adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind)
+	adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind)
 	if adapter == nil {
 		writeError(w, http.StatusConflict, "this connector profile does not support Vault session environments")
 		return

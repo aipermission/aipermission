@@ -290,7 +290,7 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 }
 
 func TestMCPConnectorActionOutcomeUnknownForbidsAutomaticRetry(t *testing.T) {
-	response := connectorActionRequestToMCPResponse(connectortargets.ActionRequest{
+	response := connectorActionRequestToMCPResponse(nil, connectortargets.ActionRequest{
 		ID: 42, Status: connectors.ResultOutcomeUnknown,
 		ConnectorKind: "ssh", TargetID: 7, ProfileID: 8, ActionName: "exec",
 	})

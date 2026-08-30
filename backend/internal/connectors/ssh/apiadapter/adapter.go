@@ -26,8 +26,8 @@ const (
 
 type adapter struct{}
 
-func init() {
-	connectorapi.Register(sshconnector.Kind, adapter{})
+func New() connectorapi.Adapter {
+	return adapter{}
 }
 
 func (a adapter) Routes() []connectorapi.RouteDefinition {

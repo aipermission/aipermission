@@ -111,7 +111,7 @@ func validateConnectorTargetConfig(connector connectors.Connector, config map[st
 	return validator.ValidateTargetConfig(config)
 }
 
-func validateConnectorTransportConfig(ctx context.Context, store *connectortargets.Store, projectID int64, config map[string]any) error {
+func (s *Server) validateConnectorTransportConfig(ctx context.Context, store *connectortargets.Store, projectID int64, config map[string]any) error {
 	mode, _ := config["connection_mode"].(string)
 	if strings.TrimSpace(mode) != "over_ssh" {
 		return nil
@@ -128,7 +128,7 @@ func validateConnectorTransportConfig(ctx context.Context, store *connectortarge
 	if !ok {
 		return connectortargets.ErrInvalidTargetRef
 	}
-	if adapter, _ := connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter); adapter == nil {
+	if adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter); adapter == nil {
 		return connectortargets.ValidationError(fmt.Sprintf("%s connector does not expose reviewed TCP transport", kind))
 	}
 	return nil
@@ -331,7 +331,7 @@ func (s connectorTargetHandlers) listConnectorTargetInventory(w http.ResponseWri
 			}
 			summary := profileToSummary(profile)
 			summary.Actions = actions
-			if adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
+			if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
 				surface, surfaceErr := store.GetRuntimeSurfaceByProfile(
 					r.Context(), target.ConnectorKind, target.ID, profile.ID, adapter.LiveConsoleCapabilityKind(),
 				)
@@ -344,7 +344,7 @@ func (s connectorTargetHandlers) listConnectorTargetInventory(w http.ResponseWri
 					return
 				}
 			}
-			if connectorFileTransferAdapterFor(target.ConnectorKind) != nil {
+			if s.connectorFileTransferAdapterFor(target.ConnectorKind) != nil {
 				surface, surfaceErr := store.GetRuntimeSurfaceByProfile(
 					r.Context(), target.ConnectorKind, target.ID, profile.ID, connectortargets.RuntimeCapabilityFileTransfer,
 				)
@@ -396,7 +396,7 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	store := connectortargets.NewStore(runtime.database)
-	if err := validateConnectorTransportConfig(r.Context(), store, request.ProjectID, request.Config); err != nil {
+	if err := s.validateConnectorTransportConfig(r.Context(), store, request.ProjectID, request.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
@@ -455,7 +455,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.Target.ProjectID, request.Target.Config); err != nil {
+	if err := s.validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.Target.ProjectID, request.Target.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
@@ -477,7 +477,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		if err != nil {
 			return err
 		}
-		if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
+		if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
 			if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, store, target); err != nil {
 				return err
 			}
@@ -494,7 +494,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		if err != nil {
 			return err
 		}
-		if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
+		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
 			return err
 		}
 		if err := appendAudit(tx, "user", nil, 0, "connector.target.created", map[string]any{
@@ -544,11 +544,11 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, request.Config); err != nil {
+	if err := s.validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, request.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if adapter := connectorDraftTesterFor(request.ConnectorKind); adapter != nil {
+	if adapter := s.connectorDraftTesterFor(request.ConnectorKind); adapter != nil {
 		adapter.TestDraft(s, w, r, runtime, request)
 		return
 	}
@@ -621,7 +621,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 	if request.ProjectID == 0 {
 		request.ProjectID = existing.ProjectID
 	}
-	if err := validateConnectorTransportConfig(r.Context(), store, request.ProjectID, request.Config); err != nil {
+	if err := s.validateConnectorTransportConfig(r.Context(), store, request.ProjectID, request.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
@@ -650,7 +650,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 			return err
 		}
 		for _, profile := range profiles {
-			if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+			if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 				return err
 			}
 		}
@@ -720,7 +720,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 	if request.Target.ProjectID == 0 {
 		request.Target.ProjectID = existing.ProjectID
 	}
-	if err := validateConnectorTransportConfig(r.Context(), store, request.Target.ProjectID, request.Target.Config); err != nil {
+	if err := s.validateConnectorTransportConfig(r.Context(), store, request.Target.ProjectID, request.Target.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
@@ -767,7 +767,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		if err != nil {
 			return err
 		}
-		if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 			return err
 		}
 		if err := appendAudit(tx, "user", nil, 0, "connector.target.updated", map[string]any{
@@ -816,7 +816,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	defer release()
-	if adapter := connectorTargetDeleterFor(target.ConnectorKind); adapter != nil {
+	if adapter := s.connectorTargetDeleterFor(target.ConnectorKind); adapter != nil {
 		adapter.DeleteTarget(s, w, r, runtime, target)
 		return
 	}
@@ -876,15 +876,15 @@ func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx conte
 	return result.Affected, nil
 }
 
-func ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func (s *Server) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 	if store == nil {
 		return nil
 	}
 	capabilities := []string{}
-	if adapter := connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
+	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
 		capabilities = append(capabilities, adapter.LiveConsoleCapabilityKind())
 	}
-	if connectorFileTransferAdapterFor(target.ConnectorKind) != nil {
+	if s.connectorFileTransferAdapterFor(target.ConnectorKind) != nil {
 		capabilities = append(capabilities, connectortargets.RuntimeCapabilityFileTransfer)
 	}
 	seen := map[string]struct{}{}
@@ -929,7 +929,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		handleConnectorTargetError(w, err)
 		return
 	}
-	adapter := connectorTargetOperationRunnerFor(target.ConnectorKind)
+	adapter := s.connectorTargetOperationRunnerFor(target.ConnectorKind)
 	if adapter == nil {
 		writeError(w, http.StatusBadRequest, "operation is not supported for this connector")
 		return
@@ -938,7 +938,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 }
 
 func (s connectorTargetHandlers) canonicalCredentialPublic(ctx context.Context, runtime *databaseRuntime, connectorKind string, credentialKind string, public map[string]any) (map[string]any, error) {
-	if adapter := connectorCredentialCanonicalizerFor(connectorKind); adapter != nil {
+	if adapter := s.connectorCredentialCanonicalizerFor(connectorKind); adapter != nil {
 		return adapter.CanonicalCredentialPublic(ctx, s, runtime, credentialKind, public)
 	}
 	if public == nil {

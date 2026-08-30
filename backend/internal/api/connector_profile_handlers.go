@@ -65,7 +65,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 	var profile connectortargets.CredentialProfile
 	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 		txStore := connectortargets.NewTxStore(tx)
-		if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
+		if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
 			if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, txStore, target); err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		if err != nil {
 			return err
 		}
-		if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 			return err
 		}
 		return appendAudit(tx, "user", nil, 0, "connector.profile.created", map[string]any{
@@ -169,7 +169,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		if err != nil {
 			return err
 		}
-		if err := ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
+		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 			return err
 		}
 		return appendAudit(tx, "user", nil, 0, "connector.profile.updated", map[string]any{
@@ -226,7 +226,7 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if adapter := connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
+	if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
 		if err := adapter.BeforeDeleteCredentialProfile(r.Context(), s, runtime, store, target, profile); err != nil {
 			handleConnectorTargetError(w, err)
 			return
@@ -278,7 +278,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if adapter := connectorCredentialProfileTesterFor(target.ConnectorKind); adapter != nil {
+	if adapter := s.connectorCredentialProfileTesterFor(target.ConnectorKind); adapter != nil {
 		adapter.TestCredentialProfile(s, w, r, runtime, target, profile)
 		return
 	}

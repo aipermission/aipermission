@@ -80,7 +80,7 @@ func expectedLiveConsolePeerIdentities(
 	if err != nil {
 		return nil, err
 	}
-	adapter, _ := connectorAPIAdapterFor(surface.ConnectorKind).(connectorapi.LiveConsolePeerIdentityAdapter)
+	adapter, _ := server.connectorAPIAdapterFor(surface.ConnectorKind).(connectorapi.LiveConsolePeerIdentityAdapter)
 	if adapter == nil {
 		if capability.SessionEnvironmentPeerIdentityRequired() {
 			return nil, errors.New("this connector requires a peer identity adapter for Vault session environments")
