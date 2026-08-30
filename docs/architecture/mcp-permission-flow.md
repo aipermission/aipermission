@@ -87,6 +87,32 @@ Gateway flow:
 13. If the rule is `blocked`, reject the action without execution.
 14. Record project-snapshotted history and audit events.
 
+```mermaid
+flowchart TD
+  Request[MCP connector action request] --> Auth[Validate token, project, target, and profile]
+  Auth --> Prepare[Prepare deterministic connector action]
+  Prepare --> Idempotency{Matching idempotency key?}
+  Idempotency -->|same request| Existing[Return existing request]
+  Idempotency -->|mismatched payload| Conflict[Reject with conflict]
+  Idempotency -->|new request| Runtime{MCP runtime started?}
+  Runtime -->|no| Stopped[Reject without execution]
+  Runtime -->|yes| Rule{Effective action rule}
+  Rule -->|Blocked| Blocked[Reject without execution]
+  Rule -->|Prompt| Pending[Store pending request and approval snapshot]
+  Pending --> Decision{Local user decision}
+  Decision -->|Decline| Declined[Record decline and note]
+  Decision -->|Run| Revalidate{Approval context unchanged?}
+  Revalidate -->|no| Stale[Mark stale; require a fresh request]
+  Revalidate -->|yes| Execute[Execute connector action]
+  Rule -->|Always| Execute
+  Execute --> Project[Redact and bound result]
+  Project --> Record[Persist unified history and audit]
+```
+
+No branch exposes connector credentials to the MCP client. Prompt and Always
+converge on the same connector execution, redaction, history, and audit path;
+only the local decision step differs.
+
 ## Approval Required
 
 Approval-required MCP requests are non-blocking. The gateway stores the
