@@ -4,13 +4,23 @@
 
 ## Supported Versions
 
-The project is pre-1.0 and in active testing. Confirmed security fixes are
-coordinated privately when needed, then released through the documented public
-release process.
+The project is pre-1.0 and in active testing. Only the latest tagged stable
+release receives security fixes.
+
+| Release line | Security support |
+| --- | --- |
+| Latest tagged stable release | Supported |
+| Older tags, prereleases, and untagged commits | Not supported |
+
+Upgrade to the latest stable tag before reporting or validating a fix.
+Confirmed security fixes are coordinated privately when needed, then released
+through the documented public release process.
 
 ## Reporting A Vulnerability
 
-Please do not open a public issue for vulnerabilities that could expose credentials or enable unintended command execution.
+Please do not open a public issue for vulnerabilities that could expose
+credentials or enable unintended command execution. If you are unsure whether
+a report is security-sensitive, use the private channel.
 
 For now, report privately through GitHub Security Advisories on the repository, or contact the repository owner through GitHub if advisories are unavailable.
 
@@ -88,7 +98,7 @@ Current MVP boundaries:
 Known risks:
 
 - SSH connector `exec` runs the exact command text through a shell on the target server. Shell operators such as `;`, `&&`, pipes, redirects, command substitution, and globs are interpreted by that shell. This is intentional command execution, not an injection bug, but approval means approving the shell-interpreted command body.
-- Connector action input, command text, action output, approval notes, console transcripts, messages, and audit records may be stored in the encrypted local database and can persist secrets if the AI is instructed to read sensitive files or environment values. Basic redaction is enabled by default for common token/password/API-key/private-key patterns, and users can add custom regex rules in Security. Redaction is best-effort and cannot guarantee detection of every secret format. Approval requests keep a separate encrypted raw action payload for execution so redaction never mutates the connector action that is run; UI, history, messages, MCP response fields, and audit display fields remain redacted.
+- Connector action input, command text, action output, approval notes, console transcripts, messages, and audit records may be stored in the encrypted local database and can persist secrets if the AI is instructed to read sensitive files or environment values. Basic redaction is enabled by default for common token/password/API-key/private-key patterns, and users can add custom regex rules in Security. Redaction is best-effort and cannot guarantee detection of every secret format. Approval requests keep a separate encrypted raw action payload for execution so redaction never mutates the connector action that is run. A pending local approval may transiently decrypt only its exact bounded prepared preview for operator review; normal lists, persisted previews, MCP responses, History, Messages, and Audit remain redacted.
 - Pending connector action approvals store an approval-context snapshot. If target/profile metadata, credential revision, SSH key fingerprint when applicable, token permission, token validity, MCP tool metadata, connector metadata, or action payload hash changes before Run, the request becomes `stale` and must be requested again.
 - The unlocked backend process is part of the trust boundary. Keep the default Docker bind on localhost; do not expose the gateway on LAN or the public internet.
 - Database passwords are necessarily present in backend process memory while an unlock, import, or password-change request is being handled. The password is not stored as a bearer token or written to audit logs, but process memory should be treated as trusted while the gateway is running.

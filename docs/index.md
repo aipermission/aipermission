@@ -1,6 +1,9 @@
 # aipermission Docs Index
 
-This folder is the central Obsidian-style documentation vault for aipermission.
+This is the canonical documentation index for AIPermission. The README is the
+product and quick-start entry point; this index owns detailed operator,
+security, architecture, API, and contributor navigation. When two documents
+overlap, prefer the document listed in its matching section below.
 
 Start here:
 
@@ -24,6 +27,10 @@ Start here:
 - [ADR 0002: No Cloud Mode](adr/0002-no-cloud-mode.md)
 - [ADR 0003: Single-User Design](adr/0003-single-user-design.md)
 - [ADR 0004: SQLCipher Choice](adr/0004-sqlcipher-choice.md)
+
+Decisions 0005 and 0006 are recorded in the consolidated
+[Architecture Decisions](architecture/decisions.md). Standalone ADR files were
+not published for those two decisions; numbering is intentionally preserved.
 
 ## Security
 

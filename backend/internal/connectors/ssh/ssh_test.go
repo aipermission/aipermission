@@ -3,6 +3,7 @@ package sshconnector
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -39,6 +40,9 @@ func TestGetHelpAndActionList(t *testing.T) {
 	}
 	if help.ConnectorID != Kind || help.Title == "" || len(help.Usage) == 0 {
 		t.Fatalf("unexpected help: %#v", help)
+	}
+	if usage := strings.Join(help.Usage, " "); !strings.Contains(usage, "Prompt is also supported") {
+		t.Fatalf("read_console help must reflect the generic permission pipeline: %q", usage)
 	}
 
 	actions, err := connector.GetActionList(context.Background(), target, connectors.CredentialProfileView{ConnectorKind: Kind, Kind: "private_key"})
