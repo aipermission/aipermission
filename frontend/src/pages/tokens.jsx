@@ -162,6 +162,7 @@ export function TokensPage() {
 
       <CreatedTokenNotice token={createdToken} onDismiss={() => setCreatedToken(null)} />
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
+      {revokeState.message ? <Notice tone="good">{revokeState.message}</Notice> : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       {tokens.state === "error" ? <Notice tone="bad">{tokens.error}</Notice> : null}
       {connectorPermissionState.state === "error" ? <Notice tone="bad">{connectorPermissionState.error}</Notice> : null}
