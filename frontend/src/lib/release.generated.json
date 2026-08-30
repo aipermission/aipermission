@@ -1,6 +1,26 @@
 {
-  "version": "0.2.31",
+  "version": "0.2.32",
   "entries": [
+    {
+      "version": "0.2.32",
+      "label": "Approval pipeline and connector isolation",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Pending connector approvals now use small typed orchestration steps while preserving authorization, stale-context, claim, audit, execution, and completion ordering.",
+            "Runtime-backed connector adapters are constructed explicitly per gateway catalog instead of relying on package-global registration or package initialization side effects."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Focused transition tests now lock approval-pending, running, completion, failure, history, and audit ordering.",
+            "Catalog-derived import and runtime isolation checks now cover every built-in connector and prevent shared gateway packages from depending on connector implementations."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.31",
       "label": "Connector security boundaries",
@@ -189,33 +209,6 @@
           "title": "Security",
           "items": [
             "Presigned URLs are limited to one exact key and at most one hour. Lifecycle replacement, lifecycle deletion, and version deletion are explicit destructive connector actions."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.24",
-      "label": "Failure recovery and release integrity",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Added one canonical release manifest plus a hygiene check that keeps the UI, frontend package, MCP package, MCP registry metadata, and changelog version aligned.",
-            "Pull request CI now runs the Playwright browser smoke suite and retains its failure report for diagnosis."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Connector action lifecycle updates now commit their canonical request and History projection together. Interrupted running actions recover as `outcome_unknown` so clients do not blindly retry a possibly completed remote side effect.",
-            "Failed database rename operations reopen the original encrypted runtime, and failed imports remove or quarantine unusable targets instead of leaving a misleading occupied database name."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Added a machine-readable native dependency inventory and a runtime assertion for the SQLCipher version embedded by the Go driver.",
-            "Container publishing now scans the exact candidate registry digest before promoting that same digest to release tags, and requires the tagged source commit's CI checks to have passed."
           ]
         }
       ]
