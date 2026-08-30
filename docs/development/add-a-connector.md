@@ -250,6 +250,16 @@ Do not import the SSH connector package from another connector. Ask for a
 generic capability such as `NetworkTransport` or `CommandTransport`; the
 gateway resolves the selected transport profile.
 
+For a protocol that supports both plaintext and verified TLS, make new remote
+Direct targets fail-safe by default. Reuse `UseVerifiedTLSByDefault` for an
+`auto` mode instead of copying hostname heuristics into a connector. The shared
+policy selects verified TLS for non-local Direct hosts and plaintext for
+loopback, supported local-container aliases, and Over SSH transport. Connector
+code still owns protocol-specific TLS setup, ports, and error classification.
+Keep an explicit plaintext option for intentionally local deployments, preserve
+existing saved choices, and test new, legacy, explicit, local, remote, and Over
+SSH configurations separately.
+
 ## Frontend Templates
 
 Add templates under:
@@ -401,7 +411,7 @@ owns only the external service-specific work.
 The built-in Redis / Valkey connector adds only protocol/product-specific behavior:
 
 - target fields such as server product, connection mode, host, port, database
-  index, and optional SSH transport target ref
+  index, TLS mode, and optional SSH transport target ref
 - credential profile fields such as username/password or token
 - actions such as `ping`, `info`, `scan_keys`, `get_key`, `set_string`,
   `expire_key`, and `delete_keys`
@@ -443,7 +453,8 @@ table, or MCP wrapper merely to change the product identity.
 The built-in RabbitMQ connector follows the same normal structured connector
 path as Redis:
 
-- target fields such as connection mode, scheme, host, port, default vhost, and
+- target fields such as connection mode, automatic/explicit HTTP scheme, host,
+  port, default vhost, and
   optional SSH transport target ref
 - credential profile fields for RabbitMQ Management API username/password
 - actions such as `overview`, `list_vhosts`, `list_queues`, `get_queue`,

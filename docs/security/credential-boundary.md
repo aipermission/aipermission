@@ -109,6 +109,15 @@ directly into connector action inputs or command strings and should be careful
 when asking AI to print files or environment variables that may contain
 secrets.
 
+Connector action definitions can mark arbitrary-content fields as sensitive
+while leaving routing and scope fields visible for meaningful approval. Redis /
+Valkey string values and RabbitMQ message payload/properties use this boundary;
+keys, exchanges, routing keys, and bounded read-only SQL remain visible so the
+operator can still understand the requested action. The exact prepared payload
+stays in its encrypted execution envelope; a pending local approval may show it
+transiently to the operator, but it does not replace the redacted persisted
+preview, history, audit, or MCP projection.
+
 Mail subjects, addresses, bounded bodies, outgoing drafts, and approval
 previews are not connector credentials, but they can contain sensitive personal
 or customer data. Authorized Mail actions may persist that data in encrypted
