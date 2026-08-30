@@ -115,6 +115,40 @@ explicit local user action.
 See the [AIPermission Backup guide](../providers/aipermission-backup.md) for
 deployment and restore instructions.
 
+## Recovery Verification Order
+
+Local import and self-hosted restore use the same fail-closed installation
+boundary:
+
+1. Stream the candidate into a temporary local file.
+2. For remote versions, verify the declared size and SHA-256 before opening it.
+3. Open it with the user-provided SQLCipher database password.
+4. Require a supported schema and the embedded gateway secret.
+5. Install it under a new local database identity without overwriting an
+   existing database.
+6. Start the gateway from the installed copy only after every check succeeds.
+
+A failed download, checksum, password, schema, or gateway-secret check leaves
+the active database untouched. Temporary candidates are not exposed as local
+databases and are cleaned at the import boundary.
+
+The database password and gateway secret serve different purposes. The password
+opens the SQLCipher file; the gateway secret decrypts connector credentials
+inside it. Current backups embed the gateway secret in the encrypted database.
+For an older source that does not, preserve the original secret and follow the
+[database migration recovery guide](../setup/database-migration.md). Never
+substitute a newly generated gateway secret for an old one.
+
+Treat service unavailability, protocol mismatch, size mismatch, and checksum
+mismatch as hard failures. Correct the provider or network state and retry; do
+not bypass verification. Review the local audit trail after a restore attempt
+when diagnosing an unexpected result.
+
+Release recovery drills cover local encrypted snapshot/import/restart,
+self-hosted download/checksum/import/restart, and legacy migration retry after a
+missing or incorrect gateway-secret condition. They use deterministic local
+fixtures and do not make release checks depend on an external backup provider.
+
 ## Security Notes
 
 - `.aipdb` files are sensitive but should be SQLCipher encrypted.
