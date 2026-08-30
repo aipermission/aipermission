@@ -91,6 +91,9 @@ jobs:
       - name: Test
         working-directory: frontend
         run: npm test
+      - name: Critical coverage floors
+        working-directory: frontend
+        run: npm run test:coverage
       - name: End-to-end test
         working-directory: frontend
         run: npm run test:e2e

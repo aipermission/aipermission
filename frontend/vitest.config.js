@@ -9,5 +9,21 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.js"],
     restoreMocks: true,
     unstubGlobals: true,
+    coverage: {
+      provider: "v8",
+      include: [
+        "src/lib/use-connector-permissions.js",
+        "src/components/console/connector-action-approval-dialog.jsx",
+        "src/components/console/use-console-page-state.js",
+      ],
+      reporter: ["text"],
+      thresholds: {
+        perFile: true,
+        statements: 65,
+        branches: 20,
+        functions: 50,
+        lines: 65,
+      },
+    },
   },
 });
