@@ -13,6 +13,7 @@ import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { ConnectorPermissionDialog } from "../components/tokens/connector-permission-dialog";
 import { TokenInstallDialog } from "../components/tokens/token-install-dialog";
+import { TokenRevokeDialog } from "../components/tokens/token-revoke-dialog";
 import { VaultPermissionDialog } from "../components/tokens/vault-permission-dialog";
 
 const tokenExpiryOptions = [
@@ -33,7 +34,9 @@ export function TokensPage() {
   const [vaultPermissionDialog, setVaultPermissionDialog] = useState(null);
   const { connectorPermissionState, loadAllConnectorPermissions } = useConnectorPermissions(tokens.data);
   const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
+  const [revokeDialog, setRevokeDialog] = useState(null);
   const { actionState: state, runAction } = useAsyncAction();
+  const { actionState: revokeState, runAction: runRevokeAction, resetAction: resetRevokeAction } = useAsyncAction();
   const [tokenFilter, setTokenFilter] = useState("active");
   const loadPermissionsForEffect = useEffectEvent(() => loadAllConnectorPermissions(tokens.data));
 
@@ -82,14 +85,25 @@ export function TokensPage() {
   }
 
   async function revokeToken(token) {
-    await runAction({
+    await runRevokeAction({
       pending: "revoking",
       successMessage: `${token.name} revoked.`,
       action: async () => {
         await apiPost(`/api/tokens/${token.id}/revoke`, {});
         await loadTokens();
+        setRevokeDialog(null);
       },
     });
+  }
+
+  function openRevokeDialog(token) {
+    resetRevokeAction();
+    setRevokeDialog(token);
+  }
+
+  function closeRevokeDialog() {
+    resetRevokeAction();
+    setRevokeDialog(null);
   }
 
   return (
@@ -271,8 +285,8 @@ export function TokensPage() {
                         type="button"
                         variant="danger"
                         className="h-9 px-3"
-                        onClick={() => revokeToken(token)}
-                        disabled={revoked || state.state === "revoking"}
+                        onClick={() => openRevokeDialog(token)}
+                        disabled={revoked || revokeState.state === "revoking"}
                       >
                         Revoke
                       </Button>
@@ -339,6 +353,13 @@ export function TokensPage() {
         state={installDialog}
         onChange={setInstallDialog}
         onClose={() => setInstallDialog({ open: false, token: null, provider: "manual" })}
+      />
+      <TokenRevokeDialog
+        token={revokeDialog}
+        actionState={revokeState.state}
+        error={revokeState.state === "error" ? revokeState.error : ""}
+        onClose={closeRevokeDialog}
+        onConfirm={() => revokeToken(revokeDialog)}
       />
     </section>
   );
