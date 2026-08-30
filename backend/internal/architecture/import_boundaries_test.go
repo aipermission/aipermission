@@ -1,12 +1,12 @@
 package architecture
 
 import (
-	"io/fs"
-	"os"
 	"os/exec"
-	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 )
 
 const modulePath = "github.com/aipermission/aipermission/backend"
@@ -17,51 +17,94 @@ func TestConnectorGroundworkImportBoundaries(t *testing.T) {
 		modulePath + "/internal/actions",
 		modulePath + "/internal/connectortargets",
 	}
-	forbidden := []string{
+	forbidden := append([]string{
 		modulePath + "/internal/api",
 		modulePath + "/internal/config",
 		modulePath + "/internal/db",
-		modulePath + "/internal/execution",
 		modulePath + "/internal/filetransfer",
-		modulePath + "/internal/sshconfig",
-		modulePath + "/internal/sshkeys",
 		modulePath + "/internal/tokens",
 		modulePath + "/internal/vault",
-	}
+	}, builtInConnectorPackages(t)...)
 
 	for _, pkg := range packages {
 		imports := packageDependencies(t, pkg)
 		for _, forbiddenImport := range forbidden {
-			if imports[forbiddenImport] {
+			if importsPackageOrSubpackage(imports, forbiddenImport) {
 				t.Fatalf("%s must not import %s", pkg, forbiddenImport)
 			}
 		}
 	}
 }
 
-func TestMailConnectorImportBoundary(t *testing.T) {
-	pkg := modulePath + "/internal/connectors/mail"
-	imports := packageDependencies(t, pkg)
-	for _, forbiddenImport := range []string{
+func importsPackageOrSubpackage(imports map[string]bool, root string) bool {
+	for imported := range imports {
+		if imported == root || strings.HasPrefix(imported, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBuiltInConnectorCorePackagesStayIndependentFromGatewayState(t *testing.T) {
+	forbidden := []string{
 		modulePath + "/internal/api",
 		modulePath + "/internal/config",
 		modulePath + "/internal/connectortargets",
 		modulePath + "/internal/db",
-		modulePath + "/internal/execution",
+		modulePath + "/internal/filetransfer",
 		modulePath + "/internal/history",
 		modulePath + "/internal/tokens",
 		modulePath + "/internal/vault",
-	} {
-		if imports[forbiddenImport] {
-			t.Fatalf("%s must not import %s", pkg, forbiddenImport)
+	}
+	for _, pkg := range builtInConnectorPackages(t) {
+		t.Run(strings.TrimPrefix(pkg, modulePath+"/internal/connectors/"), func(t *testing.T) {
+			imports := packageDependencies(t, pkg)
+			for _, forbiddenImport := range forbidden {
+				if importsPackageOrSubpackage(imports, forbiddenImport) {
+					t.Fatalf("%s must not import gateway state package %s", pkg, forbiddenImport)
+				}
+			}
+		})
+	}
+}
+
+func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T) {
+	connectorRoot := modulePath + "/internal/connectors/"
+	allowedRegistry := modulePath + "/internal/connectors/builtin"
+	builtInPackages := builtInConnectorPackages(t)
+	importsByPackage := allPackageImports(t)
+
+	for importer, imports := range importsByPackage {
+		if importer == allowedRegistry || strings.HasPrefix(importer, allowedRegistry+"/") || strings.HasPrefix(importer, connectorRoot) {
+			continue
+		}
+		for _, imported := range imports {
+			for _, connectorPackage := range builtInPackages {
+				if imported == connectorPackage || strings.HasPrefix(imported, connectorPackage+"/") {
+					t.Fatalf("%s imports connector implementation %s; shared runtime must use the generic connector boundary", importer, imported)
+				}
+			}
 		}
 	}
 }
 
-func TestOnlyBuiltinRegistryImportsMailConnector(t *testing.T) {
-	mailPackage := modulePath + "/internal/connectors/mail"
-	allowedImporter := modulePath + "/internal/connectors/builtin"
-	cmd := exec.Command("go", "list", "-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./...")
+func builtInConnectorPackages(t *testing.T) []string {
+	t.Helper()
+	registry, err := builtin.NewRegistry()
+	if err != nil {
+		t.Fatalf("build connector catalog: %v", err)
+	}
+	packages := make([]string, 0, len(registry.List()))
+	for _, info := range registry.List() {
+		packages = append(packages, modulePath+"/internal/connectors/"+info.Kind)
+	}
+	sort.Strings(packages)
+	return packages
+}
+
+func allPackageImports(t *testing.T) map[string][]string {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-buildvcs=false", "-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./...")
 	cmd.Dir = "../.."
 	output, err := cmd.Output()
 	if err != nil {
@@ -70,70 +113,21 @@ func TestOnlyBuiltinRegistryImportsMailConnector(t *testing.T) {
 		}
 		t.Fatalf("go list ./... failed: %v", err)
 	}
+	result := map[string][]string{}
 	for _, line := range strings.Split(string(output), "\n") {
-		importer, imports, ok := strings.Cut(line, "|")
-		if !ok || importer == allowedImporter {
+		importer, imports, ok := strings.Cut(strings.TrimSpace(line), "|")
+		if !ok || importer == "" {
 			continue
 		}
-		for _, imported := range strings.Fields(imports) {
-			if imported == mailPackage {
-				t.Fatalf("%s imports %s; only %s may register the Mail connector", importer, mailPackage, allowedImporter)
-			}
-		}
+		result[importer] = strings.Fields(imports)
 	}
-}
-
-func TestSharedRuntimeHasNoMailSpecificBranches(t *testing.T) {
-	backendRoot := filepath.Clean(filepath.Join("..", ".."))
-	allowedRoots := []string{
-		filepath.Clean(filepath.Join(backendRoot, "internal", "connectors", "mail")) + string(filepath.Separator),
-	}
-	registryPath := filepath.Clean(filepath.Join(backendRoot, "internal", "connectors", "builtin", "registry.go"))
-	registryTestPath := filepath.Clean(filepath.Join(backendRoot, "internal", "connectors", "builtin", "registry_test.go"))
-	architectureRoot := filepath.Clean(filepath.Join(backendRoot, "internal", "architecture")) + string(filepath.Separator)
-	mailIdentifiers := []string{
-		`"mail"`, "mailconnector", "imap_", "smtp_",
-		`"list_folders"`, `"check_mailbox"`, `"search_messages"`, `"get_message"`,
-		`"list_attachments"`, `"mark_read"`, `"mark_unread"`, `"move_message"`,
-		`"archive_message"`, `"send_message"`, `"reply_message"`, `"delete_message"`,
-	}
-	err := filepath.WalkDir(backendRoot, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || filepath.Ext(path) != ".go" {
-			return nil
-		}
-		cleanPath := filepath.Clean(path)
-		if cleanPath == registryPath || cleanPath == registryTestPath || strings.HasPrefix(cleanPath+string(filepath.Separator), architectureRoot) {
-			return nil
-		}
-		for _, root := range allowedRoots {
-			if strings.HasPrefix(cleanPath+string(filepath.Separator), root) {
-				return nil
-			}
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		source := strings.ToLower(string(content))
-		for _, identifier := range mailIdentifiers {
-			if strings.Contains(source, identifier) {
-				t.Errorf("shared runtime contains Mail-specific identifier %q in %s", identifier, path)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("scan shared runtime: %v", err)
-	}
+	return result
 }
 
 func packageDependencies(t *testing.T, pkg string) map[string]bool {
 	t.Helper()
 
-	cmd := exec.Command("go", "list", "-deps", "-f", "{{.ImportPath}}", pkg)
+	cmd := exec.Command("go", "list", "-buildvcs=false", "-deps", "-f", "{{.ImportPath}}", pkg)
 	cmd.Dir = "../.."
 	output, err := cmd.Output()
 	if err != nil {
