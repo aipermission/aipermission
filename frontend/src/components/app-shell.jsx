@@ -4,14 +4,11 @@ import { apiGet, apiPost, apiPut } from "../lib/api";
 import { BackupFreshnessNotices } from "./backup-freshness-notices";
 import { AppSidebar } from "./app-sidebar";
 import {
-  consoleSessionAttachUrl,
   createPollGenerationGuard,
   isActiveTransferBatch,
-  limitTranscript,
   liveConsoleRuntimeTargets,
   mergeConsoleSessionData,
   normalizeCredentialResources,
-  parseConsoleSocketMessage,
 } from "./app-shell-runtime";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
 import { TransferCenter } from "./transfer-center";
@@ -24,6 +21,7 @@ import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
 import { reconcileVaultApprovalDialog } from "../lib/vault-approval-poll";
 import { isLiveConsoleSession, isUnreadMessage, latestSessionForRuntime } from "./console/helpers";
+import { useConsoleConnections } from "./console/use-console-connections";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
   function toggleTheme() {
@@ -54,10 +52,17 @@ export function Shell({ theme, setTheme }) {
   });
   const [vaultActionDialog, setVaultActionDialog] = useState({ approval: null, note: "", state: "idle", error: null });
   const vaultSessionResolverRef = useRef(null);
-  const consoleConnectionsRef = useRef({});
   const seenPendingTransferApprovalsRef = useRef(new Set());
   const seenPendingVaultApprovalsRef = useRef(new Set());
   const pollGenerationGuard = useRef(createPollGenerationGuard()).current;
+  const {
+    attachSession: attachConsoleSession,
+    closeSession: closeConsoleSession,
+    disconnectAll: disconnectAllConsoleSessions,
+    disconnectSessions: disconnectConsoleSessions,
+    resizeSession: resizeConsoleSession,
+    sendInput: sendConsoleInput,
+  } = useConsoleConnections({ setConsoleSessions });
 
   function pollIsCurrent(generation) {
     return pollGenerationGuard.isCurrent(generation);
@@ -280,13 +285,6 @@ export function Shell({ theme, setTheme }) {
   }, []);
 
   useEffect(() => {
-    return () => {
-      Object.values(consoleConnectionsRef.current).forEach((connection) => connection?.close());
-      consoleConnectionsRef.current = {};
-    };
-  }, []);
-
-  useEffect(() => {
     const unlocked = databaseStatus.data?.unlocked === true || databaseStatus.data?.state === "unlocked";
     if (databaseStatus.state !== "ready" || !unlocked) {
       document.title = "AIPermission";
@@ -318,23 +316,6 @@ export function Shell({ theme, setTheme }) {
     }
     return { state: "ready", data: liveConsoleRuntimeTargets(targets.data, getConnectorModel), error: null };
   }, [targets.state, targets.data, targets.error]);
-
-  function patchConsoleSession(sessionID, updater) {
-    setConsoleSessions((current) => {
-      const index = current.data.findIndex((session) => Number(session.id) === Number(sessionID));
-      if (index === -1) return current;
-      const data = [...current.data];
-      data[index] = {
-        ...data[index],
-        ...updater(data[index]),
-      };
-      return {
-        state: "ready",
-        data,
-        error: null,
-      };
-    });
-  }
 
   function upsertConsoleSession(session) {
     setConsoleSessions((current) => {
@@ -425,113 +406,13 @@ export function Shell({ theme, setTheme }) {
     setVaultSessionDialog({ open: false, status: "idle", runtime: null, options: null, sessionOptions: null, error: null });
   }
 
-  function attachConsoleSession(sessionID, options = {}) {
-    const existing = consoleConnectionsRef.current[sessionID];
-    if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
-      if (!options.force) return;
-      existing.close();
-    }
-    if (existing && (existing.readyState === WebSocket.CLOSING || existing.readyState === WebSocket.CLOSED)) {
-      delete consoleConnectionsRef.current[sessionID];
-    }
-
-    patchConsoleSession(sessionID, () => ({ status: "connecting", error: null }));
-    const socket = new WebSocket(consoleSessionAttachUrl(sessionID));
-    consoleConnectionsRef.current[sessionID] = socket;
-
-    socket.onopen = () => {
-      if (consoleConnectionsRef.current[sessionID] !== socket) return;
-    };
-    socket.onmessage = (event) => {
-      if (consoleConnectionsRef.current[sessionID] !== socket) return;
-      const message = parseConsoleSocketMessage(event.data);
-      if (!message) {
-        patchConsoleSession(sessionID, (session) => ({
-          transcript: limitTranscript(`${session.transcript || ""}\r\n[console protocol warning] Ignored malformed server message.\r\n`),
-          status: session.status,
-          error: "Ignored malformed console server message.",
-        }));
-        return;
-      }
-      if (message.type === "snapshot") {
-        patchConsoleSession(sessionID, () => ({
-          transcript: message.data || "",
-          status: message.status || "connected",
-          error: null,
-        }));
-      }
-      if (message.type === "ready") {
-        patchConsoleSession(sessionID, () => ({ status: "connected", error: null }));
-      }
-      if (message.type === "output") {
-        patchConsoleSession(sessionID, (session) => ({
-          transcript: limitTranscript(`${session.transcript || ""}${message.data || ""}`),
-          status: message.status || "connected",
-          error: null,
-        }));
-      }
-      if (message.type === "error") {
-        patchConsoleSession(sessionID, (session) => ({
-          transcript: limitTranscript(`${session.transcript || ""}\r\n${message.data || "PTY error"}\r\n`),
-          status: "error",
-          error: message.data || "PTY error",
-        }));
-      }
-      if (message.type === "exit") {
-        patchConsoleSession(sessionID, (session) => ({
-          transcript: limitTranscript(`${session.transcript || ""}\r\n[session closed]\r\n`),
-          status: message.status || "closed",
-          error: message.data || "",
-        }));
-      }
-    };
-    socket.onerror = () => {
-      if (consoleConnectionsRef.current[sessionID] !== socket) return;
-      patchConsoleSession(sessionID, () => ({ status: "error", error: "PTY connection failed." }));
-    };
-    socket.onclose = () => {
-      if (consoleConnectionsRef.current[sessionID] !== socket) return;
-      delete consoleConnectionsRef.current[sessionID];
-    };
-  }
-
   function cancelConsoleCommand(sessionID) {
     sendConsoleInput(sessionID, "\u0003");
   }
 
-  function sendConsoleInput(sessionID, data) {
-    const socket = consoleConnectionsRef.current[sessionID];
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "input", data }));
-      return;
-    }
-    attachConsoleSession(sessionID);
-    void apiPost(`/api/console/sessions/${sessionID}/input`, { data }).catch((error) => {
-      patchConsoleSession(sessionID, () => ({ status: "error", error: error.message }));
-    });
-  }
-
-  function resizeConsoleSession(sessionID, cols, rows) {
-    const socket = consoleConnectionsRef.current[sessionID];
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "resize", cols, rows }));
-    }
-  }
-
-  async function closeConsoleSession(sessionID) {
-    await apiPost(`/api/console/sessions/${sessionID}/close`, {});
-    patchConsoleSession(sessionID, () => ({ status: "closed" }));
-  }
-
   async function restartConsoleRuntime(runtimeID) {
     const affectedSessions = consoleSessions.data.filter((session) => Number(session.runtime_id) === Number(runtimeID));
-    affectedSessions.forEach((session) => {
-      const connection = consoleConnectionsRef.current[session.id];
-      if (connection) {
-        connection.close();
-        delete consoleConnectionsRef.current[session.id];
-      }
-    });
+    disconnectConsoleSessions(affectedSessions.map((session) => session.id));
     const result = await apiPost(`/api/console/runtime-surfaces/${runtimeID}/restart`, {});
     await loadConsoleSessions();
     return result;
@@ -637,8 +518,7 @@ export function Shell({ theme, setTheme }) {
 
   async function lockDatabase(scope) {
     setLockDialog((current) => ({ ...current, state: "locking", error: null }));
-    Object.values(consoleConnectionsRef.current).forEach((connection) => connection?.close());
-    consoleConnectionsRef.current = {};
+    disconnectAllConsoleSessions();
     try {
       await apiPost("/api/lock", { scope });
       window.location.reload();
@@ -666,8 +546,7 @@ export function Shell({ theme, setTheme }) {
     }
     setSwitchDialog((current) => ({ ...current, state: "switching", error: null }));
     try {
-      Object.values(consoleConnectionsRef.current).forEach((connection) => connection?.close());
-      consoleConnectionsRef.current = {};
+      disconnectAllConsoleSessions();
       await apiPost("/api/databases/switch", {
         database_id: switchDialog.database_id,
         password: switchDialog.password,
