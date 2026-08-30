@@ -11,6 +11,7 @@ import {
   liveConsoleRuntimeTargets,
   mergeConsoleSessionData,
   normalizeCredentialResources,
+  parseConsoleSocketMessage,
 } from "./app-shell-runtime";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
 import { TransferCenter } from "./transfer-center";
@@ -443,7 +444,15 @@ export function Shell({ theme, setTheme }) {
     };
     socket.onmessage = (event) => {
       if (consoleConnectionsRef.current[sessionID] !== socket) return;
-      const message = JSON.parse(event.data);
+      const message = parseConsoleSocketMessage(event.data);
+      if (!message) {
+        patchConsoleSession(sessionID, (session) => ({
+          transcript: limitTranscript(`${session.transcript || ""}\r\n[console protocol warning] Ignored malformed server message.\r\n`),
+          status: session.status,
+          error: "Ignored malformed console server message.",
+        }));
+        return;
+      }
       if (message.type === "snapshot") {
         patchConsoleSession(sessionID, () => ({
           transcript: message.data || "",
