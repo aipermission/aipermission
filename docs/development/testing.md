@@ -40,15 +40,26 @@ This runs:
 - backend unit tests with an aggregate summary and reviewed floors for auth,
   permission, approval, Vault, session injection, target lifecycle, and audit
   outbox packages
+- deterministic encrypted recovery drills for backup/import, wrong-password,
+  migration-fixture, restart, and stored gateway-secret continuity
+- bounded fuzzing for approval contexts, SQL safety, redaction, Redis RESP,
+  transfer paths, backup metadata, and connector payload normalization
 - backend race tests
 - backend vet
 - backend govulncheck
 - frontend tests
+- frontend per-file coverage floors for connector permission, approval dialog,
+  and console page-state boundaries
 - frontend production build
 - frontend Playwright browser smoke for unlock, security settings, database import, settings retention, and token permission flows
+- frontend Playwright lifecycle coverage against a real encrypted backend for
+  Prompt approval, completion, stale-context rejection, lock/unlock, and restart
 - frontend production npm audit
 - MCP package tests
 - MCP package build
+- MCP production npm audit
+- MCP package dry pack
+- unscoped placeholder package dry pack
 
 The reviewed backend coverage floors are enforced by
 `backend/cmd/coveragecheck` after the full package test run. That command is the
@@ -58,9 +69,26 @@ session environment, token, Vault, Vault request, SQL safety, and selected
 built-in connector packages. A new security-sensitive package should be added
 there once its baseline coverage is established.
 
-- MCP production npm audit
-- MCP package dry pack
-- unscoped placeholder package dry pack
+The frontend coverage gate uses per-file V8 thresholds rather than one broad
+aggregate percentage. This keeps a well-covered utility from masking a weak
+authorization or session surface.
+
+The real-backend browser test runs the production API, SQLCipher database,
+UI-session authentication, CSRF, connector permission, approval, and history
+paths. Its deterministic in-process connector replaces only the remote service,
+so it can assert lifecycle behavior without network flakiness.
+
+Run recovery and fuzz gates independently while developing:
+
+```bash
+make recovery-drill
+make bounded-fuzz
+```
+
+Normal `go test` runs the committed fuzz seed corpus. `make bounded-fuzz` also
+mutates each security boundary for one second by default. Maintainers may set
+`AIPERMISSION_FUZZ_TIME` to an integer millisecond or second duration, capped at
+30 seconds per target, for a longer local pass.
 
 The scheduled/manual connector conformance workflow additionally exercises
 ClickHouse, Postgres, Valkey, RabbitMQ, and S3 against disposable pinned service

@@ -9,6 +9,26 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.33] - 2026-08-31
+
+### Maintenance
+
+- Critical backend packages and frontend authorization/session surfaces now have
+  explicit coverage floors enforced by CI and release checks.
+- A real encrypted backend browser flow now verifies Prompt approval, connector
+  completion, stale-context rejection, lock/unlock, and backend restart recovery.
+- Deterministic recovery drills now exercise encrypted backup/import, wrong-password
+  rejection, legacy migration fixtures, and gateway-secret continuity across restart.
+- Bounded fuzz gates now protect approval contexts, SQL safety, redaction, Redis
+  parsing, transfer paths, backup metadata, and connector payload normalization.
+
+### Security
+
+- Read-only SQL validation now rejects unterminated quoted values, identifiers, dollar
+  quotes, and block comments instead of passing malformed input to a connector.
+- Connector number fields now reject NaN and infinite values before canonical approval
+  hashing or JSON persistence.
+
 ## [0.2.32] - 2026-08-30
 
 ### Changed

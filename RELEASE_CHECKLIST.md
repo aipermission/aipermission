@@ -26,13 +26,23 @@ go vet ./...
 govulncheck ./...
 ```
 
+From the repository root, also run the deterministic recovery and bounded fuzz
+gates (both are included in `make release-check`):
+
+```bash
+make recovery-drill
+make bounded-fuzz
+```
+
 ## Frontend
 
 ```bash
 cd frontend
 npm test
+npm run test:coverage
 npm run build
 npm run test:e2e
+npm run test:e2e:real
 npm audit --omit=dev --audit-level=moderate
 ```
 
