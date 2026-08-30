@@ -14,7 +14,7 @@ const model = createDatabaseConnectorModel({
     host: "127.0.0.1",
     port: defaultPort,
     database: defaultDatabase,
-    tls_mode: "disable",
+    tls_mode: "auto",
     transport_target_ref: "",
   },
   credentialDefaults: { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only analytics" },

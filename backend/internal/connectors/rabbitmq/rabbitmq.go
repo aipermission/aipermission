@@ -94,9 +94,10 @@ func (Connector) TargetSchema() connectors.Schema {
 			Label:       "Scheme",
 			Type:        connectors.FieldSelect,
 			Required:    true,
-			Default:     defaultRabbitMQScheme,
-			Description: "RabbitMQ Management API HTTP scheme.",
+			Default:     "auto",
+			Description: "Auto uses verified HTTPS for remote direct endpoints and HTTP for local or SSH-tunneled endpoints.",
 			Options: []connectors.FieldOption{
+				{Value: "auto", Label: "Auto"},
 				{Value: "http", Label: "HTTP"},
 				{Value: "https", Label: "HTTPS"},
 			},
@@ -397,6 +398,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			"target":          req.Target.Name,
 			"profile":         req.Profile.Label,
 			"connection_mode": connectionMode(req.Target),
+			"scheme":          rabbitScheme(req.Target),
 			"vhost":           vhost,
 		},
 	}, nil
@@ -827,10 +829,17 @@ func connectionMode(target connectors.TargetView) string {
 
 func rabbitScheme(target connectors.TargetView) string {
 	scheme := strings.ToLower(strings.TrimSpace(stringValue(target.Config, "scheme")))
-	if scheme != "https" {
+	switch scheme {
+	case "https":
+		return "https"
+	case "auto":
+		if connectors.UseVerifiedTLSByDefault(connectionMode(target), rabbitHost(target)) {
+			return "https"
+		}
+		return "http"
+	default:
 		return defaultRabbitMQScheme
 	}
-	return scheme
 }
 
 func rabbitHost(target connectors.TargetView) string {

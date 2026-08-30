@@ -53,6 +53,7 @@ export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets =
         <Field>
           Scheme
           <Select value={form.scheme || "http"} onChange={(event) => onChange("scheme", event.target.value)}>
+            <option value="auto">Auto</option>
             <option value="http">HTTP</option>
             <option value="https">HTTPS</option>
           </Select>

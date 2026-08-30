@@ -177,12 +177,26 @@ func TestConnectDistinguishesMissingOptionalPasswordFromProviderFailure(t *testi
 }
 
 func TestClickHouseTLSConfig(t *testing.T) {
-	if config := clickHouseTLSConfig(connectors.TargetView{Config: map[string]any{"tls_mode": "disable", "host": "db.internal"}}); config != nil {
-		t.Fatalf("disabled TLS config = %#v, want nil", config)
+	plaintextTargets := []connectors.TargetView{
+		{Config: map[string]any{"tls_mode": "disable", "host": "db.internal"}},
+		{Config: map[string]any{"host": "db.internal"}},
+		{Config: map[string]any{"tls_mode": "auto", "connection_mode": "direct", "host": "127.0.0.1"}},
+		{Config: map[string]any{"tls_mode": "auto", "connection_mode": "over_ssh", "host": "db.internal"}},
 	}
-	config := clickHouseTLSConfig(connectors.TargetView{Config: map[string]any{"tls_mode": "verify_full", "host": "db.internal"}})
-	if config == nil || config.ServerName != "db.internal" || config.MinVersion != tls.VersionTLS12 {
-		t.Fatalf("unexpected verified TLS config: %#v", config)
+	for _, target := range plaintextTargets {
+		if config := clickHouseTLSConfig(target); config != nil {
+			t.Fatalf("plaintext TLS config = %#v for target %#v, want nil", config, target.Config)
+		}
+	}
+	verifiedTargets := []connectors.TargetView{
+		{Config: map[string]any{"tls_mode": "verify_full", "connection_mode": "over_ssh", "host": "db.internal"}},
+		{Config: map[string]any{"tls_mode": "auto", "connection_mode": "direct", "host": "db.internal"}},
+	}
+	for _, target := range verifiedTargets {
+		config := clickHouseTLSConfig(target)
+		if config == nil || config.ServerName != "db.internal" || config.MinVersion != tls.VersionTLS12 {
+			t.Fatalf("unexpected verified TLS config for %#v: %#v", target.Config, config)
+		}
 	}
 }
 

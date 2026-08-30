@@ -3,6 +3,7 @@ package redisconnector
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -28,6 +29,36 @@ func TestTargetSchemaExposesRedisAndValkeyProducts(t *testing.T) {
 		{Value: ServerFamilyValkey, Label: "Valkey"},
 	}) {
 		t.Fatalf("server family options = %#v", field.Options)
+	}
+}
+
+func TestRedisTLSConfigPreservesSavedValuesAndSecuresNewRemoteTargets(t *testing.T) {
+	plaintextTargets := []connectors.TargetView{
+		{Config: map[string]any{"host": "cache.internal"}},
+		{Config: map[string]any{"tls_mode": "disable", "host": "cache.internal"}},
+		{Config: map[string]any{"tls_mode": "auto", "connection_mode": "direct", "host": "127.0.0.1"}},
+		{Config: map[string]any{"tls_mode": "auto", "connection_mode": "over_ssh", "host": "cache.internal"}},
+	}
+	for _, target := range plaintextTargets {
+		if config := redisTLSConfig(target); config != nil {
+			t.Fatalf("plaintext TLS config = %#v for target %#v, want nil", config, target.Config)
+		}
+	}
+	verifiedTargets := []connectors.TargetView{
+		{Config: map[string]any{"tls_mode": "verify_full", "connection_mode": "over_ssh", "host": "cache.internal"}},
+		{Config: map[string]any{"tls_mode": "auto", "connection_mode": "direct", "host": "cache.internal"}},
+	}
+	for _, target := range verifiedTargets {
+		config := redisTLSConfig(target)
+		if config == nil || config.ServerName != "cache.internal" || config.MinVersion != tls.VersionTLS12 {
+			t.Fatalf("unexpected verified TLS config for %#v: %#v", target.Config, config)
+		}
+	}
+}
+
+func TestClassifyRedisTLSError(t *testing.T) {
+	if got := classifyRedisTestError(errors.New("redis TLS handshake: x509: certificate signed by unknown authority")); got != connectors.TestFailedTLS {
+		t.Fatalf("status = %q, want %q", got, connectors.TestFailedTLS)
 	}
 }
 

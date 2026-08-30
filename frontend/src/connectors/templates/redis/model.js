@@ -14,6 +14,7 @@ export function emptyForm() {
     host: "127.0.0.1",
     port: 6379,
     database: 0,
+    tls_mode: "auto",
     transport_target_ref: "",
     profile_label: "default",
     username: "",
@@ -33,6 +34,7 @@ export function formFromTarget({ target, profile }) {
     host: target.config?.host || "127.0.0.1",
     port: target.config?.port || 6379,
     database: target.config?.database || 0,
+    tls_mode: target.config?.tls_mode || "disable",
     transport_target_ref: target.config?.transport_target_ref || "",
     profile_label: selectedProfile.label || "default",
     username: selectedProfile.public?.username || "",
@@ -281,12 +283,14 @@ async function updateTarget({ form, target }) {
 }
 
 function redisTargetConfigFromForm(form) {
+  const tlsMode = ["auto", "verify_full"].includes(form.tls_mode) ? form.tls_mode : "disable";
   return {
     server_family: form.server_family === "valkey" ? "valkey" : defaultServerFamily,
     connection_mode: form.connection_mode || "direct",
     host: form.host || "127.0.0.1",
     port: Number(form.port) || 6379,
     database: Number(form.database) || 0,
+    tls_mode: tlsMode,
     transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref || "" : "",
   };
 }

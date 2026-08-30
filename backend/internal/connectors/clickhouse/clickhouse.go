@@ -90,9 +90,10 @@ func (Connector) TargetSchema() connectors.Schema {
 			Label:       "TLS mode",
 			Type:        connectors.FieldSelect,
 			Required:    true,
-			Default:     "disable",
-			Description: "Verify full validates the ClickHouse certificate and host name. Disable only for trusted local or SSH-tunneled endpoints.",
+			Default:     "auto",
+			Description: "Auto verifies TLS for remote direct endpoints and uses plaintext for local or SSH-tunneled endpoints. Verify full always validates the certificate and host name.",
 			Options: []connectors.FieldOption{
+				{Value: "auto", Label: "Auto"},
 				{Value: "disable", Label: "Disable"},
 				{Value: "verify_full", Label: "Verify full"},
 			},
@@ -379,10 +380,15 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB, e
 }
 
 func clickHouseTLSConfig(target connectors.TargetView) *tls.Config {
-	if tlsMode(target.Config) != "verify_full" {
+	mode := tlsMode(target.Config)
+	useTLS := mode == "verify_full"
+	if mode == "auto" {
+		useTLS = connectors.UseVerifiedTLSByDefault(connectionMode(target), targetString(target.Config, "host"))
+	}
+	if !useTLS {
 		return nil
 	}
-	return &tls.Config{MinVersion: tls.VersionTLS12, ServerName: targetString(target.Config, "host")}
+	return connectors.VerifiedTLSConfig(targetString(target.Config, "host"))
 }
 
 type queryOutput struct {
@@ -477,10 +483,14 @@ func connectionMode(target connectors.TargetView) string {
 }
 
 func tlsMode(config map[string]any) string {
-	if strings.TrimSpace(targetString(config, "tls_mode")) == "verify_full" {
+	switch strings.TrimSpace(targetString(config, "tls_mode")) {
+	case "auto":
+		return "auto"
+	case "verify_full":
 		return "verify_full"
+	default:
+		return "disable"
 	}
-	return "disable"
 }
 
 func targetPort(config map[string]any) int {

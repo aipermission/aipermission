@@ -330,6 +330,28 @@ func TestActionListNames(t *testing.T) {
 	}
 }
 
+func TestRabbitSchemePreservesSavedValuesAndSecuresNewRemoteTargets(t *testing.T) {
+	tests := []struct {
+		name   string
+		config map[string]any
+		want   string
+	}{
+		{name: "missing legacy value", config: map[string]any{"host": "rabbit.internal"}, want: "http"},
+		{name: "explicit HTTP", config: map[string]any{"scheme": "http", "host": "rabbit.internal"}, want: "http"},
+		{name: "explicit HTTPS over SSH", config: map[string]any{"scheme": "https", "connection_mode": "over_ssh", "host": "127.0.0.1"}, want: "https"},
+		{name: "auto remote direct", config: map[string]any{"scheme": "auto", "connection_mode": "direct", "host": "rabbit.internal"}, want: "https"},
+		{name: "auto local direct", config: map[string]any{"scheme": "auto", "connection_mode": "direct", "host": "127.0.0.1"}, want: "http"},
+		{name: "auto over SSH", config: map[string]any{"scheme": "auto", "connection_mode": "over_ssh", "host": "rabbit.internal"}, want: "http"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := rabbitScheme(connectors.TargetView{Config: test.config}); got != test.want {
+				t.Fatalf("rabbitScheme(%#v) = %q, want %q", test.config, got, test.want)
+			}
+		})
+	}
+}
+
 func TestPublishMarksPayloadAndPropertiesAsSensitiveInput(t *testing.T) {
 	actions, err := Connector{}.GetActionList(context.Background(), connectors.TargetView{}, connectors.CredentialProfileView{})
 	if err != nil {

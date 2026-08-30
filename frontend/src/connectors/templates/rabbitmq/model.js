@@ -8,7 +8,7 @@ export function emptyForm() {
     connector_kind: "rabbitmq",
     name: "rabbitmq",
     connection_mode: "direct",
-    scheme: "http",
+    scheme: "auto",
     host: "127.0.0.1",
     port: 15672,
     vhost: "/",
@@ -282,9 +282,10 @@ async function updateTarget({ form, target }) {
 }
 
 function rabbitTargetConfigFromForm(form) {
+  const scheme = ["auto", "https"].includes(form.scheme) ? form.scheme : "http";
   return {
     connection_mode: form.connection_mode || "direct",
-    scheme: form.scheme === "https" ? "https" : "http",
+    scheme,
     host: form.host || "127.0.0.1",
     port: Number(form.port) || 15672,
     vhost: form.vhost || "/",
