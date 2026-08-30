@@ -17,10 +17,7 @@ const sourceBudgets = [
     maxLines: 1200,
   },
 ];
-const sourceBudgetOverrides = new Map([
-  // Ordered schema history is intentionally kept in one auditable migration ledger.
-  ["backend/internal/db/migrations.go", 1600],
-]);
+const sourceBudgetOverrides = new Map();
 const suppressionBudget = 0;
 const criticalSuppressionPaths = [
   "src/components/console/connector-token-permission-panel.jsx",
