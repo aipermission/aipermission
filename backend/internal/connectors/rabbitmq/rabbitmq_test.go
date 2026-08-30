@@ -3,6 +3,7 @@ package rabbitmqconnector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -207,6 +208,30 @@ func TestConnectionReportsAuthFailure(t *testing.T) {
 	}
 }
 
+func TestConnectionDistinguishesMissingSecretFromProviderFailure(t *testing.T) {
+	server := httptest.NewUnstartedServer(nil)
+	defer server.Close()
+	runtime := testRuntimeForServer(t, server)
+	runtime.Secrets = rabbitTestSecrets{}
+	missing, err := Connector{}.TestConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("missing-secret connection test: %v", err)
+	}
+	if missing.Status != connectors.TestFailedAuth || !strings.Contains(missing.Message, ErrMissingSecret.Error()) {
+		t.Fatalf("missing-secret result = %#v", missing)
+	}
+
+	providerErr := errors.New("vault unavailable")
+	runtime.Secrets = rabbitFailingSecrets{err: providerErr}
+	failed, err := Connector{}.TestConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("provider-failure connection test: %v", err)
+	}
+	if failed.Status != connectors.TestUnknownError || !strings.Contains(failed.Message, "resolve rabbitmq password") {
+		t.Fatalf("provider-failure result = %#v", failed)
+	}
+}
+
 func testRuntimeForServer(t *testing.T, server *httptest.Server) connectors.RuntimeContext {
 	t.Helper()
 	host, port := splitServerAddr(t, server.Listener.Addr().String())
@@ -249,9 +274,15 @@ type rabbitTestSecrets map[string]string
 func (secrets rabbitTestSecrets) GetSecret(_ context.Context, name string) (string, error) {
 	value, ok := secrets[name]
 	if !ok {
-		return "", fmt.Errorf("missing secret")
+		return "", connectors.ErrSecretNotFound
 	}
 	return value, nil
+}
+
+type rabbitFailingSecrets struct{ err error }
+
+func (secrets rabbitFailingSecrets) GetSecret(context.Context, string) (string, error) {
+	return "", secrets.err
 }
 
 type rabbitTestCapabilities struct {
