@@ -52,6 +52,8 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     setNewValue("");
     setTTLDraft("");
     setResultMode("value");
+    setState({ state: "idle", error: "", message: "" });
+    setConfirmDialog(emptyConfirmDialog);
   }, [target.ref, activeSession.active, activeSession.startedAt]);
 
   useEffect(() => {
