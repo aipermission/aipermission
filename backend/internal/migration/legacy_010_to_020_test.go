@@ -119,6 +119,68 @@ func TestMigrateLegacy010To020KeepsOldSourcePasswordButRequiresStrongNewPassword
 	}
 }
 
+func TestRecoveryDrillLegacyMigrationCanRetryAfterSecretFailure(t *testing.T) {
+	ctx := context.Background()
+	dataPath := filepath.Join(t.TempDir(), "aipermission.db")
+	sourceID, sourcePath, err := db.NewDatabasePath(dataPath, "Legacy Retry")
+	if err != nil {
+		t.Fatalf("source path: %v", err)
+	}
+	const (
+		sourcePassword = "LegacyPassword123"
+		sourceSecret   = "migration-retry-source-secret-0123456789"
+		targetName     = "Recovered Migration"
+		targetPassword = "RecoveredPassword123"
+	)
+	sourceDB, err := db.OpenEncryptedForMigration(sourcePath, sourcePassword)
+	if err != nil {
+		t.Fatalf("open source db: %v", err)
+	}
+	createLegacySchema(t, sourceDB)
+	insertLegacyRows(t, sourceDB, sourceSecret)
+	if _, err := sourceDB.Exec(`DELETE FROM settings WHERE key = 'gateway_secret'`); err != nil {
+		t.Fatalf("remove source gateway secret: %v", err)
+	}
+	if err := sourceDB.Close(); err != nil {
+		t.Fatalf("close source db: %v", err)
+	}
+
+	request := Legacy010To020Request{
+		DataPath:         dataPath,
+		FallbackSecret:   "incorrect-migration-secret-0123456789",
+		SourceDatabaseID: sourceID,
+		SourcePassword:   sourcePassword,
+		TargetName:       targetName,
+		TargetPassword:   targetPassword,
+	}
+	if _, err := MigrateLegacy010To020(ctx, request); err == nil {
+		t.Fatal("migration with an incorrect fallback gateway secret should fail")
+	}
+	targetPath, err := db.DatabasePath(dataPath, "recovered-migration")
+	if err != nil {
+		t.Fatalf("target path: %v", err)
+	}
+	if db.Exists(targetPath) {
+		t.Fatal("failed migration exposed a partial target database")
+	}
+	stagingFiles, err := filepath.Glob(filepath.Join(filepath.Dir(targetPath), "."+filepath.Base(targetPath)+".migration-*"))
+	if err != nil {
+		t.Fatalf("list migration staging files: %v", err)
+	}
+	if len(stagingFiles) != 0 {
+		t.Fatalf("failed migration retained staging files: %v", stagingFiles)
+	}
+
+	request.FallbackSecret = sourceSecret
+	result, err := MigrateLegacy010To020(ctx, request)
+	if err != nil {
+		t.Fatalf("retry migration with the correct gateway secret: %v", err)
+	}
+	if result.Status != "completed" || result.TargetDatabaseID != "recovered-migration" || !db.Exists(targetPath) {
+		t.Fatalf("unexpected retry result: %+v", result)
+	}
+}
+
 func createLegacySchema(t *testing.T, database *sql.DB) {
 	t.Helper()
 	for _, statement := range []string{

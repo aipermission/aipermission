@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -117,6 +118,16 @@ func MigrateLegacy010To020(ctx context.Context, request Legacy010To020Request) (
 	if db.Exists(targetPath) {
 		return Legacy010To020Result{}, ErrTargetExists
 	}
+	stagingFile, err := os.CreateTemp(filepath.Dir(targetPath), "."+filepath.Base(targetPath)+".migration-*")
+	if err != nil {
+		return Legacy010To020Result{}, fmt.Errorf("create target migration staging file: %w", err)
+	}
+	stagingPath := stagingFile.Name()
+	if err := stagingFile.Close(); err != nil {
+		_ = os.Remove(stagingPath)
+		return Legacy010To020Result{}, fmt.Errorf("close target migration staging file: %w", err)
+	}
+	defer os.Remove(stagingPath)
 
 	sourceDB, err := db.OpenEncryptedForMigration(sourcePath, request.SourcePassword)
 	if err != nil {
@@ -131,23 +142,33 @@ func MigrateLegacy010To020(ctx context.Context, request Legacy010To020Request) (
 		return Legacy010To020Result{}, err
 	}
 
-	targetDB, err := db.OpenEncrypted(targetPath, request.TargetPassword)
+	targetDB, err := db.OpenEncrypted(stagingPath, request.TargetPassword)
 	if err != nil {
-		_ = os.Remove(targetPath)
 		return Legacy010To020Result{}, fmt.Errorf("create target database: %w", err)
 	}
-	defer targetDB.Close()
+	targetOpen := true
+	defer func() {
+		if targetOpen {
+			_ = targetDB.Close()
+		}
+	}()
 	if err := writeGatewaySecret(ctx, targetDB, sourceSecret); err != nil {
-		_ = targetDB.Close()
-		_ = os.Remove(targetPath)
 		return Legacy010To020Result{}, err
 	}
 
 	result, err := migrateLegacyRows(ctx, sourceDB, targetDB, sourceSecret)
 	if err != nil {
-		_ = targetDB.Close()
-		_ = os.Remove(targetPath)
 		return Legacy010To020Result{}, err
+	}
+	if err := targetDB.Close(); err != nil {
+		return Legacy010To020Result{}, fmt.Errorf("close migrated target database: %w", err)
+	}
+	targetOpen = false
+	if err := os.Link(stagingPath, targetPath); err != nil {
+		if os.IsExist(err) {
+			return Legacy010To020Result{}, ErrTargetExists
+		}
+		return Legacy010To020Result{}, fmt.Errorf("publish migrated target database: %w", err)
 	}
 	result.Status = "completed"
 	result.TargetDatabaseID = targetID
