@@ -2,6 +2,7 @@ package connectors
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 )
@@ -62,6 +63,15 @@ func TestNormalizeSchemaValuesAppliesDefaults(t *testing.T) {
 	}
 	if string(payload) != `{"host":"localhost","port":5432,"ssl_mode":"require"}` {
 		t.Fatalf("normalized payload = %s", payload)
+	}
+}
+
+func TestNormalizeSchemaValuesRejectsNonFiniteNumbers(t *testing.T) {
+	schema := Schema{Fields: []Field{{Name: "port", Type: FieldNumber, Required: true}}}
+	for _, value := range []any{"NaN", "Inf", "-Inf", math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if _, err := NormalizeSchemaValues(schema, map[string]any{"port": value}); err == nil {
+			t.Fatalf("expected non-finite number %#v to be rejected", value)
+		}
 	}
 }
 
