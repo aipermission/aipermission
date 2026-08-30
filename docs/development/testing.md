@@ -166,6 +166,21 @@ npm pack --dry-run
 
 For public releases, prefer npm trusted publishing or provenance from CI. Local manual publish is acceptable for early testing, but it does not provide the same supply-chain signal.
 
+Tagged container publication and MCP publication verify the exact tag commit
+before publishing. The source commit must have successful CI jobs and both
+CodeQL language analyses, and its tag, package versions, generated release
+notes, changelog, and build metadata must agree. A rerun is evaluated by its
+newest check run, so an old failed attempt cannot mask a newer result or block a
+successful rerun.
+
+The scheduled real-service connector conformance and native dependency
+freshness workflows are advisory release signals. Their latest status and age
+are reported during source verification, but they are not unconditional gates:
+real services can be unavailable, and native freshness can require a documented
+maintainer review rather than an automatic dependency change. Review stale or
+failed signals before tagging; the exact source CI and CodeQL checks remain the
+mandatory automated boundary.
+
 Container CI treats fixed HIGH and CRITICAL Trivy findings as blocking. Published
 GHCR images include explicit BuildKit SBOM and maximum-mode provenance
 attestations plus keyless Cosign signatures bound to immutable image digests.

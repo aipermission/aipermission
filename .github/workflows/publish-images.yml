@@ -7,6 +7,7 @@ on:
       - "v*.*.*-rc.*"
 
 permissions:
+  actions: read
   checks: read
   contents: read
   id-token: write
@@ -21,40 +22,16 @@ jobs:
     name: Verify source commit
     runs-on: ubuntu-latest
     steps:
-      - name: Require successful CI checks
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - name: Verify tagged source and required checks
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          required=(
-            "Security Hygiene"
-            "Backend"
-            "Frontend"
-            "MCP Package"
-            "Docs Hygiene"
-            "NPM Placeholder Package"
-            "Container Scan"
-          )
-          for attempt in {1..60}; do
-            checks="$(gh api -X GET "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" -f per_page=100)"
-            pending=0
-            for name in "${required[@]}"; do
-              conclusion="$(jq -r --arg name "${name}" '[.check_runs[] | select(.name == $name)][0].conclusion // "missing"' <<< "${checks}")"
-              case "${conclusion}" in
-                success) ;;
-                missing|null|"") pending=1 ;;
-                *)
-                  echo "Required check ${name} concluded with ${conclusion}." >&2
-                  exit 1
-                  ;;
-              esac
-            done
-            if [[ "${pending}" -eq 0 ]]; then
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "Timed out waiting for required CI checks on ${GITHUB_SHA}." >&2
-          exit 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/verify-release-source.js
 
   publish:
     name: Publish ${{ matrix.image }} image
