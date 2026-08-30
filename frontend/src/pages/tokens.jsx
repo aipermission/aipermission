@@ -12,6 +12,7 @@ import { Drawer } from "../components/ui/drawer";
 import { Field, Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { ConnectorPermissionDialog } from "../components/tokens/connector-permission-dialog";
+import { CreatedTokenNotice } from "../components/tokens/created-token-notice";
 import { TokenInstallDialog } from "../components/tokens/token-install-dialog";
 import { TokenRevokeDialog } from "../components/tokens/token-revoke-dialog";
 import { VaultPermissionDialog } from "../components/tokens/vault-permission-dialog";
@@ -159,18 +160,7 @@ export function TokensPage() {
         />
       </div>
 
-      {createdToken ? (
-        <Notice tone="good">
-          <div className="grid gap-2">
-            <strong>{createdToken.name} token created.</strong>
-            <span className="text-sm">Copy it now. If reusable token copy is off in Settings, this value will not be shown again.</span>
-            <div className="flex gap-2">
-              <Input className="font-mono text-xs" readOnly value={maskedToken(createdToken.token)} />
-              <CopyButton value={createdToken.token} variant="outline" />
-            </div>
-          </div>
-        </Notice>
-      ) : null}
+      <CreatedTokenNotice token={createdToken} onDismiss={() => setCreatedToken(null)} />
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       {tokens.state === "error" ? <Notice tone="bad">{tokens.error}</Notice> : null}
