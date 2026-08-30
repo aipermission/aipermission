@@ -660,7 +660,13 @@ func newRabbitClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 		return nil, fmt.Errorf("%w: username is required", ErrMissingSecret)
 	}
 	password, err := runtime.Secrets.GetSecret(ctx, "password")
-	if err != nil || strings.TrimSpace(password) == "" {
+	if errors.Is(err, connectors.ErrSecretNotFound) {
+		return nil, fmt.Errorf("%w: password is required", ErrMissingSecret)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: resolve rabbitmq password: %w", connectors.ErrSecretProvider, err)
+	}
+	if strings.TrimSpace(password) == "" {
 		return nil, fmt.Errorf("%w: password is required", ErrMissingSecret)
 	}
 	scheme := rabbitScheme(runtime.Target)
@@ -758,6 +764,9 @@ func rabbitHTTPError(status int, data []byte) error {
 func classifyRabbitTestError(err error) connectors.TestStatus {
 	if err == nil {
 		return connectors.TestOK
+	}
+	if errors.Is(err, connectors.ErrSecretProvider) {
+		return connectors.TestUnknownError
 	}
 	message := strings.ToLower(err.Error())
 	switch {

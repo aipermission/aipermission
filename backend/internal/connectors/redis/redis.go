@@ -458,8 +458,10 @@ func openRedisClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 func authenticateRedis(ctx context.Context, runtime connectors.RuntimeContext, client *redisClient) error {
 	username := strings.TrimSpace(stringValue(runtime.Profile.Public, "username"))
 	password, err := runtime.Secrets.GetSecret(ctx, "password")
-	if err != nil {
+	if errors.Is(err, connectors.ErrSecretNotFound) {
 		password = ""
+	} else if err != nil {
+		return fmt.Errorf("%w: resolve redis password: %w", connectors.ErrSecretProvider, err)
 	}
 	password = strings.TrimSpace(password)
 	if username == "" && password == "" {
@@ -818,6 +820,9 @@ func scorePairs(values []string, maxBytes int) []map[string]string {
 func classifyRedisTestError(err error) connectors.TestStatus {
 	if err == nil {
 		return connectors.TestOK
+	}
+	if errors.Is(err, connectors.ErrSecretProvider) {
+		return connectors.TestUnknownError
 	}
 	message := strings.ToLower(err.Error())
 	switch {

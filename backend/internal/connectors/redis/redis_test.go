@@ -3,6 +3,7 @@ package redisconnector
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -225,6 +226,23 @@ func TestConnectionDetectsValkeyServerIdentity(t *testing.T) {
 		result.Details["server_version"] != "8.1.3" ||
 		result.Details["compatibility_version"] != "7.2.4" {
 		t.Fatalf("details = %#v", result.Details)
+	}
+}
+
+func TestConnectionFailsClosedOnSecretProviderError(t *testing.T) {
+	providerErr := errors.New("vault unavailable")
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		t.Fatalf("unexpected Redis command after secret-provider failure: %#v", command)
+		return ""
+	})
+	runtime.Secrets = failingSecrets{err: providerErr}
+
+	result, err := Connector{}.TestConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("test connection: %v", err)
+	}
+	if result.Status != connectors.TestUnknownError || !strings.Contains(result.Message, "resolve redis password") {
+		t.Fatalf("result = %#v", result)
 	}
 }
 
@@ -494,7 +512,13 @@ func (secrets testSecrets) GetSecret(_ context.Context, name string) (string, er
 	if value, ok := secrets[name]; ok {
 		return value, nil
 	}
-	return "", fmt.Errorf("missing")
+	return "", connectors.ErrSecretNotFound
+}
+
+type failingSecrets struct{ err error }
+
+func (secrets failingSecrets) GetSecret(context.Context, string) (string, error) {
+	return "", secrets.err
 }
 
 type testCapabilities struct {
