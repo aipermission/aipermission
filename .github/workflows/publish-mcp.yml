@@ -11,8 +11,14 @@ on:
         options:
           - "true"
           - "false"
+      release_tag:
+        description: "Exact release tag to verify and publish (for example v0.2.30)"
+        required: true
+        type: string
 
 permissions:
+  actions: read
+  checks: read
   contents: read
   id-token: write
 
@@ -22,12 +28,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
           cache: npm
           cache-dependency-path: packages/mcp/package-lock.json
+      - name: Verify tagged source and required checks
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/verify-release-source.js --repository "${GITHUB_REPOSITORY}" --sha "$(git rev-parse HEAD)" --tag "${{ inputs.release_tag }}"
       - name: Install
         working-directory: packages/mcp
         run: npm ci

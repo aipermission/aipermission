@@ -31,7 +31,9 @@ jobs:
       - name: Maintenance budgets
         run: node scripts/maintenance-budget-check.js
       - name: Release version consistency
-        run: node scripts/release-version.js --check
+        run: |
+          node --test scripts/verify-release-source.test.js
+          node scripts/release-version.js --check
       - name: Native dependency inventory
         run: node scripts/native-dependency-check.js
 
