@@ -1,7 +1,8 @@
 import { Database, Plus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
-import { Field, Input, Select } from "../../../components/ui/form";
+import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { CredentialProfileFields } from "../_shared/credential-profile-fields";
 
 export function RabbitMQCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
   const rabbitTargets = targets.filter((target) => target.connector_kind === "rabbitmq");
@@ -17,35 +18,16 @@ export function RabbitMQCredentialFormTemplate({ targets, form, formMode = "crea
             : "Create a RabbitMQ profile, then bind tokens to this profile from Console or Tokens."}
         </Notice>
       )}
-      <Field>
-        Connector target
-        <Select
-          value={form.target_id}
-          onChange={(event) => onChange({ ...form, target_id: event.target.value })}
-          disabled={editing}
-          required
-        >
-          <option value="" disabled>
-            Select RabbitMQ target
-          </option>
-          {rabbitTargets.map((target) => (
-            <option value={target.id} key={target.id}>
-              {target.name} · management {target.config?.scheme || "http"}://{target.config?.host}:{target.config?.port || 15672} ·{" "}
-              {target.config?.vhost || "/"}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field>
-          Profile label
-          <Input value={form.profile_label} onChange={(event) => onChange({ ...form, profile_label: event.target.value })} required />
-        </Field>
-        <Field>
-          Risk label
-          <Input value={form.risk_label} onChange={(event) => onChange({ ...form, risk_label: event.target.value })} />
-        </Field>
-      </div>
+      <CredentialProfileFields
+        targets={rabbitTargets}
+        form={form}
+        editing={editing}
+        onChange={onChange}
+        targetPlaceholder="Select RabbitMQ target"
+        targetOptionLabel={(target) =>
+          `${target.name} · management ${target.config?.scheme || "http"}://${target.config?.host}:${target.config?.port || 15672} · ${target.config?.vhost || "/"}`
+        }
+      />
       <Field>
         Username
         <Input
