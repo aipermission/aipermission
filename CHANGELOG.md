@@ -9,6 +9,28 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.30] - 2026-08-30
+
+### Changed
+
+- Container and MCP publication now verify the exact tagged source commit, release
+  metadata, mandatory CI and CodeQL results, package tests, builds, and pack output
+  before publishing.
+- Real-service connector conformance and native dependency freshness remain visible
+  advisory release signals instead of unreliable unconditional external-service gates.
+
+### Fixed
+
+- Direct API server construction now returns workspace and runtime identity
+  initialization failures instead of starting with incomplete execution identity.
+
+### Security
+
+- Malformed non-empty token, connector-permission, and project-capability expiry values
+  now fail closed while an explicit empty expiry remains permanent.
+- The local HTTP boundary now rejects missing or malformed Host and RemoteAddr values
+  and accepts only parsed loopback request origins.
+
 ## [0.2.29] - 2026-08-26
 
 ### Changed
