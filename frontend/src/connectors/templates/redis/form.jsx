@@ -77,6 +77,14 @@ export function RedisConnectorFormTemplate({ form, mode = "create", targets = []
           <Input type="number" min="0" max="1023" value={form.database} onChange={(event) => onChange("database", event.target.value)} />
         </Field>
       </div>
+      <Field>
+        TLS mode
+        <Select value={form.tls_mode || "disable"} onChange={(event) => onChange("tls_mode", event.target.value)}>
+          <option value="auto">Auto</option>
+          <option value="disable">Disable</option>
+          <option value="verify_full">Verify full</option>
+        </Select>
+      </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
           Profile label

@@ -31,6 +31,7 @@ export function ClickHouseConnectorFormTemplate({ form, mode = "create", targets
         <Field>
           TLS mode
           <Select value={form.tls_mode} onChange={(event) => onChange("tls_mode", event.target.value)}>
+            <option value="auto">Auto</option>
             <option value="disable">Disable</option>
             <option value="verify_full">Verify full</option>
           </Select>

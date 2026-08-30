@@ -3,11 +3,13 @@ package redisconnector
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -113,6 +115,19 @@ func (Connector) TargetSchema() connectors.Schema {
 			Type:        connectors.FieldNumber,
 			Default:     0,
 			Description: "Logical database number.",
+		},
+		{
+			Name:        "tls_mode",
+			Label:       "TLS mode",
+			Type:        connectors.FieldSelect,
+			Required:    true,
+			Default:     "auto",
+			Description: "Auto verifies TLS for remote direct endpoints and uses plaintext for local or SSH-tunneled endpoints.",
+			Options: []connectors.FieldOption{
+				{Value: "auto", Label: "Auto"},
+				{Value: "disable", Label: "Disable"},
+				{Value: "verify_full", Label: "Verify full"},
+			},
 		},
 		{
 			Name:        "transport_target_ref",
@@ -353,6 +368,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			"profile":         req.Profile.Label,
 			"server_family":   serverFamily(req.Target),
 			"connection_mode": connectionMode(req.Target),
+			"tls_mode":        redisTLSMode(req.Target),
 			"database":        redisDatabase(req.Target),
 		},
 	}, nil
@@ -441,6 +457,17 @@ func openRedisClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tlsConfig := redisTLSConfig(runtime.Target); tlsConfig != nil {
+		handshakeContext, cancel := context.WithTimeout(ctx, 10*time.Second)
+		tlsConn := tls.Client(conn, tlsConfig)
+		handshakeErr := tlsConn.HandshakeContext(handshakeContext)
+		cancel()
+		if handshakeErr != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("redis TLS handshake: %w", handshakeErr)
+		}
+		conn = tlsConn
 	}
 	client := newRedisClient(conn)
 	if err := authenticateRedis(ctx, runtime, client); err != nil {
@@ -827,6 +854,8 @@ func classifyRedisTestError(err error) connectors.TestStatus {
 	}
 	message := strings.ToLower(err.Error())
 	switch {
+	case strings.Contains(message, "tls"), strings.Contains(message, "certificate"), strings.Contains(message, "x509"):
+		return connectors.TestFailedTLS
 	case strings.Contains(message, "auth"), strings.Contains(message, "noauth"), strings.Contains(message, "invalid username-password"):
 		return connectors.TestFailedAuth
 	case strings.Contains(message, "connection refused"), strings.Contains(message, "i/o timeout"), strings.Contains(message, "no such host"), strings.Contains(message, "network"):
@@ -842,6 +871,29 @@ func connectionMode(target connectors.TargetView) string {
 		return "direct"
 	}
 	return mode
+}
+
+func redisTLSConfig(target connectors.TargetView) *tls.Config {
+	mode := redisTLSMode(target)
+	useTLS := mode == "verify_full"
+	if mode == "auto" {
+		useTLS = connectors.UseVerifiedTLSByDefault(connectionMode(target), redisHost(target))
+	}
+	if !useTLS {
+		return nil
+	}
+	return connectors.VerifiedTLSConfig(redisHost(target))
+}
+
+func redisTLSMode(target connectors.TargetView) string {
+	switch strings.TrimSpace(stringValue(target.Config, "tls_mode")) {
+	case "auto":
+		return "auto"
+	case "verify_full":
+		return "verify_full"
+	default:
+		return "disable"
+	}
 }
 
 func serverFamily(target connectors.TargetView) string {
