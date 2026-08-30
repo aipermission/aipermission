@@ -30,6 +30,34 @@ target + credential profile + action
   -> history + audit
 ```
 
+```mermaid
+flowchart LR
+  Client[Local UI or MCP client] --> Gateway[Generic gateway boundary]
+  Gateway --> Resolve[Resolve project, target, and profile]
+  Resolve --> Permission[Shared token permission and approval]
+  Permission --> Connector[Connector-owned action preparation and execution]
+  Connector --> Projection[Shared redaction and result projection]
+  Projection --> History[Unified history and audit]
+
+  subgraph ConnectorPackage[Connector package]
+    Schema[Target and credential schemas]
+    Catalog[Help and action catalog]
+    Runtime[Transport-specific runtime]
+    Templates[Frontend templates]
+  end
+
+  Schema -. public metadata .-> Resolve
+  Catalog -. action definition .-> Connector
+  Runtime -. typed execution contract .-> Connector
+  Templates -. local UI surface .-> Client
+```
+
+Adding a normal connector changes the connector package and its registration,
+not the permission, approval, history, audit, or MCP tool families. A
+runtime-integrated connector may additionally implement a reviewed typed
+adapter, but the gateway still owns the same authorization and projection
+boundaries.
+
 SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and Mail are
 built-in connectors that share the same target/profile, permission, approval,
 history, and audit model. SSH owns a live terminal and file-transfer surface;
