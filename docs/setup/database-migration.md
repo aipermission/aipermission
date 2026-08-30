@@ -74,6 +74,53 @@ screen and use **Delete old local copy**. AIPermission asks for that database
 password in the normal unlock form, then asks you to type the database name
 before deleting the local file.
 
+## Gateway Secret Recovery
+
+Connector credentials in a legacy database may depend on the gateway secret
+that encrypted them. Most supported source databases carry that secret inside
+their encrypted `settings` table. Older preview databases may instead require
+the original `gateway.secret` file from the source data directory, or the exact
+`AIPERMISSION_GATEWAY_SECRET` value that was used with that installation.
+
+If migration reports a missing gateway secret or cannot decrypt a credential:
+
+1. Stop the migration helper.
+2. Restore the original source data directory and its `gateway.secret`, or set
+   the original explicit `AIPERMISSION_GATEWAY_SECRET` value.
+3. Start the helper and retry with the same source database.
+
+Do not generate or rotate a gateway secret to work around this error. A new
+secret cannot decrypt payloads protected by the old one. If the original secret
+is irretrievably lost and is not embedded in the encrypted source database,
+those encrypted connector payloads cannot be recovered. The source database
+still remains unchanged.
+
+Treat the gateway secret as sensitive. Never paste it into an issue, log,
+diagnostics bundle, or migration screenshot.
+
+## Interrupted Or Failed Migration
+
+Migration writes to a hidden staging database beside the requested target. The
+source remains read-only, and the final target name is published without
+overwriting only after the staged database is complete, validated, and closed.
+Normal failures remove the staging file, so correcting the cause and retrying
+the same target name is safe while no final target exists.
+
+An abrupt process or host shutdown can leave a hidden file whose name contains
+`.migration-`. Stop the migration helper before removing only that abandoned
+staging artifact. Do not remove the source database or a completed target. If a
+final target with the requested name already exists, verify that database or
+choose a different target name; the helper intentionally will not replace it.
+
+Use this recovery order:
+
+1. Preserve the source database and original gateway-secret material.
+2. Stop the helper and correct the reported password, secret, storage, or input
+   problem.
+3. Confirm that no completed target with the requested name exists.
+4. Restart the helper and retry.
+5. Unlock and inspect the migrated target before deleting any old local copy.
+
 ## Unsupported Schema Error
 
 If an older database is opened directly in the normal gateway, unlock fails with
