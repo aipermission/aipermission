@@ -1,4 +1,4 @@
-.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln connector-conformance frontend-lint frontend-format-check frontend-test frontend-coverage frontend-e2e frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -11,6 +11,7 @@ help:
 		'  make rest-contract   Regenerate the incremental typed OpenAPI contract' \
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
+		'  make frontend-coverage  Enforce critical frontend per-file coverage floors' \
 		'  make connector-conformance  Test protocol connectors against disposable real services' \
 		'  make release-check   Run the local RC verification set' \
 		'  make docker-up       Build and start the local Docker stack'
@@ -68,6 +69,9 @@ frontend-format-check:
 frontend-test:
 	cd frontend && npm test
 
+frontend-coverage:
+	cd frontend && npm run test:coverage
+
 frontend-e2e:
 	cd frontend && npm run test:e2e
 
@@ -98,7 +102,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln frontend-lint frontend-format-check frontend-test frontend-coverage frontend-build frontend-e2e frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build
