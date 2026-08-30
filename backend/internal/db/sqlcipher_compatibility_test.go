@@ -39,7 +39,7 @@ func TestSQLCipher442FixtureCompatibility(t *testing.T) {
 	}
 }
 
-func TestSQLCipher442ApplicationFixtureOpensViaProductionPath(t *testing.T) {
+func TestRecoveryDrillSQLCipher442ApplicationFixtureMigratesViaProductionPath(t *testing.T) {
 	fixture, err := os.ReadFile(legacyApplicationFixture)
 	if err != nil {
 		t.Fatalf("read application fixture: %v", err)
