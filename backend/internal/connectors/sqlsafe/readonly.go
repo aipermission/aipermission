@@ -25,7 +25,10 @@ func ValidateReadOnly(sql string, actionName string, maxBytes int, allowedPrefix
 	if normalized == "" {
 		return fmt.Errorf("%s sql is required", actionName)
 	}
-	checkSQL := validationSQL(normalized)
+	checkSQL, err := validationSQL(normalized)
+	if err != nil {
+		return fmt.Errorf("%s sql is malformed: %w", actionName, err)
+	}
 	if strings.Contains(checkSQL, ";") {
 		return fmt.Errorf("%s only accepts a single statement", actionName)
 	}
@@ -51,7 +54,7 @@ func hasAllowedPrefix(sql string, prefixes []string) bool {
 	return false
 }
 
-func validationSQL(sql string) string {
+func validationSQL(sql string) (string, error) {
 	var out strings.Builder
 	out.Grow(len(sql))
 	for i := 0; i < len(sql); {
@@ -75,15 +78,33 @@ func validationSQL(sql string) string {
 			if strings.HasPrefix(sql[i:], "*/") {
 				out.WriteString("  ")
 				i += 2
+			} else {
+				return "", fmt.Errorf("unterminated block comment")
 			}
 		case sql[i] == '\'':
-			i = maskQuoted(sql, i, '\'', &out)
+			var closed bool
+			i, closed = maskQuoted(sql, i, '\'', &out)
+			if !closed {
+				return "", fmt.Errorf("unterminated single-quoted value")
+			}
 		case sql[i] == '"':
-			i = maskQuoted(sql, i, '"', &out)
+			var closed bool
+			i, closed = maskQuoted(sql, i, '"', &out)
+			if !closed {
+				return "", fmt.Errorf("unterminated quoted identifier")
+			}
 		case sql[i] == '`':
-			i = maskQuoted(sql, i, '`', &out)
+			var closed bool
+			i, closed = maskQuoted(sql, i, '`', &out)
+			if !closed {
+				return "", fmt.Errorf("unterminated quoted identifier")
+			}
 		case sql[i] == '$':
-			if end := dollarQuoteEnd(sql, i); end > i {
+			end, opener := dollarQuoteEnd(sql, i)
+			if opener && end < 0 {
+				return "", fmt.Errorf("unterminated dollar-quoted value")
+			}
+			if end > i {
 				for i < end {
 					out.WriteByte(' ')
 					i++
@@ -97,10 +118,10 @@ func validationSQL(sql string) string {
 			i++
 		}
 	}
-	return out.String()
+	return out.String(), nil
 }
 
-func maskQuoted(sql string, start int, quote byte, out *strings.Builder) int {
+func maskQuoted(sql string, start int, quote byte, out *strings.Builder) (int, bool) {
 	i := start
 	if i < len(sql) {
 		out.WriteByte(' ')
@@ -119,28 +140,28 @@ func maskQuoted(sql string, start int, quote byte, out *strings.Builder) int {
 				continue
 			}
 			i++
-			break
+			return i, true
 		}
 		i++
 	}
-	return i
+	return i, false
 }
 
-func dollarQuoteEnd(sql string, start int) int {
+func dollarQuoteEnd(sql string, start int) (int, bool) {
 	next := strings.IndexByte(sql[start+1:], '$')
 	if next < 0 {
-		return -1
+		return -1, false
 	}
 	tagEnd := start + 1 + next
 	tag := sql[start : tagEnd+1]
 	if !validDollarQuoteTag(tag) {
-		return -1
+		return -1, false
 	}
 	closing := strings.Index(sql[tagEnd+1:], tag)
 	if closing < 0 {
-		return -1
+		return -1, true
 	}
-	return tagEnd + 1 + closing + len(tag)
+	return tagEnd + 1 + closing + len(tag), true
 }
 
 func validDollarQuoteTag(tag string) bool {

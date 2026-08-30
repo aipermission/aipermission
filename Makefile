@@ -1,4 +1,4 @@
-.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill connector-conformance frontend-lint frontend-format-check frontend-test frontend-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -14,6 +14,7 @@ help:
 		'  make frontend-coverage  Enforce critical frontend per-file coverage floors' \
 		'  make frontend-e2e-real  Run critical browser flows against a real encrypted backend' \
 		'  make recovery-drill   Exercise encrypted backup, restore, migration, and restart recovery' \
+		'  make bounded-fuzz     Fuzz critical parsers and security boundaries with a fixed time budget' \
 		'  make connector-conformance  Test protocol connectors against disposable real services' \
 		'  make release-check   Run the local RC verification set' \
 		'  make docker-up       Build and start the local Docker stack'
@@ -44,6 +45,9 @@ backend-vuln:
 
 recovery-drill:
 	cd backend && go test ./internal/api ./internal/db ./internal/migration -run RecoveryDrill -count=1
+
+bounded-fuzz:
+	sh scripts/run-bounded-fuzz.sh
 
 connector-conformance:
 	@set -eu; \
@@ -110,7 +114,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill frontend-lint frontend-format-check frontend-test frontend-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz frontend-lint frontend-format-check frontend-test frontend-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build

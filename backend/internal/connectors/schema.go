@@ -3,6 +3,7 @@ package connectors
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -379,41 +380,52 @@ func schemaNumber(value any) bool {
 }
 
 func normalizeNumberValue(value any) (float64, bool) {
+	var number float64
 	switch typed := value.(type) {
 	case int:
-		return float64(typed), true
+		number = float64(typed)
 	case int8:
-		return float64(typed), true
+		number = float64(typed)
 	case int16:
-		return float64(typed), true
+		number = float64(typed)
 	case int32:
-		return float64(typed), true
+		number = float64(typed)
 	case int64:
-		return float64(typed), true
+		number = float64(typed)
 	case uint:
-		return float64(typed), true
+		number = float64(typed)
 	case uint8:
-		return float64(typed), true
+		number = float64(typed)
 	case uint16:
-		return float64(typed), true
+		number = float64(typed)
 	case uint32:
-		return float64(typed), true
+		number = float64(typed)
 	case uint64:
-		return float64(typed), true
+		number = float64(typed)
 	case float32:
-		return float64(typed), true
+		number = float64(typed)
 	case float64:
-		return typed, true
+		number = typed
 	case json.Number:
 		parsed, err := typed.Float64()
-		return parsed, err == nil
+		if err != nil {
+			return 0, false
+		}
+		number = parsed
 	case string:
 		if strings.TrimSpace(typed) == "" {
 			return 0, false
 		}
 		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
-		return parsed, err == nil
+		if err != nil {
+			return 0, false
+		}
+		number = parsed
 	default:
 		return 0, false
 	}
+	if math.IsNaN(number) || math.IsInf(number, 0) {
+		return 0, false
+	}
+	return number, true
 }

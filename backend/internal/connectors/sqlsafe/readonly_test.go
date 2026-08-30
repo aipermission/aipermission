@@ -33,6 +33,11 @@ func TestValidateReadOnlyRejectsUnsafeSQL(t *testing.T) {
 		{name: "multi", sql: "SELECT 1; SELECT 2", message: "single statement"},
 		{name: "prefix", sql: "DESCRIBE users", message: "only accepts SELECT, WITH, SHOW, or EXPLAIN SQL"},
 		{name: "null", sql: "SELECT\x00 1", message: "invalid null byte"},
+		{name: "unterminated single quote", sql: "SELECT '", message: "unterminated single-quoted value"},
+		{name: "unterminated double quote", sql: `SELECT"`, message: "unterminated quoted identifier"},
+		{name: "unterminated backtick quote", sql: "SELECT `", message: "unterminated quoted identifier"},
+		{name: "unterminated block comment", sql: "SELECT 1 /*", message: "unterminated block comment"},
+		{name: "unterminated dollar quote", sql: "SELECT $$value", message: "unterminated dollar-quoted value"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
