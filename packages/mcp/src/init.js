@@ -1,13 +1,16 @@
 import fs from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
+import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
 
 const require = createRequire(import.meta.url);
+const execFileAsync = promisify(execFile);
 const packageMetadata = require("../package.json");
 
 export const PACKAGE_NAME = packageMetadata.name;
@@ -68,6 +71,7 @@ const providers = [
 
 export async function runInit(argv = []) {
   const flags = parseFlags(argv);
+  assertProviderSelectionAvailable(flags.provider, Boolean(input.isTTY && output.isTTY));
   const stdinToken = flags.tokenStdin ? (await readStdin()).trim() : "";
   const rl = readline.createInterface({ input, output });
   try {
@@ -104,6 +108,12 @@ export async function runInit(argv = []) {
     console.log(`${color.yellow}Restart the AI client so it reloads MCP servers.${color.reset}`);
   } finally {
     rl.close();
+  }
+}
+
+export function assertProviderSelectionAvailable(provider, interactive) {
+  if (!provider && !interactive) {
+    throw new Error("Non-interactive setup requires an explicit --provider.");
   }
 }
 
@@ -403,15 +413,15 @@ async function assertProjectConfigWritable(filePath, options = {}) {
 }
 
 async function protectGitIgnoredConfig(filePath) {
-  const gitRoot = await findGitRoot(process.cwd());
-  if (!gitRoot) {
+  const repository = await discoverGitRepository(process.cwd());
+  if (!repository) {
     return {};
   }
-  const relativePath = path.relative(gitRoot, filePath).split(path.sep).join("/");
+  const relativePath = path.relative(repository.workTree, filePath).split(path.sep).join("/");
   if (relativePath.startsWith("../") || path.isAbsolute(relativePath)) {
     return {};
   }
-  const excludePath = path.join(gitRoot, ".git", "info", "exclude");
+  const excludePath = path.join(repository.gitDir, "info", "exclude");
   let current = "";
   try {
     current = await fs.readFile(excludePath, "utf8");
@@ -434,54 +444,36 @@ async function protectGitIgnoredConfig(filePath) {
 }
 
 async function gitTrackedPath(filePath) {
-  const gitRoot = await findGitRoot(process.cwd());
-  if (!gitRoot) {
+  const repository = await discoverGitRepository(process.cwd());
+  if (!repository) {
     return "";
   }
-  const relativePath = path.relative(gitRoot, filePath).split(path.sep).join("/");
+  const relativePath = path.relative(repository.workTree, filePath).split(path.sep).join("/");
   if (relativePath.startsWith("../") || path.isAbsolute(relativePath)) {
     return "";
   }
-  const gitDir = path.join(gitRoot, ".git");
-  const args = ["--git-dir", gitDir, "--work-tree", gitRoot, "ls-files", "--error-unmatch", "--", relativePath];
   try {
-    const { spawn } = await import("node:child_process");
-    await new Promise((resolve, reject) => {
-      const child = spawn("git", args, { stdio: "ignore" });
-      child.on("error", reject);
-      child.on("exit", (code) => {
-        if (code === 0) {
-          resolve();
-          return;
-        }
-        reject(Object.assign(new Error("not tracked"), { code }));
-      });
-    });
+    await execFileAsync("git", ["-C", repository.workTree, "ls-files", "--error-unmatch", "--", relativePath], { windowsHide: true });
     return relativePath;
   } catch {
     return "";
   }
 }
 
-async function findGitRoot(startDir) {
-  let current = path.resolve(startDir);
-  for (;;) {
-    const gitPath = path.join(current, ".git");
-    try {
-      const stat = await fs.stat(gitPath);
-      if (stat.isDirectory()) {
-        return current;
-      }
-    } catch (error) {
-      if (error.code !== "ENOENT") {
-        return null;
-      }
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
+async function discoverGitRepository(startDir) {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", path.resolve(startDir), "rev-parse", "--show-toplevel", "--absolute-git-dir"],
+      { encoding: "utf8", windowsHide: true }
+    );
+    const [workTree, gitDir] = stdout.trim().split(/\r?\n/);
+    if (!workTree || !gitDir) {
       return null;
     }
-    current = parent;
+    return { workTree: path.resolve(workTree), gitDir: path.resolve(gitDir) };
+  } catch {
+    return null;
   }
 }
 
