@@ -68,6 +68,55 @@ func routes() { mux.Handle("GET /health", handler) }`,
 	}
 }
 
+func TestRouteGenerationRejectsMalformedAndAmbiguousInputs(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{name: "invalid Go", source: `package api func`, want: "parse routes source"},
+		{name: "missing pattern", source: `package api; func routes() { mux.HandleFunc() }`, want: "has no pattern"},
+		{name: "invalid pattern", source: `package api; func routes() { mux.HandleFunc("health", handler) }`, want: "invalid route pattern"},
+		{name: "no routes", source: `package api; func routes() {}`, want: "no routes found"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := ParseRoutes([]byte(test.source)); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected %q error, got %v", test.want, err)
+			}
+		})
+	}
+
+	if _, err := NormalizeRoutes([]Route{{Method: "", Path: "health"}}); err == nil || !strings.Contains(err.Error(), "invalid route") {
+		t.Fatalf("expected invalid normalized route error, got %v", err)
+	}
+	if _, err := GenerateRoutes([]Route{
+		{Method: "GET", Path: "/api/foo-bar"},
+		{Method: "GET", Path: "/api/foo_bar"},
+	}); err == nil || !strings.Contains(err.Error(), "operation id") {
+		t.Fatalf("expected operation id collision, got %v", err)
+	}
+}
+
+func TestRouteMetadataHelpersCoverSupportedShapes(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "/", want: "root"},
+		{path: "/api/history", want: "history"},
+		{path: "/health", want: "health"},
+	}
+	for _, test := range tests {
+		if got := routeTag(test.path); got != test.want {
+			t.Errorf("routeTag(%q) = %q, want %q", test.path, got, test.want)
+		}
+	}
+	if got := upperCamel("MIXED_value-name"); got != "MixedValueName" {
+		t.Fatalf("upperCamel() = %q, want MixedValueName", got)
+	}
+}
+
 func TestGenerateProducesBoundedRouteInventory(t *testing.T) {
 	source := []byte(`package api
 func routes() { mux.HandleFunc("GET /api/items/{item_id}", get) }`)
@@ -170,6 +219,41 @@ func TestValidateTypedResponseRejectsUndocumentedAndInvalidFields(t *testing.T) 
 	extraField := []byte(`{"items":[],"total":0,"limit":50,"offset":0,"surprise":true}`)
 	if err := ValidateTypedResponse("GET", "/api/history", 200, extraField); err == nil || !strings.Contains(err.Error(), "undocumented property") {
 		t.Fatalf("undocumented field error = %v", err)
+	}
+}
+
+func TestValidateSchemaValueRejectsEachSupportedShapeDrift(t *testing.T) {
+	schemas := map[string]any{
+		"Known": objectSchema(map[string]any{"name": stringSchema()}, []string{"name"}),
+	}
+	tests := []struct {
+		name   string
+		value  any
+		schema map[string]any
+		want   string
+	}{
+		{name: "unknown reference", value: map[string]any{}, schema: refSchema("Missing"), want: "unknown schema"},
+		{name: "enum type", value: true, schema: enumSchema("ready"), want: "outside enum"},
+		{name: "object type", value: []any{}, schema: objectSchema(nil, nil), want: "must be an object"},
+		{name: "extra property", value: map[string]any{"extra": true}, schema: objectSchema(map[string]any{}, nil), want: "undocumented property"},
+		{name: "required property", value: map[string]any{}, schema: objectSchema(map[string]any{"name": stringSchema()}, []string{"name"}), want: "missing required property"},
+		{name: "array type", value: "wrong", schema: arraySchema(stringSchema()), want: "must be an array"},
+		{name: "array item", value: []any{true}, schema: arraySchema(stringSchema()), want: "must be a string"},
+		{name: "date time", value: "yesterday", schema: dateTimeSchema(), want: "RFC3339"},
+		{name: "integer type", value: "1", schema: integerSchema(), want: "must be an integer"},
+		{name: "integer value", value: json.Number("1.5"), schema: integerSchema(), want: "must be an integer"},
+		{name: "boolean type", value: "true", schema: boolSchema(), want: "must be a boolean"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateSchemaValue("$", test.value, test.schema, schemas); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected %q error, got %v", test.want, err)
+			}
+		})
+	}
+
+	if err := validateSchemaValue("$", map[string]any{"name": "valid"}, refSchema("Known"), schemas); err != nil {
+		t.Fatalf("valid referenced schema: %v", err)
 	}
 }
 
