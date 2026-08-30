@@ -121,9 +121,8 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "password is required")
 		return
 	}
-	limitKey := authRateLimitKey(r, "unlock")
-	if err := s.authLimiter.wait(r.Context(), limitKey); err != nil {
-		writeError(w, http.StatusRequestTimeout, "unlock request timed out")
+	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
+	if !ok {
 		return
 	}
 
@@ -142,11 +141,15 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 			s.activeDataPath = targetPath
 			s.activeDatabase = targetID
 			if err := s.openUnlockedLocked(request.Password); err != nil {
-				s.authLimiter.recordFailure(limitKey)
+				if db.UnsupportedSchemaMessage(err) == "" {
+					attempt.failure()
+				} else {
+					attempt.success()
+				}
 				writeDatabaseUnlockError(w, err)
 				return
 			}
-			s.authLimiter.recordSuccess(limitKey)
+			attempt.success()
 			if err := s.issueUISession(w); err != nil {
 				writeInternalError(w)
 				return
@@ -159,14 +162,18 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := db.ValidateEncrypted(targetPath, request.Password); err != nil {
-			s.authLimiter.recordFailure(limitKey)
+			if db.UnsupportedSchemaMessage(err) == "" {
+				attempt.failure()
+			} else {
+				attempt.success()
+			}
 			writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
 			return
 		}
 		if runtime := s.workspaces[targetID]; runtime != nil {
 			s.applyRuntimeLocked(runtime)
 		}
-		s.authLimiter.recordSuccess(limitKey)
+		attempt.success()
 		if err := s.issueUISession(w); err != nil {
 			writeInternalError(w)
 			return
@@ -190,11 +197,15 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.openUnlockedLocked(request.Password); err != nil {
-		s.authLimiter.recordFailure(limitKey)
+		if db.UnsupportedSchemaMessage(err) == "" {
+			attempt.failure()
+		} else {
+			attempt.success()
+		}
 		writeDatabaseUnlockError(w, err)
 		return
 	}
-	s.authLimiter.recordSuccess(limitKey)
+	attempt.success()
 	if err := s.issueUISession(w); err != nil {
 		writeInternalError(w)
 		return

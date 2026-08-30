@@ -47,6 +47,14 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "database name is required")
 		return
 	}
+	if request.CurrentPassword == "" {
+		writeError(w, http.StatusBadRequest, "current password is required")
+		return
+	}
+	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
+	if !ok {
+		return
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -61,14 +69,12 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if request.CurrentPassword == "" {
-		writeError(w, http.StatusBadRequest, "current password is required")
-		return
-	}
 	if err := dbpkg.ValidateEncrypted(oldPath, request.CurrentPassword); err != nil {
+		attempt.failure()
 		writeError(w, http.StatusUnauthorized, "invalid current database password")
 		return
 	}
+	attempt.success()
 	_, _ = s.database.ExecContext(r.Context(), `PRAGMA wal_checkpoint(FULL)`)
 	s.closeUnlockedResources()
 
@@ -104,6 +110,10 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "current password is required")
 		return
 	}
+	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
+	if !ok {
+		return
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -123,9 +133,11 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := dbpkg.ValidateEncrypted(runtime.path, request.CurrentPassword); err != nil {
+		attempt.failure()
 		writeError(w, http.StatusUnauthorized, "invalid current database password")
 		return
 	}
+	attempt.success()
 
 	path := s.activeDataPath
 	_, _ = s.database.ExecContext(r.Context(), `PRAGMA wal_checkpoint(FULL)`)
@@ -173,6 +185,10 @@ func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "database password is required")
 		return
 	}
+	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
+	if !ok {
+		return
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -194,9 +210,11 @@ func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := dbpkg.ValidateEncrypted(targetPath, request.CurrentPassword); err != nil {
+		attempt.failure()
 		writeError(w, http.StatusUnauthorized, "invalid database password")
 		return
 	}
+	attempt.success()
 	if err := dbpkg.DeleteDatabase(targetPath); err != nil {
 		writeInternalError(w)
 		return
@@ -221,6 +239,14 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 	}
 	defer clearStringReferences(&request.Password)
 	request.DatabaseID = strings.TrimSpace(request.DatabaseID)
+	var attempt databasePasswordAttempt
+	if request.Password != "" {
+		var ok bool
+		attempt, ok = s.beginDatabasePasswordAttempt(w, r)
+		if !ok {
+			return
+		}
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -271,9 +297,15 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 
 	runtime, err := s.openRuntime(targetPath, targetID, request.Password)
 	if err != nil {
+		if dbpkg.UnsupportedSchemaMessage(err) == "" {
+			attempt.failure()
+		} else {
+			attempt.success()
+		}
 		writeDatabaseUnlockError(w, err)
 		return
 	}
+	attempt.success()
 
 	s.config.GatewaySecret = runtime.gatewaySecret
 	s.workspaces[targetID] = runtime
@@ -310,6 +342,10 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, "new password must be different from the current password")
 		return
 	}
+	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
+	if !ok {
+		return
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -332,9 +368,11 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 	}
 
 	if err := dbpkg.ValidateEncrypted(runtime.path, request.CurrentPassword); err != nil {
+		attempt.failure()
 		writeError(w, http.StatusUnauthorized, "invalid current database password")
 		return
 	}
+	attempt.success()
 
 	_, _ = runtime.database.ExecContext(r.Context(), `PRAGMA wal_checkpoint(FULL)`)
 	if err := dbpkg.Rekey(runtime.database, request.NewPassword); err != nil {

@@ -343,11 +343,24 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "wrong"}); response.Code != http.StatusUnauthorized {
 		t.Fatalf("delete locked database with wrong password should fail, got %d %s", response.Code, response.Body.String())
 	}
+	limitKey := databasePasswordRateLimitScope + ":127.0.0.1"
+	server.authLimiter.mu.Lock()
+	failures := server.authLimiter.entries[limitKey].failures
+	server.authLimiter.mu.Unlock()
+	if failures != 1 {
+		t.Fatalf("wrong password recorded %d shared failures, want 1", failures)
+	}
 	if !dbpkg.Exists(path) {
 		t.Fatalf("database should remain after failed delete")
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "OldPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
 		t.Fatalf("delete locked database failed: %d %s", response.Code, response.Body.String())
+	}
+	server.authLimiter.mu.Lock()
+	_, limited := server.authLimiter.entries[limitKey]
+	server.authLimiter.mu.Unlock()
+	if limited {
+		t.Fatal("successful password verification did not clear shared backoff")
 	}
 	if dbpkg.Exists(path) {
 		t.Fatalf("database file should be removed after locked delete")
@@ -417,7 +430,10 @@ func TestDatabaseRenameAndSwitchFailuresKeepActiveRuntime(t *testing.T) {
 		t.Fatalf("unexpected project two id: %s", projectTwoID)
 	}
 
-	rename := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{DatabaseName: "Project Two"})
+	rename := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{
+		DatabaseName:    "Project Two",
+		CurrentPassword: "ProjectOnePassword123",
+	})
 	if rename.Code != http.StatusBadRequest || !strings.Contains(rename.Body.String(), "database name already exists") {
 		t.Fatalf("duplicate rename should fail cleanly, got %d %s", rename.Code, rename.Body.String())
 	}
