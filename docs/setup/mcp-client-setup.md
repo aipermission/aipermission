@@ -88,7 +88,7 @@ MCP server config shape:
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp@0.2.33"],
+      "args": ["-y", "@aipermission/mcp@0.2.34"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",
