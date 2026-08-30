@@ -16,6 +16,7 @@
     "test:component": "vitest run --config vitest.config.js",
     "test:coverage": "vitest run --config vitest.config.js --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:real": "playwright test --config playwright.real.config.js",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
