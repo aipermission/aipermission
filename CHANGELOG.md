@@ -9,6 +9,23 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.32] - 2026-08-30
+
+### Changed
+
+- Pending connector approvals now use small typed orchestration steps while preserving
+  authorization, stale-context, claim, audit, execution, and completion ordering.
+- Runtime-backed connector adapters are constructed explicitly per gateway catalog
+  instead of relying on package-global registration or package initialization side
+  effects.
+
+### Maintenance
+
+- Focused transition tests now lock approval-pending, running, completion, failure,
+  history, and audit ordering.
+- Catalog-derived import and runtime isolation checks now cover every built-in connector
+  and prevent shared gateway packages from depending on connector implementations.
+
 ## [0.2.31] - 2026-08-30
 
 ### Changed
