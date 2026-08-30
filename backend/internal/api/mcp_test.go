@@ -285,6 +285,22 @@ func TestMCPConnectorTargetsRequireValidToken(t *testing.T) {
 	}
 }
 
+func TestMCPAuthenticationRejectsMalformedTokenExpiry(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	token, err := fixture.tokens.Create(t.Context(), tokens.CreateRequest{Name: "corrupted-expiry"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	if _, err := fixture.db.Exec(`UPDATE api_tokens SET expires_at = 'not-a-timestamp' WHERE id = ?`, token.ID); err != nil {
+		t.Fatalf("corrupt token expiry: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("malformed token expiry should fail closed, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()

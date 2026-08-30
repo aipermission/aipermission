@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
@@ -137,11 +138,8 @@ func (s *Store) Effective(ctx context.Context, tokenID, projectID int64, name st
 	if !item.ProjectEnabled {
 		return Capability{}, ErrNotFound
 	}
-	if item.ExpiresAt != "" {
-		expiresAt, parseErr := time.Parse(time.RFC3339, item.ExpiresAt)
-		if parseErr != nil || !expiresAt.After(now.UTC()) {
-			return Capability{}, ErrNotFound
-		}
+	if !expirypolicy.Active(item.ExpiresAt, now) {
+		return Capability{}, ErrNotFound
 	}
 	return item, nil
 }

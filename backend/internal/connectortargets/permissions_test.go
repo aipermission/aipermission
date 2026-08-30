@@ -288,3 +288,39 @@ func TestStoreListActionPermissionsHidesExpiredPermissions(t *testing.T) {
 		t.Fatalf("expected only active permissions, got %#v", permissions)
 	}
 }
+
+func TestStoreActionPermissionsRejectMalformedExpiry(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+	if err := store.SetActionPermission(ctx, SetActionPermissionInput{
+		TokenID:       tokenID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "query_readonly",
+		ExecutionRule: ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("set action permission: %v", err)
+	}
+	if _, err := database.Exec(`
+		UPDATE token_connector_action_permissions
+		SET expires_at = 'not-a-timestamp'
+		WHERE token_id = ? AND target_id = ? AND profile_id = ? AND action_name = 'query_readonly'`,
+		tokenID, target.ID, profile.ID,
+	); err != nil {
+		t.Fatalf("corrupt permission expiry: %v", err)
+	}
+
+	if _, err := store.GetActionPermission(ctx, tokenID, target.ID, profile.ID, "query_readonly", time.Now()); !errors.Is(err, ErrActionPermissionNotFound) {
+		t.Fatalf("malformed permission expiry should fail closed, got %v", err)
+	}
+	permissions, err := store.ListActionPermissions(ctx, tokenID)
+	if err != nil {
+		t.Fatalf("list action permissions: %v", err)
+	}
+	if len(permissions) != 0 {
+		t.Fatalf("malformed permission expiry should be hidden, got %#v", permissions)
+	}
+}

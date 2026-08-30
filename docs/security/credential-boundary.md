@@ -94,6 +94,9 @@ Rules:
 - token lookup uses hashes
 - stored reusable token values are encrypted by the gateway vault
 - revoked or expired tokens are rejected by MCP endpoints
+- only an empty expiry is permanent; malformed non-empty token, project
+  capability, or connector-permission expiries fail closed if an imported or
+  corrupted database record bypasses normal API validation
 - web REST endpoints use a local HttpOnly browser session cookie after unlock, not token auth
 
 Token values remain inside the SQLCipher database protected by the local unlock password.
