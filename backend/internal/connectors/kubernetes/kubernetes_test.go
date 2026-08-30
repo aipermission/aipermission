@@ -21,6 +21,59 @@ func TestPrepareActionRejectsEmptyLogTarget(t *testing.T) {
 	}
 }
 
+func TestKubectlCommandValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		want    string
+		valid   bool
+	}{
+		{name: "default", want: "kubectl", valid: true},
+		{name: "binary", command: "kubectl", want: "kubectl", valid: true},
+		{name: "wrapper path", command: "/usr/local/bin/kubectl-wrapper", want: "/usr/local/bin/kubectl-wrapper", valid: true},
+		{name: "separator", command: "kubectl; id"},
+		{name: "command substitution", command: "kubectl$(id)"},
+		{name: "pipe", command: "kubectl | cat"},
+		{name: "redirect", command: "kubectl>/tmp/output"},
+		{name: "newline", command: "kubectl\nid"},
+		{name: "arguments", command: "sudo kubectl"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			command, err := KubectlCommand(connectors.TargetView{Config: map[string]any{"kubectl_command": test.command}})
+			if test.valid {
+				if err != nil || command != test.want {
+					t.Fatalf("command = %q, err = %v, want %q", command, err, test.want)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), ErrInvalidConfig.Error()) {
+				t.Fatalf("expected invalid config error, got command=%q err=%v", command, err)
+			}
+		})
+	}
+}
+
+func TestValidateTargetConfigRejectsUnsafeKubectlCommand(t *testing.T) {
+	err := New().ValidateTargetConfig(map[string]any{"kubectl_command": "kubectl `id`"})
+	if err == nil || !strings.Contains(err.Error(), ErrInvalidConfig.Error()) {
+		t.Fatalf("expected invalid target config, got %v", err)
+	}
+}
+
+func TestExecuteActionRejectsUnsafeKubectlCommandBeforeTransport(t *testing.T) {
+	target := kubeTarget()
+	target.Config["kubectl_command"] = "kubectl && id"
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target:       target,
+		Profile:      kubeProfile("selected"),
+		Capabilities: fakeCapabilities{transport: &fakeCommandTransport{}},
+	}, connectors.PreparedAction{ActionName: ActionListPods, Payload: map[string]any{}})
+	if err == nil || !strings.Contains(err.Error(), ErrInvalidConfig.Error()) {
+		t.Fatalf("expected invalid config error, got %v", err)
+	}
+}
+
 func TestListPodsUsesSelectedNamespaces(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{

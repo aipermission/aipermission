@@ -49,12 +49,13 @@ func (adapter) ResolveLiveConsoleMaterial(ctx context.Context, runtime connector
 }
 
 func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
+	kubectl, _ := kubernetesconnector.KubectlCommand(target)
 	return map[string]any{
 		"label":           target.Name,
 		"connector":       kubernetesconnector.Kind,
 		"profile":         profile.Label,
 		"transport":       strings.TrimSpace(stringConfigValue(target.Config, "transport_target_ref")),
-		"kubectl":         kubectlCommand(target),
+		"kubectl":         kubectl,
 		"context":         strings.TrimSpace(stringConfigValue(target.Config, "context")),
 		"default_ns":      strings.TrimSpace(stringConfigValue(target.Config, "default_namespace")),
 		"namespace_scope": strings.TrimSpace(stringConfigValue(profile.Public, "scope_mode")),
@@ -88,7 +89,10 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 	if transportRef == "" {
 		return nil, fmt.Errorf("%w: transport_target_ref is required", kubernetesconnector.ErrInvalidConfig)
 	}
-	command := kubectlExecShellCommand(target, namespace, pod, container)
+	command, err := kubectlExecShellCommand(target, namespace, pod, container)
+	if err != nil {
+		return nil, err
+	}
 	return sshapiadapter.OpenLiveConsoleForTargetRef(ctx, server, runtime, transportRef, request.Rows, request.Cols, sshapiadapter.LiveConsoleOptions{
 		ForceShellCommand: command,
 	})
@@ -109,8 +113,11 @@ func databaseFrom(runtime connectorapi.GatewayRuntime) (*sql.DB, error) {
 	return runtime.ConnectorDatabase(), nil
 }
 
-func kubectlExecShellCommand(target connectors.TargetView, namespace string, pod string, container string) string {
-	command := kubectlCommand(target)
+func kubectlExecShellCommand(target connectors.TargetView, namespace string, pod string, container string) (string, error) {
+	command, err := kubernetesconnector.KubectlCommand(target)
+	if err != nil {
+		return "", err
+	}
 	contextName := strings.TrimSpace(stringConfigValue(target.Config, "context"))
 	if contextName != "" {
 		command += " --context " + shellQuote(contextName)
@@ -120,15 +127,7 @@ func kubectlExecShellCommand(target connectors.TargetView, namespace string, pod
 		command += " -c " + shellQuote(container)
 	}
 	shellProbe := "if command -v bash >/dev/null 2>&1; then exec bash -l; fi; exec sh"
-	return command + " -- sh -lc " + shellQuote(shellProbe)
-}
-
-func kubectlCommand(target connectors.TargetView) string {
-	command := strings.TrimSpace(stringConfigValue(target.Config, "kubectl_command"))
-	if command == "" {
-		return "kubectl"
-	}
-	return command
+	return command + " -- sh -lc " + shellQuote(shellProbe), nil
 }
 
 func stringParam(params map[string]any, key string) string {

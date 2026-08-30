@@ -17,9 +17,12 @@ func TestStringParamMissingValueReturnsEmpty(t *testing.T) {
 }
 
 func TestKubectlExecShellCommandOmitsEmptyContainer(t *testing.T) {
-	command := kubectlExecShellCommand(connectors.TargetView{
+	command, err := kubectlExecShellCommand(connectors.TargetView{
 		Config: map[string]any{"kubectl_command": "kubectl"},
 	}, "default", "api-123", "")
+	if err != nil {
+		t.Fatalf("build command: %v", err)
+	}
 	if strings.Contains(command, " -c ") {
 		t.Fatalf("empty container should not add -c: %s", command)
 	}
@@ -28,5 +31,14 @@ func TestKubectlExecShellCommandOmitsEmptyContainer(t *testing.T) {
 	}
 	if !strings.Contains(command, "exec -it -n 'default' 'api-123' -- sh -lc") {
 		t.Fatalf("unexpected kubectl exec command: %s", command)
+	}
+}
+
+func TestKubectlExecShellCommandRejectsUnsafeConfiguredCommand(t *testing.T) {
+	_, err := kubectlExecShellCommand(connectors.TargetView{
+		Config: map[string]any{"kubectl_command": "kubectl; curl example.invalid"},
+	}, "default", "api-123", "")
+	if err == nil || !strings.Contains(err.Error(), "kubectl_command") {
+		t.Fatalf("expected unsafe command error, got %v", err)
 	}
 }
