@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -161,31 +162,56 @@ func managesLifecycleLock(path string) bool {
 func isLocalhostHeader(hostHeader string) bool {
 	hostHeader = strings.TrimSpace(hostHeader)
 	if hostHeader == "" {
-		return true
+		return false
 	}
-	host, _, err := net.SplitHostPort(hostHeader)
-	if err != nil {
-		host = hostHeader
+	host, ok := parseHostHeader(hostHeader)
+	if !ok {
+		return false
 	}
-	host = strings.Trim(strings.ToLower(host), "[]")
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	return isLoopbackHost(host)
 }
 
 func isLocalRemoteAddr(remoteAddr string) bool {
 	remoteAddr = strings.TrimSpace(remoteAddr)
 	if remoteAddr == "" {
+		return false
+	}
+	host, port, err := net.SplitHostPort(remoteAddr)
+	if err != nil || !validTCPPort(port) {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func parseHostHeader(value string) (string, bool) {
+	if strings.HasPrefix(value, "[") {
+		if strings.HasSuffix(value, "]") {
+			host := strings.TrimSuffix(strings.TrimPrefix(value, "["), "]")
+			return host, host != ""
+		}
+		host, port, err := net.SplitHostPort(value)
+		return host, err == nil && host != "" && validTCPPort(port)
+	}
+	if strings.Count(value, ":") == 0 {
+		return value, true
+	}
+	host, port, err := net.SplitHostPort(value)
+	return host, err == nil && host != "" && validTCPPort(port)
+}
+
+func validTCPPort(value string) bool {
+	port, err := strconv.Atoi(value)
+	return err == nil && port > 0 && port <= 65535
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
 		return true
 	}
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr
-	}
-	ip := net.ParseIP(strings.Trim(host, "[]"))
+	ip := net.ParseIP(host)
 	if ip == nil {
 		return false
 	}
-	if ip.IsLoopback() {
-		return true
-	}
-	return false
+	return ip.IsLoopback()
 }

@@ -127,7 +127,7 @@ If a connector has already performed remote work but its result cannot cross
 the canonical output boundary, the gateway records `outcome_unknown`. Agents
 must not blindly retry that action because its side effect may have completed.
 
-The gateway is designed only for a localhost trust boundary. Docker Compose publishes host ports on `127.0.0.1`, and the backend rejects non-local remote clients plus non-localhost Host headers. The backend also refuses to start when `AIPERMISSION_BACKEND_HOST` is `0.0.0.0` or any non-loopback address.
+The gateway is designed only for a localhost trust boundary. Docker Compose publishes host ports on `127.0.0.1`, and the backend rejects missing, malformed, or non-local remote-client addresses plus missing, malformed, or non-localhost Host headers. The backend also refuses to start when `AIPERMISSION_BACKEND_HOST` is `0.0.0.0` or any non-loopback address.
 
 Do not publish the Compose ports on `0.0.0.0` or a LAN address. The localhost bind is the security boundary. Docker NAT can make external clients appear as the host gateway from inside the container, which is outside the supported security model. Host-header checks are defense in depth only and do not make remote/LAN exposure safe. Remote/LAN use is unsupported.
 
