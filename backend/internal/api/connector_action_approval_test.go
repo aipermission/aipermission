@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -450,5 +451,244 @@ func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 				t.Fatalf("status = %q", stale.Status)
 			}
 		})
+	}
+}
+
+type approvalExecutionObserverConnector struct {
+	localActionTestConnector
+	beforeExecute func(context.Context) error
+	result        connectors.ActionResult
+	executeError  error
+}
+
+func (c approvalExecutionObserverConnector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	if c.beforeExecute != nil {
+		if err := c.beforeExecute(ctx); err != nil {
+			return connectors.ActionResult{}, err
+		}
+	}
+	if c.executeError != nil {
+		return connectors.ActionResult{}, c.executeError
+	}
+	if c.result.Status != "" || c.result.Output != nil || c.result.DisplayText != "" || c.result.Error != "" {
+		return c.result, nil
+	}
+	return c.localActionTestConnector.ExecuteAction(ctx, runtime, action)
+}
+
+func TestConnectorActionApprovalRunFinalizesExecutionFailure(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createApprovalObserverTargetProfile(t, store)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "echo",
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
+	}
+
+	var requestID int64
+	observer := approvalExecutionObserverConnector{
+		beforeExecute: func(ctx context.Context) error {
+			request, err := store.GetActionRequest(ctx, requestID)
+			if err != nil {
+				return fmt.Errorf("read request during execution: %w", err)
+			}
+			if request.Status != connectors.ResultRunning {
+				return fmt.Errorf("request status during execution = %q", request.Status)
+			}
+			return nil
+		},
+		executeError: connectors.ClassifyError("fixture_failure", fmt.Errorf("fixture execution failed")),
+	}
+	if err := fixture.server.activeRuntime().connectorRegistry().Register(observer); err != nil {
+		t.Fatalf("register observer connector: %v", err)
+	}
+	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{
+		Source:     commandRequestSourceMCP,
+		TokenID:    token.ID,
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo",
+		Input:      map[string]any{"value": "fail"},
+		Reason:     "approval failure transition test",
+	})
+	if err != nil {
+		t.Fatalf("create pending connector action: %v", err)
+	}
+	requestID = pending.Request.ID
+
+	runResponse := performJSON(
+		fixture.server.Handler(), http.MethodPost,
+		"/api/connector-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "",
+		runConnectorActionApprovalRequest{},
+	)
+	if runResponse.Code != http.StatusOK {
+		t.Fatalf("run connector approval: %d %s", runResponse.Code, runResponse.Body.String())
+	}
+	failed, err := store.GetActionRequest(ctx, requestID)
+	if err != nil {
+		t.Fatalf("get failed connector request: %v", err)
+	}
+	if failed.Status != connectors.ResultFailed || !strings.Contains(failed.Error, "fixture execution failed") {
+		t.Fatalf("unexpected failed request: %#v", failed)
+	}
+	var historyStatus string
+	if err := fixture.db.QueryRowContext(ctx, `
+		SELECT status FROM history_entries
+		WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, requestID).Scan(&historyStatus); err != nil {
+		t.Fatalf("read failed history entry: %v", err)
+	}
+	if historyStatus != string(connectors.ResultFailed) {
+		t.Fatalf("history status = %q", historyStatus)
+	}
+}
+
+func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := context.Background()
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createApprovalObserverTargetProfile(t, store)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "echo",
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
+	}
+
+	var requestID int64
+	observer := approvalExecutionObserverConnector{
+		beforeExecute: func(ctx context.Context) error {
+			var requestStatus, historyStatus, note string
+			if err := fixture.db.QueryRowContext(ctx, `SELECT status FROM connector_action_requests WHERE id = ?`, requestID).Scan(&requestStatus); err != nil {
+				return fmt.Errorf("read request status during execution: %w", err)
+			}
+			if err := fixture.db.QueryRowContext(ctx, `
+				SELECT status FROM history_entries
+				WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, requestID).Scan(&historyStatus); err != nil {
+				return fmt.Errorf("read history status during execution: %w", err)
+			}
+			if err := fixture.db.QueryRowContext(ctx, `
+				SELECT message FROM message_queue
+				WHERE token_id = ? AND direction = 'user_to_ai'
+				ORDER BY id DESC LIMIT 1`, token.ID).Scan(&note); err != nil {
+				return fmt.Errorf("read operator note during execution: %w", err)
+			}
+			if requestStatus != string(connectors.ResultRunning) || historyStatus != string(connectors.ResultRunning) {
+				return fmt.Errorf("execution started before running state was persisted: request=%s history=%s", requestStatus, historyStatus)
+			}
+			if !strings.Contains(note, "inspect metadata only") {
+				return fmt.Errorf("operator note was not delivered before execution: %q", note)
+			}
+			return nil
+		},
+		result: connectors.ActionResult{
+			Status:      connectors.ResultCompleted,
+			Output:      map[string]any{"echo": "approved"},
+			DisplayText: "approved",
+		},
+	}
+	if err := fixture.server.activeRuntime().connectorRegistry().Register(observer); err != nil {
+		t.Fatalf("register observer connector: %v", err)
+	}
+
+	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{
+		Source:     commandRequestSourceMCP,
+		TokenID:    token.ID,
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo",
+		Input:      map[string]any{"value": "approved"},
+		Reason:     "approval transition test",
+	})
+	if err != nil {
+		t.Fatalf("create pending connector action: %v", err)
+	}
+	requestID = pending.Request.ID
+
+	runResponse := performJSON(
+		fixture.server.Handler(), http.MethodPost,
+		"/api/connector-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "",
+		runConnectorActionApprovalRequest{UserNote: "inspect metadata only"},
+	)
+	if runResponse.Code != http.StatusOK {
+		t.Fatalf("run connector approval: %d %s", runResponse.Code, runResponse.Body.String())
+	}
+	finished, err := store.GetActionRequest(ctx, requestID)
+	if err != nil {
+		t.Fatalf("get completed connector request: %v", err)
+	}
+	output, ok := finished.Output.(map[string]any)
+	if finished.Status != connectors.ResultCompleted || !ok || output["echo"] != "approved" {
+		t.Fatalf("unexpected completed request: %#v", finished)
+	}
+	assertConnectorApprovalAuditOrder(t, fixture.db, requestID,
+		"connector_action.request.created",
+		"connector_action.request.running",
+		"connector_action.request.completed",
+		"connector_action.run.completed",
+	)
+}
+
+func createApprovalObserverTargetProfile(t *testing.T, store *connectortargets.Store) (connectortargets.Target, connectortargets.CredentialProfile) {
+	t.Helper()
+	ctx := context.Background()
+	target, err := store.CreateTarget(ctx, connectortargets.CreateTargetInput{
+		ConnectorKind: localActionTestConnectorKind,
+		Name:          "approval-observer",
+		Config:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("create observer target: %v", err)
+	}
+	profile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
+		TargetID:      target.ID,
+		ConnectorKind: localActionTestConnectorKind,
+		Kind:          "default",
+		Label:         "main",
+		Public:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("create observer profile: %v", err)
+	}
+	return target, profile
+}
+
+func assertConnectorApprovalAuditOrder(t *testing.T, database *sql.DB, requestID int64, expected ...string) {
+	t.Helper()
+	rows, err := database.QueryContext(context.Background(), `
+		SELECT action FROM audit_logs
+		WHERE action_request_id = ?
+		ORDER BY id`, requestID)
+	if err != nil {
+		t.Fatalf("list connector approval audit events: %v", err)
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var action string
+		if err := rows.Scan(&action); err != nil {
+			t.Fatalf("scan connector approval audit event: %v", err)
+		}
+		actions = append(actions, action)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate connector approval audit events: %v", err)
+	}
+	if fmt.Sprint(actions) != fmt.Sprint(expected) {
+		t.Fatalf("audit order = %v, want %v", actions, expected)
 	}
 }
