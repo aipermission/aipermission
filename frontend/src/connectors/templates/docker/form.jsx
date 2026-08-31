@@ -29,7 +29,12 @@ export function DockerConnectorFormTemplate({ form, targets = [], onChange }) {
       </Field>
       <Field>
         Docker command
-        <Input value={form.docker_command} onChange={(event) => onChange("docker_command", event.target.value)} required />
+        <Input
+          value={form.docker_command}
+          onChange={(event) => onChange("docker_command", event.target.value)}
+          placeholder="docker or /usr/local/bin/docker-wrapper"
+          required
+        />
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
