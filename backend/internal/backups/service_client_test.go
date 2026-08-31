@@ -18,13 +18,13 @@ import (
 const serviceTestToken = "service-client-test-token-with-thirty-two-characters"
 
 func TestValidateServiceURL(t *testing.T) {
-	valid := []string{"https://backup.example.com", "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080"}
+	valid := []string{"https://backup.example.com", "http://127.0.0.1:8080", "http://[::1]:8080"}
 	for _, value := range valid {
 		if _, err := ValidateServiceURL(value); err != nil {
 			t.Fatalf("expected %q to be valid: %v", value, err)
 		}
 	}
-	invalid := []string{"http://backup.example.com", "https://backup.example.com/path", "https://user@example.com", "https://backup.example.com?q=1"}
+	invalid := []string{"http://localhost:8080", "http://backup.example.com", "https://backup.example.com/path", "https://user@example.com", "https://backup.example.com?q=1"}
 	for _, value := range invalid {
 		if _, err := ValidateServiceURL(value); err == nil {
 			t.Fatalf("expected %q to be rejected", value)
@@ -32,8 +32,23 @@ func TestValidateServiceURL(t *testing.T) {
 	}
 }
 
+func TestServiceClientIgnoresAmbientProxyConfiguration(t *testing.T) {
+	t.Setenv("HTTPS_PROXY", "http://proxy.example.invalid:8080")
+	client, err := NewServiceClient("https://backup.example.com", serviceTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, ok := client.client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("unexpected transport type %T", client.client.Transport)
+	}
+	if transport.Proxy != nil {
+		t.Fatal("backup service transport must not use ambient proxy settings")
+	}
+}
+
 func TestServiceClientRejectsInvalidUploadMetadata(t *testing.T) {
-	client, err := NewServiceClient("http://localhost:8080", serviceTestToken)
+	client, err := NewServiceClient("http://127.0.0.1:8080", serviceTestToken)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +214,7 @@ func TestServiceClientRejectsOversizedDownload(t *testing.T) {
 }
 
 func TestServiceClientRejectsUnboundedDownloadLimit(t *testing.T) {
-	client, err := NewServiceClient("http://localhost:8080", serviceTestToken)
+	client, err := NewServiceClient("http://127.0.0.1:8080", serviceTestToken)
 	if err != nil {
 		t.Fatal(err)
 	}
