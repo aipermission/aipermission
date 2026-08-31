@@ -56,7 +56,7 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 	err := s.db.QueryRowContext(ctx, `
 		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
 			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
-			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
+			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
 		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
@@ -83,6 +83,7 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 		&item.ChecksumSHA256,
 		&item.TempPath,
 		&item.Error,
+		&item.FailureKind,
 		&item.CreatedAt,
 		&item.StartedAt,
 		&item.CompletedAt,
@@ -109,7 +110,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 	query := `
 		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
 			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
-			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.created_at, COALESCE(ft.started_at, ''),
+			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
 		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
@@ -148,6 +149,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 			&item.ChecksumSHA256,
 			&item.TempPath,
 			&item.Error,
+			&item.FailureKind,
 			&item.CreatedAt,
 			&item.StartedAt,
 			&item.CompletedAt,

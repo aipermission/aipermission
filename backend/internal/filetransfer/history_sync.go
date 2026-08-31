@@ -15,6 +15,11 @@ func (s *Store) syncTransferHistory(ctx context.Context, id int64) error {
 	return history.NewStore(s.db).SyncFileTransfer(ctx, id)
 }
 
+// SyncHistory repairs the derived history projection after a canonical transfer update.
+func (s *Store) SyncHistory(ctx context.Context, id int64) error {
+	return s.syncTransferHistory(ctx, id)
+}
+
 func (s *Store) syncBatchTransferHistory(ctx context.Context, batchID int64) error {
 	if batchID < 1 {
 		return nil

@@ -19,6 +19,13 @@ const (
 	StatusCompleted       = "completed"
 	StatusFailed          = "failed"
 	StatusCanceled        = "canceled"
+
+	FailureKindUnknown          = "unknown"
+	FailureKindTimeout          = "timeout"
+	FailureKindValidation       = "validation"
+	FailureKindLocalPersistence = "local_persistence"
+	FailureKindOutcomeUnknown   = "outcome_unknown"
+	FailureKindInterrupted      = "interrupted"
 )
 
 const maxPathRunes = 4096
@@ -45,6 +52,7 @@ type Record struct {
 	ETASeconds       int64  `json:"eta_seconds"`
 	ChecksumSHA256   string `json:"checksum_sha256"`
 	Error            string `json:"error"`
+	FailureKind      string `json:"failure_kind,omitempty"`
 	CreatedAt        string `json:"created_at"`
 	StartedAt        string `json:"started_at,omitempty"`
 	CompletedAt      string `json:"completed_at,omitempty"`
@@ -86,6 +94,7 @@ type BatchRecord struct {
 	BytesPerSecond   int64    `json:"bytes_per_second"`
 	ETASeconds       int64    `json:"eta_seconds"`
 	Error            string   `json:"error"`
+	FailureKind      string   `json:"failure_kind,omitempty"`
 	CreatedAt        string   `json:"created_at"`
 	StartedAt        string   `json:"started_at,omitempty"`
 	CompletedAt      string   `json:"completed_at,omitempty"`

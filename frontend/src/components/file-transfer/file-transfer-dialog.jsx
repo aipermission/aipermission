@@ -10,6 +10,7 @@ import { ClearDownloadDialog, OverwriteConfirmDialog, UnsavedDownloadCloseDialog
 import { QueueList, QueueSummary } from "./file-transfer-queue";
 import {
   defaultRemoteDirectory,
+  fileTransferFailureText,
   forgetDownloadPath,
   joinRemotePath,
   localFileID,
@@ -639,7 +640,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
             />
 
             <div className="grid gap-3 border-t border-stone-200 pt-3">
-              {batch.error ? <Notice tone="bad">{batch.error}</Notice> : null}
+              <TransferFailureNotice item={batch.item} fallback={batch.error} />
 
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {batch.item?.status === "running" ? (
@@ -723,4 +724,9 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
       />
     </>
   );
+}
+
+function TransferFailureNotice({ item, fallback }) {
+  const message = fileTransferFailureText(item, fallback);
+  return message ? <Notice tone="bad">{message}</Notice> : null;
 }

@@ -559,6 +559,12 @@ include `direction`, `status`, the connector transfer `runtime_id`, and `q`:
 GET /api/file-transfers?paginated=true&direction=download&status=completed&q=backup
 ```
 
+Failed transfer and batch records may include a structured `failure_kind` such
+as `timeout`, `validation`, `interrupted`, `local_persistence`, or
+`outcome_unknown`. An `outcome_unknown` result means the remote operation may
+have completed but the gateway could not confirm its local terminal record;
+inspect the destination before retrying to avoid a duplicate transfer.
+
 `POST /api/file-transfers/browse` lists one remote directory or virtual object
 prefix through the selected connector transfer runtime so the local UI can
 select upload/download paths:

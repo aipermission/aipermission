@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
-import { formatBytes, formatETA, pendingBatchItemIDs, transferProgress } from "../../lib/file-transfer-utils";
+import { fileTransferFailureText, formatBytes, formatETA, pendingBatchItemIDs, transferProgress } from "../../lib/file-transfer-utils";
 
 export function QueueSummary({ batch, queue, mode, progress }) {
   const totalSize = batch ? batch.size_bytes : queue.reduce((sum, item) => sum + Number(item.size || 0), 0);
@@ -88,6 +88,7 @@ function QueueRow({ item, index, total, active, batchMode, canEditPausedBatch, c
   const name = item.file_name || item.name || item.path || item.remote_path;
   const source = mode === "upload" ? item.remote_path : item.path || item.remote_path;
   const progress = transferProgress(item.status ? item : null);
+  const failureText = fileTransferFailureText(item);
   const canEdit = !batchMode || (canEditPausedBatch && item.status === "pending");
   return (
     <div className="grid gap-2 border-b border-stone-100 p-3 last:border-b-0">
@@ -144,7 +145,7 @@ function QueueRow({ item, index, total, active, batchMode, canEditPausedBatch, c
           />
         </div>
       ) : null}
-      {item.error ? <p className="text-xs text-red-700">{item.error}</p> : null}
+      {failureText ? <p className="text-xs text-red-700">{failureText}</p> : null}
     </div>
   );
 }

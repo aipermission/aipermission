@@ -103,6 +103,9 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !columnExists(t, database, "file_transfer_batches", "overwrite") {
 		t.Fatalf("file_transfer_batches.overwrite column was not created")
 	}
+	if !columnExists(t, database, "file_transfers", "failure_kind") || !columnExists(t, database, "file_transfer_batches", "failure_kind") {
+		t.Fatalf("structured file transfer failure columns were not created")
+	}
 	for _, table := range []string{
 		"connector_targets",
 		"connector_credential_profiles",
