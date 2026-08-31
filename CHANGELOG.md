@@ -9,6 +9,28 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.35] - 2026-08-31
+
+### Fixed
+
+- Connector credential provisioning now compensates completed external steps when later
+  secret encryption or profile persistence fails, preventing orphaned managed
+  credentials.
+- File transfers now preserve the difference between user cancellation and deadline
+  expiry across item, batch, history, and API lifecycle updates.
+- Pending connector approvals now surface activity refresh failures instead of silently
+  leaving the interface with stale completion state.
+
+### Security
+
+- Legacy database migration now fails closed when schema probes cannot be completed,
+  rather than treating probe failures as absent legacy tables.
+
+### Maintenance
+
+- Updated LZ4 compression support, frontend icons and test tooling, ESLint, and pinned
+  CodeQL actions through maintainer-authored dependency commits.
+
 ## [0.2.34] - 2026-08-31
 
 ### Changed
