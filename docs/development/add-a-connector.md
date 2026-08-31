@@ -304,6 +304,14 @@ only when the shared template registry and docs are updated together.
 `model.js` is the connector UI contract. Keep these exports small and
 connector-local:
 
+For the standard target plus credential-profile lifecycle, use
+`createTargetProfileLifecycle` and `connectorCredentialRows` from
+`frontend/src/connectors/templates/_shared/target-profile-lifecycle.js`. Supply
+connector-owned target and profile payload builders; do not copy the generic
+create/update/delete/test routes into each model. Keep a custom lifecycle only
+when the remote system has materially different cleanup or provisioning
+semantics, and cover that exception with focused tests.
+
 | Export | Required | Purpose |
 |---|---:|---|
 | `emptyForm` | yes | Initial add-target form state. |

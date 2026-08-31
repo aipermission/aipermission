@@ -1,5 +1,4 @@
-import { apiDelete, apiPost, apiPut } from "../../../lib/api";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
+import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
 
 const emptyS3CredentialForm = {
   target_id: "",
@@ -9,6 +8,14 @@ const emptyS3CredentialForm = {
   session_token: "",
   risk_label: "object storage",
 };
+const lifecycle = createTargetProfileLifecycle({
+  connectorKind: "s3",
+  connectorLabel: "S3",
+  targetPayload: (form) => ({ name: form.name, config: s3TargetConfigFromForm(form) }),
+  profilePayload: s3ProfilePayloadFromForm,
+});
+
+export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
 export function emptyForm() {
   return {
@@ -83,18 +90,6 @@ export function submitLabel({ state, mode }) {
   return mode === "edit" ? "Save changes" : "Create connector";
 }
 
-export async function save({ mode, form, target }) {
-  if (mode === "edit") {
-    await updateTarget({ form, target });
-    return;
-  }
-  await createTarget({ form });
-}
-
-export async function deleteTarget({ target }) {
-  await apiDelete(`/api/connector-targets/${target.id}`);
-}
-
 export function emptyCredentialState({ targets = [] } = {}) {
   const firstTarget = targets.find((target) => target.connector_kind === "s3");
   return {
@@ -118,78 +113,8 @@ export function credentialStateFromRow({ row }) {
   };
 }
 
-export function credentialFormProps({ targets, formState, setFormState, formMode, state, onSubmit }) {
-  return {
-    form: formState.form,
-    formMode,
-    targets,
-    state,
-    onChange: (form) => setFormState({ form }),
-    onSubmit: (event) => onSubmit(event, formMode === "edit" ? "update" : "create"),
-  };
-}
-
-export async function saveCredential({ operation, row, formState }) {
-  const form = formState.form;
-  if (operation === "create") {
-    await apiPost(`/api/connector-targets/${form.target_id}/profiles`, {
-      kind: "access_key",
-      label: form.profile_label,
-      public: { access_key_id: form.access_key_id },
-      secret: s3SecretPayload(form),
-      risk_label: form.risk_label,
-    });
-    return { message: "S3 credential created." };
-  }
-  if (operation === "update") {
-    if (!row) throw new Error("S3 credential is not loaded.");
-    const payload = {
-      kind: row.profile?.kind || "access_key",
-      label: form.profile_label,
-      public: { access_key_id: form.access_key_id },
-      risk_label: form.risk_label,
-    };
-    const secret = s3SecretPayload(form);
-    if (Object.keys(secret).length > 0) {
-      payload.secret = secret;
-    }
-    await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, payload);
-    return { message: "S3 credential updated." };
-  }
-  throw new Error("Unsupported S3 credential operation.");
-}
-
-export async function deleteCredential({ row }) {
-  await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
-}
-
 export function credentialRows({ targets }) {
-  return targets.flatMap((target) =>
-    (target.profiles || [])
-      .filter((_profile) => target.connector_kind === "s3")
-      .map((profile) => ({
-        row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
-        connector_kind: target.connector_kind,
-        resource_kind: "credential_profile",
-        connector_label: "S3",
-        id: profile.id,
-        target_id: target.id,
-        name: profile.label,
-        kind: profile.kind,
-        profile,
-        target_label: target.name,
-        target_detail: targetEndpoint({ target }),
-        metadata: credentialMetadata(profile),
-        delete_disabled: "",
-      })),
-  );
-}
-
-export async function test({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!selectedProfile) throw new Error("Connector profile is not loaded.");
-  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
-  return { ok: data.ok, error: data.message || null, data };
+  return connectorCredentialRows({ targets, connectorKind: "s3", connectorLabel: "S3", targetEndpoint, credentialMetadata });
 }
 
 export function canEdit() {
@@ -254,52 +179,6 @@ export function operationFromError() {
   return null;
 }
 
-async function createTarget({ form }) {
-  await createTargetWithProfile({
-    projectID: form.project_id,
-    targetPayload: {
-      connector_kind: "s3",
-      name: form.name,
-      config: s3TargetConfigFromForm(form),
-    },
-    profilePayload: {
-      kind: "access_key",
-      label: form.profile_label,
-      public: { access_key_id: form.access_key_id },
-      secret: s3SecretPayload(form),
-      risk_label: form.risk_label || "object storage",
-    },
-  });
-}
-
-async function updateTarget({ form, target }) {
-  const profile =
-    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
-    (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!target || !profile) throw new Error("S3 connector profile is not loaded.");
-  const profilePayload = {
-    kind: profile.kind || "access_key",
-    label: form.profile_label,
-    public: { access_key_id: form.access_key_id },
-    risk_label: form.risk_label || "object storage",
-  };
-  const secret = s3SecretPayload(form);
-  if (Object.keys(secret).length > 0) {
-    profilePayload.secret = secret;
-  }
-  await updateTargetWithProfile({
-    projectID: form.project_id,
-    targetID: target.id,
-    profileID: profile.id,
-    targetPayload: {
-      connector_kind: "s3",
-      name: form.name,
-      config: s3TargetConfigFromForm(form),
-    },
-    profilePayload,
-  });
-}
-
 function s3TargetConfigFromForm(form) {
   return {
     connection_mode: form.connection_mode || "direct",
@@ -310,6 +189,17 @@ function s3TargetConfigFromForm(form) {
     bucket: form.bucket,
     path_style: form.path_style !== false,
     transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref : "",
+  };
+}
+
+function s3ProfilePayloadFromForm(form, { profile, operation }) {
+  const secret = s3SecretPayload(form);
+  return {
+    kind: profile?.kind || "access_key",
+    label: form.profile_label,
+    public: { access_key_id: form.access_key_id },
+    ...(operation.endsWith("create") || Object.keys(secret).length > 0 ? { secret } : {}),
+    risk_label: operation.startsWith("target") ? form.risk_label || "object storage" : form.risk_label,
   };
 }
 

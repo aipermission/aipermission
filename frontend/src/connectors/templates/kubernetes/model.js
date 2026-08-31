@@ -1,5 +1,4 @@
-import { apiDelete, apiPost, apiPut } from "../../../lib/api";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
+import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
 
 const emptyKubernetesCredentialForm = {
   target_id: "",
@@ -8,6 +7,22 @@ const emptyKubernetesCredentialForm = {
   namespaces: "",
   risk_label: "cluster visibility",
 };
+const lifecycle = createTargetProfileLifecycle({
+  connectorKind: "kubernetes",
+  connectorLabel: "Kubernetes",
+  targetPayload: (form) => ({ name: form.name, config: kubernetesTargetConfigFromForm(form) }),
+  profilePayload: (form, { profile, operation }) =>
+    kubernetesProfilePayloadFromForm(
+      form,
+      operation === "target-update" ? profile?.kind || "namespace_scope" : "namespace_scope",
+      operation.startsWith("target"),
+    ),
+  credentialCreatedMessage: "Kubernetes namespace scope created.",
+  credentialUpdatedMessage: "Kubernetes namespace scope updated.",
+  credentialMissingMessage: "Kubernetes namespace scope is not loaded.",
+});
+
+export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
 export function emptyForm() {
   return {
@@ -61,18 +76,6 @@ export function submitLabel({ state, mode }) {
   return mode === "edit" ? "Save changes" : "Create connector";
 }
 
-export async function save({ mode, form, target }) {
-  if (mode === "edit") {
-    await updateTarget({ form, target });
-    return;
-  }
-  await createTarget({ form });
-}
-
-export async function deleteTarget({ target }) {
-  await apiDelete(`/api/connector-targets/${target.id}`);
-}
-
 export function emptyCredentialState({ targets = [] } = {}) {
   const firstTarget = targets.find((target) => target.connector_kind === "kubernetes");
   return {
@@ -95,72 +98,14 @@ export function credentialStateFromRow({ row }) {
   };
 }
 
-export function credentialFormProps({ targets, formState, setFormState, formMode, state, onSubmit }) {
-  return {
-    form: formState.form,
-    formMode,
-    targets,
-    state,
-    onChange: (form) => setFormState({ form }),
-    onSubmit: (event) => onSubmit(event, formMode === "edit" ? "update" : "create"),
-  };
-}
-
-export async function saveCredential({ operation, row, formState }) {
-  const form = formState.form;
-  const payload = {
-    kind: "namespace_scope",
-    label: form.profile_label,
-    public: {
-      scope_mode: form.scope_mode || "all",
-      namespaces: form.namespaces || "",
-    },
-    secret: {},
-    risk_label: form.risk_label,
-  };
-  if (operation === "create") {
-    await apiPost(`/api/connector-targets/${form.target_id}/profiles`, payload);
-    return { message: "Kubernetes namespace scope created." };
-  }
-  if (operation === "update") {
-    if (!row) throw new Error("Kubernetes namespace scope is not loaded.");
-    await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, payload);
-    return { message: "Kubernetes namespace scope updated." };
-  }
-  throw new Error("Unsupported Kubernetes credential operation.");
-}
-
-export async function deleteCredential({ row }) {
-  await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
-}
-
 export function credentialRows({ targets }) {
-  return targets.flatMap((target) =>
-    (target.profiles || [])
-      .filter((_profile) => target.connector_kind === "kubernetes")
-      .map((profile) => ({
-        row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
-        connector_kind: target.connector_kind,
-        resource_kind: "credential_profile",
-        connector_label: "Kubernetes",
-        id: profile.id,
-        target_id: target.id,
-        name: profile.label,
-        kind: profile.kind,
-        profile,
-        target_label: target.name,
-        target_detail: targetEndpoint({ target }),
-        metadata: credentialMetadata(profile),
-        delete_disabled: "",
-      })),
-  );
-}
-
-export async function test({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!selectedProfile) throw new Error("Kubernetes profile is not loaded.");
-  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
-  return { ok: data.ok, error: data.message || null, data };
+  return connectorCredentialRows({
+    targets,
+    connectorKind: "kubernetes",
+    connectorLabel: "Kubernetes",
+    targetEndpoint,
+    credentialMetadata,
+  });
 }
 
 export function canEdit() {
@@ -235,35 +180,6 @@ export function deleteDialog({ target }) {
   };
 }
 
-async function createTarget({ form }) {
-  await createTargetWithProfile({
-    projectID: form.project_id,
-    targetPayload: {
-      connector_kind: "kubernetes",
-      name: form.name,
-      config: kubernetesTargetConfigFromForm(form),
-    },
-    profilePayload: kubernetesProfilePayloadFromForm(form),
-  });
-}
-
-async function updateTarget({ form, target }) {
-  const profile =
-    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
-    (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!target || !profile) throw new Error("Kubernetes connector profile is not loaded.");
-  await updateTargetWithProfile({
-    projectID: form.project_id,
-    targetID: target.id,
-    profileID: profile.id,
-    targetPayload: {
-      name: form.name,
-      config: kubernetesTargetConfigFromForm(form),
-    },
-    profilePayload: kubernetesProfilePayloadFromForm(form, profile.kind || "namespace_scope"),
-  });
-}
-
 function kubernetesTargetConfigFromForm(form) {
   return {
     connection_mode: "over_ssh",
@@ -274,7 +190,7 @@ function kubernetesTargetConfigFromForm(form) {
   };
 }
 
-function kubernetesProfilePayloadFromForm(form, kind = "namespace_scope") {
+function kubernetesProfilePayloadFromForm(form, kind = "namespace_scope", useDefaultRisk = true) {
   return {
     kind,
     label: form.profile_label,
@@ -283,7 +199,7 @@ function kubernetesProfilePayloadFromForm(form, kind = "namespace_scope") {
       namespaces: form.namespaces || "",
     },
     secret: {},
-    risk_label: form.risk_label || "cluster visibility",
+    risk_label: useDefaultRisk ? form.risk_label || "cluster visibility" : form.risk_label,
   };
 }
 
