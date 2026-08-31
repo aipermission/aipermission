@@ -70,6 +70,53 @@ func TestStoreCreatesListsAndUpdatesFileTransfers(t *testing.T) {
 	}
 }
 
+func TestStoreFinalizesPausedTransfers(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	runtimeID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+
+	createPaused := func(name string) Record {
+		t.Helper()
+		item, err := store.Create(ctx, CreateRequest{
+			RuntimeID: runtimeID, Direction: DirectionUpload, Source: SourceUI,
+			LocalPath: name, RemotePath: "/tmp/" + name, FileName: name,
+		})
+		if err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		if ok, err := store.MarkRunning(ctx, item.ID); err != nil || !ok {
+			t.Fatalf("mark %s running: ok=%v err=%v", name, ok, err)
+		}
+		if ok, err := store.Pause(ctx, item.ID); err != nil || !ok {
+			t.Fatalf("pause %s: ok=%v err=%v", name, ok, err)
+		}
+		return item
+	}
+
+	failed := createPaused("failed.txt")
+	if ok, err := store.Fail(ctx, failed.ID, "timed out"); err != nil || !ok {
+		t.Fatalf("fail paused transfer: ok=%v err=%v", ok, err)
+	}
+	canceled := createPaused("canceled.txt")
+	if ok, err := store.Cancel(ctx, canceled.ID, "canceled by local user"); err != nil || !ok {
+		t.Fatalf("cancel paused transfer: ok=%v err=%v", ok, err)
+	}
+
+	failed, err = store.Get(ctx, failed.ID)
+	if err != nil || failed.Status != StatusFailed {
+		t.Fatalf("failed paused transfer=%#v err=%v", failed, err)
+	}
+	canceled, err = store.Get(ctx, canceled.ID)
+	if err != nil || canceled.Status != StatusCanceled {
+		t.Fatalf("canceled paused transfer=%#v err=%v", canceled, err)
+	}
+}
+
 func TestStoreAuditsTransferLifecycleWithoutProgressNoise(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {
@@ -252,6 +299,59 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 	}
 	if total != 0 || len(batches) != 0 {
 		t.Fatalf("unexpected filtered batch list: total=%d items=%#v", total, batches)
+	}
+}
+
+func TestStoreFailsBatchWithoutReclassifyingCompletedItems(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	runtimeID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+
+	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
+		RuntimeID: runtimeID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
+		Items: []CreateRequest{
+			{LocalPath: "done.txt", RemotePath: "/tmp/done.txt", FileName: "done.txt"},
+			{LocalPath: "pending.txt", RemotePath: "/tmp/pending.txt", FileName: "pending.txt"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if ok, err := store.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.MarkRunning(ctx, batch.Items[0].ID); err != nil || !ok {
+		t.Fatalf("mark first item running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.Complete(ctx, batch.Items[0].ID, 10, "done"); err != nil || !ok {
+		t.Fatalf("complete first item: ok=%v err=%v", ok, err)
+	}
+
+	if ok, err := store.FailBatch(ctx, batch.ID, "file transfer batch timed out"); err != nil || !ok {
+		t.Fatalf("fail batch: ok=%v err=%v", ok, err)
+	}
+	failed, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get failed batch: %v", err)
+	}
+	if failed.Status != StatusFailed || failed.Error != "file transfer batch timed out" {
+		t.Fatalf("unexpected failed batch: %#v", failed)
+	}
+	if failed.CompletedItems != 1 || failed.FailedItems != 1 {
+		t.Fatalf("unexpected failed batch counters: %#v", failed)
+	}
+	if failed.Items[0].Status != StatusCompleted || failed.Items[1].Status != StatusFailed {
+		t.Fatalf("unexpected failed batch items: %#v", failed.Items)
+	}
+	if failed.Items[1].Error != "file transfer batch timed out" {
+		t.Fatalf("pending item timeout error=%q", failed.Items[1].Error)
 	}
 }
 

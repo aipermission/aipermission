@@ -206,12 +206,29 @@ func (s *Store) UpdatePausedBatchQueue(ctx context.Context, id int64, orderedPen
 }
 
 func (s *Store) CancelBatch(ctx context.Context, id int64, errorText string) (bool, error) {
+	return s.finishBatch(ctx, id, StatusCanceled, errorText)
+}
+
+func (s *Store) FailBatch(ctx context.Context, id int64, errorText string) (bool, error) {
+	return s.finishBatch(ctx, id, StatusFailed, errorText)
+}
+
+func (s *Store) finishBatch(ctx context.Context, id int64, status string, errorText string) (bool, error) {
+	if status != StatusCanceled && status != StatusFailed {
+		return false, fmt.Errorf("finish file transfer batch: unsupported terminal status %q", status)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin file transfer batch finalization: %w", err)
+	}
+	defer tx.Rollback()
+
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		UPDATE file_transfer_batches
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?)`,
-		StatusCanceled,
+		status,
 		strings.TrimSpace(errorText),
 		now,
 		now,
@@ -221,13 +238,20 @@ func (s *Store) CancelBatch(ctx context.Context, id int64, errorText string) (bo
 		StatusPaused,
 	)
 	if err != nil {
-		return false, fmt.Errorf("cancel file transfer batch: %w", err)
+		return false, fmt.Errorf("finalize file transfer batch: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read finalized file transfer batch rows: %w", err)
+	}
+	if rows == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE batch_id = ? AND status IN (?, ?, ?, ?)`,
-		StatusCanceled,
+		status,
 		strings.TrimSpace(errorText),
 		now,
 		now,
@@ -237,18 +261,18 @@ func (s *Store) CancelBatch(ctx context.Context, id int64, errorText string) (bo
 		StatusRunning,
 		StatusPaused,
 	); err != nil {
-		return false, fmt.Errorf("cancel file transfer batch items: %w", err)
+		return false, fmt.Errorf("finalize file transfer batch items: %w", err)
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read canceled file transfer batch rows: %w", err)
+	if err := recalculateBatch(ctx, tx, id); err != nil {
+		return false, err
 	}
-	if rows > 0 {
-		if err := s.syncBatchTransferHistory(ctx, id); err != nil {
-			return false, err
-		}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit file transfer batch finalization: %w", err)
 	}
-	return rows > 0, nil
+	if err := s.syncBatchTransferHistory(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) FailActive(ctx context.Context, transferError string, batchError string) error {

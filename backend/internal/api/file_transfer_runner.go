@@ -13,6 +13,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
+var errFileTransferTimedOut = errors.New("file transfer timed out")
+
 func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int64, overwrite bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), fileTransferTimeout)
 	runtime.registerTransferCancel(transferID, cancel)
@@ -21,6 +23,7 @@ func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int
 	defer s.removeTransferTemp(runtime, transferID)
 	ok, err := runtime.fileTransfers.MarkRunning(ctx, transferID)
 	if err != nil {
+		s.finishFileTransferError(runtime, transferID, ctx, err)
 		log.Printf("mark file upload running failed transfer=%d error=%v", transferID, err)
 		return
 	}
@@ -29,23 +32,20 @@ func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int
 	}
 	item, err := runtime.fileTransfers.Get(ctx, transferID)
 	if err != nil {
+		s.finishFileTransferError(runtime, transferID, ctx, err)
 		log.Printf("read file upload failed transfer=%d error=%v", transferID, err)
 		return
 	}
 	adapter, err := s.fileTransferAdapter(ctx, runtime, item.RuntimeID)
 	if err != nil {
-		s.failFileTransfer(runtime, transferID, err)
+		s.finishFileTransferError(runtime, transferID, ctx, err)
 		return
 	}
 	result, err := adapter.UploadFile(ctx, s.Server, runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, connectorapi.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID),
 	})
 	if err != nil {
-		if ctx.Err() != nil || errors.Is(err, context.Canceled) {
-			s.cancelFileTransferRecord(runtime, transferID, "canceled by local user")
-			return
-		}
-		s.failFileTransfer(runtime, transferID, err)
+		s.finishFileTransferError(runtime, transferID, ctx, err)
 		return
 	}
 	completed, err := runtime.fileTransfers.Complete(context.Background(), transferID, result.Bytes, result.ChecksumSHA256)
@@ -71,6 +71,7 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 	defer cancel()
 	ok, err := runtime.fileTransfers.MarkRunning(ctx, transferID)
 	if err != nil {
+		s.finishFileTransferError(runtime, transferID, ctx, err)
 		log.Printf("mark file download running failed transfer=%d error=%v", transferID, err)
 		return
 	}
@@ -79,12 +80,13 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 	}
 	item, err := runtime.fileTransfers.Get(ctx, transferID)
 	if err != nil {
+		s.finishFileTransferError(runtime, transferID, ctx, err)
 		log.Printf("read file download failed transfer=%d error=%v", transferID, err)
 		return
 	}
 	adapter, err := s.fileTransferAdapter(ctx, runtime, item.RuntimeID)
 	if err != nil {
-		s.failFileTransfer(runtime, transferID, err)
+		s.finishFileTransferError(runtime, transferID, ctx, err)
 		return
 	}
 	result, err := adapter.DownloadFile(ctx, s.Server, runtime, item.RuntimeID, item.RemotePath, item.TempPath, connectorapi.TransferOptions{
@@ -93,11 +95,7 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 	})
 	if err != nil {
 		_ = os.Remove(item.TempPath)
-		if ctx.Err() != nil || errors.Is(err, context.Canceled) {
-			s.cancelFileTransferRecord(runtime, transferID, "canceled by local user")
-			return
-		}
-		s.failFileTransfer(runtime, transferID, err)
+		s.finishFileTransferError(runtime, transferID, ctx, err)
 		return
 	}
 	completed, err := runtime.fileTransfers.Complete(context.Background(), transferID, result.Bytes, result.ChecksumSHA256)
@@ -128,14 +126,21 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 
 	batch, err := runtime.fileTransfers.GetBatch(ctx, batchID)
 	if err != nil {
+		s.finishFileTransferBatchError(runtime, batchID, ctx, err)
+		s.cleanupBatchTemps(runtime, batchID)
 		log.Printf("read file transfer batch before run failed batch=%d error=%v", batchID, err)
 		return
 	}
 	if batch.Direction == filetransfer.DirectionDownload {
 		if err := s.validateDownloadBatchBeforeRun(ctx, runtime, batch); err != nil {
+			if classifyFileTransferInterruption(ctx, err) != fileTransferNotInterrupted {
+				s.finishFileTransferBatchError(runtime, batchID, ctx, err)
+				s.cleanupBatchTemps(runtime, batchID)
+				return
+			}
 			message := fileTransferFailureMessage(err)
 			log.Printf("reject file transfer batch before run batch=%d error=%v", batchID, err)
-			_, _ = runtime.fileTransfers.CancelBatch(context.Background(), batchID, message)
+			_, _ = runtime.fileTransfers.FailBatch(context.Background(), batchID, message)
 			s.cleanupBatchTemps(runtime, batchID)
 			s.writeObservationAudit(context.Background(), runtime, "gateway", nil, batch.RuntimeID, "file_transfer.batch.guardrail_rejected", map[string]any{
 				"batch_id": batchID,
@@ -145,6 +150,8 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 		}
 	}
 	if ok, err := runtime.fileTransfers.MarkBatchRunning(ctx, batchID); err != nil {
+		s.finishFileTransferBatchError(runtime, batchID, ctx, err)
+		s.cleanupBatchTemps(runtime, batchID)
 		log.Printf("mark file transfer batch running failed batch=%d error=%v", batchID, err)
 		return
 	} else if !ok {
@@ -152,6 +159,8 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 	}
 	batch, err = runtime.fileTransfers.GetBatch(ctx, batchID)
 	if err != nil {
+		s.finishFileTransferBatchError(runtime, batchID, ctx, err)
+		s.cleanupBatchTemps(runtime, batchID)
 		log.Printf("read file transfer batch failed batch=%d error=%v", batchID, err)
 		return
 	}
@@ -165,7 +174,9 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 		}
 		if err != nil {
 			log.Printf("read next file transfer batch item failed batch=%d error=%v", batchID, err)
-			break
+			s.finishFileTransferBatchError(runtime, batchID, ctx, err)
+			s.cleanupBatchTemps(runtime, batchID)
+			return
 		}
 		s.runTransferBatchItem(ctx, runtime, latest.ID, overwrite, control)
 		_ = runtime.fileTransfers.RecalculateBatch(context.Background(), batchID)
@@ -174,7 +185,7 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 		}
 	}
 	if ctx.Err() != nil {
-		_, _ = runtime.fileTransfers.CancelBatch(context.Background(), batchID, "canceled by local user")
+		s.finishFileTransferBatchError(runtime, batchID, ctx, ctx.Err())
 		s.cleanupBatchTemps(runtime, batchID)
 		return
 	}
@@ -191,7 +202,7 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 			archivePath, err := s.createDownloadArchive(batch)
 			if err != nil {
 				log.Printf("create file transfer archive failed batch=%d error=%v", batchID, err)
-				_, _ = runtime.fileTransfers.CancelBatch(context.Background(), batchID, fileTransferFailureMessage(err))
+				_, _ = runtime.fileTransfers.FailBatch(context.Background(), batchID, fileTransferFailureMessage(err))
 				s.cleanupBatchTemps(runtime, batchID)
 				return
 			}
@@ -250,6 +261,7 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 
 	ok, err := runtime.fileTransfers.MarkRunning(itemCtx, transferID)
 	if err != nil {
+		s.finishFileTransferError(runtime, transferID, itemCtx, err)
 		log.Printf("mark file transfer running failed transfer=%d error=%v", transferID, err)
 		return
 	}
@@ -258,12 +270,13 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 	}
 	item, err := runtime.fileTransfers.Get(itemCtx, transferID)
 	if err != nil {
+		s.finishFileTransferError(runtime, transferID, itemCtx, err)
 		log.Printf("read file transfer failed transfer=%d error=%v", transferID, err)
 		return
 	}
 	adapter, err := s.fileTransferAdapter(itemCtx, runtime, item.RuntimeID)
 	if err != nil {
-		s.failFileTransfer(runtime, transferID, err)
+		s.finishFileTransferError(runtime, transferID, itemCtx, err)
 		return
 	}
 	options := connectorapi.TransferOptions{
@@ -279,14 +292,10 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 		result, err = adapter.DownloadFile(itemCtx, s.Server, runtime, item.RuntimeID, item.RemotePath, item.TempPath, options)
 	}
 	if err != nil {
-		if itemCtx.Err() != nil || errors.Is(err, context.Canceled) {
-			s.cancelFileTransferRecord(runtime, transferID, "canceled by local user")
-			return
-		}
 		if item.Direction == filetransfer.DirectionDownload {
 			_ = os.Remove(item.TempPath)
 		}
-		s.failFileTransfer(runtime, transferID, err)
+		s.finishFileTransferError(runtime, transferID, itemCtx, err)
 		return
 	}
 	completed, err := runtime.fileTransfers.Complete(context.Background(), transferID, result.Bytes, result.ChecksumSHA256)
@@ -427,6 +436,52 @@ func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transfe
 	}
 }
 
+func (s fileTransferHandlers) finishFileTransferError(runtime *databaseRuntime, transferID int64, ctx context.Context, err error) {
+	switch classifyFileTransferInterruption(ctx, err) {
+	case fileTransferTimedOut:
+		s.failFileTransfer(runtime, transferID, errFileTransferTimedOut)
+	case fileTransferCanceledByUser:
+		s.cancelFileTransferRecord(runtime, transferID, "canceled by local user")
+	default:
+		s.failFileTransfer(runtime, transferID, err)
+	}
+}
+
+func (s fileTransferHandlers) finishFileTransferBatchError(runtime *databaseRuntime, batchID int64, ctx context.Context, err error) {
+	switch classifyFileTransferInterruption(ctx, err) {
+	case fileTransferTimedOut:
+		if _, writeErr := runtime.fileTransfers.FailBatch(context.Background(), batchID, "file transfer batch timed out"); writeErr != nil {
+			log.Printf("mark file transfer batch timed out failed batch=%d error=%v", batchID, writeErr)
+		}
+	case fileTransferCanceledByUser:
+		if _, writeErr := runtime.fileTransfers.CancelBatch(context.Background(), batchID, "canceled by local user"); writeErr != nil {
+			log.Printf("cancel file transfer batch failed batch=%d error=%v", batchID, writeErr)
+		}
+	default:
+		if _, writeErr := runtime.fileTransfers.FailBatch(context.Background(), batchID, fileTransferFailureMessage(err)); writeErr != nil {
+			log.Printf("fail file transfer batch failed batch=%d error=%v", batchID, writeErr)
+		}
+	}
+}
+
+type fileTransferInterruption int
+
+const (
+	fileTransferNotInterrupted fileTransferInterruption = iota
+	fileTransferCanceledByUser
+	fileTransferTimedOut
+)
+
+func classifyFileTransferInterruption(ctx context.Context, err error) fileTransferInterruption {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+		return fileTransferTimedOut
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return fileTransferCanceledByUser
+	}
+	return fileTransferNotInterrupted
+}
+
 func (s fileTransferHandlers) cancelFileTransferRecord(runtime *databaseRuntime, transferID int64, message string) {
 	changed, err := runtime.fileTransfers.Cancel(context.Background(), transferID, message)
 	if err != nil {
@@ -441,6 +496,9 @@ func (s fileTransferHandlers) cancelFileTransferRecord(runtime *databaseRuntime,
 func fileTransferFailureMessage(err error) string {
 	if err == nil {
 		return ""
+	}
+	if errors.Is(err, errFileTransferTimedOut) {
+		return errFileTransferTimedOut.Error()
 	}
 	return fmt.Sprintf("file transfer failed: %v", err)
 }

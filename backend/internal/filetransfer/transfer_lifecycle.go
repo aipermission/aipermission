@@ -108,7 +108,7 @@ func (s *Store) Fail(ctx context.Context, id int64, errorText string) (bool, err
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE id = ? AND status IN (?, ?, ?)`,
+		WHERE id = ? AND status IN (?, ?, ?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(errorText),
 		now,
@@ -139,7 +139,7 @@ func (s *Store) Cancel(ctx context.Context, id int64, errorText string) (bool, e
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE id = ? AND status IN (?, ?, ?)`,
+		WHERE id = ? AND status IN (?, ?, ?, ?)`,
 		StatusCanceled,
 		strings.TrimSpace(errorText),
 		now,
