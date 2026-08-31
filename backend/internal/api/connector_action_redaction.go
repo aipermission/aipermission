@@ -1,0 +1,152 @@
+package api
+
+import (
+	"context"
+	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+)
+
+func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool) (any, error) {
+	return actionresult.CanonicalizeAndRedact(value, actionresult.DefaultLimits(), actionresult.RedactionOptions{
+		SensitiveField: func(key string) bool {
+			return connectorOutputFieldSensitive(key, sensitiveFields)
+		},
+		TemporaryCapabilityField: func(key string) bool {
+			return connectorOutputFieldDeclared(key, capabilityFields)
+		},
+		RedactText: func(value string) string {
+			return s.redactForPersistence(ctx, runtime, value)
+		},
+		RedactCapability: func(value string) string {
+			return s.redactCustom(ctx, runtime, value)
+		},
+	})
+}
+
+func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+	sensitiveFields := connectorSensitiveOutputFields(hints...)
+	capabilityFields := connectorTemporaryCapabilityFields(hints...)
+	result.DisplayText = s.redactForPersistence(ctx, runtime, result.DisplayText)
+	result.Error = s.redactForPersistence(ctx, runtime, result.Error)
+	redacted, err := s.redactedConnectorValue(ctx, runtime, result.Output, sensitiveFields, capabilityFields)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	result.Output = redacted
+	return result, nil
+}
+
+func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databaseRuntime, input map[string]any, sensitiveInputFields []string) (map[string]any, error) {
+	if input == nil {
+		return map[string]any{}, nil
+	}
+	fields := connectorSensitiveOutputFields()
+	for _, field := range sensitiveInputFields {
+		normalized := normalizeConnectorOutputField(field)
+		if normalized != "" {
+			fields[normalized] = true
+		}
+	}
+	value, err := s.redactedConnectorValue(ctx, runtime, input, fields, nil)
+	if err != nil {
+		return nil, err
+	}
+	redacted, ok := value.(map[string]any)
+	if !ok || redacted == nil {
+		return nil, actionresult.ErrInvalidValue
+	}
+	return redacted, nil
+}
+
+func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *databaseRuntime, preview map[string]any, sensitiveFields []string, hints ...connectors.OutputHint) (map[string]any, error) {
+	if preview == nil {
+		return map[string]any{}, nil
+	}
+	fields := connectorSensitiveOutputFields(hints...)
+	for _, field := range sensitiveFields {
+		if normalized := normalizeConnectorOutputField(field); normalized != "" {
+			fields[normalized] = true
+		}
+	}
+	value, err := s.redactedConnectorValue(ctx, runtime, preview, fields, nil)
+	if err != nil {
+		return nil, err
+	}
+	redacted, ok := value.(map[string]any)
+	if !ok || redacted == nil {
+		return nil, actionresult.ErrInvalidValue
+	}
+	return redacted, nil
+}
+
+func connectorTemporaryCapabilityFields(hints ...connectors.OutputHint) map[string]bool {
+	fields := map[string]bool{}
+	for _, hint := range hints {
+		for _, field := range hint.TemporaryCapabilityFields {
+			if normalized := normalizeConnectorOutputField(field); normalized != "" {
+				fields[normalized] = true
+			}
+		}
+	}
+	return fields
+}
+
+func connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {
+	fields := map[string]bool{
+		"api_key":           true,
+		"api_token_hash":    true,
+		"apikey":            true,
+		"authorization":     true,
+		"credential":        true,
+		"credential_hash":   true,
+		"credential_value":  true,
+		"password":          true,
+		"password_hash":     true,
+		"private_key":       true,
+		"refresh_token":     true,
+		"secret":            true,
+		"secret_access_key": true,
+		"secret_hash":       true,
+		"secret_value":      true,
+		"token":             true,
+		"token_hash":        true,
+	}
+	for _, hint := range hints {
+		for _, field := range hint.SensitiveFields {
+			normalized := normalizeConnectorOutputField(field)
+			if normalized != "" {
+				fields[normalized] = true
+			}
+		}
+	}
+	return fields
+}
+
+func connectorOutputFieldSensitive(key string, sensitiveFields map[string]bool) bool {
+	normalized := normalizeConnectorOutputField(key)
+	if normalized == "" {
+		return false
+	}
+	if sensitiveFields[normalized] {
+		return true
+	}
+	for field := range sensitiveFields {
+		if strings.HasSuffix(normalized, "."+field) || strings.HasSuffix(normalized, "_"+field) {
+			return true
+		}
+	}
+	return false
+}
+
+func connectorOutputFieldDeclared(key string, fields map[string]bool) bool {
+	normalized := normalizeConnectorOutputField(key)
+	return normalized != "" && fields[normalized]
+}
+
+func normalizeConnectorOutputField(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	value = strings.ReplaceAll(value, "-", "_")
+	return value
+}
