@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 func (s *Store) ReplaceValue(ctx context.Context, input ReplaceValueInput) (Item, error) {
@@ -69,7 +71,10 @@ func (s *Store) ReplaceValue(ctx context.Context, input ReplaceValueInput) (Item
 	if err != nil {
 		return Item{}, fmt.Errorf("replace vault value: %w", err)
 	}
-	affected, _ := result.RowsAffected()
+	affected, err := sqldb.RowsAffected(result, "replace Vault value")
+	if err != nil {
+		return Item{}, err
+	}
 	if affected == 0 {
 		if _, err := s.Get(ctx, input.ID); errors.Is(err, ErrNotFound) {
 			return Item{}, ErrNotFound
@@ -146,7 +151,10 @@ func (s *Store) UpdateMetadata(ctx context.Context, input UpdateMetadataInput) (
 		}
 		return Item{}, fmt.Errorf("update vault metadata: %w", err)
 	}
-	affected, _ := result.RowsAffected()
+	affected, err := sqldb.RowsAffected(result, "update Vault metadata")
+	if err != nil {
+		return Item{}, err
+	}
 	if affected == 0 {
 		var exists int
 		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM vault_items WHERE id = ? AND status = 'active'`, input.ID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
@@ -200,7 +208,10 @@ func (s *Store) Delete(ctx context.Context, id int64, expectedValueVersion int64
 	if err != nil {
 		return fmt.Errorf("delete vault item: %w", err)
 	}
-	affected, _ := result.RowsAffected()
+	affected, err := sqldb.RowsAffected(result, "delete Vault item")
+	if err != nil {
+		return err
+	}
 	if affected == 0 {
 		if _, err := s.Get(ctx, id); errors.Is(err, ErrNotFound) {
 			return ErrNotFound
