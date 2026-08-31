@@ -116,11 +116,12 @@ func (Connector) TargetSchema() connectors.Schema {
 			Name:        "ssl_mode",
 			Label:       "SSL mode",
 			Type:        connectors.FieldSelect,
-			Default:     "require",
-			Description: "Postgres SSL mode. Use prefer or disable only when you intentionally accept weaker transport protection or connect through a trusted SSH tunnel.",
+			Default:     "auto",
+			Description: "Auto verifies the server certificate and hostname for direct remote connections, and requires encryption for localhost or SSH-tunneled connections. Require encrypts traffic without verifying server identity.",
 			Options: []connectors.FieldOption{
-				{Value: "require", Label: "Require"},
+				{Value: "auto", Label: "Auto (recommended)"},
 				{Value: "verify_full", Label: "Verify full"},
+				{Value: "require", Label: "Require (no identity verification)"},
 				{Value: "prefer", Label: "Prefer"},
 				{Value: "disable", Label: "Disable"},
 			},
@@ -189,6 +190,26 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 			}},
 		},
 	}
+}
+
+func (Connector) NormalizeTargetConfigUpdate(existing, submitted map[string]any) map[string]any {
+	normalized := make(map[string]any, len(submitted)+1)
+	for name, value := range submitted {
+		normalized[name] = value
+	}
+	if submittedMode := strings.TrimSpace(targetString(normalized, "ssl_mode")); submittedMode != "" {
+		return normalized
+	}
+	delete(normalized, "ssl_mode")
+	if existingMode := strings.TrimSpace(targetString(existing, "ssl_mode")); validPostgresSSLMode(existingMode) {
+		if existingMode == "verify-full" {
+			existingMode = "verify_full"
+		}
+		normalized["ssl_mode"] = existingMode
+	} else {
+		normalized["ssl_mode"] = "require"
+	}
+	return normalized
 }
 
 func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (connectors.ConnectorHelp, error) {
@@ -505,16 +526,43 @@ func targetPort(config map[string]any) int {
 	return value
 }
 
-func sslMode(config map[string]any) string {
-	mode := targetString(config, "ssl_mode")
+func sslMode(target connectors.TargetView) string {
+	return postgresTLSPlanForTarget(target).Mode
+}
+
+type postgresTLSPlan struct {
+	Mode           string
+	UseSystemRoots bool
+}
+
+func postgresTLSPlanForTarget(target connectors.TargetView) postgresTLSPlan {
+	mode := targetString(target.Config, "ssl_mode")
 	switch mode {
 	case "disable", "prefer", "require", "verify-full", "verify_full":
 		if mode == "verify_full" {
-			return "verify-full"
+			mode = "verify-full"
 		}
-		return mode
+	case "":
+		// Targets created before ssl_mode was persisted used require at runtime.
+		mode = "require"
+	case "auto":
+		if connectors.UseVerifiedTLSByDefault(connectionMode(target), targetString(target.Config, "host")) {
+			mode = "verify-full"
+		} else {
+			mode = "require"
+		}
 	default:
-		return "require"
+		mode = "require"
+	}
+	return postgresTLSPlan{Mode: mode, UseSystemRoots: mode == "verify-full"}
+}
+
+func validPostgresSSLMode(mode string) bool {
+	switch strings.TrimSpace(mode) {
+	case "auto", "disable", "prefer", "require", "verify-full", "verify_full":
+		return true
+	default:
+		return false
 	}
 }
 

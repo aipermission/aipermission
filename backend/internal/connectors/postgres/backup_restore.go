@@ -132,22 +132,30 @@ func postgresCLIConnection(ctx context.Context, runtime connectors.RuntimeContex
 		return postgresCLIInvocation{}, fmt.Errorf("%w: database is required", ErrInvalidConfig)
 	}
 	port := targetPort(runtime.Target.Config)
+	tlsPlan := postgresTLSPlanForTarget(runtime.Target)
+	networkHost := ""
 	cleanup := func() {}
 	if connectionMode(runtime.Target) == "over_ssh" {
 		localHost, localPort, stop, err := startPostgresTunnel(ctx, runtime)
 		if err != nil {
 			return postgresCLIInvocation{}, err
 		}
-		host = localHost
+		networkHost = localHost
 		port = localPort
 		cleanup = stop
 	}
-	env := append(os.Environ(),
+	env := append(withoutPostgresEnvironment(os.Environ()),
 		"PGPASSWORD="+password,
-		"PGSSLMODE="+sslMode(runtime.Target.Config),
+		"PGSSLMODE="+tlsPlan.Mode,
 		"PGCONNECT_TIMEOUT=10",
 		"PGAPPNAME=aipermission",
 	)
+	if tlsPlan.UseSystemRoots {
+		env = append(env, "PGSSLROOTCERT=system")
+	}
+	if networkHost != "" {
+		env = append(env, "PGHOSTADDR="+networkHost)
+	}
 	args := []string{
 		"--host", host,
 		"--port", strconv.Itoa(port),
@@ -156,6 +164,18 @@ func postgresCLIConnection(ctx context.Context, runtime connectors.RuntimeContex
 		"--no-password",
 	}
 	return postgresCLIInvocation{Env: env, Args: args, Cleanup: cleanup}, nil
+}
+
+func withoutPostgresEnvironment(environment []string) []string {
+	filtered := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(name)), "PG") {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
 }
 
 type limitedBuffer struct {

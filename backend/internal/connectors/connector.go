@@ -62,6 +62,13 @@ type TargetConfigValidator interface {
 	ValidateTargetConfig(config map[string]any) error
 }
 
+// TargetConfigUpdateNormalizer is an optional connector contract for preserving
+// connector-owned compatibility defaults while an existing target is updated.
+// Core invokes it before declarative schema defaults are applied.
+type TargetConfigUpdateNormalizer interface {
+	NormalizeTargetConfigUpdate(existing, submitted map[string]any) map[string]any
+}
+
 // CredentialProvisioner is an optional connector contract for operator-driven
 // credential profile provisioning. Core owns profile persistence and vault
 // writes; the connector owns external service changes such as creating or

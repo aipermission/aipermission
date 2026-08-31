@@ -43,11 +43,14 @@ type CreateTargetInput struct {
 }
 
 type UpdateTargetInput struct {
-	ID        int64
-	ProjectID int64
-	Name      string
-	Config    map[string]any
+	ID                int64
+	ProjectID         int64
+	Name              string
+	Config            map[string]any
+	ExpectedUpdatedAt string
 }
+
+var ErrTargetUpdateConflict = errors.New("connector target changed while it was being updated")
 
 func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Target, error) {
 	if s == nil || s.db == nil {
@@ -111,16 +114,22 @@ func (s *Store) UpdateTarget(ctx context.Context, input UpdateTargetInput) (Targ
 	if err != nil {
 		return Target{}, err
 	}
-	result, err := s.db.ExecContext(ctx, `
+	query := `
 		UPDATE connector_targets
 		SET project_id = ?, name = ?, config_json = ?, updated_at = ?
-		WHERE id = ? AND status = 'active'`,
+		WHERE id = ? AND status = 'active'`
+	args := []any{
 		projectID,
 		name,
 		configJSON,
 		nowString(),
 		input.ID,
-	)
+	}
+	if strings.TrimSpace(input.ExpectedUpdatedAt) != "" {
+		query += " AND updated_at = ?"
+		args = append(args, strings.TrimSpace(input.ExpectedUpdatedAt))
+	}
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			return Target{}, ValidationError("connector target name already exists")
@@ -132,6 +141,9 @@ func (s *Store) UpdateTarget(ctx context.Context, input UpdateTargetInput) (Targ
 		return Target{}, err
 	}
 	if affected == 0 {
+		if strings.TrimSpace(input.ExpectedUpdatedAt) != "" {
+			return Target{}, ErrTargetUpdateConflict
+		}
 		return Target{}, ErrTargetNotFound
 	}
 	return s.GetTarget(ctx, input.ID)
