@@ -468,13 +468,13 @@ func legacySSHKeys(ctx context.Context, database *sql.DB) ([]legacySSHKey, error
 }
 
 func legacyServers(ctx context.Context, database *sql.DB) ([]legacyServer, error) {
-	startupExpr := "''"
-	if ok, _ := columnExists(ctx, database, "servers", "startup_input_after_connect"); ok {
-		startupExpr = "startup_input_after_connect"
+	startupExpr, err := optionalLegacyColumnExpression(ctx, database, "servers", "startup_input_after_connect", "startup_input_after_connect", "''")
+	if err != nil {
+		return nil, err
 	}
-	forceExpr := "''"
-	if ok, _ := columnExists(ctx, database, "servers", "force_shell_command"); ok {
-		forceExpr = "force_shell_command"
+	forceExpr, err := optionalLegacyColumnExpression(ctx, database, "servers", "force_shell_command", "force_shell_command", "''")
+	if err != nil {
+		return nil, err
 	}
 	rows, err := database.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, name, host, port, username, ssh_key_id, description, %s, %s, created_at, updated_at
@@ -496,13 +496,13 @@ func legacyServers(ctx context.Context, database *sql.DB) ([]legacyServer, error
 }
 
 func legacyTokens(ctx context.Context, database *sql.DB) ([]legacyToken, error) {
-	tokenValueExpr := "''"
-	if ok, _ := columnExists(ctx, database, "api_tokens", "token_value"); ok {
-		tokenValueExpr = "token_value"
+	tokenValueExpr, err := optionalLegacyColumnExpression(ctx, database, "api_tokens", "token_value", "token_value", "''")
+	if err != nil {
+		return nil, err
 	}
-	expiresExpr := "''"
-	if ok, _ := columnExists(ctx, database, "api_tokens", "expires_at"); ok {
-		expiresExpr = "COALESCE(expires_at, '')"
+	expiresExpr, err := optionalLegacyColumnExpression(ctx, database, "api_tokens", "expires_at", "COALESCE(expires_at, '')", "''")
+	if err != nil {
+		return nil, err
 	}
 	rows, err := database.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, name, token_hash, token_prefix, %s, COALESCE(revoked_at, ''), %s, created_at, updated_at
@@ -524,9 +524,9 @@ func legacyTokens(ctx context.Context, database *sql.DB) ([]legacyToken, error) 
 }
 
 func legacyPermissions(ctx context.Context, database *sql.DB) ([]legacyPermission, error) {
-	expiresExpr := "''"
-	if ok, _ := columnExists(ctx, database, "token_server_permissions", "expires_at"); ok {
-		expiresExpr = "COALESCE(expires_at, '')"
+	expiresExpr, err := optionalLegacyColumnExpression(ctx, database, "token_server_permissions", "expires_at", "COALESCE(expires_at, '')", "''")
+	if err != nil {
+		return nil, err
 	}
 	rows, err := database.QueryContext(ctx, fmt.Sprintf(`
 		SELECT token_id, server_id, execution_rule, %s, created_at, updated_at
@@ -626,6 +626,17 @@ func columnExists(ctx context.Context, database *sql.DB, table string, column st
 		}
 	}
 	return false, rows.Err()
+}
+
+func optionalLegacyColumnExpression(ctx context.Context, database *sql.DB, table string, column string, presentExpression string, fallbackExpression string) (string, error) {
+	exists, err := columnExists(ctx, database, table, column)
+	if err != nil {
+		return "", fmt.Errorf("inspect legacy column %s.%s: %w", table, column, err)
+	}
+	if exists {
+		return presentExpression, nil
+	}
+	return fallbackExpression, nil
 }
 
 func sshKeyByID(keys []legacySSHKey, id int64) (legacySSHKey, error) {

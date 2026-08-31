@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,53 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
+
+func TestLegacyOptionalColumnProbeFailsClosed(t *testing.T) {
+	database, err := db.OpenEncryptedForMigration(filepath.Join(t.TempDir(), "legacy.db"), "LegacyPassword123")
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	defer database.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = legacyServers(ctx, database)
+	if err == nil || !strings.Contains(err.Error(), "inspect legacy column servers.startup_input_after_connect") {
+		t.Fatalf("legacy server probe error=%v", err)
+	}
+}
+
+func TestLegacyOptionalColumnProbeUsesFallbackWhenColumnIsAbsent(t *testing.T) {
+	database, err := db.OpenEncryptedForMigration(filepath.Join(t.TempDir(), "legacy.db"), "LegacyPassword123")
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`
+		CREATE TABLE servers (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			host TEXT NOT NULL,
+			port INTEGER NOT NULL,
+			username TEXT NOT NULL,
+			ssh_key_id INTEGER NOT NULL,
+			description TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		INSERT INTO servers (id, name, host, port, username, ssh_key_id, description, created_at, updated_at)
+		VALUES (1, 'legacy', '127.0.0.1', 22, 'root', 3, '', 'created', 'updated');`); err != nil {
+		t.Fatalf("create minimal legacy servers table: %v", err)
+	}
+
+	servers, err := legacyServers(t.Context(), database)
+	if err != nil {
+		t.Fatalf("read legacy servers without optional columns: %v", err)
+	}
+	if len(servers) != 1 || servers[0].StartupInputAfterConnect != "" || servers[0].ForceShellCommand != "" {
+		t.Fatalf("unexpected fallback server: %#v", servers)
+	}
+}
 
 func TestRecoveryDrillLegacy010To020CopiesMinimumSSHConfiguration(t *testing.T) {
 	ctx := context.Background()
