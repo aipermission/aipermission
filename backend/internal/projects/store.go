@@ -195,7 +195,10 @@ func (s *Store) Archive(ctx context.Context, id int64) error {
 	if err != nil {
 		return fmt.Errorf("archive project: %w", err)
 	}
-	affected, _ := result.RowsAffected()
+	affected, err := sqldb.RowsAffected(result, "archive project")
+	if err != nil {
+		return err
+	}
 	if affected == 0 {
 		return ErrNotFound
 	}

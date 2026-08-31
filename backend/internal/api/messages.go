@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 type messageRecord struct {
@@ -99,7 +101,11 @@ func (s messageHandlers) markMessagesRead(w http.ResponseWriter, r *http.Request
 		writeInternalError(w)
 		return
 	}
-	affected, _ := result.RowsAffected()
+	affected, err := sqldb.RowsAffected(result, "mark messages read")
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "read", "count": affected})
 }
 

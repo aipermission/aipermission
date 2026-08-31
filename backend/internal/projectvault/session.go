@@ -191,7 +191,10 @@ func (s *Store) MarkSessionItemsUsed(ctx context.Context, items []SessionItem) e
 		if err != nil {
 			return fmt.Errorf("update Vault item usage: %w", err)
 		}
-		affected, _ := result.RowsAffected()
+		affected, err := sqldb.RowsAffected(result, "update Vault item usage")
+		if err != nil {
+			return err
+		}
 		if affected != 1 {
 			return ErrStale
 		}

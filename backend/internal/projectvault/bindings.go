@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 type DefaultBinding struct {
@@ -138,7 +140,10 @@ func (s *Store) SaveDefaultBinding(ctx context.Context, input DefaultBindingInpu
 		if err != nil {
 			return DefaultBinding{}, fmt.Errorf("update vault default binding: %w", err)
 		}
-		affected, _ := result.RowsAffected()
+		affected, err := sqldb.RowsAffected(result, "update Vault default binding")
+		if err != nil {
+			return DefaultBinding{}, err
+		}
 		if affected != 1 {
 			return DefaultBinding{}, ErrStale
 		}
@@ -163,7 +168,10 @@ func (s *Store) DeleteDefaultBinding(ctx context.Context, id, expectedRevision i
 	if err != nil {
 		return fmt.Errorf("delete vault default binding: %w", err)
 	}
-	affected, _ := result.RowsAffected()
+	affected, err := sqldb.RowsAffected(result, "delete Vault default binding")
+	if err != nil {
+		return err
+	}
 	if affected == 1 {
 		return nil
 	}

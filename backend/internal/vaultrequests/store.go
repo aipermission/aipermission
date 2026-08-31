@@ -145,7 +145,10 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, e
 	if err != nil {
 		return Request{}, false, fmt.Errorf("create Vault action request: %w", err)
 	}
-	affected, _ := result.RowsAffected()
+	affected, err := sqldb.RowsAffected(result, "create Vault action request")
+	if err != nil {
+		return Request{}, false, err
+	}
 	item, err := scanRequest(executor.QueryRowContext(ctx, requestSelect+` WHERE r.token_id = ? AND r.idempotency_key = ?`, input.TokenID, input.IdempotencyKey))
 	if err != nil {
 		return Request{}, false, err
