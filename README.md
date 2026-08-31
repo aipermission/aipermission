@@ -3,20 +3,17 @@
   <h1>AIPermission</h1>
   <p><strong>Local permission gateway for AI agents.</strong></p>
   <p>
-    Give AI assistants temporary, scoped action access to your local connector
-    targets without sharing SSH keys, database passwords, cache credentials,
-    queue credentials, or future connector secrets.
+    Let AI assistants operate developer-owned systems through scoped connector
+    actions without giving the assistant your credentials.
   </p>
   <p>
     <a href="#quick-start">Quick Start</a>
     ·
     <a href="#mcp-setup">MCP Setup</a>
     ·
-    <a href="#security-model">Security Model</a>
+    <a href="docs/connectors.md">Connectors</a>
     ·
-    <a href="docs/project-principles.md">Principles</a>
-    ·
-    <a href="docs/whatis-aipermission.md">Docs</a>
+    <a href="docs/index.md">Documentation</a>
   </p>
   <p>
     <img alt="Local-only" src="https://img.shields.io/badge/security-local--only-064e3b" />
@@ -30,487 +27,138 @@
 
 ## What It Is
 
-AIPermission is a local developer tool that lets you run a small gateway on your machine, register connector targets, create API tokens for AI tools, and decide per token/target/action whether work runs automatically or waits for your approval.
-
-In practical terms, it is a local AI action gateway, MCP permission gateway,
-and connector runtime for developer-owned systems.
-
-It is built for a very specific workflow:
+AIPermission is a local, single-user developer gateway. You register connector
+targets, keep their credential profiles inside an encrypted local database, and
+grant each AI token only the target/profile/action combinations it may use.
 
 | You keep control of | The AI gets |
 | --- | --- |
-| connector credentials inside the local gateway | scoped MCP connector tools |
-| per-token target/profile/action permissions | only approved connector targets and actions |
-| Run / Decline approval flow | action results, structured output, and SSH console output when relevant |
-| encrypted local database and backups | no SSH keys, database passwords, or API credentials |
-| project-scoped Vault values and session approval | secret names and approved session use, never raw values |
+| connector credentials | scoped MCP connector actions |
+| project and token visibility | only visible target/profile references |
+| Disabled, Prompt, or Always rules | execution after the effective rule is checked |
+| local approval decisions | bounded action results and status |
+| encrypted history and audit | no raw credential values |
 
-> **Local-only security boundary:** run AIPermission on your own machine and keep Docker ports bound to `127.0.0.1`. The localhost port bind is the real security boundary. The web REST API uses a local browser session cookie after database unlock, but it is not a remote multi-user auth system and must not be exposed to LAN or the public internet. Do not change Compose port bindings to `0.0.0.0`; Docker NAT can make external traffic appear local to the container, and Host-header checks are only defense in depth.
+All built-in connectors use the same project, target, credential profile,
+permission, approval, history, and audit pipeline. They are connector types
+rather than separate product modes. The generated
+[connector catalog](docs/connectors.md) is the canonical current list and owns
+their capability summaries.
 
-AIPermission is not a DevOps platform. It does not try to own Kubernetes, DNS, VPN, deployments, or incident management. It gives your AI assistant a controlled execution layer for the systems you already manage.
+> **Local-only security boundary:** run AIPermission on your own machine and
+> keep its published Docker port bound to `127.0.0.1`. It is not a remote
+> multi-user service, LAN gateway, hosted control plane, or team RBAC system.
+> Do not change the Compose bind to `0.0.0.0`; browser session, Host, CORS,
+> and CSRF checks are defense in depth, not remote authentication.
 
-> **Release status:** AIPermission is pre-1.0 local developer software. It is not production-ready, not a hosted operations service, and not designed for LAN/public exposure.
-
-## Design Decision: Local Developer Gateway Only
-
-AIPermission is intentionally designed as a local developer gateway.
-
-- The gateway runs on the developer's own machine.
-- Remote systems are connector targets reached from that local gateway.
-- SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and Mail are
-  built-in connector types, not separate product modes.
-- The web UI, REST API, and MCP API are not designed to be shared on a LAN.
-- The project does not support running the gateway as a remote hosted service.
-- The project provides a local browser session after database unlock, not multi-user web auth, team RBAC, or public network hardening.
-- The backend refuses non-loopback bind addresses such as `0.0.0.0`.
-- Docker Compose publishes only `127.0.0.1` by default and the backend is not exposed as a separate host port.
-- The frontend nginx layer rejects non-local Host headers before serving UI or proxying `/api`.
-- Host-header checks do not make LAN/public exposure safe. Keep the published port on `127.0.0.1`.
-
-If you need a shared remote operations platform, AIPermission is the wrong shape today. Its purpose is narrower: give a developer's AI assistant temporary, scoped, auditable connector action access without giving the AI SSH keys, database passwords, or API credentials.
-
-Project boundaries are documented in [Project Principles](docs/project-principles.md)
-and the [Architecture Decision Records](docs/adr/0001-local-only.md). Requests for
-hosted SaaS mode, multi-tenant architecture, remote gateway hosting, shared team
-deployments, LAN-accessible gateway mode, or cloud-managed execution conflict
-with the core design and are normally closed as `wontfix`.
+AIPermission is pre-1.0 developer software. Read the
+[project principles](docs/project-principles.md), [threat model](docs/security/threat-model.md),
+and [credential boundary](docs/security/credential-boundary.md) before using it
+with important systems.
 
 ## Why
 
-Without a tool like this, an AI assistant usually says:
+Without a gateway, AI-assisted operations often alternate between generated
+commands and pasted terminal output, or expose broad credentials directly to an
+agent. AIPermission provides a third path:
 
-1. run this command,
-2. paste me the output,
-3. now run this other command,
-4. paste the next output.
+1. The developer stores credentials in the local encrypted gateway.
+2. An MCP token receives explicit project and connector action permissions.
+3. The AI requests a connector action with a reason.
+4. The gateway blocks it, asks the developer, or runs it according to the
+   current effective rule.
+5. Results appear in structured History and Audit; supported runtime connectors
+   also expose live local console surfaces.
 
-That loop is slow when you are debugging servers, containers, Kubernetes nodes, databases, logs, memory pressure, disk usage, or suspicious system behavior.
-
-With `aipermission`, the AI can inspect approved connector targets directly through MCP while you keep control:
-
-- SSH private keys, database credentials, cache credentials, queue credentials, and future connector secrets stay inside the local gateway.
-- The AI sees only targets and actions allowed for its token.
-- You can require approval before actions run.
-- You can watch the same persistent SSH console live when the connector has a terminal surface.
-- You can send notes to the AI while it is working.
-- You can revoke the token or remove permissions when the work is done.
+Connector credentials are used only inside the gateway. They are not returned
+through MCP or the normal REST API.
 
 ## Screenshots
 
-The UI is built around the live control loop: approve connector actions, inspect structured activity, watch the persistent SSH console when relevant, send notes while the AI works, and audit what happened afterwards.
-
 ![AIPermission demo: AI operates through approval-based connector access](docs/assets/demo/aipermission-demo.gif)
 
-[Watch the accelerated demo video](https://github.com/aipermission/aipermission/releases/download/v0.1.0-rc.1/aipermission-demo.mp4)
-
-| Human approval before execution | Live console with AI/user messages |
+| Human approval | Live connector console |
 | --- | --- |
-| ![AIPermission approval prompt before running a read-only VPS health snapshot](docs/assets/screenshots/07-approval-health-snapshot.png) | ![AIPermission persistent console with AI/user messages after Docker installation](docs/assets/screenshots/09-console-messages.png) |
+| ![Approval prompt](docs/assets/screenshots/07-approval-health-snapshot.png) | ![Persistent console](docs/assets/screenshots/09-console-messages.png) |
 
-| Token-scoped access | Auditable command history |
+| Token-scoped access | Auditable history |
 | --- | --- |
-| ![AIPermission token page with connector action permission controls and token creation drawer](docs/assets/screenshots/06-tokens-create.png) | ![AIPermission history detail showing command and output side by side](docs/assets/screenshots/12-history-detail.png) |
-
-## Current MVP
-
-Implemented:
-
-- Docker Compose local runtime
-- Go backend with SQLite storage
-- React web UI
-- connector target/profile/action pipeline for SSH, Postgres, ClickHouse,
-  Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail,
-  and future local integrations
-- local Projects for grouping connector targets, filtering History/Audit, and
-  limiting which project target refs each MCP token can discover or call
-- [Project Vault](docs/project-vault.md) for encrypted project-scoped secret inventory, expiry/usage
-  metadata, local audited reveal, Prompt-or-Always generation, and controlled
-  environment application to exact supported connector sessions without
-  returning secret values through MCP
-- generic connector network transport so protocol connectors can use Direct or
-  reviewed Over SSH TCP paths without importing SSH-specific code
-- new ClickHouse, Redis / Valkey, and RabbitMQ targets use an `Auto` transport
-  security mode: remote Direct endpoints prefer verified TLS, while loopback,
-  Docker/Podman host aliases, and reviewed Over SSH endpoints retain their
-  explicit local plaintext path; existing saved and explicit choices are not
-  rewritten during upgrade
-- generic connector command transport so structured connectors can run reviewed
-  command templates through connector transports without importing SSH-specific
-  code
-- connector template architecture for target forms, credential forms, list rows,
-  console/activity surfaces, and connector-owned operations
-- built-in SSH connector with persistent shell, file transfer, remote browsing,
-  host-key approval, and command actions
-- built-in Postgres connector with Direct and Over SSH connection modes,
-  schema/table inspection, bounded read-only SQL actions, managed scoped
-  database-user provisioning, and SQL backup/restore
-- built-in ClickHouse connector over the native protocol with Direct and Over
-  SSH connection modes, database/table/column inspection, bounded read-only
-  analytics SQL, query timeouts, and output caps
-- built-in Redis / Valkey connector with Direct and Over SSH connection modes,
-  server identity detection, bounded key scanning, key inspection, string
-  writes, TTL updates, and explicit deletes
-- built-in RabbitMQ connector with Direct and Over SSH connection modes, queue
-  browsing, vhost metadata, binding inspection, bounded message peeking, and
-  explicit message publishing
-- built-in Kafka / Redpanda connector with Direct and Over SSH connection
-  modes, TLS and SASL profiles, cluster/topic/group/lag inspection, and bounded
-  message samples that never join groups or commit offsets, plus guarded
-  single-message publishing and inactive-group offset controls
-  ([setup guide](docs/setup/kafka-redpanda.md))
-- built-in S3 connector with Direct and Over SSH connection modes,
-  S3-compatible bucket browsing, object metadata, bounded multipart and
-  recursive transfer queues, short-lived presigned URLs, object-version
-  restore/delete, explicit lifecycle policy controls, and MCP-friendly
-  folder/prefix browsing hints for AI agents
-  ([setup guide](docs/setup/s3.md))
-- built-in Docker connector over an SSH transport profile, with scoped
-  container/image/network/volume inventory, redacted inspect metadata, bounded
-  logs, scoped container exec, live container console, and explicit
-  start/stop/restart actions
-- Docker credential profiles can scope MCP access to all containers, selected
-  container names/IDs, or name patterns, so one token can be limited to a
-  single container on a shared Docker host.
-- built-in Kubernetes connector over an SSH transport profile, with namespace,
-  workload, pod, service, ingress, node, event, describe, bounded pod-log, live
-  pod-console, and explicit rollout restart actions
-- built-in Mail connector with Direct and Over SSH connection modes, bounded
-  IMAP mailbox reads, explicit read/unread and folder mutations, and guarded
-  SMTP send/reply actions ([setup guide](docs/setup/mail.md))
-- gateway-generated SSH keys (`ed25519` and `rsa`)
-- explicit existing SSH private key import into the encrypted local vault
-- SSH host import from OpenSSH config files for prefilling connector targets
-- copy/paste public key install command for SSH targets
-- connector target management and connection tests
-- optional advanced SSH startup settings for menu-based NAS/appliance shells
-- API token create, copy, revoke
-- token expiration for temporary MCP access
-- token-to-target/action permissions with optional temporary expiration
-- execution rules: `always_run`, `approval_required`, `blocked`
-- global MCP Started/Stopped switch that preserves permissions while blocking live execution
-- persistent web console with live PTY streaming
-- UI bulk SSH command execution across selected connector targets with per-target history rows
-- MCP bridge with connector action tools for SSH, Postgres, ClickHouse, Redis / Valkey,
-  RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail, and future local integrations
-- approval dialog with Run / Decline / note
-- approval-context snapshots that stale old pending connector actions after
-  permission, connector target, credential profile, connector metadata, or
-  prepared action payload drift
-- unread message badges and AI-to-user/user-to-AI notes
-- SQLCipher FTS4-backed searchable command history and audit log pages
-- transactional audit outbox for security-sensitive local mutations, with
-  idempotent searchable projection and durable retry health
-- queued SSH/SFTP upload and download from the local web UI
-- remote SFTP browser for upload folders and download file selection
-- pause/resume/cancel transfer queues with live progress, speed, ETA, checksum, server, and path metadata
-- configurable local data retention for unified history, audit logs, console sessions, and messages
-- Settings-only realtime Maintenance Console for local gateway diagnostics
-- bounded, strictly allowlisted JSON support diagnostics with no raw commands,
-  payloads, output, errors, credentials, endpoints, or private names
-  ([support guide](docs/support-diagnostics.md))
-- SQLCipher-backed full SQLite database encryption
-- first-run database password setup and unlock screen
-- local browser session cookie for the web REST API after unlock
-- encrypted database download/import (`.aipdb`)
-- a self-hosted encrypted-backup service for explicit immutable `.aipdb`
-  uploads, version listing, selected-version cleanup, bounded prune, download,
-  first-run restore, and newer-remote-version warnings
-  without giving the service a database password or decrypted content.
-  The recommended topology shares that passive backup service between the
-  owner's trusted computers over a private local network. Cross-network access
-  should stay behind a VPN or private overlay network with HTTPS; do not expose
-  the raw backup port directly to the public internet.
-  See the [AIPermission Backup guide](docs/providers/aipermission-backup.md).
-- first-connect SSH host fingerprint approval with later `known_hosts` verification
-
-Out of scope for the current MVP:
-
-- advanced command risk analysis
-- arbitrary recursive copy, remote glob expansion, and restart-surviving
-  resumable file transfers. The S3 connector supports bounded recursive
-  selection inside the documented 100-object / 1-GiB queue limits.
+| ![Token permissions](docs/assets/screenshots/06-tokens-create.png) | ![History detail](docs/assets/screenshots/12-history-detail.png) |
 
 ## Quick Start
 
 Requirements:
 
-- Docker and Docker Compose
-- Node.js only if you are running the MCP bridge from source during development
+- Docker with Docker Compose
+- Node.js only for MCP source development or package tooling
 
-Start the gateway from source:
-
-```bash
-docker compose up -d --build
-```
-
-Or use published release images:
+Start from published images:
 
 ```bash
 docker compose -f docker-compose.release.yml pull
 docker compose -f docker-compose.release.yml up -d
 ```
 
-The frontend and backend use Docker's `unless-stopped` restart policy, so an
-installation that has been started once returns when Docker starts after a host
-reboot. The migration helper never starts automatically.
-
-To pin a specific release image, set `AIPERMISSION_VERSION` without the leading
-`v`:
+Or build the current source tree:
 
 ```bash
-AIPERMISSION_VERSION=X.Y.Z docker compose -f docker-compose.release.yml up -d
+docker compose up -d --build
 ```
 
-Replace `X.Y.Z` with the release version you want to run, without the leading
-`v`.
-
-On Windows, clone the repository with Git's default text handling or make sure
-shell scripts keep LF line endings. The repository includes `.gitattributes` and
-a CI check for this because Docker Linux containers cannot run CRLF shell
-entrypoints.
-
-Open the UI:
+Open:
 
 ```txt
 http://localhost:3210
 ```
 
-If port `3210` is busy:
+Both Compose files publish only to `127.0.0.1`. The backend is not exposed as
+a separate host port. To use another local UI port:
 
 ```bash
 AIPERMISSION_FRONTEND_PORT=3211 docker compose up -d --build
 ```
 
-The browser talks to the backend through the local frontend proxy:
-
-```txt
-http://localhost:3210/api
-```
-
-MCP clients use:
-
-```txt
-http://localhost:3210
-```
-
-The Docker Compose UI port binds to `127.0.0.1` by default in both source-build
-and prebuilt-image Compose files. The backend is not published as a separate
-host port in Docker Compose; the frontend proxies `/api` to the backend inside
-the shared local container namespace. The backend itself refuses to start when
-`AIPERMISSION_BACKEND_HOST` is set to `0.0.0.0` or any non-loopback address.
-AIPermission is local-only: do not publish Compose ports on `0.0.0.0` or a LAN
-interface. Remote/LAN mode is intentionally not supported.
-
-If AIPermission runs in Docker on a Linux host and a connector target points at
-a service running on that same host, use `host.docker.internal` as the connector
-host instead of `localhost`. The connector network transport resolves that name
-to the Docker host gateway when Docker does not provide it automatically.
-For example, a Postgres service listening on the Linux host can be configured as
-`host.docker.internal:5432` in Direct mode. Use Over SSH only when the service is
-reachable from another SSH target rather than from the Docker host.
-
-## Basic Flow
-
-1. Open the web UI.
-2. Create the local database password on first run, import a database file, or unlock an existing database. New database passwords must be at least 14 characters and include uppercase letters, lowercase letters, and numbers. Unlock issues a local browser session cookie for web REST calls; if the cookie is deleted or expires while the backend is still unlocked, the UI asks for the same database password again and continues.
-3. Create a credential profile in `Credentials`. SSH profiles can use generated or imported keys; Postgres profiles store database credentials; future connectors define their own profile fields.
-4. Create or choose a local project, then add a connector target in
-   `Connectors` and select the credential profile.
-5. For SSH targets, copy the generated public-key install command and paste it on the remote machine when needed.
-6. Test the connector target.
-7. Create a token in `Tokens`.
-8. Choose which projects the token can see, then grant one or more
-   target/profile/action combinations inside those projects.
-9. Configure your MCP client with the token.
-10. Start MCP from the sidebar when you are ready to let the AI execute through saved permissions.
-11. Ask your AI assistant to use `aipermission`.
-
-The public key install command looks like:
+To pin release images:
 
 ```bash
-mkdir -p ~/.ssh && chmod 700 ~/.ssh && printf '%s\n' 'ssh-ed25519 <PUBLIC_KEY> aipermission' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+AIPERMISSION_VERSION=X.Y.Z docker compose -f docker-compose.release.yml up -d
 ```
 
-The private key never leaves the local gateway. Imported private keys are parsed
-locally, normalized, and stored inside the encrypted local vault. Import
-passphrases are used only during import and are not saved.
+Use the version without a leading `v`. Containers use the `unless-stopped`
+restart policy. See [Docker Runtime](docs/setup/docker-runtime.md) for Windows
+line endings, host services, logs, and recovery guidance.
 
-## Execution Rules
+### First Setup
 
-Each token/target/action grant has one execution rule:
+1. Create and unlock an encrypted local database.
+2. Create or select a Project.
+3. Add a credential profile.
+4. Add a connector target and bind its profile.
+5. Test the connector.
+6. Create an MCP token.
+7. Enable the projects that token may discover.
+8. Grant target/profile/action rules.
+9. Configure the token in the AI client.
+10. Start MCP from the sidebar.
 
-- `blocked`: the token cannot use that connector action through MCP
-- `approval_required`: the action creates a pending approval in the UI
-- `always_run`: the action runs immediately after permission checks
-
-In API/MCP data, denied access is represented as `blocked`. In the UI, an unset permission can appear as disabled because there is no token/target/action permission row yet.
-
-Use `approval_required` for real systems until you trust the workflow. Use `always_run` for low-risk maintenance sessions or temporary local/dev servers.
-
-Project visibility is checked before action permissions. Hiding a project from
-a token removes all of that project's target refs from MCP discovery and blocks
-direct calls, while preserving the existing action grants for later
-re-enablement. It is an organization and token-scope feature for one local
-developer, not team RBAC. See [Projects](docs/projects.md).
-
-Token action permissions can be permanent or temporary. A temporary grant has an
-`expires_at` timestamp; after it expires, MCP no longer treats that permission
-as effective. This is useful for short maintenance windows, especially temporary
-`always_run` access.
-
-Saved permissions are not the same as live execution. Each unlocked database has
-a global MCP Started/Stopped switch in the sidebar. By default, MCP execution
-starts stopped after gateway startup or database unlock, so saved `always_run`
-rules do not immediately become live. Security settings can opt into automatic
-MCP start for a database when that is the intended workflow.
+Projects organize one developer's local workspace; they are not team tenancy.
+See [Projects](docs/projects.md). Project Vault is a separate project-scoped
+secret inventory and exact-session application flow; see
+[Project Vault](docs/project-vault.md).
 
 ## MCP Setup
 
-Official npm package names:
-
-- `@aipermission/mcp` is the real MCP bridge package.
-- `aipermission` is a tiny unscoped placeholder package that points users to `@aipermission/mcp`.
-
-Recommended install:
+Install the official MCP bridge into a supported client:
 
 ```bash
-npx -y @aipermission/mcp init \
+npx -y @aipermission/mcp@0.2.35 init \
   --provider codex \
   --name aipermission
 ```
 
-The init command asks for the API token with a hidden prompt and pins the generated runtime config to the exact MCP package version that wrote it. Avoid passing tokens in shell arguments unless you intentionally accept shell-history exposure. For project-local MCP configs, init refuses to write into files already tracked by Git unless `--force` is passed; use `--print` if you prefer to copy the config manually. Re-run init when you intentionally upgrade the MCP package used by a client.
-
-Example MCP config:
-
-```json
-{
-  "mcpServers": {
-    "aipermission": {
-      "command": "npx",
-      "args": ["-y", "@aipermission/mcp@0.2.35"],
-      "env": {
-        "NODE_ENV": "production",
-        "AIPERMISSION_API_URL": "http://localhost:3210",
-        "AIPERMISSION_API_TOKEN": "YOUR_TOKEN_HERE"
-      }
-    }
-  }
-}
-```
-
-Expected MCP tools:
-
-```txt
-list_connector_targets()
-get_connector_help(target_ref)
-get_connector_actions(target_ref)
-call_connector_action(target_ref, action_name, input?, reason?, idempotency_key?)
-get_connector_action_request(request_id)
-```
-
-The MCP surface is connector-first. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ,
-Kafka / Redpanda, S3, Docker, Kubernetes, Mail, and future integrations use the same
-target/profile/action permission pipeline. `list_connector_targets` also applies the token's enabled project
-scope before returning target refs. It is
-permission-scoped, not a live health check. Current reachability is learned when
-the connector action actually runs and returns a dial, timeout, authentication,
-host-key, credential, or service error.
-
-For SSH, call `get_connector_actions(target_ref)` to discover actions such as
-`exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
-`start_file_download`.
-
-For ClickHouse, call `get_connector_actions(target_ref)` to discover
-`get_databases`, `get_tables`, `describe_table`, and `query_readonly`. The
-connector uses the native ClickHouse protocol, supports Direct and Over SSH
-network transport, and bounds query time, rows, cells, and persisted output.
-Use a dedicated read-only ClickHouse user and keep exploratory analytics on
-`approval_required`; connector validation is defense in depth, not a SQL
-sandbox or a replacement for database grants.
-
-New ClickHouse, Redis / Valkey, and RabbitMQ forms default transport security
-to `Auto`. Remote Direct hostnames and non-loopback IPs use certificate and
-hostname verification. Loopback addresses, `host.docker.internal`,
-`host.containers.internal`, and Over SSH targets use their local plaintext
-default. Select the explicit verified or plaintext option when the endpoint
-differs from that policy. Existing targets without the new setting keep their
-previous behavior until edited.
-
-For Redis or Valkey, call `get_connector_actions(target_ref)` to discover
-actions such as `scan_keys`, `get_key`, `set_string`, `expire_key`, and
-`delete_keys`. Both products use the existing `redis:<target_id>:<profile_id>`
-target ref and action catalog. The current connector is a standalone/single
-endpoint RESP2 integration; it does not route Redis Cluster `MOVED`/`ASK`
-responses, discover Sentinel primaries, or negotiate RESP3.
-
-For RabbitMQ, call `get_connector_actions(target_ref)` to discover actions such
-as `overview`, `list_vhosts`, `list_queues`, `get_queue`, `list_bindings`, and
-`peek_messages`, and `publish_message`. Treat message payload previews and
-message publishing as sensitive queue access; previews use bounded
-count/truncation limits and `ack_requeue_true`.
-
-For Kafka or Redpanda, discover cluster/topic/group reads, bounded partition
-samples, guarded single-message publishing, and classic consumer-group offset
-controls through the same generic tools. Publish request displays redact raw
-keys, values, and headers. Offset changes reject active and modern-protocol
-groups; failed publishes can have an unknown delivery outcome, so inspect
-before retrying.
-
-For S3, call `get_connector_actions(target_ref)` to discover actions such as
-`bucket_info`, `list_objects`, `get_object_metadata`, `download_object`,
-`upload_object`, `rename_object`, `delete_object`, `presign_download`,
-`presign_upload`, `list_object_versions`, and the bucket lifecycle actions.
-Use `prefix` and directory `browse_input` values to browse folder-like object
-groups, and use `cursor` or `next_page_input` for pagination. The Files dialog
-provides bounded recursive queues and multipart uploads for larger objects,
-with visible progress, pause, cancellation, count, and byte limits. Object
-content may contain secrets; use `get_object_metadata` before downloading
-content and keep `overwrite=false` unless replacement was explicitly approved.
-Presigned URLs are temporary bearer credentials. Version deletion and complete
-lifecycle replacement/deletion are destructive and should remain Prompt-first.
-
-For Docker, call `get_connector_actions(target_ref)` to discover bounded
-actions such as `docker_version`, `list_containers`, `list_images`,
-`list_networks`, `list_volumes`, `inspect_container`, `container_logs`,
-`container_exec`, `start_container`, `stop_container`, and `restart_container`.
-Docker credential profiles can scope a token to all containers, selected
-container names/IDs, or name patterns. `container_exec` and the live container
-console are scoped to one visible container; arbitrary host-level Docker
-commands, prune, removal, and raw Docker command execution are not exposed.
-
-For Kubernetes, call `get_connector_actions(target_ref)` to discover bounded
-actions such as `cluster_version`, `list_namespaces`, `list_workloads`,
-`list_pods`, `list_services`, `list_ingress`, `list_nodes`, `list_events`,
-`describe_resource`, `get_logs`, and `rollout_restart`. Kubernetes profiles can
-scope access by namespace visibility. Raw `kubectl`, manifest apply/edit/delete,
-pod deletion, scaling, and Secret value browsing are not exposed.
-
-For Mail, call `get_connector_actions(target_ref)` to discover bounded IMAP
-reads, explicit `mark_read` / `mark_unread`, move/archive/delete, and guarded
-SMTP send/reply actions. Reads never change Seen state. Treat email content as
-hostile external data, use Prompt for body/outbound/mutation actions until the
-workflow is trusted, and never automatically retry `submission_unknown`.
-POP3 is intentionally unsupported; Mail uses IMAP for server-side folders and
-read/unread state plus SMTP for submission.
-
-If an action returns `approval_pending` or `running`, the response includes an
-`assistant_hint` telling the AI to poll `get_connector_action_request` until the
-request reaches a terminal state.
-
-Pending connector approvals store an approval-context snapshot. If the token
-permission, token validity, target profile, connector metadata, or action
-payload hash changes before the operator clicks Run, the request becomes
-`stale` and must be sent again.
-
-SSH connector `exec` is intended for non-interactive commands. Use explicit
-flags such as `-y`/`--no-pager`, create files inside the command when needed, or
-use the web console for interactive work.
-
-Approved SSH connector commands run through the target server's shell. Shell
-operators such as `;`, `&&`, pipes, redirects, command substitution, and globs
-are interpreted by that shell, so review approval dialogs as shell command
-bodies.
+The initializer asks for the API token with a hidden prompt and writes a config
+pinned to the package version that created it. Restart the AI client after
+installation.
 
 Optional operator instructions:
 
@@ -518,121 +166,74 @@ Optional operator instructions:
 npx -y @aipermission/mcp install-skill --client codex
 ```
 
-Supported clients are `codex`, `claude-code`, `cursor`, `vscode`, `windsurf`, `antigravity`, `gemini`, and `custom`. Restart the AI client after installing, then ask it to use the `aipermission` MCP server. The instructions guide connector discovery, approval polling, reasons, and secret-safe action habits.
+Supported client presets and source-development setup are documented in
+[MCP Client Setup](docs/setup/mcp-client-setup.md). The MCP tool contract is
+documented in [MCP Tools](docs/api/mcp-tools.md).
 
-More detail: [MCP client setup](docs/setup/mcp-client-setup.md)
+## Execution Rules
+
+Each token/target/profile/action permission resolves to one backend rule:
+
+- `blocked`: execution is denied
+- `approval_required`: a pending request appears in the local UI
+- `always_run`: execution starts after current token, project, target,
+  credential, and action checks pass
+
+The UI presents these as Disabled, Prompt, and Always where appropriate. Use
+Prompt for real systems until the workflow is trusted. Temporary permissions
+can expire automatically. The global MCP Started/Stopped switch is an
+additional runtime boundary; saved Always rules do not bypass a stopped MCP
+gateway.
+
+Pending approvals carry a context snapshot. Relevant token, permission,
+connector, target, credential, dependency, or action changes make the request
+stale and require a fresh approval. See
+[MCP Permission Flow](docs/architecture/mcp-permission-flow.md).
 
 ## Security Model
 
-`aipermission` is designed for local, developer-controlled usage.
-
 Important boundaries:
 
-- Connector credentials stay inside the encrypted local gateway. SSH private
-  keys, database passwords, API tokens for future connectors, and similar
-  secrets are never sent to the AI client.
-- SSH private keys can be generated by the local gateway or explicitly imported
-  by the user, then stored as SSH connector credential resources.
-- AI clients authenticate with API tokens, not connector credentials.
-- API tokens are shown once by default. Security can enable reusable token copy for newly created tokens; reusable values are stored with gateway vault encryption.
-- API tokens and token action permissions can use expiration timestamps for
-  temporary maintenance access.
-- Tokens only see targets in enabled projects and connector
-  target/profile/action grants explicitly permitted for that token.
-- Revoked tokens, expired tokens, and expired token action permission grants are
-  rejected by MCP permission checks.
-- Connector credentials are not returned by REST or MCP responses.
-- SSH host keys require first-connect fingerprint approval and are verified on later connections.
-- The SQLite database is encrypted with SQLCipher and requires the local database password after startup.
-- The database password is not recoverable. If it is lost, the local DB, tokens, history, and gateway connector credentials are lost.
-- The database password can be changed from Settings while the current password is known.
-- The database password is escaped before SQLCipher key/rekey handling, so quotes or semicolons in the password cannot change PRAGMA SQL parsing.
-- Connector action input, command text, action output, notes, console transcripts, and audit payloads may be stored in the encrypted local database. Basic redaction is enabled by default for common secret patterns, and Security can add custom regex rules that are stored inside the encrypted database. Redaction is best-effort. Approval execution keeps the raw action payload in an encrypted internal envelope so redaction never changes what runs. A pending local approval may transiently decrypt its exact bounded prepared preview so the operator can review what will execute; normal UI lists, MCP responses, messages, history, audit fields, and the persisted preview stay redacted. Do not put secrets directly in connector action inputs, commands, or prompts, and use judgment when asking AI to inspect files or environment values.
-- File transfer contents are not stored in SQLCipher. Uploads and downloads use private short-lived temporary files under the local data directory; transfer history stores metadata, status, progress, speed, ETA, checksum, and errors only. SSH uploads use a remote temporary file followed by rename. S3 uploads use conditional single PUT or multipart completion, and failed multipart uploads are aborted. Download queues are capped at 100 objects, 512 MiB per object, and 1 GiB total remote size. Pause/resume works for the active local gateway process; if the gateway, Docker container, or computer restarts, unfinished transfer queues should be started again. The local web UI owns full queue management. MCP uses generic connector actions and never receives file contents, gateway temporary paths, or archive staging paths.
-- Secret fields are also encrypted with the gateway vault secret inside the SQLCipher database.
-- The gateway vault secret is sensitive. Losing it prevents vault payload decryption; exposing it together with unlocked database contents compromises vault-protected payloads.
-- `AIPERMISSION_GATEWAY_SECRET` is optional and should be left unset for normal local installs. The gateway auto-generates a high-entropy local vault secret at startup. If it is set explicitly for advanced local testing, use at least 32 random characters.
-- SSH host key pins live in a local `known_hosts` file outside the encrypted database. That file stores remote host key fingerprints/public host keys only; it does not contain SSH private keys. The `known_hosts` file is gateway-level state shared by all named local databases in the same data directory, so approving a host key in one workspace also trusts that host key for the other workspaces handled by that gateway.
-- API token authentication uses SHA256 hashes of high-entropy random tokens. User database passwords are not treated as bearer tokens.
-- AIPermission does not claim protection against a compromised developer machine or a malicious browser extension installed in the active browser profile. Use a trusted browser/profile and avoid untrusted extensions while the gateway is unlocked.
+- Runtime data is stored in a SQLCipher-encrypted local SQLite database.
+- Connector credential values stay inside the gateway and are not returned to
+  the AI client.
+- MCP clients authenticate with scoped API tokens, not connector credentials.
+- Web mutations require the unlocked local browser session and CSRF checks.
+- Connector outputs, command text, mail content, paths, and notes are untrusted
+  data and may contain secrets.
+- Redaction is best-effort. Do not intentionally print credentials into action
+  output or console transcripts.
+- Always is for intentional trusted automation, not a substitute for least
+  privilege.
+- Downloaded encrypted database backups remain sensitive and require a strong
+  database password.
+- The unlocked backend process and trusted browser profile are part of the
+  local security boundary.
 
-For the storage model, see [Storage Encryption](docs/security/storage-encryption.md).
+Canonical detail:
 
-## Backup And Import
+- [Security Policy](SECURITY.md)
+- [Threat Model](docs/security/threat-model.md)
+- [Credential Boundary](docs/security/credential-boundary.md)
+- [Storage Encryption](docs/security/storage-encryption.md)
+- [Backup And Restore](docs/security/backup-restore.md)
+- [Native Dependencies](docs/security/native-dependencies.md)
 
-The UI can download the currently unlocked encrypted database file with the `.aipdb` extension.
+## Backup And Migration
 
-The downloaded file is:
+The UI can download and import encrypted `.aipdb` database files. The optional
+self-hosted AIPermission Backup provider stores versioned encrypted database
+streams without receiving the database password or encryption key. See
+[AIPermission Backup](docs/providers/aipermission-backup.md).
 
-- a SQLCipher encrypted SQLite database
-- protected by the database password
-- portable across machines because the gateway vault secret is stored inside the encrypted DB settings
-
-Import is available from the unlock screen: choose the `.aipdb` file, enter a database name, and enter that database password.
-
-Changing the database password re-encrypts the current local database. Existing downloaded `.aipdb` files keep the password they had when they were created; new downloads use the new password.
-
-The unlock screen can manage multiple named local databases. `New Database` creates a separate encrypted database for another project. Plain SQLite files are not supported as runtime databases or imports; AIPermission stores local state in SQLCipher-encrypted `.aipdb` databases.
-
-During one backend process, multiple named databases can stay unlocked. `Switch` changes the active UI database without closing already-unlocked workspaces, so MCP commands and persistent console sessions in another workspace can keep running.
-
-The optional self-hosted AIPermission Backup service stores immutable encrypted
-versions for the database's stable lineage id. Settings can download, restore,
-delete selected historical versions, prune older versions, inspect storage
-quota, or configure automatic keep-latest retention for one stream. Retention
-can be previewed before it is saved or applied immediately. The service always
-protects the final recovery version in a stream. After unlock, AIPermission checks active providers once and warns when
-the remote stream is newer than the version last uploaded or restored by this
-encrypted local database. See the
-[AIPermission Backup guide](docs/providers/aipermission-backup.md).
-
-If the same token exists in more than one unlocked database, MCP authentication returns a conflict instead of guessing which workspace to use. Revoke or rename/recreate duplicate token copies before using MCP.
-
-The database password is only used to open or re-authenticate the local database. It is not used as an API bearer token. Web REST calls use an HttpOnly browser session cookie, while MCP calls continue to use the configured MCP API token.
-
-## Database Migration
-
-Version 0.2.0 is a connector-native database baseline. Pre-0.2 preview
-databases are not opened directly by the normal gateway, because the runtime no
-longer keeps compatibility shims for the old SSH-only schema.
-
-To migrate an important 0.1.x database into a new 0.2 database, start the
-local-only migration helper:
-
-```bash
-docker compose --profile migrate up -d --build migration
-```
-
-Then open:
-
-```txt
-http://localhost:3211
-```
-
-The helper creates a new 0.2 database and never modifies the source database. It
-migrates SSH keys, SSH targets, credential profiles, API tokens, SSH `exec`
-permissions, settings, redaction rules, and history labels. It intentionally
-does not migrate command history, audit logs, console sessions, or file transfer
-history. Do not use the source database in the normal gateway while migration is
-running.
-
-After you verify the migrated 0.2 database, the old 0.1.x source database can be
-removed from the unlock screen with **Delete old local copy**. AIPermission asks
-for the old database password in the normal unlock form, then asks you to type
-the database name before deleting the local file.
-
-After migration, stop the helper:
-
-```bash
-docker compose --profile migrate stop migration
-docker compose --profile migrate rm -f migration
-```
-
-See [Database Migration](docs/setup/database-migration.md) for details.
+Version 0.2.0 established the connector-native database baseline. Important
+0.1.x preview data can be imported with the local one-time migration helper;
+the normal gateway intentionally carries no pre-0.2 compatibility shim. See
+[Database Migration](docs/setup/database-migration.md).
 
 ## Development
 
-Common checks:
+Install workspaces and run the standard gates:
 
 ```bash
 npm install
@@ -641,113 +242,62 @@ make build
 make audit
 ```
 
-Browser smoke:
-
-```bash
-cd frontend
-npm run test:e2e
-```
-
-Full local release check:
+Full release validation:
 
 ```bash
 make release-check
 ```
 
-Run the backend locally:
+Useful package checks:
 
 ```bash
-cd backend
-go run ./cmd/aipermission
+npm run lint --workspace frontend
+npm run format:check --workspace frontend
+npm run test:coverage --workspace frontend
+npm run test:e2e --workspace frontend
+npm run build --workspace @aipermission/mcp
 ```
 
-Docker smoke:
-
-```bash
-make docker-up
-make docker-ps
-```
-
-Package dry runs:
-
-```bash
-cd packages/mcp && npm pack --dry-run
-cd ../npm-placeholder && npm pack --dry-run
-```
-
-Before publishing, run the full [release checklist](RELEASE_CHECKLIST.md).
-
-## Contributing
-
-Contributions are welcome. Please read
-[CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), and the
-[Code of Conduct](CODE_OF_CONDUCT.md) before opening issues or pull requests.
-
-Release notes will be tracked in [CHANGELOG](CHANGELOG.md).
-
-## Documentation
-
-Start here:
-
-- [What is aipermission](docs/whatis-aipermission.md)
-- [MVP Scope](docs/mvp/scope.md)
-- [Use Cases](docs/mvp/use-cases.md)
-- [MCP Tools](docs/api/mcp-tools.md)
-- [Threat Model](docs/security/threat-model.md)
-- [Add A Connector](docs/development/add-a-connector.md)
-- [Development Testing](docs/development/testing.md)
-- [Roadmap](docs/ROADMAP.md)
+Read [CONTRIBUTING](CONTRIBUTING.md) and
+[Development Testing](docs/development/testing.md) before opening a pull
+request. Releases use [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
 ## Developing Connectors
 
-Most future connectors should be structured connectors: add a backend connector
-package, a frontend template folder, docs, and tests. They use the shared
-target/profile/action permission, approval, history, and audit pipeline without
-adding connector-specific permission tables, MCP tool families, or route-level
-branches. Frontend templates are folder-discovered from
-`frontend/src/connectors/templates/<kind>/`; normal connectors do not edit the
-generic template registry or catalog.
+A normal connector adds:
 
-Runtime-integrated connectors are different. SSH is the built-in example
-because it owns a live terminal, SFTP file transfer, host-key approval, and
-gateway-owned key resources. New runtime capabilities require a reviewed
-adapter contract before touching generic API routes. Adapter contracts live in
-`internal/connectorapi`; connectors should not create their own parallel
-server/runtime/lifecycle interfaces. Built-in adapters use explicit
-constructors and catalog registration; package `init()` registration and blank
-side-effect imports are intentionally avoided so gateway instances and tests do
-not share hidden adapter state.
+- `backend/internal/connectors/<kind>/`
+- `frontend/src/connectors/templates/<kind>/`
+- connector metadata, docs, and tests
 
-See [Add A Connector](docs/development/add-a-connector.md) for the contributor
-checklist, required template files, security invariants, and the exact places a
-Redis/API-style connector should touch.
+It must use the generic connector pipeline rather than adding its own
+permission, approval, history, audit, or MCP tool family. Runtime-backed
+capabilities require reviewed shared adapter contracts.
+
+The complete contract, isolation rules, required frontend slots, credential
+schema requirements, and test checklist live in
+[Add A Connector](docs/development/add-a-connector.md).
+
+## Documentation
+
+[docs/index.md](docs/index.md) is the canonical navigation and ownership index.
+Use it for architecture, setup, security, API, connector, operator, and
+maintainer documentation.
 
 ## Project Status
 
-This project is pre-1.0 local developer software. The current goal is to
-validate the connector-native permission workflow with early users before a
-stable release.
+AIPermission is pre-1.0, local-only developer software. Breaking changes may be
+made when they remove technical debt or strengthen the security model, and are
+documented in release notes. Only the latest tagged stable release receives
+security fixes.
 
-Version 0.2.0 is a connector-native baseline. Pre-0.2 preview databases are not
-migrated automatically by the normal gateway; create a fresh 0.2 database or use
-the local one-time migration helper for important 0.1.x data.
-
-The current release line focuses on:
-
-- simple local setup
-- safe connector credential handling
-- reliable MCP connector action flow
-- approvals, structured activity, and SSH live console visibility when relevant
-- clear documentation and honest security boundaries
+The public roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## License
 
 AIPermission is licensed under AGPL-3.0-only from v0.1.14 onward. See
 [LICENSE](LICENSE).
 
-Versions up to and including v0.1.13 were released under MIT. Those historical
-releases remain available under their original MIT license.
-
-Commercial use is allowed under the AGPL, but modified versions must comply
-with the AGPL. The AIPermission name and logo identify the official project;
-forks must not imply endorsement by the AIPermission project.
+Versions through v0.1.13 remain available under their original MIT license.
+Commercial use is allowed under AGPL terms; forks must not imply endorsement by
+the official AIPermission project.

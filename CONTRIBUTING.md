@@ -123,6 +123,14 @@ npm run version:check
 The frontend intentionally bundles only the latest entries; the generated
 `CHANGELOG.md` remains the complete public history.
 
+`docs/connectors.md` is generated from frontend connector `metadata.json`
+files. Do not edit its connector table directly. Regenerate and verify it with:
+
+```bash
+npm run connector-catalog
+npm run connector-catalog:check
+```
+
 ## Pull Requests
 
 Contributions are submitted for distribution under the repository's

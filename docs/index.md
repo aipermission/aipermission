@@ -8,6 +8,7 @@ overlap, prefer the document listed in its matching section below.
 Start here:
 
 - [What Is aipermission?](whatis-aipermission.md)
+- [Built-In Connectors](connectors.md)
 - [MVP Scope](mvp/scope.md)
 - [Use Cases](mvp/use-cases.md)
 - [Implementation Roadmap](mvp/implementation-roadmap.md)
@@ -48,6 +49,7 @@ not published for those two decisions; numbering is intentionally preserved.
 - [Development Testing](development/testing.md)
 - [Good First Issue Pool](community/good-first-issues.md)
 - [GitHub Labels](maintainers/labels.md)
+- [Maintainer Operations And Recovery](maintainers/operations.md)
 
 ## Setup
 
