@@ -9,6 +9,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.37] - 2026-09-01
+
 ### Fixed
 
 - Docker connector execution now accepts only the standard CLI or an absolute wrapper,
