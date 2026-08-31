@@ -1,10 +1,17 @@
-import { apiDelete, apiPost, apiPut } from "../../../lib/api";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
+import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
 import { credentialPayload, targetEndpoint as brokerEndpoint } from "./model-helpers";
 
 export { credentialPayload } from "./model-helpers";
 
 const defaultRiskLabel = "stream read";
+const lifecycle = createTargetProfileLifecycle({
+  connectorKind: "kafka",
+  connectorLabel: "Kafka",
+  targetPayload: (form) => ({ name: form.name, config: targetConfig(form) }),
+  profilePayload: (form, { profile }) => credentialPayload(form, profile?.kind),
+});
+
+export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
 export function emptyForm() {
   return {
@@ -76,14 +83,6 @@ export function submitLabel({ state, mode }) {
   if (state.state === "saving") return "Saving...";
   return mode === "edit" ? "Save changes" : "Create connector";
 }
-export async function save({ mode, form, target }) {
-  if (mode === "edit") return updateTarget({ form, target });
-  return createTarget({ form });
-}
-export async function deleteTarget({ target }) {
-  await apiDelete(`/api/connector-targets/${target.id}`);
-}
-
 export function emptyCredentialState({ targets = [] } = {}) {
   const firstTarget = targets.find((target) => target.connector_kind === "kafka");
   return {
@@ -111,59 +110,14 @@ export function credentialStateFromRow({ row }) {
     },
   };
 }
-export function credentialFormProps({ targets, formState, setFormState, formMode, state, onSubmit }) {
-  return {
-    form: formState.form,
-    formMode,
-    targets,
-    state,
-    onChange: (form) => setFormState({ form }),
-    onSubmit: (event) => onSubmit(event, formMode === "edit" ? "update" : "create"),
-  };
-}
-export async function saveCredential({ operation, row, formState }) {
-  const form = formState.form;
-  const payload = credentialPayload(form, row?.profile?.kind);
-  if (operation === "create") {
-    await apiPost(`/api/connector-targets/${form.target_id}/profiles`, payload);
-    return { message: "Kafka credential created." };
-  }
-  if (operation === "update") {
-    if (!row) throw new Error("Kafka credential is not loaded.");
-    await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, payload);
-    return { message: "Kafka credential updated." };
-  }
-  throw new Error("Unsupported Kafka credential operation.");
-}
-export async function deleteCredential({ row }) {
-  await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
-}
 export function credentialRows({ targets }) {
-  return targets.flatMap((target) =>
-    (target.profiles || [])
-      .filter(() => target.connector_kind === "kafka")
-      .map((profile) => ({
-        row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
-        connector_kind: target.connector_kind,
-        resource_kind: "credential_profile",
-        connector_label: "Kafka / Redpanda",
-        id: profile.id,
-        target_id: target.id,
-        name: profile.label,
-        kind: profile.kind,
-        profile,
-        target_label: target.name,
-        target_detail: targetEndpoint({ target }),
-        metadata: credentialMetadata(profile),
-        delete_disabled: "",
-      })),
-  );
-}
-export async function test({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!selectedProfile) throw new Error("Connector profile is not loaded.");
-  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
-  return { ok: data.ok, error: data.message || null, data };
+  return connectorCredentialRows({
+    targets,
+    connectorKind: "kafka",
+    connectorLabel: "Kafka / Redpanda",
+    targetEndpoint,
+    credentialMetadata,
+  });
 }
 export function canEdit() {
   return true;
@@ -216,27 +170,6 @@ export function operationFromError() {
   return null;
 }
 
-async function createTarget({ form }) {
-  await createTargetWithProfile({
-    projectID: form.project_id,
-    targetPayload: { connector_kind: "kafka", name: form.name, config: targetConfig(form) },
-    profilePayload: credentialPayload(form),
-  });
-}
-async function updateTarget({ form, target }) {
-  const profile =
-    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
-    (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!target || !profile) throw new Error("Kafka connector profile is not loaded.");
-  await updateTargetWithProfile({
-    projectID: form.project_id,
-    targetID: target.id,
-    previousTarget: target,
-    profileID: profile.id,
-    targetPayload: { name: form.name, config: targetConfig(form) },
-    profilePayload: credentialPayload(form, profile.kind),
-  });
-}
 function targetConfig(form) {
   return {
     server_family: form.server_family === "redpanda" ? "redpanda" : "kafka",

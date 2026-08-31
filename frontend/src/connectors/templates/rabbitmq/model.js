@@ -1,7 +1,14 @@
-import { apiDelete, apiPost, apiPut } from "../../../lib/api";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
+import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
 
 const emptyRabbitCredentialForm = { target_id: "", profile_label: "monitor", username: "", password: "", risk_label: "queue access" };
+const lifecycle = createTargetProfileLifecycle({
+  connectorKind: "rabbitmq",
+  connectorLabel: "RabbitMQ",
+  targetPayload: (form) => ({ name: form.name, config: rabbitTargetConfigFromForm(form) }),
+  profilePayload: rabbitProfilePayloadFromForm,
+});
+
+export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
 export function emptyForm() {
   return {
@@ -67,18 +74,6 @@ export function submitLabel({ state, mode }) {
   return mode === "edit" ? "Save changes" : "Create connector";
 }
 
-export async function save({ mode, form, target }) {
-  if (mode === "edit") {
-    await updateTarget({ form, target });
-    return;
-  }
-  await createTarget({ form });
-}
-
-export async function deleteTarget({ target }) {
-  await apiDelete(`/api/connector-targets/${target.id}`);
-}
-
 export function emptyCredentialState({ targets = [] } = {}) {
   const firstTarget = targets.find((target) => target.connector_kind === "rabbitmq");
   return {
@@ -101,77 +96,14 @@ export function credentialStateFromRow({ row }) {
   };
 }
 
-export function credentialFormProps({ targets, formState, setFormState, formMode, state, onSubmit }) {
-  return {
-    form: formState.form,
-    formMode,
-    targets,
-    state,
-    onChange: (form) => setFormState({ form }),
-    onSubmit: (event) => onSubmit(event, formMode === "edit" ? "update" : "create"),
-  };
-}
-
-export async function saveCredential({ operation, row, formState }) {
-  const form = formState.form;
-  if (operation === "create") {
-    await apiPost(`/api/connector-targets/${form.target_id}/profiles`, {
-      kind: "username_password",
-      label: form.profile_label,
-      public: { username: form.username },
-      secret: form.password ? { password: form.password } : {},
-      risk_label: form.risk_label,
-    });
-    return { message: "RabbitMQ credential created." };
-  }
-  if (operation === "update") {
-    if (!row) throw new Error("RabbitMQ credential is not loaded.");
-    const payload = {
-      kind: row.profile?.kind || "username_password",
-      label: form.profile_label,
-      public: { username: form.username },
-      risk_label: form.risk_label,
-    };
-    if (form.password) {
-      payload.secret = { password: form.password };
-    }
-    await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, payload);
-    return { message: "RabbitMQ credential updated." };
-  }
-  throw new Error("Unsupported RabbitMQ credential operation.");
-}
-
-export async function deleteCredential({ row }) {
-  await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
-}
-
 export function credentialRows({ targets }) {
-  return targets.flatMap((target) =>
-    (target.profiles || [])
-      .filter((_profile) => target.connector_kind === "rabbitmq")
-      .map((profile) => ({
-        row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
-        connector_kind: target.connector_kind,
-        resource_kind: "credential_profile",
-        connector_label: "RabbitMQ",
-        id: profile.id,
-        target_id: target.id,
-        name: profile.label,
-        kind: profile.kind,
-        profile,
-        target_label: target.name,
-        target_detail: targetEndpoint({ target }),
-        metadata: credentialMetadata(profile),
-        delete_disabled: "",
-      })),
-  );
-}
-
-export async function test({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!selectedProfile) throw new Error("Connector profile is not loaded.");
-  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
-  return { ok: data.ok, error: data.message || null, data };
+  return connectorCredentialRows({
+    targets,
+    connectorKind: "rabbitmq",
+    connectorLabel: "RabbitMQ",
+    targetEndpoint,
+    credentialMetadata,
+  });
 }
 
 export function canEdit() {
@@ -236,51 +168,6 @@ export function operationFromError() {
   return null;
 }
 
-async function createTarget({ form }) {
-  await createTargetWithProfile({
-    projectID: form.project_id,
-    targetPayload: {
-      connector_kind: "rabbitmq",
-      name: form.name,
-      config: rabbitTargetConfigFromForm(form),
-    },
-    profilePayload: {
-      kind: "username_password",
-      label: form.profile_label,
-      public: { username: form.username },
-      secret: form.password ? { password: form.password } : {},
-      risk_label: form.risk_label || "queue access",
-    },
-  });
-}
-
-async function updateTarget({ form, target }) {
-  const profile =
-    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
-    (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!target || !profile) throw new Error("RabbitMQ connector profile is not loaded.");
-  const profilePayload = {
-    kind: profile.kind || "username_password",
-    label: form.profile_label,
-    public: { username: form.username },
-    risk_label: form.risk_label || "queue access",
-  };
-  if (form.password) {
-    profilePayload.secret = { password: form.password };
-  }
-  await updateTargetWithProfile({
-    projectID: form.project_id,
-    targetID: target.id,
-    previousTarget: target,
-    profileID: profile.id,
-    targetPayload: {
-      name: form.name,
-      config: rabbitTargetConfigFromForm(form),
-    },
-    profilePayload,
-  });
-}
-
 function rabbitTargetConfigFromForm(form) {
   const scheme = ["auto", "https"].includes(form.scheme) ? form.scheme : "http";
   return {
@@ -290,6 +177,16 @@ function rabbitTargetConfigFromForm(form) {
     port: Number(form.port) || 15672,
     vhost: form.vhost || "/",
     transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref || "" : "",
+  };
+}
+
+function rabbitProfilePayloadFromForm(form, { profile, operation }) {
+  return {
+    kind: profile?.kind || "username_password",
+    label: form.profile_label,
+    public: { username: form.username },
+    ...(form.password ? { secret: { password: form.password } } : {}),
+    risk_label: operation.startsWith("target") ? form.risk_label || "queue access" : form.risk_label,
   };
 }
 

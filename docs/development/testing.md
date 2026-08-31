@@ -49,8 +49,8 @@ This runs:
 - backend govulncheck
 - frontend tests
 - frontend per-file coverage floors for connector permission editing, shared
-  connector action execution, approval dialogs, and console page-state
-  boundaries
+  connector action and target/profile lifecycles, approval dialogs, and console
+  page-state boundaries
 - frontend production build
 - frontend Playwright browser smoke for unlock, security settings, database import, settings retention, and token permission flows
 - frontend Playwright lifecycle coverage against a real encrypted backend for

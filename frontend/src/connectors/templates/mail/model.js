@@ -1,5 +1,4 @@
-import { apiDelete, apiPost, apiPut } from "../../../lib/api";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
+import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
 import { mailProtocolsEnabled } from "./helpers";
 
 const emptyMailCredentialForm = {
@@ -22,6 +21,16 @@ const emptyMailCredentialForm = {
   trash_folder: "",
   risk_label: "mailbox access",
 };
+const lifecycle = createTargetProfileLifecycle({
+  connectorKind: "mail",
+  connectorLabel: "Mail",
+  targetPayload: (form) => ({ name: form.name, config: targetConfig(form) }),
+  profilePayload: (form, { profile, operation }) => credentialPayload(form, operation.endsWith("create"), profile),
+  beforeSave: ({ form }) => requireMailProtocol(form, "connector"),
+  beforeSaveCredential: ({ form }) => requireMailProtocol(form, "credential"),
+});
+
+export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
 export function emptyForm() {
   return {
@@ -83,19 +92,6 @@ export function submitLabel({ state, mode }) {
   return mode === "edit" ? "Save changes" : "Create connector";
 }
 
-export async function save({ mode, form, target }) {
-  if (!mailProtocolsEnabled(form)) throw new Error("Enable IMAP or SMTP before saving this Mail connector.");
-  if (mode === "edit") {
-    await updateTarget({ form, target });
-    return;
-  }
-  await createTarget({ form });
-}
-
-export async function deleteTarget({ target }) {
-  await apiDelete(`/api/connector-targets/${target.id}`);
-}
-
 export function emptyCredentialState({ targets = [] } = {}) {
   const firstTarget = targets.find((target) => target.connector_kind === "mail");
   return { form: { ...emptyMailCredentialForm, target_id: String(firstTarget?.id || "") } };
@@ -105,63 +101,8 @@ export function credentialStateFromRow({ row }) {
   return { form: { target_id: String(row.target_id || ""), ...credentialFormFromProfile(row.profile) } };
 }
 
-export function credentialFormProps({ targets, formState, setFormState, formMode, state, onSubmit }) {
-  return {
-    form: formState.form,
-    formMode,
-    targets,
-    state,
-    onChange: (form) => setFormState({ form }),
-    onSubmit: (event) => onSubmit(event, formMode === "edit" ? "update" : "create"),
-  };
-}
-
-export async function saveCredential({ operation, row, formState }) {
-  const form = formState.form;
-  if (!mailProtocolsEnabled(form)) throw new Error("Enable IMAP or SMTP before saving this Mail credential.");
-  if (operation === "create") {
-    await apiPost(`/api/connector-targets/${form.target_id}/profiles`, credentialPayload(form, true));
-    return { message: "Mail credential created." };
-  }
-  if (operation === "update") {
-    if (!row) throw new Error("Mail credential is not loaded.");
-    await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, credentialPayload(form, false, row.profile));
-    return { message: "Mail credential updated." };
-  }
-  throw new Error("Unsupported Mail credential operation.");
-}
-
-export async function deleteCredential({ row }) {
-  await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
-}
-
 export function credentialRows({ targets }) {
-  return targets.flatMap((target) =>
-    (target.profiles || [])
-      .filter((_profile) => target.connector_kind === "mail")
-      .map((profile) => ({
-        row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
-        connector_kind: target.connector_kind,
-        resource_kind: "credential_profile",
-        connector_label: "Mail",
-        id: profile.id,
-        target_id: target.id,
-        name: profile.label,
-        kind: profile.kind,
-        profile,
-        target_label: target.name,
-        target_detail: targetEndpoint({ target }),
-        metadata: credentialMetadata(profile),
-        delete_disabled: "",
-      })),
-  );
-}
-
-export async function test({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!selectedProfile) throw new Error("Connector profile is not loaded.");
-  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
-  return { ok: data.ok, error: data.message || null, data };
+  return connectorCredentialRows({ targets, connectorKind: "mail", connectorLabel: "Mail", targetEndpoint, credentialMetadata });
 }
 
 export function canEdit() {
@@ -221,29 +162,6 @@ export function operationFromError() {
   return null;
 }
 
-async function createTarget({ form }) {
-  await createTargetWithProfile({
-    projectID: form.project_id,
-    targetPayload: { connector_kind: "mail", name: form.name, config: targetConfig(form) },
-    profilePayload: credentialPayload(form, true),
-  });
-}
-
-async function updateTarget({ form, target }) {
-  const profile =
-    target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
-    (target?.profiles?.length === 1 ? target.profiles[0] : null);
-  if (!target || !profile) throw new Error("Mail connector profile is not loaded.");
-  await updateTargetWithProfile({
-    projectID: form.project_id,
-    targetID: target.id,
-    previousTarget: target,
-    profileID: profile.id,
-    targetPayload: { name: form.name, config: targetConfig(form) },
-    profilePayload: credentialPayload(form, false, profile),
-  });
-}
-
 function targetConfig(form) {
   return {
     connection_mode: form.connection_mode || "direct",
@@ -256,6 +174,10 @@ function targetConfig(form) {
     smtp_tls_mode: form.smtp_tls_mode || "implicit_tls",
     allowed_recipient_domains: lineList(form.allowed_recipient_domains),
   };
+}
+
+function requireMailProtocol(form, resource) {
+  if (!mailProtocolsEnabled(form)) throw new Error(`Enable IMAP or SMTP before saving this Mail ${resource}.`);
 }
 
 function credentialPayload(form, creating, existing = null) {
