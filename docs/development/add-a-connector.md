@@ -165,6 +165,12 @@ vault-encrypted. If a credential schema uses a secret field type, mark that
 field with `secret: true`; ambiguous secret fields fail registry validation.
 Do not put defaults on secret credential fields.
 
+If changing a target schema default would reinterpret an already stored target,
+implement the optional `TargetConfigUpdateNormalizer` contract. It receives the
+existing and submitted non-secret target configs before declarative defaults
+are applied. Preserve only the connector-owned compatibility fields that need
+it; new target creation must continue through the normal schema defaults.
+
 The Connectors page manages a target and its default credential profile.
 Additional profiles for the same target belong on the Credentials page. Token
 permissions always bind one target, one credential profile, and one action.
@@ -254,12 +260,14 @@ gateway resolves the selected transport profile.
 For a protocol that supports both plaintext and verified TLS, make new remote
 Direct targets fail-safe by default. Reuse `UseVerifiedTLSByDefault` for an
 `auto` mode instead of copying hostname heuristics into a connector. The shared
-policy selects verified TLS for non-local Direct hosts and plaintext for
-loopback, supported local-container aliases, and Over SSH transport. Connector
-code still owns protocol-specific TLS setup, ports, and error classification.
-Keep an explicit plaintext option for intentionally local deployments, preserve
-existing saved choices, and test new, legacy, explicit, local, remote, and Over
-SSH configurations separately.
+policy tells the connector when verified TLS should be the default for a remote
+Direct host. For loopback, supported local-container aliases, and Over SSH,
+the connector must choose its own protocol-safe fallback; this helper does not
+authorize plaintext transport. Connector code still owns protocol-specific TLS
+setup, ports, and error classification. Keep any explicit plaintext option
+limited to intentionally local deployments, preserve existing saved choices,
+and test new, legacy, explicit, local, remote, and Over SSH configurations
+separately.
 
 ## Frontend Templates
 
