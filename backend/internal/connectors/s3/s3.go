@@ -212,7 +212,6 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use get_object_metadata to inspect one object without downloading content.",
 			"Use download_object only for bounded object reads. It returns base64 content for the requested object up to max_bytes.",
 			"Use upload_object with overwrite=false by default. If the object exists, ask the operator before retrying with overwrite=true.",
-			"Use rename_object only for intentional object moves. It copies to the destination key and then deletes the source key.",
 			"Use delete_object carefully; it is destructive and should normally require explicit approval.",
 			"Use presign_download or presign_upload only when the operator explicitly needs a short-lived URL for one exact object key.",
 			"Use list_object_versions before restoring or deleting one exact version. Restoring creates a new current version.",
@@ -226,11 +225,19 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Presigned URLs are temporary bearer credentials. Do not place them in reasons, inputs, logs, or messages beyond the intended recipient.",
 			"delete_object_version permanently removes one stored version or delete marker and is destructive.",
 			"Lifecycle replacement and deletion can affect object retention. Treat both as destructive operations.",
+			"rename_object is intentionally unavailable because S3-compatible APIs do not provide an atomic cross-key move. Keep the source intact and treat any later source deletion as a separate destructive decision.",
 		},
 	}, nil
 }
 
 func (Connector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
+	actions := objectActions()
+	actions = append(actions, signedURLAndVersionActions()...)
+	actions = append(actions, lifecycleActions()...)
+	return actions, nil
+}
+
+func objectActions() []connectors.ActionDefinition {
 	return []connectors.ActionDefinition{
 		{
 			Name:        ActionBucketInfo,
@@ -294,19 +301,6 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
 		{
-			Name:        ActionRenameObject,
-			Label:       "Rename object",
-			Description: "Copy one object to a new key and delete the original key.",
-			Category:    "write",
-			Risk:        connectors.RiskWrite,
-			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "source_key", Label: "Source key", Type: connectors.FieldString, Required: true, Description: "Existing object key to move."},
-				{Name: "destination_key", Label: "Destination key", Type: connectors.FieldString, Required: true, Description: "New object key."},
-				{Name: "overwrite", Label: "Overwrite destination", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless the operator explicitly approved replacing the destination object."},
-			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
-		},
-		{
 			Name:        ActionDeleteObject,
 			Label:       "Delete object",
 			Description: "Delete one object from the bucket.",
@@ -317,6 +311,11 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
+	}
+}
+
+func signedURLAndVersionActions() []connectors.ActionDefinition {
+	return []connectors.ActionDefinition{
 		{
 			Name:        ActionPresignDownload,
 			Label:       "Create download URL",
@@ -379,6 +378,11 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
+	}
+}
+
+func lifecycleActions() []connectors.ActionDefinition {
+	return []connectors.ActionDefinition{
 		{
 			Name:        ActionGetLifecycle,
 			Label:       "Read bucket lifecycle",
@@ -411,7 +415,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskDestructive,
 			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
-	}, nil
+	}
 }
 
 func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
@@ -454,57 +458,14 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		summary = fmt.Sprintf("%s (max %d bytes)", key, maxBytes)
 	case ActionUploadObject:
 		risk = connectors.RiskWrite
-		key := normalizeObjectKey(input, "key")
-		if key == "" {
-			return connectors.PreparedAction{}, fmt.Errorf("key is required")
-		}
-		contentText := stringValue(input, "content_text")
-		contentBase64 := strings.TrimSpace(stringValue(input, "content_base64"))
-		if contentText == "" && contentBase64 == "" {
-			return connectors.PreparedAction{}, fmt.Errorf("content_text or content_base64 is required")
-		}
-		if contentText != "" && contentBase64 != "" {
-			return connectors.PreparedAction{}, fmt.Errorf("provide content_text or content_base64, not both")
-		}
-		contentBytes, err := uploadBytes(contentText, contentBase64)
+		title = "Upload S3 object"
+		var err error
+		summary, err = prepareUploadInput(input)
 		if err != nil {
 			return connectors.PreparedAction{}, err
 		}
-		if len(contentBytes) > maxUploadBytes {
-			return connectors.PreparedAction{}, fmt.Errorf("object content is larger than %d bytes", maxUploadBytes)
-		}
-		contentType := strings.TrimSpace(stringValue(input, "content_type"))
-		if contentType == "" {
-			contentType = "application/octet-stream"
-		}
-		input["key"] = key
-		input["content_type"] = contentType
-		input["content_bytes"] = len(contentBytes)
-		input["overwrite"] = boolValue(input, "overwrite")
-		delete(input, "content_text")
-		delete(input, "content_base64")
-		if contentBase64 != "" {
-			input["content_base64"] = contentBase64
-		} else {
-			input["content_base64"] = base64.StdEncoding.EncodeToString(contentBytes)
-		}
-		title = "Upload S3 object"
-		summary = fmt.Sprintf("%s (%d bytes)", key, len(contentBytes))
 	case ActionRenameObject:
-		risk = connectors.RiskWrite
-		sourceKey := normalizeObjectKey(input, "source_key")
-		destinationKey := normalizeObjectKey(input, "destination_key")
-		if sourceKey == "" || destinationKey == "" {
-			return connectors.PreparedAction{}, fmt.Errorf("source_key and destination_key are required")
-		}
-		if sourceKey == destinationKey {
-			return connectors.PreparedAction{}, fmt.Errorf("source_key and destination_key must differ")
-		}
-		input["source_key"] = sourceKey
-		input["destination_key"] = destinationKey
-		input["overwrite"] = boolValue(input, "overwrite")
-		title = "Rename S3 object"
-		summary = fmt.Sprintf("%s -> %s", sourceKey, destinationKey)
+		return connectors.PreparedAction{}, errors.New("S3 rename_object is disabled: S3-compatible APIs do not provide an atomic cross-key move; upload or copy the destination while keeping the source intact, then let the operator decide whether to issue a separate destructive delete")
 	case ActionDeleteObject:
 		risk = connectors.RiskDestructive
 		key := normalizeObjectKey(input, "key")
@@ -593,6 +554,48 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 	default:
 		return connectors.PreparedAction{}, ErrUnsupportedAction
 	}
+	return finalizePreparedAction(req, input, risk, title, summary)
+}
+
+func prepareUploadInput(input map[string]any) (string, error) {
+	key := normalizeObjectKey(input, "key")
+	if key == "" {
+		return "", fmt.Errorf("key is required")
+	}
+	contentText := stringValue(input, "content_text")
+	contentBase64 := strings.TrimSpace(stringValue(input, "content_base64"))
+	if contentText == "" && contentBase64 == "" {
+		return "", fmt.Errorf("content_text or content_base64 is required")
+	}
+	if contentText != "" && contentBase64 != "" {
+		return "", fmt.Errorf("provide content_text or content_base64, not both")
+	}
+	contentBytes, err := uploadBytes(contentText, contentBase64)
+	if err != nil {
+		return "", err
+	}
+	if len(contentBytes) > maxUploadBytes {
+		return "", fmt.Errorf("object content is larger than %d bytes", maxUploadBytes)
+	}
+	contentType := strings.TrimSpace(stringValue(input, "content_type"))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	input["key"] = key
+	input["content_type"] = contentType
+	input["content_bytes"] = len(contentBytes)
+	input["overwrite"] = boolValue(input, "overwrite")
+	delete(input, "content_text")
+	delete(input, "content_base64")
+	if contentBase64 != "" {
+		input["content_base64"] = contentBase64
+	} else {
+		input["content_base64"] = base64.StdEncoding.EncodeToString(contentBytes)
+	}
+	return fmt.Sprintf("%s (%d bytes)", key, len(contentBytes)), nil
+}
+
+func finalizePreparedAction(req connectors.ActionRequest, input map[string]any, risk connectors.RiskLevel, title, summary string) (connectors.PreparedAction, error) {
 	if len(req.Reason) > maxS3ReasonBytes {
 		return connectors.PreparedAction{}, fmt.Errorf("reason is too large")
 	}
@@ -620,6 +623,9 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 }
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	if action.ActionName == ActionRenameObject {
+		return connectors.ActionResult{}, errors.New("S3 rename_object is disabled because object stores do not provide an atomic cross-key move")
+	}
 	client, err := newS3Client(ctx, runtime)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -635,8 +641,6 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 		return executeDownloadObject(ctx, client, action.Payload)
 	case ActionUploadObject:
 		return executeUploadObject(ctx, client, action.Payload)
-	case ActionRenameObject:
-		return executeRenameObject(ctx, client, action.Payload)
 	case ActionDeleteObject:
 		return executeDeleteObject(ctx, client, action.Payload)
 	case ActionPresignDownload:
@@ -896,33 +900,6 @@ func executeUploadObject(ctx context.Context, client *s3Client, input map[string
 	}, nil
 }
 
-func executeRenameObject(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
-	sourceKey := normalizeObjectKey(input, "source_key")
-	destinationKey := normalizeObjectKey(input, "destination_key")
-	overwrite := boolValue(input, "overwrite")
-	if !overwrite {
-		if err := client.ensureObjectAbsent(ctx, destinationKey); err != nil {
-			return connectors.ActionResult{}, err
-		}
-	}
-	if err := client.CopyObject(ctx, sourceKey, destinationKey); err != nil {
-		return connectors.ActionResult{}, err
-	}
-	if err := client.DeleteObject(ctx, sourceKey); err != nil {
-		return connectors.ActionResult{}, err
-	}
-	return connectors.ActionResult{
-		Status: connectors.ResultCompleted,
-		Output: map[string]any{
-			"bucket":          client.bucket,
-			"source_key":      sourceKey,
-			"destination_key": destinationKey,
-			"overwritten":     overwrite,
-		},
-		DisplayText: fmt.Sprintf("Renamed %s to %s.", sourceKey, destinationKey),
-	}, nil
-}
-
 func executeDeleteObject(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
 	key := normalizeObjectKey(input, "key")
 	if err := client.DeleteObject(ctx, key); err != nil {
@@ -1052,13 +1029,6 @@ func (client *s3Client) PutObject(ctx context.Context, key string, data []byte, 
 	}
 	headers.Set("Content-Type", contentType)
 	_, _, err := client.Do(ctx, http.MethodPut, key, nil, s3RequestBody{Headers: headers, Data: data}, maxS3ResponseBytes)
-	return err
-}
-
-func (client *s3Client) CopyObject(ctx context.Context, sourceKey string, destinationKey string) error {
-	headers := http.Header{}
-	headers.Set("X-Amz-Copy-Source", "/"+awsPathEscape(client.bucket)+"/"+awsPathEscape(sourceKey))
-	_, _, err := client.Do(ctx, http.MethodPut, destinationKey, nil, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
 	return err
 }
 
@@ -1219,7 +1189,7 @@ func canonicalRequest(req *http.Request, payloadHash string) (string, string) {
 	}
 	for name, values := range req.Header {
 		lower := strings.ToLower(name)
-		if strings.HasPrefix(lower, "x-amz-") || lower == "content-type" {
+		if strings.HasPrefix(lower, "x-amz-") || lower == "content-type" || lower == "if-match" || lower == "if-none-match" {
 			headers[lower] = strings.Join(values, ",")
 		}
 	}
@@ -1367,8 +1337,7 @@ func isNotFoundError(err error) bool {
 	if errors.As(err, &statusErr) {
 		return statusErr.status == http.StatusNotFound
 	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "not found") || strings.Contains(message, "404")
+	return false
 }
 
 func objectMetadataOutput(bucket string, key string, headers http.Header) map[string]any {

@@ -1,4 +1,4 @@
-import { CornerUpLeft, Database, Download, Folder, Link2, Pencil, Plus, RefreshCcw, Search, Trash2, Upload } from "lucide-react";
+import { CornerUpLeft, Database, Download, Folder, Link2, Plus, RefreshCcw, Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
 import { Badge } from "../../../components/ui/badge";
@@ -10,14 +10,7 @@ import { formatBytes } from "../../../lib/file-transfer-utils";
 import { S3PresignDialog } from "./presign-dialog";
 import { S3VersionsDialog, VersionsIcon } from "./versions-dialog";
 import { LifecycleIcon, S3LifecycleDialog } from "./lifecycle-dialog";
-import {
-  defaultRenameDialog,
-  defaultS3ConfirmDialog,
-  defaultUploadDialog,
-  S3ConfirmDialog,
-  S3RenameDialog,
-  S3UploadDialog,
-} from "./dialogs";
+import { defaultS3ConfirmDialog, defaultUploadDialog, S3ConfirmDialog, S3UploadDialog } from "./dialogs";
 import {
   base64Blob,
   approvalsForTarget,
@@ -51,7 +44,6 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const [presignOpen, setPresignOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [lifecycleOpen, setLifecycleOpen] = useState(false);
-  const [renameDialog, setRenameDialog] = useState(defaultRenameDialog);
   const [confirmDialog, setConfirmDialog] = useState(defaultS3ConfirmDialog);
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
@@ -83,7 +75,6 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     setPresignOpen(false);
     setVersionsOpen(false);
     setLifecycleOpen(false);
-    setRenameDialog(defaultRenameDialog);
     setState({ state: "idle", error: "", message: "" });
   }, [target.ref, activeSession.active, activeSession.startedAt]);
 
@@ -324,45 +315,6 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
       setState({ state: "idle", error: "", message: `Uploaded ${fileMode ? preparedFiles.length : 1} object(s).` });
     } catch (error) {
       setUploadDialog((current) => ({ ...current, pending: false, error: error.message || "Upload failed." }));
-    }
-  }
-
-  function openRenameDialog() {
-    if (!selectedKey) return;
-    setRenameDialog({ open: true, value: selectedKey, pending: false, error: "" });
-  }
-
-  function closeRenameDialog() {
-    setRenameDialog((current) => (current.pending ? current : defaultRenameDialog));
-  }
-
-  async function renameSelectedObject(event) {
-    event.preventDefault();
-    if (!selectedKey || renameDialog.pending) return;
-    const nextKey = normalizeObjectKey(renameDialog.value);
-    if (!nextKey || nextKey === selectedKey) {
-      setRenameDialog((current) => ({ ...current, error: "Enter a different destination object key." }));
-      return;
-    }
-    setRenameDialog((current) => ({ ...current, pending: true, error: "" }));
-    try {
-      const renamed = await runS3Action({
-        actionName: "rename_object",
-        input: { source_key: selectedKey, destination_key: nextKey, overwrite: false },
-        reason: "manual S3 browser object rename",
-        busy: "renaming",
-      });
-      if (!renamed) {
-        setRenameDialog((current) => ({ ...current, pending: false }));
-        return;
-      }
-      setRenameDialog(defaultRenameDialog);
-      setSelectedKey("");
-      setMetadata(null);
-      await refreshObjects({ reset: true });
-      await readObjectMetadata(nextKey);
-    } catch (error) {
-      setRenameDialog((current) => ({ ...current, pending: false, error: error.message || "Rename failed." }));
     }
   }
 
@@ -657,16 +609,6 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
                   </Button>
                   <Button
                     type="button"
-                    variant="outline"
-                    className="h-8 w-8 px-0"
-                    title="Rename object"
-                    disabled={!selectedKey || state.state !== "idle"}
-                    onClick={openRenameDialog}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
                     variant="danger"
                     className="h-8 w-8 px-0"
                     title="Delete object"
@@ -770,15 +712,6 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
         onRemoveFile={removeUploadFile}
         onUpdateFile={updateUploadFile}
         onSubmit={uploadObjects}
-      />
-      <S3RenameDialog
-        value={renameDialog}
-        theme={theme}
-        selectedKey={selectedKey}
-        inputClass={inputClass}
-        onClose={closeRenameDialog}
-        onChange={setRenameDialog}
-        onSubmit={renameSelectedObject}
       />
       <S3ConfirmDialog
         value={confirmDialog}
