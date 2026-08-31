@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -87,6 +89,7 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 	if result.Parallelism != bulkConsoleCommandParallelism || len(result.Items) != 2 {
 		t.Fatalf("unexpected bulk command response: %#v", result)
 	}
+	waitForBulkCommandHistory(t, fixture.db, result.Items)
 
 	var rows int
 	if err := fixture.db.QueryRow(`
@@ -111,6 +114,36 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 	}
 	if auditRows != 1 {
 		t.Fatalf("expected one bulk audit event, got %d", auditRows)
+	}
+}
+
+func waitForBulkCommandHistory(t *testing.T, database *sql.DB, items []bulkConsoleCommandResponseItem) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		completed := 0
+		for _, item := range items {
+			var status string
+			err := database.QueryRow(`
+				SELECT status
+				FROM history_entries
+				WHERE source_ref_type = 'command_request' AND source_ref_id = ?`,
+				item.RequestID,
+			).Scan(&status)
+			if err == nil && status != "running" {
+				completed++
+			}
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				t.Fatalf("read bulk command history: %v", err)
+			}
+		}
+		if completed == len(items) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("bulk command history did not settle: completed=%d total=%d", completed, len(items))
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
