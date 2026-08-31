@@ -24,17 +24,24 @@ func TestGenericConnectorHandlersDoNotBranchOnSSH(t *testing.T) {
 	if !ok {
 		t.Fatal("runtime caller unavailable")
 	}
-	for _, file := range []string{
-		"connector_target_handlers.go",
-		"target_handlers.go",
-		"../history/store.go",
-		"../console/console_session_manager.go",
-		"../filetransfer/store.go",
-	} {
-		sourcePath := filepath.Join(filepath.Dir(filename), file)
+	apiDir := filepath.Dir(filename)
+	targetFiles, err := filepath.Glob(filepath.Join(apiDir, "connector_target_*.go"))
+	if err != nil {
+		t.Fatalf("find connector target handlers: %v", err)
+	}
+	sourcePaths := append(targetFiles,
+		filepath.Join(apiDir, "target_handlers.go"),
+		filepath.Join(apiDir, "../history/store.go"),
+		filepath.Join(apiDir, "../console/console_session_manager.go"),
+		filepath.Join(apiDir, "../filetransfer/store.go"),
+	)
+	for _, sourcePath := range sourcePaths {
+		if strings.HasSuffix(sourcePath, "_test.go") {
+			continue
+		}
 		content, err := os.ReadFile(sourcePath)
 		if err != nil {
-			t.Fatalf("read %s: %v", file, err)
+			t.Fatalf("read %s: %v", sourcePath, err)
 		}
 		source := string(content)
 		for _, disallowed := range []string{
@@ -46,7 +53,7 @@ func TestGenericConnectorHandlersDoNotBranchOnSSH(t *testing.T) {
 			"ConnectorKind !=",
 		} {
 			if strings.Contains(source, disallowed) {
-				t.Fatalf("%s must use connector adapters, found %q", file, disallowed)
+				t.Fatalf("%s must use connector adapters, found %q", sourcePath, disallowed)
 			}
 		}
 	}
