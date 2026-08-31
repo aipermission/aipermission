@@ -259,10 +259,14 @@ Publish request displays redact raw keys, values, and headers. A failed publish
 can have an unknown delivery outcome, so inspect before manually retrying.
 
 S3 actions include bucket metadata, bounded object listing, object metadata,
-bounded object download/upload, object rename, explicit delete, short-lived
+bounded object download/upload, explicit delete, short-lived
 presigned URLs, object versions, and bucket lifecycle policy controls. Object
 content may contain secrets or customer data; prefer approval-required access
-for downloads, uploads, renames, and deletes until the workflow is trusted.
+for downloads, uploads, and deletes until the workflow is trusted.
+`rename_object` is intentionally unavailable because S3-compatible APIs do not
+provide an atomic cross-key move. Create or upload the destination while keeping
+the source intact. Source deletion must remain a separate destructive operator
+decision; do not infer that a prior copy makes deletion race-safe.
 Use `prefix` to browse folder-like object groups, `browse_input` from directory
 entries to enter a folder, and `cursor` from `next_cursor` or `next_page_input`
 to fetch the next page. Do not send `continuation_token` as an action input.

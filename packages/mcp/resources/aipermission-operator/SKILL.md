@@ -204,8 +204,11 @@ prefer this sequence:
    type, headers, or existence.
 5. Use `download_object` only for bounded object reads explicitly requested by
    the operator.
-6. Keep `overwrite=false` for `upload_object` and `rename_object` unless the
-   operator explicitly approved replacement.
+6. Keep `overwrite=false` for `upload_object` unless the operator explicitly
+   approved replacement. `rename_object` is intentionally unavailable because
+   S3-compatible APIs do not provide an atomic cross-key move. Keep the source
+   intact after creating a destination; deletion is a separate destructive
+   operator decision and must not be inferred from copy verification.
 7. Treat `delete_object` as destructive and ask for explicit confirmation if
    approval mode does not already provide it.
 8. Use `presign_download` and `presign_upload` only for one exact object key

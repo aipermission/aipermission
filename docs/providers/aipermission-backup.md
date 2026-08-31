@@ -43,6 +43,11 @@ through an HTTPS reverse proxy. Across different networks, use a VPN or private
 overlay network instead of exposing the raw service port. AIPermission rejects
 plaintext HTTP except on loopback.
 
+The gateway backup client connects only to the provider URL saved by the local
+operator. It ignores ambient `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+settings and refuses redirects so the encrypted snapshot and provider token are
+not silently routed through a process-wide proxy.
+
 Read the token without placing it in shared shell history:
 
 ```bash

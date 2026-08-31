@@ -9,6 +9,23 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- Docker connector execution now accepts only the standard CLI or an absolute wrapper,
+  verifies Docker identity, and shares the same renderer across actions and live
+  consoles.
+- S3 object rename is disabled because S3-compatible APIs cannot provide an atomic
+  cross-key move; source deletion remains a separate destructive operator decision.
+
+### Security
+
+- New direct remote Postgres targets now default to hostname-verified TLS while explicit
+  and legacy transport modes remain compatible.
+- Backup service requests ignore ambient process proxies and refuse redirects so
+  encrypted snapshots and provider tokens stay on the operator-selected route.
+- Database mutation paths now preserve affected-row driver failures instead of treating
+  them as successful zero-row updates.
+
 ## [0.2.36] - 2026-08-31
 
 ### Changed
