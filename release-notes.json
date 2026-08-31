@@ -3,6 +3,33 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.35",
+      "date": "2026-08-31",
+      "label": "Credential and transfer failure hardening",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "Connector credential provisioning now compensates completed external steps when later secret encryption or profile persistence fails, preventing orphaned managed credentials.",
+            "File transfers now preserve the difference between user cancellation and deadline expiry across item, batch, history, and API lifecycle updates.",
+            "Pending connector approvals now surface activity refresh failures instead of silently leaving the interface with stale completion state."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Legacy database migration now fails closed when schema probes cannot be completed, rather than treating probe failures as absent legacy tables."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Updated LZ4 compression support, frontend icons and test tooling, ESLint, and pinned CodeQL actions through maintainer-authored dependency commits."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.34",
       "date": "2026-08-31",
       "label": "Frontend resilience and recovery hardening",
