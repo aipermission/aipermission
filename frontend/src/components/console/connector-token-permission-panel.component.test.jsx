@@ -20,8 +20,8 @@ const actions = [
   { name: "create_user", description: "Create a user", risk: "write", category: "users" },
 ];
 
-function renderPanel({ permissions = [] } = {}) {
-  const replaceTokenConnectorPermissions = vi.fn(async () => []);
+function renderPanel({ permissions = [], replacePermissions } = {}) {
+  const replaceTokenConnectorPermissions = vi.fn(replacePermissions || (async () => []));
   const loadConnectorActions = vi.fn(async () => actions);
   const loadAllConnectorPermissions = vi.fn(async () => ({}));
   render(
@@ -134,5 +134,27 @@ describe("ConnectorTokenPermissionPanel", () => {
       5,
       permissions.map((permission) => ({ ...permission, expires_at: "2026-08-11T11:00:00.000Z" })),
     );
+  });
+
+  it("shows permission save failures with context and retries the mutation", async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const { replaceTokenConnectorPermissions } = renderPanel({
+      replacePermissions: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("gateway unavailable");
+        return [];
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("codex / Admin");
+    expect(alert).toHaveTextContent("get_tables, query_readonly, create_user");
+    expect(alert).toHaveTextContent("gateway unavailable");
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 });

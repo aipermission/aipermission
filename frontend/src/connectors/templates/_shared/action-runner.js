@@ -1,4 +1,5 @@
 import { apiPost } from "../../../lib/api.js";
+import { errorMessage } from "../../../lib/errors.js";
 import { requireCompletedConnectorAction } from "./action-result.js";
 
 export async function runGuardedConnectorAction({
@@ -37,7 +38,7 @@ export async function runGuardedConnectorAction({
           if (request.isCurrent()) {
             setState({
               state: "idle",
-              error: `Approval is pending, but activity refresh failed: ${actionRunnerErrorMessage(refreshError)}`,
+              error: `Approval is pending, but activity refresh failed: ${errorMessage(refreshError)}`,
               message,
             });
           }
@@ -53,7 +54,7 @@ export async function runGuardedConnectorAction({
       if (request.isCurrent()) {
         setState({
           state: "idle",
-          error: `Action completed, but activity refresh failed: ${actionRunnerErrorMessage(refreshError)}`,
+          error: `Action completed, but activity refresh failed: ${errorMessage(refreshError)}`,
           message,
         });
       }
@@ -64,14 +65,8 @@ export async function runGuardedConnectorAction({
     setState(
       suppressError
         ? { state: "idle", error: "", message: "" }
-        : { state: "error", error: error.message || `${product} action failed.`, message: "" },
+        : { state: "error", error: errorMessage(error, `${product} action failed.`), message: "" },
     );
     throw error;
   }
-}
-
-function actionRunnerErrorMessage(error) {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error.trim()) return error.trim();
-  return "unknown error";
 }
