@@ -27,6 +27,8 @@ and this project uses semantic versioning for public releases.
   encrypted snapshots and provider tokens stay on the operator-selected route.
 - Database mutation paths now preserve affected-row driver failures instead of treating
   them as successful zero-row updates.
+- The backend now uses the patched Go cryptography module release that closes
+  CVE-2026-56854 in SSH source-address restriction enforcement.
 
 ## [0.2.36] - 2026-08-31
 

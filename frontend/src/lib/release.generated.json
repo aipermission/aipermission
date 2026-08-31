@@ -17,7 +17,8 @@
           "items": [
             "New direct remote Postgres targets now default to hostname-verified TLS while explicit and legacy transport modes remain compatible.",
             "Backup service requests ignore ambient process proxies and refuse redirects so encrypted snapshots and provider tokens stay on the operator-selected route.",
-            "Database mutation paths now preserve affected-row driver failures instead of treating them as successful zero-row updates."
+            "Database mutation paths now preserve affected-row driver failures instead of treating them as successful zero-row updates.",
+            "The backend now uses the patched Go cryptography module release that closes CVE-2026-56854 in SSH source-address restriction enforcement."
           ]
         }
       ]
