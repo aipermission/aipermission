@@ -1,6 +1,41 @@
 {
-  "version": "0.2.35",
+  "version": "0.2.36",
   "entries": [
+    {
+      "version": "0.2.36",
+      "label": "Failure reconciliation and maintainability",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Connector target and credential profile lifecycle code now shares one frontend implementation across built-in connector templates.",
+            "Dense generic connector action, connector target, and file transfer modules now use smaller behavior-owned boundaries without changing connector contracts.",
+            "The product overview is shorter and canonical connector documentation is generated from connector metadata to reduce semantic drift."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Managed credential deletion now requires confirmed external cleanup before removing the local profile, and Postgres cleanup ownership reassignment is explained before deletion.",
+            "File transfers now classify timeout, interruption, validation, local persistence, and uncertain remote outcomes while warning users to inspect the destination before retrying.",
+            "Connector permission, lifetime, and action failures now remain visible and retryable in the interface, including non-standard JavaScript rejection values."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Uncertain external side effects no longer encourage blind retries, and managed credential cleanup results are redacted before entering audit records."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Critical backend and frontend lifecycle coverage expanded with higher enforced floors and focused permission, cleanup, transfer, and connector architecture tests.",
+            "Maintainer recovery guidance now records the current single-maintainer risk, emergency release procedure, and explicit backup ownership criteria without overstating project capacity."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.35",
       "label": "Credential and transfer failure hardening",
@@ -181,32 +216,6 @@
             "The Mail SMTP client update keeps dynamic authentication responses out of format strings and adds SMTPUTF8 address handling.",
             "The frontend runtime image upgrades Alpine OpenSSL packages to the patched release detected by the container security gate.",
             "SQLCipher 4.18.0 was reviewed with no published GitHub security advisories; the pinned wrapper and active SQLCipher 4.16.0 runtime remain unchanged."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.28",
-      "label": "Production lease and runtime recovery",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Updated the Go toolchain and container build baseline to 1.26.6, Franz-Go to 1.21.6, frontend lint globals to 17.11.0, and the pinned CodeQL action to 4.37.7."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Encrypted databases now repair recorded-but-incomplete audit recovery schema changes, including missing outbox columns, indexes, and command lifecycle triggers.",
-            "SSH connection establishment and command execution now use separate deadlines, so a slow command no longer inherits the connector dial timeout.",
-            "Long-running commands in Vault-authorized sessions now revalidate with a fresh bounded context after dispatch, preserving valid leases and returning an explicit unknown outcome only when the result truly cannot be projected."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Go 1.26.6 resolves the standard-library vulnerabilities detected by release `govulncheck` and container scanning in URL, TLS, HTTP, XML, ASN.1, and template processing paths."
           ]
         }
       ]

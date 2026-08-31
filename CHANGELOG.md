@@ -9,6 +9,41 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.36] - 2026-08-31
+
+### Changed
+
+- Connector target and credential profile lifecycle code now shares one frontend
+  implementation across built-in connector templates.
+- Dense generic connector action, connector target, and file transfer modules now use
+  smaller behavior-owned boundaries without changing connector contracts.
+- The product overview is shorter and canonical connector documentation is generated
+  from connector metadata to reduce semantic drift.
+
+### Fixed
+
+- Managed credential deletion now requires confirmed external cleanup before removing
+  the local profile, and Postgres cleanup ownership reassignment is explained before
+  deletion.
+- File transfers now classify timeout, interruption, validation, local persistence, and
+  uncertain remote outcomes while warning users to inspect the destination before
+  retrying.
+- Connector permission, lifetime, and action failures now remain visible and retryable
+  in the interface, including non-standard JavaScript rejection values.
+
+### Security
+
+- Uncertain external side effects no longer encourage blind retries, and managed
+  credential cleanup results are redacted before entering audit records.
+
+### Maintenance
+
+- Critical backend and frontend lifecycle coverage expanded with higher enforced floors
+  and focused permission, cleanup, transfer, and connector architecture tests.
+- Maintainer recovery guidance now records the current single-maintainer risk, emergency
+  release procedure, and explicit backup ownership criteria without overstating project
+  capacity.
+
 ## [0.2.35] - 2026-08-31
 
 ### Fixed
