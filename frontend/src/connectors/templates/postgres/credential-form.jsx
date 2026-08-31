@@ -41,8 +41,8 @@ export function PostgresCredentialFormTemplate({ targets, form, formMode = "crea
       </Field>
       {managed ? (
         <Notice tone="warn">
-          This credential profile owns a managed database role. The username is fixed; deleting the profile also deletes the managed
-          database role.
+          This credential profile owns a managed database role. The username is fixed; deleting the profile reassigns its owned objects to
+          the admin role, removes its privileges, and drops the managed role.
         </Notice>
       ) : null}
       <Field>

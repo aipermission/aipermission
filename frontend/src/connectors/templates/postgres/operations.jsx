@@ -137,8 +137,8 @@ function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
     >
       <form className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] gap-4" onSubmit={provisionUser}>
         <Notice tone="warn">
-          AIPermission will create the database role through this admin profile. When the managed credential is deleted, the managed
-          database role is dropped too.
+          AIPermission will create the database role through this admin profile. Deleting the managed credential reassigns objects owned by
+          that role to the admin role, removes the managed role's privileges, and drops the managed role.
         </Notice>
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px]">
           <Field>

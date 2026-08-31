@@ -178,8 +178,15 @@ func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtim
 	}
 	if !exists {
 		return connectors.ActionResult{
-			Status:      connectors.ResultCompleted,
-			Output:      map[string]any{"role_name": roleName, "dropped": false, "reason": "role not found"},
+			Status: connectors.ResultCompleted,
+			Output: map[string]any{
+				"role_name":                  roleName,
+				"dropped":                    false,
+				"reason":                     "role not found",
+				"ownership_reassigned":       false,
+				"ownership_reassigned_to":    adminRole,
+				"managed_privileges_removed": false,
+			},
 			DisplayText: "Managed Postgres role was already absent",
 		}, nil
 	}
@@ -201,9 +208,15 @@ func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtim
 		return connectors.ActionResult{}, fmt.Errorf("commit postgres role cleanup: %w", err)
 	}
 	return connectors.ActionResult{
-		Status:      connectors.ResultCompleted,
-		Output:      map[string]any{"role_name": roleName, "dropped": true},
-		DisplayText: "Dropped managed Postgres role",
+		Status: connectors.ResultCompleted,
+		Output: map[string]any{
+			"role_name":                  roleName,
+			"dropped":                    true,
+			"ownership_reassigned":       true,
+			"ownership_reassigned_to":    adminRole,
+			"managed_privileges_removed": true,
+		},
+		DisplayText: "Reassigned owned objects and dropped managed Postgres role",
 	}, nil
 }
 
