@@ -19,7 +19,6 @@ export const defaultUploadDialog = Object.freeze({
   pending: false,
   error: "",
 });
-export const defaultRenameDialog = Object.freeze({ open: false, value: "", pending: false, error: "" });
 export const defaultS3ConfirmDialog = Object.freeze({
   open: false,
   title: "",
@@ -220,47 +219,6 @@ export function S3UploadDialog({
             </Button>
           </div>
         </section>
-      </form>
-    </Dialog>
-  );
-}
-
-export function S3RenameDialog({ value, theme, selectedKey, inputClass, onClose, onChange, onSubmit }) {
-  if (!value.open) return null;
-  return (
-    <Dialog
-      open={value.open}
-      onClose={onClose}
-      title="Rename S3 object"
-      description="Rename copies the object to a new key and deletes the original key."
-      size="md"
-      closeDisabled={value.pending}
-    >
-      <form className="grid gap-4" onSubmit={onSubmit}>
-        <div
-          className={`grid gap-2 rounded-md border p-3 text-sm ${theme === "light" ? "border-stone-200 bg-stone-50 text-stone-700" : "border-stone-700 bg-stone-900 text-stone-200"}`}
-        >
-          <span className="text-xs font-semibold uppercase tracking-wide opacity-70">Source</span>
-          <span className="break-all font-mono text-xs">{selectedKey}</span>
-        </div>
-        <Field className={theme === "light" ? "" : "text-stone-200"}>
-          Destination key
-          <Input
-            className={inputClass}
-            value={value.value}
-            onChange={(event) => onChange((current) => ({ ...current, value: event.target.value, error: "" }))}
-            autoFocus
-          />
-        </Field>
-        {value.error ? <Notice tone="bad">{value.error}</Notice> : <Notice tone="warn">Review the destination key before renaming.</Notice>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={value.pending}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={value.pending}>
-            {value.pending ? "Renaming..." : "Rename"}
-          </Button>
-        </div>
       </form>
     </Dialog>
   );

@@ -372,7 +372,6 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				s3connector.ActionGetObjectMetadata: {"key": "daily/app.aipdb"},
 				s3connector.ActionDownloadObject:    {"key": "daily/app.aipdb", "max_bytes": 1024},
 				s3connector.ActionUploadObject:      {"key": "daily/app.txt", "content_text": "hello", "content_type": "text/plain", "overwrite": true},
-				s3connector.ActionRenameObject:      {"source_key": "daily/app.txt", "destination_key": "daily/app-renamed.txt", "overwrite": true},
 				s3connector.ActionDeleteObject:      {"key": "daily/app-renamed.txt"},
 				s3connector.ActionPresignDownload:   {"key": "daily/app.aipdb", "expires_seconds": 900},
 				s3connector.ActionPresignUpload:     {"key": "incoming/app.aipdb", "expires_seconds": 900, "overwrite": false},

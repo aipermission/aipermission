@@ -32,8 +32,6 @@ type finding struct {
 
 var overrides = map[string]budget{
 	"internal/api/routes.go:Server.routes":                      {lines: 191, complexity: defaultMaxComplexity},
-	"internal/connectors/s3/s3.go:Connector.GetActionList":      {lines: 183, complexity: defaultMaxComplexity},
-	"internal/connectors/s3/s3.go:Connector.PrepareAction":      {lines: 204, complexity: 42},
 	"internal/migration/legacy_010_to_020.go:migrateLegacyRows": {lines: 208, complexity: defaultMaxComplexity},
 }
 

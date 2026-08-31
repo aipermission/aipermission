@@ -81,3 +81,14 @@ func TestNewHTTPClientIgnoresEnvironmentProxy(t *testing.T) {
 		t.Fatalf("proxy authorization leaked to connector endpoint")
 	}
 }
+
+func TestNewHTTPClientRefusesRedirects(t *testing.T) {
+	client := NewHTTPClient(&recordingNetworkTransport{}, NetworkDialRequest{}, time.Second)
+	request, err := http.NewRequest(http.MethodGet, "https://redirect.invalid", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if err := client.CheckRedirect(request, nil); err != http.ErrUseLastResponse {
+		t.Fatalf("CheckRedirect() = %v, want http.ErrUseLastResponse", err)
+	}
+}

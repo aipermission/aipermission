@@ -13,6 +13,9 @@ import (
 func NewHTTPClient(transport NetworkTransport, request NetworkDialRequest, timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 				return transport.DialConnectorTCP(ctx, request)

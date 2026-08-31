@@ -299,6 +299,41 @@ func TestExecuteUploadRejectsExistingObjectWithoutOverwrite(t *testing.T) {
 	}
 }
 
+func TestRenameObjectIsNotExposedAndLegacyRequestsFailClosed(t *testing.T) {
+	actions, err := New().GetActionList(context.Background(), connectors.TargetView{}, connectors.CredentialProfileView{})
+	if err != nil {
+		t.Fatalf("get action list: %v", err)
+	}
+	for _, action := range actions {
+		if action.Name == ActionRenameObject {
+			t.Fatal("rename_object must not be exposed")
+		}
+	}
+	runtime := s3TestRuntime(t, "http://127.0.0.1:1")
+	_, err = New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     runtime.Target,
+		Profile:    runtime.Profile,
+		ActionName: ActionRenameObject,
+		Input: map[string]any{
+			"source_key":      "incoming/report.txt",
+			"destination_key": "archive/report.txt",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("expected prepare to reject legacy rename, got %v", err)
+	}
+	_, err = New().ExecuteAction(context.Background(), connectors.RuntimeContext{}, connectors.PreparedAction{
+		ActionName: ActionRenameObject,
+		Payload: map[string]any{
+			"source_key":      "incoming/report.txt",
+			"destination_key": "archive/report.txt",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("expected execute to reject legacy rename before network access, got %v", err)
+	}
+}
+
 func TestS3URLPreservesRawPathEscaping(t *testing.T) {
 	client := &s3Client{
 		scheme:    "https",
@@ -324,6 +359,22 @@ func TestS3URLPreservesRawPathEscaping(t *testing.T) {
 	}
 	if !strings.Contains(canonical, "\nhost:s3.example.com\n") {
 		t.Fatalf("canonical request missing url host: %q", canonical)
+	}
+}
+
+func TestCanonicalRequestSignsConditionalHeaders(t *testing.T) {
+	req, err := http.NewRequest(http.MethodDelete, "https://s3.example.com/bucket/key", nil)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	req.Header.Set("If-Match", `"etag"`)
+	req.Header.Set("If-None-Match", "*")
+	canonical, signedHeaders := canonicalRequest(req, emptySHA256Hex)
+	if signedHeaders != "host;if-match;if-none-match;x-amz-content-sha256;x-amz-date" {
+		t.Fatalf("signed headers = %q", signedHeaders)
+	}
+	if !strings.Contains(canonical, "if-match:\"etag\"\nif-none-match:*\n") {
+		t.Fatalf("canonical request missing conditional headers: %q", canonical)
 	}
 }
 
