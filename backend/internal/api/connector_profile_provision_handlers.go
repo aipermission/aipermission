@@ -219,9 +219,7 @@ func (s connectorTargetHandlers) compensateProvisionedCredentialProfile(
 		RiskLabel:     provisioned.RiskLabel,
 	})
 	cleanupCancel()
-	if cleanupErr == nil && cleanupResult.Status != connectors.ResultCompleted {
-		cleanupErr = fmt.Errorf("credential cleanup returned status %q", cleanupResult.Status)
-	}
+	cleanupErr = requireCompletedCredentialCleanup(cleanupResult, cleanupErr)
 
 	action := "connector.profile.provisioning_compensated"
 	cleanupStatus := "completed"
@@ -276,14 +274,24 @@ func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx
 			return fmt.Errorf("decrypt admin profile secret: %w", err)
 		}
 	}
-	_, err = provisioner.CleanupProvisionedCredentialProfile(ctx, connectors.RuntimeContext{
+	result, err := provisioner.CleanupProvisionedCredentialProfile(ctx, connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),
 		Secrets:      connectorSecretAccessor{values: secrets},
 		Events:       noopConnectorEventSink{},
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, connectortargets.CredentialProfileView(profile))
-	return err
+	return requireCompletedCredentialCleanup(result, err)
+}
+
+func requireCompletedCredentialCleanup(result connectors.ActionResult, err error) error {
+	if err != nil {
+		return err
+	}
+	if result.Status != connectors.ResultCompleted {
+		return fmt.Errorf("credential cleanup returned status %q", result.Status)
+	}
+	return nil
 }
 
 func connectorTargetViewForProfile(target connectortargets.Target, profileID int64) connectors.TargetView {
