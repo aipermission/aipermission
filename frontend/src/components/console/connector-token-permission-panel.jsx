@@ -2,6 +2,7 @@ import { KeyRound, PanelRightClose, PanelRightOpen, RefreshCcw, TicketCheck } fr
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   connectorTargetProfileLifetime,
+  connectorTargetKey,
   currentConnectorTargetProfilePermissions,
   matchesConnectorTargetProfile,
   matchesConnectorTargetProfileAction,
@@ -29,6 +30,7 @@ import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import { apiGet } from "../../lib/api";
 import { updateTokenProjectVisibility } from "../../lib/project-scopes";
+import { errorMessage } from "../../lib/errors";
 
 export function ConnectorTokenPermissionPanel({
   tokens,
@@ -51,17 +53,28 @@ export function ConnectorTokenPermissionPanel({
   const [permissionModeByKey, setPermissionModeByKey] = useState({});
   const [projectScopesByToken, setProjectScopesByToken] = useState({});
   const [projectScopeError, setProjectScopeError] = useState("");
+  const [permissionMutationError, setPermissionMutationError] = useState(null);
   const compactPanelRef = useRef(null);
+  const permissionMutationRetryRef = useRef(null);
+  const permissionMutationActiveRef = useRef(false);
   const tokenIDsKey = activeTokens.map((token) => token.id).join(",");
   const load = connectorPermissionState || { state: "idle", data: {}, actionsByTargetRef: {}, error: null };
   const permissionsByToken = useMemo(() => load.data || {}, [load.data]);
   const targetProfiles = useMemo(() => profilesForConnectorTarget(targets?.data || [], selectedTarget), [targets?.data, selectedTarget]);
   const targetProfileSignature = targetProfiles.map((profile) => profile.profile_id).join(",");
   const loadConnectorPermissionsForEffect = useEffectEvent(() => loadConnectorPermissions());
+  const selectedTargetKey = connectorTargetKey(selectedTarget);
+
+  useEffect(() => {
+    setPermissionMutationError(null);
+    permissionMutationRetryRef.current = null;
+  }, [selectedTargetKey]);
 
   useEffect(() => {
     if (!selectedTarget) {
       setProfileByToken({});
+      setPermissionMutationError(null);
+      permissionMutationRetryRef.current = null;
       return;
     }
     void loadConnectorPermissionsForEffect();
@@ -173,9 +186,12 @@ export function ConnectorTokenPermissionPanel({
   }
 
   async function setConnectorRules(token, profileID, selectedActions, rule, keySuffix) {
-    if (!selectedTarget) return;
+    if (!selectedTarget || permissionMutationActiveRef.current) return;
+    permissionMutationActiveRef.current = true;
     const key = `${token.id}:${profileID}:${keySuffix}`;
     setSavingKey(key);
+    setPermissionMutationError(null);
+    permissionMutationRetryRef.current = () => setConnectorRules(token, profileID, selectedActions, rule, keySuffix);
     try {
       const existing = permissionsByToken[token.id] || [];
       const actionNames = new Set(selectedActions.map((action) => action.name));
@@ -200,9 +216,20 @@ export function ConnectorTokenPermissionPanel({
       const modeKey = tokenProfileModeKey(token.id, selectedTarget, profileID);
       const nextMode = inferPermissionMode(next, selectedTarget, profileID, actions);
       setPermissionModeByKey((current) => ({ ...current, [modeKey]: nextMode }));
+      permissionMutationRetryRef.current = null;
     } catch (error) {
-      console.error(error);
+      setPermissionMutationError(
+        permissionMutationFailure(
+          token,
+          profileID,
+          selectedActions.map((action) => action.name).join(", "),
+          error,
+          targetProfiles,
+          selectedTargetKey,
+        ),
+      );
     } finally {
+      permissionMutationActiveRef.current = false;
       setSavingKey("");
     }
   }
@@ -212,9 +239,12 @@ export function ConnectorTokenPermissionPanel({
   }
 
   async function setProfileLifetime(token, profileID, expiresAt) {
-    if (!selectedTarget) return;
+    if (!selectedTarget || permissionMutationActiveRef.current) return;
+    permissionMutationActiveRef.current = true;
     const key = `${token.id}:${profileID}:lifetime`;
     setSavingKey(key);
+    setPermissionMutationError(null);
+    permissionMutationRetryRef.current = () => setProfileLifetime(token, profileID, expiresAt);
     try {
       const existing = permissionsByToken[token.id] || [];
       const next = existing.map((permission) => {
@@ -223,9 +253,11 @@ export function ConnectorTokenPermissionPanel({
         return { ...permission, expires_at: expiresAt || "" };
       });
       await replaceTokenConnectorPermissions?.(token.id, next);
+      permissionMutationRetryRef.current = null;
     } catch (error) {
-      console.error(error);
+      setPermissionMutationError(permissionMutationFailure(token, profileID, "lifetime", error, targetProfiles, selectedTargetKey));
     } finally {
+      permissionMutationActiveRef.current = false;
       setSavingKey("");
     }
   }
@@ -244,15 +276,18 @@ export function ConnectorTokenPermissionPanel({
     const projectEnabled = projectEnabledForToken(token.id);
     return (
       <div className="grid gap-2">
+        {matchesPermissionMutationError(permissionMutationError, token.id, profile.profile_id, selectedTargetKey) ? (
+          <PermissionMutationError value={permissionMutationError} onRetry={() => permissionMutationRetryRef.current?.()} />
+        ) : null}
         <ProjectVisibilityControl
           projectName={selectedTarget.project_name || "Ungrouped"}
           enabled={projectEnabled}
-          saving={savingKey === `${token.id}:project:${selectedTarget.project_id}`}
+          saving={Boolean(savingKey)}
           onChange={(enabled) => setProjectVisibility(token, enabled)}
         />
         <ProfileLifetimeControls
           value={lifetimeValue}
-          saving={savingKey === `${token.id}:${profile.profile_id}:lifetime`}
+          saving={Boolean(savingKey)}
           disabled={!lifetimeEditable}
           onSetPermanent={() => setProfileLifetime(token, profile.profile_id, "")}
           onSetTemporary={(lifetime) => setProfileLifetime(token, profile.profile_id, expiresAtFromLifetime(lifetime))}
@@ -268,7 +303,7 @@ export function ConnectorTokenPermissionPanel({
             title="All operations"
             description={`${actions.length} connector action${actions.length === 1 ? "" : "s"}`}
             rule={ruleForActions(permissions, selectedTarget, profile.profile_id, actions)}
-            saving={savingKey === `${token.id}:${profile.profile_id}:all`}
+            saving={Boolean(savingKey)}
             onSetRule={(rule) => setConnectorRules(token, profile.profile_id, actions, rule, "all")}
           />
         ) : null}
@@ -280,7 +315,7 @@ export function ConnectorTokenPermissionPanel({
                 title={group.name}
                 description={group.description}
                 rule={ruleForActions(permissions, selectedTarget, profile.profile_id, group.actions)}
-                saving={savingKey === `${token.id}:${profile.profile_id}:${group.key}`}
+                saving={Boolean(savingKey)}
                 disabled={group.actions.length === 0}
                 onSetRule={(rule) => setConnectorRules(token, profile.profile_id, group.actions, rule, group.key)}
               />
@@ -298,13 +333,12 @@ export function ConnectorTokenPermissionPanel({
                     matchesConnectorTargetProfileAction(item, selectedTarget, profile.profile_id, action.name),
                   );
                   const rule = effectiveRule(permission) || "";
-                  const key = `${token.id}:${profile.profile_id}:${action.name}`;
                   return (
                     <ActionPermissionCard
                       key={action.name}
                       action={action}
                       rule={rule}
-                      saving={savingKey === key}
+                      saving={Boolean(savingKey)}
                       compactPopover={compactPopover}
                       onSetRule={(nextRule) => setConnectorRule(token, profile.profile_id, action, nextRule)}
                     />
@@ -453,6 +487,35 @@ export function ConnectorTokenPermissionPanel({
       </div>
     </aside>
   );
+}
+
+function PermissionMutationError({ value, onRetry }) {
+  return (
+    <div role="alert">
+      <Notice tone="bad" className="grid gap-2">
+        <p>{value.message}</p>
+        <Button type="button" variant="outline" className="h-8 justify-self-start" onClick={onRetry}>
+          <RefreshCcw className="h-3.5 w-3.5" />
+          Retry
+        </Button>
+      </Notice>
+    </div>
+  );
+}
+
+function permissionMutationFailure(token, profileID, operation, error, profiles, targetKey) {
+  const profile = profiles.find((item) => Number(item.profile_id) === Number(profileID));
+  const profileLabel = profile?.profile_label || `profile ${profileID}`;
+  return {
+    tokenID: Number(token.id),
+    profileID: Number(profileID),
+    targetKey,
+    message: `${token.name} / ${profileLabel}: failed to update ${operation}. ${errorMessage(error, "Unknown error.")}`,
+  };
+}
+
+function matchesPermissionMutationError(value, tokenID, profileID, targetKey) {
+  return value?.targetKey === targetKey && Number(value?.tokenID) === Number(tokenID) && Number(value?.profileID) === Number(profileID);
 }
 
 function ProjectVisibilityControl({ projectName, enabled, saving, onChange }) {

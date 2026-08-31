@@ -86,6 +86,20 @@ test("guarded connector action safely formats non-Error refresh failures", async
   assert.match(states.at(-1).error, /unknown error/);
 });
 
+test("guarded connector action safely formats a null request rejection", async () => {
+  const { states, options } = runnerOptions({
+    post: async () => Promise.reject(null),
+  });
+
+  try {
+    await runGuardedConnectorAction(options);
+    assert.fail("expected request rejection");
+  } catch (error) {
+    assert.equal(error, null);
+  }
+  assert.deepEqual(states.at(-1), { state: "error", error: "Test action failed.", message: "" });
+});
+
 async function settleAsyncRefresh() {
   await setImmediate();
 }
