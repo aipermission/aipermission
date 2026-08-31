@@ -148,11 +148,22 @@ func NewServiceClient(rawBaseURL, token string) (*ServiceClient, error) {
 		baseURL: baseURL,
 		token:   token,
 		client: &http.Client{
+			Transport: backupServiceTransport(),
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return errors.New("backup service redirects are not allowed")
 			},
 		},
 	}, nil
+}
+
+func backupServiceTransport() *http.Transport {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Transport{}
+	}
+	cloned := transport.Clone()
+	cloned.Proxy = nil
+	return cloned
 }
 
 func ValidateServiceToken(token string) error {
@@ -184,9 +195,6 @@ func ValidateServiceURL(raw string) (string, error) {
 }
 
 func isLoopbackHost(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
 }
