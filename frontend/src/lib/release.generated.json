@@ -1,6 +1,27 @@
 {
-  "version": "0.2.36",
+  "version": "0.2.37",
   "entries": [
+    {
+      "version": "0.2.37",
+      "label": "Connector transport safety hardening",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "Docker connector execution now accepts only the standard CLI or an absolute wrapper, verifies Docker identity, and shares the same renderer across actions and live consoles.",
+            "S3 object rename is disabled because S3-compatible APIs cannot provide an atomic cross-key move; source deletion remains a separate destructive operator decision."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "New direct remote Postgres targets now default to hostname-verified TLS while explicit and legacy transport modes remain compatible.",
+            "Backup service requests ignore ambient process proxies and refuse redirects so encrypted snapshots and provider tokens stay on the operator-selected route.",
+            "Database mutation paths now preserve affected-row driver failures instead of treating them as successful zero-row updates."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.36",
       "label": "Failure reconciliation and maintainability",
@@ -187,35 +208,6 @@
           "items": [
             "Malformed non-empty token, connector-permission, and project-capability expiry values now fail closed while an explicit empty expiry remains permanent.",
             "The local HTTP boundary now rejects missing or malformed Host and RemoteAddr values and accepts only parsed loopback request origins."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.29",
-      "label": "Release contract and dependency maintenance",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "REST contract generation now combines core routes with connector-owned adapter routes, keeping runtime registration, OpenAPI, and documentation tests on one inventory.",
-            "Release content now lives in one structured source that generates the complete changelog and the bounded in-app release artifact.",
-            "Updated go-smtp to 0.25.0, lucide-react to 1.33.0, testing-library user-event to 14.6.5, and the pinned CodeQL action to 4.37.8."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Release checks now detect and update MCP workspace version drift in the root lockfile.",
-            "Generated release artifacts fail validation when stale, out of order, duplicated, or inconsistent with the release manifest."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "The Mail SMTP client update keeps dynamic authentication responses out of format strings and adds SMTPUTF8 address handling.",
-            "The frontend runtime image upgrades Alpine OpenSSL packages to the patched release detected by the container security gate.",
-            "SQLCipher 4.18.0 was reviewed with no published GitHub security advisories; the pinned wrapper and active SQLCipher 4.16.0 runtime remain unchanged."
           ]
         }
       ]
