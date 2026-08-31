@@ -222,7 +222,8 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		return
 	}
 	defer release()
-	if err := s.cleanupProvisionedCredentialProfileIfNeeded(r.Context(), runtime, target, profile); err != nil {
+	cleanup, err := s.cleanupProvisionedCredentialProfileIfNeeded(r.Context(), runtime, target, profile)
+	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
@@ -233,10 +234,17 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		}
 	}
 	if err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "connector.profile.deleted", func() any {
-		return map[string]any{
+		payload := map[string]any{
 			"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
 			"kind": profile.Kind, "label": profile.Label,
 		}
+		if cleanup.Required {
+			payload["external_cleanup"] = map[string]any{
+				"status": cleanup.Result.Status,
+				"output": cleanup.Result.Output,
+			}
+		}
+		return payload
 	}, func(tx *sql.Tx) error {
 		return connectortargets.NewTxStore(tx).DeleteCredentialProfile(r.Context(), targetID, profileID)
 	}); err != nil {

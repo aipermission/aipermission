@@ -4,6 +4,7 @@ import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Notice } from "../components/ui/notice";
 import { ConnectorIcon, connectorKindLabel, connectorSummary } from "../connectors/templates/common";
@@ -26,6 +27,7 @@ export function CredentialsPage() {
   }, [connectorCatalog.data]);
   const defaultConnectorKind = availableConnectorKinds[0] || supportedConnectorKinds[0] || "";
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [deleteRequest, setDeleteRequest] = useState({ open: false, row: null, dialog: null, attempted: false });
   const editor = useCredentialProfileEditor({
     defaultKind: defaultConnectorKind,
     targets: connectorTargets.data,
@@ -97,6 +99,22 @@ export function CredentialsPage() {
     editor.openEdit(row);
   }
 
+  function requestCredentialDelete(row) {
+    const dialog = getConnectorModel(row.connector_kind)?.credentialDeleteDialog?.({
+      row,
+      targets: connectorTargets.data,
+    });
+    setDeleteRequest({ open: true, row, dialog: dialog || defaultCredentialDeleteDialog(row), attempted: false });
+  }
+
+  async function confirmCredentialDelete() {
+    if (!deleteRequest.row) return;
+    setDeleteRequest((current) => ({ ...current, attempted: true }));
+    if (await editor.remove(deleteRequest.row)) {
+      setDeleteRequest({ open: false, row: null, dialog: null, attempted: false });
+    }
+  }
+
   return (
     <section className="mx-auto grid w-full max-w-6xl gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -151,7 +169,7 @@ export function CredentialsPage() {
                 key={row.row_id}
                 row={row}
                 onEdit={openCredentialEditor}
-                onDelete={editor.remove}
+                onDelete={requestCredentialDelete}
                 busy={state.state !== "idle" && state.state !== "error"}
               />
             ))}
@@ -185,7 +203,69 @@ export function CredentialsPage() {
           <ConnectorTemplateNotFound kind={drawer.kind} slot="credential-form" />
         )}
       </Drawer>
+
+      <DeleteCredentialDialog
+        value={deleteRequest}
+        state={state}
+        onClose={() => setDeleteRequest({ open: false, row: null, dialog: null, attempted: false })}
+        onDelete={confirmCredentialDelete}
+      />
     </section>
+  );
+}
+
+function defaultCredentialDeleteDialog(row) {
+  return {
+    title: `Delete ${row.name}`,
+    description: "Remove this connector credential profile from aipermission.",
+    details: [
+      { label: "Connector", value: row.connector_label },
+      { label: "Credential", value: row.name },
+      { label: "Target", value: row.target_label },
+    ],
+    notice:
+      "This removes the locally stored credential profile. Connector-provisioned credentials may perform connector-owned external cleanup first.",
+    confirmLabel: "Delete credential",
+  };
+}
+
+function DeleteCredentialDialog({ value, state, onClose, onDelete }) {
+  const dialog = value.dialog;
+  const deleting = state.state === "deleting";
+  return (
+    <Dialog
+      open={value.open}
+      title={dialog?.title || "Delete credential"}
+      description={dialog?.description}
+      onClose={onClose}
+      closeDisabled={deleting}
+      size="md"
+    >
+      {value.row ? (
+        <div className="grid gap-4">
+          <div className="rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
+            {(dialog?.details || [])
+              .filter((item) => item.value)
+              .map((item) => (
+                <p className="mt-1 first:mt-0" key={item.label}>
+                  <span className="font-semibold">{item.label}: </span>
+                  <span>{item.value}</span>
+                </p>
+              ))}
+          </div>
+          {dialog?.notice ? <Notice tone="warn">{dialog.notice}</Notice> : null}
+          {value.attempted && state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={onDelete} disabled={deleting}>
+              {deleting ? "Deleting..." : dialog?.confirmLabel || "Delete credential"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </Dialog>
   );
 }
 

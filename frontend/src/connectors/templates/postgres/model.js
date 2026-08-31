@@ -88,3 +88,23 @@ export const {
   deleteDialog,
   operationFromError,
 } = model;
+
+export function credentialDeleteDialog({ row, targets = [] }) {
+  if (!row.profile?.public?.managed_by_aipermission) return null;
+  const publicMetadata = row.profile.public || {};
+  const target = targets.find((item) => Number(item.id) === Number(row.target_id));
+  const adminProfile = target?.profiles?.find((profile) => Number(profile.id) === Number(publicMetadata.managed_admin_profile_id));
+  const roleName = publicMetadata.managed_role_name || publicMetadata.username || row.name;
+  const adminRole = adminProfile?.public?.username || "the managed credential's admin role";
+  return {
+    title: `Delete managed role ${roleName}`,
+    description: "Remove this credential profile and its managed Postgres role.",
+    details: [
+      { label: "Target", value: row.target_label },
+      { label: "Managed role", value: roleName },
+      { label: "Ownership target", value: adminRole },
+    ],
+    notice: `Postgres objects owned by ${roleName} will be reassigned to ${adminRole}. Privileges owned by ${roleName} will be removed, then the role will be dropped.`,
+    confirmLabel: "Delete role and credential",
+  };
+}

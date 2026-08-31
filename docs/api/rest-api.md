@@ -423,8 +423,10 @@ deleting the target handles persistent console, file-transfer, and
 authorized_keys cleanup state together.
 Managed connector profiles can also perform external cleanup before the local
 profile is archived. For example, deleting a Postgres credential profile created
-by AIPermission drops the managed database role through the admin profile that
-created it.
+by AIPermission reassigns objects owned by the managed role to the admin role,
+removes privileges owned by the managed role, and then drops it. The local
+profile is archived only after the connector reports completed external cleanup;
+the redacted cleanup summary is retained in the deletion audit event.
 
 `POST /api/connector-targets/{id}/profiles/{profile_id}/test` runs the
 connector's side-effect-free connection test when the connector implements one.

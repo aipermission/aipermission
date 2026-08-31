@@ -243,35 +243,40 @@ func (s connectorTargetHandlers) compensateProvisionedCredentialProfile(
 	return provisionCompensationOutcome{cleanupErr: cleanupErr, auditErr: auditErr}
 }
 
-func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx context.Context, runtime *databaseRuntime, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+type credentialCleanupOutcome struct {
+	Required bool
+	Result   connectors.ActionResult
+}
+
+func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx context.Context, runtime *databaseRuntime, target connectortargets.Target, profile connectortargets.CredentialProfile) (credentialCleanupOutcome, error) {
 	connector, ok := runtime.connectorRegistry().Get(target.ConnectorKind)
 	if !ok {
-		return connectortargets.ValidationError("unsupported connector kind")
+		return credentialCleanupOutcome{}, connectortargets.ValidationError("unsupported connector kind")
 	}
 	lifecycle, ok := connector.(connectors.ProvisionedCredentialLifecycle)
 	if !ok {
-		return nil
+		return credentialCleanupOutcome{}, nil
 	}
 	adminProfileID, managed, err := lifecycle.ProvisionedCredentialAdminProfileID(connectortargets.CredentialProfileView(profile))
 	if err != nil {
-		return connectortargets.ValidationError(err.Error())
+		return credentialCleanupOutcome{}, connectortargets.ValidationError(err.Error())
 	}
 	if !managed {
-		return nil
+		return credentialCleanupOutcome{}, nil
 	}
 	provisioner, ok := connector.(connectors.CredentialProvisioner)
 	if !ok {
-		return connectortargets.ValidationError("connector does not support managed credential cleanup")
+		return credentialCleanupOutcome{}, connectortargets.ValidationError("connector does not support managed credential cleanup")
 	}
 	store := connectortargets.NewStore(runtime.database)
 	adminProfile, err := store.GetCredentialProfile(ctx, target.ID, adminProfileID)
 	if err != nil {
-		return err
+		return credentialCleanupOutcome{}, err
 	}
 	secrets := map[string]any{}
 	if adminProfile.EncryptedSecretJSON != "" {
 		if err := runtime.vault.DecryptJSON(adminProfile.EncryptedSecretJSON, &secrets); err != nil {
-			return fmt.Errorf("decrypt admin profile secret: %w", err)
+			return credentialCleanupOutcome{}, fmt.Errorf("decrypt admin profile secret: %w", err)
 		}
 	}
 	result, err := provisioner.CleanupProvisionedCredentialProfile(ctx, connectors.RuntimeContext{
@@ -281,7 +286,14 @@ func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx
 		Events:       noopConnectorEventSink{},
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, connectortargets.CredentialProfileView(profile))
-	return requireCompletedCredentialCleanup(result, err)
+	if err := requireCompletedCredentialCleanup(result, err); err != nil {
+		return credentialCleanupOutcome{}, err
+	}
+	redacted, err := s.redactConnectorActionResult(ctx, runtime, result)
+	if err != nil {
+		return credentialCleanupOutcome{}, fmt.Errorf("process credential cleanup result: %w", err)
+	}
+	return credentialCleanupOutcome{Required: true, Result: redacted}, nil
 }
 
 func requireCompletedCredentialCleanup(result connectors.ActionResult, err error) error {

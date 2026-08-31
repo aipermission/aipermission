@@ -23,6 +23,7 @@ type provisioningFailureTestConnector struct {
 	cleanupErr         error
 	managedAdminID     int64
 	provisionedSecret  any
+	cleanupOutput      any
 }
 
 func (*provisioningFailureTestConnector) Kind() string    { return provisioningFailureTestConnectorKind }
@@ -71,7 +72,7 @@ func (c *provisioningFailureTestConnector) CleanupProvisionedCredentialProfile(c
 	if status == "" {
 		status = connectors.ResultCompleted
 	}
-	return connectors.ActionResult{Status: status}, c.cleanupErr
+	return connectors.ActionResult{Status: status, Output: c.cleanupOutput}, c.cleanupErr
 }
 
 func (c *provisioningFailureTestConnector) ProvisionedCredentialAdminProfileID(profile connectors.CredentialProfileView) (int64, bool, error) {
@@ -316,5 +317,60 @@ func TestDeleteManagedCredentialProfileRequiresCompletedRemoteCleanup(t *testing
 	}
 	if deleteAuditCount != 0 {
 		t.Fatalf("delete audit count=%d, want 0", deleteAuditCount)
+	}
+}
+
+func TestDeleteManagedCredentialProfileAuditsCompletedExternalCleanup(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	connector := &provisioningFailureTestConnector{cleanupOutput: map[string]any{
+		"role_name": "app_reader", "ownership_reassigned_to": "postgres", "dropped": true,
+		"password": "cleanup-secret",
+	}}
+	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+		t.Fatalf("register provisioning connector: %v", err)
+	}
+
+	store := connectortargets.NewStore(fixture.db)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
+		ConnectorKind: provisioningFailureTestConnectorKind, Name: "managed-cleanup-target", Config: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	adminProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
+		TargetID: target.ID, ConnectorKind: target.ConnectorKind, Kind: "admin", Label: "admin",
+	})
+	if err != nil {
+		t.Fatalf("create admin profile: %v", err)
+	}
+	connector.managedAdminID = adminProfile.ID
+	managedProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
+		TargetID: target.ID, ConnectorKind: target.ConnectorKind, Kind: "managed", Label: "managed-user",
+	})
+	if err != nil {
+		t.Fatalf("create managed profile: %v", err)
+	}
+
+	path := "/api/connector-targets/" + strconv.FormatInt(target.ID, 10) + "/profiles/" + strconv.FormatInt(managedProfile.ID, 10)
+	response := performJSON(fixture.server.Handler(), http.MethodDelete, path, "", nil)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if _, err := store.GetCredentialProfile(t.Context(), target.ID, managedProfile.ID); err == nil {
+		t.Fatal("managed profile should be deleted after confirmed cleanup")
+	}
+	var payload string
+	if err := fixture.db.QueryRowContext(t.Context(), `
+		SELECT payload_json FROM audit_outbox
+		WHERE action = 'connector.profile.deleted' ORDER BY id DESC LIMIT 1`).Scan(&payload); err != nil {
+		t.Fatalf("read delete audit: %v", err)
+	}
+	for _, expected := range []string{`"external_cleanup"`, `"ownership_reassigned_to":"postgres"`, `"role_name":"app_reader"`} {
+		if !strings.Contains(payload, expected) {
+			t.Fatalf("delete audit missing %s: %s", expected, payload)
+		}
+	}
+	if strings.Contains(payload, "cleanup-secret") || !strings.Contains(payload, `"password":"[REDACTED]"`) {
+		t.Fatalf("delete audit did not redact cleanup output: %s", payload)
 	}
 }
