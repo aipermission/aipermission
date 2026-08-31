@@ -16,6 +16,12 @@ Upgrade to the latest stable tag before reporting or validating a fix.
 Confirmed security fixes are coordinated privately when needed, then released
 through the documented public release process.
 
+The project currently has one maintainer and no independent backup security
+reviewer. Reports may therefore be delayed if that maintainer is unavailable.
+The public recovery boundary and emergency release procedure are documented in
+[Maintainer Operations And Recovery](docs/maintainers/operations.md); private
+account recovery material is never stored in the repository.
+
 ## Reporting A Vulnerability
 
 Please do not open a public issue for vulnerabilities that could expose

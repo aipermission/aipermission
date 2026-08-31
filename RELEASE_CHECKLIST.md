@@ -119,6 +119,9 @@ cosign verify ghcr.io/aipermission/aipermission-backend:vX.Y.Z \
 
 ## Security Review
 
+- For an urgent security release, follow
+  [Maintainer Operations And Recovery](docs/maintainers/operations.md) and keep
+  exploit details inside a private GitHub Security Advisory until disclosure.
 - Confirm Docker ports are bound to `127.0.0.1` and no Compose override publishes the UI/API on `0.0.0.0` or a LAN interface.
 - Confirm `AIPERMISSION_BACKEND_HOST=0.0.0.0` fails startup with a local-only error.
 - Confirm frontend nginx returns 403 for non-local Host headers.

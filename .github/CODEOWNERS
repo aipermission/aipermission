@@ -1,4 +1,6 @@
-# Default ownership and security-sensitive boundaries.
+# Default ownership and security-sensitive boundaries. The project currently
+# has one maintainer; unassigned backup ownership is documented in
+# docs/maintainers/operations.md.
 * @hakanekin
 
 /backend/internal/actions/ @hakanekin
