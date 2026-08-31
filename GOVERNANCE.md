@@ -5,6 +5,12 @@ AIPermission is a maintainer-led open source project. Hakan Ekin
 has final responsibility for project scope, security boundaries, releases, and
 repository administration.
 
+The project currently has no backup maintainer or independent security
+reviewer. This is a known bus-factor risk. Current ownership, recovery
+boundaries, the emergency release procedure, and the criteria for adding a
+backup maintainer are documented in
+[Maintainer Operations And Recovery](docs/maintainers/operations.md).
+
 ## Decisions
 
 - Day-to-day fixes and small features are decided through focused pull requests.
@@ -36,3 +42,5 @@ maintainer grants or removes that role and records ownership in `CODEOWNERS`.
 Only a maintainer may merge release pull requests, create tags and GitHub
 releases, publish the MCP package, or publish official container images. The
 release process is defined in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+Confirmed urgent security fixes also follow the emergency procedure in
+[Maintainer Operations And Recovery](docs/maintainers/operations.md).
