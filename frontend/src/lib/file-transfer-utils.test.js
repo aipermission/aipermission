@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { transferProgress } from "./file-transfer-utils.js";
+import { fileTransferFailureText, transferProgress } from "./file-transfer-utils.js";
 
 test("transferProgress treats canceled terminal queue items as processed", () => {
   const progress = transferProgress({
@@ -22,4 +22,12 @@ test("transferProgress keeps running queues byte-based", () => {
   });
 
   assert.equal(progress.percent, 40);
+});
+
+test("file transfer outcome uncertainty warns before retry", () => {
+  assert.match(
+    fileTransferFailureText({ failure_kind: "outcome_unknown", error: "internal detail" }),
+    /Inspect the destination before retrying/,
+  );
+  assert.equal(fileTransferFailureText({ failure_kind: "timeout", error: "timed out" }), "timed out");
 });

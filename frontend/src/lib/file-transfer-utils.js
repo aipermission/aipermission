@@ -10,6 +10,14 @@ export function transferProgress(item) {
   };
 }
 
+export function fileTransferFailureText(item, fallback = "") {
+  if (!item) return fallback;
+  if (item.failure_kind === "outcome_unknown") {
+    return "The remote operation may have completed. Inspect the destination before retrying to avoid a duplicate transfer.";
+  }
+  return item.error || fallback;
+}
+
 export function defaultRemoteDirectory() {
   return "/home";
 }

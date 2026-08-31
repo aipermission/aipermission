@@ -291,7 +291,7 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO history_entries (
 			source_ref_type, source_ref_id, connector_kind, activity_type, runtime_id, project_id, target_id,
-			profile_id, target_name, profile_label, source, status, action_name, title, summary,
+			profile_id, target_name, profile_label, source, status, action_name, title, summary, preview_json,
 			input_text, input_json, output_text, error, progress_current, progress_total,
 			bytes_done, bytes_total, approval_required, created_at, started_at, completed_at,
 			updated_at
@@ -301,6 +301,7 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 			COALESCE(ct.name, ''), COALESCE(cp.label, ''), ft.source, ft.status, ft.direction,
 			ft.direction || ': ' || ft.file_name,
 			ft.remote_path,
+			json_object('failure_kind', ft.failure_kind),
 			ft.direction || ' ' || ft.remote_path,
 			'{}',
 			CASE
@@ -333,6 +334,7 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 			action_name = excluded.action_name,
 			title = excluded.title,
 			summary = excluded.summary,
+			preview_json = excluded.preview_json,
 			input_text = excluded.input_text,
 			output_text = excluded.output_text,
 			error = excluded.error,

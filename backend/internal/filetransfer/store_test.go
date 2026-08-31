@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
@@ -114,6 +115,46 @@ func TestStoreFinalizesPausedTransfers(t *testing.T) {
 	canceled, err = store.Get(ctx, canceled.ID)
 	if err != nil || canceled.Status != StatusCanceled {
 		t.Fatalf("canceled paused transfer=%#v err=%v", canceled, err)
+	}
+}
+
+func TestStorePersistsStructuredTransferFailureKinds(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	store := NewStore(database)
+	created, err := store.Create(context.Background(), CreateRequest{
+		RuntimeID: insertTestServer(t, database), Direction: DirectionUpload, Source: SourceUI,
+		LocalPath: "artifact.zip", RemotePath: "/tmp/artifact.zip", FileName: "artifact.zip",
+	})
+	if err != nil {
+		t.Fatalf("create transfer: %v", err)
+	}
+	if ok, err := store.FailWithKind(context.Background(), created.ID, "remote outcome unknown", FailureKindOutcomeUnknown); err != nil || !ok {
+		t.Fatalf("fail transfer: ok=%v err=%v", ok, err)
+	}
+	failed, err := store.Get(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get transfer: %v", err)
+	}
+	if failed.Status != StatusFailed || failed.FailureKind != FailureKindOutcomeUnknown {
+		t.Fatalf("unexpected failed transfer: %#v", failed)
+	}
+	var preview string
+	if err := database.QueryRow(`SELECT preview_json FROM history_entries WHERE source_ref_type = 'file_transfer' AND source_ref_id = ?`, created.ID).Scan(&preview); err != nil {
+		t.Fatalf("read transfer history preview: %v", err)
+	}
+	if preview != `{"failure_kind":"outcome_unknown"}` {
+		t.Fatalf("history preview=%s", preview)
+	}
+	var auditPayload string
+	if err := database.QueryRow(`SELECT payload_json FROM audit_outbox WHERE action = 'file_transfer.failed' AND payload_json LIKE ? ORDER BY id DESC LIMIT 1`, fmt.Sprintf(`%%"transfer_id":%d,%%`, created.ID)).Scan(&auditPayload); err != nil {
+		t.Fatalf("read transfer failure audit: %v", err)
+	}
+	if !strings.Contains(auditPayload, `"failure_kind":"outcome_unknown"`) {
+		t.Fatalf("failure kind missing from audit payload: %s", auditPayload)
 	}
 }
 
@@ -334,14 +375,14 @@ func TestStoreFailsBatchWithoutReclassifyingCompletedItems(t *testing.T) {
 		t.Fatalf("complete first item: ok=%v err=%v", ok, err)
 	}
 
-	if ok, err := store.FailBatch(ctx, batch.ID, "file transfer batch timed out"); err != nil || !ok {
+	if ok, err := store.FailBatchWithKind(ctx, batch.ID, "file transfer batch timed out", FailureKindTimeout); err != nil || !ok {
 		t.Fatalf("fail batch: ok=%v err=%v", ok, err)
 	}
 	failed, err := store.GetBatch(ctx, batch.ID)
 	if err != nil {
 		t.Fatalf("get failed batch: %v", err)
 	}
-	if failed.Status != StatusFailed || failed.Error != "file transfer batch timed out" {
+	if failed.Status != StatusFailed || failed.Error != "file transfer batch timed out" || failed.FailureKind != FailureKindTimeout {
 		t.Fatalf("unexpected failed batch: %#v", failed)
 	}
 	if failed.CompletedItems != 1 || failed.FailedItems != 1 {
@@ -350,7 +391,7 @@ func TestStoreFailsBatchWithoutReclassifyingCompletedItems(t *testing.T) {
 	if failed.Items[0].Status != StatusCompleted || failed.Items[1].Status != StatusFailed {
 		t.Fatalf("unexpected failed batch items: %#v", failed.Items)
 	}
-	if failed.Items[1].Error != "file transfer batch timed out" {
+	if failed.Items[1].Error != "file transfer batch timed out" || failed.Items[1].FailureKind != FailureKindTimeout {
 		t.Fatalf("pending item timeout error=%q", failed.Items[1].Error)
 	}
 }

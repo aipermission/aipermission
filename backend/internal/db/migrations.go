@@ -1276,6 +1276,56 @@ var migrations = []migration{
 			auditCommandRequestStatusChangedTrigger,
 		},
 	},
+	{
+		version:     17,
+		description: "structured file transfer failure outcomes",
+		statements: []string{
+			`ALTER TABLE file_transfers ADD COLUMN failure_kind TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE file_transfer_batches ADD COLUMN failure_kind TEXT NOT NULL DEFAULT '';`,
+			`DROP TRIGGER IF EXISTS audit_file_transfer_status_changed;`,
+			`CREATE TRIGGER audit_file_transfer_status_changed
+			 AFTER UPDATE OF status ON file_transfers
+			 WHEN OLD.status <> NEW.status
+			 BEGIN
+				INSERT INTO audit_outbox (
+					event_id, event_version, actor_type, project_id, runtime_id,
+					connector_kind, target_id, profile_id, action, lifecycle_phase,
+					payload_json, occurred_at, created_at
+				)
+				SELECT lower(hex(randomblob(16))), 1, 'gateway', ct.project_id, NEW.runtime_id,
+					rs.connector_kind, rs.target_id, rs.profile_id,
+					'file_transfer.' || NEW.status, NEW.status, printf(
+						'{"transfer_id":%d,"batch_id":%d,"runtime_id":%d,"direction":"%s","source":"%s","previous_status":"%s","status":"%s","failure_kind":"%s"}',
+						NEW.id, COALESCE(NEW.batch_id, 0), NEW.runtime_id, NEW.direction,
+						NEW.source, OLD.status, NEW.status, NEW.failure_kind
+					), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+				FROM connector_runtime_surfaces rs
+				JOIN connector_targets ct ON ct.id = rs.target_id
+				WHERE rs.id = NEW.runtime_id;
+			 END;`,
+			`DROP TRIGGER IF EXISTS audit_file_transfer_batch_status_changed;`,
+			`CREATE TRIGGER audit_file_transfer_batch_status_changed
+			 AFTER UPDATE OF status ON file_transfer_batches
+			 WHEN OLD.status <> NEW.status
+			 BEGIN
+				INSERT INTO audit_outbox (
+					event_id, event_version, actor_type, project_id, runtime_id,
+					connector_kind, target_id, profile_id, action, lifecycle_phase,
+					payload_json, occurred_at, created_at
+				)
+				SELECT lower(hex(randomblob(16))), 1, 'gateway', ct.project_id, NEW.runtime_id,
+					rs.connector_kind, rs.target_id, rs.profile_id,
+					'file_transfer.batch.' || NEW.status, NEW.status, printf(
+						'{"batch_id":%d,"runtime_id":%d,"direction":"%s","source":"%s","previous_status":"%s","status":"%s","failure_kind":"%s","total_items":%d}',
+						NEW.id, NEW.runtime_id, NEW.direction, NEW.source, OLD.status,
+						NEW.status, NEW.failure_kind, NEW.total_items
+					), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+				FROM connector_runtime_surfaces rs
+				JOIN connector_targets ct ON ct.id = rs.target_id
+				WHERE rs.id = NEW.runtime_id;
+			 END;`,
+		},
+	},
 }
 
 func sqlStatements(groups ...[]string) []string {

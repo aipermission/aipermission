@@ -76,7 +76,8 @@ func (s *Store) Complete(ctx context.Context, id int64, transferred int64, check
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, transferred_bytes = CASE WHEN ? >= 0 THEN ? ELSE transferred_bytes END,
-			checksum_sha256 = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+			checksum_sha256 = ?, error = '', failure_kind = '',
+			completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?)`,
 		StatusCompleted,
 		transferred,
@@ -104,13 +105,19 @@ func (s *Store) Complete(ctx context.Context, id int64, transferred int64, check
 }
 
 func (s *Store) Fail(ctx context.Context, id int64, errorText string) (bool, error) {
+	return s.FailWithKind(ctx, id, errorText, FailureKindUnknown)
+}
+
+func (s *Store) FailWithKind(ctx context.Context, id int64, errorText string, failureKind string) (bool, error) {
+	failureKind = normalizeFailureKind(failureKind)
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
-		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(errorText),
+		failureKind,
 		now,
 		now,
 		id,
@@ -138,7 +145,7 @@ func (s *Store) Cancel(ctx context.Context, id int64, errorText string) (bool, e
 	now := nowString()
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
-		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		SET status = ?, error = ?, failure_kind = '', completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?, ?)`,
 		StatusCanceled,
 		strings.TrimSpace(errorText),
@@ -163,6 +170,15 @@ func (s *Store) Cancel(ctx context.Context, id int64, errorText string) (bool, e
 		}
 	}
 	return rows > 0, nil
+}
+
+func normalizeFailureKind(value string) string {
+	switch strings.TrimSpace(value) {
+	case FailureKindTimeout, FailureKindValidation, FailureKindLocalPersistence, FailureKindOutcomeUnknown, FailureKindInterrupted:
+		return strings.TrimSpace(value)
+	default:
+		return FailureKindUnknown
+	}
 }
 
 func (s *Store) Pause(ctx context.Context, id int64) (bool, error) {

@@ -206,14 +206,18 @@ func (s *Store) UpdatePausedBatchQueue(ctx context.Context, id int64, orderedPen
 }
 
 func (s *Store) CancelBatch(ctx context.Context, id int64, errorText string) (bool, error) {
-	return s.finishBatch(ctx, id, StatusCanceled, errorText)
+	return s.finishBatch(ctx, id, StatusCanceled, errorText, "")
 }
 
 func (s *Store) FailBatch(ctx context.Context, id int64, errorText string) (bool, error) {
-	return s.finishBatch(ctx, id, StatusFailed, errorText)
+	return s.FailBatchWithKind(ctx, id, errorText, FailureKindUnknown)
 }
 
-func (s *Store) finishBatch(ctx context.Context, id int64, status string, errorText string) (bool, error) {
+func (s *Store) FailBatchWithKind(ctx context.Context, id int64, errorText string, failureKind string) (bool, error) {
+	return s.finishBatch(ctx, id, StatusFailed, errorText, normalizeFailureKind(failureKind))
+}
+
+func (s *Store) finishBatch(ctx context.Context, id int64, status string, errorText string, failureKind string) (bool, error) {
 	if status != StatusCanceled && status != StatusFailed {
 		return false, fmt.Errorf("finish file transfer batch: unsupported terminal status %q", status)
 	}
@@ -226,10 +230,11 @@ func (s *Store) finishBatch(ctx context.Context, id int64, status string, errorT
 	now := nowString()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE file_transfer_batches
-		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?)`,
 		status,
 		strings.TrimSpace(errorText),
+		failureKind,
 		now,
 		now,
 		id,
@@ -249,10 +254,11 @@ func (s *Store) finishBatch(ctx context.Context, id int64, status string, errorT
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE file_transfers
-		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE batch_id = ? AND status IN (?, ?, ?, ?)`,
 		status,
 		strings.TrimSpace(errorText),
+		failureKind,
 		now,
 		now,
 		id,
@@ -283,10 +289,11 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 	}
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfers
-		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE status IN (?, ?, ?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(transferError),
+		FailureKindInterrupted,
 		now,
 		now,
 		StatusPendingApproval,
@@ -298,10 +305,11 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 	}
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE file_transfer_batches
-		SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+		SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE status IN (?, ?, ?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(batchError),
+		FailureKindInterrupted,
 		now,
 		now,
 		StatusPendingApproval,
@@ -373,6 +381,13 @@ func (s *Store) CompleteBatch(ctx context.Context, id int64) (bool, error) {
 				WHEN canceled_items > 0 THEN ?
 				ELSE ?
 			END,
+			failure_kind = CASE
+				WHEN failed_items > 0 THEN COALESCE((
+					SELECT NULLIF(failure_kind, '') FROM file_transfers
+					WHERE batch_id = ? AND status = ? ORDER BY queue_index, id LIMIT 1
+				), ?)
+				ELSE ''
+			END,
 			completed_at = COALESCE(completed_at, ?),
 			bytes_per_second = 0,
 			eta_seconds = 0,
@@ -382,6 +397,9 @@ func (s *Store) CompleteBatch(ctx context.Context, id int64) (bool, error) {
 		StatusCompleted,
 		StatusCanceled,
 		StatusCompleted,
+		id,
+		StatusFailed,
+		FailureKindUnknown,
 		now,
 		now,
 		id,
