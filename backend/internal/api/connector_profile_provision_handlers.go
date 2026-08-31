@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -18,6 +20,16 @@ type provisionConnectorCredentialProfileRequest struct {
 type provisionConnectorCredentialProfileResponse struct {
 	Profile profileSummary          `json:"profile"`
 	Result  connectors.ActionResult `json:"result"`
+}
+
+const (
+	provisionCompensationTimeout = 15 * time.Second
+	provisionAuditTimeout        = 5 * time.Second
+)
+
+type provisionCompensationOutcome struct {
+	cleanupErr error
+	auditErr   error
 }
 
 func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {
@@ -75,18 +87,30 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 		return
 	}
 	if err := validateProvisionedCredentialProfile(connector, provisioned); err != nil {
-		cleanupProvisionedCredentialProfileAfterFailure(provisioner, target, adminProfile, secrets, provisioned, s.Server, runtime)
-		handleConnectorTargetError(w, err)
+		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "validation", err, func() {
+			handleConnectorTargetError(w, err)
+		})
 		return
 	}
-	if profileLabelExists(r.Context(), store, target.ID, provisioned.Label) {
-		cleanupProvisionedCredentialProfileAfterFailure(provisioner, target, adminProfile, secrets, provisioned, s.Server, runtime)
-		handleConnectorTargetError(w, connectortargets.ValidationError("connector profile label already exists"))
+	labelExists, err := profileLabelExists(r.Context(), store, target.ID, provisioned.Label)
+	if err != nil {
+		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "profile_label_lookup", err, func() {
+			handleConnectorTargetError(w, err)
+		})
+		return
+	}
+	if labelExists {
+		err := connectortargets.ValidationError("connector profile label already exists")
+		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "duplicate_profile_label", err, func() {
+			handleConnectorTargetError(w, err)
+		})
 		return
 	}
 	encrypted, err := runtime.vault.EncryptJSON(provisioned.Secret)
 	if err != nil {
-		writeInternalError(w)
+		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "secret_encryption", err, func() {
+			writeInternalError(w)
+		})
 		return
 	}
 	var profile connectortargets.CredentialProfile
@@ -118,8 +142,9 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 		},
 	)
 	if err != nil {
-		cleanupProvisionedCredentialProfileAfterFailure(provisioner, target, adminProfile, secrets, provisioned, s.Server, runtime)
-		handleConnectorTargetError(w, err)
+		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "profile_persistence", err, func() {
+			handleConnectorTargetError(w, err)
+		})
 		return
 	}
 	writeJSON(w, http.StatusCreated, provisionConnectorCredentialProfileResponse{
@@ -128,24 +153,62 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 	})
 }
 
-func cleanupProvisionedCredentialProfileAfterFailure(
+func (s connectorTargetHandlers) failProvisionedCredentialProfile(
+	w http.ResponseWriter,
+	runtime *databaseRuntime,
 	provisioner connectors.CredentialProvisioner,
 	target connectortargets.Target,
 	adminProfile connectortargets.CredentialProfile,
 	secrets map[string]any,
 	provisioned connectors.ProvisionedCredentialProfile,
-	server *Server,
-	runtime *databaseRuntime,
+	stage string,
+	cause error,
+	respond func(),
 ) {
-	if provisioner == nil {
+	outcome := s.compensateProvisionedCredentialProfile(provisioner, target, adminProfile, secrets, provisioned, runtime, stage, cause)
+	if outcome.cleanupErr != nil {
+		log.Printf("credential provisioning compensation failed connector=%q target_id=%d stage=%q", target.ConnectorKind, target.ID, stage)
+		writeErrorWithCode(
+			w,
+			http.StatusInternalServerError,
+			"credential provisioning failed and remote cleanup could not be confirmed; review the remote service before retrying",
+			"provisioning_reconciliation_required",
+		)
 		return
 	}
-	_, _ = provisioner.CleanupProvisionedCredentialProfile(context.Background(), connectors.RuntimeContext{
+	if outcome.auditErr != nil {
+		log.Printf("credential provisioning compensation audit failed connector=%q target_id=%d stage=%q", target.ConnectorKind, target.ID, stage)
+		writeErrorWithCode(
+			w,
+			http.StatusInternalServerError,
+			"credential provisioning cleanup completed but its audit record could not be persisted; review audit health before retrying",
+			"provisioning_compensation_audit_failed",
+		)
+		return
+	}
+	respond()
+}
+
+func (s connectorTargetHandlers) compensateProvisionedCredentialProfile(
+	provisioner connectors.CredentialProvisioner,
+	target connectortargets.Target,
+	adminProfile connectortargets.CredentialProfile,
+	secrets map[string]any,
+	provisioned connectors.ProvisionedCredentialProfile,
+	runtime *databaseRuntime,
+	stage string,
+	cause error,
+) provisionCompensationOutcome {
+	if provisioner == nil {
+		return provisionCompensationOutcome{cleanupErr: fmt.Errorf("credential provisioner is unavailable")}
+	}
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), provisionCompensationTimeout)
+	cleanupResult, cleanupErr := provisioner.CleanupProvisionedCredentialProfile(cleanupCtx, connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),
 		Secrets:      connectorSecretAccessor{values: secrets},
 		Events:       noopConnectorEventSink{},
-		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, server, runtime),
+		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, connectors.CredentialProfileView{
 		ID:            0,
 		TargetID:      target.ID,
@@ -155,6 +218,31 @@ func cleanupProvisionedCredentialProfileAfterFailure(
 		Public:        provisioned.Public,
 		RiskLabel:     provisioned.RiskLabel,
 	})
+	cleanupCancel()
+	if cleanupErr == nil && cleanupResult.Status != connectors.ResultCompleted {
+		cleanupErr = fmt.Errorf("credential cleanup returned status %q", cleanupResult.Status)
+	}
+
+	action := "connector.profile.provisioning_compensated"
+	cleanupStatus := "completed"
+	if cleanupErr != nil {
+		action = "connector.profile.provisioning_reconciliation_required"
+		cleanupStatus = "failed"
+	}
+	auditCtx, auditCancel := context.WithTimeout(context.Background(), provisionAuditTimeout)
+	auditErr := s.writeAuditRequired(auditCtx, runtime, "gateway", nil, 0, action, map[string]any{
+		"target_id":        target.ID,
+		"admin_profile_id": adminProfile.ID,
+		"connector_kind":   target.ConnectorKind,
+		"kind":             provisioned.Kind,
+		"label":            provisioned.Label,
+		"failure_stage":    stage,
+		"failure":          provisionErrorMessage(cause),
+		"cleanup_status":   cleanupStatus,
+		"cleanup_error":    provisionErrorMessage(cleanupErr),
+	})
+	auditCancel()
+	return provisionCompensationOutcome{cleanupErr: cleanupErr, auditErr: auditErr}
 }
 
 func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx context.Context, runtime *databaseRuntime, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
@@ -237,17 +325,24 @@ func validateProvisionedCredentialProfile(connector connectors.Connector, profil
 	return nil
 }
 
-func profileLabelExists(ctx context.Context, store *connectortargets.Store, targetID int64, label string) bool {
+func profileLabelExists(ctx context.Context, store *connectortargets.Store, targetID int64, label string) (bool, error) {
 	profiles, err := store.ListCredentialProfiles(ctx, targetID)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("list connector credential profiles: %w", err)
 	}
 	for _, profile := range profiles {
 		if strings.EqualFold(strings.TrimSpace(profile.Label), strings.TrimSpace(label)) {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
+}
+
+func provisionErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	return redactBasic(err.Error())
 }
 
 func handleConnectorProvisionError(w http.ResponseWriter, err error) {
