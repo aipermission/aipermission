@@ -46,16 +46,21 @@ func (adapter) ResolveLiveConsoleMaterial(ctx context.Context, runtime connector
 }
 
 func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
-	return map[string]any{
+	dockerCommand, err := dockerconnector.DockerCommand(target)
+	metadata := map[string]any{
 		"label":              target.Name,
 		"connector":          dockerconnector.Kind,
 		"profile":            profile.Label,
 		"transport":          strings.TrimSpace(stringConfigValue(target.Config, "transport_target_ref")),
-		"docker_command":     dockerCommand(target),
+		"docker_command":     dockerCommand,
 		"container_scope":    strings.TrimSpace(stringConfigValue(profile.Public, "scope_mode")),
 		"allowed_patterns":   strings.TrimSpace(stringConfigValue(profile.Public, "allowed_patterns")),
 		"allowed_containers": strings.TrimSpace(stringConfigValue(profile.Public, "allowed_containers")),
 	}
+	if err != nil {
+		metadata["docker_command_error"] = err.Error()
+	}
+	return metadata
 }
 
 func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
@@ -70,6 +75,9 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 	if containerRef == "" {
 		return nil, errors.New("docker container is required")
 	}
+	if !dockerconnector.ValidContainerRef(containerRef) {
+		return nil, errors.New("docker container must be a name or ID without shell syntax")
+	}
 	if !dockerconnector.ProfileAllowsContainerRef(profile, containerRef) {
 		return nil, fmt.Errorf("%w: %s", dockerconnector.ErrScopeDenied, containerRef)
 	}
@@ -77,7 +85,11 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 	if transportRef == "" {
 		return nil, fmt.Errorf("%w: transport_target_ref is required", dockerconnector.ErrInvalidConfig)
 	}
-	command := dockerExecShellCommand(dockerCommand(target), containerRef)
+	dockerCommand, err := dockerconnector.DockerShellCommand(target)
+	if err != nil {
+		return nil, err
+	}
+	command := dockerExecShellCommand(dockerCommand, containerRef)
 	return sshapiadapter.OpenLiveConsoleForTargetRef(ctx, server, runtime, transportRef, request.Rows, request.Cols, sshapiadapter.LiveConsoleOptions{
 		ForceShellCommand: command,
 	})
@@ -104,15 +116,8 @@ func dockerExecShellCommand(dockerCommand string, containerRef string) string {
 		dockerCommand = "docker"
 	}
 	shellProbe := "if command -v bash >/dev/null 2>&1; then exec bash -l; fi; exec sh"
-	return fmt.Sprintf("%s exec -it -- %s sh -lc %s", dockerCommand, shellQuote(containerRef), shellQuote(shellProbe))
-}
-
-func dockerCommand(target connectors.TargetView) string {
-	command := strings.TrimSpace(stringConfigValue(target.Config, "docker_command"))
-	if command == "" {
-		return "docker"
-	}
-	return command
+	identityProbe := fmt.Sprintf("__aip_docker_version=$(%s version --format '{{.Server.Version}}' 2>/dev/null) && test -n \"$__aip_docker_version\"", dockerCommand)
+	return fmt.Sprintf("%s || { printf 'Docker identity probe failed.\\n' >&2; exit 127; }; %s exec -it -- %s sh -lc %s", identityProbe, dockerCommand, shellQuote(containerRef), shellQuote(shellProbe))
 }
 
 func stringParam(params map[string]any, key string) string {

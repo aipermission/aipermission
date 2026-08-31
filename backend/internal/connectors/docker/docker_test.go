@@ -9,6 +9,93 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
+func TestDockerCommandAcceptsDockerAndAbsoluteWrapperPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    any
+		expected string
+	}{
+		{name: "default", expected: "docker"},
+		{name: "wrapper path", value: "/usr/local/bin/docker-wrapper", expected: "/usr/local/bin/docker-wrapper"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config := map[string]any{}
+			if test.value != nil {
+				config["docker_command"] = test.value
+			}
+			command, err := DockerCommand(connectors.TargetView{Config: config})
+			if err != nil || command != test.expected {
+				t.Fatalf("DockerCommand() = %q, %v; want %q", command, err, test.expected)
+			}
+		})
+	}
+}
+
+func TestValidateTargetConfigRejectsUnsafeDockerCommand(t *testing.T) {
+	for _, command := range []string{
+		"docker --host unix:///run/docker.sock",
+		"docker; id",
+		"docker|id",
+		"$(id)",
+		"docker\nwhoami",
+		"eval",
+		"true",
+		"podman-docker",
+		"sudo docker",
+		"/usr/local/../bin/docker",
+	} {
+		t.Run(command, func(t *testing.T) {
+			err := New().ValidateTargetConfig(map[string]any{"docker_command": command})
+			if err == nil || !strings.Contains(err.Error(), ErrInvalidConfig.Error()) {
+				t.Fatalf("expected invalid config for %q, got %v", command, err)
+			}
+		})
+	}
+}
+
+func TestConnectionUsesConfiguredDockerExecutable(t *testing.T) {
+	target := dockerTarget()
+	target.Config["docker_command"] = "/usr/local/bin/docker-wrapper"
+	command := "'/usr/local/bin/docker-wrapper' version --format '{{json .}}'"
+	transport := &fakeCommandTransport{
+		results: map[string]connectors.CommandRunResult{
+			command: {Stdout: validDockerVersionJSON()},
+		},
+	}
+	result, err := New().TestConnection(context.Background(), connectors.RuntimeContext{
+		Target:       target,
+		Profile:      dockerProfile("selected"),
+		Capabilities: fakeCapabilities{transport: transport},
+	})
+	if err != nil || result.Status != connectors.TestOK {
+		t.Fatalf("TestConnection() = %#v, %v", result, err)
+	}
+}
+
+func TestConnectionRejectsNonDockerExecutableOutput(t *testing.T) {
+	target := dockerTarget()
+	target.Config["docker_command"] = "/bin/true"
+	command := "'/bin/true' version --format '{{json .}}'"
+	for name, stdout := range map[string]string{
+		"empty":      "",
+		"empty json": `{}`,
+		"malformed":  `{`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := New().TestConnection(context.Background(), connectors.RuntimeContext{
+				Target: target,
+				Capabilities: fakeCapabilities{transport: &fakeCommandTransport{results: map[string]connectors.CommandRunResult{
+					command: {Stdout: stdout},
+				}}},
+			})
+			if err != nil || result.Status == connectors.TestOK {
+				t.Fatalf("expected identity failure, got %#v, %v", result, err)
+			}
+		})
+	}
+}
+
 func TestPrepareActionRejectsEmptyContainer(t *testing.T) {
 	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
 		Target:     dockerTarget(),
@@ -273,7 +360,15 @@ func (transport *fakeCommandTransport) ConnectorRuntimeCapability() string {
 }
 
 func (transport *fakeCommandTransport) RunConnectorCommand(_ context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
-	if sequence := transport.sequences[request.Command]; len(sequence) > 0 {
+	command := request.Command
+	normalizedCommand := strings.TrimPrefix(command, "command ")
+	if sequence := transport.sequences[command]; len(sequence) == 0 {
+		sequence = transport.sequences[normalizedCommand]
+		if len(sequence) > 0 {
+			command = normalizedCommand
+		}
+	}
+	if sequence := transport.sequences[command]; len(sequence) > 0 {
 		if transport.calls == nil {
 			transport.calls = map[string]int{}
 		}
@@ -286,9 +381,19 @@ func (transport *fakeCommandTransport) RunConnectorCommand(_ context.Context, re
 	}
 	result, ok := transport.results[request.Command]
 	if !ok {
+		result, ok = transport.results[normalizedCommand]
+	}
+	if !ok && strings.HasSuffix(normalizedCommand, " version --format '{{json .}}'") {
+		return connectors.CommandRunResult{Stdout: validDockerVersionJSON()}, nil
+	}
+	if !ok {
 		return connectors.CommandRunResult{ExitCode: 127, Stderr: "unexpected command: " + request.Command}, nil
 	}
 	return result, nil
+}
+
+func validDockerVersionJSON() string {
+	return `{"Client":{"Version":"28.0.0"},"Server":{"Version":"28.0.0"}}`
 }
 
 func toJSON(t *testing.T, value any) string {

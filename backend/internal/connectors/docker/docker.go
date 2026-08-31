@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,13 +30,14 @@ const (
 	ActionStopContainer    = "stop_container"
 	ActionRestartContainer = "restart_container"
 
-	defaultLogTail     = 200
-	maxLogTail         = 2000
-	maxLogBytes        = 256 << 10
-	maxExecCommandLen  = 8000
-	maxExecOutputBytes = 256 << 10
-	maxInspectBytes    = 512 << 10
-	maxDockerReasonLen = 2000
+	defaultLogTail       = 200
+	maxLogTail           = 2000
+	maxLogBytes          = 256 << 10
+	maxExecCommandLen    = 8000
+	maxExecOutputBytes   = 256 << 10
+	maxInspectBytes      = 512 << 10
+	maxDockerReasonLen   = 2000
+	defaultDockerCommand = "docker"
 )
 
 var (
@@ -45,6 +45,7 @@ var (
 	ErrMissingTransport  = errors.New("docker connector command transport is unavailable")
 	ErrInvalidConfig     = errors.New("docker connector target config is invalid")
 	ErrScopeDenied       = errors.New("docker container is outside this credential profile scope")
+	errInvalidIdentity   = errors.New("docker executable identity validation failed")
 )
 
 type Connector struct{}
@@ -89,10 +90,15 @@ func (Connector) TargetSchema() connectors.Schema {
 			Name:        "docker_command",
 			Label:       "Docker command",
 			Type:        connectors.FieldString,
-			Default:     "docker",
-			Description: "Docker CLI command on the remote host. Keep this as docker unless the host uses a wrapper path.",
+			Default:     defaultDockerCommand,
+			Description: "Use docker or an absolute Docker-compatible wrapper path on the remote host. Shell arguments are not accepted.",
 		},
 	}}
+}
+
+func (Connector) ValidateTargetConfig(config map[string]any) error {
+	_, err := DockerCommand(connectors.TargetView{Config: config})
+	return err
 }
 
 func (Connector) CredentialSchemas() []connectors.CredentialSchema {
@@ -398,6 +404,11 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
+	if action.ActionName != ActionVersion {
+		if _, _, err := client.verifyDockerIdentity(ctx); err != nil {
+			return connectors.ActionResult{}, err
+		}
+	}
 	switch action.ActionName {
 	case ActionVersion:
 		return executeVersion(ctx, client)
@@ -431,12 +442,15 @@ func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeC
 	if err != nil {
 		return connectors.TestResult{Status: connectors.TestUnknownError, Message: err.Error()}, nil
 	}
-	result, err := client.run(ctx, "docker version --format '{{json .}}'", 15)
+	_, result, err := client.verifyDockerIdentity(ctx)
 	if err != nil {
-		return connectors.TestResult{Status: connectors.TestFailedNetwork, Message: err.Error()}, nil
-	}
-	if result.ExitCode != 0 {
-		return connectors.TestResult{Status: connectors.TestFailedPermission, Message: dockerCommandError("docker version", result).Error()}, nil
+		status := connectors.TestFailedNetwork
+		if result.ExitCode != 0 {
+			status = connectors.TestFailedPermission
+		} else if errors.Is(err, errInvalidIdentity) {
+			status = connectors.TestUnknownError
+		}
+		return connectors.TestResult{Status: status, Message: err.Error()}, nil
 	}
 	return connectors.TestResult{
 		Status:  connectors.TestOK,
@@ -460,9 +474,9 @@ func newDockerClient(runtime connectors.RuntimeContext) (*dockerClient, error) {
 	if transport == nil {
 		return nil, ErrMissingTransport
 	}
-	command := dockerCommand(runtime.Target)
-	if command == "" {
-		return nil, fmt.Errorf("%w: docker_command is required", ErrInvalidConfig)
+	command, err := DockerShellCommand(runtime.Target)
+	if err != nil {
+		return nil, err
 	}
 	return &dockerClient{
 		runtime:   runtime,
@@ -483,16 +497,9 @@ func (client *dockerClient) run(ctx context.Context, command string, timeoutSeco
 }
 
 func executeVersion(ctx context.Context, client *dockerClient) (connectors.ActionResult, error) {
-	result, err := client.run(ctx, client.command+" version --format '{{json .}}'", 15)
+	output, result, err := client.verifyDockerIdentity(ctx)
 	if err != nil {
 		return connectors.ActionResult{}, err
-	}
-	if result.ExitCode != 0 {
-		return connectors.ActionResult{}, dockerCommandError("docker version", result)
-	}
-	var output any
-	if err := json.Unmarshal([]byte(result.Stdout), &output); err != nil {
-		output = map[string]any{"raw": truncateString(result.Stdout, maxLogBytes)}
 	}
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
@@ -502,6 +509,33 @@ func executeVersion(ctx context.Context, client *dockerClient) (connectors.Actio
 		},
 		DisplayText: truncateString(result.Stdout, 4000),
 	}, nil
+}
+
+func (client *dockerClient) verifyDockerIdentity(ctx context.Context) (map[string]any, connectors.CommandRunResult, error) {
+	result, err := client.run(ctx, client.command+" version --format '{{json .}}'", 15)
+	if err != nil {
+		return nil, result, err
+	}
+	if result.ExitCode != 0 {
+		return nil, result, dockerCommandError("docker version", result)
+	}
+	var output map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(result.Stdout)), &output); err != nil {
+		return nil, result, fmt.Errorf("%w: probe returned invalid JSON: %v", errInvalidIdentity, err)
+	}
+	if !dockerVersionComponentValid(output["Client"]) || !dockerVersionComponentValid(output["Server"]) {
+		return nil, result, fmt.Errorf("%w: probe did not return Docker client and server versions", errInvalidIdentity)
+	}
+	return output, result, nil
+}
+
+func dockerVersionComponentValid(value any) bool {
+	component, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	version, ok := component["Version"].(string)
+	return ok && strings.TrimSpace(version) != ""
 }
 
 func executeListContainers(ctx context.Context, client *dockerClient, input map[string]any) (connectors.ActionResult, error) {
@@ -1119,131 +1153,6 @@ func parseDockerVolumes(data string) ([]DockerVolume, error) {
 		volumes = append(volumes, volume)
 	}
 	return volumes, nil
-}
-
-type dockerScope struct {
-	mode     string
-	exact    []string
-	patterns []string
-}
-
-func dockerScopeFromProfile(profile connectors.CredentialProfileView) dockerScope {
-	mode := scopeMode(profile)
-	return dockerScope{
-		mode:     mode,
-		exact:    splitLines(stringValue(profile.Public, "allowed_containers")),
-		patterns: splitLines(stringValue(profile.Public, "allowed_patterns")),
-	}
-}
-
-func ProfileAllowsContainerRef(profile connectors.CredentialProfileView, containerRef string) bool {
-	containerRef = strings.TrimSpace(containerRef)
-	if containerRef == "" {
-		return false
-	}
-	return dockerScopeFromProfile(profile).allows(DockerContainer{ID: containerRef, Name: containerRef})
-}
-
-func (scope dockerScope) allows(container DockerContainer) bool {
-	if scope.mode != "selected" {
-		return true
-	}
-	candidates := []string{container.ID, container.Name}
-	if len(container.ID) >= 12 {
-		candidates = append(candidates, container.ID[:12])
-	}
-	for _, allowed := range scope.exact {
-		for _, candidate := range candidates {
-			if allowed == candidate || strings.HasPrefix(container.ID, allowed) {
-				return true
-			}
-		}
-	}
-	for _, pattern := range scope.patterns {
-		if ok, _ := path.Match(pattern, container.Name); ok {
-			return true
-		}
-	}
-	return false
-}
-
-func scopeMode(profile connectors.CredentialProfileView) string {
-	mode := strings.TrimSpace(stringValue(profile.Public, "scope_mode"))
-	if mode == "selected" {
-		return "selected"
-	}
-	return "all"
-}
-
-func connectionMode(target connectors.TargetView) string {
-	mode := strings.TrimSpace(stringValue(target.Config, "connection_mode"))
-	if mode == "" {
-		return "over_ssh"
-	}
-	return mode
-}
-
-func dockerCommand(target connectors.TargetView) string {
-	value := strings.TrimSpace(stringValue(target.Config, "docker_command"))
-	if value == "" {
-		value = "docker"
-	}
-	if strings.ContainsAny(value, "\n\r\t;&|`$<>") {
-		return ""
-	}
-	return value
-}
-
-func normalizeContainerInput(input map[string]any) (string, error) {
-	container := strings.TrimSpace(stringValue(input, "container"))
-	if container == "" {
-		return "", fmt.Errorf("container is required")
-	}
-	if strings.ContainsAny(container, "\x00\n\r") {
-		return "", fmt.Errorf("container contains unsupported characters")
-	}
-	return container, nil
-}
-
-func normalizeExecCommandInput(input map[string]any) (string, error) {
-	command := strings.TrimSpace(stringValue(input, "command"))
-	if command == "" {
-		return "", fmt.Errorf("command is required")
-	}
-	if len(command) > maxExecCommandLen {
-		return "", fmt.Errorf("command is larger than %d bytes", maxExecCommandLen)
-	}
-	if strings.ContainsRune(command, '\x00') {
-		return "", fmt.Errorf("command contains unsupported characters")
-	}
-	return command, nil
-}
-
-func normalizeDockerOptionInput(input map[string]any, key string) string {
-	value := strings.TrimSpace(stringValue(input, key))
-	if value == "" || strings.ContainsAny(value, "\x00\n\r") {
-		return ""
-	}
-	return value
-}
-
-func firstLine(value string) string {
-	line, _, _ := strings.Cut(strings.TrimSpace(value), "\n")
-	if len(line) > 120 {
-		return line[:117] + "..."
-	}
-	return line
-}
-
-func dockerCommandError(command string, result connectors.CommandRunResult) error {
-	message := strings.TrimSpace(result.Stderr)
-	if message == "" {
-		message = strings.TrimSpace(result.Stdout)
-	}
-	if message == "" {
-		message = fmt.Sprintf("%s failed with exit code %d", command, result.ExitCode)
-	}
-	return fmt.Errorf("%s failed: %s", command, truncateString(message, 4000))
 }
 
 func containersDisplay(containers []DockerContainer) string {
