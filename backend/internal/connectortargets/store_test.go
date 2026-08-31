@@ -166,3 +166,36 @@ func TestStoreGetTargetReturnsNotFound(t *testing.T) {
 		t.Fatalf("expected ErrTargetNotFound, got %v", err)
 	}
 }
+
+func TestUpdateTargetRejectsStaleSnapshot(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	target, _ := createPostgresTargetProfile(t, ctx, store)
+
+	updated, err := store.UpdateTarget(ctx, UpdateTargetInput{
+		ID: target.ID, ProjectID: target.ProjectID, Name: "main-db-updated",
+		Config: target.Config, ExpectedUpdatedAt: target.UpdatedAt,
+	})
+	if err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+	if updated.UpdatedAt == target.UpdatedAt {
+		t.Fatal("expected target revision to change")
+	}
+
+	_, err = store.UpdateTarget(ctx, UpdateTargetInput{
+		ID: target.ID, ProjectID: target.ProjectID, Name: "stale-overwrite",
+		Config: target.Config, ExpectedUpdatedAt: target.UpdatedAt,
+	})
+	if !errors.Is(err, ErrTargetUpdateConflict) {
+		t.Fatalf("stale update error = %v, want ErrTargetUpdateConflict", err)
+	}
+	current, err := store.GetTarget(ctx, target.ID)
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	if current.Name != "main-db-updated" {
+		t.Fatalf("stale update changed target name to %q", current.Name)
+	}
+}

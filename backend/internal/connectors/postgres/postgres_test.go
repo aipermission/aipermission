@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 
@@ -27,8 +28,8 @@ func TestConnectorMetadataAndSchemas(t *testing.T) {
 	if !fieldOptionsContain(targetSchema, "connection_mode", "over_ssh") {
 		t.Fatalf("target schema should advertise supported over_ssh mode: %#v", targetSchema.Fields)
 	}
-	if defaultFieldValue(targetSchema, "ssl_mode") != "require" {
-		t.Fatalf("postgres ssl_mode should default to require, got %#v", defaultFieldValue(targetSchema, "ssl_mode"))
+	if defaultFieldValue(targetSchema, "ssl_mode") != "auto" {
+		t.Fatalf("postgres ssl_mode should default to auto, got %#v", defaultFieldValue(targetSchema, "ssl_mode"))
 	}
 
 	credentialSchemas := connector.CredentialSchemas()
@@ -37,6 +38,107 @@ func TestConnectorMetadataAndSchemas(t *testing.T) {
 	}
 	if !hasField(credentialSchemas[0].Schema, "username") || !hasField(credentialSchemas[0].Schema, "password") {
 		t.Fatalf("expected username and password credential fields, got %#v", credentialSchemas[0].Schema.Fields)
+	}
+}
+
+func TestSSLModeUsesVerifiedTLSForDirectRemoteTargets(t *testing.T) {
+	tests := []struct {
+		name   string
+		target connectors.TargetView
+		want   string
+	}{
+		{name: "direct remote auto", target: connectors.TargetView{Config: map[string]any{"connection_mode": "direct", "host": "db.example.com", "ssl_mode": "auto"}}, want: "verify-full"},
+		{name: "legacy direct remote omitted", target: connectors.TargetView{Config: map[string]any{"connection_mode": "direct", "host": "db.example.com"}}, want: "require"},
+		{name: "direct loopback auto", target: connectors.TargetView{Config: map[string]any{"connection_mode": "direct", "host": "127.0.0.1", "ssl_mode": "auto"}}, want: "require"},
+		{name: "over SSH auto", target: connectors.TargetView{Config: map[string]any{"connection_mode": "over_ssh", "host": "127.0.0.1", "ssl_mode": "auto"}}, want: "require"},
+		{name: "explicit require preserved", target: connectors.TargetView{Config: map[string]any{"connection_mode": "direct", "host": "db.example.com", "ssl_mode": "require"}}, want: "require"},
+		{name: "explicit verify full", target: connectors.TargetView{Config: map[string]any{"connection_mode": "direct", "host": "db.example.com", "ssl_mode": "verify_full"}}, want: "verify-full"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := sslMode(test.target); got != test.want {
+				t.Fatalf("sslMode() = %q; want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeTargetConfigUpdatePreservesLegacyAndExplicitTLSModes(t *testing.T) {
+	connector := New()
+	legacy := connector.NormalizeTargetConfigUpdate(
+		map[string]any{"host": "db.example.com"},
+		map[string]any{"host": "db-new.example.com"},
+	)
+	if legacy["ssl_mode"] != "require" {
+		t.Fatalf("legacy ssl_mode = %#v", legacy["ssl_mode"])
+	}
+	explicit := connector.NormalizeTargetConfigUpdate(
+		map[string]any{"ssl_mode": "require"},
+		map[string]any{"ssl_mode": "verify_full"},
+	)
+	if explicit["ssl_mode"] != "verify_full" {
+		t.Fatalf("explicit ssl_mode = %#v", explicit["ssl_mode"])
+	}
+	for name, value := range map[string]any{"null": nil, "blank": "  "} {
+		t.Run(name, func(t *testing.T) {
+			normalized := connector.NormalizeTargetConfigUpdate(
+				map[string]any{"ssl_mode": "prefer"},
+				map[string]any{"host": "db-new.example.com", "ssl_mode": value},
+			)
+			if normalized["ssl_mode"] != "prefer" {
+				t.Fatalf("preserved ssl_mode = %#v", normalized["ssl_mode"])
+			}
+		})
+	}
+}
+
+func TestPostgresCLIUsesSystemRootsForVerifiedTLS(t *testing.T) {
+	t.Setenv("PGHOSTADDR", "attacker.invalid")
+	t.Setenv("PGOPTIONS", "-c search_path=attacker")
+	runtime := connectors.RuntimeContext{
+		Target: connectors.TargetView{Config: map[string]any{
+			"connection_mode": "direct", "host": "db.example.com", "port": 5432,
+			"database": "app", "ssl_mode": "auto",
+		}},
+		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "reader"}},
+		Secrets: fakeSecrets{"password": "secret"},
+	}
+	invocation, err := postgresCLIConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("postgres CLI connection: %v", err)
+	}
+	defer invocation.Cleanup()
+	if !containsString(invocation.Env, "PGSSLMODE=verify-full") || !containsString(invocation.Env, "PGSSLROOTCERT=system") {
+		t.Fatalf("verified CLI environment missing system roots: %#v", invocation.Env)
+	}
+	if containsPrefix(invocation.Env, "PGHOSTADDR=") {
+		t.Fatalf("direct CLI connection unexpectedly set PGHOSTADDR: %#v", invocation.Env)
+	}
+	if containsPrefix(invocation.Env, "PGOPTIONS=") {
+		t.Fatalf("direct CLI connection inherited ambient PGOPTIONS: %#v", invocation.Env)
+	}
+}
+
+func TestPostgresCLIOverSSHPreservesTLSHostIdentity(t *testing.T) {
+	runtime := connectors.RuntimeContext{
+		Target: connectors.TargetView{Ref: "postgres:1:1", Config: map[string]any{
+			"connection_mode": "over_ssh", "transport_target_ref": "ssh:2:2",
+			"host": "db.internal.example", "port": 5432, "database": "app", "ssl_mode": "verify_full",
+		}},
+		Profile:      connectors.CredentialProfileView{Public: map[string]any{"username": "reader"}},
+		Secrets:      fakeSecrets{"password": "secret"},
+		Capabilities: fakePostgresCapabilities{transport: noDialPostgresTransport{}},
+	}
+	invocation, err := postgresCLIConnection(context.Background(), runtime)
+	if err != nil {
+		t.Fatalf("postgres CLI connection: %v", err)
+	}
+	defer invocation.Cleanup()
+	if !containsString(invocation.Env, "PGSSLMODE=verify-full") || !containsString(invocation.Env, "PGSSLROOTCERT=system") || !containsPrefix(invocation.Env, "PGHOSTADDR=127.0.0.1") {
+		t.Fatalf("tunneled CLI environment does not separate TLS identity and dial address: %#v", invocation.Env)
+	}
+	if host := argumentValue(invocation.Args, "--host"); host != "db.internal.example" {
+		t.Fatalf("CLI TLS host = %q, want original database host", host)
 	}
 }
 
@@ -455,4 +557,52 @@ type failingPostgresSecrets struct{ err error }
 
 func (s failingPostgresSecrets) GetSecret(context.Context, string) (string, error) {
 	return "", s.err
+}
+
+type fakePostgresCapabilities struct {
+	transport connectors.NetworkTransport
+}
+
+func (capabilities fakePostgresCapabilities) RuntimeCapability(name string) connectors.RuntimeCapability {
+	if name == connectors.NetworkTransportCapabilityName {
+		return capabilities.transport
+	}
+	return nil
+}
+
+type noDialPostgresTransport struct{}
+
+func (noDialPostgresTransport) ConnectorRuntimeCapability() string {
+	return connectors.NetworkTransportCapabilityName
+}
+
+func (noDialPostgresTransport) DialConnectorTCP(context.Context, connectors.NetworkDialRequest) (net.Conn, error) {
+	return nil, errors.New("unexpected test dial")
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func containsPrefix(values []string, prefix string) bool {
+	for _, value := range values {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func argumentValue(arguments []string, name string) string {
+	for index := 0; index+1 < len(arguments); index++ {
+		if arguments[index] == name {
+			return arguments[index+1]
+		}
+	}
+	return ""
 }

@@ -24,6 +24,13 @@ func validateConnectorTargetConfig(connector connectors.Connector, config map[st
 	return validator.ValidateTargetConfig(config)
 }
 
+func normalizeConnectorTargetUpdate(connector connectors.Connector, existing, submitted map[string]any) (map[string]any, error) {
+	if normalizer, ok := connector.(connectors.TargetConfigUpdateNormalizer); ok {
+		submitted = normalizer.NormalizeTargetConfigUpdate(existing, submitted)
+	}
+	return connectors.NormalizeSchemaValues(connector.TargetSchema(), submitted)
+}
+
 func (s *Server) validateConnectorTransportConfig(ctx context.Context, store *connectortargets.Store, projectID int64, config map[string]any) error {
 	mode, _ := config["connection_mode"].(string)
 	if strings.TrimSpace(mode) != "over_ssh" {
@@ -220,6 +227,8 @@ func credentialSchemaForKind(connector connectors.Connector, kind string) (conne
 func handleConnectorTargetError(w http.ResponseWriter, err error) {
 	var validation connectortargets.ValidationError
 	switch {
+	case errors.Is(err, connectortargets.ErrTargetUpdateConflict):
+		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, connectortargets.ErrTargetNotFound), errors.Is(err, connectortargets.ErrTargetProfileNotFound):
 		writeError(w, http.StatusNotFound, "connector target not found")
 	case errors.Is(err, connectortargets.ErrInvalidTargetRef):

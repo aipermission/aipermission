@@ -46,7 +46,7 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn,
 		Path:   "/" + database,
 	}
 	query := connURL.Query()
-	query.Set("sslmode", sslMode(runtime.Target.Config))
+	query.Set("sslmode", postgresTLSPlanForTarget(runtime.Target).Mode)
 	query.Set("connect_timeout", "10")
 	connURL.RawQuery = query.Encode()
 

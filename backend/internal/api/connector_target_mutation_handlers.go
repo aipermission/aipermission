@@ -188,7 +188,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	config, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Config)
+	config, err := normalizeConnectorTargetUpdate(connector, existing.Config, request.Config)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -217,10 +217,11 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		txStore := connectortargets.NewTxStore(tx)
 		var err error
 		target, err = txStore.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
-			ID:        id,
-			ProjectID: request.ProjectID,
-			Name:      request.Name,
-			Config:    request.Config,
+			ID:                id,
+			ProjectID:         request.ProjectID,
+			Name:              request.Name,
+			Config:            request.Config,
+			ExpectedUpdatedAt: existing.UpdatedAt,
 		})
 		if err != nil {
 			return err
@@ -287,7 +288,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	targetConfig, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Target.Config)
+	targetConfig, err := normalizeConnectorTargetUpdate(connector, existing.Config, request.Target.Config)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -326,10 +327,11 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		txStore := connectortargets.NewTxStore(tx)
 		var err error
 		target, err = txStore.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
-			ID:        id,
-			ProjectID: request.Target.ProjectID,
-			Name:      request.Target.Name,
-			Config:    request.Target.Config,
+			ID:                id,
+			ProjectID:         request.Target.ProjectID,
+			Name:              request.Target.Name,
+			Config:            request.Target.Config,
+			ExpectedUpdatedAt: existing.UpdatedAt,
 		})
 		if err != nil {
 			return err

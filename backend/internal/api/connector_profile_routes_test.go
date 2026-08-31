@@ -109,6 +109,68 @@ func TestConnectorTargetWithProfileRoutesAreAtomic(t *testing.T) {
 	}
 }
 
+func TestPostgresLegacyTLSModeSurvivesEmptyUpdatePayloads(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+
+	createTarget := func(name string) connectorTargetResponse {
+		t.Helper()
+		response := performJSON(handler, http.MethodPost, "/api/connector-targets/with-profile", "", createConnectorTargetWithProfileRequest{
+			Target: createConnectorTargetRequest{
+				ConnectorKind: "postgres", Name: name,
+				Config: map[string]any{"connection_mode": "direct", "host": "db.example.com", "port": 5432, "database": "app"},
+			},
+			Profile: createConnectorCredentialProfileRequest{
+				Kind: "username_password", Label: "reader",
+				Public: map[string]any{"username": "reader"}, Secret: map[string]any{"password": "secret-password"},
+			},
+		})
+		if response.Code != http.StatusCreated {
+			t.Fatalf("create legacy fixture: %d %s", response.Code, response.Body.String())
+		}
+		created := decodeRouteResponse[connectorTargetResponse](t, response.Body.Bytes())
+		if _, err := fixture.db.Exec(`UPDATE connector_targets SET config_json = ? WHERE id = ?`, `{"connection_mode":"direct","host":"db.example.com","port":5432,"database":"app"}`, created.ID); err != nil {
+			t.Fatalf("make target legacy: %v", err)
+		}
+		return created
+	}
+
+	assertRequire := func(targetID int64) {
+		t.Helper()
+		var configJSON string
+		if err := fixture.db.QueryRow(`SELECT config_json FROM connector_targets WHERE id = ?`, targetID).Scan(&configJSON); err != nil {
+			t.Fatalf("read target config: %v", err)
+		}
+		if !strings.Contains(configJSON, `"ssl_mode":"require"`) {
+			t.Fatalf("legacy TLS mode was not preserved: %s", configJSON)
+		}
+	}
+
+	targetOnly := createTarget("legacy-target-only")
+	response := performJSON(handler, http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(targetOnly.ID, 10), "", updateConnectorTargetRequest{
+		Name:   targetOnly.Name,
+		Config: map[string]any{"connection_mode": "direct", "host": "db-new.example.com", "port": 5432, "database": "app", "ssl_mode": nil},
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("target-only update: %d %s", response.Code, response.Body.String())
+	}
+	assertRequire(targetOnly.ID)
+
+	withProfile := createTarget("legacy-with-profile")
+	profileID := withProfile.Profiles[0].ID
+	response = performJSON(handler, http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(withProfile.ID, 10)+"/with-profile/"+strconv.FormatInt(profileID, 10), "", updateConnectorTargetWithProfileRequest{
+		Target: updateConnectorTargetRequest{
+			Name:   withProfile.Name,
+			Config: map[string]any{"connection_mode": "direct", "host": "db-new.example.com", "port": 5432, "database": "app", "ssl_mode": " "},
+		},
+		Profile: updateConnectorCredentialProfileRequest{Kind: "username_password", Label: "reader", Public: map[string]any{"username": "reader"}},
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("target-with-profile update: %d %s", response.Code, response.Body.String())
+	}
+	assertRequire(withProfile.ID)
+}
+
 func TestSSHConnectorTargetWithProfileCreatesRuntimeSurface(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()

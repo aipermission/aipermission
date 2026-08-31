@@ -15,7 +15,7 @@ const model = createDatabaseConnectorModel({
     host: "127.0.0.1",
     port: defaultPort,
     database: defaultDatabase,
-    ssl_mode: "require",
+    ssl_mode: "auto",
     transport_target_ref: "",
   },
   credentialDefaults: {
@@ -31,6 +31,7 @@ const model = createDatabaseConnectorModel({
     host: target.config?.host || "",
     port: target.config?.port || defaultPort,
     database: target.config?.database || "",
+    // Targets created before ssl_mode was persisted used require at runtime.
     ssl_mode: target.config?.ssl_mode || "require",
     transport_target_ref: target.config?.transport_target_ref || "",
   }),
@@ -39,7 +40,7 @@ const model = createDatabaseConnectorModel({
     host: form.host || "127.0.0.1",
     port: Number(form.port) || defaultPort,
     database: form.database || defaultDatabase,
-    ssl_mode: form.ssl_mode || "require",
+    ssl_mode: form.ssl_mode || "auto",
     transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref || "" : "",
   }),
   targetEndpoint: ({ target }) => {
