@@ -29,8 +29,19 @@ export async function runGuardedConnectorAction({
     if (!request.isCurrent()) return null;
     const item = requireCompletedConnectorAction(response, `${product} action failed.`);
     if (!item) {
-      setState({ state: "idle", error: "", message: response.display_text || `${product} action is awaiting approval.` });
-      Promise.resolve(onRefreshActivity?.()).catch(() => {});
+      const message = response.display_text || `${product} action is awaiting approval.`;
+      setState({ state: "idle", error: "", message });
+      void Promise.resolve()
+        .then(() => onRefreshActivity?.())
+        .catch((refreshError) => {
+          if (request.isCurrent()) {
+            setState({
+              state: "idle",
+              error: `Approval is pending, but activity refresh failed: ${actionRunnerErrorMessage(refreshError)}`,
+              message,
+            });
+          }
+        });
       return null;
     }
     const message = successMessage ? successMessage(item) : item.display_text || "";
@@ -42,7 +53,7 @@ export async function runGuardedConnectorAction({
       if (request.isCurrent()) {
         setState({
           state: "idle",
-          error: `Action completed, but activity refresh failed: ${refreshError.message || "unknown error"}`,
+          error: `Action completed, but activity refresh failed: ${actionRunnerErrorMessage(refreshError)}`,
           message,
         });
       }
@@ -57,4 +68,10 @@ export async function runGuardedConnectorAction({
     );
     throw error;
   }
+}
+
+function actionRunnerErrorMessage(error) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error.trim();
+  return "unknown error";
 }
