@@ -13,7 +13,9 @@ export default defineConfig({
       provider: "v8",
       include: [
         "src/lib/use-connector-permissions.js",
+        "src/connectors/templates/_shared/action-runner.js",
         "src/components/console/connector-action-approval-dialog.jsx",
+        "src/components/console/connector-token-permission-panel.jsx",
         "src/components/console/use-console-page-state.js",
       ],
       reporter: ["text"],

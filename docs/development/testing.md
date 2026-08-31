@@ -48,8 +48,9 @@ This runs:
 - backend vet
 - backend govulncheck
 - frontend tests
-- frontend per-file coverage floors for connector permission, approval dialog,
-  and console page-state boundaries
+- frontend per-file coverage floors for connector permission editing, shared
+  connector action execution, approval dialogs, and console page-state
+  boundaries
 - frontend production build
 - frontend Playwright browser smoke for unlock, security settings, database import, settings retention, and token permission flows
 - frontend Playwright lifecycle coverage against a real encrypted backend for
@@ -68,6 +69,11 @@ API, audit outbox, connector target, project capability, REST contract,
 session environment, token, Vault, Vault request, SQL safety, and selected
 built-in connector packages. A new security-sensitive package should be added
 there once its baseline coverage is established.
+
+Coverage floors intentionally trail the measured baseline by a small margin so
+toolchain-only statement shifts do not create noise. Critical package floors
+must not decrease; raise them incrementally when a release adds behavioral
+coverage.
 
 The frontend coverage gate uses per-file V8 thresholds rather than one broad
 aggregate percentage. This keeps a well-covered utility from masking a weak
