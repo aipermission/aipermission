@@ -54,8 +54,9 @@ The current maintenance cycle focuses on reliability and contributor clarity:
   approval-preview, and action-execution boundaries are fully specified.
 - Evaluate NATS / JetStream and additional database or analytics connectors
   only when there is a real dogfooding use case.
-- Add optional command policy and risk-scoring helpers as warnings or deny
-  rules, never as a replacement for explicit permissions and approvals.
+- Expand the shipped warning-only command policy with evidence-backed rules and
+  evaluate optional risk scoring or deny rules later. Policy helpers must never
+  replace explicit permissions and approvals.
 - Consider SSH agent, ProxyJump/bastion, MFA, and SOCKS support if the local
   operator experience remains understandable.
 - Consider signed backup manifests only after a separate recovery-key workflow
