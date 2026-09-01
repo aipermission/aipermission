@@ -30,7 +30,7 @@ server.tool(
   {},
   async () => {
     return jsonToolResult(() => apiGet("/api/mcp/connector-targets"));
-  }
+  },
 );
 
 server.tool(
@@ -44,7 +44,7 @@ server.tool(
       const params = new URLSearchParams({ target_ref });
       return apiGet(`/api/mcp/connector-help?${params.toString()}`);
     });
-  }
+  },
 );
 
 server.tool(
@@ -58,7 +58,7 @@ server.tool(
       const params = new URLSearchParams({ target_ref });
       return apiGet(`/api/mcp/connector-actions?${params.toString()}`);
     });
-  }
+  },
 );
 
 server.tool(
@@ -69,17 +69,24 @@ server.tool(
     action_name: z.string().min(1).describe("Action name from get_connector_actions."),
     input: z.record(z.unknown()).optional().describe("Connector-specific action input."),
     reason: z.string().optional().describe("Why this connector action is needed."),
-    idempotency_key: z.string().min(1).max(128).optional().describe("Caller-stable key that makes retries return the original request without running twice."),
+    idempotency_key: z
+      .string()
+      .min(1)
+      .max(128)
+      .optional()
+      .describe("Caller-stable key that makes retries return the original request without running twice."),
   },
   async ({ target_ref, action_name, input, reason, idempotency_key }) => {
-    return jsonToolResult(() => apiPost("/api/mcp/connector-actions/call", {
-      target_ref,
-      action_name,
-      input: input || {},
-      reason: reason || "",
-      idempotency_key,
-    }));
-  }
+    return jsonToolResult(() =>
+      apiPost("/api/mcp/connector-actions/call", {
+        target_ref,
+        action_name,
+        input: input || {},
+        reason: reason || "",
+        idempotency_key,
+      }),
+    );
+  },
 );
 
 server.tool(
@@ -90,7 +97,7 @@ server.tool(
   },
   async ({ request_id }) => {
     return jsonToolResult(() => apiGet(`/api/mcp/connector-action-requests/${request_id}`));
-  }
+  },
 );
 
 server.tool(
@@ -104,7 +111,7 @@ server.tool(
       const query = params.toString();
       return apiGet(`/api/mcp/vault-items${query ? `?${query}` : ""}`);
     });
-  }
+  },
 );
 
 server.tool(
@@ -112,14 +119,16 @@ server.tool(
   "Run a Vault action under the configured project capability. Prompt waits for local approval; Always executes immediately through the same tracked request path. generate_item input accepts name, secret_type, generator_kind, provider, environment, description, expires_at, expiry_warning_days, tags (string array), usage_notes (array of {location, notes}), and shared_project_ids (integer array). restart_session_with_environment input requires target_ref and items with item_id, source_project_id, and optional replace_existing. Never include raw secret values.",
   callVaultActionSchema,
   async ({ project_ref, action_name, input, reason, idempotency_key }) => {
-    return jsonToolResult(() => apiPost("/api/mcp/vault-actions/call", {
-      project_ref,
-      action_name,
-      input,
-      reason,
-      idempotency_key,
-    }));
-  }
+    return jsonToolResult(() =>
+      apiPost("/api/mcp/vault-actions/call", {
+        project_ref,
+        action_name,
+        input,
+        reason,
+        idempotency_key,
+      }),
+    );
+  },
 );
 
 server.tool(
@@ -128,7 +137,7 @@ server.tool(
   vaultActionRequestSchema,
   async ({ request_id }) => {
     return jsonToolResult(() => apiGet(`/api/mcp/vault-action-requests/${request_id}`));
-  }
+  },
 );
 
 server.tool(
@@ -137,7 +146,7 @@ server.tool(
   vaultActionRequestSchema,
   async ({ request_id }) => {
     return jsonToolResult(() => apiPost(`/api/mcp/vault-action-requests/${request_id}/cancel`, {}));
-  }
+  },
 );
 
 const transport = new StdioServerTransport();
@@ -190,7 +199,7 @@ async function apiFetch(path, options) {
     });
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw new Error(`AIPermission API request timed out after ${timeout}ms`);
+      throw new Error(`AIPermission API request timed out after ${timeout}ms`, { cause: error });
     }
     throw error;
   } finally {

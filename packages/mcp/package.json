@@ -28,6 +28,9 @@
   ],
   "scripts": {
     "build": "node scripts/build.js",
+    "format": "prettier --write \"src/**/*.js\" \"test/**/*.js\" \"scripts/**/*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.js\" \"scripts/**/*.js\"",
+    "lint": "eslint src test scripts",
     "prepack": "npm run build",
     "test": "node --test test/*.test.js",
     "start": "node dist/cli.js",
@@ -36,8 +39,21 @@
   "engines": {
     "node": ">=20"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=20.19.0",
+      "onFail": "error"
+    }
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
     "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6"
   }
 }

@@ -150,6 +150,12 @@ jobs:
       - name: Install
         working-directory: packages/mcp
         run: npm ci --workspaces=false
+      - name: Lint
+        working-directory: packages/mcp
+        run: npm run lint
+      - name: Format check
+        working-directory: packages/mcp
+        run: npm run format:check
       - name: Test
         working-directory: packages/mcp
         run: npm test
@@ -162,6 +168,23 @@ jobs:
       - name: Pack dry run
         working-directory: packages/mcp
         run: npm pack --dry-run
+
+  mcp-windows-private-config:
+    name: MCP Windows Private Config
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: packages/mcp/package-lock.json
+      - name: Install
+        working-directory: packages/mcp
+        run: npm ci --workspaces=false
+      - name: Verify Windows private-file ACL
+        working-directory: packages/mcp
+        run: node --test --test-name-pattern="Windows ACL" test/private-file.test.js
 
   docs:
     name: Docs Hygiene

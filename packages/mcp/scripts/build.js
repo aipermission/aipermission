@@ -23,11 +23,10 @@ await fs.rm(path.join(distDir, "resources", "aipermission-operator"), {
   recursive: true,
   force: true,
 });
-await fs.cp(
-  path.join(repoRoot, "docs", "skills", "aipermission-operator"),
-  path.join(distDir, "resources", "aipermission-operator"),
-  { recursive: true, force: true }
-);
+await fs.cp(path.join(repoRoot, "docs", "skills", "aipermission-operator"), path.join(distDir, "resources", "aipermission-operator"), {
+  recursive: true,
+  force: true,
+});
 
 for (const entry of ["cli.js", "server.js"]) {
   await fs.chmod(path.join(distDir, entry), 0o755);
