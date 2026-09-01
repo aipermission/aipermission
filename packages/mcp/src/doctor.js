@@ -1,126 +1,132 @@
 import fs from "node:fs/promises";
-import os from "node:os";
-import { resolveMCPConfigTarget, resolveSkillTarget } from "./client-registry.js";
-import { PACKAGE_SPECIFIER, parseFlags, sanitizeName, tomlKey } from "./init.js";
+import { parse as parseTOML } from "smol-toml";
+import { parseCommandFlags } from "./cli-flags.js";
+import { adaptMCPServerConfig, resolveMCPConfigTarget, resolveSkillTarget } from "./client-registry.js";
+import { buildMCPServerConfig, inspectProjectConfigProtection, sanitizeName } from "./init.js";
+import { validateSkill } from "./install-skill.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
+import { assertPrivateFilePermissions, assertTrustedFilePath } from "./private-file.js";
 
 export async function runDoctor(argv = []) {
-  const flags = parseFlags(argv);
+  const flags = parseCommandFlags("doctor", argv);
   const client = flags.client || flags.provider;
-  if (!client) {
-    throw new Error("doctor requires --client.");
-  }
+  if (!client) throw new Error("doctor requires --client.");
   const result = await inspectClientSetup({
     client,
     scope: flags.scope,
+    mcpScope: flags.mcpScope,
+    skillScope: flags.skillScope,
     name: flags.name || "aipermission",
-    homeDir: flags.home || os.homedir(),
-    projectDir: flags.projectDir || process.cwd(),
+    homeDir: flags.home,
+    projectDir: flags.projectDir,
   });
   console.log(`AIPermission MCP doctor: ${result.client} (${result.scope})`);
-  for (const check of result.checks) {
-    console.log(`${check.ok ? "PASS" : "FAIL"} ${check.label}: ${check.message}`);
-  }
+  for (const entry of result.checks) console.log(`${entry.ok ? "PASS" : "FAIL"} ${entry.label}: ${entry.message}`);
   return result;
 }
 
-export async function inspectClientSetup({ client, scope, name = "aipermission", homeDir = os.homedir(), projectDir = process.cwd() }) {
+export async function inspectClientSetup({
+  client,
+  scope,
+  mcpScope,
+  skillScope,
+  name = "aipermission",
+  homeDir,
+  projectDir,
+  env,
+  platform,
+  execFile,
+}) {
   const serverName = sanitizeName(name);
-  const configTarget = resolveMCPConfigTarget(client, scope, { homeDir, projectDir });
-  const skillTarget = resolveSkillTarget(client, scope, { homeDir, projectDir });
-  const checks = [await inspectConfig(configTarget, serverName), await inspectSkill(skillTarget)];
+  const roots = { homeDir, projectDir, env };
+  const configTarget = resolveMCPConfigTarget(client, mcpScope || scope, roots);
+  const skillTarget = resolveSkillTarget(client, skillScope || scope, roots);
+  const checks = [await inspectConfig(configTarget, serverName, { projectDir, platform, execFile }), await inspectSkill(skillTarget)];
   return {
-    ok: checks.every((check) => check.ok),
+    ok: checks.every((entry) => entry.ok),
     client: configTarget.label,
-    scope: configTarget.scope,
+    scope: configTarget.scope === skillTarget.scope ? configTarget.scope : `MCP ${configTarget.scope}, skill ${skillTarget.scope}`,
     checks,
   };
 }
 
-async function inspectConfig(target, name) {
-  let contents;
-  let stat;
+async function inspectConfig(target, name, options) {
   try {
-    [contents, stat] = await Promise.all([fs.readFile(target.path, "utf8"), fs.stat(target.path)]);
-  } catch (error) {
-    if (error.code === "ENOENT") return check(false, "MCP config", `not found at ${target.path}`);
-    return check(false, "MCP config", `could not read ${target.path}: ${error.message}`);
-  }
-  try {
-    if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
-      return check(false, "MCP config", `permissions are not private at ${target.path}; run chmod 600`);
+    await assertTrustedFilePath(target.path, { trustedRoot: target.trustedRoot });
+    await assertPrivateFilePermissions(target.path, options);
+    if (target.projectConfig) {
+      await inspectProjectConfigProtection(target.path, options.projectDir || target.trustedRoot);
     }
+    const contents = await fs.readFile(target.path, "utf8");
     const server = target.format === "json" ? readJSONServer(contents, target.rootKey, name) : readTOMLServer(contents, name);
     if (!server) return check(false, "MCP config", `server ${name} is missing from ${target.path}`);
-    if (server.command !== "npx") return check(false, "MCP config", `server ${name} does not use npx`);
-    if (!server.packageMatches) return check(false, "MCP config", `server ${name} does not use ${PACKAGE_SPECIFIER}`);
-    if (!server.hasToken) return check(false, "MCP config", `server ${name} has no API token`);
-    normalizeLocalAPIURL(server.apiUrl);
+    validateServer(target.client, server);
     return check(true, "MCP config", `valid at ${target.path}`);
   } catch (error) {
-    return check(false, "MCP config", `invalid at ${target.path}: ${error.message}`);
+    if (error.code === "ENOENT") return check(false, "MCP config", `not found at ${target.path}`);
+    return check(false, "MCP config", `invalid at ${target.path}: ${safeErrorMessage(error)}`);
   }
 }
 
 async function inspectSkill(target) {
   try {
-    const contents = await fs.readFile(target.path, "utf8");
-    if (!/^---[\s\S]*?^name:\s*aipermission-operator\s*$/m.test(contents)) {
-      return check(false, "Operator skill", `invalid skill metadata at ${target.path}`);
-    }
+    await assertTrustedFilePath(target.path, { trustedRoot: target.trustedRoot });
+    validateSkill(await fs.readFile(target.path, "utf8"));
     return check(true, "Operator skill", `valid at ${target.path}`);
   } catch (error) {
     if (error.code === "ENOENT") return check(false, "Operator skill", `not found at ${target.path}`);
-    return check(false, "Operator skill", `could not read ${target.path}: ${error.message}`);
+    return check(false, "Operator skill", `invalid at ${target.path}: ${safeErrorMessage(error)}`);
   }
 }
 
 function readJSONServer(contents, rootKey, name) {
-  const root = JSON.parse(contents);
+  let root;
+  try {
+    root = JSON.parse(contents);
+  } catch {
+    throw new Error("JSON parsing failed; no file contents were included in this diagnostic");
+  }
   const server = root?.[rootKey]?.[name];
-  if (!server || typeof server !== "object" || Array.isArray(server)) return null;
-  return {
-    command: server.command,
-    packageMatches: Array.isArray(server.args) && server.args.includes(PACKAGE_SPECIFIER),
-    hasToken: typeof server.env?.AIPERMISSION_API_TOKEN === "string" && server.env.AIPERMISSION_API_TOKEN.length > 0,
-    apiUrl: server.env?.AIPERMISSION_API_URL,
-  };
+  return server && typeof server === "object" && !Array.isArray(server) ? server : null;
 }
 
 function readTOMLServer(contents, name) {
-  const key = tomlKey(name);
-  const mainHeader = `[mcp_servers.${key}]`;
-  const nestedPrefix = `[mcp_servers.${key}.`;
-  const lines = contents.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trim() === mainHeader);
-  if (start < 0) return null;
-  const block = [];
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const line = lines[index].trim();
-    if (line.startsWith("[mcp_servers.") && line !== mainHeader && !line.startsWith(nestedPrefix)) break;
-    block.push(lines[index]);
+  let root;
+  try {
+    root = parseTOML(contents);
+  } catch {
+    throw new Error("TOML parsing failed; no file contents were included in this diagnostic");
   }
-  const command = tomlStringValue(block, "command");
-  const apiUrl = tomlStringValue(block, "AIPERMISSION_API_URL");
-  const token = tomlStringValue(block, "AIPERMISSION_API_TOKEN");
-  return {
-    command,
-    packageMatches: block.some((line) => line.includes(JSON.stringify(PACKAGE_SPECIFIER))),
-    hasToken: token.length > 0,
-    apiUrl,
-  };
+  const server = root?.mcp_servers?.[name];
+  return server && typeof server === "object" && !Array.isArray(server) ? server : null;
 }
 
-function tomlStringValue(lines, key) {
-  const prefix = `${key} = `;
-  const line = lines.map((value) => value.trim()).find((value) => value.startsWith(prefix));
-  if (!line) return "";
-  const raw = line.slice(prefix.length);
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return "";
+function validateServer(client, server) {
+  const expected = adaptMCPServerConfig(client, buildMCPServerConfig({ apiUrl: "http://localhost:3210", token: "TOKEN" }));
+  if (server.command !== expected.command) throw new Error("server does not use npx");
+  if (!sameArray(server.args, expected.args)) throw new Error(`server does not use the exact ${expected.args[1]} command arguments`);
+  if (server.env?.NODE_ENV !== "production") throw new Error("server NODE_ENV is not production");
+  if (typeof server.env?.AIPERMISSION_API_TOKEN !== "string" || !server.env.AIPERMISSION_API_TOKEN) {
+    throw new Error("server has no API token");
   }
+  normalizeLocalAPIURL(server.env?.AIPERMISSION_API_URL);
+  for (const [key, value] of Object.entries(expected)) {
+    if (["command", "args", "env"].includes(key)) continue;
+    if (!sameValue(server[key], value)) throw new Error(`server has an invalid ${key} field for this client`);
+  }
+}
+
+function sameArray(left, right) {
+  return Array.isArray(left) && left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameValue(left, right) {
+  return Array.isArray(right) ? sameArray(left, right) : left === right;
+}
+
+function safeErrorMessage(error) {
+  if (/parsing failed/i.test(error.message || "")) return error.message;
+  return String(error.message || error).replace(/[\r\n]+/g, " ");
 }
 
 function check(ok, label, message) {

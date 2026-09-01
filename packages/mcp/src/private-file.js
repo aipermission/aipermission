@@ -44,6 +44,42 @@ export async function atomicWritePrivateFile(filePath, contents, options = {}) {
   }
 }
 
+export async function atomicWriteTrustedFile(filePath, contents, options = {}) {
+  const mode = options.mode ?? 0o644;
+  await atomicWritePrivateFile(filePath, contents, {
+    ...options,
+    enforcePermissions: async (targetPath) => {
+      if (operatingSystem(options) !== "win32") {
+        await fs.chmod(targetPath, mode);
+      }
+    },
+    enforceDirectoryPermissions: async () => {},
+  });
+}
+
+export async function prepareTrustedFileDestination(filePath, options = {}) {
+  const destination = path.resolve(filePath);
+  await ensurePrivateDirectory(path.dirname(destination), options);
+  await validatePrivateDestination(destination, options);
+}
+
+export async function assertTrustedFilePath(filePath, options = {}) {
+  await validatePrivateDestination(path.resolve(filePath), options);
+}
+
+export async function assertPrivateFilePermissions(filePath, options = {}) {
+  if (operatingSystem(options) !== "win32") {
+    const stat = await fs.lstat(filePath);
+    if ((stat.mode & 0o077) !== 0) throw new Error(`permissions are not private; run chmod 600 ${filePath}`);
+    return;
+  }
+  const sid = await currentWindowsSID(options);
+  const { stdout } = await runWindowsSystemExecutable("icacls", [filePath], options, { encoding: "utf8" });
+  if (!stdout.includes(sid) || !stdout.includes("(F)") || stdout.includes("(I)")) {
+    throw new Error(`Windows ACL is not restricted to the current user: ${filePath}`);
+  }
+}
+
 export async function withPrivateFileLock(filePath, task, options = {}) {
   const destination = path.resolve(filePath);
   const directory = path.dirname(destination);

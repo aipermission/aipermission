@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
+import { getClientCatalog } from "./client-registry.js";
+
 const command = process.argv[2] || "serve";
 
 if (command === "init" || command === "setup") {
-  const { runInit } = await import("./init.js");
-  const args = command === "setup" ? ["--install-skill", ...process.argv.slice(3)] : process.argv.slice(3);
-  await runInit(args);
+  const { runInit, runSetup } = await import("./init.js");
+  await (command === "setup" ? runSetup : runInit)(process.argv.slice(3));
 } else if (command === "install-skill") {
   const { runInstallSkill } = await import("./install-skill.js");
   await runInstallSkill(process.argv.slice(3));
@@ -24,6 +25,10 @@ if (command === "init" || command === "setup") {
 }
 
 function printHelp() {
+  const catalog = getClientCatalog();
+  const mcpClients = catalog.filter((client) => client.supportsMCP).map((client) => client.id);
+  const skillClients = catalog.filter((client) => client.supportsSkill).map((client) => client.id);
+  const doctorClients = catalog.filter((client) => client.supportsMCP && client.supportsSkill).map((client) => client.id);
   console.log(`aipermission MCP
 
 Usage:
@@ -34,25 +39,34 @@ Usage:
   aipermission-mcp doctor          Check MCP config and native skill paths
 
 Init flags:
-  --provider codex|claude-code|cursor|vscode|copilot|windsurf|antigravity|gemini|grok|custom
+  --provider ${[...mcpClients, "custom"].join("|")}
   --scope user|project
   --name aipermission
   --token-stdin
   --api-url http://localhost:3210
-  --print
-  --install-skill
+  --print                         Print a token-placeholder preview; change no files
+  --force
+  --home /path/to/home
+  --project-dir /path/to/workspace
+
+Setup-only flags:
+  --skill-scope user|project
   --skill-source /path/to/SKILL.md  Local file only
 
 Install skill flags:
-  --client codex|claude-code|cursor|vscode|copilot|windsurf|antigravity|gemini|grok|agents|custom
+  --client ${[...skillClients, "custom"].join("|")}
   --scope user|project
+  --home /path/to/home
   --project-dir /path/to/workspace
   --source /path/to/SKILL.md  Local file only; HTTP(S) sources are rejected
 
 Doctor flags:
-  --client codex|claude-code|cursor|vscode|copilot|windsurf|antigravity|gemini|grok
+  --client ${doctorClients.join("|")}
   --scope user|project
+  --mcp-scope user|project
+  --skill-scope user|project
   --name aipermission
+  --home /path/to/home
   --project-dir /path/to/workspace
 
 Security:
