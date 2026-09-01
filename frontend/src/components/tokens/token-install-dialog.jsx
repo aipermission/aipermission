@@ -1,4 +1,5 @@
 import { mcpApiUrl } from "../../lib/api";
+import { mcpClientCatalog } from "../../lib/mcp-client-catalog";
 import { mcpPackageName, mcpPackageSpecifier } from "../../lib/mcp-package";
 import { CopyButton } from "../ui/copy-button";
 import { Dialog } from "../ui/dialog";
@@ -7,14 +8,7 @@ import { TerminalBlock } from "../ui/terminal-block";
 
 export const installProviders = [
   { id: "manual", label: "Manual" },
-  { id: "claude-code", label: "Claude" },
-  { id: "codex", label: "Codex" },
-  { id: "cursor", label: "Cursor" },
-  { id: "windsurf", label: "Windsurf" },
-  { id: "vscode", label: "VSCode" },
-  { id: "antigravity", label: "Antigravity" },
-  { id: "gemini", label: "Gemini" },
-  { id: "custom", label: "Custom" },
+  ...mcpClientCatalog.filter((client) => client.supportsMCP || client.id === "custom"),
 ];
 export function TokenInstallDialog({ state, onChange, onClose }) {
   const token = state.token;
@@ -71,7 +65,7 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
               ? "Manual config includes the token for copy-paste setup. Keep the config file private."
               : customConfig
                 ? "Custom prints portable config instead of writing provider files. Keep the generated config private."
-                : "The init command asks for the token with a hidden prompt. After installing, tell the AI to use the "}
+                : "The setup command asks for the token with a hidden prompt, writes the MCP config, and installs the native operator skill. After installing, tell the AI to use the "}
             {!manualConfig && !customConfig ? <span className="font-mono">{targetName}</span> : null}
             {!manualConfig && !customConfig ? " MCP server for this task." : null}
           </Notice>
@@ -95,7 +89,7 @@ function installTargetName(value) {
 
 function installCommand(provider, name) {
   const printFlag = provider === "custom" ? " \\\n  --print" : "";
-  return `npx -y ${mcpPackageName} init \\
+  return `npx -y ${mcpPackageName} setup \\
   --provider ${provider} \\
   --name ${name}${printFlag}`;
 }

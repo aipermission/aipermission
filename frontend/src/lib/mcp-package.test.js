@@ -16,3 +16,10 @@ test("manual MCP runtime configs use the release-pinned package specifier", () =
   assert.doesNotMatch(setupSource, /args: \["-y", mcpPackageName\]/);
   assert.doesNotMatch(tokenInstallSource, /args: \["-y", mcpPackageName\]/);
 });
+
+test("recommended MCP install commands use setup so config and skill stay aligned", () => {
+  assert.match(setupSource, /mcpPackageName} setup/);
+  assert.match(tokenInstallSource, /mcpPackageName} setup/);
+  assert.doesNotMatch(setupSource, /mcpPackageName} init/);
+  assert.doesNotMatch(tokenInstallSource, /mcpPackageName} init/);
+});
