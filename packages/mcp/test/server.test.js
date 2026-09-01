@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { callVaultActionSchema, listVaultItemsSchema, vaultActionRequestSchema } from "../src/vault-tools.js";
 import { MCP_SERVER_INSTRUCTIONS } from "../src/instructions.js";
 
@@ -17,6 +19,38 @@ test("MCP initialization includes concise operator safety instructions", async (
   assert.match(MCP_SERVER_INSTRUCTIONS, /Never request, print, or place raw secrets/);
   assert.match(MCP_SERVER_INSTRUCTIONS, /idempotency_key/);
   assert.ok(MCP_SERVER_INSTRUCTIONS.length <= 512);
+});
+
+test("packaged CLI completes a clean MCP stdio handshake", { timeout: 10_000 }, async () => {
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [path.resolve("dist/cli.js")],
+    env: {
+      NODE_ENV: "production",
+      AIPERMISSION_API_URL: "http://127.0.0.1:3210",
+      AIPERMISSION_API_TOKEN: "HANDSHAKE_TEST_TOKEN",
+    },
+    stderr: "pipe",
+  });
+  const stderr = [];
+  transport.stderr?.on("data", (chunk) => stderr.push(chunk.toString("utf8")));
+  const client = new Client({ name: "aipermission-test", version: "1.0.0" });
+
+  try {
+    await client.connect(transport, { timeout: 5_000 });
+    assert.equal(client.getServerVersion()?.name, "aipermission");
+    assert.equal(client.getInstructions(), MCP_SERVER_INSTRUCTIONS);
+    const tools = await client.listTools();
+    const names = tools.tools.map((tool) => tool.name);
+    assert.ok(names.includes("list_connector_targets"));
+    assert.ok(names.includes("call_connector_action"));
+    assert.ok(names.includes("list_vault_items"));
+    assert.ok(names.includes("call_vault_action"));
+    assert.ok(!names.includes("exec"));
+    assert.equal(stderr.join(""), "");
+  } finally {
+    await client.close();
+  }
 });
 
 test("MCP package does not expose retired pre-connector tools", async () => {

@@ -1,20 +1,22 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseDocument } from "yaml";
+import { parseCommandFlags } from "./cli-flags.js";
 import { clientLabel, normalizeClientID, resolveSkillTarget } from "./client-registry.js";
+import { atomicWriteTrustedFile, prepareTrustedFileDestination, withPrivateFileLock } from "./private-file.js";
 
 const SKILL_NAME = "aipermission-operator";
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 export async function runInstallSkill(argv = []) {
-  const flags = parseFlags(argv);
+  const flags = parseCommandFlags("install-skill", argv);
   const result = await installSkill({
     client: flags.client || "codex",
     scope: flags.scope,
     source: flags.source,
-    homeDir: flags.home || os.homedir(),
-    projectDir: flags.projectDir || process.cwd(),
+    homeDir: flags.home,
+    projectDir: flags.projectDir,
   });
 
   if (!result.path) {
@@ -28,25 +30,40 @@ export async function runInstallSkill(argv = []) {
   console.log("Restart the AI client or open a new session so the instructions refresh.");
 }
 
-export async function installSkill({ client = "codex", scope, source, homeDir = os.homedir(), projectDir = process.cwd() } = {}) {
+export async function installSkill({ client = "codex", scope, source, homeDir, projectDir } = {}) {
+  const prepared = await prepareSkillInstallation({ client, scope, source, homeDir, projectDir });
+  return commitSkillInstallation(prepared);
+}
+
+export async function commitSkillInstallation(prepared) {
+  if (!prepared.path) return prepared;
+  await withPrivateFileLock(
+    prepared.path,
+    () => atomicWriteTrustedFile(prepared.path, prepared.content, { trustedRoot: prepared.trustedRoot }),
+    { trustedRoot: prepared.trustedRoot },
+  );
+  return withoutTrustedRoot(prepared);
+}
+
+export async function prepareSkillInstallation({ client = "codex", scope, source, homeDir, projectDir } = {}) {
   const normalized = normalizeClient(client);
   const content = renderInstruction(normalized, await loadSkill(source));
   if (normalized === "custom") {
     return { client: normalized, content, path: "", scope: "" };
   }
   const target = skillPathForClient(normalized, { homeDir, projectDir, scope });
-  await fs.mkdir(path.dirname(target.path), { recursive: true });
-  await fs.writeFile(target.path, content, { mode: 0o644 });
-  return { client: normalized, content, path: target.path, scope: target.scope };
+  const trustedRoot = target.trustedRoot;
+  await prepareTrustedFileDestination(target.path, { trustedRoot });
+  return { client: normalized, content, path: target.path, scope: target.scope, trustedRoot };
 }
 
 export function codexSkillPath(homeDir) {
-  return path.join(homeDir, ".agents", "skills", SKILL_NAME, "SKILL.md");
+  return resolveSkillTarget("codex", "user", { homeDir }).path;
 }
 
-export function skillPathForClient(client, { homeDir = os.homedir(), projectDir = process.cwd(), scope } = {}) {
+export function skillPathForClient(client, { homeDir, projectDir, scope, env } = {}) {
   const normalized = normalizeClient(client);
-  return resolveSkillTarget(normalized, scope, { homeDir, projectDir });
+  return resolveSkillTarget(normalized, scope, { homeDir, projectDir, env });
 }
 
 export async function loadSkill(source) {
@@ -75,9 +92,20 @@ async function readSkillSource(source) {
   return validateSkill(await fs.readFile(source, "utf8"));
 }
 
-function validateSkill(value) {
-  if (!value.includes(`name: ${SKILL_NAME}`)) {
-    throw new Error(`source does not look like ${SKILL_NAME}`);
+export function validateSkill(value) {
+  const match = String(value).match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) throw new Error(`${SKILL_NAME} source must start with closed YAML frontmatter`);
+  const document = parseDocument(match[1]);
+  if (document.errors.length > 0) throw new Error(`${SKILL_NAME} frontmatter is invalid`);
+  const metadata = document.toJS();
+  if (!metadata || typeof metadata !== "object" || metadata.name !== SKILL_NAME) {
+    throw new Error(`${SKILL_NAME} frontmatter must declare the exact skill name`);
+  }
+  if (typeof metadata.description !== "string" || !metadata.description.trim()) {
+    throw new Error(`${SKILL_NAME} frontmatter must include a description`);
+  }
+  if (!String(value).slice(match[0].length).trim()) {
+    throw new Error(`${SKILL_NAME} source must include instructions after frontmatter`);
   }
   return value;
 }
@@ -91,19 +119,7 @@ export function normalizeClient(value) {
   return normalizeClientID(value);
 }
 
-function parseFlags(argv) {
-  const result = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (!arg.startsWith("--")) {
-      continue;
-    }
-    const [rawKey, inlineValue] = arg.slice(2).split("=", 2);
-    const key = rawKey.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-    result[key] = inlineValue ?? argv[i + 1] ?? "";
-    if (inlineValue === undefined) {
-      i += 1;
-    }
-  }
+function withoutTrustedRoot(prepared) {
+  const { trustedRoot: _trustedRoot, ...result } = prepared;
   return result;
 }

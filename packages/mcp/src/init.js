@@ -1,15 +1,16 @@
 import fs from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
+import { parse as parseTOML } from "smol-toml";
+import { parseCommandFlags } from "./cli-flags.js";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
-import { getClient, MCP_PROVIDERS, resolveMCPConfigTarget } from "./client-registry.js";
-import { installSkill } from "./install-skill.js";
+import { adaptMCPServerConfig, getClient, MCP_PROVIDERS, resolveMCPConfigTarget, resolveMCPPrintTarget } from "./client-registry.js";
+import { commitSkillInstallation, prepareSkillInstallation } from "./install-skill.js";
 import {
   atomicWritePrivateFile,
   privateLockPath,
@@ -38,10 +39,17 @@ const color = {
 };
 
 export async function runInit(argv = []) {
-  const flags = parseFlags(argv);
+  return runConfiguration("init", argv);
+}
+
+export async function runSetup(argv = []) {
+  return runConfiguration("setup", argv);
+}
+
+async function runConfiguration(command, argv) {
+  const flags = parseCommandFlags(command, argv);
   const interactive = Boolean(input.isTTY && output.isTTY);
   assertProviderSelectionAvailable(flags.provider, interactive);
-  const stdinToken = flags.tokenStdin ? (await readStdin()).trim() : "";
   const rl = readline.createInterface({ input, output });
   try {
     const provider = flags.provider
@@ -49,25 +57,31 @@ export async function runInit(argv = []) {
       : await selectProvider("Which AI client should use this token?", MCP_PROVIDERS);
     const name = sanitizeName(flags.name || (interactive ? await ask(rl, "MCP server name", "aipermission") : "aipermission"));
     const apiUrl = normalizeURL(flags.apiUrl || DEFAULT_API_URL);
-    if (provider.id !== "custom" && !flags.print) {
-      resolveMCPConfigTarget(provider.id, flags.scope);
+    const outputTarget =
+      provider.id === "custom"
+        ? undefined
+        : flags.print
+          ? resolveMCPPrintTarget(provider.id, flags.scope)
+          : resolveMCPConfigTarget(provider.id, flags.scope);
+    const shouldPrepareSkill = command === "setup" && (!flags.print || provider.id === "custom");
+    const preparedSkill = shouldPrepareSkill ? await prepareSetupSkill(provider.id, flags) : undefined;
+    if (provider.id === "custom" || flags.print) {
+      const skillResult = preparedSkill ? await reportInstalledSkill(preparedSkill) : undefined;
+      printPlaceholderConfigNotice();
+      printProviderConfig(name, provider.id, apiUrl, outputTarget);
+      if (command === "setup" && flags.print && provider.id !== "custom") {
+        console.error("No files were changed. Run install-skill separately to install the native operator skill.");
+      }
+      return { provider: provider.id, name, printed: true, skill: skillResult };
     }
-    const token = await resolveToken({ ...flags, stdinToken }, rl);
 
+    const stdinToken = flags.tokenStdin ? (await readStdin()).trim() : "";
+    const token = await resolveToken({ ...flags, stdinToken }, rl);
     if (!token) {
       throw new Error("API token is required.");
     }
-
-    const config = buildMCPServerConfig({ apiUrl, token });
-    if (provider.id === "custom" || flags.print) {
-      printTokenConfigWarning();
-      printCustomConfig(name, config);
-      if (flags.installSkill) {
-        await reportInstalledSkill(provider.id, flags);
-      }
-      return { provider: provider.id, name, printed: true };
-    }
-
+    const config = adaptMCPServerConfig(provider.id, buildMCPServerConfig({ apiUrl, token }));
+    const skillResult = preparedSkill ? await reportInstalledSkill(preparedSkill) : undefined;
     const result = await writeProviderConfig(provider.id, name, config, {
       force: Boolean(flags.force),
       scope: flags.scope,
@@ -86,10 +100,6 @@ export async function runInit(argv = []) {
     console.log(
       `${color.yellow}Keep this config private:${color.reset} it contains an AIPermission bearer token. If it is committed, revoke the token.`,
     );
-    let skillResult;
-    if (flags.installSkill) {
-      skillResult = await reportInstalledSkill(provider.id, flags);
-    }
     console.log(`${color.yellow}Restart the AI client so it reloads MCP servers.${color.reset}`);
     return { provider: provider.id, name, config: result, skill: skillResult };
   } finally {
@@ -104,49 +114,21 @@ export function assertProviderSelectionAvailable(provider, interactive) {
 }
 
 export function parseFlags(argv) {
-  const result = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (!arg.startsWith("--")) {
-      continue;
-    }
-    const [rawKey, inlineValue] = arg.slice(2).split("=", 2);
-    const key = rawKey.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-    if (key === "print") {
-      result.print = true;
-      continue;
-    }
-    if (key === "force") {
-      result.force = true;
-      continue;
-    }
-    if (key === "tokenStdin") {
-      result.tokenStdin = true;
-      continue;
-    }
-    if (key === "installSkill") {
-      result.installSkill = true;
-      continue;
-    }
-    if (key === "token") {
-      throw new Error("--token is not supported; use the hidden prompt or --token-stdin");
-    }
-    result[key] = inlineValue ?? argv[i + 1] ?? "";
-    if (inlineValue === undefined) {
-      i += 1;
-    }
-  }
-  return result;
+  return parseCommandFlags("init", argv);
 }
 
-async function reportInstalledSkill(client, flags) {
-  const result = await installSkill({
+async function prepareSetupSkill(client, flags) {
+  return prepareSkillInstallation({
     client,
-    scope: flags.scope,
+    scope: flags.skillScope || flags.scope,
     source: flags.skillSource,
-    homeDir: flags.home || os.homedir(),
-    projectDir: flags.projectDir || process.cwd(),
+    homeDir: flags.home,
+    projectDir: flags.projectDir,
   });
+}
+
+async function reportInstalledSkill(prepared) {
+  const result = await commitSkillInstallation(prepared);
   if (!result.path) {
     console.log("");
     console.log(result.content);
@@ -314,19 +296,33 @@ export function buildMCPServerConfig({ apiUrl, token }) {
 }
 
 export async function writeProviderConfig(providerID, name, config, options = {}) {
-  const homeRoot = options.homeDir || os.homedir();
   const projectRoot = options.projectDir || process.cwd();
-  const target = resolveMCPConfigTarget(providerID, options.scope, { homeDir: homeRoot, projectDir: projectRoot });
+  const target = resolveMCPConfigTarget(providerID, options.scope, {
+    homeDir: options.homeDir,
+    projectDir: projectRoot,
+    env: options.env,
+  });
+  const providerConfig = adaptMCPServerConfig(providerID, config);
   let protection = {};
   if (target.projectConfig) {
     await assertProjectConfigWritable(target.path, options);
-    protection = await protectGitIgnoredConfig(target.path, projectRoot);
+    protection = await protectGitIgnoredConfig(target.path, projectRoot, { allowTracked: Boolean(options.force) });
   }
-  const trustedRoot = target.projectConfig ? projectRoot : homeRoot;
+  const trustedRoot = target.trustedRoot;
+  const writeOptions = {
+    trustedRoot,
+    beforeWrite: target.projectConfig
+      ? async () => {
+          await assertProjectConfigWritable(target.path, options);
+          await options.beforeWrite?.();
+          await assertProjectConfigWritable(target.path, options);
+        }
+      : options.beforeWrite,
+  };
   if (target.format === "toml") {
-    await writeTOMLMCPConfig(target.path, name, config, { trustedRoot });
+    await writeTOMLMCPConfig(target.path, name, providerConfig, writeOptions);
   } else {
-    await writeJSONMCPConfig(target.path, name, config, target.rootKey, { trustedRoot });
+    await writeJSONMCPConfig(target.path, name, providerConfig, target.rootKey, writeOptions);
   }
   return { path: target.path, scope: target.scope, ...protection };
 }
@@ -335,12 +331,16 @@ export async function writeJSONMCPConfig(filePath, name, config, rootKey, option
   await withPrivateFileLock(
     filePath,
     async () => {
+      await options.beforeWrite?.();
       let root = {};
       try {
         root = JSON.parse(await fs.readFile(filePath, "utf8"));
       } catch (error) {
         if (error.code !== "ENOENT") {
-          throw new Error(`Could not read JSON config at ${filePath}: ${error.message}`, { cause: error });
+          redactParseError(error);
+          throw new Error(`Could not parse JSON config at ${filePath}; the existing file was left unchanged`, {
+            cause: error,
+          });
         }
       }
       if (!root || typeof root !== "object" || Array.isArray(root)) root = {};
@@ -351,6 +351,7 @@ export async function writeJSONMCPConfig(filePath, name, config, rootKey, option
           : Object.create(null);
       Object.defineProperty(servers, name, { value: config, enumerable: true, configurable: true, writable: true });
       root[rootKey] = servers;
+      await options.beforeWrite?.();
       await writePrivateFile(filePath, `${JSON.stringify(root, null, 2)}\n`, options);
     },
     options,
@@ -375,6 +376,7 @@ export async function writeTOMLMCPConfig(filePath, name, config, options = {}) {
   await withPrivateFileLock(
     filePath,
     async () => {
+      await options.beforeWrite?.();
       let current = "";
       try {
         current = await fs.readFile(filePath, "utf8");
@@ -383,7 +385,10 @@ export async function writeTOMLMCPConfig(filePath, name, config, options = {}) {
       }
       const next = removeTOMLServer(current, name).trimEnd();
       const block = tomlServerBlock(name, config);
-      await writePrivateFile(filePath, `${next ? `${next}\n\n` : ""}${block}\n`, options);
+      const outputContent = `${next ? `${next}\n\n` : ""}${block}\n`;
+      parseTOMLDocument(outputContent, filePath);
+      await options.beforeWrite?.();
+      await writePrivateFile(filePath, outputContent, options);
     },
     options,
   );
@@ -409,7 +414,7 @@ async function assertProjectConfigWritable(filePath, options = {}) {
   );
 }
 
-async function protectGitIgnoredConfig(filePath, startDir = process.cwd()) {
+async function protectGitIgnoredConfig(filePath, startDir = process.cwd(), options = {}) {
   const repository = await discoverGitRepository(startDir);
   if (!repository) {
     return {};
@@ -449,7 +454,7 @@ async function protectGitIgnoredConfig(filePath, startDir = process.cwd()) {
       { trustedRoot: path.dirname(excludePath) },
     );
     await assertGitIgnored(repository, [
-      relativePath,
+      ...(options.allowTracked ? [] : [relativePath]),
       privateTemporaryCheckPath(filePath, repository.workTree),
       privateStagingCheckPath(filePath, repository.workTree),
       lockRelativePath,
@@ -464,6 +469,22 @@ async function protectGitIgnoredConfig(filePath, startDir = process.cwd()) {
     gitExcludeStagingEntry: stagingRelativePath,
     gitExcludeLockEntry: lockRelativePath,
   };
+}
+
+export async function inspectProjectConfigProtection(filePath, startDir = process.cwd()) {
+  const repository = await discoverGitRepository(startDir);
+  if (!repository) return { repository: false };
+  const relativePath = path.relative(repository.workTree, filePath).split(path.sep).join("/");
+  if (relativePath.startsWith("../") || path.isAbsolute(relativePath)) return { repository: false };
+  const tracked = await gitTrackedPath(filePath, startDir);
+  if (tracked) throw new Error(`MCP config is tracked by Git: ${tracked}`);
+  await assertGitIgnored(repository, [
+    relativePath,
+    privateTemporaryCheckPath(filePath, repository.workTree),
+    privateStagingCheckPath(filePath, repository.workTree),
+    path.relative(repository.workTree, privateLockPath(filePath)).split(path.sep).join("/"),
+  ]);
+  return { repository: true, relativePath };
 }
 
 async function gitTrackedPath(filePath, startDir = process.cwd()) {
@@ -513,7 +534,7 @@ async function discoverGitRepository(startDir) {
 async function assertGitIgnored(repository, relativePaths) {
   for (const relativePath of relativePaths) {
     try {
-      await execFileAsync("git", ["-C", repository.workTree, "check-ignore", "--no-index", "-q", "--", relativePath], {
+      await execFileAsync("git", ["-C", repository.workTree, "check-ignore", "-q", "--", relativePath], {
         windowsHide: true,
       });
     } catch (error) {
@@ -557,20 +578,27 @@ function gitErrorMessage(error) {
   return String(error.stderr || error.message || error).trim();
 }
 
+function redactParseError(error, format = "JSON") {
+  error.message = `${format} parsing failed`;
+  error.stack = `${error.name || "Error"}: ${error.message}`;
+  return error;
+}
+
 function removeTOMLServer(source, name) {
-  const main = `[mcp_servers.${tomlKey(name)}]`;
-  const nestedPrefix = `[mcp_servers.${tomlKey(name)}.`;
+  if (!source.trim()) return source;
+  parseTOMLDocument(source, "existing TOML config");
   const lines = source.split(/\r?\n/);
   const kept = [];
   let skipping = false;
+  const scanState = { multiline: "" };
   for (const line of lines) {
-    const trimmed = line.trim();
-    const isHeader = trimmed.startsWith("[") && trimmed.endsWith("]");
-    if (trimmed === main || (trimmed.startsWith(nestedPrefix) && trimmed.endsWith("]"))) {
+    const header = scanTOMLHeader(line, scanState);
+    const selected = header?.[0] === "mcp_servers" && header?.[1] === name;
+    if (selected) {
       skipping = true;
       continue;
     }
-    if (isHeader && skipping) {
+    if (header && skipping) {
       skipping = false;
     }
     if (!skipping) {
@@ -580,10 +608,57 @@ function removeTOMLServer(source, name) {
   return kept.join("\n");
 }
 
+function scanTOMLHeader(line, state) {
+  if (state.multiline) {
+    if (hasMultilineDelimiter(line, state.multiline)) state.multiline = "";
+    return null;
+  }
+  const trimmed = line.trimStart();
+  if (trimmed.startsWith("[") && !trimmed.startsWith("[[")) {
+    try {
+      return findMarkerPath(parseTOML(`${line}\n__aipermission_header_marker = true\n`));
+    } catch {
+      return null;
+    }
+  }
+  for (const delimiter of ['"""', "'''"]) {
+    if (!hasMultilineDelimiter(line, delimiter)) continue;
+    if ((line.split(delimiter).length - 1) % 2 === 1) state.multiline = delimiter;
+    break;
+  }
+  return null;
+}
+
+function hasMultilineDelimiter(line, delimiter) {
+  const comment = line.indexOf("#");
+  return (comment < 0 ? line : line.slice(0, comment)).includes(delimiter);
+}
+
+function findMarkerPath(value, pathParts = []) {
+  if (!value || typeof value !== "object") return null;
+  if (value.__aipermission_header_marker === true) return pathParts;
+  for (const [key, nested] of Object.entries(value)) {
+    const match = findMarkerPath(nested, [...pathParts, key]);
+    if (match) return match;
+  }
+  return null;
+}
+
+function parseTOMLDocument(contents, location) {
+  try {
+    return parseTOML(contents);
+  } catch (error) {
+    redactParseError(error, "TOML");
+    throw new Error(`Could not parse TOML config at ${location}; the existing file was left unchanged`, { cause: error });
+  }
+}
+
 function tomlServerBlock(name, config) {
+  const fields = Object.entries(config)
+    .filter(([key]) => key !== "env")
+    .map(([key, value]) => `${key} = ${tomlValue(value)}`);
   return `[mcp_servers.${tomlKey(name)}]
-command = ${tomlString(config.command)}
-args = [${config.args.map(tomlString).join(", ")}]
+${fields.join("\n")}
 enabled = true
 
 [mcp_servers.${tomlKey(name)}.env]
@@ -592,17 +667,38 @@ AIPERMISSION_API_URL = ${tomlString(config.env.AIPERMISSION_API_URL)}
 AIPERMISSION_API_TOKEN = ${tomlString(config.env.AIPERMISSION_API_TOKEN)}`;
 }
 
-function printCustomConfig(name, config) {
+function printProviderConfig(name, provider, apiUrl, target) {
+  const baseConfig = buildMCPServerConfig({ apiUrl, token: "YOUR_TOKEN_HERE" });
+  const previewConfig = provider === "custom" ? baseConfig : adaptMCPServerConfig(provider, baseConfig);
   console.log("");
   console.log(`${color.bold}${color.cyan}Copy-paste config:${color.reset}`);
   console.log("");
-  console.log(JSON.stringify({ mcpServers: { [name]: config } }, null, 2));
+  if (target?.format === "toml") {
+    console.log(tomlPreviewServerBlock(name, previewConfig));
+    return;
+  }
+  console.log(JSON.stringify({ [target?.rootKey || "mcpServers"]: { [name]: previewConfig } }, null, 2));
 }
 
-function printTokenConfigWarning() {
+// Keep stdout rendering separate from the secret-bearing TOML writer.
+function tomlPreviewServerBlock(name, config) {
+  const fields = Object.entries(config)
+    .filter(([key]) => key !== "env")
+    .map(([key, value]) => `${key} = ${tomlValue(value)}`);
+  return `[mcp_servers.${tomlKey(name)}]
+${fields.join("\n")}
+enabled = true
+
+[mcp_servers.${tomlKey(name)}.env]
+NODE_ENV = "production"
+AIPERMISSION_API_URL = ${tomlString(config.env.AIPERMISSION_API_URL)}
+AIPERMISSION_API_TOKEN = "YOUR_TOKEN_HERE"`;
+}
+
+function printPlaceholderConfigNotice() {
   console.log("");
-  console.log(`${color.yellow}Warning:${color.reset} the printed config contains an AIPermission bearer token.`);
-  console.log(`${color.yellow}Keep it private and revoke the token if it is shared or committed.${color.reset}`);
+  console.log(`${color.yellow}Preview:${color.reset} the printed config uses YOUR_TOKEN_HERE and contains no bearer token.`);
+  console.log(`${color.yellow}Replace the placeholder through the client's private environment or config mechanism.${color.reset}`);
 }
 
 export function sanitizeName(value) {
@@ -632,6 +728,13 @@ export function tomlKey(value) {
 
 export function tomlString(value) {
   return JSON.stringify(String(value));
+}
+
+function tomlValue(value) {
+  if (typeof value === "string") return tomlString(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `[${value.map(tomlValue).join(", ")}]`;
+  throw new Error(`Unsupported TOML MCP config value: ${typeof value}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
