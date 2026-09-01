@@ -92,9 +92,10 @@ make bounded-fuzz
 ```
 
 Normal `go test` runs the committed fuzz seed corpus. `make bounded-fuzz` also
-mutates each security boundary for one second by default. Maintainers may set
-`AIPERMISSION_FUZZ_TIME` to an integer millisecond or second duration, capped at
-30 seconds per target, for a longer local pass.
+mutates each security boundary for 1,000 executions by default. Maintainers may
+set `AIPERMISSION_FUZZ_TIME` to an integer execution count ending in `x`, or a
+millisecond/second duration capped at 30 seconds, for a different local pass.
+The bounded runner uses one fuzz worker so CI results remain reproducible.
 
 The scheduled/manual connector conformance workflow additionally exercises
 ClickHouse, Postgres, Valkey, RabbitMQ, and S3 against disposable pinned service
