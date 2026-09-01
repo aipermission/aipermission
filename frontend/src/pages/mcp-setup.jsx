@@ -1,5 +1,6 @@
 import { PlugZap } from "lucide-react";
 import { mcpApiUrl } from "../lib/api";
+import { mcpClientCatalog } from "../lib/mcp-client-catalog";
 import { mcpPackageName, mcpPackageSpecifier } from "../lib/mcp-package";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -7,16 +8,13 @@ import { CopyButton } from "../components/ui/copy-button";
 import { Notice } from "../components/ui/notice";
 import { TerminalBlock } from "../components/ui/terminal-block";
 
-const initCommand = `npx -y ${mcpPackageName} init \\
+const setupCommand = `npx -y ${mcpPackageName} setup \\
   --provider codex \\
   --name aipermission-default`;
-const skillInstallCommand = `npx -y ${mcpPackageName} install-skill --client codex
-npx -y ${mcpPackageName} install-skill --client claude-code
-npx -y ${mcpPackageName} install-skill --client cursor
-npx -y ${mcpPackageName} install-skill --client vscode
-npx -y ${mcpPackageName} install-skill --client windsurf
-npx -y ${mcpPackageName} install-skill --client antigravity
-npx -y ${mcpPackageName} install-skill --client gemini`;
+const skillInstallCommand = mcpClientCatalog
+  .filter((client) => client.supportsSkill)
+  .map((client) => `npx -y ${mcpPackageName} install-skill --client ${client.id}`)
+  .join("\n");
 
 const manualConfig = JSON.stringify(
   {
@@ -36,16 +34,7 @@ const manualConfig = JSON.stringify(
   2,
 );
 
-const providers = [
-  ["codex", "OpenAI Codex"],
-  ["claude-code", "Claude Code"],
-  ["cursor", "Cursor"],
-  ["vscode", "VS Code"],
-  ["windsurf", "Windsurf"],
-  ["antigravity", "Google Antigravity"],
-  ["gemini", "Gemini CLI"],
-  ["custom", "Manual JSON"],
-];
+const providers = mcpClientCatalog.filter((client) => client.supportsMCP || client.id === "custom");
 
 export function MCPSetupPage() {
   return (
@@ -67,7 +56,8 @@ export function MCPSetupPage() {
         <CardHeader>
           <CardTitle>Recommended install</CardTitle>
           <CardDescription>
-            `npx` downloads the package from npm and runs init. The CLI asks for the API token with a hidden prompt.
+            `npx` downloads the package and runs setup. The CLI asks for the API token with a hidden prompt, writes the MCP config, and
+            installs the native operator skill.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -80,8 +70,8 @@ export function MCPSetupPage() {
             />
             <Step
               number="2"
-              title="Run the init command"
-              text="No global npm install is required; npx fetches @aipermission/mcp, asks for the token, and writes the provider config."
+              title="Run the setup command"
+              text="No global npm install is required; npx fetches @aipermission/mcp, asks for the token, writes the provider config, and installs the operator skill."
               compact
             />
             <Step
@@ -91,7 +81,7 @@ export function MCPSetupPage() {
               compact
             />
           </div>
-          <CodeBlock value={initCommand} />
+          <CodeBlock value={setupCommand} />
           <Notice>
             Project-local config files that are already tracked by Git are refused by default because they contain a bearer token. Use{" "}
             <span className="font-mono">--print</span> for manual copy, or <span className="font-mono">--force</span> only when you
@@ -107,10 +97,7 @@ export function MCPSetupPage() {
       <Card>
         <CardHeader>
           <CardTitle>Operator instructions</CardTitle>
-          <CardDescription>
-            Optional client-specific instructions for approval polling, running commands, console reads, reasons, and secret-safe command
-            habits.
-          </CardDescription>
+          <CardDescription>Refresh or repair only the native operator skill without changing an existing MCP token config.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-600">
@@ -130,8 +117,8 @@ export function MCPSetupPage() {
           </div>
           <CodeBlock value={skillInstallCommand} />
           <Notice>
-            Supported: Codex skills, Claude Code rules, Cursor rules, VS Code Copilot instructions, Windsurf rules, Antigravity rules, and
-            Gemini CLI context.
+            The generated list follows the same client registry as the CLI. Standard setup already installs this skill; these commands are
+            for standalone refresh or repair.
           </Notice>
         </CardContent>
       </Card>
@@ -143,10 +130,10 @@ export function MCPSetupPage() {
             <CardDescription>Use the provider id with `--provider`.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2">
-            {providers.map(([id, label]) => (
-              <div key={id} className="flex items-center justify-between rounded-md border border-stone-200 p-3 text-sm">
-                <span className="font-medium text-stone-800">{label}</span>
-                <Badge>{id}</Badge>
+            {providers.map((provider) => (
+              <div key={provider.id} className="flex items-center justify-between rounded-md border border-stone-200 p-3 text-sm">
+                <span className="font-medium text-stone-800">{provider.label}</span>
+                <Badge>{provider.id}</Badge>
               </div>
             ))}
           </CardContent>
@@ -173,7 +160,7 @@ export function MCPSetupPage() {
         </CardHeader>
         <CardContent className="grid gap-3 text-sm text-stone-600">
           <Step number="1" title="Create a token" text="Each AI client or agent should get its own token." />
-          <Step number="2" title="Run init" text="The CLI writes the provider-specific MCP config using that token." />
+          <Step number="2" title="Run setup" text="The CLI writes the provider-specific MCP config and native operator skill." />
           <Step
             number="3"
             title="Grant permissions"
