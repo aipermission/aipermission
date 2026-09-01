@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -168,12 +169,12 @@ func validateGatewaySecret(value string) error {
 
 func LoadOrCreateGatewaySecret(dataPath string) (string, error) {
 	path := GatewaySecretPath(dataPath)
-	value, err := os.ReadFile(path)
-	if err == nil && strings.TrimSpace(string(value)) != "" {
-		return strings.TrimSpace(string(value)), nil
+	value, err := readGatewaySecret(path)
+	if err == nil {
+		return value, nil
 	}
-	if err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("read gateway secret: %w", err)
+	if !os.IsNotExist(err) {
+		return "", err
 	}
 
 	secret := make([]byte, 32)
@@ -189,13 +190,96 @@ func LoadOrCreateGatewaySecret(dataPath string) (string, error) {
 
 func SaveGatewaySecret(dataPath string, secret string) error {
 	path := GatewaySecretPath(dataPath)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	value := strings.TrimSpace(secret)
+	if err := validateGatewaySecret(value); err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create gateway secret directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(strings.TrimSpace(secret)+"\n"), 0o600); err != nil {
-		return fmt.Errorf("write gateway secret: %w", err)
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("write gateway secret: %s is not a regular file", path)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect gateway secret: %w", err)
+	}
+
+	file, err := os.CreateTemp(dir, ".gateway.secret.tmp-*")
+	if err != nil {
+		return fmt.Errorf("create gateway secret replacement: %w", err)
+	}
+	tempPath := file.Name()
+	committed := false
+	defer func() {
+		_ = file.Close()
+		if !committed {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if err := file.Chmod(0o600); err != nil {
+		return fmt.Errorf("secure gateway secret replacement: %w", err)
+	}
+	if _, err := file.WriteString(value + "\n"); err != nil {
+		return fmt.Errorf("write gateway secret replacement: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync gateway secret replacement: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close gateway secret replacement: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("replace gateway secret: %w", err)
+	}
+	committed = true
+	directory, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("open gateway secret directory: %w", err)
+	}
+	defer directory.Close()
+	if err := directory.Sync(); err != nil {
+		return fmt.Errorf("sync gateway secret directory: %w", err)
 	}
 	return nil
+}
+
+func readGatewaySecret(path string) (string, error) {
+	before, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", err
+		}
+		return "", fmt.Errorf("inspect gateway secret: %w", err)
+	}
+	if !before.Mode().IsRegular() {
+		return "", fmt.Errorf("read gateway secret: %s is not a regular file", path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open gateway secret: %w", err)
+	}
+	defer file.Close()
+	after, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("stat gateway secret: %w", err)
+	}
+	if !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		return "", fmt.Errorf("read gateway secret: file changed while it was being opened")
+	}
+	if err := file.Chmod(0o600); err != nil {
+		return "", fmt.Errorf("secure gateway secret: %w", err)
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", fmt.Errorf("read gateway secret: %w", err)
+	}
+	value := strings.TrimSpace(string(data))
+	if err := validateGatewaySecret(value); err != nil {
+		return "", fmt.Errorf("invalid gateway secret file: %w", err)
+	}
+	return value, nil
 }
 
 func GatewaySecretPath(dataPath string) string {
