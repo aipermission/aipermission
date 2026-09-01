@@ -1,12 +1,10 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { sshProfileOptions } from "../_shared/network-transport-fields";
+import { ConnectionModeFields } from "../_shared/network-transport-fields";
 import { HostPingButton } from "../host-ping-button";
 
 export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
   const editing = mode === "edit";
-  const sshProfiles = sshProfileOptions(targets);
-  const overSSH = form.connection_mode === "over_ssh";
   return (
     <>
       <Notice tone="good">
@@ -17,38 +15,13 @@ export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets =
         Connector name
         <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} required />
       </Field>
-      <Field>
-        Connection mode
-        <Select value={form.connection_mode} onChange={(event) => onChange("connection_mode", event.target.value)}>
-          <option value="direct">Direct from this gateway</option>
-          <option value="over_ssh">Over an SSH connector profile</option>
-        </Select>
-      </Field>
-      {overSSH ? (
-        <Field>
-          SSH transport profile
-          <Select value={form.transport_target_ref} onChange={(event) => onChange("transport_target_ref", event.target.value)} required>
-            <option value="" disabled>
-              Select SSH profile
-            </option>
-            {sshProfiles.map((profile) => (
-              <option value={profile.ref} key={profile.ref}>
-                {profile.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
-      {overSSH ? (
-        <Notice>
-          Host and port are resolved from the SSH server. Use 127.0.0.1:15672 when RabbitMQ Management only listens on the remote machine;
-          do not use the AMQP port.
-        </Notice>
-      ) : (
-        <Notice>
-          For RabbitMQ Management running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost.
-        </Notice>
-      )}
+      <ConnectionModeFields
+        form={form}
+        targets={targets}
+        onChange={onChange}
+        overSSHNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:15672 when RabbitMQ Management only listens on the remote machine; do not use the AMQP port."
+        directNotice="For RabbitMQ Management running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost."
+      />
       <div className="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)_120px]">
         <Field>
           Scheme

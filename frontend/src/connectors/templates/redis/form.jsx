@@ -1,13 +1,11 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { sshProfileOptions } from "../_shared/network-transport-fields";
+import { ConnectionModeFields } from "../_shared/network-transport-fields";
 import { HostPingButton } from "../host-ping-button";
 import { serverProductLabel } from "./model";
 
 export function RedisConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
   const editing = mode === "edit";
-  const sshProfiles = sshProfileOptions(targets);
-  const overSSH = form.connection_mode === "over_ssh";
   const product = serverProductLabel(form);
   return (
     <>
@@ -25,35 +23,13 @@ export function RedisConnectorFormTemplate({ form, mode = "create", targets = []
           <option value="valkey">Valkey</option>
         </Select>
       </Field>
-      <Field>
-        Connection mode
-        <Select value={form.connection_mode} onChange={(event) => onChange("connection_mode", event.target.value)}>
-          <option value="direct">Direct from this gateway</option>
-          <option value="over_ssh">Over an SSH connector profile</option>
-        </Select>
-      </Field>
-      {overSSH ? (
-        <Field>
-          SSH transport profile
-          <Select value={form.transport_target_ref} onChange={(event) => onChange("transport_target_ref", event.target.value)} required>
-            <option value="" disabled>
-              Select SSH profile
-            </option>
-            {sshProfiles.map((profile) => (
-              <option value={profile.ref} key={profile.ref}>
-                {profile.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
-      {overSSH ? (
-        <Notice>
-          Host and port are resolved from the SSH server. Use 127.0.0.1:6379 when {product} only listens on the remote machine.
-        </Notice>
-      ) : (
-        <Notice>For {product} running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost.</Notice>
-      )}
+      <ConnectionModeFields
+        form={form}
+        targets={targets}
+        onChange={onChange}
+        overSSHNotice={`Host and port are resolved from the SSH server. Use 127.0.0.1:6379 when ${product} only listens on the remote machine.`}
+        directNotice={`For ${product} running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost.`}
+      />
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px_120px]">
         <Field>
           <span className="flex items-center justify-between gap-2">
