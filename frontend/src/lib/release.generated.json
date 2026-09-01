@@ -17,7 +17,8 @@
           "items": [
             "The local maintenance console now runs with an isolated environment and supervised process lifecycle so database credentials, proxy settings, and stale child processes do not escape their intended boundary.",
             "Container releases now build immutable source candidates, verify the exact source commit, and promote only validated image digests to public version and latest tags.",
-            "MCP configuration and installed skill files now use private, atomic file handling with package-level lint, format, test, build, and audit gates."
+            "MCP configuration and installed skill files now use private, atomic file handling with package-level lint, format, test, build, and audit gates.",
+            "The frontend runtime image now upgrades Expat to the patched Alpine package that closes CVE-2026-66046 and CVE-2026-76641."
           ]
         },
         {

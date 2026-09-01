@@ -27,6 +27,8 @@ and this project uses semantic versioning for public releases.
   commit, and promote only validated image digests to public version and latest tags.
 - MCP configuration and installed skill files now use private, atomic file handling with
   package-level lint, format, test, build, and audit gates.
+- The frontend runtime image now upgrades Expat to the patched Alpine package that
+  closes CVE-2026-66046 and CVE-2026-76641.
 
 ### Maintenance
 
