@@ -21,6 +21,9 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
+	if handled, status := api.RunMaintenanceConsoleSupervisorIfRequested(os.Args[1:]); handled {
+		os.Exit(status)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx); err != nil {

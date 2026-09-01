@@ -13,6 +13,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) Close() {
+	s.closeMaintenanceConsoleForLifecycle("server_shutdown")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closeAllUnlockedResources()
