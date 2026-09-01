@@ -27,7 +27,8 @@ issues small, scoped, and friendly to contributors who are learning the codebase
 ## Security And Safety
 
 - Add short examples that explain when to use temporary permission grants.
-- Add a command policy prototype that warns, but does not block, common high-risk commands.
+- Add focused tests and warning-only command policy rules for additional common
+  high-risk commands without introducing implicit blocking.
 - Add more built-in redaction patterns with focused tests.
 
 ## Backup And Import UX
