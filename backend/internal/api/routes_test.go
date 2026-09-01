@@ -83,6 +83,7 @@ Host *
 	if tokenResponse.Code != http.StatusCreated {
 		t.Fatalf("create token failed: %d %s", tokenResponse.Code, tokenResponse.Body.String())
 	}
+	assertSensitiveResponseHeaders(t, tokenResponse)
 	token := decodeRouteResponse[tokens.CreateResponse](t, tokenResponse.Body.Bytes())
 	if token.TokenValue == "" {
 		t.Fatalf("create token should return one-time token value")
@@ -91,6 +92,8 @@ Host *
 		t.Fatalf("list tokens failed: %d %s", response.Code, response.Body.String())
 	} else if strings.Contains(response.Body.String(), token.TokenValue) {
 		t.Fatalf("list tokens should not expose token value when reusable copy is disabled")
+	} else {
+		assertSensitiveResponseHeaders(t, response)
 	}
 
 	settingsResponse := performJSON(handler, http.MethodPut, "/api/settings/security", "", updateSecuritySettingsRequest{ReusableTokens: true})
@@ -101,13 +104,18 @@ Host *
 	if reusableTokenResponse.Code != http.StatusCreated {
 		t.Fatalf("create reusable token failed: %d %s", reusableTokenResponse.Code, reusableTokenResponse.Body.String())
 	}
+	assertSensitiveResponseHeaders(t, reusableTokenResponse)
 	reusableToken := decodeRouteResponse[tokens.CreateResponse](t, reusableTokenResponse.Body.Bytes())
 	if response := performJSON(handler, http.MethodGet, "/api/tokens", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), reusableToken.TokenValue) {
 		t.Fatalf("list tokens should expose token value when reusable copy is enabled: %d %s", response.Code, response.Body.String())
+	} else {
+		assertSensitiveResponseHeaders(t, response)
 	}
 
 	if response := performJSON(handler, http.MethodPost, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/revoke", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"revoked_at"`) {
 		t.Fatalf("revoke token failed: %d %s", response.Code, response.Body.String())
+	} else {
+		assertSensitiveResponseHeaders(t, response)
 	}
 	if response := performJSON(handler, http.MethodGet, "/api/audit-logs", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "token.created") || !strings.Contains(response.Body.String(), "token.revoked") {
 		t.Fatalf("audit log list should include token lifecycle events: %d %s", response.Code, response.Body.String())
@@ -118,6 +126,13 @@ Host *
 	}
 	if response := performJSON(handler, http.MethodDelete, "/api/connectors/ssh/credentials/"+strconv.FormatInt(importedKey.ID, 10), "", nil); response.Code != http.StatusNoContent {
 		t.Fatalf("delete imported key failed: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func assertSensitiveResponseHeaders(t *testing.T, response *httptest.ResponseRecorder) {
+	t.Helper()
+	if response.Header().Get("Cache-Control") != "no-store, private" || response.Header().Get("Pragma") != "no-cache" {
+		t.Fatalf("sensitive response cache headers = %#v", response.Header())
 	}
 }
 
