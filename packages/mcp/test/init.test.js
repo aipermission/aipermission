@@ -20,7 +20,14 @@ import {
   writeJSONMCPConfig,
   writeProviderConfig,
 } from "../src/init.js";
-import { codexSkillPath, loadSkill, normalizeClient, renderInstruction, skillPathForClient } from "../src/install-skill.js";
+import {
+  codexSkillPath,
+  loadSkill,
+  normalizeClient,
+  renderInstruction,
+  runInstallSkill,
+  skillPathForClient,
+} from "../src/install-skill.js";
 import { normalizeLocalAPIURL } from "../src/local-url.js";
 
 const require = createRequire(import.meta.url);
@@ -360,18 +367,20 @@ test("writeProviderConfig fails closed when a higher-precedence rule exposes the
 });
 
 test("codexSkillPath returns Codex skill location", () => {
-  assert.equal(codexSkillPath("/home/alice"), "/home/alice/.codex/skills/aipermission-operator/SKILL.md");
+  assert.equal(codexSkillPath("/home/alice"), "/home/alice/.agents/skills/aipermission-operator/SKILL.md");
 });
 
-test("skillPathForClient maps clients to their documented instruction locations", () => {
+test("skillPathForClient maps clients to their native skill locations", () => {
   const options = { homeDir: "/home/alice", projectDir: "/repo" };
-  assert.equal(skillPathForClient("codex", options), "/home/alice/.codex/skills/aipermission-operator/SKILL.md");
-  assert.equal(skillPathForClient("claude", options), "/repo/.claude/rules/aipermission-operator.md");
-  assert.equal(skillPathForClient("cursor", options), "/repo/.cursor/rules/aipermission-operator.mdc");
-  assert.equal(skillPathForClient("vscode", options), "/repo/.github/instructions/aipermission-operator.instructions.md");
-  assert.equal(skillPathForClient("windsurf", options), "/repo/.windsurf/rules/aipermission-operator.md");
-  assert.equal(skillPathForClient("antigravity", options), "/repo/.agents/rules/aipermission-operator.md");
-  assert.equal(skillPathForClient("gemini-cli", options), "/repo/GEMINI.md");
+  assert.equal(skillPathForClient("codex", options).path, "/home/alice/.agents/skills/aipermission-operator/SKILL.md");
+  assert.equal(skillPathForClient("claude", options).path, "/repo/.claude/skills/aipermission-operator/SKILL.md");
+  assert.equal(skillPathForClient("cursor", options).path, "/repo/.cursor/skills/aipermission-operator/SKILL.md");
+  assert.equal(skillPathForClient("vscode", options).path, "/repo/.github/skills/aipermission-operator/SKILL.md");
+  assert.equal(skillPathForClient("copilot", options).path, "/home/alice/.copilot/skills/aipermission-operator/SKILL.md");
+  assert.equal(skillPathForClient("windsurf", options).path, "/home/alice/.codeium/windsurf/skills/aipermission-operator/SKILL.md");
+  assert.equal(skillPathForClient("antigravity", options).path, "/home/alice/.gemini/config/skills/aipermission-operator/SKILL.md");
+  assert.equal(skillPathForClient("gemini-cli", options).path, "/home/alice/.gemini/skills/aipermission-operator/SKILL.md");
+  assert.equal(skillPathForClient("grok", options).path, "/home/alice/.grok/skills/aipermission-operator/SKILL.md");
 });
 
 test("normalizeClient supports common aliases", () => {
@@ -381,15 +390,23 @@ test("normalizeClient supports common aliases", () => {
   assert.throws(() => normalizeClient("unknown"), /Unknown client/);
 });
 
-test("renderInstruction formats client-specific rule files", () => {
+test("renderInstruction preserves the canonical native skill", () => {
   const skill = "---\nname: aipermission-operator\n---\n# AIPermission Operator\n\nUse AIPermission safely.\n";
-
-  assert.match(renderInstruction("cursor", skill), /alwaysApply: true/);
-  assert.match(renderInstruction("vscode", skill), /applyTo: "\*\*"/);
-  assert.match(renderInstruction("windsurf", skill), /trigger: always_on/);
-  assert.match(renderInstruction("antigravity", skill), /description: AIPermission MCP operator workflow/);
-  assert.match(renderInstruction("gemini", skill), /^## AIPermission Operator/);
-  assert.doesNotMatch(renderInstruction("claude-code", skill), /name: aipermission-operator/);
+  for (const client of [
+    "codex",
+    "claude-code",
+    "cursor",
+    "vscode",
+    "copilot",
+    "windsurf",
+    "antigravity",
+    "gemini",
+    "grok",
+    "agents",
+    "custom",
+  ]) {
+    assert.equal(renderInstruction(client, skill), skill);
+  }
 });
 
 test("loadSkill can read a local operator skill source", async () => {
@@ -411,4 +428,18 @@ test("loadSkill reads the bundled operator skill by default", async () => {
 
   assert.match(skill, /name: aipermission-operator/);
   assert.match(skill, /AIPermission Operator/);
+});
+
+test("runInstallSkill writes the canonical skill to the selected scope", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-native-skill-"));
+  const source = path.join(dir, "source.md");
+  const projectDir = path.join(dir, "project");
+  const skill = "---\nname: aipermission-operator\n---\n# AIPermission Operator\n";
+  await fs.writeFile(source, skill);
+
+  await runInstallSkill(["--client", "grok", "--scope", "project", "--project-dir", projectDir, "--source", source]);
+
+  const installed = path.join(projectDir, ".grok", "skills", "aipermission-operator", "SKILL.md");
+  assert.equal(await fs.readFile(installed, "utf8"), skill);
+  assert.equal((await fs.stat(installed)).mode & 0o777, 0o644);
 });
