@@ -88,6 +88,10 @@ export const bulkCommandDialogSource = readFileSync(
   "utf8",
 );
 export const transferCenterSource = readFileSync(join(currentDir, "..", "components", "transfer-center.jsx"), "utf8");
+export const fileTransferActionsSource = readFileSync(
+  join(currentDir, "..", "components", "file-transfer", "file-transfer-actions.js"),
+  "utf8",
+);
 export const tokenPermissionPanelSource = readFileSync(
   join(currentDir, "..", "components", "console", "token-permission-panel.jsx"),
   "utf8",

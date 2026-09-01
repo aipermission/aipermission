@@ -78,10 +78,12 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
   const pendingItemIDsJSON = JSON.stringify(pendingItems.map((item) => item.id));
   const [selectedItems, setSelectedItems] = useState(() => new Set(pendingItems.map((item) => item.id)));
   const [note, setNote] = useState("");
+  const [decision, setDecision] = useState({ state: "idle", error: "" });
 
   useEffect(() => {
     setSelectedItems(new Set(JSON.parse(pendingItemIDsJSON)));
     setNote("");
+    setDecision({ state: "idle", error: "" });
   }, [batch.id, pendingItemIDsJSON]);
 
   function toggleItem(itemID) {
@@ -96,12 +98,26 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
     });
   }
 
-  function approveSelected() {
-    onApprove?.(batch.id, Array.from(selectedItems), note);
+  async function approveSelected() {
+    if (decision.state === "pending") return;
+    setDecision({ state: "pending", error: "" });
+    try {
+      await onApprove?.(batch.id, Array.from(selectedItems), note);
+      setDecision({ state: "idle", error: "" });
+    } catch (error) {
+      setDecision({ state: "error", error: error?.message || "Could not approve this transfer." });
+    }
   }
 
-  function declineAll() {
-    onDecline?.(batch.id, note);
+  async function declineAll() {
+    if (decision.state === "pending") return;
+    setDecision({ state: "pending", error: "" });
+    try {
+      await onDecline?.(batch.id, note);
+      setDecision({ state: "idle", error: "" });
+    } catch (error) {
+      setDecision({ state: "error", error: error?.message || "Could not decline this transfer." });
+    }
   }
 
   return (
@@ -190,13 +206,14 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
             />
           </label>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={declineAll}>
+            <Button type="button" variant="outline" onClick={declineAll} disabled={decision.state === "pending"}>
               Decline all
             </Button>
-            <Button type="button" onClick={approveSelected} disabled={selectedItems.size === 0}>
+            <Button type="button" onClick={approveSelected} disabled={selectedItems.size === 0 || decision.state === "pending"}>
               Approve selected ({selectedItems.size})
             </Button>
           </div>
+          {decision.error ? <Notice tone="bad">{decision.error}</Notice> : null}
         </div>
       ) : null}
       {!compact && batch.items?.length ? (
