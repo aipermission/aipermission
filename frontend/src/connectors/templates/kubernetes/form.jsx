@@ -1,9 +1,8 @@
 import { Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { sshProfileOptions } from "../_shared/network-transport-fields";
+import { SSHTransportProfileField } from "../_shared/network-transport-fields";
 
 export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }) {
-  const sshProfiles = sshProfileOptions(targets);
   return (
     <>
       <Notice tone="good">
@@ -14,19 +13,11 @@ export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }
         Connector name
         <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} required />
       </Field>
-      <Field>
-        SSH transport profile
-        <Select value={form.transport_target_ref} onChange={(event) => onChange("transport_target_ref", event.target.value)} required>
-          <option value="" disabled>
-            Select SSH profile
-          </option>
-          {sshProfiles.map((profile) => (
-            <option value={profile.ref} key={profile.ref}>
-              {profile.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
+      <SSHTransportProfileField
+        value={form.transport_target_ref}
+        targets={targets}
+        onChange={(value) => onChange("transport_target_ref", value)}
+      />
       <div className="grid gap-3 sm:grid-cols-3">
         <Field>
           kubectl command

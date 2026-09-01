@@ -1,13 +1,11 @@
 import { Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { sshProfileOptions } from "../_shared/network-transport-fields";
+import { ConnectionModeFields } from "../_shared/network-transport-fields";
 import { HostPingButton } from "../host-ping-button";
 import { KafkaSASLFields } from "./sasl-fields";
 
 export function KafkaConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
   const editing = mode === "edit";
-  const overSSH = form.connection_mode === "over_ssh";
-  const sshProfiles = sshProfileOptions(targets);
   return (
     <>
       <Notice tone="good">
@@ -25,33 +23,13 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
           <option value="redpanda">Redpanda</option>
         </Select>
       </Field>
-      <Field>
-        Connection mode
-        <Select value={form.connection_mode} onChange={(event) => onChange("connection_mode", event.target.value)}>
-          <option value="direct">Direct from this gateway</option>
-          <option value="over_ssh">Over an SSH connector profile</option>
-        </Select>
-      </Field>
-      {overSSH ? (
-        <Field>
-          SSH transport profile
-          <Select value={form.transport_target_ref} onChange={(event) => onChange("transport_target_ref", event.target.value)} required>
-            <option value="" disabled>
-              Select SSH profile
-            </option>
-            {sshProfiles.map((profile) => (
-              <option value={profile.ref} key={profile.ref}>
-                {profile.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
-      <Notice>
-        {overSSH
-          ? "Every broker address advertised by the cluster is reached through the selected SSH transport. Broker hostnames must resolve on that remote host."
-          : "The gateway must reach bootstrap and advertised broker addresses. For a broker on the Docker host, use host.docker.internal instead of localhost."}
-      </Notice>
+      <ConnectionModeFields
+        form={form}
+        targets={targets}
+        onChange={onChange}
+        overSSHNotice="Every broker address advertised by the cluster is reached through the selected SSH transport. Broker hostnames must resolve on that remote host."
+        directNotice="The gateway must reach bootstrap and advertised broker addresses. For a broker on the Docker host, use host.docker.internal instead of localhost."
+      />
       <Field>
         <span className="flex items-center justify-between gap-2">
           <span>Bootstrap brokers</span>

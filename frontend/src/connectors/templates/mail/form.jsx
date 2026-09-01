@@ -1,11 +1,10 @@
 import { Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { HostPingButton } from "../host-ping-button";
-import { sshProfileOptions } from "../_shared/network-transport-fields";
+import { ConnectionModeFields } from "../_shared/network-transport-fields";
 import { MailCredentialFields } from "./profile-fields";
 
 export function MailConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
-  const overSSH = form.connection_mode === "over_ssh";
   return (
     <>
       <Notice tone="good">Mail reads use IMAP without changing read state. Sending uses SMTP and remains a separate write action.</Notice>
@@ -13,33 +12,13 @@ export function MailConnectorFormTemplate({ form, mode = "create", targets = [],
         Connector name
         <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} required />
       </Field>
-      <Field>
-        Connection mode
-        <Select value={form.connection_mode} onChange={(event) => onChange("connection_mode", event.target.value)}>
-          <option value="direct">Direct from this gateway</option>
-          <option value="over_ssh">Over an SSH connector profile</option>
-        </Select>
-      </Field>
-      {overSSH ? (
-        <Field>
-          SSH transport profile
-          <Select value={form.transport_target_ref} onChange={(event) => onChange("transport_target_ref", event.target.value)} required>
-            <option value="" disabled>
-              Select SSH profile
-            </option>
-            {sshProfileOptions(targets).map((profile) => (
-              <option value={profile.ref} key={profile.ref}>
-                {profile.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
-      <Notice>
-        {overSSH
-          ? "IMAP and SMTP hostnames resolve from the selected SSH server. The transport profile must belong to this project."
-          : "The local gateway connects to both mail endpoints. Use host.docker.internal only for services on the Docker host."}
-      </Notice>
+      <ConnectionModeFields
+        form={form}
+        targets={targets}
+        onChange={onChange}
+        overSSHNotice="IMAP and SMTP hostnames resolve from the selected SSH server. The transport profile must belong to this project."
+        directNotice="The local gateway connects to both mail endpoints. Use host.docker.internal only for services on the Docker host."
+      />
       <MailEndpointFields prefix="imap" label="IMAP" form={form} onChange={onChange} />
       <MailEndpointFields prefix="smtp" label="SMTP" form={form} onChange={onChange} />
       <Field>
