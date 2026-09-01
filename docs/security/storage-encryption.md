@@ -161,6 +161,8 @@ Important: the gateway vault secret is sensitive. If it is lost, vault-encrypted
 
 `AIPERMISSION_GATEWAY_SECRET` may be omitted. In that default mode, the visible local-development placeholder is replaced at startup by a generated high-entropy secret stored in the local data directory with owner-only permissions.
 
+The generated `gateway.secret` file is replaced atomically and kept at owner-only permissions. Startup fails closed when an existing file is empty, too short, a symlink, or not a regular file; it never replaces an invalid existing secret with newly generated material. Existing custom secrets of at least 32 characters remain supported so upgrades do not rotate gateway encryption material.
+
 SSH host key pins are not part of the SQLCipher database. They live in the local `known_hosts` file under the data path and contain host key metadata only, not SSH private keys. A `.aipdb` backup restores gateway credentials and settings, but host key trust still belongs to the local machine that approved it.
 
 ## Product Decision
