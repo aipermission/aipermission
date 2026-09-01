@@ -3,6 +3,42 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.39",
+      "date": "2026-09-01",
+      "label": "MCP client compatibility and setup",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "A client-aware MCP setup command now configures supported local AI clients at user or project scope and installs the native AIPermission operator skill where the client supports Agent Skills.",
+            "A secret-safe setup doctor now validates client configuration, installed skills, gateway reachability, and a real MCP protocol handshake without printing reusable credentials.",
+            "Native setup support now covers Codex, Claude Code, Cursor, VS Code, GitHub Copilot CLI, Windsurf Cascade, Antigravity IDE and CLI, Gemini CLI, Grok Build, and standards-compatible custom agents."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "MCP client metadata, configuration formats, scope behavior, documentation, and frontend setup guidance now derive from one shared compatibility catalog.",
+            "Operator instructions now use the canonical native skill package instead of legacy always-on rule files when a supported client provides Agent Skills."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Setup rejects unknown flags, unsafe symbolic-link or junction targets, Git-tracked secret-bearing project files, and non-private writes while preserving side-effect-free print output.",
+            "Configuration and skill installation use atomic private writes, and diagnostic output redacts credential-bearing values and parser failures."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "The MCP package now locks the supported-client compatibility matrix, setup lifecycle, package contents, and real protocol negotiation with focused regression coverage.",
+            "Client setup documentation now distinguishes native skills, legacy rule formats, local and hosted client boundaries, project scope, Node.js requirements, and Windows execution guidance."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.38",
       "date": "2026-09-01",
       "label": "Release pipeline and runtime isolation hardening",
