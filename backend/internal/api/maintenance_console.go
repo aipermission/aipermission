@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +23,8 @@ const (
 	maintenanceConsoleDefaultCols        = 120
 	maintenanceConsoleDefaultRows        = 32
 	maintenanceConsolePingInterval       = 25 * time.Second
+	maintenanceConsoleWriteTimeout       = 2 * time.Second
+	maintenanceConsoleProcessGracePeriod = 750 * time.Millisecond
 )
 
 type maintenanceConsoleClientMessage struct {
@@ -44,17 +47,19 @@ type maintenanceConsoleRuntime struct {
 }
 
 type maintenanceConsoleSession struct {
-	mu         sync.Mutex
-	cmd        *exec.Cmd
-	pty        *os.File
-	shell      string
-	status     string
-	transcript string
-	cols       int
-	rows       int
-	clients    map[*websocket.Conn]*sync.Mutex
-	closed     chan struct{}
-	closeOnce  sync.Once
+	mu          sync.Mutex
+	cmd         *exec.Cmd
+	pty         *os.File
+	shell       string
+	status      string
+	transcript  string
+	cols        int
+	rows        int
+	clients     map[*websocket.Conn]*sync.Mutex
+	closed      chan struct{}
+	processDone chan struct{}
+	stateOnce   sync.Once
+	stopOnce    sync.Once
 }
 
 func newMaintenanceConsoleRuntime() *maintenanceConsoleRuntime {
@@ -74,7 +79,7 @@ func (h maintenanceConsoleHandlers) status(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled":              true,
+		"enabled":              maintenanceConsoleSupported(),
 		"scope":                "local-ui-only",
 		"mode":                 "realtime-pty",
 		"shell":                shell,
@@ -87,6 +92,10 @@ func (h maintenanceConsoleHandlers) status(w http.ResponseWriter, r *http.Reques
 func (h maintenanceConsoleHandlers) open(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := h.activeRuntimeOrLocked(w)
 	if !ok {
+		return
+	}
+	if !maintenanceConsoleSupported() {
+		writeError(w, http.StatusNotImplemented, "maintenance console is not supported on this platform")
 		return
 	}
 	session, err := h.maintenanceConsole.open()
@@ -131,6 +140,10 @@ func (h maintenanceConsoleHandlers) close(w http.ResponseWriter, r *http.Request
 
 func (h maintenanceConsoleHandlers) attach(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.activeRuntimeOrLocked(w); !ok {
+		return
+	}
+	if !maintenanceConsoleSupported() {
+		writeError(w, http.StatusNotImplemented, "maintenance console is not supported on this platform")
 		return
 	}
 	session := h.maintenanceConsole.active()
@@ -201,13 +214,7 @@ func (m *maintenanceConsoleRuntime) open() (*maintenanceConsoleSession, error) {
 }
 
 func (m *maintenanceConsoleRuntime) close() bool {
-	if m == nil {
-		return false
-	}
-	m.mu.Lock()
-	session := m.session
-	m.session = nil
-	m.mu.Unlock()
+	session := m.detach()
 	if session == nil {
 		return false
 	}
@@ -215,11 +222,47 @@ func (m *maintenanceConsoleRuntime) close() bool {
 	return true
 }
 
+func (m *maintenanceConsoleRuntime) detach() *maintenanceConsoleSession {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	session := m.session
+	m.session = nil
+	m.mu.Unlock()
+	return session
+}
+
+func (s *Server) closeMaintenanceConsoleForLifecycle(reason string) bool {
+	if s == nil || s.maintenanceConsole == nil {
+		return false
+	}
+	session := s.maintenanceConsole.detach()
+	if session == nil {
+		return false
+	}
+	session.close()
+	runtime := s.activeRuntime()
+	if runtime != nil {
+		s.writeObservationAudit(context.Background(), runtime, "system", nil, 0, "maintenance_console.closed", map[string]any{
+			"scope":  "local-ui-only",
+			"mode":   "realtime-pty",
+			"closed": true,
+			"reason": reason,
+		})
+	}
+	return true
+}
+
 func startMaintenanceConsoleSession() (*maintenanceConsoleSession, error) {
 	shell := maintenanceConsoleShell()
-	cmd := exec.Command(shell)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "AIPERMISSION_MAINTENANCE_CONSOLE=1")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setctty: true, Setsid: true}
+	cmd, err := maintenanceConsoleCommand(shell, os.Environ())
+	if err != nil {
+		return nil, err
+	}
+	if err := configureMaintenanceConsoleProcess(cmd); err != nil {
+		return nil, err
+	}
 	tty, err := pty.StartWithSize(cmd, &pty.Winsize{
 		Rows: uint16(maintenanceConsoleDefaultRows),
 		Cols: uint16(maintenanceConsoleDefaultCols),
@@ -228,18 +271,77 @@ func startMaintenanceConsoleSession() (*maintenanceConsoleSession, error) {
 		return nil, err
 	}
 	session := &maintenanceConsoleSession{
-		cmd:     cmd,
-		pty:     tty,
-		shell:   shell,
-		status:  "connected",
-		cols:    maintenanceConsoleDefaultCols,
-		rows:    maintenanceConsoleDefaultRows,
-		clients: map[*websocket.Conn]*sync.Mutex{},
-		closed:  make(chan struct{}),
+		cmd:         cmd,
+		pty:         tty,
+		shell:       shell,
+		status:      "connected",
+		cols:        maintenanceConsoleDefaultCols,
+		rows:        maintenanceConsoleDefaultRows,
+		clients:     map[*websocket.Conn]*sync.Mutex{},
+		closed:      make(chan struct{}),
+		processDone: make(chan struct{}),
 	}
 	go session.readLoop()
 	go session.waitLoop()
 	return session, nil
+}
+
+func maintenanceConsoleCommand(shell string, sourceEnvironment []string) (*exec.Cmd, error) {
+	arguments := []string{}
+	if shell == "/bin/bash" {
+		arguments = append(arguments, "--noprofile", "--norc")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("resolve maintenance console supervisor: %w", err)
+	}
+	cmd := exec.Command(executable, append([]string{maintenanceConsoleSupervisorArgument, shell}, arguments...)...)
+	cmd.Env = maintenanceConsoleEnvironment(sourceEnvironment)
+	return cmd, nil
+}
+
+func maintenanceConsoleEnvironment(source []string) []string {
+	allowed := map[string]struct{}{
+		"HOME":              {},
+		"LANG":              {},
+		"LANGUAGE":          {},
+		"LC_ADDRESS":        {},
+		"LC_ALL":            {},
+		"LC_COLLATE":        {},
+		"LC_CTYPE":          {},
+		"LC_IDENTIFICATION": {},
+		"LC_MEASUREMENT":    {},
+		"LC_MESSAGES":       {},
+		"LC_MONETARY":       {},
+		"LC_NAME":           {},
+		"LC_NUMERIC":        {},
+		"LC_PAPER":          {},
+		"LC_TELEPHONE":      {},
+		"LC_TIME":           {},
+		"LOGNAME":           {},
+		"PATH":              {},
+		"SHELL":             {},
+		"TZ":                {},
+		"USER":              {},
+	}
+	environment := make([]string, 0, len(allowed)+4)
+	for _, entry := range source {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok || key == "" {
+			continue
+		}
+		if _, ok := allowed[key]; !ok {
+			continue
+		}
+		environment = append(environment, entry)
+	}
+	return append(environment,
+		"TERM=xterm-256color",
+		"HISTFILE=/dev/null",
+		"HISTSIZE=0",
+		"HISTFILESIZE=0",
+		"AIPERMISSION_MAINTENANCE_CONSOLE=1",
+	)
 }
 
 func maintenanceConsoleShell() string {
@@ -275,7 +377,15 @@ func (s *maintenanceConsoleSession) isLive() bool {
 
 func (s *maintenanceConsoleSession) attach(ws *websocket.Conn) {
 	writeMu := &sync.Mutex{}
-	s.addClient(ws, writeMu)
+	if !s.addClient(ws, writeMu) {
+		_ = writeMaintenanceConsoleMessage(ws, writeMu, maintenanceConsoleServerMessage{
+			Type:   "error",
+			Status: "closed",
+			Data:   "maintenance console is no longer open",
+		})
+		_ = ws.Close()
+		return
+	}
 	defer s.removeClient(ws)
 
 	ws.SetReadLimit(maintenanceConsoleMaxInputBytes + 1024)
@@ -315,24 +425,33 @@ func (s *maintenanceConsoleSession) attach(ws *websocket.Conn) {
 	}
 }
 
-func (s *maintenanceConsoleSession) addClient(ws *websocket.Conn, writeMu *sync.Mutex) {
-	s.mu.Lock()
-	s.clients[ws] = writeMu
-	snapshot := s.transcript
-	status := s.status
-	shell := s.shell
-	s.mu.Unlock()
+func (s *maintenanceConsoleSession) addClient(ws *websocket.Conn, writeMu *sync.Mutex) bool {
+	snapshot, ok := s.registerClient(ws, writeMu)
+	if !ok {
+		return false
+	}
 	_ = writeMaintenanceConsoleMessage(ws, writeMu, maintenanceConsoleServerMessage{
 		Type:   "snapshot",
-		Status: status,
-		Shell:  shell,
-		Data:   snapshot,
+		Status: snapshot.Status,
+		Shell:  snapshot.Shell,
+		Data:   snapshot.Transcript,
 	})
 	_ = writeMaintenanceConsoleMessage(ws, writeMu, maintenanceConsoleServerMessage{
 		Type:   "ready",
-		Status: status,
-		Shell:  shell,
+		Status: snapshot.Status,
+		Shell:  snapshot.Shell,
 	})
+	return true
+}
+
+func (s *maintenanceConsoleSession) registerClient(ws *websocket.Conn, writeMu *sync.Mutex) (maintenanceConsoleSnapshot, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.status != "connected" || s.pty == nil {
+		return maintenanceConsoleSnapshot{}, false
+	}
+	s.clients[ws] = writeMu
+	return maintenanceConsoleSnapshot{Status: s.status, Shell: s.shell, Transcript: s.transcript}, true
 }
 
 func (s *maintenanceConsoleSession) removeClient(ws *websocket.Conn) {
@@ -387,9 +506,9 @@ func (s *maintenanceConsoleSession) readLoop() {
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !strings.Contains(strings.ToLower(err.Error()), "input/output error") {
-				s.markClosed("error", err.Error())
+				s.terminate("error", err.Error())
 			} else {
-				s.markClosed("closed", "maintenance console closed")
+				s.terminate("closed", "maintenance console closed")
 			}
 			return
 		}
@@ -398,9 +517,11 @@ func (s *maintenanceConsoleSession) readLoop() {
 
 func (s *maintenanceConsoleSession) waitLoop() {
 	if s.cmd == nil {
+		s.markProcessDone()
 		return
 	}
 	err := s.cmd.Wait()
+	s.markProcessDone()
 	if err != nil {
 		s.markClosed("closed", "maintenance console process exited")
 		return
@@ -415,7 +536,7 @@ func (s *maintenanceConsoleSession) appendTranscript(data string) {
 }
 
 func (s *maintenanceConsoleSession) markClosed(status string, data string) {
-	s.closeOnce.Do(func() {
+	s.stateOnce.Do(func() {
 		s.mu.Lock()
 		s.status = status
 		if s.pty != nil {
@@ -423,34 +544,84 @@ func (s *maintenanceConsoleSession) markClosed(status string, data string) {
 		}
 		s.mu.Unlock()
 		close(s.closed)
-		s.broadcast(maintenanceConsoleServerMessage{Type: "exit", Status: status, Shell: s.shell, Data: data})
+		s.closeClients()
 	})
 }
 
 func (s *maintenanceConsoleSession) close() {
-	s.closeOnce.Do(func() {
+	s.terminate("closed", "maintenance console closed")
+}
+
+func (s *maintenanceConsoleSession) terminate(status string, data string) {
+	s.stopOnce.Do(func() {
 		s.mu.Lock()
-		s.status = "closed"
 		tty := s.pty
 		cmd := s.cmd
+		if s.status == "connected" {
+			s.status = "closing"
+		}
 		s.mu.Unlock()
 		if tty != nil {
 			_ = tty.Close()
 		}
 		if cmd != nil && cmd.Process != nil {
-			_ = cmd.Process.Signal(syscall.SIGHUP)
-			time.AfterFunc(250*time.Millisecond, func() {
-				_ = cmd.Process.Kill()
-			})
+			terminateMaintenanceConsoleSupervisor(cmd.Process.Pid)
+			waitForMaintenanceConsoleProcess(s.processDone, maintenanceConsoleProcessGracePeriod)
 		}
-		close(s.closed)
-		s.broadcast(maintenanceConsoleServerMessage{
-			Type:   "exit",
-			Status: "closed",
-			Shell:  s.shell,
-			Data:   "maintenance console closed",
-		})
 	})
+	s.markClosed(status, data)
+}
+
+func (s *maintenanceConsoleSession) markProcessDone() {
+	select {
+	case <-s.processDone:
+		return
+	default:
+		close(s.processDone)
+	}
+}
+
+func signalMaintenanceConsoleProcess(pid int, signal syscall.Signal) error {
+	if pid < 1 {
+		return nil
+	}
+	return syscall.Kill(pid, signal)
+}
+
+func terminateMaintenanceConsoleSupervisor(pid int) {
+	if pid < 1 {
+		return
+	}
+	_ = signalMaintenanceConsoleProcess(pid, syscall.SIGHUP)
+	if waitForMaintenanceConsoleSupervisorExit(pid, maintenanceConsoleProcessGracePeriod) {
+		return
+	}
+	_ = signalMaintenanceConsoleProcess(pid, syscall.SIGKILL)
+}
+
+func waitForMaintenanceConsoleSupervisorExit(pid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for maintenanceConsoleProcessExists(pid) {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return true
+}
+
+func maintenanceConsoleProcessExists(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+func waitForMaintenanceConsoleProcess(done <-chan struct{}, timeout time.Duration) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+	}
 }
 
 func (s *maintenanceConsoleSession) broadcast(message maintenanceConsoleServerMessage) {
@@ -472,7 +643,20 @@ func writeMaintenanceConsoleMessage(ws *websocket.Conn, writeMu *sync.Mutex, mes
 		writeMu.Lock()
 		defer writeMu.Unlock()
 	}
+	if err := ws.SetWriteDeadline(time.Now().Add(maintenanceConsoleWriteTimeout)); err != nil {
+		return err
+	}
 	return ws.WriteJSON(message)
+}
+
+func (s *maintenanceConsoleSession) closeClients() {
+	s.mu.Lock()
+	clients := s.clients
+	s.clients = map[*websocket.Conn]*sync.Mutex{}
+	s.mu.Unlock()
+	for ws := range clients {
+		_ = ws.Close()
+	}
 }
 
 func maintenanceConsoleKeepAlive(ws *websocket.Conn, writeMu *sync.Mutex, stop <-chan struct{}) {

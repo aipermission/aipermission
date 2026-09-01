@@ -236,6 +236,9 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "scope must be current or all")
 		return
 	}
+	if request.Scope == "all" || s.currentLockLeavesNoUnlockedRuntime() {
+		s.closeMaintenanceConsoleForLifecycle("database_lock_" + request.Scope)
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -252,4 +255,10 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, s.currentUnlockStatusLocked())
+}
+
+func (s *Server) currentLockLeavesNoUnlockedRuntime() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.workspaces) <= 1
 }

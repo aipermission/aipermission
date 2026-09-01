@@ -920,7 +920,14 @@ boundary, UI session, and CSRF checks, is not exposed through MCP, and uses the
 same browser terminal component as SSH console sessions. The API exposes
 `open`, websocket `attach`, and `close`; lifecycle events are audited, but the
 terminal transcript is kept as bounded in-memory UI state rather than stored as
-command history.
+command history. Persistent shell history is disabled. Locking the final
+database, locking all databases, or stopping the gateway terminates the PTY and
+its attached browser clients. The shell receives a minimal allowlisted
+environment for basic terminal operation; gateway configuration, provider
+credentials, proxy values, and other backend process environment variables are
+not inherited. This is a trusted local-operator diagnostic shell inside the
+gateway container, not a sandbox boundary against the gateway process or its
+local filesystem.
 
 `GET /api/settings/diagnostics` downloads a bounded JSON support report after
 normal local UI-session authentication. The strict allowlist includes release,
