@@ -34,10 +34,14 @@ test("nginx CSP keeps browser connections local plus manual update checks", () =
   assert.doesNotMatch(nginxSource, /ws:\/\/localhost:\*/);
 });
 
-test("nginx accepts encrypted database imports without HTML error pages", () => {
+test("nginx keeps route-specific upload limits and JSON error responses aligned", () => {
   assert.match(nginxSource, /client_max_body_size 256m/);
+  assert.match(nginxSource, /location = \/api\/file-transfers\/upload[\s\S]*client_max_body_size 528m/);
+  assert.match(nginxSource, /location = \/api\/file-transfers\/upload-batch[\s\S]*client_max_body_size 1040m/);
   assert.match(nginxSource, /error_page 413 = @payload_too_large/);
   assert.match(nginxSource, /Uploaded database is too large/);
+  assert.match(nginxSource, /Maximum file size is 512 MiB/);
+  assert.match(nginxSource, /Maximum batch size is 1 GiB/);
   assert.doesNotMatch(nginxSource, /proxy_intercept_errors\s+on/);
   assert.doesNotMatch(nginxSource, /error_page 502 503 504/);
 });
