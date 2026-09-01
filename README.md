@@ -90,7 +90,7 @@ through MCP or the normal REST API.
 Requirements:
 
 - Docker with Docker Compose
-- Node.js only for MCP source development or package tooling
+- Node.js 20+ with npm/npx when using the MCP bridge or developing its package
 
 Start from published images:
 
@@ -156,7 +156,7 @@ secret inventory and exact-session application flow; see
 Install the official MCP bridge into a supported client:
 
 ```bash
-npx -y @aipermission/mcp@0.2.38 setup \
+npx -y @aipermission/mcp@VERSION setup \
   --provider codex \
   --scope user \
   --name aipermission
@@ -169,12 +169,16 @@ skill. Restart the AI client after installation.
 Validate both paths without printing the token:
 
 ```bash
-npx -y @aipermission/mcp@0.2.38 doctor --client codex --scope user
+npx -y @aipermission/mcp@VERSION doctor --client codex --scope user
 ```
 
 Supported client presets and source-development setup are documented in
 [MCP Client Setup](docs/setup/mcp-client-setup.md). The MCP tool contract is
 documented in [MCP Tools](docs/api/mcp-tools.md).
+
+Release preparation replaces `VERSION` with the published release. When reading
+a development branch, use the matching local package build instead of copying a
+placeholder command.
 
 ## Execution Rules
 

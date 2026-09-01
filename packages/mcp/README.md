@@ -18,6 +18,10 @@ target/profile/action permission model as future connectors.
 
 `@aipermission/mcp` is the official MCP bridge package. The unscoped `aipermission` npm package is only a placeholder that points users here.
 
+The bridge requires Node.js 20+ and npm/npx in the AI client's child-process
+environment. GUI clients and native Windows shells can use a different `PATH`
+from your interactive terminal.
+
 The package includes MCP Registry metadata:
 
 - `mcpName` in `package.json`
@@ -44,7 +48,19 @@ Check both paths without printing the bearer token:
 npx -y @aipermission/mcp doctor --client codex --scope user
 ```
 
-The generated MCP config contains a bearer token. Keep it private. For project-local configs such as `.mcp.json`, `.cursor/mcp.json`, and `.vscode/mcp.json`, the init command refuses to write into files already tracked by Git unless `--force` is passed. For untracked project-local configs, it adds both the final file and its crash-safe temporary-file pattern to `.git/info/exclude` before writing. Symbolic-link config destinations are rejected instead of being silently replaced; use `--print` and update a symlink-managed config through its owning tool. If a token config is committed or shared, revoke that token in the AIPermission UI.
+The generated MCP config contains a bearer token. Keep it private. For
+project-local configs such as `.mcp.json`, `.cursor/mcp.json`, and
+`.vscode/mcp.json`, setup refuses to write into files already tracked by Git
+unless `--force` is passed. For untracked project-local configs, it locally
+excludes and verifies four paths: the final config, crash-safe temporary-file
+pattern, Windows staging-directory pattern, and update lock. Config and skill
+destinations reject symbolic links or junctions rather than following them.
+Use `init --print` and update a link-managed config through its owning tool.
+Print mode does not read or print a bearer token: it emits `YOUR_TOKEN_HERE`,
+writes no config or skill, and requires you to replace the placeholder through
+the client's private environment or config mechanism. Install the skill
+separately when needed. If a token config is committed or shared, revoke that
+token in the AIPermission UI.
 
 ## Manual Config
 
@@ -53,7 +69,7 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp@0.2.38"],
+      "args": ["-y", "@aipermission/mcp@VERSION"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",
@@ -63,6 +79,9 @@ The generated MCP config contains a bearer token. Keep it private. For project-l
   }
 }
 ```
+
+Replace `VERSION` with the release you intend to pin. The setup command does
+this automatically.
 
 ## Tools
 
@@ -187,6 +206,7 @@ Supported clients:
 - `vscode` / `copilot`: `~/.copilot/skills/.../SKILL.md` or `.github/skills/.../SKILL.md`
 - `windsurf`: `~/.codeium/windsurf/skills/.../SKILL.md` or `.windsurf/skills/.../SKILL.md`
 - `antigravity`: `~/.gemini/config/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md`
+- `antigravity-cli`: `~/.gemini/antigravity-cli/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md`
 - `gemini`: `~/.gemini/skills/.../SKILL.md` or `.gemini/skills/.../SKILL.md`
 - `grok`: `~/.grok/skills/.../SKILL.md` or `.grok/skills/.../SKILL.md`
 - `agents`: `~/.agents/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md`
@@ -201,6 +221,13 @@ operator skill bundled in the npm package; `--source` accepts local file paths
 only and rejects HTTP(S) sources. The MCP server also publishes a concise
 instruction summary during initialization for clients that surface protocol
 instructions.
+
+Client-specific home overrides are honored where the client documents them:
+`CODEX_HOME` for Codex MCP config, `CLAUDE_CONFIG_DIR` for Claude user skills,
+`COPILOT_HOME` for Copilot config and skills, `GEMINI_CLI_HOME` for Gemini
+config and skills, and `GROK_HOME` for Grok config and skills. An explicit
+`--home` remains the base home directory and takes precedence over those
+environment overrides.
 
 ## Security Boundary
 
