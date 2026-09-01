@@ -54,6 +54,7 @@ test("parseFlags supports kebab-case, inline values, and booleans", () => {
     force: true,
   });
   assert.deepEqual(parseFlags(["--token-stdin"]), { tokenStdin: true });
+  assert.deepEqual(parseFlags(["--install-skill"]), { installSkill: true });
   assert.throws(() => parseFlags(["--token", "secret"]), /--token is not supported/);
 });
 

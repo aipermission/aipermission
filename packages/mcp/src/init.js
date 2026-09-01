@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
 import { getClient, MCP_PROVIDERS, resolveMCPConfigTarget } from "./client-registry.js";
+import { installSkill } from "./install-skill.js";
 import {
   atomicWritePrivateFile,
   privateLockPath,
@@ -38,14 +39,15 @@ const color = {
 
 export async function runInit(argv = []) {
   const flags = parseFlags(argv);
-  assertProviderSelectionAvailable(flags.provider, Boolean(input.isTTY && output.isTTY));
+  const interactive = Boolean(input.isTTY && output.isTTY);
+  assertProviderSelectionAvailable(flags.provider, interactive);
   const stdinToken = flags.tokenStdin ? (await readStdin()).trim() : "";
   const rl = readline.createInterface({ input, output });
   try {
     const provider = flags.provider
       ? findProvider(flags.provider)
       : await selectProvider("Which AI client should use this token?", MCP_PROVIDERS);
-    const name = sanitizeName(flags.name || (await ask(rl, "MCP server name", "aipermission")));
+    const name = sanitizeName(flags.name || (interactive ? await ask(rl, "MCP server name", "aipermission") : "aipermission"));
     const apiUrl = normalizeURL(flags.apiUrl || DEFAULT_API_URL);
     if (provider.id !== "custom" && !flags.print) {
       resolveMCPConfigTarget(provider.id, flags.scope);
@@ -60,12 +62,17 @@ export async function runInit(argv = []) {
     if (provider.id === "custom" || flags.print) {
       printTokenConfigWarning();
       printCustomConfig(name, config);
-      return;
+      if (flags.installSkill) {
+        await reportInstalledSkill(provider.id, flags);
+      }
+      return { provider: provider.id, name, printed: true };
     }
 
     const result = await writeProviderConfig(provider.id, name, config, {
       force: Boolean(flags.force),
       scope: flags.scope,
+      homeDir: flags.home,
+      projectDir: flags.projectDir,
     });
     console.log("");
     console.log(`${color.green}Configured ${provider.label}${color.reset}`);
@@ -79,7 +86,12 @@ export async function runInit(argv = []) {
     console.log(
       `${color.yellow}Keep this config private:${color.reset} it contains an AIPermission bearer token. If it is committed, revoke the token.`,
     );
+    let skillResult;
+    if (flags.installSkill) {
+      skillResult = await reportInstalledSkill(provider.id, flags);
+    }
     console.log(`${color.yellow}Restart the AI client so it reloads MCP servers.${color.reset}`);
+    return { provider: provider.id, name, config: result, skill: skillResult };
   } finally {
     rl.close();
   }
@@ -112,6 +124,10 @@ export function parseFlags(argv) {
       result.tokenStdin = true;
       continue;
     }
+    if (key === "installSkill") {
+      result.installSkill = true;
+      continue;
+    }
     if (key === "token") {
       throw new Error("--token is not supported; use the hidden prompt or --token-stdin");
     }
@@ -120,6 +136,26 @@ export function parseFlags(argv) {
       i += 1;
     }
   }
+  return result;
+}
+
+async function reportInstalledSkill(client, flags) {
+  const result = await installSkill({
+    client,
+    scope: flags.scope,
+    source: flags.skillSource,
+    homeDir: flags.home || os.homedir(),
+    projectDir: flags.projectDir || process.cwd(),
+  });
+  if (!result.path) {
+    console.log("");
+    console.log(result.content);
+    return result;
+  }
+  console.log("");
+  console.log(`${color.green}Installed native operator skill${color.reset}`);
+  console.log(`${color.dim}Path:${color.reset} ${result.path}`);
+  console.log(`${color.dim}Scope:${color.reset} ${result.scope}`);
   return result;
 }
 
