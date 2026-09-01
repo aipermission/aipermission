@@ -9,25 +9,35 @@ const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 export async function runInstallSkill(argv = []) {
   const flags = parseFlags(argv);
-  const client = normalizeClient(flags.client || "codex");
-  const skill = await loadSkill(flags.source);
-  const homeDir = flags.home || os.homedir();
-  const projectDir = flags.projectDir || process.cwd();
+  const result = await installSkill({
+    client: flags.client || "codex",
+    scope: flags.scope,
+    source: flags.source,
+    homeDir: flags.home || os.homedir(),
+    projectDir: flags.projectDir || process.cwd(),
+  });
 
-  if (client === "custom") {
-    console.log(renderInstruction("custom", skill));
+  if (!result.path) {
+    console.log(result.content);
     return;
   }
 
-  const target = skillPathForClient(client, { homeDir, projectDir, scope: flags.scope });
-  const content = renderInstruction(client, skill);
-  await fs.mkdir(path.dirname(target.path), { recursive: true });
-  await fs.writeFile(target.path, content, { mode: 0o644 });
-
-  console.log(`Installed ${SKILL_NAME} skill for ${clientLabel(client)} (${target.scope}):`);
-  console.log(target.path);
+  console.log(`Installed ${SKILL_NAME} skill for ${clientLabel(result.client)} (${result.scope}):`);
+  console.log(result.path);
   console.log("");
   console.log("Restart the AI client or open a new session so the instructions refresh.");
+}
+
+export async function installSkill({ client = "codex", scope, source, homeDir = os.homedir(), projectDir = process.cwd() } = {}) {
+  const normalized = normalizeClient(client);
+  const content = renderInstruction(normalized, await loadSkill(source));
+  if (normalized === "custom") {
+    return { client: normalized, content, path: "", scope: "" };
+  }
+  const target = skillPathForClient(normalized, { homeDir, projectDir, scope });
+  await fs.mkdir(path.dirname(target.path), { recursive: true });
+  await fs.writeFile(target.path, content, { mode: 0o644 });
+  return { client: normalized, content, path: target.path, scope: target.scope };
 }
 
 export function codexSkillPath(homeDir) {

@@ -2,9 +2,10 @@
 
 const command = process.argv[2] || "serve";
 
-if (command === "init") {
+if (command === "init" || command === "setup") {
   const { runInit } = await import("./init.js");
-  await runInit(process.argv.slice(3));
+  const args = command === "setup" ? ["--install-skill", ...process.argv.slice(3)] : process.argv.slice(3);
+  await runInit(args);
 } else if (command === "install-skill") {
   const { runInstallSkill } = await import("./install-skill.js");
   await runInstallSkill(process.argv.slice(3));
@@ -24,6 +25,7 @@ function printHelp() {
 Usage:
   aipermission-mcp                 Start the MCP stdio server
   aipermission-mcp init            Configure an AI client interactively
+  aipermission-mcp setup           Configure MCP and install its native skill
   aipermission-mcp install-skill   Install the operator skill for an AI client
 
 Init flags:
@@ -33,6 +35,8 @@ Init flags:
   --token-stdin
   --api-url http://localhost:3210
   --print
+  --install-skill
+  --skill-source /path/to/SKILL.md  Local file only
 
 Install skill flags:
   --client codex|claude-code|cursor|vscode|copilot|windsurf|antigravity|gemini|grok|agents|custom
