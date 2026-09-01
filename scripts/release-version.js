@@ -39,7 +39,7 @@ function readStagedSource(updates, relativePath) {
 function stagePinnedMCPConfigDocs(updates, version) {
   for (const relativePath of pinnedMCPConfigDocs) {
     const source = readStagedSource(updates, relativePath);
-    const pattern = /@aipermission\/mcp@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/g;
+    const pattern = /@aipermission\/mcp@(?:VERSION|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/g;
     if (!pattern.test(source)) {
       throw new Error(`could not update pinned MCP config in ${relativePath}`);
     }
@@ -273,11 +273,12 @@ function checkVersion() {
   ]);
   for (const relativePath of pinnedMCPConfigDocs) {
     const source = fs.readFileSync(path.join(root, relativePath), "utf8");
+    const configuredVersion = source.match(
+      /@aipermission\/mcp@(VERSION|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/,
+    )?.[1];
     values.push([
       `${relativePath} pinned MCP config`,
-      source.match(
-        /@aipermission\/mcp@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/,
-      )?.[1],
+      configuredVersion === "VERSION" ? version : configuredVersion,
     ]);
   }
   const dockerComposeSource = fs.readFileSync(path.join(root, dockerReleaseComposePath), "utf8");

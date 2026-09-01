@@ -13,7 +13,7 @@ const {
 
 test("release staging composes MCP docs and Docker image pin updates", () => {
   const updates = new Map([
-    ["README.md", "npx -y @aipermission/mcp@1.0.0 init\n"],
+    ["README.md", "npx -y @aipermission/mcp@VERSION setup\n"],
     [
       "docker-compose.release.yml",
       [
