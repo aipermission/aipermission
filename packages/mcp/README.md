@@ -26,12 +26,23 @@ The package includes MCP Registry metadata:
 ## Install
 
 ```bash
-npx -y @aipermission/mcp init \
+npx -y @aipermission/mcp setup \
   --provider codex \
+  --scope user \
   --name aipermission
 ```
 
-The init command prompts for your AIPermission API token and writes the MCP client configuration for the selected provider. Generated runtime configs pin the exact package version that wrote them; re-run init when you intentionally upgrade a client.
+The setup command prompts for your AIPermission API token, writes the MCP client
+configuration, and installs the native operator skill for the selected client.
+Generated runtime configs pin the exact package version that wrote them; re-run
+setup when you intentionally upgrade a client. Use `init` when you only want the
+MCP config, or `install-skill` when you only want the skill.
+
+Check both paths without printing the bearer token:
+
+```bash
+npx -y @aipermission/mcp doctor --client codex --scope user
+```
 
 The generated MCP config contains a bearer token. Keep it private. For project-local configs such as `.mcp.json`, `.cursor/mcp.json`, and `.vscode/mcp.json`, the init command refuses to write into files already tracked by Git unless `--force` is passed. For untracked project-local configs, it adds both the final file and its crash-safe temporary-file pattern to `.git/info/exclude` before writing. Symbolic-link config destinations are rejected instead of being silently replaced; use `--print` and update a symlink-managed config through its owning tool. If a token config is committed or shared, revoke that token in the AIPermission UI.
 
@@ -162,30 +173,34 @@ temporary paths, archive staging paths, or local upload contents.
 
 ## Operator Skill
 
-Install the optional AIPermission operator instructions for your AI client:
+Install only the AIPermission native operator skill for your AI client:
 
 ```bash
-npx -y @aipermission/mcp install-skill --client codex
+npx -y @aipermission/mcp install-skill --client codex --scope user
 ```
 
 Supported clients:
 
-- `codex`: `~/.codex/skills/aipermission-operator/SKILL.md`
-- `claude-code`: `.claude/rules/aipermission-operator.md`
-- `cursor`: `.cursor/rules/aipermission-operator.mdc`
-- `vscode`: `.github/instructions/aipermission-operator.instructions.md`
-- `windsurf`: `.windsurf/rules/aipermission-operator.md`
-- `antigravity`: `.agents/rules/aipermission-operator.md`
-- `gemini`: `GEMINI.md`
-- `custom`: prints portable Markdown to stdout
+- `codex`: `~/.agents/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md`
+- `claude-code`: `~/.claude/skills/.../SKILL.md` or `.claude/skills/.../SKILL.md`
+- `cursor`: `~/.cursor/skills/.../SKILL.md` or `.cursor/skills/.../SKILL.md`
+- `vscode` / `copilot`: `~/.copilot/skills/.../SKILL.md` or `.github/skills/.../SKILL.md`
+- `windsurf`: `~/.codeium/windsurf/skills/.../SKILL.md` or `.windsurf/skills/.../SKILL.md`
+- `antigravity`: `~/.gemini/config/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md`
+- `gemini`: `~/.gemini/skills/.../SKILL.md` or `.gemini/skills/.../SKILL.md`
+- `grok`: `~/.grok/skills/.../SKILL.md` or `.grok/skills/.../SKILL.md`
+- `agents`: `~/.agents/skills/.../SKILL.md` or `.agents/skills/.../SKILL.md`
+- `custom`: prints the canonical skill Markdown to stdout
 
 These instructions teach the agent how to discover connector targets, poll
 `approval_pending` and `running` connector action requests, handle `stale`
 approvals by sending a fresh request, avoid blind retries for `outcome_unknown`,
 write short reasons, use explicit file transfer paths, and avoid printing
 secrets. The default installer uses the
-operator instruction bundled in the npm package; `--source` accepts local file
-paths only and rejects HTTP(S) sources.
+operator skill bundled in the npm package; `--source` accepts local file paths
+only and rejects HTTP(S) sources. The MCP server also publishes a concise
+instruction summary during initialization for clients that surface protocol
+instructions.
 
 ## Security Boundary
 

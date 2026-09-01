@@ -156,19 +156,20 @@ secret inventory and exact-session application flow; see
 Install the official MCP bridge into a supported client:
 
 ```bash
-npx -y @aipermission/mcp@0.2.38 init \
+npx -y @aipermission/mcp@0.2.38 setup \
   --provider codex \
+  --scope user \
   --name aipermission
 ```
 
-The initializer asks for the API token with a hidden prompt and writes a config
-pinned to the package version that created it. Restart the AI client after
-installation.
+The setup command asks for the API token with a hidden prompt, writes a config
+pinned to the package version that created it, and installs the native operator
+skill. Restart the AI client after installation.
 
-Optional operator instructions:
+Validate both paths without printing the token:
 
 ```bash
-npx -y @aipermission/mcp install-skill --client codex
+npx -y @aipermission/mcp@0.2.38 doctor --client codex --scope user
 ```
 
 Supported client presets and source-development setup are documented in
