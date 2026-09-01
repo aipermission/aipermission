@@ -11,6 +11,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { callVaultActionSchema, listVaultItemsSchema, vaultActionRequestSchema } from "./vault-tools.js";
+import { MCP_SERVER_INSTRUCTIONS } from "./instructions.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { jsonToolResult } from "./results.js";
 
@@ -19,10 +20,13 @@ const apiUrl = normalizeLocalAPIURL(process.env.AIPERMISSION_API_URL);
 const apiToken = process.env.AIPERMISSION_API_TOKEN || "";
 const apiTimeoutMs = Number.parseInt(process.env.AIPERMISSION_HTTP_TIMEOUT_MS || "60000", 10);
 
-const server = new McpServer({
-  name: "aipermission",
-  version: packageMetadata.version,
-});
+const server = new McpServer(
+  {
+    name: "aipermission",
+    version: packageMetadata.version,
+  },
+  { instructions: MCP_SERVER_INSTRUCTIONS },
+);
 
 server.tool(
   "list_connector_targets",
