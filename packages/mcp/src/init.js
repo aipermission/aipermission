@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
+import { getClient, MCP_PROVIDERS } from "./client-registry.js";
 import {
   atomicWritePrivateFile,
   privateLockPath,
@@ -35,49 +36,6 @@ const color = {
   yellow: useColor ? "\x1b[33m" : "",
 };
 
-const providers = [
-  {
-    id: "codex",
-    label: "OpenAI Codex",
-    description: "Writes ~/.codex/config.toml",
-  },
-  {
-    id: "claude-code",
-    label: "Claude Code",
-    description: "Writes .mcp.json in the current project",
-  },
-  {
-    id: "cursor",
-    label: "Cursor",
-    description: "Writes .cursor/mcp.json in the current project",
-  },
-  {
-    id: "vscode",
-    label: "VS Code",
-    description: "Writes .vscode/mcp.json in the current project",
-  },
-  {
-    id: "windsurf",
-    label: "Windsurf",
-    description: "Writes ~/.codeium/windsurf/mcp_config.json",
-  },
-  {
-    id: "antigravity",
-    label: "Google Antigravity",
-    description: "Writes ~/.gemini/antigravity/mcp_config.json",
-  },
-  {
-    id: "gemini",
-    label: "Gemini CLI",
-    description: "Writes ~/.gemini/settings.json",
-  },
-  {
-    id: "custom",
-    label: "Custom / copy-paste",
-    description: "Prints config snippets only",
-  },
-];
-
 export async function runInit(argv = []) {
   const flags = parseFlags(argv);
   assertProviderSelectionAvailable(flags.provider, Boolean(input.isTTY && output.isTTY));
@@ -86,7 +44,7 @@ export async function runInit(argv = []) {
   try {
     const provider = flags.provider
       ? findProvider(flags.provider)
-      : await selectProvider("Which AI client should use this token?", providers);
+      : await selectProvider("Which AI client should use this token?", MCP_PROVIDERS);
     const name = sanitizeName(flags.name || (await ask(rl, "MCP server name", "aipermission")));
     const apiUrl = normalizeURL(flags.apiUrl || DEFAULT_API_URL);
     const token = await resolveToken({ ...flags, stdinToken }, rl);
@@ -159,12 +117,11 @@ export function parseFlags(argv) {
 }
 
 function findProvider(idOrLabel) {
-  const normalized = String(idOrLabel).trim().toLowerCase();
-  const provider = providers.find((item) => item.id === normalized || item.label.toLowerCase() === normalized);
-  if (!provider) {
+  try {
+    return getClient(idOrLabel);
+  } catch {
     throw new Error(`Unknown provider: ${idOrLabel}`);
   }
-  return provider;
 }
 
 async function selectProvider(title, items) {

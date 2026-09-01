@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { clientLabel, normalizeClientID } from "./client-registry.js";
 
 const SKILL_NAME = "aipermission-operator";
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -128,40 +129,7 @@ export function renderInstruction(client, skill) {
 }
 
 export function normalizeClient(value) {
-  const client = String(value || "")
-    .trim()
-    .toLowerCase();
-  const aliases = {
-    claude: "claude-code",
-    claude_code: "claude-code",
-    "claude-code": "claude-code",
-    copilot: "vscode",
-    "vs-code": "vscode",
-    "google-antigravity": "antigravity",
-    agy: "antigravity",
-    "gemini-cli": "gemini",
-  };
-  const normalized = aliases[client] || client;
-  const supported = new Set(["codex", "claude-code", "cursor", "vscode", "windsurf", "antigravity", "gemini", "custom"]);
-  if (!supported.has(normalized)) {
-    throw new Error(`Unknown client: ${value}`);
-  }
-  return normalized;
-}
-
-function clientLabel(client) {
-  return (
-    {
-      codex: "Codex",
-      "claude-code": "Claude Code",
-      cursor: "Cursor",
-      vscode: "VS Code / GitHub Copilot",
-      windsurf: "Windsurf",
-      antigravity: "Google Antigravity",
-      gemini: "Gemini CLI",
-      custom: "Custom",
-    }[client] || client
-  );
+  return normalizeClientID(value);
 }
 
 function stripSkillFrontmatter(value) {
