@@ -1,6 +1,34 @@
 {
-  "version": "0.2.37",
+  "version": "0.2.38",
   "entries": [
+    {
+      "version": "0.2.38",
+      "label": "Release pipeline and runtime isolation hardening",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Frontend connector forms now share one tested network transport field implementation without changing connector-owned behavior.",
+            "JavaScript workspaces now use package-local lockfiles as the canonical dependency boundary for reproducible frontend and MCP builds."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "The local maintenance console now runs with an isolated environment and supervised process lifecycle so database credentials, proxy settings, and stale child processes do not escape their intended boundary.",
+            "Container releases now build immutable source candidates, verify the exact source commit, and promote only validated image digests to public version and latest tags.",
+            "MCP configuration and installed skill files now use private, atomic file handling with package-level lint, format, test, build, and audit gates."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Frontend risk coverage now exercises approval dialogs, transfers, unlock and restore flows, maintenance console lifecycle, and connector transport forms across asynchronous failure paths.",
+            "Release automation now verifies pinned release images, package lock ownership, MCP package quality, and container publication workflow behavior before promotion."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.37",
       "label": "Connector transport safety hardening",
@@ -183,32 +211,6 @@
           "items": [
             "Every database-password verification route now shares one metadata-free rate-limit scope, preventing endpoint rotation from bypassing unlock throttling.",
             "Redis string values and RabbitMQ message payloads and properties are redacted from persisted approval previews, history, audit, and MCP projections while exact encrypted execution payloads remain available to the action runner."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.30",
-      "label": "Release and authorization boundary hardening",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Container and MCP publication now verify the exact tagged source commit, release metadata, mandatory CI and CodeQL results, package tests, builds, and pack output before publishing.",
-            "Real-service connector conformance and native dependency freshness remain visible advisory release signals instead of unreliable unconditional external-service gates."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Direct API server construction now returns workspace and runtime identity initialization failures instead of starting with incomplete execution identity."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Malformed non-empty token, connector-permission, and project-capability expiry values now fail closed while an explicit empty expiry remains permanent.",
-            "The local HTTP boundary now rejects missing or malformed Host and RemoteAddr values and accepts only parsed loopback request origins."
           ]
         }
       ]

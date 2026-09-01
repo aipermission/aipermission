@@ -3,6 +3,35 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.38",
+      "date": "2026-09-01",
+      "label": "Release pipeline and runtime isolation hardening",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Frontend connector forms now share one tested network transport field implementation without changing connector-owned behavior.",
+            "JavaScript workspaces now use package-local lockfiles as the canonical dependency boundary for reproducible frontend and MCP builds."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "The local maintenance console now runs with an isolated environment and supervised process lifecycle so database credentials, proxy settings, and stale child processes do not escape their intended boundary.",
+            "Container releases now build immutable source candidates, verify the exact source commit, and promote only validated image digests to public version and latest tags.",
+            "MCP configuration and installed skill files now use private, atomic file handling with package-level lint, format, test, build, and audit gates."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Frontend risk coverage now exercises approval dialogs, transfers, unlock and restore flows, maintenance console lifecycle, and connector transport forms across asynchronous failure paths.",
+            "Release automation now verifies pinned release images, package lock ownership, MCP package quality, and container publication workflow behavior before promotion."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.37",
       "date": "2026-09-01",
       "label": "Connector transport safety hardening",
