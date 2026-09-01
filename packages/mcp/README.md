@@ -69,7 +69,7 @@ token in the AIPermission UI.
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp@0.2.39"],
+      "args": ["-y", "@aipermission/mcp@0.2.40"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",

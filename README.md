@@ -156,7 +156,7 @@ secret inventory and exact-session application flow; see
 Install the official MCP bridge into a supported client:
 
 ```bash
-npx -y @aipermission/mcp@0.2.39 setup \
+npx -y @aipermission/mcp@0.2.40 setup \
   --provider codex \
   --scope user \
   --name aipermission
@@ -169,7 +169,7 @@ skill. Restart the AI client after installation.
 Validate both paths without printing the token:
 
 ```bash
-npx -y @aipermission/mcp@0.2.39 doctor --client codex --scope user
+npx -y @aipermission/mcp@0.2.40 doctor --client codex --scope user
 ```
 
 Supported client presets and source-development setup are documented in

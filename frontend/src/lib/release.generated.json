@@ -1,6 +1,33 @@
 {
-  "version": "0.2.39",
+  "version": "0.2.40",
   "entries": [
+    {
+      "version": "0.2.40",
+      "label": "Transfer and local secret hardening",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "The local reverse proxy now accepts the documented 512 MiB single-file and 1 GiB batch transfer limits while returning route-specific JSON errors for oversized uploads.",
+            "Browser save-picker downloads now stream responses directly to disk when supported, avoiding duplicate in-memory buffering while retaining the existing fallback."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Token create, list, and revoke responses now use explicit private no-store cache policy alongside Vault reveal and preview responses.",
+            "Generated gateway secrets now use validated regular files, owner-only permissions, atomic durable writes, and fail-closed startup without rotating invalid existing key material."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Roadmap and contributor guidance now describe the shipped warning-only command policy accurately and reserve future work for evidence-backed expansion or explicit deny evaluation.",
+            "Focused regression coverage now locks transfer proxy limits, sensitive response headers, streaming download fallback, and gateway-secret compatibility behavior."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.39",
       "label": "MCP client compatibility and setup",
@@ -201,26 +228,6 @@
           "items": [
             "Read-only SQL validation now rejects unterminated quoted values, identifiers, dollar quotes, and block comments instead of passing malformed input to a connector.",
             "Connector number fields now reject NaN and infinite values before canonical approval hashing or JSON persistence."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.32",
-      "label": "Approval pipeline and connector isolation",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Pending connector approvals now use small typed orchestration steps while preserving authorization, stale-context, claim, audit, execution, and completion ordering.",
-            "Runtime-backed connector adapters are constructed explicitly per gateway catalog instead of relying on package-global registration or package initialization side effects."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Focused transition tests now lock approval-pending, running, completion, failure, history, and audit ordering.",
-            "Catalog-derived import and runtime isolation checks now cover every built-in connector and prevent shared gateway packages from depending on connector implementations."
           ]
         }
       ]
