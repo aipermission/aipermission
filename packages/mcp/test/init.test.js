@@ -16,6 +16,7 @@ import {
   sanitizeName,
   tomlKey,
   tomlString,
+  writeTOMLMCPConfig,
   writeJSONMCPConfig,
   writeProviderConfig,
 } from "../src/init.js";
@@ -129,11 +130,51 @@ test("writeProviderConfig writes Claude Code project MCP config", async () => {
 
     assert.equal(result.path, path.join(dir, ".mcp.json"));
     assert.equal(result.gitExcluded, undefined);
+    assert.equal(result.scope, "project");
     const parsed = JSON.parse(await fs.readFile(result.path, "utf8"));
     assert.deepEqual(parsed, { mcpServers: { aipermission: { command: "npx" } } });
   } finally {
     process.chdir(previousCwd);
   }
+});
+
+test("writeProviderConfig writes user-scoped Copilot CLI config", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-copilot-"));
+  const result = await writeProviderConfig("copilot", "aipermission", { command: "npx" }, { homeDir: dir });
+
+  assert.equal(result.path, path.join(dir, ".copilot", "mcp-config.json"));
+  assert.equal(result.scope, "user");
+  assert.deepEqual(JSON.parse(await fs.readFile(result.path, "utf8")), {
+    mcpServers: { aipermission: { command: "npx" } },
+  });
+});
+
+test("writeProviderConfig writes scoped Grok TOML config", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-grok-"));
+  const config = { command: "npx", args: ["-y", "@aipermission/mcp@0.2.38"], env: { TOKEN: "secret" } };
+  const result = await writeProviderConfig("grok", "aipermission", config, { homeDir: dir });
+
+  assert.equal(result.path, path.join(dir, ".grok", "config.toml"));
+  assert.match(await fs.readFile(result.path, "utf8"), /\[mcp_servers\.aipermission\]/);
+});
+
+test("writeTOMLMCPConfig replaces only the selected MCP server", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-toml-"));
+  const filePath = path.join(dir, "config.toml");
+  await fs.writeFile(
+    filePath,
+    '[theme]\nname = "dark"\n\n[mcp_servers.other]\ncommand = "node"\n\n[mcp_servers.aipermission]\ncommand = "old"\n\n[mcp_servers.aipermission.extra]\nvalue = "remove-me"\n',
+  );
+
+  await writeTOMLMCPConfig(filePath, "aipermission", { command: "npx", args: [], env: {} });
+  await writeTOMLMCPConfig(filePath, "aipermission", { command: "node", args: ["server.js"], env: {} });
+
+  const content = await fs.readFile(filePath, "utf8");
+  assert.match(content, /\[theme\]/);
+  assert.match(content, /\[mcp_servers\.other\]/);
+  assert.equal(content.match(/\[mcp_servers\.aipermission\]/g)?.length, 1);
+  assert.match(content, /command = "node"/);
+  assert.doesNotMatch(content, /remove-me/);
 });
 
 test("writeProviderConfig adds project MCP configs to local git exclude", async () => {
@@ -335,7 +376,7 @@ test("skillPathForClient maps clients to their documented instruction locations"
 
 test("normalizeClient supports common aliases", () => {
   assert.equal(normalizeClient("claude"), "claude-code");
-  assert.equal(normalizeClient("copilot"), "vscode");
+  assert.equal(normalizeClient("copilot"), "copilot");
   assert.equal(normalizeClient("agy"), "antigravity");
   assert.throws(() => normalizeClient("unknown"), /Unknown client/);
 });

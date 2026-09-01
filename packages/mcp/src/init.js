@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
-import { getClient, MCP_PROVIDERS } from "./client-registry.js";
+import { getClient, MCP_PROVIDERS, resolveMCPConfigTarget } from "./client-registry.js";
 import {
   atomicWritePrivateFile,
   privateLockPath,
@@ -47,6 +47,9 @@ export async function runInit(argv = []) {
       : await selectProvider("Which AI client should use this token?", MCP_PROVIDERS);
     const name = sanitizeName(flags.name || (await ask(rl, "MCP server name", "aipermission")));
     const apiUrl = normalizeURL(flags.apiUrl || DEFAULT_API_URL);
+    if (provider.id !== "custom" && !flags.print) {
+      resolveMCPConfigTarget(provider.id, flags.scope);
+    }
     const token = await resolveToken({ ...flags, stdinToken }, rl);
 
     if (!token) {
@@ -60,11 +63,15 @@ export async function runInit(argv = []) {
       return;
     }
 
-    const result = await writeProviderConfig(provider.id, name, config, { force: Boolean(flags.force) });
+    const result = await writeProviderConfig(provider.id, name, config, {
+      force: Boolean(flags.force),
+      scope: flags.scope,
+    });
     console.log("");
     console.log(`${color.green}Configured ${provider.label}${color.reset}`);
     console.log(`${color.dim}Name:${color.reset} ${name}`);
     console.log(`${color.dim}Path:${color.reset} ${result.path}`);
+    console.log(`${color.dim}Scope:${color.reset} ${result.scope}`);
     if (result.gitExcluded) {
       console.log(`${color.dim}Git:${color.reset} added ${result.gitExcludeEntry} to .git/info/exclude`);
     }
@@ -271,50 +278,21 @@ export function buildMCPServerConfig({ apiUrl, token }) {
 }
 
 export async function writeProviderConfig(providerID, name, config, options = {}) {
-  const projectRoot = process.cwd();
-  const homeRoot = os.homedir();
-  if (providerID === "codex") {
-    const filePath = path.join(homeRoot, ".codex", "config.toml");
-    await writeCodexConfig(filePath, name, config, { trustedRoot: homeRoot });
-    return { path: filePath };
+  const homeRoot = options.homeDir || os.homedir();
+  const projectRoot = options.projectDir || process.cwd();
+  const target = resolveMCPConfigTarget(providerID, options.scope, { homeDir: homeRoot, projectDir: projectRoot });
+  let protection = {};
+  if (target.projectConfig) {
+    await assertProjectConfigWritable(target.path, options);
+    protection = await protectGitIgnoredConfig(target.path, projectRoot);
   }
-  if (providerID === "claude-code") {
-    const filePath = path.join(projectRoot, ".mcp.json");
-    await assertProjectConfigWritable(filePath, options);
-    const protection = await protectGitIgnoredConfig(filePath);
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: projectRoot });
-    return { path: filePath, ...protection };
+  const trustedRoot = target.projectConfig ? projectRoot : homeRoot;
+  if (target.format === "toml") {
+    await writeTOMLMCPConfig(target.path, name, config, { trustedRoot });
+  } else {
+    await writeJSONMCPConfig(target.path, name, config, target.rootKey, { trustedRoot });
   }
-  if (providerID === "cursor") {
-    const filePath = path.join(projectRoot, ".cursor", "mcp.json");
-    await assertProjectConfigWritable(filePath, options);
-    const protection = await protectGitIgnoredConfig(filePath);
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: projectRoot });
-    return { path: filePath, ...protection };
-  }
-  if (providerID === "vscode") {
-    const filePath = path.join(projectRoot, ".vscode", "mcp.json");
-    await assertProjectConfigWritable(filePath, options);
-    const protection = await protectGitIgnoredConfig(filePath);
-    await writeJSONMCPConfig(filePath, name, config, "servers", { trustedRoot: projectRoot });
-    return { path: filePath, ...protection };
-  }
-  if (providerID === "windsurf") {
-    const filePath = path.join(homeRoot, ".codeium", "windsurf", "mcp_config.json");
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: homeRoot });
-    return { path: filePath };
-  }
-  if (providerID === "antigravity") {
-    const filePath = path.join(homeRoot, ".gemini", "antigravity", "mcp_config.json");
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: homeRoot });
-    return { path: filePath };
-  }
-  if (providerID === "gemini") {
-    const filePath = path.join(homeRoot, ".gemini", "settings.json");
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: homeRoot });
-    return { path: filePath };
-  }
-  throw new Error(`Unsupported provider: ${providerID}`);
+  return { path: target.path, scope: target.scope, ...protection };
 }
 
 export async function writeJSONMCPConfig(filePath, name, config, rootKey, options = {}) {
@@ -357,7 +335,7 @@ function splitInputKeys(value) {
   return keys;
 }
 
-async function writeCodexConfig(filePath, name, config, options = {}) {
+export async function writeTOMLMCPConfig(filePath, name, config, options = {}) {
   await withPrivateFileLock(
     filePath,
     async () => {
@@ -367,8 +345,8 @@ async function writeCodexConfig(filePath, name, config, options = {}) {
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
-      const next = removeCodexServer(current, name).trimEnd();
-      const block = codexServerBlock(name, config);
+      const next = removeTOMLServer(current, name).trimEnd();
+      const block = tomlServerBlock(name, config);
       await writePrivateFile(filePath, `${next ? `${next}\n\n` : ""}${block}\n`, options);
     },
     options,
@@ -383,7 +361,7 @@ async function assertProjectConfigWritable(filePath, options = {}) {
   if (options.force) {
     return;
   }
-  const tracked = await gitTrackedPath(filePath);
+  const tracked = await gitTrackedPath(filePath, options.projectDir || process.cwd());
   if (!tracked) {
     return;
   }
@@ -395,8 +373,8 @@ async function assertProjectConfigWritable(filePath, options = {}) {
   );
 }
 
-async function protectGitIgnoredConfig(filePath) {
-  const repository = await discoverGitRepository(process.cwd());
+async function protectGitIgnoredConfig(filePath, startDir = process.cwd()) {
+  const repository = await discoverGitRepository(startDir);
   if (!repository) {
     return {};
   }
@@ -452,8 +430,8 @@ async function protectGitIgnoredConfig(filePath) {
   };
 }
 
-async function gitTrackedPath(filePath) {
-  const repository = await discoverGitRepository(process.cwd());
+async function gitTrackedPath(filePath, startDir = process.cwd()) {
+  const repository = await discoverGitRepository(startDir);
   if (!repository) {
     return "";
   }
@@ -543,16 +521,16 @@ function gitErrorMessage(error) {
   return String(error.stderr || error.message || error).trim();
 }
 
-function removeCodexServer(source, name) {
+function removeTOMLServer(source, name) {
   const main = `[mcp_servers.${tomlKey(name)}]`;
-  const env = `[mcp_servers.${tomlKey(name)}.env]`;
+  const nestedPrefix = `[mcp_servers.${tomlKey(name)}.`;
   const lines = source.split(/\r?\n/);
   const kept = [];
   let skipping = false;
   for (const line of lines) {
     const trimmed = line.trim();
     const isHeader = trimmed.startsWith("[") && trimmed.endsWith("]");
-    if (trimmed === main || trimmed === env) {
+    if (trimmed === main || (trimmed.startsWith(nestedPrefix) && trimmed.endsWith("]"))) {
       skipping = true;
       continue;
     }
@@ -566,7 +544,7 @@ function removeCodexServer(source, name) {
   return kept.join("\n");
 }
 
-function codexServerBlock(name, config) {
+function tomlServerBlock(name, config) {
   return `[mcp_servers.${tomlKey(name)}]
 command = ${tomlString(config.command)}
 args = [${config.args.map(tomlString).join(", ")}]
