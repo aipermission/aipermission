@@ -14,7 +14,9 @@
     "test": "npm run test:unit && npm run test:component",
     "test:unit": "node scripts/run-tests.mjs",
     "test:component": "vitest run --config vitest.config.js",
-    "test:coverage": "vitest run --config vitest.config.js --coverage",
+    "test:coverage": "npm run test:coverage:focused && npm run test:coverage:risk",
+    "test:coverage:focused": "vitest run --config vitest.config.js --coverage",
+    "test:coverage:risk": "vitest run --config vitest.risk.config.js --coverage",
     "test:e2e": "playwright test",
     "test:e2e:real": "playwright test --config playwright.real.config.js",
     "preview": "vite preview --host 127.0.0.1"

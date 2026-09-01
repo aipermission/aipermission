@@ -13,6 +13,7 @@ import {
   fileTransferConfirmSource,
   bulkCommandDialogSource,
   transferCenterSource,
+  fileTransferActionsSource,
   tokenPermissionPanelSource,
   connectorTokenPermissionPanelSource,
   connectorPermissionDialogSource,
@@ -151,8 +152,11 @@ test("Console and History expose connector file transfer flows", () => {
   assert.match(transferCenterSource, /Closing this panel does not stop transfers/);
   assert.match(transferCenterSource, /pending_approval/);
   assert.match(transferCenterSource, /Approve selected/);
-  assert.match(shellSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/approve/);
-  assert.match(shellSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/decline/);
+  assert.match(shellSource, /createFileTransferBatchActions/);
+  assert.match(shellSource, /onApprove=\{transferBatchActions\.approve\}/);
+  assert.match(shellSource, /onDecline=\{transferBatchActions\.decline\}/);
+  assert.match(fileTransferActionsSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/approve/);
+  assert.match(fileTransferActionsSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/decline/);
 });
 
 test("Console exposes stuck command recovery controls", () => {

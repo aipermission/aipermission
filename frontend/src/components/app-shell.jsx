@@ -11,6 +11,8 @@ import {
   normalizeCredentialResources,
 } from "./app-shell-runtime";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
+import { createFileTransferBatchActions } from "./file-transfer/file-transfer-actions";
+import { createFileTransferListState, loadCurrentFileTransferBatches } from "./file-transfer/file-transfer-list-state";
 import { TransferCenter } from "./transfer-center";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -54,6 +56,7 @@ export function Shell({ theme, setTheme }) {
   const vaultSessionResolverRef = useRef(null);
   const seenPendingTransferApprovalsRef = useRef(new Set());
   const seenPendingVaultApprovalsRef = useRef(new Set());
+  const fileTransferListState = useRef(createFileTransferListState()).current;
   const pollGenerationGuard = useRef(createPollGenerationGuard()).current;
   const {
     attachSession: attachConsoleSession,
@@ -208,23 +211,22 @@ export function Shell({ theme, setTheme }) {
   }
 
   async function loadFileTransferBatches(options = {}, generation) {
-    try {
-      const data = await apiGet("/api/file-transfer-batches?limit=30");
-      if (!pollIsCurrent(generation)) return [];
-      const items = data.items || [];
-      const pendingApprovals = items.filter((item) => item.status === "pending_approval");
-      const hasNewPendingApproval = pendingApprovals.some((item) => !seenPendingTransferApprovalsRef.current.has(item.id));
-      pendingApprovals.forEach((item) => seenPendingTransferApprovalsRef.current.add(item.id));
-      if (hasNewPendingApproval) {
-        setTransferCenterOpen(true);
-      }
-      setFileTransferBatches({ state: "ready", data: items, error: null });
-      return items;
-    } catch (error) {
-      if (!pollIsCurrent(generation)) return [];
-      setFileTransferBatches((current) => ({ state: "error", data: options.keepData ? current.data : [], error: error.message }));
-      return [];
-    }
+    return loadCurrentFileTransferBatches({
+      request: () => apiGet("/api/file-transfer-batches?limit=30"),
+      pollGeneration: generation,
+      pollIsCurrent,
+      listState: fileTransferListState,
+      onItems: (items) => {
+        const pendingApprovals = items.filter((item) => item.status === "pending_approval");
+        const hasNewPendingApproval = pendingApprovals.some((item) => !seenPendingTransferApprovalsRef.current.has(item.id));
+        pendingApprovals.forEach((item) => seenPendingTransferApprovalsRef.current.add(item.id));
+        if (hasNewPendingApproval) setTransferCenterOpen(true);
+        setFileTransferBatches({ state: "ready", data: items, error: null });
+      },
+      onError: (error) => {
+        setFileTransferBatches((current) => ({ state: "error", data: options.keepData ? current.data : [], error: error.message }));
+      },
+    });
   }
 
   async function refreshAll(generation) {
@@ -482,30 +484,15 @@ export function Shell({ theme, setTheme }) {
     return data;
   }
 
-  async function pauseFileTransferBatch(batchID) {
-    await apiPost(`/api/file-transfer-batches/${batchID}/pause`, {});
-    await loadFileTransferBatches({ keepData: true });
+  function applyFileTransferBatch(batch) {
+    setFileTransferBatches((current) => fileTransferListState.applyBatch(current, batch));
   }
 
-  async function resumeFileTransferBatch(batchID) {
-    await apiPost(`/api/file-transfer-batches/${batchID}/resume`, {});
-    await loadFileTransferBatches({ keepData: true });
-  }
-
-  async function cancelFileTransferBatch(batchID) {
-    await apiPost(`/api/file-transfer-batches/${batchID}/cancel`, {});
-    await loadFileTransferBatches({ keepData: true });
-  }
-
-  async function approveFileTransferBatch(batchID, itemIDs, note = "") {
-    await apiPost(`/api/file-transfer-batches/${batchID}/approve`, { item_ids: itemIDs, note });
-    await loadFileTransferBatches({ keepData: true });
-  }
-
-  async function declineFileTransferBatch(batchID, note = "") {
-    await apiPost(`/api/file-transfer-batches/${batchID}/decline`, { note });
-    await loadFileTransferBatches({ keepData: true });
-  }
+  const transferBatchActions = createFileTransferBatchActions({
+    post: apiPost,
+    applyResult: applyFileTransferBatch,
+    refresh: loadFileTransferBatches,
+  });
 
   function requestLockDatabase() {
     const unlockedCount = (databaseStatus.data?.databases || []).filter((item) => item.unlocked).length;
@@ -588,11 +575,11 @@ export function Shell({ theme, setTheme }) {
         error={fileTransferBatches.error}
         onClose={() => setTransferCenterOpen(false)}
         onRefresh={() => loadFileTransferBatches({ keepData: true })}
-        onPause={pauseFileTransferBatch}
-        onResume={resumeFileTransferBatch}
-        onCancel={cancelFileTransferBatch}
-        onApprove={approveFileTransferBatch}
-        onDecline={declineFileTransferBatch}
+        onPause={transferBatchActions.pause}
+        onResume={transferBatchActions.resume}
+        onCancel={transferBatchActions.cancel}
+        onApprove={transferBatchActions.approve}
+        onDecline={transferBatchActions.decline}
       />
       <VaultSessionDialog state={vaultSessionDialog} onClose={closeVaultSessionDialog} onStart={startVaultConsoleSession} />
       <VaultActionApprovalDialog

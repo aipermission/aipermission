@@ -50,4 +50,39 @@ describe("ConnectorActionApprovalDialog", () => {
     await user.click(screen.getByRole("button", { name: "OK", exact: true }));
     expect(handlers.onClose).toHaveBeenCalledOnce();
   });
+
+  it("shows bounded loading and no-preview states", () => {
+    const { rerender } = render(
+      <ConnectorActionApprovalDialog
+        approval={{ ...approval, preview: {} }}
+        note=""
+        action={{ state: "loading", error: "" }}
+        onNoteChange={vi.fn()}
+        onRun={vi.fn()}
+        onDecline={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Loading the exact approval preview...")).toBeVisible();
+    expect(screen.getByText("Loading redacted input...")).toBeVisible();
+
+    rerender(
+      <ConnectorActionApprovalDialog
+        approval={{ ...approval, preview: {} }}
+        note=""
+        action={{ state: "idle", error: "" }}
+        onNoteChange={vi.fn()}
+        onRun={vi.fn()}
+        onDecline={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("No structured preview was provided.")).toBeVisible();
+  });
+
+  it("disables repeated decisions while a request is running", () => {
+    renderDialog({ state: "running", error: "" });
+    expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Decline" })).toBeDisabled();
+  });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, CloudDownload, ExternalLink, LockKeyhole, RefreshCw, Trash2, Upload } from "lucide-react";
 import { apiPost, apiPostForm } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -9,6 +9,13 @@ import { isValidDatabasePassword } from "../lib/password";
 import { appVersion } from "../lib/release";
 import { formatLocalTimestamp, formatRelativeAge } from "../lib/date-time";
 import { formatBytes } from "../lib/file-transfer-utils";
+import {
+  groupBackupVersions,
+  remoteCredentialFingerprint,
+  remoteRequestIsCurrent,
+  shortBackupSourceID,
+  shortBackupStreamID,
+} from "./remote-restore-helpers";
 
 export function UnlockPage({ status, onUnlocked }) {
   const databases = useMemo(() => status?.databases || [], [status?.databases]);
@@ -153,8 +160,11 @@ export function UnlockPage({ status, onUnlocked }) {
       {toast ? <Toast message={toast} /> : null}
       {databases.length > 0 ? (
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-stone-800">Database</label>
+          <label htmlFor="unlock-database" className="text-sm font-semibold text-stone-800">
+            Database
+          </label>
           <select
+            id="unlock-database"
             className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-emerald-800"
             value={selectedDatabase?.id || selectedDatabaseID}
             onChange={(event) => setSelectedDatabaseID(event.target.value)}
@@ -202,8 +212,11 @@ export function UnlockPage({ status, onUnlocked }) {
       {activeTab === "unlock" ? (
         <form className="grid gap-4" onSubmit={unlockDatabase}>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Database password</label>
+            <label htmlFor="unlock-database-password" className="text-sm font-semibold text-stone-800">
+              Database password
+            </label>
             <Input
+              id="unlock-database-password"
               type="password"
               value={unlockForm.password}
               onChange={(event) => setUnlockForm((current) => ({ ...current, password: event.target.value }))}
@@ -291,8 +304,11 @@ export function UnlockPage({ status, onUnlocked }) {
       {activeTab === "create" ? (
         <form className="grid gap-4" onSubmit={createDatabase}>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Database name</label>
+            <label htmlFor="create-database-name" className="text-sm font-semibold text-stone-800">
+              Database name
+            </label>
             <Input
+              id="create-database-name"
               type="text"
               value={createForm.database_name}
               onChange={(event) => setCreateForm((current) => ({ ...current, database_name: event.target.value }))}
@@ -301,8 +317,11 @@ export function UnlockPage({ status, onUnlocked }) {
             />
           </div>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Database password</label>
+            <label htmlFor="create-database-password" className="text-sm font-semibold text-stone-800">
+              Database password
+            </label>
             <Input
+              id="create-database-password"
               type="password"
               value={createForm.password}
               onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
@@ -312,8 +331,11 @@ export function UnlockPage({ status, onUnlocked }) {
             />
           </div>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Confirm password</label>
+            <label htmlFor="create-database-password-confirmation" className="text-sm font-semibold text-stone-800">
+              Confirm password
+            </label>
             <Input
+              id="create-database-password-confirmation"
               type="password"
               value={createForm.confirm_password}
               onChange={(event) => setCreateForm((current) => ({ ...current, confirm_password: event.target.value }))}
@@ -345,8 +367,11 @@ export function UnlockPage({ status, onUnlocked }) {
             </p>
           </div>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Database name</label>
+            <label htmlFor="import-database-name" className="text-sm font-semibold text-stone-800">
+              Database name
+            </label>
             <Input
+              id="import-database-name"
               type="text"
               value={createForm.database_name}
               onChange={(event) => setCreateForm((current) => ({ ...current, database_name: event.target.value }))}
@@ -355,8 +380,11 @@ export function UnlockPage({ status, onUnlocked }) {
             />
           </div>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Database file</label>
+            <label htmlFor="import-database-file" className="text-sm font-semibold text-stone-800">
+              Database file
+            </label>
             <Input
+              id="import-database-file"
               type="file"
               accept=".aipdb,.db,application/octet-stream"
               onChange={(event) => setImportForm((current) => ({ ...current, file: event.target.files?.[0] || null }))}
@@ -364,8 +392,11 @@ export function UnlockPage({ status, onUnlocked }) {
             />
           </div>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Database password</label>
+            <label htmlFor="import-database-password" className="text-sm font-semibold text-stone-800">
+              Database password
+            </label>
             <Input
+              id="import-database-password"
               type="password"
               value={importForm.database_password}
               onChange={(event) => setImportForm((current) => ({ ...current, database_password: event.target.value }))}
@@ -399,8 +430,11 @@ export function UnlockPage({ status, onUnlocked }) {
             <span className="font-semibold text-stone-900">Database:</span> {selectedDatabase?.name || "Unknown"}
           </div>
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Type the database name to confirm</label>
+            <label htmlFor="delete-database-confirmation" className="text-sm font-semibold text-stone-800">
+              Type the database name to confirm
+            </label>
             <Input
+              id="delete-database-confirmation"
               type="text"
               value={deleteDialog.confirmName}
               onChange={(event) => setDeleteDialog((current) => ({ ...current, confirmName: event.target.value }))}
@@ -429,87 +463,126 @@ export function UnlockPage({ status, onUnlocked }) {
   );
 }
 
-function RemoteRestorePanel({ onUnlocked }) {
+export function RemoteRestorePanel({ onUnlocked }) {
   const [form, setForm] = useState({ base_url: "", token: "", database_name: "", database_password: "" });
   const [state, setState] = useState({ state: "idle", error: null });
   const [streams, setStreams] = useState([]);
   const [selectedStreamID, setSelectedStreamID] = useState("");
   const [versions, setVersions] = useState([]);
   const [selectedBackupID, setSelectedBackupID] = useState("");
+  const [versionCredentialFingerprint, setVersionCredentialFingerprint] = useState("");
+  const requestGeneration = useRef(0);
+  const formRef = useRef(form);
+
+  useEffect(
+    () => () => {
+      requestGeneration.current += 1;
+    },
+    [],
+  );
 
   function updateField(field, value) {
-    setForm((current) => ({ ...current, [field]: value }));
+    const nextForm = { ...formRef.current, [field]: value };
+    formRef.current = nextForm;
+    setForm(nextForm);
     if (field === "base_url" || field === "token") {
-      setForm((current) => ({ ...current, database_name: "" }));
+      requestGeneration.current += 1;
+      const resetForm = { ...nextForm, database_name: "" };
+      formRef.current = resetForm;
+      setForm(resetForm);
       setStreams([]);
       setSelectedStreamID("");
       setVersions([]);
       setSelectedBackupID("");
+      setVersionCredentialFingerprint("");
       setState({ state: "idle", error: null });
     }
   }
 
-  async function loadVersions(streamID, credentials = form, databaseName = "") {
+  async function loadVersions(streamID, credentials = formRef.current, databaseName = "", generation = ++requestGeneration.current) {
+    const fingerprint = remoteCredentialFingerprint(credentials);
     setState({ state: "loading_versions", error: null });
     setSelectedStreamID(streamID);
-    if (databaseName) setForm((current) => ({ ...current, database_name: databaseName }));
+    if (databaseName) {
+      const nextForm = { ...formRef.current, database_name: databaseName };
+      formRef.current = nextForm;
+      setForm(nextForm);
+    }
     setSelectedBackupID("");
     setVersions([]);
+    setVersionCredentialFingerprint("");
     try {
       const response = await apiPost("/api/backup/remote/list", {
         base_url: credentials.base_url,
         token: credentials.token,
         stream_id: streamID,
       });
+      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       const nextVersions = response?.items?.[0]?.backups || [];
       setVersions(nextVersions);
       setSelectedBackupID(nextVersions[0]?.id || "");
+      setVersionCredentialFingerprint(fingerprint);
       setState({ state: "ready", error: null });
     } catch (error) {
+      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       setState({ state: "error", error: error.message });
     }
   }
 
   async function connectService(event) {
     event.preventDefault();
+    const credentials = { ...formRef.current };
+    const fingerprint = remoteCredentialFingerprint(credentials);
+    const generation = ++requestGeneration.current;
     setState({ state: "connecting", error: null });
     setStreams([]);
     setSelectedStreamID("");
     setVersions([]);
     setSelectedBackupID("");
+    setVersionCredentialFingerprint("");
     try {
       const response = await apiPost("/api/backup/remote/list", {
-        base_url: form.base_url,
-        token: form.token,
+        base_url: credentials.base_url,
+        token: credentials.token,
       });
+      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       const nextStreams = response?.items || [];
       setStreams(nextStreams);
       if (nextStreams.length === 0) {
         setState({ state: "ready", error: null });
         return;
       }
-      await loadVersions(nextStreams[0].id, form, nextStreams[0].database_name);
+      await loadVersions(nextStreams[0].id, credentials, nextStreams[0].database_name, generation);
     } catch (error) {
+      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       setState({ state: "error", error: error.message });
     }
   }
 
   async function restoreRemoteBackup(event) {
     event.preventDefault();
-    if (!selectedStreamID || !selectedBackupID) return;
+    const credentials = { ...formRef.current };
+    const fingerprint = remoteCredentialFingerprint(credentials);
+    if (!selectedStreamID || !selectedBackupID || versionCredentialFingerprint !== fingerprint) return;
+    const generation = ++requestGeneration.current;
     setState({ state: "restoring", error: null });
     try {
       await apiPost("/api/backup/remote/restore", {
-        base_url: form.base_url,
-        token: form.token,
+        base_url: credentials.base_url,
+        token: credentials.token,
         stream_id: selectedStreamID,
         backup_id: selectedBackupID,
         database_name: form.database_name,
         database_password: form.database_password,
       });
-      setForm({ base_url: "", token: "", database_name: "", database_password: "" });
+      if (remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) {
+        const emptyForm = { base_url: "", token: "", database_name: "", database_password: "" };
+        formRef.current = emptyForm;
+        setForm(emptyForm);
+      }
       await onUnlocked();
     } catch (error) {
+      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       setState({ state: "error", error: error.message });
     }
   }
@@ -532,8 +605,11 @@ function RemoteRestorePanel({ onUnlocked }) {
       </Notice>
       <form className="grid gap-4" onSubmit={connectService}>
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-stone-800">Backup service URL</label>
+          <label htmlFor="remote-backup-service-url" className="text-sm font-semibold text-stone-800">
+            Backup service URL
+          </label>
           <Input
+            id="remote-backup-service-url"
             type="url"
             value={form.base_url}
             onChange={(event) => updateField("base_url", event.target.value)}
@@ -543,8 +619,11 @@ function RemoteRestorePanel({ onUnlocked }) {
           />
         </div>
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-stone-800">Service token</label>
+          <label htmlFor="remote-backup-service-token" className="text-sm font-semibold text-stone-800">
+            Service token
+          </label>
           <Input
+            id="remote-backup-service-token"
             type="password"
             value={form.token}
             onChange={(event) => updateField("token", event.target.value)}
@@ -623,16 +702,26 @@ function RemoteRestorePanel({ onUnlocked }) {
           ) : null}
           {selectedStream ? (
             <div className="grid gap-2">
-              <label className="text-sm font-semibold text-stone-800">New local database name</label>
-              <Input value={form.database_name} onChange={(event) => updateField("database_name", event.target.value)} required />
+              <label htmlFor="remote-backup-database-name" className="text-sm font-semibold text-stone-800">
+                New local database name
+              </label>
+              <Input
+                id="remote-backup-database-name"
+                value={form.database_name}
+                onChange={(event) => updateField("database_name", event.target.value)}
+                required
+              />
               <p className="text-xs text-stone-500">
                 Remote stream {shortBackupStreamID(selectedStream.id)} remains unchanged; this name is only for the restored local copy.
               </p>
             </div>
           ) : null}
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Backup database password</label>
+            <label htmlFor="remote-backup-database-password" className="text-sm font-semibold text-stone-800">
+              Backup database password
+            </label>
             <Input
+              id="remote-backup-database-password"
               type="password"
               value={form.database_password}
               onChange={(event) => updateField("database_password", event.target.value)}
@@ -647,7 +736,8 @@ function RemoteRestorePanel({ onUnlocked }) {
               !form.database_name.trim() ||
               !form.database_password ||
               state.state === "restoring" ||
-              state.state === "loading_versions"
+              state.state === "loading_versions" ||
+              versionCredentialFingerprint !== remoteCredentialFingerprint(form)
             }
           >
             <CloudDownload className="h-4 w-4" />
@@ -661,26 +751,6 @@ function RemoteRestorePanel({ onUnlocked }) {
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
     </div>
   );
-}
-
-function shortBackupStreamID(value) {
-  const text = String(value || "");
-  return text.length > 12 ? `${text.slice(0, 8)}...${text.slice(-4)}` : text;
-}
-
-function shortBackupSourceID(value) {
-  const text = String(value || "unknown installation");
-  return text.length > 18 ? `${text.slice(0, 10)}...${text.slice(-6)}` : text;
-}
-
-function groupBackupVersions(versions) {
-  const groups = new Map();
-  for (const version of versions) {
-    const source = version.source_installation_id || "unknown installation";
-    if (!groups.has(source)) groups.set(source, []);
-    groups.get(source).push(version);
-  }
-  return [...groups.entries()].map(([source, items]) => ({ source, items }));
 }
 
 function isMigrationRequiredError(error) {

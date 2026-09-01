@@ -9,51 +9,108 @@ import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 
 const closedSession = { transcript: "", status: "closed", error: null, shell: "" };
+const maxPendingInputBytes = 64 * 1024;
 
 export function MaintenanceConsolePanel() {
   const [open, setOpen] = useState(false);
   const [openError, setOpenError] = useState("");
   const socketRef = useRef(null);
+  const socketReadyRef = useRef(false);
+  const pendingInputRef = useRef("");
+  const intentionallyClosedSocketsRef = useRef(new WeakSet());
+  const lifecycleGenerationRef = useRef(0);
+  const connectTimerRef = useRef(0);
+  const openRequestedRef = useRef(false);
+  const operationPendingRef = useRef(false);
   const [session, setSession] = useState(closedSession);
 
   useEffect(() => {
+    const intentionallyClosedSockets = intentionallyClosedSocketsRef.current;
+    const lifecycleGeneration = lifecycleGenerationRef;
+    const connectTimer = connectTimerRef;
+    const openRequested = openRequestedRef;
+    const operationPending = operationPendingRef;
     return () => {
+      lifecycleGeneration.current += 1;
+      window.clearTimeout(connectTimer.current);
+      if (socketRef.current) intentionallyClosedSockets.add(socketRef.current);
       socketRef.current?.close();
       socketRef.current = null;
+      socketReadyRef.current = false;
+      pendingInputRef.current = "";
+      operationPending.current = false;
+      if (openRequested.current) {
+        openRequested.current = false;
+        void apiPost("/api/settings/maintenance-console/close", {}).catch(() => undefined);
+      }
     };
   }, []);
 
   async function openConsole() {
+    if (operationPendingRef.current) return;
+    operationPendingRef.current = true;
+    openRequestedRef.current = true;
+    const generation = ++lifecycleGenerationRef.current;
     setOpenError("");
     try {
       await apiPost("/api/settings/maintenance-console/open", {});
+      if (generation !== lifecycleGenerationRef.current) {
+        if (!openRequestedRef.current) await apiPost("/api/settings/maintenance-console/close", {}).catch(() => undefined);
+        return;
+      }
       setSession((current) => ({ ...current, status: "connecting", error: null }));
       setOpen(true);
-      window.setTimeout(() => connect({ force: true }), 0);
+      connectTimerRef.current = window.setTimeout(() => {
+        if (generation === lifecycleGenerationRef.current) connect({ force: true });
+      }, 0);
     } catch (error) {
-      setOpenError(error.message);
+      if (generation === lifecycleGenerationRef.current) {
+        openRequestedRef.current = false;
+        setOpenError(error.message);
+      }
+    } finally {
+      if (generation === lifecycleGenerationRef.current) operationPendingRef.current = false;
     }
   }
 
   async function closeConsole() {
+    lifecycleGenerationRef.current += 1;
+    operationPendingRef.current = true;
+    window.clearTimeout(connectTimerRef.current);
     setOpen(false);
+    if (socketRef.current) intentionallyClosedSocketsRef.current.add(socketRef.current);
     socketRef.current?.close();
     socketRef.current = null;
+    socketReadyRef.current = false;
+    pendingInputRef.current = "";
     setSession(closedSession);
     try {
       await apiPost("/api/settings/maintenance-console/close", {});
-    } catch {
-      // Local dialog state is already closed; an audit failure must not trap the user.
+      openRequestedRef.current = false;
+    } catch (error) {
+      setOpenError(`${error.message || "Maintenance console close failed."} Reopen the console and retry closing it.`);
+    } finally {
+      operationPendingRef.current = false;
     }
   }
 
   async function reconnect() {
+    if (operationPendingRef.current) return;
+    operationPendingRef.current = true;
+    openRequestedRef.current = true;
+    const generation = ++lifecycleGenerationRef.current;
     setOpenError("");
     try {
       await apiPost("/api/settings/maintenance-console/open", {});
+      if (generation !== lifecycleGenerationRef.current) {
+        if (!openRequestedRef.current) await apiPost("/api/settings/maintenance-console/close", {}).catch(() => undefined);
+        return;
+      }
       connect({ force: true });
     } catch (error) {
-      setOpenError(error.message);
+      if (generation === lifecycleGenerationRef.current) setOpenError(error.message);
+    } finally {
+      if (generation === lifecycleGenerationRef.current) operationPendingRef.current = false;
     }
   }
 
@@ -61,10 +118,12 @@ export function MaintenanceConsolePanel() {
     const existing = socketRef.current;
     if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
       if (!options.force) return;
+      intentionallyClosedSocketsRef.current.add(existing);
       existing.close();
     }
     const socket = new WebSocket(maintenanceConsoleAttachUrl());
     socketRef.current = socket;
+    socketReadyRef.current = false;
     setSession((current) => ({ ...current, status: "connecting", error: null }));
     socket.onmessage = (event) => {
       if (socketRef.current !== socket) return;
@@ -79,6 +138,11 @@ export function MaintenanceConsolePanel() {
         setSession({ transcript: message.data || "", status: message.status || "connected", error: null, shell: message.shell || "" });
       }
       if (message.type === "ready") {
+        socketReadyRef.current = true;
+        if (pendingInputRef.current) {
+          socket.send(JSON.stringify({ type: "input", data: pendingInputRef.current }));
+          pendingInputRef.current = "";
+        }
         setSession((current) => ({
           ...current,
           status: message.status || "connected",
@@ -112,16 +176,33 @@ export function MaintenanceConsolePanel() {
       setSession((current) => ({ ...current, status: "error", error: "Maintenance console connection failed." }));
     };
     socket.onclose = () => {
-      if (socketRef.current === socket) socketRef.current = null;
+      const intentional = intentionallyClosedSocketsRef.current.has(socket);
+      intentionallyClosedSocketsRef.current.delete(socket);
+      if (socketRef.current !== socket) return;
+      socketRef.current = null;
+      socketReadyRef.current = false;
+      if (!intentional) {
+        setSession((current) => ({
+          ...current,
+          status: "disconnected",
+          error: current.error || "Maintenance console connection closed. Reconnecting will preserve queued input.",
+        }));
+      }
     };
   }
 
   function sendInput(data) {
     const socket = socketRef.current;
-    if (socket?.readyState === WebSocket.OPEN) {
+    if (socket?.readyState === WebSocket.OPEN && socketReadyRef.current) {
       socket.send(JSON.stringify({ type: "input", data }));
       return;
     }
+    if (new Blob([pendingInputRef.current, data]).size > maxPendingInputBytes) {
+      setSession((current) => ({ ...current, status: "error", error: "Maintenance console input queue is full." }));
+      return;
+    }
+    pendingInputRef.current += data;
+    setSession((current) => ({ ...current, status: "connecting", error: null }));
     connect();
   }
 
