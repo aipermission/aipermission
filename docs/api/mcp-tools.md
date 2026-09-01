@@ -9,7 +9,7 @@ pipeline.
 Recommended package use:
 
 ```bash
-npx -y @aipermission/mcp init
+npx -y @aipermission/mcp setup --provider codex --scope user
 ```
 
 The bridge connects to the backend through `AIPERMISSION_API_URL` and

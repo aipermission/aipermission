@@ -178,9 +178,10 @@ branches to pages when the behavior belongs to a connector template.
 `packages/mcp` is published as `@aipermission/mcp`. It should stay small:
 
 - CLI entrypoint
-- provider config installer
+- registry-driven client config and native skill installers
+- scoped one-command setup and secret-safe setup diagnostics
 - MCP stdio server
-- bundled operator instruction resource
+- bundled native operator skill and protocol-level server instructions
 - tests for config writing and skill installation
 
 The unscoped `aipermission` npm package is only a placeholder that points users to `@aipermission/mcp`.
