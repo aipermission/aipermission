@@ -10,6 +10,7 @@ const requiredChecks = [
   "Backend",
   "Frontend",
   "MCP Package",
+  "MCP Windows Private Config",
   "Docs Hygiene",
   "NPM Placeholder Package",
   "Container Scan",

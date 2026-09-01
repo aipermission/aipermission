@@ -22,15 +22,22 @@ the initial Compose start, they start again when Docker starts after a host
 reboot. An intentional manual stop remains stopped until you start the stack
 again. The one-time migration helper is excluded from automatic restart.
 
-Pin a specific release image with `AIPERMISSION_VERSION` without the leading
-`v`:
+The release Compose file pins its own default image version. To override it,
+set `AIPERMISSION_VERSION` without the leading `v` before pull/start. For
+example, in a POSIX shell:
 
 ```txt
-AIPERMISSION_VERSION=X.Y.Z docker compose -f docker-compose.release.yml up -d
+export AIPERMISSION_VERSION=0.2.36
+docker compose -f docker-compose.release.yml up -d
 ```
 
-Replace `X.Y.Z` with the release version you want to run, without the leading
-`v`.
+In PowerShell use `$env:AIPERMISSION_VERSION = "0.2.36"`; in Command Prompt
+use `set AIPERMISSION_VERSION=0.2.36`. Set it to `latest` only when explicitly
+accepting a mutable deployment.
+
+Replace the pinned value with another tagged release only when intentionally
+upgrading or rolling back. An unpinned `latest` deployment is supported as an
+explicit opt-in but is not the recommended installation path.
 
 On Windows, keep shell scripts checked out with LF line endings. Git should do
 this automatically through the repository `.gitattributes` file; if

@@ -5,7 +5,12 @@ const {
   evaluateRequiredChecks,
   newestCheckByName,
   releaseVersionFromTag,
+  requiredChecks,
 } = require("./verify-release-source");
+
+test("release source requires the Windows private-config security check", () => {
+  assert.ok(requiredChecks.includes("MCP Windows Private Config"));
+});
 
 test("releaseVersionFromTag accepts release and prerelease tags", () => {
   assert.equal(releaseVersionFromTag("v0.2.30"), "0.2.30");
