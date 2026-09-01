@@ -233,14 +233,19 @@ the normal gateway intentionally carries no pre-0.2 compatibility shim. See
 
 ## Development
 
-Install workspaces and run the standard gates:
+Install the independently locked frontend and MCP packages, then run the
+standard gates:
 
 ```bash
-npm install
+npm ci --prefix frontend --workspaces=false
+npm ci --prefix packages/mcp --workspaces=false
 make test
 make build
 make audit
 ```
+
+The package-local lockfiles are canonical. Do not run `npm install` at the
+repository root or create a root `package-lock.json`.
 
 Full release validation:
 
@@ -251,11 +256,11 @@ make release-check
 Useful package checks:
 
 ```bash
-npm run lint --workspace frontend
-npm run format:check --workspace frontend
-npm run test:coverage --workspace frontend
-npm run test:e2e --workspace frontend
-npm run build --workspace @aipermission/mcp
+npm --prefix frontend run lint
+npm --prefix frontend run format:check
+npm --prefix frontend run test:coverage
+npm --prefix frontend run test:e2e
+npm --prefix packages/mcp run build
 ```
 
 Read [CONTRIBUTING](CONTRIBUTING.md) and

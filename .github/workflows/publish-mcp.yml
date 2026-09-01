@@ -43,7 +43,7 @@ jobs:
         run: node scripts/verify-release-source.js --repository "${GITHUB_REPOSITORY}" --sha "$(git rev-parse HEAD)" --tag "${{ inputs.release_tag }}"
       - name: Install
         working-directory: packages/mcp
-        run: npm ci
+        run: npm ci --workspaces=false
       - name: Test
         working-directory: packages/mcp
         run: npm test
