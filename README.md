@@ -156,7 +156,7 @@ secret inventory and exact-session application flow; see
 Install the official MCP bridge into a supported client:
 
 ```bash
-npx -y @aipermission/mcp@0.2.37 init \
+npx -y @aipermission/mcp@0.2.38 init \
   --provider codex \
   --name aipermission
 ```

@@ -9,6 +9,33 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.38] - 2026-09-01
+
+### Changed
+
+- Frontend connector forms now share one tested network transport field implementation
+  without changing connector-owned behavior.
+- JavaScript workspaces now use package-local lockfiles as the canonical dependency
+  boundary for reproducible frontend and MCP builds.
+
+### Security
+
+- The local maintenance console now runs with an isolated environment and supervised
+  process lifecycle so database credentials, proxy settings, and stale child processes
+  do not escape their intended boundary.
+- Container releases now build immutable source candidates, verify the exact source
+  commit, and promote only validated image digests to public version and latest tags.
+- MCP configuration and installed skill files now use private, atomic file handling with
+  package-level lint, format, test, build, and audit gates.
+
+### Maintenance
+
+- Frontend risk coverage now exercises approval dialogs, transfers, unlock and restore
+  flows, maintenance console lifecycle, and connector transport forms across
+  asynchronous failure paths.
+- Release automation now verifies pinned release images, package lock ownership, MCP
+  package quality, and container publication workflow behavior before promotion.
+
 ## [0.2.37] - 2026-09-01
 
 ### Fixed
