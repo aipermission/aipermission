@@ -116,6 +116,11 @@ export async function apiDownload(path, filename, options = {}) {
   if (!response.ok) {
     return readResponse(response);
   }
+  if (saveHandle && response.body && typeof response.body.pipeTo === "function") {
+    const writable = await saveHandle.createWritable();
+    await response.body.pipeTo(writable);
+    return { saved: true, method: "picker" };
+  }
   const blob = await response.blob();
   if (saveHandle) {
     const writable = await saveHandle.createWritable();

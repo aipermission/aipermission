@@ -1,7 +1,71 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { apiPost } from "./api.js";
+import { apiDownload, apiPost } from "./api.js";
+
+test("picker downloads stream the response directly to the selected file", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const writable = {};
+  let destination = null;
+  let suggestedName = "";
+  globalThis.window = {
+    showSaveFilePicker: async ({ suggestedName: value }) => {
+      suggestedName = value;
+      return { createWritable: async () => writable };
+    },
+  };
+  globalThis.fetch = async () => ({
+    ok: true,
+    body: {
+      async pipeTo(value) {
+        destination = value;
+      },
+    },
+    async blob() {
+      throw new Error("streaming download must not buffer a Blob");
+    },
+  });
+  try {
+    const result = await apiDownload("/api/file-transfer-batches/1/download", "backup:latest.zip", { picker: true });
+    assert.deepEqual(result, { saved: true, method: "picker" });
+    assert.equal(suggestedName, "backup-latest.zip");
+    assert.equal(destination, writable);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
+  }
+});
+
+test("picker downloads retain the Blob fallback when response streaming is unavailable", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const blob = { size: 42 };
+  const writes = [];
+  let closed = false;
+  globalThis.window = {
+    showSaveFilePicker: async () => ({
+      createWritable: async () => ({
+        async write(value) {
+          writes.push(value);
+        },
+        async close() {
+          closed = true;
+        },
+      }),
+    }),
+  };
+  globalThis.fetch = async () => ({ ok: true, body: null, blob: async () => blob });
+  try {
+    const result = await apiDownload("/api/backup/download", "backup.aipdb", { picker: true });
+    assert.deepEqual(result, { saved: true, method: "picker" });
+    assert.deepEqual(writes, [blob]);
+    assert.equal(closed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
+  }
+});
 
 test("local connector action retries retain idempotency after uncertain transport failure", async () => {
   const originalFetch = globalThis.fetch;
@@ -97,4 +161,9 @@ function response(body, status = 200) {
       return JSON.stringify(body);
     },
   };
+}
+
+function restoreWindow(value) {
+  if (value === undefined) delete globalThis.window;
+  else globalThis.window = value;
 }
