@@ -29,12 +29,30 @@ test("client registry normalizes aliases from one source", () => {
 
 test("client registry resolves verified MCP targets by scope", () => {
   const roots = { homeDir: "/home/alice", projectDir: "/repo" };
-  assert.equal(resolveMCPConfigTarget("codex", "project", roots).path, "/repo/.codex/config.toml");
-  assert.equal(resolveMCPConfigTarget("copilot", "user", roots).path, "/home/alice/.copilot/mcp-config.json");
-  assert.equal(resolveMCPConfigTarget("antigravity", "project", roots).path, "/repo/.agents/mcp_config.json");
-  assert.equal(resolveMCPConfigTarget("grok", "user", roots).path, "/home/alice/.grok/config.toml");
-  assert.equal(resolveMCPConfigTarget("claude", undefined, roots).scope, "project");
+  const expected = {
+    codex: { user: "/home/alice/.codex/config.toml", project: "/repo/.codex/config.toml", defaultScope: "user" },
+    "claude-code": { user: "/home/alice/.claude.json", project: "/repo/.mcp.json", defaultScope: "project" },
+    cursor: { user: "/home/alice/.cursor/mcp.json", project: "/repo/.cursor/mcp.json", defaultScope: "project" },
+    vscode: { project: "/repo/.vscode/mcp.json", defaultScope: "project" },
+    copilot: { user: "/home/alice/.copilot/mcp-config.json", project: "/repo/.mcp.json", defaultScope: "user" },
+    windsurf: { user: "/home/alice/.codeium/windsurf/mcp_config.json", defaultScope: "user" },
+    antigravity: {
+      user: "/home/alice/.gemini/config/mcp_config.json",
+      project: "/repo/.agents/mcp_config.json",
+      defaultScope: "user",
+    },
+    gemini: { user: "/home/alice/.gemini/settings.json", project: "/repo/.gemini/settings.json", defaultScope: "user" },
+    grok: { user: "/home/alice/.grok/config.toml", project: "/repo/.grok/config.toml", defaultScope: "user" },
+  };
+  for (const [client, targets] of Object.entries(expected)) {
+    for (const scope of ["user", "project"]) {
+      if (!targets[scope]) continue;
+      assert.equal(resolveMCPConfigTarget(client, scope, roots).path, targets[scope]);
+    }
+    assert.equal(resolveMCPConfigTarget(client, undefined, roots).scope, targets.defaultScope);
+  }
   assert.throws(() => resolveMCPConfigTarget("vscode", "user", roots), /Supported scopes: project/);
+  assert.throws(() => resolveMCPConfigTarget("windsurf", "project", roots), /Supported scopes: user/);
   assert.throws(() => resolveMCPConfigTarget("custom", "user", roots), /does not have an automatic MCP config target/);
 });
 
@@ -45,11 +63,35 @@ test("scope validation is explicit", () => {
 
 test("client registry resolves native skill targets by scope", () => {
   const roots = { homeDir: "/home/alice", projectDir: "/repo" };
-  assert.equal(resolveSkillTarget("codex", "user", roots).path, "/home/alice/.agents/skills/aipermission-operator/SKILL.md");
-  assert.equal(resolveSkillTarget("claude-code", "project", roots).path, "/repo/.claude/skills/aipermission-operator/SKILL.md");
-  assert.equal(resolveSkillTarget("copilot", "project", roots).path, "/repo/.github/skills/aipermission-operator/SKILL.md");
-  assert.equal(resolveSkillTarget("antigravity", "user", roots).path, "/home/alice/.gemini/config/skills/aipermission-operator/SKILL.md");
-  assert.equal(resolveSkillTarget("grok", "project", roots).path, "/repo/.grok/skills/aipermission-operator/SKILL.md");
-  assert.equal(resolveSkillTarget("agents", "project", roots).path, "/repo/.agents/skills/aipermission-operator/SKILL.md");
+  const suffix = "/aipermission-operator/SKILL.md";
+  const expected = {
+    codex: { user: `/home/alice/.agents/skills${suffix}`, project: `/repo/.agents/skills${suffix}`, defaultScope: "user" },
+    "claude-code": {
+      user: `/home/alice/.claude/skills${suffix}`,
+      project: `/repo/.claude/skills${suffix}`,
+      defaultScope: "project",
+    },
+    cursor: { user: `/home/alice/.cursor/skills${suffix}`, project: `/repo/.cursor/skills${suffix}`, defaultScope: "project" },
+    vscode: { user: `/home/alice/.copilot/skills${suffix}`, project: `/repo/.github/skills${suffix}`, defaultScope: "project" },
+    copilot: { user: `/home/alice/.copilot/skills${suffix}`, project: `/repo/.github/skills${suffix}`, defaultScope: "user" },
+    windsurf: {
+      user: `/home/alice/.codeium/windsurf/skills${suffix}`,
+      project: `/repo/.windsurf/skills${suffix}`,
+      defaultScope: "user",
+    },
+    antigravity: {
+      user: `/home/alice/.gemini/config/skills${suffix}`,
+      project: `/repo/.agents/skills${suffix}`,
+      defaultScope: "user",
+    },
+    gemini: { user: `/home/alice/.gemini/skills${suffix}`, project: `/repo/.gemini/skills${suffix}`, defaultScope: "user" },
+    grok: { user: `/home/alice/.grok/skills${suffix}`, project: `/repo/.grok/skills${suffix}`, defaultScope: "user" },
+    agents: { user: `/home/alice/.agents/skills${suffix}`, project: `/repo/.agents/skills${suffix}`, defaultScope: "project" },
+  };
+  for (const [client, targets] of Object.entries(expected)) {
+    assert.equal(resolveSkillTarget(client, "user", roots).path, targets.user);
+    assert.equal(resolveSkillTarget(client, "project", roots).path, targets.project);
+    assert.equal(resolveSkillTarget(client, undefined, roots).scope, targets.defaultScope);
+  }
   assert.throws(() => resolveSkillTarget("custom", "user", roots), /does not have an automatic skill target/);
 });
