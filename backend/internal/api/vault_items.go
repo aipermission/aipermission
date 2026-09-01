@@ -392,9 +392,7 @@ func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *ht
 		return
 	}
 	runtime.setVaultPreview(id, nonce)
-	w.Header().Set("Cache-Control", "no-store, private")
-	w.Header().Set("Pragma", "no-cache")
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeSensitiveJSON(w, http.StatusOK, map[string]any{
 		"value": value, "preview_token": previewToken, "generator_kind": request.GeneratorKind,
 		"expires_at": expiresAt.Format(time.RFC3339),
 	})
@@ -469,9 +467,7 @@ func (s vaultItemHandlers) revealVaultItem(w http.ResponseWriter, r *http.Reques
 		writeInternalError(w)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-store, private")
-	w.Header().Set("Pragma", "no-cache")
-	writeJSON(w, http.StatusOK, map[string]any{"value": value})
+	writeSensitiveJSON(w, http.StatusOK, map[string]any{"value": value})
 }
 
 func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Request) {

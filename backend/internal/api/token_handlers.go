@@ -28,7 +28,7 @@ func (s tokenHandlers) listTokens(w http.ResponseWriter, r *http.Request) {
 	if !settings.ReusableTokens {
 		items = stripReusableTokenValues(items)
 	}
-	writeJSON(w, http.StatusOK, items)
+	writeSensitiveJSON(w, http.StatusOK, items)
 }
 
 func (s tokenHandlers) createToken(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +60,7 @@ func (s tokenHandlers) createToken(w http.ResponseWriter, r *http.Request) {
 		handleTokenError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, item)
+	writeSensitiveJSON(w, http.StatusCreated, item)
 }
 
 func (s tokenHandlers) revokeToken(w http.ResponseWriter, r *http.Request) {
@@ -107,5 +107,5 @@ func (s tokenHandlers) revokeToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, item)
+	writeSensitiveJSON(w, http.StatusOK, item)
 }
