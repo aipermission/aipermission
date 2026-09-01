@@ -79,10 +79,7 @@ export async function loadSkill(source) {
 }
 
 function bundledSkillCandidates() {
-  return [
-    path.join(moduleDir, "resources", SKILL_NAME, "SKILL.md"),
-    path.join(moduleDir, "..", "resources", SKILL_NAME, "SKILL.md"),
-  ];
+  return [path.join(moduleDir, "resources", SKILL_NAME, "SKILL.md"), path.join(moduleDir, "..", "resources", SKILL_NAME, "SKILL.md")];
 }
 
 async function readSkillSource(source) {
@@ -131,10 +128,12 @@ export function renderInstruction(client, skill) {
 }
 
 export function normalizeClient(value) {
-  const client = String(value || "").trim().toLowerCase();
+  const client = String(value || "")
+    .trim()
+    .toLowerCase();
   const aliases = {
     claude: "claude-code",
-    "claude_code": "claude-code",
+    claude_code: "claude-code",
     "claude-code": "claude-code",
     copilot: "vscode",
     "vs-code": "vscode",
@@ -151,16 +150,18 @@ export function normalizeClient(value) {
 }
 
 function clientLabel(client) {
-  return {
-    codex: "Codex",
-    "claude-code": "Claude Code",
-    cursor: "Cursor",
-    vscode: "VS Code / GitHub Copilot",
-    windsurf: "Windsurf",
-    antigravity: "Google Antigravity",
-    gemini: "Gemini CLI",
-    custom: "Custom",
-  }[client] || client;
+  return (
+    {
+      codex: "Codex",
+      "claude-code": "Claude Code",
+      cursor: "Cursor",
+      vscode: "VS Code / GitHub Copilot",
+      windsurf: "Windsurf",
+      antigravity: "Google Antigravity",
+      gemini: "Gemini CLI",
+      custom: "Custom",
+    }[client] || client
+  );
 }
 
 function stripSkillFrontmatter(value) {

@@ -7,7 +7,18 @@ import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 
-import { assertProviderSelectionAvailable, buildMCPServerConfig, normalizeURL, PACKAGE_SPECIFIER, parseFlags, sanitizeName, tomlKey, tomlString, writeJSONMCPConfig, writeProviderConfig } from "../src/init.js";
+import {
+  assertProviderSelectionAvailable,
+  buildMCPServerConfig,
+  normalizeURL,
+  PACKAGE_SPECIFIER,
+  parseFlags,
+  sanitizeName,
+  tomlKey,
+  tomlString,
+  writeJSONMCPConfig,
+  writeProviderConfig,
+} from "../src/init.js";
 import { codexSkillPath, loadSkill, normalizeClient, renderInstruction, skillPathForClient } from "../src/install-skill.js";
 import { normalizeLocalAPIURL } from "../src/local-url.js";
 
@@ -27,16 +38,13 @@ async function initGitRepository(dir) {
 }
 
 test("parseFlags supports kebab-case, inline values, and booleans", () => {
-  assert.deepEqual(
-    parseFlags(["--provider", "codex", "--api-url=http://localhost:3210/", "--name", "main", "--print", "--force"]),
-    {
-      provider: "codex",
-      apiUrl: "http://localhost:3210/",
-      name: "main",
-      print: true,
-      force: true,
-    }
-  );
+  assert.deepEqual(parseFlags(["--provider", "codex", "--api-url=http://localhost:3210/", "--name", "main", "--print", "--force"]), {
+    provider: "codex",
+    apiUrl: "http://localhost:3210/",
+    name: "main",
+    print: true,
+    force: true,
+  });
   assert.deepEqual(parseFlags(["--token-stdin"]), { tokenStdin: true });
   assert.throws(() => parseFlags(["--token", "secret"]), /--token is not supported/);
 });
@@ -50,6 +58,9 @@ test("non-interactive init requires an explicit provider", () => {
 test("sanitizeName keeps MCP-safe names", () => {
   assert.equal(sanitizeName(" aipermission default! "), "aipermission-default");
   assert.throws(() => sanitizeName("!!!"), /MCP server name is required/);
+  for (const reserved of ["__proto__", "prototype", "constructor"]) {
+    assert.throws(() => sanitizeName(reserved), /MCP server name is reserved/);
+  }
 });
 
 test("buildMCPServerConfig creates npx based bridge config", () => {
@@ -80,8 +91,8 @@ test("normalizeLocalAPIURL only accepts local gateway origins", () => {
 
 test("toml helpers quote unsafe names and strings", () => {
   assert.equal(tomlKey("aipermission-default"), "aipermission-default");
-  assert.equal(tomlKey("aipermission default"), "\"aipermission default\"");
-  assert.equal(tomlString("TOKEN\nVALUE"), "\"TOKEN\\nVALUE\"");
+  assert.equal(tomlKey("aipermission default"), '"aipermission default"');
+  assert.equal(tomlString("TOKEN\nVALUE"), '"TOKEN\\nVALUE"');
 });
 
 test("writeJSONMCPConfig replaces invalid array root key with object", async () => {
@@ -93,6 +104,20 @@ test("writeJSONMCPConfig replaces invalid array root key with object", async () 
 
   const parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
   assert.deepEqual(parsed, { mcpServers: { aipermission: { command: "npx" } } });
+});
+
+test("writeJSONMCPConfig serializes concurrent read-modify-write updates", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-mcp-concurrent-"));
+  const filePath = path.join(dir, "mcp.json");
+
+  await Promise.all([
+    writeJSONMCPConfig(filePath, "first", { command: "one" }, "mcpServers"),
+    writeJSONMCPConfig(filePath, "second", { command: "two" }, "mcpServers"),
+  ]);
+
+  assert.deepEqual(JSON.parse(await fs.readFile(filePath, "utf8")), {
+    mcpServers: { first: { command: "one" }, second: { command: "two" } },
+  });
 });
 
 test("writeProviderConfig writes Claude Code project MCP config", async () => {
@@ -124,8 +149,46 @@ test("writeProviderConfig adds project MCP configs to local git exclude", async 
     assert.equal(result.path, path.join(dir, ".cursor", "mcp.json"));
     assert.equal(result.gitExcluded, true);
     assert.equal(result.gitExcludeEntry, ".cursor/mcp.json");
+    assert.equal(result.gitExcludeTemporaryEntry, ".cursor/.mcp.json.aipermission-*.tmp");
+    assert.equal(result.gitExcludeStagingEntry, ".cursor/.mcp.json.aipermission-stage-*");
+    assert.equal(result.gitExcludeLockEntry, ".cursor/mcp.json.aipermission.lock");
     const exclude = await fs.readFile(path.join(gitDir, "info", "exclude"), "utf8");
-    assert.match(exclude, /^\.cursor\/mcp\.json$/m);
+    assert.match(exclude, /^\/\.cursor\/mcp\.json$/m);
+    assert.match(exclude, /^\/\.cursor\/\.mcp\.json\.aipermission-\*\.tmp$/m);
+    assert.match(exclude, /^\/\.cursor\/\.mcp\.json\.aipermission-stage-\*$/m);
+    assert.match(exclude, /^\/\.cursor\/mcp\.json\.aipermission\.lock$/m);
+    const simulatedCrashTemp = path.join(dir, ".cursor", ".mcp.json.aipermission-crash.tmp");
+    await fs.writeFile(simulatedCrashTemp, "TOKEN");
+    assert.equal(
+      await git(dir, "check-ignore", "--", ".cursor/.mcp.json.aipermission-crash.tmp"),
+      ".cursor/.mcp.json.aipermission-crash.tmp",
+    );
+    const simulatedCrashStage = path.join(dir, ".cursor", ".mcp.json.aipermission-stage-crash", "mcp.json");
+    await fs.mkdir(path.dirname(simulatedCrashStage));
+    await fs.writeFile(simulatedCrashStage, "TOKEN");
+    assert.equal(
+      await git(dir, "check-ignore", "--", ".cursor/.mcp.json.aipermission-stage-crash/mcp.json"),
+      ".cursor/.mcp.json.aipermission-stage-crash/mcp.json",
+    );
+  } finally {
+    process.chdir(previousCwd);
+  }
+});
+
+test("writeProviderConfig fails before writing when local Git exclusion cannot be read", async () => {
+  const previousCwd = process.cwd();
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-git-exclude-failure-"));
+  await initGitRepository(dir);
+  const gitDir = await git(dir, "rev-parse", "--absolute-git-dir");
+  await fs.rm(path.join(gitDir, "info", "exclude"), { force: true });
+  await fs.mkdir(path.join(gitDir, "info", "exclude"));
+  try {
+    process.chdir(dir);
+    await assert.rejects(
+      () => writeProviderConfig("claude-code", "aipermission", { command: "npx" }),
+      /Could not protect MCP config with local Git excludes/,
+    );
+    await assert.rejects(() => fs.stat(path.join(dir, ".mcp.json")), { code: "ENOENT" });
   } finally {
     process.chdir(previousCwd);
   }
@@ -142,7 +205,7 @@ test("writeProviderConfig refuses to write tokens into tracked project MCP confi
 
     await assert.rejects(
       () => writeProviderConfig("claude-code", "aipermission", { command: "npx", env: { AIPERMISSION_API_TOKEN: "TOKEN" } }),
-      /Refusing to write AIPERMISSION_API_TOKEN into tracked git file: \.mcp\.json/
+      /Refusing to write AIPERMISSION_API_TOKEN into tracked git file: \.mcp\.json/,
     );
 
     const result = await writeProviderConfig("claude-code", "aipermission", { command: "npx" }, { force: true });
@@ -167,10 +230,10 @@ test("writeProviderConfig protects configs in linked worktrees", async () => {
 
     const result = await writeProviderConfig("cursor", "aipermission", { command: "npx" });
 
-    const gitDir = await git(worktree, "rev-parse", "--absolute-git-dir");
-    const exclude = await fs.readFile(path.join(gitDir, "info", "exclude"), "utf8");
+    const excludePath = await git(worktree, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude");
+    const exclude = await fs.readFile(excludePath, "utf8");
     assert.equal(result.gitExcluded, true);
-    assert.match(exclude, /^\.cursor\/mcp\.json$/m);
+    assert.match(exclude, /^\/\.cursor\/mcp\.json$/m);
   } finally {
     process.chdir(previousCwd);
     await git(dir, "worktree", "remove", "--force", worktree).catch(() => {});
@@ -199,17 +262,64 @@ test("writeProviderConfig protects configs inside submodules", async () => {
     const gitDir = await git(submodule, "rev-parse", "--absolute-git-dir");
     const exclude = await fs.readFile(path.join(gitDir, "info", "exclude"), "utf8");
     assert.equal(result.gitExcluded, true);
-    assert.match(exclude, /^\.cursor\/mcp\.json$/m);
+    assert.match(exclude, /^\/\.cursor\/mcp\.json$/m);
+  } finally {
+    process.chdir(previousCwd);
+  }
+});
+
+test("writeProviderConfig serializes concurrent local Git exclude updates", async () => {
+  const previousCwd = process.cwd();
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-git-concurrent-"));
+  await initGitRepository(dir);
+  try {
+    process.chdir(dir);
+    await Promise.all([
+      writeProviderConfig("cursor", "cursor-test", { command: "one" }),
+      writeProviderConfig("vscode", "vscode-test", { command: "two" }),
+    ]);
+    const excludePath = await git(dir, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude");
+    const exclude = await fs.readFile(excludePath, "utf8");
+    assert.match(exclude, /^\/\.cursor\/mcp\.json$/m);
+    assert.match(exclude, /^\/\.vscode\/mcp\.json$/m);
+  } finally {
+    process.chdir(previousCwd);
+  }
+});
+
+test("writeProviderConfig fails closed when Git index inspection fails", async () => {
+  const previousCwd = process.cwd();
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-git-corrupt-"));
+  await initGitRepository(dir);
+  await fs.writeFile(path.join(dir, ".git", "index"), "not a git index");
+  try {
+    process.chdir(dir);
+    await assert.rejects(
+      () => writeProviderConfig("claude-code", "aipermission", { command: "npx" }),
+      /Could not verify whether MCP config is tracked by Git/,
+    );
+    await assert.rejects(() => fs.stat(path.join(dir, ".mcp.json")), { code: "ENOENT" });
+  } finally {
+    process.chdir(previousCwd);
+  }
+});
+
+test("writeProviderConfig fails closed when a higher-precedence rule exposes the config", async () => {
+  const previousCwd = process.cwd();
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-git-negation-"));
+  await initGitRepository(dir);
+  await fs.writeFile(path.join(dir, ".gitignore"), "!.cursor/mcp.json\n");
+  try {
+    process.chdir(dir);
+    await assert.rejects(() => writeProviderConfig("cursor", "aipermission", { command: "npx" }), /Git still permits sensitive MCP path/);
+    await assert.rejects(() => fs.stat(path.join(dir, ".cursor", "mcp.json")), { code: "ENOENT" });
   } finally {
     process.chdir(previousCwd);
   }
 });
 
 test("codexSkillPath returns Codex skill location", () => {
-  assert.equal(
-    codexSkillPath("/home/alice"),
-    "/home/alice/.codex/skills/aipermission-operator/SKILL.md"
-  );
+  assert.equal(codexSkillPath("/home/alice"), "/home/alice/.codex/skills/aipermission-operator/SKILL.md");
 });
 
 test("skillPathForClient maps clients to their documented instruction locations", () => {
@@ -252,10 +362,7 @@ test("loadSkill can read a local operator skill source", async () => {
 });
 
 test("loadSkill rejects remote HTTP sources", async () => {
-  await assert.rejects(
-    () => loadSkill("https://example.com/aipermission-operator/SKILL.md"),
-    /remote skill sources are not supported/
-  );
+  await assert.rejects(() => loadSkill("https://example.com/aipermission-operator/SKILL.md"), /remote skill sources are not supported/);
 });
 
 test("loadSkill reads the bundled operator skill by default", async () => {

@@ -1,4 +1,4 @@
-.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -96,6 +96,12 @@ frontend-audit:
 mcp-test:
 	cd packages/mcp && npm test
 
+mcp-lint:
+	cd packages/mcp && npm run lint
+
+mcp-format-check:
+	cd packages/mcp && npm run format:check
+
 mcp-build:
 	cd packages/mcp && npm run build
 
@@ -114,7 +120,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz frontend-lint frontend-format-check frontend-test frontend-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz frontend-lint frontend-format-check frontend-test frontend-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build

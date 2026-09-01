@@ -8,6 +8,15 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
+import {
+  atomicWritePrivateFile,
+  privateLockPath,
+  privateStagingIgnorePath,
+  privateStagingPath,
+  privateTemporaryIgnorePath,
+  privateTemporaryPath,
+  withPrivateFileLock,
+} from "./private-file.js";
 
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
@@ -78,9 +87,7 @@ export async function runInit(argv = []) {
     const provider = flags.provider
       ? findProvider(flags.provider)
       : await selectProvider("Which AI client should use this token?", providers);
-    const name = sanitizeName(
-      flags.name || (await ask(rl, "MCP server name", "aipermission"))
-    );
+    const name = sanitizeName(flags.name || (await ask(rl, "MCP server name", "aipermission")));
     const apiUrl = normalizeURL(flags.apiUrl || DEFAULT_API_URL);
     const token = await resolveToken({ ...flags, stdinToken }, rl);
 
@@ -104,7 +111,9 @@ export async function runInit(argv = []) {
       console.log(`${color.dim}Git:${color.reset} added ${result.gitExcludeEntry} to .git/info/exclude`);
     }
     console.log("");
-    console.log(`${color.yellow}Keep this config private:${color.reset} it contains an AIPermission bearer token. If it is committed, revoke the token.`);
+    console.log(
+      `${color.yellow}Keep this config private:${color.reset} it contains an AIPermission bearer token. If it is committed, revoke the token.`,
+    );
     console.log(`${color.yellow}Restart the AI client so it reloads MCP servers.${color.reset}`);
   } finally {
     rl.close();
@@ -151,9 +160,7 @@ export function parseFlags(argv) {
 
 function findProvider(idOrLabel) {
   const normalized = String(idOrLabel).trim().toLowerCase();
-  const provider = providers.find(
-    (item) => item.id === normalized || item.label.toLowerCase() === normalized
-  );
+  const provider = providers.find((item) => item.id === normalized || item.label.toLowerCase() === normalized);
   if (!provider) {
     throw new Error(`Unknown provider: ${idOrLabel}`);
   }
@@ -175,18 +182,12 @@ async function selectProvider(title, items) {
       output.write(`\x1b[${renderedLines}A`);
       output.write("\x1b[J");
     }
-    const lines = [
-      `${color.bold}${color.cyan}${title}${color.reset}`,
-      `${color.dim}Use ↑/↓ and Enter.${color.reset}`,
-      "",
-    ];
+    const lines = [`${color.bold}${color.cyan}${title}${color.reset}`, `${color.dim}Use ↑/↓ and Enter.${color.reset}`, ""];
     for (let i = 0; i < items.length; i += 1) {
       const selected = i === index;
       const marker = selected ? `${color.green}›${color.reset}` : " ";
       const label = selected ? `${color.bold}${items[i].label}${color.reset}` : items[i].label;
-      lines.push(
-        `${marker} ${label} ${color.dim}- ${items[i].description}${color.reset}`
-      );
+      lines.push(`${marker} ${label} ${color.dim}- ${items[i].description}${color.reset}`);
     }
     output.write("\x1b[?25l");
     output.write(`${lines.join("\n")}\n`);
@@ -210,7 +211,7 @@ async function selectProvider(title, items) {
     };
     const onData = (buffer) => {
       const value = buffer.toString("utf8");
-      const keys = value.match(/\u001b\[[AB]|\r|\n|\u0003|./g) || [];
+      const keys = splitInputKeys(value);
       for (const key of keys) {
         if (key === "\u0003") {
           cleanup();
@@ -313,87 +314,112 @@ export function buildMCPServerConfig({ apiUrl, token }) {
 }
 
 export async function writeProviderConfig(providerID, name, config, options = {}) {
+  const projectRoot = process.cwd();
+  const homeRoot = os.homedir();
   if (providerID === "codex") {
-    const filePath = path.join(os.homedir(), ".codex", "config.toml");
-    await writeCodexConfig(filePath, name, config);
+    const filePath = path.join(homeRoot, ".codex", "config.toml");
+    await writeCodexConfig(filePath, name, config, { trustedRoot: homeRoot });
     return { path: filePath };
   }
   if (providerID === "claude-code") {
-    const filePath = path.join(process.cwd(), ".mcp.json");
+    const filePath = path.join(projectRoot, ".mcp.json");
     await assertProjectConfigWritable(filePath, options);
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers");
-    return { path: filePath, ...(await protectGitIgnoredConfig(filePath)) };
+    const protection = await protectGitIgnoredConfig(filePath);
+    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: projectRoot });
+    return { path: filePath, ...protection };
   }
   if (providerID === "cursor") {
-    const filePath = path.join(process.cwd(), ".cursor", "mcp.json");
+    const filePath = path.join(projectRoot, ".cursor", "mcp.json");
     await assertProjectConfigWritable(filePath, options);
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers");
-    return { path: filePath, ...(await protectGitIgnoredConfig(filePath)) };
+    const protection = await protectGitIgnoredConfig(filePath);
+    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: projectRoot });
+    return { path: filePath, ...protection };
   }
   if (providerID === "vscode") {
-    const filePath = path.join(process.cwd(), ".vscode", "mcp.json");
+    const filePath = path.join(projectRoot, ".vscode", "mcp.json");
     await assertProjectConfigWritable(filePath, options);
-    await writeJSONMCPConfig(filePath, name, config, "servers");
-    return { path: filePath, ...(await protectGitIgnoredConfig(filePath)) };
+    const protection = await protectGitIgnoredConfig(filePath);
+    await writeJSONMCPConfig(filePath, name, config, "servers", { trustedRoot: projectRoot });
+    return { path: filePath, ...protection };
   }
   if (providerID === "windsurf") {
-    const filePath = path.join(os.homedir(), ".codeium", "windsurf", "mcp_config.json");
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers");
+    const filePath = path.join(homeRoot, ".codeium", "windsurf", "mcp_config.json");
+    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: homeRoot });
     return { path: filePath };
   }
   if (providerID === "antigravity") {
-    const filePath = path.join(os.homedir(), ".gemini", "antigravity", "mcp_config.json");
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers");
+    const filePath = path.join(homeRoot, ".gemini", "antigravity", "mcp_config.json");
+    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: homeRoot });
     return { path: filePath };
   }
   if (providerID === "gemini") {
-    const filePath = path.join(os.homedir(), ".gemini", "settings.json");
-    await writeJSONMCPConfig(filePath, name, config, "mcpServers");
+    const filePath = path.join(homeRoot, ".gemini", "settings.json");
+    await writeJSONMCPConfig(filePath, name, config, "mcpServers", { trustedRoot: homeRoot });
     return { path: filePath };
   }
   throw new Error(`Unsupported provider: ${providerID}`);
 }
 
-export async function writeJSONMCPConfig(filePath, name, config, rootKey) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  let root = {};
-  try {
-    root = JSON.parse(await fs.readFile(filePath, "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      throw new Error(`Could not read JSON config at ${filePath}: ${error.message}`);
-    }
-  }
-  if (!root || typeof root !== "object" || Array.isArray(root)) {
-    root = {};
-  }
-  root[rootKey] =
-    root[rootKey] && typeof root[rootKey] === "object" && !Array.isArray(root[rootKey])
-      ? root[rootKey]
-      : {};
-  root[rootKey][name] = config;
-  await writePrivateFile(filePath, `${JSON.stringify(root, null, 2)}\n`);
+export async function writeJSONMCPConfig(filePath, name, config, rootKey, options = {}) {
+  await withPrivateFileLock(
+    filePath,
+    async () => {
+      let root = {};
+      try {
+        root = JSON.parse(await fs.readFile(filePath, "utf8"));
+      } catch (error) {
+        if (error.code !== "ENOENT") {
+          throw new Error(`Could not read JSON config at ${filePath}: ${error.message}`, { cause: error });
+        }
+      }
+      if (!root || typeof root !== "object" || Array.isArray(root)) root = {};
+      const currentServers = root[rootKey];
+      const servers =
+        currentServers && typeof currentServers === "object" && !Array.isArray(currentServers)
+          ? { ...currentServers }
+          : Object.create(null);
+      Object.defineProperty(servers, name, { value: config, enumerable: true, configurable: true, writable: true });
+      root[rootKey] = servers;
+      await writePrivateFile(filePath, `${JSON.stringify(root, null, 2)}\n`, options);
+    },
+    options,
+  );
 }
 
-async function writeCodexConfig(filePath, name, config) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  let current = "";
-  try {
-    current = await fs.readFile(filePath, "utf8");
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      throw error;
+function splitInputKeys(value) {
+  const keys = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const sequence = value.slice(index, index + 3);
+    if (sequence === "\u001b[A" || sequence === "\u001b[B") {
+      keys.push(sequence);
+      index += 2;
+      continue;
     }
+    keys.push(value[index]);
   }
-
-  const next = removeCodexServer(current, name).trimEnd();
-  const block = codexServerBlock(name, config);
-  await writePrivateFile(filePath, `${next ? `${next}\n\n` : ""}${block}\n`);
+  return keys;
 }
 
-async function writePrivateFile(filePath, contents) {
-  await fs.writeFile(filePath, contents, { mode: 0o600 });
-  await fs.chmod(filePath, 0o600);
+async function writeCodexConfig(filePath, name, config, options = {}) {
+  await withPrivateFileLock(
+    filePath,
+    async () => {
+      let current = "";
+      try {
+        current = await fs.readFile(filePath, "utf8");
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      const next = removeCodexServer(current, name).trimEnd();
+      const block = codexServerBlock(name, config);
+      await writePrivateFile(filePath, `${next ? `${next}\n\n` : ""}${block}\n`, options);
+    },
+    options,
+  );
+}
+
+async function writePrivateFile(filePath, contents, options = {}) {
+  await atomicWritePrivateFile(filePath, contents, options);
 }
 
 async function assertProjectConfigWritable(filePath, options = {}) {
@@ -408,7 +434,7 @@ async function assertProjectConfigWritable(filePath, options = {}) {
     [
       `Refusing to write AIPERMISSION_API_TOKEN into tracked git file: ${tracked}`,
       "Use --print to copy the config manually, untrack/ignore that file, or rerun with --force if you intentionally accept commit risk.",
-    ].join("\n")
+    ].join("\n"),
   );
 }
 
@@ -421,26 +447,52 @@ async function protectGitIgnoredConfig(filePath) {
   if (relativePath.startsWith("../") || path.isAbsolute(relativePath)) {
     return {};
   }
-  const excludePath = path.join(repository.gitDir, "info", "exclude");
-  let current = "";
+  const excludePath = repository.excludePath;
+  const temporaryRelativePath = path.relative(repository.workTree, privateTemporaryIgnorePath(filePath)).split(path.sep).join("/");
+  const stagingRelativePath = path.relative(repository.workTree, privateStagingIgnorePath(filePath)).split(path.sep).join("/");
+  const lockRelativePath = path.relative(repository.workTree, privateLockPath(filePath)).split(path.sep).join("/");
+  const ignoreEntries = [
+    gitIgnoreLiteral(relativePath),
+    gitIgnoreWildcardPath(temporaryRelativePath),
+    gitIgnoreWildcardPath(stagingRelativePath),
+    gitIgnoreLiteral(lockRelativePath),
+  ];
   try {
-    current = await fs.readFile(excludePath, "utf8");
+    await withPrivateFileLock(
+      excludePath,
+      async () => {
+        let current = "";
+        try {
+          current = await fs.readFile(excludePath, "utf8");
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+        const entries = new Set(current.split(/\r?\n/));
+        const missingEntries = ignoreEntries.filter((entry) => !entries.has(entry));
+        if (missingEntries.length === 0) return;
+        const prefix = current && !current.endsWith("\n") ? "\n" : "";
+        await atomicWritePrivateFile(excludePath, `${current}${prefix}${missingEntries.join("\n")}\n`, {
+          trustedRoot: path.dirname(excludePath),
+        });
+      },
+      { trustedRoot: path.dirname(excludePath) },
+    );
+    await assertGitIgnored(repository, [
+      relativePath,
+      privateTemporaryCheckPath(filePath, repository.workTree),
+      privateStagingCheckPath(filePath, repository.workTree),
+      lockRelativePath,
+    ]);
   } catch (error) {
-    if (error.code !== "ENOENT") {
-      return {};
-    }
+    throw new Error(`Could not protect MCP config with local Git excludes: ${error.message}`, { cause: error });
   }
-  const entries = current.split(/\r?\n/).map((line) => line.trim());
-  if (!entries.includes(relativePath)) {
-    const prefix = current && !current.endsWith("\n") ? "\n" : "";
-    try {
-      await fs.mkdir(path.dirname(excludePath), { recursive: true });
-      await fs.appendFile(excludePath, `${prefix}${relativePath}\n`, { mode: 0o600 });
-    } catch {
-      return {};
-    }
-  }
-  return { gitExcluded: true, gitExcludeEntry: relativePath };
+  return {
+    gitExcluded: true,
+    gitExcludeEntry: relativePath,
+    gitExcludeTemporaryEntry: temporaryRelativePath,
+    gitExcludeStagingEntry: stagingRelativePath,
+    gitExcludeLockEntry: lockRelativePath,
+  };
 }
 
 async function gitTrackedPath(filePath) {
@@ -453,28 +505,85 @@ async function gitTrackedPath(filePath) {
     return "";
   }
   try {
-    await execFileAsync("git", ["-C", repository.workTree, "ls-files", "--error-unmatch", "--", relativePath], { windowsHide: true });
+    await execFileAsync("git", ["-C", repository.workTree, "ls-files", "--error-unmatch", "--", relativePath], {
+      windowsHide: true,
+    });
     return relativePath;
-  } catch {
-    return "";
+  } catch (error) {
+    if (error.code === 1) return "";
+    throw new Error(`Could not verify whether MCP config is tracked by Git: ${gitErrorMessage(error)}`, { cause: error });
   }
 }
 
 async function discoverGitRepository(startDir) {
   try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", path.resolve(startDir), "rev-parse", "--show-toplevel", "--absolute-git-dir"],
-      { encoding: "utf8", windowsHide: true }
-    );
+    const { stdout } = await execFileAsync("git", ["-C", path.resolve(startDir), "rev-parse", "--show-toplevel", "--absolute-git-dir"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
     const [workTree, gitDir] = stdout.trim().split(/\r?\n/);
     if (!workTree || !gitDir) {
       return null;
     }
-    return { workTree: path.resolve(workTree), gitDir: path.resolve(gitDir) };
-  } catch {
-    return null;
+    const { stdout: excludeOutput } = await execFileAsync(
+      "git",
+      ["-C", path.resolve(startDir), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"],
+      { encoding: "utf8", windowsHide: true },
+    );
+    const excludePath = excludeOutput.trim();
+    if (!excludePath) throw new Error("Git did not return an exclude path");
+    return { workTree: path.resolve(workTree), gitDir: path.resolve(gitDir), excludePath: path.resolve(excludePath) };
+  } catch (error) {
+    if (/not a git repository/i.test(`${error.stderr || ""}\n${error.message || ""}`)) return null;
+    throw new Error(`Could not inspect Git repository: ${gitErrorMessage(error)}`, { cause: error });
   }
+}
+
+async function assertGitIgnored(repository, relativePaths) {
+  for (const relativePath of relativePaths) {
+    try {
+      await execFileAsync("git", ["-C", repository.workTree, "check-ignore", "--no-index", "-q", "--", relativePath], {
+        windowsHide: true,
+      });
+    } catch (error) {
+      if (error.code === 1) {
+        throw new Error(`Git still permits sensitive MCP path: ${relativePath}`, { cause: error });
+      }
+      throw new Error(`Could not verify local Git exclusion: ${gitErrorMessage(error)}`, { cause: error });
+    }
+  }
+}
+
+function privateTemporaryCheckPath(filePath, workTree) {
+  return path.relative(workTree, privateTemporaryPath(filePath, "git-check")).split(path.sep).join("/");
+}
+
+function privateStagingCheckPath(filePath, workTree) {
+  return path.relative(workTree, privateStagingPath(filePath, "git-check")).split(path.sep).join("/");
+}
+
+function escapeGitIgnoreFragment(value) {
+  let result = "";
+  for (const character of value) {
+    result += ["\\", "*", "?", "[", "]", "#", "!", " "].includes(character) ? `\\${character}` : character;
+  }
+  return result;
+}
+
+function gitIgnoreLiteral(relativePath) {
+  return `/${escapeGitIgnoreFragment(relativePath)}`;
+}
+
+function gitIgnoreWildcardPath(relativePath) {
+  const wildcardIndex = relativePath.lastIndexOf("*");
+  if (wildcardIndex < 0) throw new Error(`Git ignore wildcard path is missing its generated wildcard: ${relativePath}`);
+  return `/${escapeGitIgnoreFragment(relativePath.slice(0, wildcardIndex))}*${escapeGitIgnoreFragment(
+    relativePath.slice(wildcardIndex + 1),
+  )}`;
+}
+
+function gitErrorMessage(error) {
+  return String(error.stderr || error.message || error).trim();
 }
 
 function removeCodexServer(source, name) {
@@ -532,6 +641,9 @@ export function sanitizeName(value) {
     .replace(/^-+|-+$/g, "");
   if (!name) {
     throw new Error("MCP server name is required.");
+  }
+  if (["__proto__", "prototype", "constructor"].includes(name.toLowerCase())) {
+    throw new Error("MCP server name is reserved.");
   }
   return name;
 }
