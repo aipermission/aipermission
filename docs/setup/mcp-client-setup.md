@@ -131,26 +131,21 @@ Contributors who develop the MCP package can work from the monorepo package dire
 
 ```bash
 cd packages/mcp
-npm install
+npm ci --workspaces=false
 npm test
 npm run build
 ```
 
-If an AI client is launched from the AIPermission monorepo root, `npx -y
-@aipermission/mcp` can resolve the local workspace package instead of the
-published npm package. In that development-only case, configure the MCP server
-with the workspace command:
+If an AI client is launched from the AIPermission repository root, use the
+built local package explicitly instead of allowing `npx -y @aipermission/mcp`
+to resolve another package. In that development-only case, configure the MCP
+server with the package entry point:
 
 ```json
 {
-  "command": "npm",
+  "command": "node",
   "args": [
-    "exec",
-    "--yes",
-    "--workspace",
-    "packages/mcp",
-    "--",
-    "aipermission-mcp"
+    "packages/mcp/dist/cli.js"
   ],
   "env": {
     "AIPERMISSION_API_URL": "http://localhost:3210",

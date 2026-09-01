@@ -61,11 +61,6 @@ function setVersion(version) {
   frontendLock.packages[""].version = version;
   writeJSON("frontend/package-lock.json", frontendLock);
 
-  const rootLock = readJSON("package-lock.json");
-  rootLock.packages.frontend.version = version;
-  rootLock.packages["packages/mcp"].version = version;
-  writeJSON("package-lock.json", rootLock);
-
   const mcpPackage = readJSON("packages/mcp/package.json");
   mcpPackage.version = version;
   writeJSON("packages/mcp/package.json", mcpPackage);
@@ -123,14 +118,6 @@ function checkVersion() {
     [
       "frontend/package-lock.json packages root",
       readJSON("frontend/package-lock.json").packages[""].version,
-    ],
-    [
-      "root package-lock frontend workspace",
-      readJSON("package-lock.json").packages.frontend.version,
-    ],
-    [
-      "root package-lock MCP workspace",
-      readJSON("package-lock.json").packages["packages/mcp"].version,
     ],
     [
       "packages/mcp/package.json",

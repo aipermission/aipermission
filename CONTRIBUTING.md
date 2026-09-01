@@ -27,11 +27,17 @@ Homebrew and expose its include/library paths to CGO. Windows contributors can
 use the repository Docker build, which owns these native dependencies. The
 published runtime image includes `libssl3` explicitly.
 
-Install JavaScript workspaces from the repository root:
+Install the frontend and MCP packages from their canonical package-local
+lockfiles:
 
 ```bash
-npm install
+npm ci --prefix frontend --workspaces=false
+npm ci --prefix packages/mcp --workspaces=false
 ```
+
+The package-local lockfiles are canonical. Do not create a root
+`package-lock.json`; repository hygiene rejects one to prevent local/CI
+dependency drift.
 
 Run backend tests:
 
@@ -43,14 +49,14 @@ go test ./...
 Run frontend tests and build:
 
 ```bash
-npx playwright install chromium --with-deps
-npm run lint --workspace frontend
-npm run format:check --workspace frontend
-npm test --workspace frontend
-npm run build --workspace frontend
+npm --prefix frontend exec -- playwright install chromium --with-deps
+npm --prefix frontend run lint
+npm --prefix frontend run format:check
+npm --prefix frontend test
+npm --prefix frontend run build
 ```
 
-Use `npm run format --workspace frontend` to apply the repository Prettier
+Use `npm --prefix frontend run format` to apply the repository Prettier
 rules. React hook suppressions are tracked in
 `frontend/eslint-suppressions.json` with an enforced budget of zero. New
 warnings fail lint. Fix the code instead of adding inline suppressions; the
@@ -61,16 +67,16 @@ Run Playwright when a change touches route-level UI, approval dialogs, console,
 or connector template rendering:
 
 ```bash
-npm run test:e2e --workspace frontend
+npm --prefix frontend run test:e2e
 ```
 
 Build MCP bridge:
 
 ```bash
-npm run build --workspace @aipermission/mcp
+npm --prefix packages/mcp run build
 ```
 
-If your AI client runs from the monorepo root, use the workspace MCP command in
+If your AI client runs from the repository root, use the local MCP command in
 [MCP Client Setup](docs/setup/mcp-client-setup.md#local-package-development)
 instead of the normal `npx -y @aipermission/mcp` command.
 
@@ -99,7 +105,7 @@ New connector PR checklist:
   exports fail `npm test`
 - update smoke/tests that assert the built-in connector list, backend registry,
   routes, and frontend template folder evaluation
-- run `npm test --workspace frontend` so template registry modules are evaluated,
+- run `npm --prefix frontend test` so template registry modules are evaluated,
   not only string-smoked
 
 Run the full local stack:
