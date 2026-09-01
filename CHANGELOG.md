@@ -9,6 +9,31 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.40] - 2026-09-02
+
+### Fixed
+
+- The local reverse proxy now accepts the documented 512 MiB single-file and 1 GiB batch
+  transfer limits while returning route-specific JSON errors for oversized uploads.
+- Browser save-picker downloads now stream responses directly to disk when supported,
+  avoiding duplicate in-memory buffering while retaining the existing fallback.
+
+### Security
+
+- Token create, list, and revoke responses now use explicit private no-store cache
+  policy alongside Vault reveal and preview responses.
+- Generated gateway secrets now use validated regular files, owner-only permissions,
+  atomic durable writes, and fail-closed startup without rotating invalid existing key
+  material.
+
+### Maintenance
+
+- Roadmap and contributor guidance now describe the shipped warning-only command policy
+  accurately and reserve future work for evidence-backed expansion or explicit deny
+  evaluation.
+- Focused regression coverage now locks transfer proxy limits, sensitive response
+  headers, streaming download fallback, and gateway-secret compatibility behavior.
+
 ## [0.2.39] - 2026-09-01
 
 ### Added

@@ -163,7 +163,7 @@ MCP server config shape:
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp@0.2.39"],
+      "args": ["-y", "@aipermission/mcp@0.2.40"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",
@@ -221,7 +221,7 @@ On native Windows, some clients cannot spawn `npx` directly even when it works
 in an interactive terminal. First make Node.js 20+ visible to the GUI process
 and restart that client. If it still reports `spawn npx ENOENT`, use `init --print`
 and adapt the server command to `cmd` with arguments beginning
-`["/d", "/s", "/c", "npx", "-y", "@aipermission/mcp@0.2.39"]`.
+`["/d", "/s", "/c", "npx", "-y", "@aipermission/mcp@0.2.40"]`.
 
 Copilot CLI also accepts `.github/mcp.json`, but setup intentionally uses the
 local `.mcp.json` project target because the generated object contains a bearer
