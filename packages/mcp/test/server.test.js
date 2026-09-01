@@ -3,8 +3,21 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { callVaultActionSchema, listVaultItemsSchema, vaultActionRequestSchema } from "../src/vault-tools.js";
+import { MCP_SERVER_INSTRUCTIONS } from "../src/instructions.js";
 
 const serverSource = () => fs.readFile(path.resolve("src/server.js"), "utf8");
+
+test("MCP initialization includes concise operator safety instructions", async () => {
+  const source = await serverSource();
+
+  assert.match(source, /\{ instructions: MCP_SERVER_INSTRUCTIONS \}/);
+  assert.match(MCP_SERVER_INSTRUCTIONS, /list_connector_targets/);
+  assert.match(MCP_SERVER_INSTRUCTIONS, /approval_pending or running/);
+  assert.match(MCP_SERVER_INSTRUCTIONS, /untrusted data/);
+  assert.match(MCP_SERVER_INSTRUCTIONS, /Never request, print, or place raw secrets/);
+  assert.match(MCP_SERVER_INSTRUCTIONS, /idempotency_key/);
+  assert.ok(MCP_SERVER_INSTRUCTIONS.length <= 512);
+});
 
 test("MCP package does not expose retired pre-connector tools", async () => {
   const source = await serverSource();
