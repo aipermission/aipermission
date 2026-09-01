@@ -38,6 +38,8 @@ jobs:
         run: node scripts/package-lock-check.js
       - name: Release version consistency
         run: |
+          node --test scripts/publish-images-workflow.test.js
+          node --test scripts/release-version.test.js
           node --test scripts/verify-release-source.test.js
           node scripts/release-version.js --check
       - name: Native dependency inventory

@@ -118,15 +118,20 @@ a separate host port. To use another local UI port:
 AIPERMISSION_FRONTEND_PORT=3211 docker compose up -d --build
 ```
 
-To pin release images:
+The release Compose file defaults to the version shipped in the checkout, so
+these commands work unchanged in POSIX shells, PowerShell, and Command Prompt.
+To run a different release, set `AIPERMISSION_VERSION` in your shell first.
+Avoid opting into mutable `latest` when you need reproducible upgrades or
+rollback.
 
 ```bash
-AIPERMISSION_VERSION=X.Y.Z docker compose -f docker-compose.release.yml up -d
+export AIPERMISSION_VERSION=0.2.36
+docker compose -f docker-compose.release.yml up -d
 ```
 
-Use the version without a leading `v`. Containers use the `unless-stopped`
-restart policy. See [Docker Runtime](docs/setup/docker-runtime.md) for Windows
-line endings, host services, logs, and recovery guidance.
+Containers use the `unless-stopped` restart policy. See
+[Docker Runtime](docs/setup/docker-runtime.md) for Windows line endings, host
+services, logs, and recovery guidance.
 
 ### First Setup
 

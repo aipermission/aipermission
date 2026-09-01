@@ -11,16 +11,15 @@ const pinnedMCPConfigDocs = [
   "packages/mcp/README.md",
   "docs/setup/mcp-client-setup.md",
 ];
+const dockerReleaseComposePath = "docker-compose.release.yml";
+const dockerReleaseImagePattern = /(aipermission-(?:backend|frontend):\$\{AIPERMISSION_VERSION:-)([^}]+)(\})/g;
 
 function readJSON(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));
 }
 
-function writeJSON(relativePath, value) {
-  fs.writeFileSync(
-    path.join(root, relativePath),
-    `${JSON.stringify(value, null, 2)}\n`,
-  );
+function stageJSON(updates, relativePath, value) {
+  updates.set(relativePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function replaceRequired(source, pattern, replacement, label) {
@@ -30,19 +29,37 @@ function replaceRequired(source, pattern, replacement, label) {
   return source.replace(pattern, replacement);
 }
 
-function updatePinnedMCPConfigDocs(version) {
+function readStagedSource(updates, relativePath) {
+  return (
+    updates.get(relativePath) ||
+    fs.readFileSync(path.join(root, relativePath), "utf8")
+  );
+}
+
+function stagePinnedMCPConfigDocs(updates, version) {
   for (const relativePath of pinnedMCPConfigDocs) {
-    const filePath = path.join(root, relativePath);
-    const source = fs.readFileSync(filePath, "utf8");
+    const source = readStagedSource(updates, relativePath);
     const pattern = /@aipermission\/mcp@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/g;
     if (!pattern.test(source)) {
       throw new Error(`could not update pinned MCP config in ${relativePath}`);
     }
-    fs.writeFileSync(
-      filePath,
+    updates.set(
+      relativePath,
       source.replace(pattern, `@aipermission/mcp@${version}`),
     );
   }
+}
+
+function stagePinnedDockerCompose(updates, version) {
+  const source = readStagedSource(updates, dockerReleaseComposePath);
+  const matches = [...source.matchAll(dockerReleaseImagePattern)];
+  if (matches.length !== 3) {
+    throw new Error(`could not update all pinned Docker release images in ${dockerReleaseComposePath}`);
+  }
+  updates.set(
+    dockerReleaseComposePath,
+    source.replace(dockerReleaseImagePattern, (_match, prefix, _currentVersion, suffix) => `${prefix}${version}${suffix}`),
+  );
 }
 
 function setVersion(version) {
@@ -50,41 +67,43 @@ function setVersion(version) {
     throw new Error(`invalid release version: ${version}`);
   }
 
-  writeJSON("release-manifest.json", { version });
+  const updates = new Map();
+  stageJSON(updates, "release-manifest.json", { version });
 
   const frontendPackage = readJSON("frontend/package.json");
   frontendPackage.version = version;
-  writeJSON("frontend/package.json", frontendPackage);
+  stageJSON(updates, "frontend/package.json", frontendPackage);
 
   const frontendLock = readJSON("frontend/package-lock.json");
   frontendLock.version = version;
   frontendLock.packages[""].version = version;
-  writeJSON("frontend/package-lock.json", frontendLock);
+  stageJSON(updates, "frontend/package-lock.json", frontendLock);
 
   const mcpPackage = readJSON("packages/mcp/package.json");
   mcpPackage.version = version;
-  writeJSON("packages/mcp/package.json", mcpPackage);
+  stageJSON(updates, "packages/mcp/package.json", mcpPackage);
 
   const mcpLock = readJSON("packages/mcp/package-lock.json");
   mcpLock.version = version;
   mcpLock.packages[""].version = version;
-  writeJSON("packages/mcp/package-lock.json", mcpLock);
+  stageJSON(updates, "packages/mcp/package-lock.json", mcpLock);
 
   const mcpServer = readJSON("packages/mcp/server.json");
   mcpServer.version = version;
   for (const packageEntry of mcpServer.packages || []) {
     packageEntry.version = version;
   }
-  writeJSON("packages/mcp/server.json", mcpServer);
-  updatePinnedMCPConfigDocs(version);
+  stageJSON(updates, "packages/mcp/server.json", mcpServer);
+  stagePinnedMCPConfigDocs(updates, version);
+  stagePinnedDockerCompose(updates, version);
 
   const backendVersionPath = path.join(
     root,
     "backend/internal/buildinfo/version.go",
   );
   const backendVersionSource = fs.readFileSync(backendVersionPath, "utf8");
-  fs.writeFileSync(
-    backendVersionPath,
+  updates.set(
+    "backend/internal/buildinfo/version.go",
     replaceRequired(
       backendVersionSource,
       /^const Version = "[^"]+"$/m,
@@ -92,6 +111,97 @@ function setVersion(version) {
       "backend build version",
     ),
   );
+  commitFileUpdates(root, updates);
+}
+
+function pinnedDockerReleaseValue(source, version) {
+  const matches = [...source.matchAll(dockerReleaseImagePattern)];
+  if (matches.length !== 3) return undefined;
+  const versions = matches.map((match) => match[2]);
+  return versions.every((item) => item === version) ? version : versions.join(",");
+}
+
+function commitFileUpdates(baseDirectory, updates, operations = {}) {
+  const writeFile = operations.writeFileSync || fs.writeFileSync;
+  const rename = operations.renameSync || fs.renameSync;
+  const unlink = operations.unlinkSync || fs.unlinkSync;
+  const originals = new Map();
+  const prepared = [];
+  const committed = [];
+  const temporaryPaths = new Set();
+  let rollbackError;
+
+  const removeTemporary = (temporaryPath) => {
+    try {
+      unlink(temporaryPath);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    } finally {
+      temporaryPaths.delete(temporaryPath);
+    }
+  };
+
+  const writeTemporary = (temporaryPath, contents, mode) => {
+    temporaryPaths.add(temporaryPath);
+    writeFile(temporaryPath, contents, { mode });
+  };
+
+  try {
+    let index = 0;
+    for (const [relativePath, contents] of updates) {
+      const targetPath = path.join(baseDirectory, relativePath);
+      const stat = fs.statSync(targetPath);
+      originals.set(targetPath, fs.readFileSync(targetPath));
+      const temporaryPath = `${targetPath}.aipermission-release-${process.pid}-${index}.tmp`;
+      prepared.push({ targetPath, temporaryPath, mode: stat.mode });
+      writeTemporary(temporaryPath, contents, stat.mode);
+      index += 1;
+    }
+    for (const item of prepared) {
+      rename(item.temporaryPath, item.targetPath);
+      temporaryPaths.delete(item.temporaryPath);
+      committed.push(item);
+    }
+  } catch (error) {
+    for (const temporaryPath of [...temporaryPaths]) {
+      try {
+        removeTemporary(temporaryPath);
+      } catch (cleanupError) {
+        rollbackError ||= cleanupError;
+      }
+    }
+    for (const item of committed.reverse()) {
+      const rollbackPath = `${item.targetPath}.aipermission-release-rollback-${process.pid}.tmp`;
+      try {
+        writeTemporary(rollbackPath, originals.get(item.targetPath), item.mode);
+        rename(rollbackPath, item.targetPath);
+        temporaryPaths.delete(rollbackPath);
+      } catch (restoreError) {
+        rollbackError ||= restoreError;
+      } finally {
+        try {
+          removeTemporary(rollbackPath);
+        } catch (cleanupError) {
+          rollbackError ||= cleanupError;
+        }
+      }
+    }
+    if (rollbackError) {
+      throw new Error(
+        `release metadata update failed (${error.message}); rollback also failed (${rollbackError.message})`,
+      );
+    }
+    throw error;
+  } finally {
+    for (const temporaryPath of [...temporaryPaths]) {
+      try {
+        removeTemporary(temporaryPath);
+      } catch (cleanupError) {
+        rollbackError ||= cleanupError;
+      }
+    }
+  }
+  if (rollbackError) throw rollbackError;
 }
 
 function checkVersion() {
@@ -170,6 +280,8 @@ function checkVersion() {
       )?.[1],
     ]);
   }
+  const dockerComposeSource = fs.readFileSync(path.join(root, dockerReleaseComposePath), "utf8");
+  values.push([dockerReleaseComposePath, pinnedDockerReleaseValue(dockerComposeSource, version)]);
 
   const changelog = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
   values.push([
@@ -186,18 +298,27 @@ function checkVersion() {
   console.log(`Release version metadata is consistent at ${version}.`);
 }
 
-try {
-  if (process.argv[2] === "--set") {
-    setVersion(process.argv[3] || "");
-    console.log(
-      "Release package metadata updated. Add the matching canonical release note, run node scripts/release-notes.js, then run --check.",
-    );
-  } else if (process.argv.length > 2 && process.argv[2] !== "--check") {
-    throw new Error("usage: release-version.js [--check | --set X.Y.Z]");
-  } else {
-    checkVersion();
+if (require.main === module) {
+  try {
+    if (process.argv[2] === "--set") {
+      setVersion(process.argv[3] || "");
+      console.log(
+        "Release package metadata updated. Add the matching canonical release note, run node scripts/release-notes.js, then run --check.",
+      );
+    } else if (process.argv.length > 2 && process.argv[2] !== "--check") {
+      throw new Error("usage: release-version.js [--check | --set X.Y.Z]");
+    } else {
+      checkVersion();
+    }
+  } catch (error) {
+    console.error(`Release version check failed: ${error.message}`);
+    process.exit(1);
   }
-} catch (error) {
-  console.error(`Release version check failed: ${error.message}`);
-  process.exit(1);
 }
+
+module.exports = {
+  commitFileUpdates,
+  pinnedDockerReleaseValue,
+  stagePinnedDockerCompose,
+  stagePinnedMCPConfigDocs,
+};

@@ -34,21 +34,9 @@ jobs:
         run: node scripts/verify-release-source.js
 
   publish:
-    name: Publish ${{ matrix.image }} image
+    name: Publish signed release pair
     needs: verify-source
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: backend
-            context: ./backend
-            build_args: ""
-          - image: frontend
-            context: ./frontend
-            build_args: |
-              VITE_API_URL=
-              VITE_MCP_API_URL=
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -61,68 +49,51 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
 
-      - name: Build candidate image
-        env:
-          BUILD_ARGS: ${{ matrix.build_args }}
-          IMAGE: ghcr.io/aipermission/aipermission-${{ matrix.image }}
+      - name: Build both candidate images
+        id: candidates
         run: |
-          candidate="${IMAGE}:candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          build_args=()
-          while IFS= read -r arg; do
-            if [[ -n "${arg}" ]]; then
-              build_args+=(--build-arg "${arg}")
-            fi
-          done <<< "${BUILD_ARGS}"
-          docker buildx build \
-            --platform linux/amd64 \
-            --provenance=mode=max \
-            --sbom=true \
-            --metadata-file "/tmp/${{ matrix.image }}-image-metadata.json" \
-            --tag "${candidate}" \
-            "${build_args[@]}" \
-            --push \
-            "${{ matrix.context }}"
+          set -Eeuo pipefail
+          bash scripts/build-container-candidate.sh backend ./backend
+          bash scripts/build-container-candidate.sh frontend ./frontend --build-arg VITE_API_URL= --build-arg VITE_MCP_API_URL=
 
-      - name: Resolve candidate digest
-        id: candidate
-        env:
-          IMAGE: ghcr.io/aipermission/aipermission-${{ matrix.image }}
-        run: |
-          digest="$(jq -r '."containerimage.digest"' "/tmp/${{ matrix.image }}-image-metadata.json")"
-          test "${digest#sha256:}" != "${digest}"
-          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
-          echo "reference=${IMAGE}@${digest}" >> "${GITHUB_OUTPUT}"
-
-      - name: Scan exact candidate digest
+      - name: Scan both exact candidate digests
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          docker run --rm \
-            -e TRIVY_USERNAME \
-            -e TRIVY_PASSWORD \
-            aquasec/trivy:0.63.0@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037 \
-            image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
-            "${{ steps.candidate.outputs.reference }}"
-
-      - name: Promote scanned digest
-        env:
-          DIGEST: ${{ steps.candidate.outputs.digest }}
-          IMAGE: ghcr.io/aipermission/aipermission-${{ matrix.image }}
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          tags=(
-            "${IMAGE}:${GITHUB_REF_NAME}"
-            "${IMAGE}:${version}"
-          )
-          if [[ "${version}" != *-* ]]; then
-            tags+=("${IMAGE}:latest")
-          fi
-          for tag in "${tags[@]}"; do
-            docker buildx imagetools create --prefer-index=false --tag "${tag}" "${IMAGE}@${DIGEST}"
-            promoted="$(docker buildx imagetools inspect "${tag}" | awk '/^Digest:/ {print $2; exit}')"
-            test "${promoted}" = "${DIGEST}"
+          set -Eeuo pipefail
+          for reference in \
+            "${{ steps.candidates.outputs.backend_reference }}" \
+            "${{ steps.candidates.outputs.frontend_reference }}"; do
+            docker run --rm \
+              -e TRIVY_USERNAME \
+              -e TRIVY_PASSWORD \
+              aquasec/trivy:0.63.0@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037 \
+              image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "${reference}"
           done
 
-      - name: Sign published image digest
-        run: cosign sign --yes "${{ steps.candidate.outputs.reference }}"
+      - name: Sign and attest both candidate digests
+        run: |
+          set -Eeuo pipefail
+          predicate="${RUNNER_TEMP}/release-source.json"
+          jq -n \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg commit "${GITHUB_SHA}" \
+            --arg workflow ".github/workflows/publish-images.yml" \
+            --arg ref "${GITHUB_REF}" \
+            '{repository: $repository, commit: $commit, workflow: $workflow, ref: $ref}' > "${predicate}"
+          for reference in \
+            "${{ steps.candidates.outputs.backend_reference }}" \
+            "${{ steps.candidates.outputs.frontend_reference }}"; do
+            cosign sign --yes "${reference}"
+            cosign attest --yes \
+              --type https://aipermission.dev/attestations/release-source/v1 \
+              --predicate "${predicate}" \
+              "${reference}"
+          done
+
+      - name: Promote signed pair with rollback
+        env:
+          BACKEND_DIGEST: ${{ steps.candidates.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ steps.candidates.outputs.frontend_digest }}
+        run: bash scripts/promote-container-images.sh
