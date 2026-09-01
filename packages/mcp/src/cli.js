@@ -27,14 +27,16 @@ Usage:
   aipermission-mcp install-skill   Install the operator skill for an AI client
 
 Init flags:
-  --provider codex|claude-code|cursor|vscode|windsurf|antigravity|gemini|custom
+  --provider codex|claude-code|cursor|vscode|copilot|windsurf|antigravity|gemini|grok|custom
+  --scope user|project
   --name aipermission
   --token-stdin
   --api-url http://localhost:3210
   --print
 
 Install skill flags:
-  --client codex|claude-code|cursor|vscode|windsurf|antigravity|gemini|custom
+  --client codex|claude-code|cursor|vscode|copilot|windsurf|antigravity|gemini|grok|agents|custom
+  --scope user|project
   --project-dir /path/to/workspace
   --source /path/to/SKILL.md  Local file only; HTTP(S) sources are rejected
 

@@ -8,6 +8,7 @@ import {
   normalizeClientID,
   normalizeScope,
   resolveMCPConfigTarget,
+  resolveSkillTarget,
 } from "../src/client-registry.js";
 
 test("client registry exposes MCP setup providers", () => {
@@ -40,4 +41,15 @@ test("client registry resolves verified MCP targets by scope", () => {
 test("scope validation is explicit", () => {
   assert.equal(normalizeScope("USER"), "user");
   assert.throws(() => normalizeScope("local"), /Use user or project/);
+});
+
+test("client registry resolves native skill targets by scope", () => {
+  const roots = { homeDir: "/home/alice", projectDir: "/repo" };
+  assert.equal(resolveSkillTarget("codex", "user", roots).path, "/home/alice/.agents/skills/aipermission-operator/SKILL.md");
+  assert.equal(resolveSkillTarget("claude-code", "project", roots).path, "/repo/.claude/skills/aipermission-operator/SKILL.md");
+  assert.equal(resolveSkillTarget("copilot", "project", roots).path, "/repo/.github/skills/aipermission-operator/SKILL.md");
+  assert.equal(resolveSkillTarget("antigravity", "user", roots).path, "/home/alice/.gemini/config/skills/aipermission-operator/SKILL.md");
+  assert.equal(resolveSkillTarget("grok", "project", roots).path, "/repo/.grok/skills/aipermission-operator/SKILL.md");
+  assert.equal(resolveSkillTarget("agents", "project", roots).path, "/repo/.agents/skills/aipermission-operator/SKILL.md");
+  assert.throws(() => resolveSkillTarget("custom", "user", roots), /does not have an automatic skill target/);
 });
