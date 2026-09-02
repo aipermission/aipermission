@@ -90,13 +90,7 @@ func (s *Server) openUnlockedLocked(password string) error {
 	s.config.GatewaySecret = runtime.gatewaySecret
 	s.workspaces[runtime.id] = runtime
 	s.applyRuntimeLocked(runtime)
-	if settings, err := readRetentionSettings(context.Background(), runtime); err == nil {
-		if _, err := applyRetentionSettings(context.Background(), runtime, settings); err != nil {
-			log.Printf("retention cleanup failed workspace=%s error=%v", runtime.id, err)
-		}
-	} else {
-		log.Printf("read retention settings failed workspace=%s error=%v", runtime.id, err)
-	}
+	s.initializeRetention(runtime)
 	return nil
 }
 
@@ -336,6 +330,7 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) {
+	s.stopRetentionWorker(runtime)
 	if runtime.vaultLeases != nil {
 		runtime.vaultLeases.Clear()
 	}

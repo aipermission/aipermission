@@ -47,6 +47,7 @@ type Server struct {
 	auditHealth          auditHealthState
 	databaseMove         func(string, string) error
 	runtimeOpen          func(string, string, string) (*databaseRuntime, error)
+	retentionInterval    time.Duration
 }
 
 type databaseRuntime struct {
@@ -82,6 +83,9 @@ type databaseRuntime struct {
 	vaultPreviewNonces map[int64]string
 	identityMu         sync.Mutex
 	auditDispatcher    *auditoutbox.Dispatcher
+	retentionMu        sync.Mutex
+	retentionCancel    context.CancelFunc
+	retentionDone      chan struct{}
 }
 
 type serverOptions struct {
@@ -156,6 +160,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		vaultGenerateLimiter: newWindowRateLimiter(10, time.Minute),
 		vaultRequestLimiter:  newWindowRateLimiter(30, time.Minute),
 		uiSessions:           map[string]uiSessionRecord{},
+		retentionInterval:    defaultRetentionCleanupInterval,
 	}
 	runtime := &databaseRuntime{
 		id:                 activeID,
@@ -187,6 +192,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 	server.configureVaultSessionRuntime(runtime)
 	server.configureAuditDispatcher(runtime)
 	server.workspaces[activeID] = runtime
+	server.initializeRetention(runtime)
 	server.routes()
 	return server, nil
 }
@@ -209,6 +215,7 @@ func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 		vaultGenerateLimiter: newWindowRateLimiter(10, time.Minute),
 		vaultRequestLimiter:  newWindowRateLimiter(30, time.Minute),
 		uiSessions:           map[string]uiSessionRecord{},
+		retentionInterval:    defaultRetentionCleanupInterval,
 	}
 	server.routes()
 	return server

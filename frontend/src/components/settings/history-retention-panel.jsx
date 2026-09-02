@@ -65,8 +65,8 @@ export function HistoryRetentionPanel() {
       <CardContent>
         <form className="grid gap-4" onSubmit={saveRetention}>
           <Notice>
-            Cleanup runs when a database is unlocked and immediately after saving these settings. Use 0 to disable automatic cleanup for a
-            category.
+            Cleanup runs when a database is unlocked, after saving these settings, and hourly while it remains unlocked. Use 0 to disable
+            automatic cleanup for a category.
           </Notice>
           {retention.state === "error" ? <Notice tone="bad">{retention.error}</Notice> : null}
           <div className="grid gap-3 sm:grid-cols-2">

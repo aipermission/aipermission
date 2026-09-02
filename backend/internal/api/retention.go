@@ -67,6 +67,8 @@ func (s retentionHandlers) updateRetentionSettings(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	runtime.retentionMu.Lock()
+	defer runtime.retentionMu.Unlock()
 	deleted := map[string]int64{}
 	err := s.withAuditedMutation(
 		r.Context(), runtime, "user", nil, 0, "settings.retention.updated",
@@ -109,6 +111,8 @@ func (s retentionHandlers) purgeRetention(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "days must be at least 1")
 		return
 	}
+	runtime.retentionMu.Lock()
+	defer runtime.retentionMu.Unlock()
 	var deleted int64
 	err := s.withAuditedMutation(
 		r.Context(), runtime, "user", nil, 0, "settings.retention.purged",

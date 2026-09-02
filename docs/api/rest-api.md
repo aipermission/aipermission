@@ -903,7 +903,10 @@ Retention settings:
 }
 ```
 
-`0` disables automatic cleanup for that category. Cleanup runs when a database is unlocked and immediately after retention settings are saved. `POST /api/settings/retention/purge` runs a one-time manual purge:
+`0` disables automatic cleanup for that category. Cleanup runs when a database
+is unlocked, immediately after retention settings are saved, and hourly while
+the database remains unlocked. `POST /api/settings/retention/purge` runs a
+one-time manual purge:
 
 ```json
 {
