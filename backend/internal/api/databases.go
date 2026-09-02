@@ -310,6 +310,7 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 	s.config.GatewaySecret = runtime.gatewaySecret
 	s.workspaces[targetID] = runtime
 	s.applyRuntimeLocked(runtime)
+	s.initializeRetention(runtime)
 	if err := s.issueUISession(w); err != nil {
 		writeInternalError(w)
 		return
