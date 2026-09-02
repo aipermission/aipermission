@@ -245,13 +245,17 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 
 func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databaseRuntime, filter historyEntryFilter) ([]historyEntryRecord, int, error) {
 	where, args := historyEntryWhere(filter)
+	countJoins := ""
+	if filter.Query != "" {
+		countJoins = `
+			LEFT JOIN api_tokens tok ON tok.id = he.token_id
+			LEFT JOIN projects project ON project.id = he.project_id`
+	}
 	var total int
 	if err := runtime.database.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM history_entries he
-		LEFT JOIN api_tokens tok ON tok.id = he.token_id
-		LEFT JOIN projects project ON project.id = he.project_id
-		WHERE `+where,
+			SELECT COUNT(*)
+			FROM history_entries he`+countJoins+`
+			WHERE `+where,
 		args...,
 	).Scan(&total); err != nil {
 		return nil, 0, err
@@ -323,25 +327,39 @@ func (s *Server) getHistoryEntryRecord(ctx context.Context, runtime *databaseRun
 }
 
 func historyEntryWhere(filter historyEntryFilter) (string, []any) {
-	where := []string{
-		"(? = 0 OR he.project_id = ?)",
-		"(? = '' OR he.connector_kind = ?)",
-		"(? = '' OR he.activity_type = ?)",
-		"(? = '' OR he.status = ?)",
-		"(? = '' OR he.source = ?)",
-		"(? = 0 OR he.runtime_id = ?)",
-		"(? = 0 OR he.target_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE target_id = ? AND status = 'active'))",
-		"(? = 0 OR he.profile_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE profile_id = ? AND status = 'active'))",
+	where := []string{"1 = 1"}
+	args := []any{}
+	if filter.ProjectID != 0 {
+		where = append(where, "he.project_id = ?")
+		args = append(args, filter.ProjectID)
 	}
-	args := []any{
-		filter.ProjectID, filter.ProjectID,
-		filter.ConnectorKind, filter.ConnectorKind,
-		filter.ActivityType, filter.ActivityType,
-		filter.Status, filter.Status,
-		filter.Source, filter.Source,
-		filter.RuntimeID, filter.RuntimeID,
-		filter.TargetID, filter.TargetID, filter.TargetID,
-		filter.ProfileID, filter.ProfileID, filter.ProfileID,
+	if filter.ConnectorKind != "" {
+		where = append(where, "he.connector_kind = ?")
+		args = append(args, filter.ConnectorKind)
+	}
+	if filter.ActivityType != "" {
+		where = append(where, "he.activity_type = ?")
+		args = append(args, filter.ActivityType)
+	}
+	if filter.Status != "" {
+		where = append(where, "he.status = ?")
+		args = append(args, filter.Status)
+	}
+	if filter.Source != "" {
+		where = append(where, "he.source = ?")
+		args = append(args, filter.Source)
+	}
+	if filter.RuntimeID != 0 {
+		where = append(where, "he.runtime_id = ?")
+		args = append(args, filter.RuntimeID)
+	}
+	if filter.TargetID != 0 {
+		where = append(where, "(he.target_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE target_id = ? AND status = 'active'))")
+		args = append(args, filter.TargetID, filter.TargetID)
+	}
+	if filter.ProfileID != 0 {
+		where = append(where, "(he.profile_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE profile_id = ? AND status = 'active'))")
+		args = append(args, filter.ProfileID, filter.ProfileID)
 	}
 	if filter.LabelID != 0 {
 		where = append(where, `he.id IN (SELECT history_entry_id FROM history_entry_labels WHERE label_id = ?)`)

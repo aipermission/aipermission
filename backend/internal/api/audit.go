@@ -49,8 +49,12 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
-	where := []string{"(? = '' OR a.actor_type = ?)", "(? = 0 OR a.runtime_id = ?)"}
-	args := []any{actor, actor}
+	where := []string{"1 = 1"}
+	args := []any{}
+	if actor != "" {
+		where = append(where, "a.actor_type = ?")
+		args = append(args, actor)
+	}
 	var runtimeID int64
 	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
 		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
@@ -59,7 +63,10 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		runtimeID = id
 	}
-	args = append(args, runtimeID, runtimeID)
+	if runtimeID != 0 {
+		where = append(where, "a.runtime_id = ?")
+		args = append(args, runtimeID)
+	}
 	var projectID int64
 	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
 		id, ok := parseInt64Query(w, rawProjectID, "project_id")
@@ -96,17 +103,21 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	whereSQL := strings.Join(where, " AND ")
+	countJoins := ""
+	if page.Query != "" {
+		countJoins = `
+			LEFT JOIN api_tokens t ON t.id = a.token_id
+			LEFT JOIN projects project ON project.id = a.project_id
+			LEFT JOIN connector_runtime_surfaces profile_rs ON profile_rs.id = a.runtime_id
+			LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = profile_rs.profile_id AND profile_cp.target_id = profile_rs.target_id AND profile_cp.connector_kind = profile_rs.connector_kind
+			LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
+			LEFT JOIN connector_targets ct ON ct.id = a.target_id`
+	}
 	var total int
 	if err := runtime.database.QueryRowContext(r.Context(), `
-		SELECT COUNT(*)
-		FROM audit_logs a
-		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN projects project ON project.id = a.project_id
-		LEFT JOIN connector_runtime_surfaces profile_rs ON profile_rs.id = a.runtime_id
-		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = profile_rs.profile_id AND profile_cp.target_id = profile_rs.target_id AND profile_cp.connector_kind = profile_rs.connector_kind
-		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
-		LEFT JOIN connector_targets ct ON ct.id = a.target_id
-		WHERE `+whereSQL,
+			SELECT COUNT(*)
+			FROM audit_logs a`+countJoins+`
+			WHERE `+whereSQL,
 		args...,
 	).Scan(&total); err != nil {
 		writeInternalError(w)

@@ -1326,6 +1326,7 @@ var migrations = []migration{
 			 END;`,
 		},
 	},
+	retentionIndexMigration,
 }
 
 func sqlStatements(groups ...[]string) []string {
