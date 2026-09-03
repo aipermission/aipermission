@@ -28,23 +28,55 @@ async function githubJSON(url) {
   return response.json();
 }
 
+async function resolveTagCommit(repository, tag) {
+  const reference = await githubJSON(
+    `https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`,
+  );
+  let object = reference.object;
+  if (object?.type === "tag") {
+    object = (
+      await githubJSON(
+        `https://api.github.com/repos/${repository}/git/tags/${object.sha}`,
+      )
+    ).object;
+  }
+  if (object?.type !== "commit" || !/^[0-9a-f]{40}$/i.test(object.sha || "")) {
+    throw new Error(`could not resolve ${repository} ${tag} to a commit`);
+  }
+  return object.sha;
+}
+
 async function main() {
-  if (!/^[0-9a-f]{7,40}$/i.test(String(inventory.wrapper_commit || ""))) {
-    throw new Error("native dependency inventory wrapper_commit must be a non-empty Git commit");
+  if (!/^[0-9a-f]{40}$/i.test(String(inventory.wrapper_commit || ""))) {
+    throw new Error(
+      "native dependency inventory wrapper_commit must be a full Git commit",
+    );
   }
-  if (!/^\d+\.\d+\.\d+$/.test(String(inventory.reviewed_upstream_runtime_version || ""))) {
-    throw new Error("native dependency inventory reviewed_upstream_runtime_version must be a semantic version");
+  if (
+    !/^\d+\.\d+\.\d+$/.test(
+      String(inventory.reviewed_upstream_runtime_version || ""),
+    )
+  ) {
+    throw new Error(
+      "native dependency inventory reviewed_upstream_runtime_version must be a semantic version",
+    );
   }
-  const [wrapper, release] = await Promise.all([
+  const [wrapper, release, reviewedUpstreamCommit] = await Promise.all([
     githubJSON(
-      "https://api.github.com/repos/SE-I-T-Digital/go-sqlcipher/commits/main",
+      `https://api.github.com/repos/${inventory.wrapper_repository}/commits/${inventory.wrapper_branch}`,
     ),
-    githubJSON("https://api.github.com/repos/sqlcipher/sqlcipher/releases/latest"),
+    githubJSON(
+      `https://api.github.com/repos/${inventory.upstream_repository}/releases/latest`,
+    ),
+    resolveTagCommit(
+      inventory.upstream_repository,
+      inventory.reviewed_upstream_tag,
+    ),
   ]);
 
   const latestRuntime = String(release.tag_name || "").replace(/^v/, "");
   const failures = [];
-  if (!String(wrapper.sha || "").startsWith(inventory.wrapper_commit)) {
+  if (String(wrapper.sha || "") !== inventory.wrapper_commit) {
     failures.push(
       `SQLCipher wrapper advanced from ${inventory.wrapper_commit} to ${wrapper.sha || "unknown"}`,
     );
@@ -52,6 +84,27 @@ async function main() {
   if (latestRuntime !== inventory.reviewed_upstream_runtime_version) {
     failures.push(
       `upstream SQLCipher advanced from reviewed ${inventory.reviewed_upstream_runtime_version} to ${latestRuntime || "unknown"}`,
+    );
+  }
+  if (reviewedUpstreamCommit !== inventory.reviewed_upstream_commit) {
+    failures.push(
+      `reviewed SQLCipher tag ${inventory.reviewed_upstream_tag} resolves to ${reviewedUpstreamCommit}, not inventoried ${inventory.reviewed_upstream_commit}`,
+    );
+  }
+  const reviewDate = new Date(`${inventory.reviewed_upstream_date}T00:00:00Z`);
+  const reviewAgeDays = Math.floor(
+    (Date.now() - reviewDate.getTime()) / 86_400_000,
+  );
+  if (
+    !Number.isInteger(inventory.review_max_age_days) ||
+    Number.isNaN(reviewDate.getTime())
+  ) {
+    failures.push("native dependency review date or maximum age is invalid");
+  } else if (reviewAgeDays < 0) {
+    failures.push("native dependency review date must not be in the future");
+  } else if (reviewAgeDays > inventory.review_max_age_days) {
+    failures.push(
+      `native dependency review is ${reviewAgeDays} days old; maximum age is ${inventory.review_max_age_days} days`,
     );
   }
 
@@ -62,7 +115,7 @@ async function main() {
   }
 
   console.log(
-    `Native dependency sources unchanged: wrapper ${inventory.wrapper_commit}; reviewed SQLCipher ${latestRuntime}.`,
+    `Native dependency sources unchanged: wrapper ${inventory.wrapper_commit}; reviewed SQLCipher ${latestRuntime} at ${reviewedUpstreamCommit}.`,
   );
 }
 

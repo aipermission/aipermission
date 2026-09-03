@@ -1,11 +1,35 @@
 {
+  "schema_version": 1,
   "sqlcipher": {
     "go_module": "github.com/SE-I-T-Digital/go-sqlcipher",
     "go_module_version": "v0.0.0-20260614154805-8f19266d2b27",
-    "wrapper_commit": "8f19266d2b27",
+    "go_module_sum": "h1:BRMw4TRd8KhfnbN2ThaW3MGjEtu1UIO7QAhb2KsPMMY=",
+    "go_mod_sum": "h1:DGeBYll9slhX56GU+uCB6R6XfAY6nl/l7n5FLcDTb5w=",
+    "wrapper_repository": "SE-I-T-Digital/go-sqlcipher",
+    "wrapper_branch": "main",
+    "wrapper_commit": "8f19266d2b2782e348b49e04848c6830429c8174",
     "runtime_version": "4.16.0",
+    "embedded_sqlite_version": "3.53.1",
+    "upstream_repository": "sqlcipher/sqlcipher",
+    "reviewed_upstream_tag": "v4.18.0",
     "reviewed_upstream_runtime_version": "4.18.0",
+    "reviewed_upstream_commit": "63697beb0fafcb61faa7a3e6fd267036548ab11b",
     "reviewed_upstream_date": "2026-08-26",
-    "crypto_provider": "openssl-3"
+    "review_max_age_days": 45,
+    "advisory_review": {
+      "result": "no-known-applicable-advisory",
+      "sources": [
+        "https://github.com/SE-I-T-Digital/go-sqlcipher/security/advisories",
+        "https://github.com/sqlcipher/sqlcipher/security/advisories"
+      ]
+    },
+    "crypto_provider": "openssl-3",
+    "container": {
+      "builder_image": "golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36",
+      "runtime_image": "debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df",
+      "build_packages": ["libssl-dev"],
+      "runtime_packages": ["libssl3"],
+      "resolved_package_versions": "published-image-sbom"
+    }
   }
 }

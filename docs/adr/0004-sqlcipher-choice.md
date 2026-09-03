@@ -13,11 +13,12 @@ The database may be backed up and moved between machines.
 AIPermission uses SQLCipher for full local database encryption. Secret payloads
 inside the database are also handled through the gateway vault layer.
 
-The backend pins `github.com/SE-I-T-Digital/go-sqlcipher` at commit
-`8f19266d2b27`. That wrapper embeds SQLCipher 4.16.0 and links its cryptographic
-provider to OpenSSL 3. The backend image installs the build headers and runtime
-library explicitly; published image SBOMs record the exact operating-system
-package version.
+The backend pins `github.com/SE-I-T-Digital/go-sqlcipher` at full commit
+`8f19266d2b2782e348b49e04848c6830429c8174`. That wrapper embeds SQLCipher
+4.16.0 and SQLite 3.53.1 and links its cryptographic provider to OpenSSL 3. The
+backend image makes CGO explicit, installs the build headers and runtime library
+explicitly, and pins both build and runtime base images by digest. Published
+image SBOMs record the resolved operating-system package versions.
 
 This wrapper was selected over the previous unmaintained SQLCipher 4.4.2
 binding because it follows current `go-sqlite3` behavior, exercises Linux,
@@ -26,11 +27,12 @@ SQLCipher amalgamation. It does not publish tagged releases, so AIPermission
 pins a full commit through a Go pseudo-version and treats any change to its
 default branch as a review signal, never an automatic update.
 
-Official SQLCipher 4.17.0 was reviewed during this decision. The selected Go
-wrapper currently embeds 4.16.0, so 4.17.0 is recorded as reviewed rather than
-silently claimed as active. The scheduled native-dependency freshness workflow
-fails when either reviewed upstream source advances and requires a deliberate
-compatibility review.
+Official SQLCipher 4.18.0 was most recently reviewed on 2026-08-26. The
+selected Go wrapper currently embeds 4.16.0, so 4.18.0 is recorded as reviewed
+rather than silently claimed as active. The scheduled native-dependency
+freshness workflow fails when either reviewed upstream source advances or the
+45-day advisory review window expires and requires a deliberate compatibility
+review.
 
 ## Compatibility Contract
 

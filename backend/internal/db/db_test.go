@@ -616,6 +616,13 @@ func TestOpenEncryptedAppliesSQLCipherPragmas(t *testing.T) {
 	if !strings.HasPrefix(cipherVersion, expectedSQLCipherVersion) {
 		t.Fatalf("expected SQLCipher runtime %s, got %q", expectedSQLCipherVersion, cipherVersion)
 	}
+	var sqliteVersion string
+	if err := database.QueryRow(`SELECT sqlite_version()`).Scan(&sqliteVersion); err != nil {
+		t.Fatalf("read SQLite version: %v", err)
+	}
+	if sqliteVersion != expectedSQLiteVersion {
+		t.Fatalf("expected embedded SQLite runtime %s, got %q", expectedSQLiteVersion, sqliteVersion)
+	}
 
 	var cipherPageSize int
 	if err := database.QueryRow(`PRAGMA cipher_page_size`).Scan(&cipherPageSize); err != nil {
