@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -47,6 +48,51 @@ func TestLoadCreatesAndReusesGatewaySecretWhenDefaultConfigured(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("gateway secret permissions = %o", info.Mode().Perm())
+	}
+}
+
+func TestLoadOrCreateGatewaySecretConvergesAcrossConcurrentCallers(t *testing.T) {
+	dataPath := filepath.Join(t.TempDir(), "aipermission.db")
+	const callers = 32
+	start := make(chan struct{})
+	results := make(chan string, callers)
+	errors := make(chan error, callers)
+	var group sync.WaitGroup
+	for index := 0; index < callers; index++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			secret, err := LoadOrCreateGatewaySecret(dataPath)
+			if err != nil {
+				errors <- err
+				return
+			}
+			results <- secret
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	close(errors)
+	for err := range errors {
+		t.Fatalf("concurrent load: %v", err)
+	}
+	var winner string
+	for secret := range results {
+		if winner == "" {
+			winner = secret
+		}
+		if secret != winner {
+			t.Fatalf("concurrent callers diverged: %q != %q", secret, winner)
+		}
+	}
+	stored, err := readGatewaySecret(GatewaySecretPath(dataPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored != winner {
+		t.Fatalf("stored secret = %q, winner = %q", stored, winner)
 	}
 }
 
