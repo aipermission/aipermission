@@ -33,7 +33,7 @@ func TestDiagnosticsDownloadRequiresUISessionAndReturnsAttachment(t *testing.T) 
 	if response.Code != http.StatusOK {
 		t.Fatalf("diagnostics response = %d: %s", response.Code, response.Body.String())
 	}
-	if response.Header().Get("Cache-Control") != "no-store" {
+	if response.Header().Get("Cache-Control") != "no-store, private" {
 		t.Fatalf("diagnostics cache control = %q", response.Header().Get("Cache-Control"))
 	}
 	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {

@@ -2,9 +2,7 @@ package api
 
 import (
 	"errors"
-	"mime"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -37,8 +35,7 @@ func (s connectorTargetHandlers) downloadConnectorProfileBackup(w http.ResponseW
 	if contentType == "" {
 		contentType = "application/sql"
 	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+	setAttachmentHeaders(w, filename, contentType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(artifact.Data)
 	s.writeObservationAudit(r.Context(), resolved.runtime, "user", nil, 0, "connector.profile.backup.downloaded", map[string]any{
@@ -161,13 +158,5 @@ func (s connectorTargetHandlers) resolveConnectorProfileRuntime(w http.ResponseW
 }
 
 func safeDownloadFilename(value string, fallback string) string {
-	name := strings.TrimSpace(filepath.Base(value))
-	if name == "." || name == "/" || name == "" {
-		return fallback
-	}
-	name = strings.ReplaceAll(name, "\x00", "")
-	if strings.TrimSpace(name) == "" {
-		return fallback
-	}
-	return name
+	return safeAttachmentFilename(value, fallback)
 }

@@ -43,8 +43,7 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 	s.lifecycleMu.RUnlock()
 	defer os.Remove(snapshot.Path)
 
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+snapshot.Filename+`"`)
+	setAttachmentHeaders(w, snapshot.Filename, "application/octet-stream")
 	http.ServeFile(w, r, snapshot.Path)
 }
 

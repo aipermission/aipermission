@@ -244,12 +244,7 @@ func shouldStoreArchiveEntry(name string) bool {
 
 func setDownloadHeaders(w http.ResponseWriter, fileName string) {
 	contentType := mime.TypeByExtension(filepath.Ext(fileName))
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
+	setAttachmentHeaders(w, fileName, contentType)
 }
 
 func (s fileTransferHandlers) ensureFileTransferTempRoot() (string, error) {
