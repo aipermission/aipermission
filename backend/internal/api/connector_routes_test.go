@@ -131,7 +131,7 @@ func TestUnifiedTargetListIncludesSSHAndConnectorProfiles(t *testing.T) {
 	handler := fixture.server.Handler()
 	sshServer := fixture.createKeyAndServer(t, "core-1")
 	store := connectortargets.NewStore(fixture.db)
-	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 
 	response := performJSON(handler, http.MethodGet, "/api/targets", "", nil)
 	if response.Code != http.StatusOK {

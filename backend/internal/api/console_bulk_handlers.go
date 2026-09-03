@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -82,31 +83,39 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 	}
 
 	items := make([]bulkConsoleCommandResponseItem, 0, len(targets))
+	preparedRequests := make([]preparedCommandRequestInsert, 0, len(targets))
 	for _, target := range targets {
-		requestID, err := s.insertCommandRequestWithOptions(r.Context(), runtime, commandRequestInsert{
+		preparedRequests = append(preparedRequests, s.prepareCommandRequestInsert(r.Context(), runtime, commandRequestInsert{
 			RuntimeID: target.ID,
 			Source:    commandRequestSourceManual,
 			Command:   request.Command,
 			Reason:    request.Reason,
 			Status:    "running",
-		})
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		items = append(items, bulkConsoleCommandResponseItem{
-			RequestID:  requestID,
-			TargetID:   target.ID,
-			TargetName: target.Name,
-			Status:     "running",
-		})
+		}))
 	}
-
-	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "console.bulk_exec.started", map[string]any{
-		"target_count": len(items),
-		"request_ids":  bulkConsoleRequestIDs(items),
-		"command":      request.Command,
+	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+		for index, target := range targets {
+			requestID, err := s.insertCommandRequestWithExecutor(r.Context(), runtime, tx, preparedRequests[index])
+			if err != nil {
+				return err
+			}
+			items = append(items, bulkConsoleCommandResponseItem{
+				RequestID:  requestID,
+				TargetID:   target.ID,
+				TargetName: target.Name,
+				Status:     "running",
+			})
+		}
+		return appendAudit(tx, "user", nil, 0, "console.bulk_exec.started", map[string]any{
+			"target_count": len(items),
+			"request_ids":  bulkConsoleRequestIDs(items),
+			"command":      request.Command,
+		})
 	})
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	s.runBulkConsoleCommands(runtime, request.Command, items)
 
 	writeJSON(w, http.StatusAccepted, bulkConsoleCommandResponse{

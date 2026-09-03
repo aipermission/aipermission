@@ -41,6 +41,13 @@ func (runtime *databaseRuntime) ConnectorVault() *vault.Vault {
 	return runtime.vault
 }
 
+func (runtime *databaseRuntime) ConnectorWorkspaceID() string {
+	if runtime == nil {
+		return ""
+	}
+	return runtime.workspaceUUID
+}
+
 // ConnectorResource returns one connector-owned runtime resource.
 func (runtime *databaseRuntime) ConnectorResource(kind string, name string) any {
 	if runtime == nil {

@@ -2,6 +2,8 @@ package console
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -102,33 +104,43 @@ func (s *managedConsoleSession) updateManualActiveCommand(update *manualActiveCo
 	trackingReason := s.redactForPersistence(update.TrackingReason)
 	if update.Downgrade {
 		now := time.Now().UTC().Format(time.RFC3339)
-		_, err := s.manager.db.ExecContext(context.Background(), `
-			UPDATE command_requests
-			SET command = ?, status = 'untracked', tracking_reason = ?, completed_at = COALESCE(completed_at, ?)
-			WHERE id = ? AND status = 'running'`,
-			command,
-			trackingReason,
-			now,
-			update.RequestID,
-		)
+		err := s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(context.Background(), `
+					UPDATE command_requests
+					SET command = ?, status = 'untracked', tracking_reason = ?, completed_at = COALESCE(completed_at, ?)
+					WHERE id = ? AND status = 'running'`,
+				command,
+				trackingReason,
+				now,
+				update.RequestID,
+			); err != nil {
+				return err
+			}
+			return history.SyncCommandRequestWithExecutor(context.Background(), tx, update.RequestID)
+		})
 		if err != nil {
 			logConsolePersistError("manual_history_update", s.id, err)
 		}
-		s.syncManualHistory(update.RequestID)
-		s.closeStaleManualRunningRows(update.RequestID, update.TrackingReason)
+		if err := s.closeStaleManualRunningRows(update.RequestID, update.TrackingReason); err != nil {
+			logConsolePersistError("manual_history_stale", s.id, err)
+		}
 		return
 	}
-	_, err := s.manager.db.ExecContext(context.Background(), `
-		UPDATE command_requests
-		SET command = ?
-		WHERE id = ? AND status = 'running'`,
-		command,
-		update.RequestID,
-	)
+	err := s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(context.Background(), `
+				UPDATE command_requests
+				SET command = ?
+				WHERE id = ? AND status = 'running'`,
+			command,
+			update.RequestID,
+		); err != nil {
+			return err
+		}
+		return history.SyncCommandRequestWithExecutor(context.Background(), tx, update.RequestID)
+	})
 	if err != nil {
 		logConsolePersistError("manual_history_update", s.id, err)
 	}
-	s.syncManualHistory(update.RequestID)
 }
 
 func (s *managedConsoleSession) manualOutputCompletionLocked() *manualOutputCompletion {
@@ -223,23 +235,29 @@ func (s *managedConsoleSession) finishManualOutputCapture(completion *manualOutp
 	if completion.OutputTruncated {
 		outputTruncated = 1
 	}
-	_, err := s.manager.db.ExecContext(context.Background(), `
-		UPDATE command_requests
-		SET status = ?, stdout = ?, stderr = '', tracking_reason = ?, output_truncated = ?, error = ?, completed_at = ?
-		WHERE id = ? AND source = 'manual'`,
-		completion.Status,
-		stdout,
-		trackingReason,
-		outputTruncated,
-		errorText,
-		now,
-		completion.RequestID,
-	)
+	err := s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(context.Background(), `
+				UPDATE command_requests
+				SET status = ?, stdout = ?, stderr = '', tracking_reason = ?, output_truncated = ?, error = ?, completed_at = ?
+				WHERE id = ? AND source = 'manual'`,
+			completion.Status,
+			stdout,
+			trackingReason,
+			outputTruncated,
+			errorText,
+			now,
+			completion.RequestID,
+		); err != nil {
+			return err
+		}
+		return history.SyncCommandRequestWithExecutor(context.Background(), tx, completion.RequestID)
+	})
 	if err != nil {
 		logConsolePersistError("manual_history_finish", s.id, err)
 	}
-	s.syncManualHistory(completion.RequestID)
-	s.closeStaleManualRunningRows(completion.RequestID, manualCaptureSuperseded)
+	if err := s.closeStaleManualRunningRows(completion.RequestID, manualCaptureSuperseded); err != nil {
+		logConsolePersistError("manual_history_stale", s.id, err)
+	}
 }
 
 func (s *managedConsoleSession) closeManualOutputCapture(reason string) {
@@ -256,71 +274,62 @@ func (s *managedConsoleSession) closeManualOutputCapture(reason string) {
 	s.finishManualOutputCapture(completion)
 }
 
-func (s *managedConsoleSession) closeStaleManualRunningRows(exceptID int64, reason string) {
+func (s *managedConsoleSession) closeStaleManualRunningRows(exceptID int64, reason string) error {
 	if s == nil || s.manager == nil || s.manager.db == nil || s.id < 1 {
-		return
+		return nil
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		reason = manualCaptureSuperseded
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	ids := s.manualRunningRowIDs(exceptID)
-	query := `
-		UPDATE command_requests
-		SET status = 'untracked', tracking_reason = ?, completed_at = COALESCE(completed_at, ?)
-		WHERE source = 'manual'
-			AND session_id = ?
-			AND status = 'running'
-			AND (? = 0 OR id <> ?)`
-	if _, err := s.manager.db.ExecContext(context.Background(), query, s.redactForPersistence(reason), now, s.id, exceptID, exceptID); err != nil {
-		logConsolePersistError("manual_history_stale", s.id, err)
-	}
-	for _, id := range ids {
-		s.syncManualHistory(id)
-	}
-}
-
-func (s *managedConsoleSession) syncManualHistory(requestID int64) {
-	if s == nil || s.manager == nil || s.manager.db == nil || requestID < 1 {
-		return
-	}
-	if err := history.NewStore(s.manager.db).SyncCommandRequest(context.Background(), requestID); err != nil {
-		logConsolePersistError("manual_history_sync", s.id, err)
-	}
-}
-
-func (s *managedConsoleSession) manualRunningRowIDs(exceptID int64) []int64 {
-	if s == nil || s.manager == nil || s.manager.db == nil || s.id < 1 {
-		return nil
-	}
-	rows, err := s.manager.db.QueryContext(context.Background(), `
-		SELECT id
-		FROM command_requests
-		WHERE source = 'manual'
-			AND session_id = ?
-			AND status = 'running'
-			AND (? = 0 OR id <> ?)`,
-		s.id,
-		exceptID,
-		exceptID,
-	)
-	if err != nil {
-		logConsolePersistError("manual_history_stale_scan", s.id, err)
-		return nil
-	}
-	defer rows.Close()
-	ids := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			logConsolePersistError("manual_history_stale_scan", s.id, err)
-			return ids
+	return s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(context.Background(), `
+				SELECT id
+				FROM command_requests
+				WHERE source = 'manual'
+					AND session_id = ?
+					AND status = 'running'
+					AND (? = 0 OR id <> ?)`,
+			s.id,
+			exceptID,
+			exceptID,
+		)
+		if err != nil {
+			return fmt.Errorf("list stale manual command rows: %w", err)
 		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		logConsolePersistError("manual_history_stale_scan", s.id, err)
-	}
-	return ids
+		ids := []int64{}
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("scan stale manual command row: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("iterate stale manual command rows: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close stale manual command rows: %w", err)
+		}
+		if _, err := tx.ExecContext(context.Background(), `
+				UPDATE command_requests
+				SET status = 'untracked', tracking_reason = ?, completed_at = COALESCE(completed_at, ?)
+				WHERE source = 'manual'
+					AND session_id = ?
+					AND status = 'running'
+					AND (? = 0 OR id <> ?)`,
+			s.redactForPersistence(reason), now, s.id, exceptID, exceptID,
+		); err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if err := history.SyncCommandRequestWithExecutor(context.Background(), tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 type provisionConnectorCredentialProfileRequest struct {
@@ -82,15 +85,24 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, request.Input)
 	if err != nil {
-		handleConnectorProvisionError(w, err)
+		handleConnectorProvisionError(w, errors.New(newConnectorCredentialBoundary(secrets).Redact(s.redactForPersistence(r.Context(), runtime, err.Error()))))
 		return
 	}
+	credentialBoundary := combinedConnectorCredentialBoundary(secrets, provisioned.Secret)
 	if err := validateProvisionedCredentialProfile(connector, provisioned); err != nil {
 		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "validation", err, func() {
 			handleConnectorTargetError(w, err)
 		})
 		return
 	}
+	redactedResult, err := s.redactConnectorActionResultWithCredentialBoundary(r.Context(), runtime, provisioned.Result, credentialBoundary)
+	if err != nil {
+		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "result_redaction", err, func() {
+			writeInternalError(w)
+		})
+		return
+	}
+	provisioned.Result = redactedResult
 	labelExists, err := profileLabelExists(r.Context(), store, target.ID, provisioned.Label)
 	if err != nil {
 		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "profile_label_lookup", err, func() {
@@ -105,7 +117,7 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 		})
 		return
 	}
-	encrypted, err := runtime.vault.EncryptJSON(provisioned.Secret)
+	provisionedSecretJSON, err := json.Marshal(provisioned.Secret)
 	if err != nil {
 		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "secret_encryption", err, func() {
 			writeInternalError(w)
@@ -131,12 +143,20 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 				Kind:                provisioned.Kind,
 				Label:               provisioned.Label,
 				Public:              provisioned.Public,
-				EncryptedSecretJSON: encrypted,
+				EncryptedSecretJSON: "",
 				RiskLabel:           provisioned.RiskLabel,
 			})
 			if err != nil {
 				return err
 			}
+			encrypted, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, json.RawMessage(provisionedSecretJSON))
+			if err != nil {
+				return fmt.Errorf("encrypt provisioned credential profile: %w", err)
+			}
+			if err := txStore.SetCredentialProfileEncryptedSecret(r.Context(), target.ID, profile.ID, encrypted); err != nil {
+				return err
+			}
+			profile.EncryptedSecretJSON = encrypted
 			return s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile)
 		},
 	)
@@ -219,6 +239,7 @@ func (s connectorTargetHandlers) compensateProvisionedCredentialProfile(
 	})
 	cleanupCancel()
 	cleanupErr = requireCompletedCredentialCleanup(cleanupResult, cleanupErr)
+	credentialBoundary := combinedConnectorCredentialBoundary(secrets, provisioned.Secret)
 
 	action := "connector.profile.provisioning_compensated"
 	cleanupStatus := "completed"
@@ -234,9 +255,9 @@ func (s connectorTargetHandlers) compensateProvisionedCredentialProfile(
 		"kind":             provisioned.Kind,
 		"label":            provisioned.Label,
 		"failure_stage":    stage,
-		"failure":          provisionErrorMessage(cause),
+		"failure":          provisionErrorMessage(credentialBoundary, cause),
 		"cleanup_status":   cleanupStatus,
-		"cleanup_error":    provisionErrorMessage(cleanupErr),
+		"cleanup_error":    provisionErrorMessage(credentialBoundary, cleanupErr),
 	})
 	auditCancel()
 	return provisionCompensationOutcome{cleanupErr: cleanupErr, auditErr: auditErr}
@@ -274,10 +295,17 @@ func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx
 	}
 	secrets := map[string]any{}
 	if adminProfile.EncryptedSecretJSON != "" {
-		if err := runtime.vault.DecryptJSON(adminProfile.EncryptedSecretJSON, &secrets); err != nil {
+		if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, adminProfile.ID, adminProfile.EncryptedSecretJSON, &secrets); err != nil {
 			return credentialCleanupOutcome{}, fmt.Errorf("decrypt admin profile secret: %w", err)
 		}
 	}
+	profileSecrets := map[string]any{}
+	if profile.EncryptedSecretJSON != "" {
+		if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &profileSecrets); err != nil {
+			return credentialCleanupOutcome{}, fmt.Errorf("decrypt managed profile secret: %w", err)
+		}
+	}
+	credentialBoundary := combinedConnectorCredentialBoundary(secrets, profileSecrets)
 	result, err := provisioner.CleanupProvisionedCredentialProfile(ctx, connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),
@@ -286,9 +314,9 @@ func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, connectortargets.CredentialProfileView(profile))
 	if err := requireCompletedCredentialCleanup(result, err); err != nil {
-		return credentialCleanupOutcome{}, err
+		return credentialCleanupOutcome{}, errors.New(credentialBoundary.Redact(s.redactForPersistence(ctx, runtime, err.Error())))
 	}
-	redacted, err := s.redactConnectorActionResult(ctx, runtime, result)
+	redacted, err := s.redactConnectorActionResultWithCredentialBoundary(ctx, runtime, result, credentialBoundary)
 	if err != nil {
 		return credentialCleanupOutcome{}, fmt.Errorf("process credential cleanup result: %w", err)
 	}
@@ -320,7 +348,7 @@ func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseW
 	if profile.EncryptedSecretJSON == "" {
 		return secrets, true
 	}
-	if err := runtime.vault.DecryptJSON(profile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 		writeInternalError(w)
 		return nil, false
 	}
@@ -357,11 +385,11 @@ func profileLabelExists(ctx context.Context, store *connectortargets.Store, targ
 	return false, nil
 }
 
-func provisionErrorMessage(err error) string {
+func provisionErrorMessage(boundary connectorCredentialBoundary, err error) string {
 	if err == nil {
 		return ""
 	}
-	return redactBasic(err.Error())
+	return boundary.Redact(redactBasic(err.Error()))
 }
 
 func handleConnectorProvisionError(w http.ResponseWriter, err error) {

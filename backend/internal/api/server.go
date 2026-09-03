@@ -73,6 +73,8 @@ type databaseRuntime struct {
 	redactionMu        sync.RWMutex
 	redactionRules     []compiledRedactionRule
 	redactionLoaded    bool
+	credBoundaryMu     sync.RWMutex
+	credBoundaries     map[int64]connectorCredentialBoundary
 	mcpMu              sync.RWMutex
 	mcpStarted         bool
 	workspaceUUID      string
@@ -163,27 +165,28 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		retentionInterval:    defaultRetentionCleanupInterval,
 	}
 	runtime := &databaseRuntime{
-		id:                 activeID,
-		path:               cfg.DataPath,
-		gatewaySecret:      cfg.GatewaySecret,
-		database:           database,
-		vault:              secretVault,
-		tokens:             tokenStore,
-		registry:           registry,
-		adapterRegistry:    resolved.adapterRegistry,
-		connectorResources: connectorRuntimeResources(registry, resolved.adapterRegistry, database, secretVault),
-		fileTransfers:      filetransfer.NewStore(database),
-		transferCancels:    map[int64]context.CancelFunc{},
-		batchCancels:       map[int64]context.CancelFunc{},
-		transferControls:   map[int64]*transferControl{},
-		batchControls:      map[int64]*transferControl{},
-		vaultLeases:        vaultsessions.NewStore(),
+		id:               activeID,
+		path:             cfg.DataPath,
+		gatewaySecret:    cfg.GatewaySecret,
+		database:         database,
+		vault:            secretVault,
+		tokens:           tokenStore,
+		registry:         registry,
+		adapterRegistry:  resolved.adapterRegistry,
+		fileTransfers:    filetransfer.NewStore(database),
+		transferCancels:  map[int64]context.CancelFunc{},
+		batchCancels:     map[int64]context.CancelFunc{},
+		transferControls: map[int64]*transferControl{},
+		batchControls:    map[int64]*transferControl{},
+		credBoundaries:   map[int64]connectorCredentialBoundary{},
+		vaultLeases:      vaultsessions.NewStore(),
 	}
 	var err error
 	runtime.workspaceUUID, err = projectvault.EnsureWorkspaceUUID(context.Background(), database)
 	if err != nil {
 		return nil, fmt.Errorf("initialize workspace identity: %w", err)
 	}
+	runtime.connectorResources = connectorRuntimeResources(registry, resolved.adapterRegistry, database, secretVault, runtime.workspaceUUID)
 	runtime.runtimeInstanceID, err = resolved.runtimeInstanceIDGenerator()
 	if err != nil {
 		return nil, fmt.Errorf("initialize runtime identity: %w", err)

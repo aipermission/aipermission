@@ -2,6 +2,7 @@ package actionresult
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -99,6 +100,29 @@ func TestCanonicalizeAndRedactRevalidatesFinalProjection(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected final projection limit error")
+	}
+}
+
+func TestCanonicalizeAndRedactAllowsBoundedSensitiveSourceBeforeProjectionLimits(t *testing.T) {
+	largeSecret := strings.Repeat("s", MaxStringBytes+1)
+	sourceLimits := DefaultLimits()
+	sourceLimits.EncodedBytes = 2 << 20
+	sourceLimits.StringBytes = 2 << 20
+	redacted, err := CanonicalizeAndRedactWithSourceLimits(map[string]any{
+		"payload": largeSecret,
+	}, sourceLimits, DefaultLimits(), RedactionOptions{
+		SensitiveField: func(key string) bool { return key == "payload" },
+	})
+	if err != nil {
+		t.Fatalf("redact bounded sensitive source: %v", err)
+	}
+	if got := redacted.(map[string]any)["payload"]; got != "[REDACTED]" {
+		t.Fatalf("sensitive source was not redacted: %#v", got)
+	}
+	if _, err := CanonicalizeAndRedactWithSourceLimits(map[string]any{
+		"payload": largeSecret,
+	}, sourceLimits, DefaultLimits(), RedactionOptions{}); !errors.Is(err, ErrInvalidOutput) {
+		t.Fatalf("large non-sensitive projection should retain strict limits, got %v", err)
 	}
 }
 

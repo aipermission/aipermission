@@ -16,7 +16,13 @@ type RedactionOptions struct {
 // operation and revalidates the final projection after replacement markers are
 // applied.
 func CanonicalizeAndRedact(value any, limits Limits, options RedactionOptions) (any, error) {
-	canonical, err := Canonicalize(value, limits)
+	return CanonicalizeAndRedactWithSourceLimits(value, limits, limits, options)
+}
+
+// CanonicalizeAndRedactWithSourceLimits permits a larger bounded source value
+// when declared sensitive fields will be replaced before the final projection.
+func CanonicalizeAndRedactWithSourceLimits(value any, sourceLimits Limits, projectionLimits Limits, options RedactionOptions) (any, error) {
+	canonical, err := Canonicalize(value, sourceLimits)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +30,7 @@ func CanonicalizeAndRedact(value any, limits Limits, options RedactionOptions) (
 	if err != nil {
 		return nil, err
 	}
-	return Canonicalize(redacted, limits)
+	return Canonicalize(redacted, projectionLimits)
 }
 
 // Redact traverses a canonical JSON value and applies the same persistence

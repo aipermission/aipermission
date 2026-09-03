@@ -13,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -451,7 +452,7 @@ func connectorActionExecutionPayload(runtime *databaseRuntime, item connectortar
 		return cloneMapAny(item.Input), nil, item.Reason, nil
 	}
 	var envelope connectorActionExecutionEnvelope
-	if err := runtime.vault.DecryptJSON(item.EncryptedPayloadJSON, &envelope); err == nil && (envelope.Input != nil || envelope.Payload != nil) {
+	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, item.ID, item.EncryptedPayloadJSON, &envelope); err == nil && (envelope.Input != nil || envelope.Payload != nil) {
 		reason := envelope.Reason
 		if reason == "" {
 			reason = item.Reason
@@ -459,7 +460,7 @@ func connectorActionExecutionPayload(runtime *databaseRuntime, item connectortar
 		return cloneMapAny(envelope.Input), cloneMapAny(envelope.Payload), reason, nil
 	}
 	var payload map[string]any
-	if err := runtime.vault.DecryptJSON(item.EncryptedPayloadJSON, &payload); err != nil {
+	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, item.ID, item.EncryptedPayloadJSON, &payload); err != nil {
 		return nil, nil, "", err
 	}
 	return cloneMapAny(payload), cloneMapAny(payload), item.Reason, nil
@@ -514,7 +515,7 @@ func connectorActionApprovalItemForResponse(runtime *databaseRuntime, item conne
 		return response, nil
 	}
 	var envelope connectorActionExecutionEnvelope
-	if err := runtime.vault.DecryptJSON(item.EncryptedPayloadJSON, &envelope); err != nil {
+	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, item.ID, item.EncryptedPayloadJSON, &envelope); err != nil {
 		return connectorActionApprovalItem{}, fmt.Errorf("decrypt connector approval preview: %w", err)
 	}
 	if envelope.ApprovalPreview != nil {

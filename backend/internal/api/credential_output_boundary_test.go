@@ -9,6 +9,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -31,20 +32,23 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create connector target: %v", err)
 	}
-	encryptedSecret, err := runtime.vault.EncryptJSON(map[string]any{"password": credentialSecret})
-	if err != nil {
-		t.Fatalf("encrypt connector credential: %v", err)
-	}
 	profile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
 		TargetID:            target.ID,
 		ConnectorKind:       localActionTestConnectorKind,
 		Kind:                "default",
 		Label:               "main",
 		Public:              map[string]any{"username": "visible-user"},
-		EncryptedSecretJSON: encryptedSecret,
+		EncryptedSecretJSON: "",
 	})
 	if err != nil {
 		t.Fatalf("create connector credential profile: %v", err)
+	}
+	encryptedSecret, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, map[string]any{"password": credentialSecret})
+	if err != nil {
+		t.Fatalf("encrypt connector credential: %v", err)
+	}
+	if err := store.SetCredentialProfileEncryptedSecret(ctx, target.ID, profile.ID, encryptedSecret); err != nil {
+		t.Fatalf("store connector credential: %v", err)
 	}
 	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "credential-boundary-token"})
 	if err != nil {
@@ -58,6 +62,9 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
 	}); err != nil {
 		t.Fatalf("set connector action permission: %v", err)
+	}
+	if err := writeSecuritySettings(ctx, runtime, securitySettingsResponse{RedactionMode: redactionModeOff}); err != nil {
+		t.Fatalf("disable operator-configured redaction: %v", err)
 	}
 
 	assertCredentialAbsent := func(label string, body string) {
@@ -81,18 +88,21 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	if !strings.Contains(profilesResponse.Body.String(), "visible-user") {
 		t.Fatalf("REST profile response should retain non-secret public metadata: %s", profilesResponse.Body.String())
 	}
+	connectionTestResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles/"+strconv.FormatInt(profile.ID, 10)+"/test", "", nil)
+	assertOKWithoutCredential("connection test response", connectionTestResponse.Body.String(), connectionTestResponse.Code)
 
 	mcpTargetsResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
 	assertOKWithoutCredential("MCP target discovery response", mcpTargetsResponse.Body.String(), mcpTargetsResponse.Code)
 	actionResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
-		ActionName: "echo",
-		Input:      map[string]any{"value": targetOutput},
-		Reason:     "verify connector credential output boundary",
+		TargetRef:      connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName:     "echo",
+		Input:          map[string]any{"value": "reflect-credential"},
+		Reason:         "verify connector credential output boundary",
+		IdempotencyKey: "credential-output-boundary",
 	})
 	assertOKWithoutCredential("MCP connector action response", actionResponse.Body.String(), actionResponse.Code)
 	actionResult := decodeRouteResponse[mcpConnectorActionResponse](t, actionResponse.Body.Bytes())
-	if actionResult.Status != string(connectors.ResultCompleted) || actionResult.DisplayText != targetOutput {
+	if actionResult.Status != string(connectors.ResultCompleted) || !strings.Contains(actionResult.DisplayText, targetOutput) || !strings.Contains(actionResult.DisplayText, connectorCredentialRedactionMarker) {
 		t.Fatalf("permitted target output should remain visible to the caller: %#v", actionResult)
 	}
 
@@ -105,7 +115,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	historyDetailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history/"+strconv.FormatInt(historyPage.Items[0].ID, 10), "", nil)
 	assertOKWithoutCredential("history detail response", historyDetailResponse.Body.String(), historyDetailResponse.Code)
 	historyDetail := decodeRouteResponse[historyEntryRecord](t, historyDetailResponse.Body.Bytes())
-	if historyDetail.OutputText != targetOutput || !strings.Contains(historyDetail.OutputJSON, targetOutput) {
+	if !strings.Contains(historyDetail.OutputText, targetOutput) || !strings.Contains(historyDetail.OutputJSON, targetOutput) {
 		t.Fatalf("history should preserve permitted target output: %#v", historyDetail)
 	}
 
@@ -140,5 +150,23 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	}
 	if persistedSecretReferences != 0 {
 		t.Fatalf("gateway-held connector credential appeared in %d persisted output surfaces", persistedSecretReferences)
+	}
+}
+
+func TestConnectorCredentialBoundaryRedactsEncodedVariants(t *testing.T) {
+	boundary := newConnectorCredentialBoundary(map[string]any{
+		"password": "credential+/value",
+		"nested":   map[string]any{"token": "second-value"},
+	})
+	for _, value := range []string{
+		"credential+/value",
+		"credential%2B%2Fvalue",
+		"credential%2B%2Fvalue",
+		"Y3JlZGVudGlhbCsvdmFsdWU=",
+		"second-value",
+	} {
+		if redacted := boundary.Redact("prefix " + value + " suffix"); strings.Contains(redacted, value) || !strings.Contains(redacted, connectorCredentialRedactionMarker) {
+			t.Fatalf("credential variant was not redacted: input=%q output=%q", value, redacted)
+		}
 	}
 }

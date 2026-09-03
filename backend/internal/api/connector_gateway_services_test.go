@@ -105,7 +105,7 @@ func createRuntimeScopedVaultRequest(t *testing.T, runtime *databaseRuntime, suf
 	}
 	profile, err := targets.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
 		TargetID: target.ID, ConnectorKind: "test", Kind: "test", Label: "trust-" + suffix,
-		EncryptedSecretJSON: "{}",
+		EncryptedSecretJSON: "",
 	})
 	if err != nil {
 		t.Fatal(err)

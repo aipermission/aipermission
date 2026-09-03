@@ -69,7 +69,7 @@ func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	}
 }
 
-func connectorRuntimeResources(registrySource *connectors.Registry, adapterRegistry *connectorapi.Registry, database *sql.DB, secretVault *vault.Vault) map[string]any {
+func connectorRuntimeResources(registrySource *connectors.Registry, adapterRegistry *connectorapi.Registry, database *sql.DB, secretVault *vault.Vault, workspaceID string) map[string]any {
 	resources := map[string]any{}
 	if registrySource == nil {
 		return resources
@@ -79,7 +79,7 @@ func connectorRuntimeResources(registrySource *connectors.Registry, adapterRegis
 		if provider == nil {
 			continue
 		}
-		for name, value := range provider.RuntimeResources(database, secretVault) {
+		for name, value := range provider.RuntimeResources(database, secretVault, workspaceID) {
 			if name == "" || value == nil {
 				continue
 			}

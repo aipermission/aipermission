@@ -370,7 +370,7 @@ func TestMCPConnectorActionsOnlyExposeGrantedActions(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,

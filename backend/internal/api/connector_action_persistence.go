@@ -13,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 func (s *Server) insertConnectorActionRequest(
@@ -56,14 +57,11 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
-	payload, err := runtime.vault.EncryptJSON(connectorActionExecutionEnvelope{
+	executionEnvelope := connectorActionExecutionEnvelope{
 		Input:           prepared.Requested.Input,
 		Payload:         prepared.Action.Payload,
 		ApprovalPreview: prepared.Action.Preview,
 		Reason:          prepared.Requested.Reason,
-	})
-	if err != nil {
-		return connectortargets.ActionRequest{}, false, err
 	}
 	identityHash, err := connectorActionIdempotencyIdentityHash(tokenID, prepared, idempotencyKey)
 	if err != nil {
@@ -80,7 +78,7 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		Preview:                 redactedPreview,
 		Source:                  prepared.Requested.Source,
 		Input:                   redactedInput,
-		EncryptedPayloadJSON:    payload,
+		EncryptedPayloadJSON:    "",
 		Reason:                  s.redactForPersistence(ctx, runtime, prepared.Requested.Reason),
 		Status:                  status,
 		ApprovalContext:         approvalContext,
@@ -95,11 +93,23 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		func() any { return connectorActionRequestAuditPayload(request) },
 		func(tx *sql.Tx) error {
 			var err error
-			request, created, err = connectortargets.NewTxStore(tx).InsertActionRequestIdempotent(ctx, insertInput)
+			store := connectortargets.NewTxStore(tx)
+			request, created, err = store.InsertActionRequestIdempotent(ctx, insertInput)
 			if err == nil && !created {
 				return errAuditedMutationUnchanged
 			}
-			return err
+			if err != nil {
+				return err
+			}
+			payload, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, executionEnvelope)
+			if err != nil {
+				return fmt.Errorf("encrypt connector action payload: %w", err)
+			}
+			if err := store.SetActionRequestEncryptedPayload(ctx, request.ID, payload); err != nil {
+				return err
+			}
+			request.EncryptedPayloadJSON = payload
+			return nil
 		},
 	)
 	if errors.Is(err, errAuditedMutationUnchanged) {

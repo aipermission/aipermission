@@ -193,6 +193,20 @@ func (s *Store) GetProvider(ctx context.Context, id int64) (Provider, error) {
 	return item, nil
 }
 
+func (s *Store) SetProviderEncryptedSecret(ctx context.Context, id int64, encrypted string) error {
+	if id < 1 || strings.TrimSpace(encrypted) == "" {
+		return ErrNotFound
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE backup_providers
+		SET encrypted_secret_json = ?
+		WHERE id = ? AND status != 'archived'`, encrypted, id)
+	if err != nil {
+		return fmt.Errorf("set backup provider encrypted secret: %w", err)
+	}
+	return requireAffectedProviderRow(result)
+}
+
 func (s *Store) UpdateProvider(ctx context.Context, id int64, request UpdateProviderRequest) (Provider, error) {
 	name := strings.TrimSpace(request.Name)
 	if name == "" {

@@ -46,7 +46,7 @@ func (adapter) RuntimeCapabilities(server connectorapi.GatewayServer, runtime co
 	}
 }
 
-func (adapter) RuntimeResources(database *sql.DB, secretVault *vaultpkg.Vault) map[string]any {
+func (adapter) RuntimeResources(database *sql.DB, secretVault *vaultpkg.Vault, workspaceID string) map[string]any {
 	if database == nil {
 		return nil
 	}
@@ -54,7 +54,7 @@ func (adapter) RuntimeResources(database *sql.DB, secretVault *vaultpkg.Vault) m
 		return nil
 	}
 	return map[string]any{
-		"keys": sshkeys.NewStore(database, secretVault),
+		"keys": sshkeys.NewStore(database, secretVault, workspaceID),
 	}
 }
 

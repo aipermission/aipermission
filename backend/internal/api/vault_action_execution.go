@@ -142,7 +142,10 @@ func executeVaultSessionApply(
 		_, authorizeErr := validateVaultApprovalAuthorization(authorizeCtx, server, runtime, request, approval)
 		return authorizeErr
 	}
-	expiresAt := vaultSessionLeaseExpiry(ctx, runtime, request, approval, capability)
+	expiresAt, err := vaultSessionLeaseExpiry(ctx, runtime, request, approval, capability)
+	if err != nil {
+		return nil, err
+	}
 	finalize := func(finalizeCtx context.Context, handle console.SessionHandle) error {
 		if err := store.RecordSessionItems(finalizeCtx, handle.ID, approval.Items); err != nil {
 			return err
@@ -222,7 +225,7 @@ func vaultSessionLeaseExpiry(
 	request vaultrequests.Request,
 	approval vaultApprovalContext,
 	capability projectcapabilities.Capability,
-) time.Time {
+) (time.Time, error) {
 	expiresAt := time.Now().UTC().Add(vaultsessions.MaxLeaseTTL)
 	if capability.ExpiresAt != "" {
 		if parsed, err := time.Parse(time.RFC3339, capability.ExpiresAt); err == nil && parsed.Before(expiresAt) {
@@ -234,10 +237,14 @@ func vaultSessionLeaseExpiry(
 			expiresAt = parsed
 		}
 	}
-	if token, err := runtime.tokens.Get(ctx, request.TokenID); err == nil && token.ExpiresAt != "" {
+	token, err := runtime.tokens.Get(ctx, request.TokenID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read Vault action token: %w", err)
+	}
+	if token.ExpiresAt != "" {
 		if parsed, err := time.Parse(time.RFC3339, token.ExpiresAt); err == nil && parsed.Before(expiresAt) {
 			expiresAt = parsed
 		}
 	}
-	return expiresAt
+	return expiresAt, nil
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 type adapter struct{}
@@ -126,7 +127,7 @@ func transferRuntime(ctx context.Context, server connectorapi.GatewayServer, run
 		return connectors.RuntimeContext{}, err
 	}
 	secrets := map[string]any{}
-	if err := runtime.ConnectorVault().DecryptJSON(storedProfile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := recordcrypto.DecryptJSON(runtime.ConnectorVault(), runtime.ConnectorWorkspaceID(), recordcrypto.ConnectorCredentialProfile, storedProfile.ID, storedProfile.EncryptedSecretJSON, &secrets); err != nil {
 		return connectors.RuntimeContext{}, fmt.Errorf("decrypt s3 credential profile: %w", err)
 	}
 	capabilityServer, ok := server.(connectorapi.RuntimeCapabilityServer)

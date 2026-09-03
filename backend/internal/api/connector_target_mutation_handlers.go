@@ -130,11 +130,21 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 			Kind:                preparedProfile.Kind,
 			Label:               preparedProfile.Label,
 			Public:              preparedProfile.Public,
-			EncryptedSecretJSON: preparedProfile.EncryptedSecretJSON,
+			EncryptedSecretJSON: "",
 			RiskLabel:           preparedProfile.RiskLabel,
 		})
 		if err != nil {
 			return err
+		}
+		encrypted, err := encryptPreparedCredentialSecret(runtime, profile.ID, preparedProfile)
+		if err != nil {
+			return err
+		}
+		if encrypted != nil {
+			if err := store.SetCredentialProfileEncryptedSecret(r.Context(), target.ID, profile.ID, *encrypted); err != nil {
+				return err
+			}
+			profile.EncryptedSecretJSON = *encrypted
 		}
 		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), store, target, profile); err != nil {
 			return err
@@ -332,6 +342,10 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		if err != nil {
 			return err
 		}
+		encrypted, err := encryptPreparedCredentialSecret(runtime, profileID, preparedProfile)
+		if err != nil {
+			return err
+		}
 		profile, err = txStore.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
 			TargetID:            target.ID,
 			ProfileID:           profileID,
@@ -339,7 +353,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 			Kind:                preparedProfile.Kind,
 			Label:               preparedProfile.Label,
 			Public:              preparedProfile.Public,
-			EncryptedSecretJSON: preparedProfile.EncryptedSecretPtr,
+			EncryptedSecretJSON: encrypted,
 			RiskLabel:           preparedProfile.RiskLabel,
 		})
 		if err != nil {

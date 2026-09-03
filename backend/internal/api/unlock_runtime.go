@@ -19,6 +19,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -151,6 +152,10 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		_ = database.Close()
 		return nil, err
 	}
+	if _, err := recordcrypto.RewriteLegacy(context.Background(), database, secretVault, workspaceUUID); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("migrate encrypted records: %w", err)
+	}
 	runtimeInstanceID, err := executionprincipal.NewRuntimeInstanceID()
 	if err != nil {
 		_ = database.Close()
@@ -162,12 +167,13 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		gatewaySecret:      gatewaySecret,
 		database:           database,
 		vault:              secretVault,
-		tokens:             tokens.NewStore(database, secretVault),
+		tokens:             tokens.NewEncryptedStore(database, secretVault, workspaceUUID),
 		registry:           s.connectorRegistry(),
 		adapterRegistry:    s.connectorAdapterRegistry(),
-		connectorResources: connectorRuntimeResources(s.connectorRegistry(), s.connectorAdapterRegistry(), database, secretVault),
+		connectorResources: connectorRuntimeResources(s.connectorRegistry(), s.connectorAdapterRegistry(), database, secretVault, workspaceUUID),
 		fileTransfers:      filetransfer.NewStore(database),
 		transferCancels:    map[int64]context.CancelFunc{},
+		credBoundaries:     map[int64]connectorCredentialBoundary{},
 		batchCancels:       map[int64]context.CancelFunc{},
 		transferControls:   map[int64]*transferControl{},
 		batchControls:      map[int64]*transferControl{},

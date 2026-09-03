@@ -209,7 +209,7 @@ func TestOpenEncryptedSnapshotsSchema18BeforeRecordEnvelopeBoundary(t *testing.T
 	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
 		t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
 	}
-	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 19`); err != nil {
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
 		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
 	}
 	if err := database.Close(); err != nil {
@@ -436,7 +436,7 @@ func TestRecordEnvelopeBoundaryRejectsExistingPartialSessionHandle(t *testing.T)
 			if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
 				t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
 			}
-			if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 19`); err != nil {
+			if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
 				t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
 			}
 			if err := database.Close(); err != nil {
@@ -468,7 +468,7 @@ func TestOpenEncryptedImportCandidateMigratesWithoutSnapshot(t *testing.T) {
 	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
 		t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
 	}
-	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 19`); err != nil {
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
 		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
 	}
 	if err := database.Close(); err != nil {
