@@ -197,6 +197,31 @@ func TestMultipartUploadDoesNotRetryPermissionFailures(t *testing.T) {
 	}
 }
 
+func TestMultipartUploadReportsAbortFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Query().Has("uploads"):
+			_, _ = w.Write([]byte(`<InitiateMultipartUploadResult><UploadId>upload-abort-failure</UploadId></InitiateMultipartUploadResult>`))
+		case r.Method == http.MethodPut && r.URL.Query().Get("uploadId") == "upload-abort-failure":
+			w.WriteHeader(http.StatusForbidden)
+		case r.Method == http.MethodDelete && r.URL.Query().Get("uploadId") == "upload-abort-failure":
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			t.Fatalf("unexpected multipart request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	fileName := t.TempDir() + "/large.bin"
+	if err := os.WriteFile(fileName, []byte(strings.Repeat("x", multipartThreshold+1)), 0o600); err != nil {
+		t.Fatalf("write upload fixture: %v", err)
+	}
+	_, err := UploadFile(context.Background(), s3TestRuntime(t, server.URL), fileName, "/large.bin", true, TransferOptions{})
+	if err == nil || !strings.Contains(err.Error(), "abort incomplete multipart upload") {
+		t.Fatalf("upload error = %v, want abort failure", err)
+	}
+}
+
 func TestMultipartUploadRetriesServerFailure(t *testing.T) {
 	partAttempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

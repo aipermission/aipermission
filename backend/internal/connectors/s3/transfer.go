@@ -351,7 +351,9 @@ func (client *s3Client) multipartUpload(ctx context.Context, key string, file *o
 			abortCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			abortQuery := url.Values{"uploadId": []string{uploadID}}
-			_, _, _ = client.Do(abortCtx, http.MethodDelete, key, abortQuery, nil, maxS3ResponseBytes)
+			if _, _, abortErr := client.Do(abortCtx, http.MethodDelete, key, abortQuery, nil, maxS3ResponseBytes); abortErr != nil {
+				err = errors.Join(err, fmt.Errorf("abort incomplete multipart upload: %w", abortErr))
+			}
 		}
 	}()
 	type completedPart struct {

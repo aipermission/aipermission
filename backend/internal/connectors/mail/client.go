@@ -268,10 +268,17 @@ func openIMAPWithTLSConfig(ctx context.Context, runtime connectors.RuntimeContex
 		_ = imapClient.Terminate()
 		return nil, classifyProtocolError("IMAP authentication", err)
 	}
-	bootstrapConn.release()
-	_ = bootstrapConn.SetDeadline(time.Time{})
+	if err := releaseBootstrapDeadline(bootstrapConn); err != nil {
+		_ = imapClient.Terminate()
+		return nil, classifyProtocolError("clear IMAP bootstrap deadline", err)
+	}
 	closeOnError = false
 	return imapClient, nil
+}
+
+func releaseBootstrapDeadline(conn *deadlineCapConn) error {
+	conn.release()
+	return conn.SetDeadline(time.Time{})
 }
 
 func closeIMAP(client *client.Client) {

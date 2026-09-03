@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"reflect"
 	"time"
 
@@ -376,7 +377,9 @@ func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, re
 	if adapter == nil || !adapter.SupportsRunning(prepared) {
 		return
 	}
-	adapter.FinishRunning(s, runtime, requestID, prepared, principal, handles)
+	if err := adapter.FinishRunning(s, runtime, requestID, prepared, principal, handles); err != nil {
+		log.Printf("finish running connector action failed connector=%q request=%d error=%v", prepared.Target.ConnectorKind, requestID, err)
+	}
 }
 
 func (s *Server) connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {

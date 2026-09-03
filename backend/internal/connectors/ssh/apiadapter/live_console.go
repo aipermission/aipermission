@@ -360,9 +360,9 @@ func (adapter) RunningHint(request connectortargets.ActionRequest) string {
 	return ""
 }
 
-func (adapter) FinishRunning(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
+func (adapter) FinishRunning(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) error {
 	if server == nil {
-		return
+		return errors.New("finish running connector action: gateway server is unavailable")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), backgroundCommandTimeout)
 	defer cancel()
@@ -372,14 +372,12 @@ func (adapter) FinishRunning(server connectorapi.GatewayServer, runtime connecto
 		if resolveErr == nil {
 			resolveErr = errors.New("running connector action did not return an exact console session handle")
 		}
-		_, _ = server.ConnectorFinishActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.ActionDefinition.OutputHint)
-		return
+		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.ActionDefinition.OutputHint)
 	}
 	handle.RuntimeID = runtimeID
 	sessions, err := consoleSessions(runtime)
 	if err != nil {
-		_, _ = server.ConnectorFinishActionRequest(context.Background(), runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
-		return
+		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
 	}
 	result, err := sessions.WaitActive(ctx, principal, handle)
 	status := connectors.ResultStatus("")
@@ -388,9 +386,15 @@ func (adapter) FinishRunning(server connectorapi.GatewayServer, runtime connecto
 	var errorText string
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			_ = sessions.InterruptActive(context.Background(), principal, handle)
+			interruptCtx, interruptCancel := context.WithTimeout(context.Background(), finishRequestTimeout)
+			interruptErr := sessions.InterruptActive(interruptCtx, principal, handle)
+			interruptCancel()
+			if interruptErr != nil {
+				errorText = fmt.Sprintf("connector action timed out and the active console could not be interrupted: %v", interruptErr)
+			} else {
+				errorText = "connector action timed out while running in background"
+			}
 			status = connectors.ResultError
-			errorText = "connector action timed out while running in background"
 		} else {
 			status = connectors.ResultError
 			errorText = err.Error()
@@ -404,7 +408,21 @@ func (adapter) FinishRunning(server connectorapi.GatewayServer, runtime connecto
 		displayText = result.Output
 	}
 	if status == "" {
-		return
+		return errors.New("finish running connector action: empty result status")
 	}
-	_, _ = server.ConnectorFinishActionRequest(context.Background(), runtime, requestID, status, output, displayText, errorText, prepared.ActionDefinition.OutputHint)
+	return finishRunningActionRequest(server, runtime, requestID, status, output, displayText, errorText, prepared.ActionDefinition.OutputHint)
+}
+
+type actionRequestFinisher interface {
+	ConnectorFinishActionRequest(context.Context, connectorapi.GatewayRuntime, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectortargets.ActionRequest, error)
+}
+
+func finishRunningActionRequest(server actionRequestFinisher, runtime connectorapi.GatewayRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hint connectors.OutputHint) error {
+	ctx, cancel := context.WithTimeout(context.Background(), finishRequestTimeout)
+	defer cancel()
+	_, err := server.ConnectorFinishActionRequest(ctx, runtime, requestID, status, output, displayText, errorText, hint)
+	if err != nil {
+		return fmt.Errorf("persist running connector action result: %w", err)
+	}
+	return nil
 }
