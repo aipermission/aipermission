@@ -69,7 +69,7 @@ token in the AIPermission UI.
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp@0.2.40"],
+      "args": ["-y", "@aipermission/mcp@VERSION"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",
@@ -80,8 +80,8 @@ token in the AIPermission UI.
 }
 ```
 
-Replace `VERSION` with the release you intend to pin. The setup command does
-this automatically.
+Replace `VERSION` with the exact release you intend to pin. The setup command
+does this automatically.
 
 ## Tools
 

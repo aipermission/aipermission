@@ -6,7 +6,7 @@ const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const semverPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-const pinnedMCPConfigDocs = [
+const mcpConfigDocs = [
   "README.md",
   "packages/mcp/README.md",
   "docs/setup/mcp-client-setup.md",
@@ -36,20 +36,6 @@ function readStagedSource(updates, relativePath) {
   );
 }
 
-function stagePinnedMCPConfigDocs(updates, version) {
-  for (const relativePath of pinnedMCPConfigDocs) {
-    const source = readStagedSource(updates, relativePath);
-    const pattern = /@aipermission\/mcp@(?:VERSION|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/g;
-    if (!pattern.test(source)) {
-      throw new Error(`could not update pinned MCP config in ${relativePath}`);
-    }
-    updates.set(
-      relativePath,
-      source.replace(pattern, `@aipermission/mcp@${version}`),
-    );
-  }
-}
-
 function stagePinnedDockerCompose(updates, version) {
   const source = readStagedSource(updates, dockerReleaseComposePath);
   const matches = [...source.matchAll(dockerReleaseImagePattern)];
@@ -60,6 +46,20 @@ function stagePinnedDockerCompose(updates, version) {
     dockerReleaseComposePath,
     source.replace(dockerReleaseImagePattern, (_match, prefix, _currentVersion, suffix) => `${prefix}${version}${suffix}`),
   );
+}
+
+function requireMCPConfigPlaceholder(source, relativePath) {
+  const configuredVersions = [
+    ...source.matchAll(
+      /@aipermission\/mcp@(VERSION|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/g,
+    ),
+  ].map((match) => match[1]);
+  if (
+    configuredVersions.length === 0 ||
+    configuredVersions.some((configuredVersion) => configuredVersion !== "VERSION")
+  ) {
+    throw new Error(`${relativePath} MCP setup example must use the VERSION placeholder`);
+  }
 }
 
 function setVersion(version) {
@@ -94,7 +94,6 @@ function setVersion(version) {
     packageEntry.version = version;
   }
   stageJSON(updates, "packages/mcp/server.json", mcpServer);
-  stagePinnedMCPConfigDocs(updates, version);
   stagePinnedDockerCompose(updates, version);
 
   const backendVersionPath = path.join(
@@ -271,15 +270,10 @@ function checkVersion() {
     "backend build version",
     backendVersionSource.match(/^const Version = "([^"]+)"$/m)?.[1],
   ]);
-  for (const relativePath of pinnedMCPConfigDocs) {
+  for (const relativePath of mcpConfigDocs) {
     const source = fs.readFileSync(path.join(root, relativePath), "utf8");
-    const configuredVersion = source.match(
-      /@aipermission\/mcp@(VERSION|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/,
-    )?.[1];
-    values.push([
-      `${relativePath} pinned MCP config`,
-      configuredVersion === "VERSION" ? version : configuredVersion,
-    ]);
+    requireMCPConfigPlaceholder(source, relativePath);
+    values.push([`${relativePath} MCP config placeholder`, version]);
   }
   const dockerComposeSource = fs.readFileSync(path.join(root, dockerReleaseComposePath), "utf8");
   values.push([dockerReleaseComposePath, pinnedDockerReleaseValue(dockerComposeSource, version)]);
@@ -320,6 +314,6 @@ if (require.main === module) {
 module.exports = {
   commitFileUpdates,
   pinnedDockerReleaseValue,
+  requireMCPConfigPlaceholder,
   stagePinnedDockerCompose,
-  stagePinnedMCPConfigDocs,
 };
