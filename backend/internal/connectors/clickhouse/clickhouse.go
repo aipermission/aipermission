@@ -83,7 +83,7 @@ func (Connector) TargetSchema() connectors.Schema {
 			Description: "Connector target profile ref used when connection_mode is over_ssh.",
 		},
 		{Name: "host", Label: "Host", Type: connectors.FieldString, Required: true, Description: "ClickHouse host as seen by the selected connection mode."},
-		{Name: "port", Label: "Native port", Type: connectors.FieldNumber, Required: true, Default: defaultPort, Description: "ClickHouse native protocol port, commonly 9000 or 9440 with TLS."},
+		{Name: "port", Label: "Native port", Type: connectors.FieldInteger, Required: true, Default: defaultPort, Description: "ClickHouse native protocol port, commonly 9000 or 9440 with TLS."},
 		{Name: "database", Label: "Default database", Type: connectors.FieldString, Required: true, Default: "default", Description: "Default ClickHouse database for this target."},
 		{
 			Name:        "tls_mode",
@@ -156,7 +156,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Name: ActionQueryReadonly, Label: "Run read-only query", Description: "Run one bounded read-only ClickHouse SQL query.", Category: "query", Risk: connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "sql", Label: "SQL", Type: connectors.FieldMultiline, Required: true, Description: "One SELECT, WITH, SHOW, or EXPLAIN statement. Writes and multi-statement SQL are rejected."},
-				{Name: "max_rows", Label: "Max rows", Type: connectors.FieldNumber, Default: defaultMaxRows, Description: "Maximum rows to return."},
+				{Name: "max_rows", Label: "Max rows", Type: connectors.FieldInteger, Default: defaultMaxRows, Description: "Maximum rows to return."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxRows, MaxBytes: maxOutputBytes},
 		},
@@ -538,23 +538,8 @@ func intInput(values map[string]any, name string, fallback int) int {
 	if values == nil {
 		return fallback
 	}
-	switch value := values[name].(type) {
-	case int:
-		return value
-	case int64:
-		return int(value)
-	case float64:
-		return int(value)
-	case json.Number:
-		parsed, err := strconv.Atoi(value.String())
-		if err == nil {
-			return parsed
-		}
-	case string:
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err == nil {
-			return parsed
-		}
+	if parsed, ok := connectors.NativeIntValue(values[name]); ok {
+		return parsed
 	}
 	return fallback
 }

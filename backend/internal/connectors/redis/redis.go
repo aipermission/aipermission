@@ -104,7 +104,7 @@ func (Connector) TargetSchema() connectors.Schema {
 		{
 			Name:        "port",
 			Label:       "Port",
-			Type:        connectors.FieldNumber,
+			Type:        connectors.FieldInteger,
 			Required:    true,
 			Default:     defaultRedisPort,
 			Description: "Redis-compatible RESP TCP port.",
@@ -112,7 +112,7 @@ func (Connector) TargetSchema() connectors.Schema {
 		{
 			Name:        "database",
 			Label:       "Database",
-			Type:        connectors.FieldNumber,
+			Type:        connectors.FieldInteger,
 			Default:     0,
 			Description: "Logical database number.",
 		},
@@ -220,7 +220,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "pattern", Label: "Pattern", Type: connectors.FieldString, Default: "*", Description: "MATCH pattern for SCAN."},
 				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional cursor returned by a previous scan."},
-				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultScanLimit, Description: "Maximum keys to return."},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultScanLimit, Description: "Maximum keys to return."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxScanLimit},
 		},
@@ -232,8 +232,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
-				{Name: "limit", Label: "Collection limit", Type: connectors.FieldNumber, Default: defaultValueLimit},
-				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldNumber, Default: defaultMaxValueBytes},
+				{Name: "limit", Label: "Collection limit", Type: connectors.FieldInteger, Default: defaultValueLimit},
+				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldInteger, Default: defaultMaxValueBytes},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxValueBytes},
 		},
@@ -246,7 +246,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
 				{Name: "value", Label: "Value", Type: connectors.FieldMultiline, Required: true},
-				{Name: "ttl_seconds", Label: "TTL seconds", Type: connectors.FieldNumber, Description: "Optional positive TTL."},
+				{Name: "ttl_seconds", Label: "TTL seconds", Type: connectors.FieldInteger, Description: "Optional positive TTL."},
 			}},
 			SensitiveInputFields: []string{"value"},
 			OutputHint:           connectors.OutputHint{Format: "json", MaxBytes: 4000},
@@ -259,7 +259,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
-				{Name: "ttl_seconds", Label: "TTL seconds", Type: connectors.FieldNumber, Required: true, Description: "Positive seconds, or -1 to persist."},
+				{Name: "ttl_seconds", Label: "TTL seconds", Type: connectors.FieldInteger, Required: true, Description: "Positive seconds, or -1 to persist."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},

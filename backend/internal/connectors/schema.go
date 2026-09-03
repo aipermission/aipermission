@@ -17,6 +17,7 @@ const (
 	FieldMultiline       FieldType = "multiline"
 	FieldMultilineSecret FieldType = "multiline_secret"
 	FieldNumber          FieldType = "number"
+	FieldInteger         FieldType = "integer"
 	FieldBoolean         FieldType = "boolean"
 	FieldSelect          FieldType = "select"
 	FieldJSON            FieldType = "json"
@@ -248,9 +249,14 @@ func validateSchemaDefinition(schema Schema, usage string, allowSecrets bool) er
 
 func validateFieldDefinition(field Field, usage string) error {
 	switch field.Type {
-	case FieldString, FieldSecret, FieldMultiline, FieldMultilineSecret, FieldNumber, FieldBoolean, FieldSelect, FieldJSON, FieldFileText, FieldFileBase64:
+	case FieldString, FieldSecret, FieldMultiline, FieldMultilineSecret, FieldNumber, FieldInteger, FieldBoolean, FieldSelect, FieldJSON, FieldFileText, FieldFileBase64:
 	default:
 		return fmt.Errorf("%s schema field %q has unsupported field type %q", usage, field.Name, field.Type)
+	}
+	if field.Default != nil {
+		if err := validateFieldValue(field, field.Default); err != nil {
+			return fmt.Errorf("%s schema field %q has an invalid default: %w", usage, field.Name, err)
+		}
 	}
 	if field.Type == FieldSelect {
 		seen := map[string]bool{}
@@ -330,6 +336,10 @@ func validateFieldValue(field Field, value any) error {
 		if !schemaNumber(value) {
 			return fmt.Errorf("%s must be a number", field.Name)
 		}
+	case FieldInteger:
+		if _, ok := normalizeIntegerValue(value); !ok {
+			return fmt.Errorf("%s must be an exact integer in the supported range", field.Name)
+		}
 	case FieldBoolean:
 		if _, ok := value.(bool); !ok {
 			return fmt.Errorf("%s must be a boolean", field.Name)
@@ -356,14 +366,19 @@ func validateFieldValue(field Field, value any) error {
 }
 
 func normalizeFieldValue(field Field, value any) any {
-	if field.Type != FieldNumber {
-		return value
+	switch field.Type {
+	case FieldNumber:
+		number, ok := normalizeNumberValue(value)
+		if ok {
+			return number
+		}
+	case FieldInteger:
+		integer, ok := normalizeIntegerValue(value)
+		if ok {
+			return integer
+		}
 	}
-	number, ok := normalizeNumberValue(value)
-	if !ok {
-		return value
-	}
-	return number
+	return value
 }
 
 func emptySchemaValue(value any) bool {
@@ -428,4 +443,70 @@ func normalizeNumberValue(value any) (float64, bool) {
 		return 0, false
 	}
 	return number, true
+}
+
+func normalizeIntegerValue(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), true
+	case int8:
+		return int64(typed), true
+	case int16:
+		return int64(typed), true
+	case int32:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case uint:
+		if uint64(typed) > math.MaxInt64 {
+			return 0, false
+		}
+		return int64(typed), true
+	case uint8:
+		return int64(typed), true
+	case uint16:
+		return int64(typed), true
+	case uint32:
+		return int64(typed), true
+	case uint64:
+		if typed > math.MaxInt64 {
+			return 0, false
+		}
+		return int64(typed), true
+	case float32:
+		return exactFloatInteger(float64(typed))
+	case float64:
+		return exactFloatInteger(typed)
+	case json.Number:
+		parsed, err := strconv.ParseInt(string(typed), 10, 64)
+		return parsed, err == nil
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
+
+// NativeIntValue converts an exact connector integer to the current platform's
+// int width without truncation.
+func NativeIntValue(value any) (int, bool) {
+	parsed, ok := normalizeIntegerValue(value)
+	if !ok {
+		return 0, false
+	}
+	native, err := strconv.Atoi(strconv.FormatInt(parsed, 10))
+	if err != nil {
+		return 0, false
+	}
+	return native, true
+}
+
+func exactFloatInteger(value float64) (int64, bool) {
+	const maxExactFloatInteger = 1<<53 - 1
+	if math.IsNaN(value) || math.IsInf(value, 0) || math.Trunc(value) != value ||
+		value < -maxExactFloatInteger || value > maxExactFloatInteger {
+		return 0, false
+	}
+	return int64(value), true
 }

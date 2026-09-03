@@ -49,6 +49,9 @@ These rules are part of the connector contract:
   The raw execution payload is kept only in the encrypted connector action
   payload. Never put API tokens, passwords, private keys, or tenant secrets in
   action input schemas; define them as credential profile fields instead.
+- Declare ports, limits, counts, offsets, TTLs, and timeouts as `integer`.
+  Shared validation rejects fractions and out-of-range values before connector
+  code runs. Use `number` only when decimal input is intentional.
 - `GetHelp`, `GetActionList`, and `PrepareAction` are side-effect-free and must
   not read raw secrets. `GetActionList` is the permission catalog for the
   connector kind: it must stay stable across target/profile public metadata and

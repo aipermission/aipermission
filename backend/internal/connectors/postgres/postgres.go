@@ -100,7 +100,7 @@ func (Connector) TargetSchema() connectors.Schema {
 		{
 			Name:        "port",
 			Label:       "Port",
-			Type:        connectors.FieldNumber,
+			Type:        connectors.FieldInteger,
 			Required:    true,
 			Default:     5432,
 			Description: "Postgres port.",
@@ -166,7 +166,7 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 				{
 					Name:        "managed_admin_profile_id",
 					Label:       "Managed admin profile ID",
-					Type:        connectors.FieldNumber,
+					Type:        connectors.FieldInteger,
 					Description: "Credential profile used to create and clean up the managed role.",
 				},
 				{
@@ -309,7 +309,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{
 					Name:        "max_rows",
 					Label:       "Max rows",
-					Type:        connectors.FieldNumber,
+					Type:        connectors.FieldInteger,
 					Default:     defaultMaxRows,
 					Description: "Maximum rows to return.",
 				},

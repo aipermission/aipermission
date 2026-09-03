@@ -232,7 +232,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "container", Label: "Container", Type: connectors.FieldString, Required: true},
-				{Name: "tail", Label: "Tail lines", Type: connectors.FieldNumber, Default: defaultLogTail},
+				{Name: "tail", Label: "Tail lines", Type: connectors.FieldInteger, Default: defaultLogTail},
 			}},
 			OutputHint: connectors.OutputHint{Format: "text", MaxBytes: maxLogBytes},
 		},
@@ -245,7 +245,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "container", Label: "Container", Type: connectors.FieldString, Required: true},
 				{Name: "command", Label: "Command", Type: connectors.FieldMultiline, Required: true},
-				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldNumber, Default: 30},
+				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 30},
 				{Name: "user", Label: "User", Type: connectors.FieldString, Description: "Optional container user."},
 				{Name: "workdir", Label: "Working directory", Type: connectors.FieldString, Description: "Optional container working directory."},
 			}},
@@ -270,7 +270,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "container", Label: "Container", Type: connectors.FieldString, Required: true},
-				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldNumber, Default: 10},
+				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 10},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -282,7 +282,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "container", Label: "Container", Type: connectors.FieldString, Required: true},
-				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldNumber, Default: 10},
+				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 10},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -1336,23 +1336,8 @@ func intValue(values map[string]any, key string, fallback int) int {
 	if values == nil {
 		return fallback
 	}
-	switch value := values[key].(type) {
-	case int:
-		return value
-	case int64:
-		return int(value)
-	case float64:
-		return int(value)
-	case json.Number:
-		parsed, err := value.Int64()
-		if err == nil {
-			return int(parsed)
-		}
-	case string:
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err == nil {
-			return parsed
-		}
+	if parsed, ok := connectors.NativeIntValue(values[key]); ok {
+		return parsed
 	}
 	return fallback
 }

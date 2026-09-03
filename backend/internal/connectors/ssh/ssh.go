@@ -67,7 +67,7 @@ func (Connector) TargetSchema() connectors.Schema {
 		{
 			Name:        "port",
 			Label:       "Port",
-			Type:        connectors.FieldNumber,
+			Type:        connectors.FieldInteger,
 			Required:    true,
 			Default:     22,
 			Description: "SSH port.",
@@ -110,7 +110,7 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 				{
 					Name:        "ssh_key_id",
 					Label:       "Gateway key id",
-					Type:        connectors.FieldNumber,
+					Type:        connectors.FieldInteger,
 					Required:    true,
 					Description: "Local encrypted SSH key material selected from Credentials.",
 				},
@@ -192,7 +192,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{
 					Name:        "tail_bytes",
 					Label:       "Tail bytes",
-					Type:        connectors.FieldNumber,
+					Type:        connectors.FieldInteger,
 					Default:     defaultConsoleTailBytes,
 					Description: "Maximum trailing transcript bytes to return.",
 				},
