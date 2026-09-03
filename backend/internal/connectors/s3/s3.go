@@ -124,7 +124,7 @@ func (Connector) TargetSchema() connectors.Schema {
 		{
 			Name:        "port",
 			Label:       "Endpoint port",
-			Type:        connectors.FieldNumber,
+			Type:        connectors.FieldInteger,
 			Required:    true,
 			Default:     defaultS3Port,
 			Description: "Endpoint TCP port.",
@@ -258,7 +258,7 @@ func objectActions() []connectors.ActionDefinition {
 				{Name: "prefix", Label: "Prefix", Type: connectors.FieldString, Description: "Optional object key prefix. Use a folder prefix ending in / to browse inside that folder."},
 				{Name: "search", Label: "Search", Type: connectors.FieldString, Description: "Optional case-insensitive key search applied across bounded list pages. Folder grouping is disabled while searching."},
 				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional pagination cursor returned as next_cursor by a previous list_objects response."},
-				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultS3ListLimit, Description: "Maximum objects to return, capped by the connector."},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultS3ListLimit, Description: "Maximum objects to return, capped by the connector."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxS3ListLimit},
 		},
@@ -281,7 +281,7 @@ func objectActions() []connectors.ActionDefinition {
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key returned by list_objects."},
-				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldNumber, Default: defaultDownloadMax, Description: "Maximum bytes to read, capped by the connector."},
+				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldInteger, Default: defaultDownloadMax, Description: "Maximum bytes to read, capped by the connector."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDownloadBytes},
 		},
@@ -324,7 +324,7 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact existing object key."},
-				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldNumber, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
+				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldInteger, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000, TemporaryCapabilityFields: []string{"url"}},
 		},
@@ -336,7 +336,7 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact destination object key."},
-				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldNumber, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
+				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldInteger, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
 				{Name: "overwrite", Label: "Allow overwrite", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless replacing an existing object is intentional."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000, TemporaryCapabilityFields: []string{"url"}},
@@ -350,7 +350,7 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
 				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional cursor returned by the previous page."},
-				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultVersionListLimit, Description: "Maximum version records requested from S3."},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultVersionListLimit, Description: "Maximum version records requested from S3."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 16000},
 		},
@@ -400,9 +400,9 @@ func lifecycleActions() []connectors.ActionDefinition {
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "rule_id", Label: "Rule ID", Type: connectors.FieldString, Required: true, Default: defaultLifecycleRuleID, Description: "Stable identifier for the replacement rule."},
 				{Name: "prefix", Label: "Object prefix", Type: connectors.FieldString, Description: "Optional key prefix. Empty applies to the whole bucket."},
-				{Name: "expire_current_after_days", Label: "Expire current after days", Type: connectors.FieldNumber, Default: 0, Description: "0 disables current-version expiration."},
-				{Name: "expire_noncurrent_after_days", Label: "Expire noncurrent after days", Type: connectors.FieldNumber, Default: 0, Description: "0 disables noncurrent-version expiration."},
-				{Name: "abort_incomplete_multipart_days", Label: "Abort multipart after days", Type: connectors.FieldNumber, Default: 7, Description: "0 disables incomplete multipart cleanup."},
+				{Name: "expire_current_after_days", Label: "Expire current after days", Type: connectors.FieldInteger, Default: 0, Description: "0 disables current-version expiration."},
+				{Name: "expire_noncurrent_after_days", Label: "Expire noncurrent after days", Type: connectors.FieldInteger, Default: 0, Description: "0 disables noncurrent-version expiration."},
+				{Name: "abort_incomplete_multipart_days", Label: "Abort multipart after days", Type: connectors.FieldInteger, Default: 7, Description: "0 disables incomplete multipart cleanup."},
 				{Name: "enabled", Label: "Enabled", Type: connectors.FieldBoolean, Default: true, Description: "Store the replacement rule as enabled or disabled."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},

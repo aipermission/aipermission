@@ -64,6 +64,11 @@ Target and action input schemas must not declare secret fields. Store secret
 values in credential profiles and resolve them through `RuntimeContext.Secrets`
 only after permission and approval checks pass.
 
+Use the shared `integer` field type for ports, limits, counts, offsets, TTLs,
+and timeouts. It rejects fractional values and integers outside the supported
+exact range before connector-specific normalization. Reserve `number` for
+inputs that intentionally accept decimals.
+
 Action inputs are persisted and returned to the UI/MCP as redacted display
 payloads. The gateway keeps the raw execution payload only in the encrypted
 connector action payload. Do not rely on action input JSON for secrets or

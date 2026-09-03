@@ -249,20 +249,20 @@ func actionDefinitions() []connectors.ActionDefinition {
 		}}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: 2000, MaxBytes: 1048576}},
 		{Name: ActionReadMessages, Label: "Read messages", Description: "Read a bounded sample from one explicit topic partition without joining a group or committing offsets.", Category: "messages", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{
 			{Name: "topic", Label: "Topic", Type: connectors.FieldString, Required: true},
-			{Name: "partition", Label: "Partition", Type: connectors.FieldNumber, Required: true, Default: 0},
+			{Name: "partition", Label: "Partition", Type: connectors.FieldInteger, Required: true, Default: 0},
 			{Name: "start_position", Label: "Start position", Type: connectors.FieldSelect, Required: true, Default: "recent", Options: []connectors.FieldOption{
 				{Value: "recent", Label: "Recent messages"},
 				{Value: "earliest", Label: "Earliest available"},
 				{Value: "offset", Label: "Explicit offset"},
 			}},
 			{Name: "offset", Label: "Offset", Type: connectors.FieldString, Default: "0"},
-			{Name: "max_records", Label: "Maximum records", Type: connectors.FieldNumber, Default: 20},
-			{Name: "max_bytes", Label: "Maximum payload bytes", Type: connectors.FieldNumber, Default: 262144},
-			{Name: "wait_seconds", Label: "Wait seconds", Type: connectors.FieldNumber, Default: 2},
+			{Name: "max_records", Label: "Maximum records", Type: connectors.FieldInteger, Default: 20},
+			{Name: "max_bytes", Label: "Maximum payload bytes", Type: connectors.FieldInteger, Default: 262144},
+			{Name: "wait_seconds", Label: "Wait seconds", Type: connectors.FieldInteger, Default: 2},
 		}}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: 100, MaxBytes: 524288}},
 		{Name: ActionPublishMessage, Label: "Publish message", Description: "Publish one bounded message to one explicit topic partition with all-in-sync-replica acknowledgements.", Category: "messages", Risk: connectors.RiskWrite, InputSchema: connectors.Schema{Fields: []connectors.Field{
 			{Name: "topic", Label: "Topic", Type: connectors.FieldString, Required: true},
-			{Name: "partition", Label: "Partition", Type: connectors.FieldNumber, Required: true, Default: 0},
+			{Name: "partition", Label: "Partition", Type: connectors.FieldInteger, Required: true, Default: 0},
 			{Name: "key", Label: "Key", Type: connectors.FieldMultiline, Default: ""},
 			{Name: "key_encoding", Label: "Key encoding", Type: connectors.FieldSelect, Required: true, Default: "utf8", Options: []connectors.FieldOption{
 				{Value: "utf8", Label: "UTF-8"},
@@ -278,7 +278,7 @@ func actionDefinitions() []connectors.ActionDefinition {
 		{Name: ActionSetConsumerGroupOffset, Label: "Set consumer group offset", Description: "Change one inactive consumer group's committed offset for one explicit topic partition.", Category: "consumer_groups", Risk: connectors.RiskDestructive, InputSchema: connectors.Schema{Fields: []connectors.Field{
 			{Name: "group", Label: "Consumer group", Type: connectors.FieldString, Required: true},
 			{Name: "topic", Label: "Topic", Type: connectors.FieldString, Required: true},
-			{Name: "partition", Label: "Partition", Type: connectors.FieldNumber, Required: true, Default: 0},
+			{Name: "partition", Label: "Partition", Type: connectors.FieldInteger, Required: true, Default: 0},
 			{Name: "offset", Label: "New offset", Type: connectors.FieldString, Required: true},
 		}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 65536}},
 	}

@@ -113,7 +113,7 @@ func (Connector) TargetSchema() connectors.Schema {
 		{
 			Name:        "port",
 			Label:       "Management API port",
-			Type:        connectors.FieldNumber,
+			Type:        connectors.FieldInteger,
 			Required:    true,
 			Default:     defaultRabbitMQPort,
 			Description: "RabbitMQ Management API TCP port, usually 15672 or the port shown in the management URL. Do not use the AMQP listener port.",
@@ -216,7 +216,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
 				{Name: "pattern", Label: "Pattern", Type: connectors.FieldString, Description: "Optional case-insensitive queue name filter."},
-				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultQueueLimit},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultQueueLimit},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxQueueLimit},
 		},
@@ -241,7 +241,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
 				{Name: "queue", Label: "Queue", Type: connectors.FieldString, Description: "Optional queue name."},
-				{Name: "limit", Label: "Limit", Type: connectors.FieldNumber, Default: defaultQueueLimit},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultQueueLimit},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxQueueLimit},
 		},
@@ -254,8 +254,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
 				{Name: "queue", Label: "Queue", Type: connectors.FieldString, Required: true},
-				{Name: "count", Label: "Count", Type: connectors.FieldNumber, Default: defaultPeekCount},
-				{Name: "max_payload_bytes", Label: "Max payload bytes", Type: connectors.FieldNumber, Default: defaultPayloadMaxBytes},
+				{Name: "count", Label: "Count", Type: connectors.FieldInteger, Default: defaultPeekCount},
+				{Name: "max_payload_bytes", Label: "Max payload bytes", Type: connectors.FieldInteger, Default: defaultPayloadMaxBytes},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxPayloadBytes},
 		},

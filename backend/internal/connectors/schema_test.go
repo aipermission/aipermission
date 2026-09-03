@@ -20,7 +20,7 @@ func TestValidateNonSecretSchemaRejectsTargetSecrets(t *testing.T) {
 func TestValidateNonSecretSchemaAllowsPublicTargetFields(t *testing.T) {
 	if err := ValidateNonSecretSchema(Schema{Fields: []Field{
 		{Name: "host", Type: FieldString, Required: true},
-		{Name: "port", Type: FieldNumber, Required: true},
+		{Name: "port", Type: FieldInteger, Required: true},
 	}}, "target"); err != nil {
 		t.Fatalf("expected public target schema to pass, got %v", err)
 	}
@@ -43,6 +43,89 @@ func TestNormalizeSchemaValuesCanonicalizesNumericStrings(t *testing.T) {
 	}
 	if string(payload) != `{"host":"localhost","port":5432}` {
 		t.Fatalf("normalized payload = %s", payload)
+	}
+}
+
+func TestNormalizeSchemaValuesCanonicalizesExactIntegers(t *testing.T) {
+	schema := Schema{Fields: []Field{{Name: "limit", Type: FieldInteger, Required: true}}}
+	for _, value := range []any{42, int64(42), float64(42), json.Number("42"), "42"} {
+		normalized, err := NormalizeSchemaValues(schema, map[string]any{"limit": value})
+		if err != nil {
+			t.Fatalf("normalize integer %#v: %v", value, err)
+		}
+		if normalized["limit"] != int64(42) {
+			t.Fatalf("normalized integer %#v = %#v", value, normalized["limit"])
+		}
+	}
+}
+
+func TestNormalizeSchemaValuesAcceptsIntegerStringBoundaries(t *testing.T) {
+	schema := Schema{Fields: []Field{{Name: "offset", Type: FieldInteger, Required: true}}}
+	for _, value := range []json.Number{
+		json.Number("-9223372036854775808"),
+		json.Number("9223372036854775807"),
+	} {
+		normalized, err := NormalizeSchemaValues(schema, map[string]any{"offset": value})
+		if err != nil {
+			t.Fatalf("normalize boundary %s: %v", value, err)
+		}
+		if normalized["offset"] == nil {
+			t.Fatalf("normalized boundary %s is missing", value)
+		}
+	}
+}
+
+func TestNormalizeSchemaValuesRejectsInexactOrOutOfRangeIntegers(t *testing.T) {
+	schema := Schema{Fields: []Field{{Name: "limit", Type: FieldInteger, Required: true}}}
+	values := []any{
+		1.5,
+		float32(1.5),
+		"1.5",
+		json.Number("1.5"),
+		json.Number("9223372036854775808"),
+		uint64(math.MaxInt64) + 1,
+		float64(1 << 53),
+		float64(1 << 63),
+		math.NaN(),
+		math.Inf(1),
+	}
+	for _, value := range values {
+		if _, err := NormalizeSchemaValues(schema, map[string]any{"limit": value}); err == nil {
+			t.Fatalf("expected integer %#v to be rejected", value)
+		}
+	}
+}
+
+func TestNativeIntValueRejectsInexactAndOutOfRangeValues(t *testing.T) {
+	for _, value := range []any{1.5, json.Number("1.5"), "1.5", uint64(math.MaxInt64) + 1} {
+		if parsed, ok := NativeIntValue(value); ok {
+			t.Fatalf("NativeIntValue(%#v) = %d, true", value, parsed)
+		}
+	}
+
+	for _, value := range []any{42, int64(42), float64(42), json.Number("42"), "42"} {
+		if parsed, ok := NativeIntValue(value); !ok || parsed != 42 {
+			t.Fatalf("NativeIntValue(%#v) = %d, %t", value, parsed, ok)
+		}
+	}
+}
+
+func TestValidateSchemaDefinitionRejectsInvalidIntegerDefault(t *testing.T) {
+	err := ValidateNonSecretSchema(Schema{Fields: []Field{
+		{Name: "limit", Type: FieldInteger, Default: 1.5},
+	}}, "action")
+	if err == nil || !strings.Contains(err.Error(), "invalid default") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestNormalizeSchemaValuesKeepsDecimalNumberSemantics(t *testing.T) {
+	normalized, err := NormalizeSchemaValues(
+		Schema{Fields: []Field{{Name: "ratio", Type: FieldNumber, Required: true}}},
+		map[string]any{"ratio": "1.5"},
+	)
+	if err != nil || normalized["ratio"] != 1.5 {
+		t.Fatalf("normalized decimal = %#v, err = %v", normalized, err)
 	}
 }
 
