@@ -554,11 +554,11 @@ func executeScanKeys(client *redisClient, input map[string]any) (connectors.Acti
 		if err != nil {
 			return connectors.ActionResult{}, err
 		}
-		if value.kind != respArray || len(value.array) != 2 {
-			return connectors.ActionResult{}, fmt.Errorf("unexpected SCAN response")
+		nextCursor, page, err := redisScanPage(value, "SCAN")
+		if err != nil {
+			return connectors.ActionResult{}, err
 		}
-		nextCursor = respString(value.array[0])
-		keys = append(keys, respStringSlice(value.array[1])...)
+		keys = append(keys, page...)
 		if nextCursor == "0" {
 			break
 		}
@@ -592,10 +592,14 @@ func executeGetKey(client *redisClient, input map[string]any) (connectors.Action
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	ttl := int64(-2)
-	if ttlValue, err := client.Do("PTTL", key); err == nil {
-		ttl = ttlValue.number
+	ttlValue, err := client.Do("PTTL", key)
+	if err != nil {
+		return connectors.ActionResult{}, err
 	}
+	if ttlValue.kind != respInteger {
+		return connectors.ActionResult{}, fmt.Errorf("unexpected PTTL response: expected an integer")
+	}
+	ttl := ttlValue.number
 	output := map[string]any{"key": key, "type": keyType, "ttl_ms": ttl}
 	switch keyType {
 	case "none":
@@ -613,21 +617,41 @@ func executeGetKey(client *redisClient, input map[string]any) (connectors.Action
 		if err != nil {
 			return connectors.ActionResult{}, err
 		}
-		output["value"] = limitStringMap(respStringMap(value), limit, maxBytes)
+		fields, err := redisStringMap(value, "HGETALL")
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		output["value"] = limitStringMap(fields, limit, maxBytes)
 	case "list":
 		value, err := client.Do("LRANGE", key, "0", strconv.Itoa(limit-1))
 		if err != nil {
 			return connectors.ActionResult{}, err
 		}
-		output["value"] = limitStrings(respStringSlice(value), limit, maxBytes)
+		items, err := redisStringSlice(value, "LRANGE")
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		output["value"] = limitStrings(items, limit, maxBytes)
 	case "set":
-		output["value"], _ = redisScanCollection(client, "SSCAN", key, limit, maxBytes)
+		items, err := redisScanCollection(client, "SSCAN", key, limit, maxBytes)
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		output["value"] = items
 	case "zset":
 		value, err := client.Do("ZRANGE", key, "0", strconv.Itoa(limit-1), "WITHSCORES")
 		if err != nil {
 			return connectors.ActionResult{}, err
 		}
-		output["value"] = scorePairs(respStringSlice(value), maxBytes)
+		items, err := redisStringSlice(value, "ZRANGE")
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		pairs, err := scorePairs(items, maxBytes)
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		output["value"] = pairs
 	default:
 		output["value"] = fmt.Sprintf("Preview for Redis type %q is not supported yet.", keyType)
 	}
@@ -817,11 +841,12 @@ func redisScanCollection(client *redisClient, command string, key string, limit 
 		if err != nil {
 			return nil, err
 		}
-		if value.kind != respArray || len(value.array) != 2 {
-			return nil, fmt.Errorf("unexpected %s response", command)
+		nextCursor, page, err := redisScanPage(value, command)
+		if err != nil {
+			return nil, err
 		}
-		cursor = respString(value.array[0])
-		items = append(items, limitStrings(respStringSlice(value.array[1]), limit-len(items), maxBytes)...)
+		cursor = nextCursor
+		items = append(items, limitStrings(page, limit-len(items), maxBytes)...)
 		if cursor == "0" {
 			break
 		}
@@ -829,12 +854,30 @@ func redisScanCollection(client *redisClient, command string, key string, limit 
 	return items, nil
 }
 
+func redisScanPage(value respValue, command string) (string, []string, error) {
+	if value.kind != respArray || value.null || len(value.array) != 2 {
+		return "", nil, fmt.Errorf("unexpected %s response: expected cursor and items", command)
+	}
+	cursorValue := value.array[0]
+	if cursorValue.kind != respSimpleString && cursorValue.kind != respBulkString {
+		return "", nil, fmt.Errorf("unexpected %s cursor response", command)
+	}
+	items, err := redisStringSlice(value.array[1], command)
+	if err != nil {
+		return "", nil, err
+	}
+	return respString(cursorValue), items, nil
+}
+
 func redisKeyDisplay(output map[string]any) string {
 	encoded := fmt.Sprintf("%v", output["value"])
 	return truncateString(encoded, 4000)
 }
 
-func scorePairs(values []string, maxBytes int) []map[string]string {
+func scorePairs(values []string, maxBytes int) ([]map[string]string, error) {
+	if len(values)%2 != 0 {
+		return nil, fmt.Errorf("unexpected ZRANGE response: member and score pairs are incomplete")
+	}
 	out := []map[string]string{}
 	for index := 0; index+1 < len(values); index += 2 {
 		out = append(out, map[string]string{
@@ -842,7 +885,36 @@ func scorePairs(values []string, maxBytes int) []map[string]string {
 			"score":  values[index+1],
 		})
 	}
-	return out
+	return out, nil
+}
+
+func redisStringSlice(value respValue, command string) ([]string, error) {
+	if value.kind != respArray || value.null {
+		return nil, fmt.Errorf("unexpected %s response: expected an array", command)
+	}
+	out := make([]string, 0, len(value.array))
+	for _, item := range value.array {
+		if item.kind != respSimpleString && item.kind != respBulkString && item.kind != respInteger {
+			return nil, fmt.Errorf("unexpected %s response: expected scalar array items", command)
+		}
+		out = append(out, respString(item))
+	}
+	return out, nil
+}
+
+func redisStringMap(value respValue, command string) (map[string]string, error) {
+	items, err := redisStringSlice(value, command)
+	if err != nil {
+		return nil, err
+	}
+	if len(items)%2 != 0 {
+		return nil, fmt.Errorf("unexpected %s response: field and value pairs are incomplete", command)
+	}
+	out := make(map[string]string, len(items)/2)
+	for index := 0; index < len(items); index += 2 {
+		out[items[index]] = items[index+1]
+	}
+	return out, nil
 }
 
 func classifyRedisTestError(err error) connectors.TestStatus {
