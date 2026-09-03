@@ -1,6 +1,34 @@
 {
-  "version": "0.2.41",
+  "version": "0.2.42",
   "entries": [
+    {
+      "version": "0.2.42",
+      "label": "HTTP and local runtime hardening",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Local browser and generated MCP URLs now handle IPv4 and IPv6 loopback addresses consistently while preserving loopback-only defaults.",
+            "Frontend progress indicators now use one shared component with stable layout behavior across history, transfers, permissions, and connector views."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "JSON request bodies now use a conservative default limit with explicit larger allowances only for connector actions, restores, and file-transfer routes that require them.",
+            "Backend responses now consistently disable caching, prevent content sniffing, and sanitize bounded attachment filenames across database, diagnostic, connector, and transfer downloads.",
+            "The local reverse proxy now enforces loopback Host validation, stricter browser security headers, and a script policy that blocks inline JavaScript while retaining the bounded style support required by Monaco and xterm."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Native dependency inventory now records the pinned SQLCipher wrapper, embedded SQLite and SQLCipher versions, reviewed upstream release, container digests, and freshness review deadline.",
+            "Route-class conformance and native dependency checks now lock body limits, Host rejection, cache policy, download headers, SQLCipher runtime identity, and build configuration."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.41",
       "label": "Retention and connector error correctness",
@@ -208,41 +236,6 @@
           "title": "Maintenance",
           "items": [
             "Updated LZ4 compression support, frontend icons and test tooling, ESLint, and pinned CodeQL actions through maintainer-authored dependency commits."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.34",
-      "label": "Frontend resilience and recovery hardening",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Console connection lifecycle, Redis browser state, migration maintenance, token dialogs, and genuinely shared credential profile fields now live in smaller behavior-owned modules.",
-            "Contributor architecture and approval-flow diagrams now document the generic connector pipeline, while canonical recovery guidance explains safe retry and failure handling."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Malformed console WebSocket frames now produce a bounded warning without terminating an otherwise healthy session.",
-            "Token revocation keeps explicit success feedback visible, generated token values clear at lifecycle boundaries, and Redis confirmations cannot carry across target changes.",
-            "Legacy database migration output is staged and published without overwriting an existing destination, with interrupted attempts cleaned up safely."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Non-interactive MCP initialization now requires an explicit provider and protects tracked project configuration in normal repositories, linked worktrees, and submodules.",
-            "The security policy now documents supported versions, bounded approval decryption, single-user deployment expectations, and clearer private vulnerability reporting."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Offline Markdown link validation and Go and frontend function-complexity budgets now run in repository hygiene checks.",
-            "Deterministic recovery drills now cover the self-hosted backup download path and interrupted legacy migration publication."
           ]
         }
       ]

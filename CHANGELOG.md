@@ -9,6 +9,36 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.42] - 2026-09-03
+
+### Changed
+
+- Local browser and generated MCP URLs now handle IPv4 and IPv6 loopback addresses
+  consistently while preserving loopback-only defaults.
+- Frontend progress indicators now use one shared component with stable layout behavior
+  across history, transfers, permissions, and connector views.
+
+### Security
+
+- JSON request bodies now use a conservative default limit with explicit larger
+  allowances only for connector actions, restores, and file-transfer routes that require
+  them.
+- Backend responses now consistently disable caching, prevent content sniffing, and
+  sanitize bounded attachment filenames across database, diagnostic, connector, and
+  transfer downloads.
+- The local reverse proxy now enforces loopback Host validation, stricter browser
+  security headers, and a script policy that blocks inline JavaScript while retaining
+  the bounded style support required by Monaco and xterm.
+
+### Maintenance
+
+- Native dependency inventory now records the pinned SQLCipher wrapper, embedded SQLite
+  and SQLCipher versions, reviewed upstream release, container digests, and freshness
+  review deadline.
+- Route-class conformance and native dependency checks now lock body limits, Host
+  rejection, cache policy, download headers, SQLCipher runtime identity, and build
+  configuration.
+
 ## [0.2.41] - 2026-09-03
 
 ### Changed
