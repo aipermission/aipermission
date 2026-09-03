@@ -384,7 +384,9 @@ func (s *Store) CompleteBatch(ctx context.Context, id int64) (bool, error) {
 			failure_kind = CASE
 				WHEN failed_items > 0 THEN COALESCE((
 					SELECT NULLIF(failure_kind, '') FROM file_transfers
-					WHERE batch_id = ? AND status = ? ORDER BY queue_index, id LIMIT 1
+					WHERE batch_id = ? AND status = ?
+					ORDER BY CASE WHEN failure_kind = 'outcome_unknown' THEN 0 ELSE 1 END, queue_index, id
+					LIMIT 1
 				), ?)
 				ELSE ''
 			END,

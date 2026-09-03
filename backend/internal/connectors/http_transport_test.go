@@ -3,6 +3,7 @@ package connectors
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -13,6 +14,16 @@ import (
 type recordingNetworkTransport struct {
 	requests chan NetworkDialRequest
 	server   net.Conn
+}
+
+type failingNetworkTransport struct{ err error }
+
+func (transport failingNetworkTransport) ConnectorRuntimeCapability() string {
+	return NetworkTransportCapabilityName
+}
+
+func (transport failingNetworkTransport) DialConnectorTCP(context.Context, NetworkDialRequest) (net.Conn, error) {
+	return nil, transport.err
 }
 
 func (transport *recordingNetworkTransport) ConnectorRuntimeCapability() string {
@@ -90,5 +101,42 @@ func TestNewHTTPClientRefusesRedirects(t *testing.T) {
 	}
 	if err := client.CheckRedirect(request, nil); err != http.ErrUseLastResponse {
 		t.Fatalf("CheckRedirect() = %v, want http.ErrUseLastResponse", err)
+	}
+}
+
+func TestTrackHTTPRequestDispatchDistinguishesDialFailureFromWrittenRequest(t *testing.T) {
+	request, err := http.NewRequest(http.MethodPost, "http://service.internal/mutate", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, dispatched := TrackHTTPRequestDispatch(request)
+	client := NewHTTPClient(failingNetworkTransport{err: errors.New("dial refused")}, NetworkDialRequest{}, time.Second)
+	if _, err := client.Do(request); err == nil {
+		t.Fatal("expected dial failure")
+	}
+	if dispatched() {
+		t.Fatal("dial failure was incorrectly marked as dispatched")
+	}
+
+	transport := &recordingNetworkTransport{requests: make(chan NetworkDialRequest, 1)}
+	client = NewHTTPClient(transport, NetworkDialRequest{}, 2*time.Second)
+	go func() {
+		<-transport.requests
+		defer transport.server.Close()
+		_, _ = http.ReadRequest(bufio.NewReader(transport.server))
+		_, _ = io.WriteString(transport.server, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+	}()
+	request, err = http.NewRequest(http.MethodPost, "http://service.internal/mutate", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, dispatched = TrackHTTPRequestDispatch(request)
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if !dispatched() {
+		t.Fatal("written request was not marked as dispatched")
 	}
 }

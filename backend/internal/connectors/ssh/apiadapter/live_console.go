@@ -338,15 +338,13 @@ func (adapter) RunConnectorCommand(ctx context.Context, server connectorapi.Gate
 		return connectors.CommandRunResult{}, fmt.Errorf("resolve ssh material: %w", err)
 	}
 	result, err := execution.RunCommand(ctx, executionTarget(gateway, target, privateKey), command)
-	if err != nil {
-		return connectors.CommandRunResult{}, err
-	}
 	return connectors.CommandRunResult{
-		Stdout:     result.Stdout,
-		Stderr:     result.Stderr,
-		ExitCode:   result.ExitCode,
-		DurationMS: result.DurationMS,
-	}, nil
+		Stdout:          result.Stdout,
+		Stderr:          result.Stderr,
+		ExitCode:        result.ExitCode,
+		DurationMS:      result.DurationMS,
+		DispatchStarted: result.DispatchStarted,
+	}, err
 }
 
 func (adapter) SupportsRunning(prepared actions.PreparedRequest) bool {

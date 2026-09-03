@@ -256,7 +256,7 @@ func SyncConnectorActionRequestWithExecutor(ctx context.Context, executor projec
 		INSERT INTO history_entries (
 			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, project_id, target_id,
 			profile_id, target_name, profile_label, source, status, action_name, title, summary,
-			preview_json, input_json, output_text, output_json, error, approval_required, created_at,
+			preview_json, input_json, output_text, output_json, error, retry_policy_json, approval_required, created_at,
 			completed_at, updated_at
 		)
 		SELECT
@@ -265,7 +265,7 @@ func SyncConnectorActionRequestWithExecutor(ctx context.Context, executor projec
 			CASE WHEN r.status = 'approval_pending' THEN 'pending_approval' ELSE r.status END,
 			r.action_name, COALESCE(NULLIF(r.title, ''), r.action_name),
 			COALESCE(NULLIF(r.summary, ''), r.reason), r.preview_json,
-			r.input_json, r.display_text, r.output_json, r.error,
+			r.input_json, r.display_text, r.output_json, r.error, r.retry_policy_json,
 			CASE WHEN r.status = 'approval_pending' THEN 1 ELSE 0 END,
 			r.created_at, r.completed_at, COALESCE(r.completed_at, datetime('now'))
 		FROM connector_action_requests r
@@ -287,6 +287,7 @@ func SyncConnectorActionRequestWithExecutor(ctx context.Context, executor projec
 			output_text = excluded.output_text,
 			output_json = excluded.output_json,
 			error = excluded.error,
+			retry_policy_json = excluded.retry_policy_json,
 			approval_required = excluded.approval_required,
 			completed_at = excluded.completed_at,
 			updated_at = excluded.updated_at`,

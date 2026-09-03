@@ -168,6 +168,34 @@
             "format": "int64",
             "type": "integer"
           },
+          "retry_policy": {
+            "additionalProperties": false,
+            "properties": {
+              "class": {
+                "enum": [
+                  "read_only",
+                  "idempotent",
+                  "conditional",
+                  "non_idempotent"
+                ],
+                "type": "string"
+              },
+              "guidance": {
+                "type": "string"
+              },
+              "precondition_fields": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "class",
+              "guidance"
+            ],
+            "type": "object"
+          },
           "status": {
             "enum": [
               "completed",
@@ -222,6 +250,7 @@
           "connector_kind",
           "action_name",
           "status",
+          "retry_policy",
           "created_at"
         ],
         "type": "object"
@@ -251,6 +280,34 @@
             "properties": {},
             "type": "object"
           },
+          "retry_policy": {
+            "additionalProperties": false,
+            "properties": {
+              "class": {
+                "enum": [
+                  "read_only",
+                  "idempotent",
+                  "conditional",
+                  "non_idempotent"
+                ],
+                "type": "string"
+              },
+              "guidance": {
+                "type": "string"
+              },
+              "precondition_fields": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "class",
+              "guidance"
+            ],
+            "type": "object"
+          },
           "risk": {
             "enum": [
               "read",
@@ -272,7 +329,8 @@
           "label",
           "description",
           "risk",
-          "input_schema"
+          "input_schema",
+          "retry_policy"
         ],
         "type": "object"
       },
@@ -802,6 +860,9 @@
             "type": "integer"
           },
           "project_name": {
+            "type": "string"
+          },
+          "retry_policy_json": {
             "type": "string"
           },
           "runtime_id": {

@@ -31,7 +31,7 @@ func lastPathSegment(value string, fallback string) string {
 }
 
 func intValue(values map[string]any, name string) int {
-	return normalizeInt(values, name, 0, -int(^uint(0)>>1)-1, int(^uint(0)>>1))
+	return clampedInt(values, name, 0, -int(^uint(0)>>1)-1, int(^uint(0)>>1))
 }
 
 func s3Scheme(target connectors.TargetView) string {
@@ -55,7 +55,7 @@ func s3Port(target connectors.TargetView) int {
 	if s3Scheme(target) == "http" {
 		defaultPort = 80
 	}
-	return normalizeInt(target.Config, "port", defaultPort, 1, 65535)
+	return clampedInt(target.Config, "port", defaultPort, 1, 65535)
 }
 
 func s3Region(target connectors.TargetView) string {
@@ -76,6 +76,15 @@ func s3PathStyle(target connectors.TargetView) bool {
 		return true
 	}
 	return boolish(value)
+}
+
+func s3TrustConditionalRequests(target connectors.TargetView) bool {
+	value, ok := target.Config["trust_conditional_requests"]
+	if !ok {
+		return false
+	}
+	trusted, ok := value.(bool)
+	return ok && trusted
 }
 
 func connectionMode(target connectors.TargetView) string {
@@ -122,7 +131,7 @@ func stringValue(values map[string]any, name string) string {
 	}
 }
 
-func normalizeInt(values map[string]any, name string, fallback int, minValue int, maxValue int) int {
+func clampedInt(values map[string]any, name string, fallback int, minValue int, maxValue int) int {
 	value, ok := values[name]
 	if !ok || value == nil || value == "" {
 		return fallback

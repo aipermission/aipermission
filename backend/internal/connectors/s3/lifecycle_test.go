@@ -129,3 +129,23 @@ func TestExecuteDeleteBucketLifecycleUsesExplicitSubresource(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 }
+
+func TestLifecycleMutationClassifiesUncertainProviderResponse(t *testing.T) {
+	for _, action := range []connectors.PreparedAction{
+		{ActionName: ActionReplaceLifecycle, Payload: map[string]any{
+			"rule_id": "cleanup", "prefix": "tmp/", "expire_current_after_days": 30,
+			"expire_noncurrent_after_days": 0, "abort_incomplete_multipart_days": 7, "enabled": true,
+		}},
+		{ActionName: ActionDeleteLifecycle},
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("provider failed after dispatch"))
+		}))
+		_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), action)
+		server.Close()
+		if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+			t.Fatalf("action %s error = %v, status = %q", action.ActionName, err, connectors.ErrorStatus(err))
+		}
+	}
+}

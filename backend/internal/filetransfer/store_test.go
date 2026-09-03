@@ -496,6 +496,54 @@ func TestStoreUpdatesPendingBatchItemSizesAtomically(t *testing.T) {
 	}
 }
 
+func TestCompleteBatchPrioritizesOutcomeUnknownFailureKind(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	store := NewStore(database)
+	ctx := context.Background()
+	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
+		RuntimeID: insertTestServer(t, database), Direction: DirectionUpload, Source: SourceUI,
+		Items: []CreateRequest{
+			{LocalPath: "first.txt", RemotePath: "/first.txt", FileName: "first.txt", TempPath: "/tmp/first"},
+			{LocalPath: "second.txt", RemotePath: "/second.txt", FileName: "second.txt", TempPath: "/tmp/second"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if ok, err := store.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
+	}
+	for index, item := range batch.Items {
+		if ok, err := store.MarkRunning(ctx, item.ID); err != nil || !ok {
+			t.Fatalf("mark item %d running: ok=%v err=%v", index, ok, err)
+		}
+		kind := FailureKindTimeout
+		if index == 1 {
+			kind = FailureKindOutcomeUnknown
+		}
+		if ok, err := store.FailWithKind(ctx, item.ID, "failed", kind); err != nil || !ok {
+			t.Fatalf("fail item %d: ok=%v err=%v", index, ok, err)
+		}
+	}
+	if err := store.RecalculateBatch(ctx, batch.ID); err != nil {
+		t.Fatalf("recalculate batch: %v", err)
+	}
+	if ok, err := store.CompleteBatch(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("complete batch: ok=%v err=%v", ok, err)
+	}
+	completed, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("get batch: %v", err)
+	}
+	if completed.FailureKind != FailureKindOutcomeUnknown {
+		t.Fatalf("failure kind = %q, want %q", completed.FailureKind, FailureKindOutcomeUnknown)
+	}
+}
+
 func TestStoreUpdatesPausedBatchQueue(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {

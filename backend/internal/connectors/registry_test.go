@@ -227,6 +227,15 @@ func TestRegistryRejectsTargetDependentActionCatalog(t *testing.T) {
 	}
 }
 
+func TestActionDefinitionsEqualIncludesRetryPolicy(t *testing.T) {
+	base := []ActionDefinition{{Name: "write", Label: "Write", Description: "Write data.", Risk: RiskWrite}}
+	changed := append([]ActionDefinition(nil), base...)
+	changed[0].RetryPolicy = RetryPolicy{Class: RetryIdempotent}
+	if ActionDefinitionsEqual(base, changed) {
+		t.Fatal("retry policy drift must change the action contract")
+	}
+}
+
 func TestRegistryRejectsCredentialKindDependentActionCatalog(t *testing.T) {
 	registry := NewRegistry()
 	err := registry.Register(fakeConnector{

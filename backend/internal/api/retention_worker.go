@@ -22,6 +22,7 @@ func (s *Server) initializeRetention(runtime *databaseRuntime) {
 		logRetentionCleanup(runtime, deleted)
 	}
 	s.startRetentionWorker(runtime)
+	s.startConnectorActionRecoveryWorker(runtime)
 }
 
 func applyConfiguredRetention(ctx context.Context, runtime *databaseRuntime) (map[string]int64, error) {

@@ -25,7 +25,7 @@ func executePresignDownload(ctx context.Context, client *s3Client, input map[str
 	if _, err := client.HeadObject(ctx, key); err != nil {
 		return connectors.ActionResult{}, err
 	}
-	return presignedActionResult(client, http.MethodGet, key, normalizeInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds), nil, time.Now().UTC())
+	return presignedActionResult(client, http.MethodGet, key, clampedInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds), nil, time.Now().UTC())
 }
 
 func executePresignUpload(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
@@ -37,7 +37,7 @@ func executePresignUpload(ctx context.Context, client *s3Client, input map[strin
 		}
 		requiredHeaders["If-None-Match"] = "*"
 	}
-	return presignedActionResult(client, http.MethodPut, key, normalizeInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds), requiredHeaders, time.Now().UTC())
+	return presignedActionResult(client, http.MethodPut, key, clampedInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds), requiredHeaders, time.Now().UTC())
 }
 
 func presignedActionResult(client *s3Client, method string, key string, expiresSeconds int, requiredHeaders map[string]string, now time.Time) (connectors.ActionResult, error) {
@@ -81,6 +81,10 @@ func (client *s3Client) presignObject(method string, key string, expiresSeconds 
 	if expiresSeconds < minPresignedExpirySeconds || expiresSeconds > maxPresignedExpirySeconds {
 		return "", time.Time{}, fmt.Errorf("presigned URL expiry must be between %d and %d seconds", minPresignedExpirySeconds, maxPresignedExpirySeconds)
 	}
+	return client.buildPresignedObjectUnchecked(method, key, expiresSeconds, requiredHeaders, now)
+}
+
+func (client *s3Client) buildPresignedObjectUnchecked(method string, key string, expiresSeconds int, requiredHeaders map[string]string, now time.Time) (string, time.Time, error) {
 	now = now.UTC()
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")

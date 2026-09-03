@@ -3,6 +3,8 @@ package kubernetesconnector
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -148,6 +150,87 @@ func TestRolloutRestartUsesResourceVersionPrecondition(t *testing.T) {
 	}
 }
 
+func TestPrepareRolloutRestartPublishesConditionalRetryPolicy(t *testing.T) {
+	connector := New()
+	for _, test := range []struct {
+		name  string
+		input map[string]any
+	}{
+		{name: "unguarded", input: map[string]any{"namespace": "production", "deployment": "api"}},
+		{name: "guarded", input: map[string]any{"namespace": "production", "deployment": "api", "expected_resource_version": "12345"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			prepared, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
+				Target: kubeTarget(), Profile: kubeProfile("selected"), ActionName: ActionRolloutRestart, Input: test.input,
+			})
+			if err != nil {
+				t.Fatalf("prepare: %v", err)
+			}
+			if test.name == "unguarded" && prepared.RetryPolicy != nil {
+				t.Fatalf("unguarded rollout retry policy = %#v, want catalog non_idempotent policy", prepared.RetryPolicy)
+			}
+			if test.name == "guarded" && (prepared.RetryPolicy == nil || prepared.RetryPolicy.Class != connectors.RetryConditional || !reflect.DeepEqual(prepared.RetryPolicy.PreconditionFields, []string{"expected_resource_version"})) {
+				t.Fatalf("guarded rollout retry policy = %#v", prepared.RetryPolicy)
+			}
+		})
+	}
+}
+
+func TestRolloutRestartFailsClosedAfterAmbiguousKubectlExit(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		stderr     string
+		wantStatus connectors.ResultStatus
+	}{
+		{name: "plain EOF", stderr: "EOF", wantStatus: connectors.ResultOutcomeUnknown},
+		{name: "gateway timeout", stderr: "Error from server (GatewayTimeout): upstream timed out", wantStatus: connectors.ResultOutcomeUnknown},
+		{name: "server timeout", stderr: "Error from server (Timeout): request timed out", wantStatus: connectors.ResultOutcomeUnknown},
+		{name: "forbidden", stderr: "Error from server (Forbidden): deployments is forbidden", wantStatus: connectors.ResultFailed},
+		{name: "not found", stderr: "Error from server (NotFound): deployments.apps api not found", wantStatus: connectors.ResultFailed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeCommandTransport{fallback: connectors.CommandRunResult{Stderr: test.stderr, ExitCode: 1, DispatchStarted: true}}
+			_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+				Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+			}, connectors.PreparedAction{ActionName: ActionRolloutRestart, Payload: map[string]any{"namespace": "production", "deployment": "api"}})
+			if got := connectors.ErrorStatus(err); got != test.wantStatus && !(test.wantStatus == connectors.ResultFailed && got == "") {
+				t.Fatalf("error = %v status=%q want=%q", err, got, test.wantStatus)
+			}
+		})
+	}
+}
+
+func TestRolloutRestartClassifiesTransportFailureAsOutcomeUnknown(t *testing.T) {
+	transport := &fakeCommandTransport{
+		errorResult: connectors.CommandRunResult{DispatchStarted: true},
+		err:         errors.New("connection reset after dispatch"),
+	}
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionRolloutRestart, Payload: map[string]any{
+		"namespace": "production", "deployment": "api", "expected_resource_version": "12345",
+	}})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+		t.Fatalf("error = %v, code = %q, status = %q", err, connectors.ErrorCode(err), connectors.ErrorStatus(err))
+	}
+}
+
+func TestRolloutRestartPreservesPreDispatchTransportFailure(t *testing.T) {
+	transportErr := errors.New("ssh dial refused before dispatch")
+	transport := &fakeCommandTransport{err: transportErr}
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionRolloutRestart, Payload: map[string]any{
+		"namespace": "production", "deployment": "api", "expected_resource_version": "12345",
+	}})
+	if !errors.Is(err, transportErr) {
+		t.Fatalf("error = %v, want original pre-dispatch failure", err)
+	}
+	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
+		t.Fatalf("pre-dispatch error was misclassified as outcome unknown: %v", err)
+	}
+}
+
 func TestRolloutRestartClassifiesResourceVersionConflict(t *testing.T) {
 	transport := &fakeCommandTransport{fallback: connectors.CommandRunResult{Stderr: "Error from server (Conflict): Operation cannot be fulfilled: the object has been modified", ExitCode: 1}}
 	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
@@ -157,6 +240,22 @@ func TestRolloutRestartClassifiesResourceVersionConflict(t *testing.T) {
 	}})
 	if connectors.ErrorCode(err) != "precondition_failed" {
 		t.Fatalf("error = %v, code = %q", err, connectors.ErrorCode(err))
+	}
+}
+
+func TestRolloutRestartClassifiesKubectlTransportExitAsOutcomeUnknown(t *testing.T) {
+	transport := &fakeCommandTransport{fallback: connectors.CommandRunResult{
+		Stderr:          "error: unexpected EOF while reading API response",
+		ExitCode:        1,
+		DispatchStarted: true,
+	}}
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionRolloutRestart, Payload: map[string]any{
+		"namespace": "production", "deployment": "api",
+	}})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+		t.Fatalf("error = %v, code = %q, status = %q", err, connectors.ErrorCode(err), connectors.ErrorStatus(err))
 	}
 }
 
@@ -212,9 +311,11 @@ func (capabilities fakeCapabilities) RuntimeCapability(name string) connectors.R
 }
 
 type fakeCommandTransport struct {
-	results  map[string]connectors.CommandRunResult
-	fallback connectors.CommandRunResult
-	commands []string
+	results     map[string]connectors.CommandRunResult
+	fallback    connectors.CommandRunResult
+	errorResult connectors.CommandRunResult
+	commands    []string
+	err         error
 }
 
 func (transport *fakeCommandTransport) ConnectorRuntimeCapability() string {
@@ -223,6 +324,9 @@ func (transport *fakeCommandTransport) ConnectorRuntimeCapability() string {
 
 func (transport *fakeCommandTransport) RunConnectorCommand(_ context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
 	transport.commands = append(transport.commands, request.Command)
+	if transport.err != nil {
+		return transport.errorResult, transport.err
+	}
 	result, ok := transport.results[request.Command]
 	if !ok {
 		if transport.fallback.Stdout != "" || transport.fallback.Stderr != "" || transport.fallback.ExitCode != 0 || transport.fallback.DurationMS != 0 {

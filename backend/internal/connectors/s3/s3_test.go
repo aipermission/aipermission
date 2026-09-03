@@ -8,10 +8,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -362,6 +364,153 @@ func TestPrepareUploadRequiresOverwriteForExpectedETag(t *testing.T) {
 	}
 }
 
+func TestPrepareS3MutationRetryPolicyReflectsActualPrecondition(t *testing.T) {
+	connector := New()
+	tests := []struct {
+		name      string
+		action    string
+		input     map[string]any
+		wantClass connectors.RetryClass
+	}{
+		{name: "unguarded overwrite", action: ActionUploadObject, input: map[string]any{"key": "old.txt", "content_text": "new", "overwrite": true}, wantClass: connectors.RetryNonIdempotent},
+		{name: "unguarded delete", action: ActionDeleteObject, input: map[string]any{"key": "old.txt"}, wantClass: connectors.RetryNonIdempotent},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			prepared, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
+				Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: test.action, Input: test.input,
+			})
+			if err != nil {
+				t.Fatalf("prepare: %v", err)
+			}
+			policy := connectors.RetryPolicy{Class: connectors.RetryNonIdempotent}
+			if prepared.RetryPolicy != nil {
+				policy = connectors.EffectiveRetryPolicy(connectors.ActionDefinition{Risk: prepared.Risk, RetryPolicy: *prepared.RetryPolicy})
+			}
+			if policy.Class != test.wantClass {
+				t.Fatalf("retry policy = %#v, want %q", policy, test.wantClass)
+			}
+		})
+	}
+}
+
+func TestPrepareS3ConditionDependentMutationsRequireVerifiedProvider(t *testing.T) {
+	tests := []struct {
+		name   string
+		action string
+		input  map[string]any
+	}{
+		{name: "create if absent", action: ActionUploadObject, input: map[string]any{"key": "new.txt", "content_text": "new"}},
+		{name: "guarded overwrite", action: ActionUploadObject, input: map[string]any{"key": "old.txt", "content_text": "new", "overwrite": true, "expected_etag": "etag-1"}},
+		{name: "guarded delete", action: ActionDeleteObject, input: map[string]any{"key": "old.txt", "expected_etag": "etag-1"}},
+		{name: "presigned create if absent", action: ActionPresignUpload, input: map[string]any{"key": "new.txt"}},
+		{name: "version restore", action: ActionRestoreVersion, input: map[string]any{"key": "old.txt", "version_id": "version-1", "expected_current_absent": true}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+				Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: test.action, Input: test.input,
+			})
+			if err == nil || !strings.Contains(err.Error(), "requires verified conditional requests") {
+				t.Fatalf("prepare error = %v", err)
+			}
+		})
+	}
+}
+
+func TestPrepareS3MutationRetryPolicyRequiresVerifiedProviderSemantics(t *testing.T) {
+	target := s3TestTarget(t, "http://127.0.0.1:9000")
+	target.Config["trust_conditional_requests"] = true
+	connector := New()
+	tests := []struct {
+		name      string
+		action    string
+		input     map[string]any
+		wantClass connectors.RetryClass
+	}{
+		{name: "create if absent", action: ActionUploadObject, input: map[string]any{"key": "new.txt", "content_text": "new"}, wantClass: connectors.RetryConditional},
+		{name: "guarded overwrite remains non idempotent", action: ActionUploadObject, input: map[string]any{"key": "old.txt", "content_text": "new", "overwrite": true, "expected_etag": "etag-1"}, wantClass: connectors.RetryNonIdempotent},
+		{name: "guarded delete", action: ActionDeleteObject, input: map[string]any{"key": "old.txt", "expected_etag": "etag-1"}, wantClass: connectors.RetryConditional},
+		{name: "restore if absent", action: ActionRestoreVersion, input: map[string]any{"key": "old.txt", "version_id": "version-1", "expected_current_absent": true}, wantClass: connectors.RetryConditional},
+		{name: "restore over current can repeat a version", action: ActionRestoreVersion, input: map[string]any{"key": "old.txt", "version_id": "version-1", "expected_current_etag": "etag-1"}, wantClass: connectors.RetryNonIdempotent},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			prepared, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
+				Target: target, Profile: s3TestProfile(), ActionName: test.action, Input: test.input,
+			})
+			if err != nil {
+				t.Fatalf("prepare: %v", err)
+			}
+			policy := connectors.EffectiveRetryPolicy(connectors.ActionDefinition{Risk: prepared.Risk})
+			if prepared.RetryPolicy != nil {
+				policy = connectors.EffectiveRetryPolicy(connectors.ActionDefinition{Risk: prepared.Risk, RetryPolicy: *prepared.RetryPolicy})
+			}
+			if policy.Class != test.wantClass {
+				t.Fatalf("retry policy = %#v, want %q", policy, test.wantClass)
+			}
+		})
+	}
+}
+
+func TestS3MutationClassifiesUncertainHTTPAndOversizedResponses(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "request timeout", status: http.StatusRequestTimeout, body: "request timed out after dispatch"},
+		{name: "server error", status: http.StatusInternalServerError, body: "provider failed after dispatch"},
+		{name: "oversized response", status: http.StatusOK, body: strings.Repeat("x", maxS3ResponseBytes+1)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(test.status)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+			_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+				ActionName: ActionDeleteObject,
+				Payload:    map[string]any{"key": "daily/app.txt", "expected_etag": "etag-1"},
+			})
+			if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+				t.Fatalf("error = %v, status = %q", err, connectors.ErrorStatus(err))
+			}
+		})
+	}
+}
+
+func TestS3MutationDistinguishesFailuresBeforeAndAfterDispatch(t *testing.T) {
+	client := &s3Client{
+		scheme: "http", host: "s3.invalid", port: 80, region: "us-east-1", bucket: "bucket",
+		accessKey: "access", secretKey: "secret",
+		httpClient: &http.Client{Transport: s3RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial refused")
+		})},
+	}
+	err := client.DeleteObject(t.Context(), "object.txt", http.Header{"If-Match": []string{`"etag"`}})
+	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
+		t.Fatalf("pre-dispatch error was misclassified: %v", err)
+	}
+
+	client.httpClient.Transport = s3RoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		trace := httptrace.ContextClientTrace(request.Context())
+		trace.WroteRequest(httptrace.WroteRequestInfo{})
+		return nil, errors.New("connection reset")
+	})
+	err = client.DeleteObject(t.Context(), "object.txt", http.Header{"If-Match": []string{`"etag"`}})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("post-dispatch error was not classified as unknown: %v", err)
+	}
+}
+
+type s3RoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function s3RoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
+}
+
 func TestS3MutationClassifiesPreconditionFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "etag changed", http.StatusPreconditionFailed)
@@ -373,6 +522,64 @@ func TestS3MutationClassifiesPreconditionFailure(t *testing.T) {
 	})
 	if connectors.ErrorCode(err) != "precondition_failed" {
 		t.Fatalf("error = %v, code = %q", err, connectors.ErrorCode(err))
+	}
+}
+
+func TestS3ConditionalMutationClassifiesConcurrentNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "object disappeared during conditional mutation", http.StatusNotFound)
+	}))
+	defer server.Close()
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionDeleteObject,
+		Payload:    map[string]any{"key": "daily/app.txt", "expected_etag": "etag-1"},
+	})
+	if connectors.ErrorCode(err) != "precondition_failed" {
+		t.Fatalf("conditional error = %v, code = %q", err, connectors.ErrorCode(err))
+	}
+	_, err = New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionDeleteObject,
+		Payload:    map[string]any{"key": "daily/app.txt"},
+	})
+	if connectors.ErrorCode(err) == "precondition_failed" {
+		t.Fatalf("unguarded not-found was misclassified: %v", err)
+	}
+}
+
+func TestS3ConditionalMutationPreservesNoSuchBucket(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`<Error><Code>NoSuchBucket</Code><Message>bucket missing</Message></Error>`))
+	}))
+	defer server.Close()
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionDeleteObject,
+		Payload:    map[string]any{"key": "daily/app.txt", "expected_etag": "etag-1"},
+	})
+	if connectors.ErrorCode(err) != "not_found" {
+		t.Fatalf("error = %v, code = %q", err, connectors.ErrorCode(err))
+	}
+}
+
+func TestS3MutationClassifiesTransportFailureAsOutcomeUnknown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("test server does not support hijacking")
+		}
+		connection, _, err := hijacker.Hijack()
+		if err != nil {
+			t.Fatalf("hijack connection: %v", err)
+		}
+		_ = connection.Close()
+	}))
+	defer server.Close()
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionDeleteObject,
+		Payload:    map[string]any{"key": "daily/app.txt", "expected_etag": "etag-1"},
+	})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+		t.Fatalf("error = %v, code = %q, status = %q", err, connectors.ErrorCode(err), connectors.ErrorStatus(err))
 	}
 }
 
@@ -455,10 +662,39 @@ func TestCanonicalRequestSignsConditionalHeaders(t *testing.T) {
 	}
 }
 
+func TestSigV4MatchesAWSGetBucketLifecycleReferenceVector(t *testing.T) {
+	// Published AWS SigV4 header-auth reference vector:
+	// https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+	client := &s3Client{
+		region:    "us-east-1",
+		accessKey: "AKIAIOSFODNN7EXAMPLE",
+		secretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://examplebucket.s3.amazonaws.com/?lifecycle", nil)
+	if err != nil {
+		t.Fatalf("create AWS reference request: %v", err)
+	}
+	client.signAt(req, nil, time.Date(2013, time.May, 24, 0, 0, 0, 0, time.UTC))
+
+	canonical, signedHeaders := canonicalRequest(req, emptySHA256Hex)
+	if signedHeaders != "host;x-amz-content-sha256;x-amz-date" {
+		t.Fatalf("signed headers = %q", signedHeaders)
+	}
+	if got := sha256Hex([]byte(canonical)); got != "9766c798316ff2757b517bc739a67f6213b4ab36dd5da2f94eaebf79c77395ca" {
+		t.Fatalf("AWS canonical request hash = %q", got)
+	}
+	wantAuthorization := "AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543"
+	if got := req.Header.Get("Authorization"); got != wantAuthorization {
+		t.Fatalf("AWS authorization header = %q", got)
+	}
+}
+
 func s3TestRuntime(t *testing.T, rawURL string) connectors.RuntimeContext {
 	t.Helper()
+	target := s3TestTarget(t, rawURL)
+	target.Config["trust_conditional_requests"] = true
 	return connectors.RuntimeContext{
-		Target:       s3TestTarget(t, rawURL),
+		Target:       target,
 		Profile:      s3TestProfile(),
 		Secrets:      staticSecrets{"secret_access_key": "test-secret"},
 		Capabilities: s3TestCapabilities{},
@@ -490,6 +726,13 @@ func s3TestTarget(t *testing.T, rawURL string) connectors.TargetView {
 			"path_style":      true,
 		},
 	}
+}
+
+func s3VerifiedTestTarget(t *testing.T, rawURL string) connectors.TargetView {
+	t.Helper()
+	target := s3TestTarget(t, rawURL)
+	target.Config["trust_conditional_requests"] = true
+	return target
 }
 
 func s3TestProfile() connectors.CredentialProfileView {

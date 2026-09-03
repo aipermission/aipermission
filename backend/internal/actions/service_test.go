@@ -495,6 +495,62 @@ func TestServicePrepareRejectsPreparedActionDrift(t *testing.T) {
 	}
 }
 
+func TestServicePrepareAppliesAndValidatesInputSpecificRetryPolicy(t *testing.T) {
+	registry := connectors.NewRegistry()
+	prepared := connectors.PreparedAction{
+		ConnectorKind: "postgres",
+		TargetRef:     "postgres:1:2",
+		ProfileID:     2,
+		ActionName:    "guarded_write",
+		Risk:          connectors.RiskWrite,
+		Title:         "Prepared",
+		Payload:       map[string]any{"expected_revision": "revision-1"},
+		RetryPolicy:   connectors.ConditionalRetryPolicy("expected_revision"),
+	}
+	connector := &prepareConnector{
+		kind:     "postgres",
+		prepared: &prepared,
+		actions: []connectors.ActionDefinition{{
+			Name: "guarded_write", Label: "Guarded write", Description: "Run a guarded mutation.", Risk: connectors.RiskWrite,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "expected_revision", Label: "Expected revision", Type: connectors.FieldString, Required: true}}},
+		}},
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target:  connectors.TargetView{ID: 1, Ref: "postgres:1:2", ConnectorKind: "postgres"},
+		profile: connectors.CredentialProfileView{ID: 2, TargetID: 1, ConnectorKind: "postgres"},
+	})
+
+	result, err := service.Prepare(context.Background(), PrepareRequest{
+		TargetRef: "postgres:1:2", ActionName: "guarded_write", Input: map[string]any{"expected_revision": "revision-1"},
+	})
+	if err != nil {
+		t.Fatalf("prepare conditional request: %v", err)
+	}
+	if result.ActionDefinition.RetryPolicy.Class != connectors.RetryConditional {
+		t.Fatalf("retry policy = %#v", result.ActionDefinition.RetryPolicy)
+	}
+
+	prepared.RetryPolicy = connectors.ConditionalRetryPolicy("missing")
+	connector.prepared = &prepared
+	if _, err := service.Prepare(context.Background(), PrepareRequest{
+		TargetRef: "postgres:1:2", ActionName: "guarded_write", Input: map[string]any{"expected_revision": "revision-1"},
+	}); err == nil || !strings.Contains(err.Error(), "invalid prepared retry policy") {
+		t.Fatalf("invalid prepared retry policy error = %v", err)
+	}
+
+	prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_revision")
+	prepared.Payload = map[string]any{"expected_revision": ""}
+	connector.prepared = &prepared
+	if _, err := service.Prepare(context.Background(), PrepareRequest{
+		TargetRef: "postgres:1:2", ActionName: "guarded_write", Input: map[string]any{"expected_revision": "revision-1"},
+	}); err == nil || !strings.Contains(err.Error(), "no concrete execution value") {
+		t.Fatalf("empty prepared precondition error = %v", err)
+	}
+}
+
 func TestServicePrepareRejectsSecretLikePreparedPayloadFields(t *testing.T) {
 	registry := connectors.NewRegistry()
 	prepared := connectors.PreparedAction{

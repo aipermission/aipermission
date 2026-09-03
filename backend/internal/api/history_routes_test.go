@@ -263,6 +263,9 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if historyPage.Items[0].OutputText != "" {
 		t.Fatalf("history list should not include full output: %#v", historyPage.Items[0])
 	}
+	if historyPage.Items[0].RetryPolicyJSON != "" {
+		t.Fatalf("command history should not expose connector retry policy: %#v", historyPage.Items[0])
+	}
 	punctuationSearchResponse := performJSON(fixture.server.Handler(), http.MethodGet, `/api/history?q=docker%3A%28%22&limit=1`, "", nil)
 	if punctuationSearchResponse.Code != http.StatusOK {
 		t.Fatalf("history punctuation search should be sanitized: %d %s", punctuationSearchResponse.Code, punctuationSearchResponse.Body.String())
@@ -354,6 +357,9 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	connectorJSONSearchPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, connectorJSONSearchResponse.Body.Bytes())
 	if connectorJSONSearchPage.Total != 1 || len(connectorJSONSearchPage.Items) != 1 || connectorJSONSearchPage.Items[0].SourceRefID != connectorRequest.ID {
 		t.Fatalf("unexpected unified connector json search page: %#v", connectorJSONSearchPage)
+	}
+	if !strings.Contains(connectorJSONSearchPage.Items[0].RetryPolicyJSON, `"class":"non_idempotent"`) {
+		t.Fatalf("connector history retry policy missing: %#v", connectorJSONSearchPage.Items[0])
 	}
 	secondPGProfile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
 		TargetID:            pgTarget.ID,

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -199,6 +198,9 @@ func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, 
 
 func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error) {
 	started := time.Now()
+	if !overwrite && !s3TrustConditionalRequests(runtime.Target) {
+		return TransferResult{}, fmt.Errorf("S3 no-overwrite upload requires verified conditional requests for this provider")
+	}
 	client, err := newS3ClientWithTimeout(ctx, runtime, 0)
 	if err != nil {
 		return TransferResult{}, err
@@ -336,13 +338,13 @@ func (client *s3Client) multipartUpload(ctx context.Context, key string, file *o
 	query := url.Values{"uploads": []string{""}}
 	data, _, err := client.Do(ctx, http.MethodPost, key, query, s3RequestBody{Headers: http.Header{}, Data: nil}, maxS3ResponseBytes)
 	if err != nil {
-		return err
+		return classifyMultipartInitiationError(err)
 	}
 	var initiated struct {
 		UploadID string `xml:"UploadId"`
 	}
 	if err := xml.Unmarshal(data, &initiated); err != nil || strings.TrimSpace(initiated.UploadID) == "" {
-		return fmt.Errorf("decode multipart upload response")
+		return unknownMultipartInitiationError("response_validation", fmt.Errorf("decode multipart upload response"))
 	}
 	uploadID := initiated.UploadID
 	completed := false
@@ -381,9 +383,11 @@ func (client *s3Client) multipartUpload(ctx context.Context, key string, file *o
 		}
 		var headers http.Header
 		var uploadErr error
+		// UploadPart replaces the same upload ID and part number, so this bounded
+		// internal retry converges on one remote part instead of duplicating work.
 		for attempt := 1; attempt <= multipartPartAttempts; attempt++ {
 			_, headers, uploadErr = client.Do(ctx, http.MethodPut, key, partQuery, s3RequestBody{Headers: http.Header{}, Data: partData}, maxS3ResponseBytes)
-			if uploadErr == nil || !retryableS3TransferError(uploadErr) {
+			if uploadErr == nil || !connectors.RetryableIdempotentOperationError(uploadErr) {
 				break
 			}
 			if attempt < multipartPartAttempts {
@@ -415,23 +419,51 @@ func (client *s3Client) multipartUpload(ctx context.Context, key string, file *o
 	if preventOverwrite {
 		completeHeaders.Set("If-None-Match", "*")
 	}
-	if _, _, err := client.Do(ctx, http.MethodPost, key, completeQuery, s3RequestBody{Headers: completeHeaders, Data: completePayload}, maxS3ResponseBytes); err != nil {
+	completeData, _, err := client.Do(ctx, http.MethodPost, key, completeQuery, s3RequestBody{Headers: completeHeaders, Data: completePayload}, maxS3ResponseBytes)
+	if err != nil {
+		return classifyS3MutationError(err, completeHeaders)
+	}
+	if err := validateMultipartCompletionResponse(completeData); err != nil {
 		return err
 	}
 	completed = true
 	return nil
 }
 
-func retryableS3TransferError(err error) bool {
-	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
+func classifyMultipartInitiationError(err error) error {
+	classified := classifyS3MutationError(err, nil)
+	if connectors.ErrorStatus(classified) != connectors.ResultOutcomeUnknown {
+		return classified
 	}
-	var statusErr *s3StatusError
-	if errors.As(err, &statusErr) {
-		return statusErr.status == http.StatusRequestTimeout || statusErr.status == http.StatusTooManyRequests || statusErr.status >= 500
+	return unknownMultipartInitiationError("request_or_response", classified)
+}
+
+func unknownMultipartInitiationError(stage string, err error) error {
+	return connectors.ClassifyActionError(
+		"outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"dispatch_stage": stage, "cleanup_required": true},
+		fmt.Errorf("multipart upload initiation outcome is unknown; inspect or clean up incomplete uploads before retrying: %w", err),
+	)
+}
+
+func validateMultipartCompletionResponse(data []byte) error {
+	var response struct {
+		XMLName xml.Name
+		Code    string `xml:"Code"`
+		Message string `xml:"Message"`
+		ETag    string `xml:"ETag"`
 	}
-	var networkErr net.Error
-	return errors.As(err, &networkErr)
+	if err := xml.Unmarshal(data, &response); err != nil {
+		return unknownS3MutationError("response_validation", fmt.Errorf("decode s3 multipart completion response: %w", err))
+	}
+	if response.XMLName.Local == "Error" || strings.TrimSpace(response.Code) != "" {
+		return classifyS3ServiceError(http.StatusOK, response.Code, response.Message)
+	}
+	if response.XMLName.Local != "CompleteMultipartUploadResult" || strings.TrimSpace(response.ETag) == "" {
+		return unknownS3MutationError("response_validation", fmt.Errorf("s3 multipart completion response did not confirm completion"))
+	}
+	return nil
 }
 
 func fileSHA256(file *os.File) (string, error) {

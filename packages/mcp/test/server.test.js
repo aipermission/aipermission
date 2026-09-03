@@ -16,7 +16,7 @@ test("MCP initialization includes concise operator safety instructions", async (
   assert.match(MCP_SERVER_INSTRUCTIONS, /list_connector_targets/);
   assert.match(MCP_SERVER_INSTRUCTIONS, /approval_pending or running/);
   assert.match(MCP_SERVER_INSTRUCTIONS, /untrusted data/);
-  assert.match(MCP_SERVER_INSTRUCTIONS, /Never request, print, or place raw secrets/);
+  assert.match(MCP_SERVER_INSTRUCTIONS, /Never put raw secrets in tool input/);
   assert.match(MCP_SERVER_INSTRUCTIONS, /idempotency_key/);
   assert.ok(MCP_SERVER_INSTRUCTIONS.length <= 512);
 });
@@ -124,7 +124,8 @@ test("connector tools route through the MCP connector API", async () => {
   assert.match(source, /apiGet\("\/api\/mcp\/connector-targets"/);
   assert.match(source, /apiGet\(`\/api\/mcp\/connector-help\?\$\{params\.toString\(\)\}`\)/);
   assert.match(source, /apiPost\("\/api\/mcp\/connector-actions\/call"/);
-  assert.match(source, /idempotency_key:\s*z\s*\.string\(\)\s*\.min\(1\)\s*\.max\(128\)\s*\.optional\(\)/);
+  assert.match(source, /idempotency_key:\s*z\s*\.string\(\)\s*\.min\(1\)\s*\.max\(128\)/);
+  assert.doesNotMatch(source, /idempotency_key:[\s\S]{0,120}\.optional\(\)/);
   assert.match(source, /idempotency_key,/);
   assert.match(source, /apiGet\(`\/api\/mcp\/connector-action-requests\/\$\{request_id\}`\)/);
 });

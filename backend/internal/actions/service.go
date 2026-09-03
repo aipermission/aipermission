@@ -144,6 +144,17 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 	if err := validatePreparedAction(prepared, resolved, actionDefinition, request); err != nil {
 		return PreparedRequest{}, err
 	}
+	if prepared.RetryPolicy != nil {
+		actionDefinition.RetryPolicy = *prepared.RetryPolicy
+		if err := connectors.ValidateActionDefinitions([]connectors.ActionDefinition{actionDefinition}, resolved.Target.ConnectorKind+" prepared action"); err != nil {
+			return PreparedRequest{}, fmt.Errorf("invalid prepared retry policy: %w", err)
+		}
+		for _, field := range prepared.RetryPolicy.PreconditionFields {
+			if !preparedRetryPreconditionPresent(prepared.Payload, field) {
+				return PreparedRequest{}, fmt.Errorf("invalid prepared retry policy: precondition field %q has no concrete execution value", field)
+			}
+		}
+	}
 	dependencies, err := s.resolveApprovalDependencies(ctx, resolved.Target, prepared.Dependencies)
 	if err != nil {
 		return PreparedRequest{}, err
@@ -159,6 +170,23 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 		IdempotencyInput: idempotencyInput,
 		Dependencies:     dependencies,
 	}, nil
+}
+
+func preparedRetryPreconditionPresent(payload map[string]any, field string) bool {
+	value, ok := payload[field]
+	if !ok || value == nil {
+		return false
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed) != ""
+	case []any:
+		return len(typed) != 0
+	case map[string]any:
+		return len(typed) != 0
+	default:
+		return true
+	}
 }
 
 func (s *Service) resolveApprovalDependencies(ctx context.Context, target connectors.TargetView, declared []connectors.ApprovalDependency) ([]ResolvedDependency, error) {
@@ -210,11 +238,8 @@ func stringMapValue(values map[string]any, key string) string {
 }
 
 func connectorActionDefinition(ctx context.Context, connector connectors.Connector, target connectors.TargetView, profile connectors.CredentialProfileView, actionName string) (connectors.ActionDefinition, error) {
-	actions, err := connector.GetActionList(ctx, target, profile)
+	actions, err := connectors.GetActionDefinitions(ctx, connector, target, profile)
 	if err != nil {
-		return connectors.ActionDefinition{}, err
-	}
-	if err := connectors.ValidateActionDefinitions(actions, connector.Kind()+" actions"); err != nil {
 		return connectors.ActionDefinition{}, err
 	}
 	for _, action := range actions {

@@ -685,7 +685,7 @@ func executeContainerExec(ctx context.Context, client *dockerClient, input map[s
 	}
 	result, err := client.run(ctx, fmt.Sprintf("%s exec %s-- %s sh -lc %s 2>&1", client.command, optionText, shellQuote(container.Ref()), shellQuote(commandText)), timeout+5)
 	if err != nil {
-		return connectors.ActionResult{}, err
+		return connectors.ActionResult{}, dockerMutationTransportError("docker exec", result, err)
 	}
 	outputText := truncateString(result.Stdout, maxExecOutputBytes)
 	status := connectors.ResultCompleted
@@ -726,7 +726,7 @@ func executeContainerLifecycle(ctx context.Context, client *dockerClient, input 
 	}
 	result, err := client.run(ctx, command+" -- "+shellQuote(container.Ref())+" 2>&1", timeout+20)
 	if err != nil {
-		return connectors.ActionResult{}, err
+		return connectors.ActionResult{}, dockerMutationTransportError("docker "+operation, result, err)
 	}
 	if result.ExitCode != 0 {
 		return connectors.ActionResult{}, dockerCommandError("docker "+operation, result)
@@ -747,6 +747,18 @@ func executeContainerLifecycle(ctx context.Context, client *dockerClient, input 
 		Output:      output,
 		DisplayText: fmt.Sprintf("Docker container %s %s completed.", container.Name, operation),
 	}, nil
+}
+
+func dockerMutationTransportError(operation string, result connectors.CommandRunResult, err error) error {
+	if err == nil || !result.DispatchStarted {
+		return err
+	}
+	return connectors.ClassifyActionError(
+		"outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"dispatch_stage": "command_transport"},
+		fmt.Errorf("%s outcome is unknown after dispatch: %w", operation, err),
+	)
 }
 
 type DockerContainer struct {

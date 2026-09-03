@@ -14,6 +14,6 @@ func (s connectorTargetHandlers) afterConnectorCredentialLifecycleChange(
 	if err := s.invalidateVaultSessionsForTargetProfile(ctx, runtime, targetID, profileID, vaultReason); err != nil {
 		return err
 	}
-	_, err := s.staleConnectorActionRequestsForTarget(ctx, runtime, targetID, profileID, requestReason, includeRunning)
+	_, err := s.invalidateConnectorActionRequestsForTarget(ctx, runtime, targetID, profileID, requestReason, includeRunning)
 	return err
 }

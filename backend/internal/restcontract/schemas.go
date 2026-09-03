@@ -24,7 +24,8 @@ func sharedSchemas() map[string]any {
 			"input_schema":           stringMap,
 			"sensitive_input_fields": arraySchema(stringSchema()),
 			"output_hint":            stringMap,
-		}, []string{"name", "label", "description", "risk", "input_schema"}),
+			"retry_policy":           retryPolicySchema(),
+		}, []string{"name", "label", "description", "risk", "input_schema", "retry_policy"}),
 		"ConnectorCredentialProfile": objectSchema(map[string]any{
 			"id":                      integerSchema(),
 			"target_id":               integerSchema(),
@@ -94,12 +95,13 @@ func sharedSchemas() map[string]any {
 			"output":                map[string]any{},
 			"display_text":          stringSchema(),
 			"error":                 stringSchema(),
+			"retry_policy":          retryPolicySchema(),
 			"approval_context_hash": stringSchema(),
 			"created_at":            dateTimeSchema(),
 			"completed_at":          dateTimeSchema(),
 			"retry_after_seconds":   integerSchema(),
 			"assistant_hint":        stringSchema(),
-		}, []string{"id", "target_id", "target_name", "target_ref", "profile_id", "profile_label", "connector_kind", "action_name", "status", "created_at"}),
+		}, []string{"id", "target_id", "target_name", "target_ref", "profile_id", "profile_label", "connector_kind", "action_name", "status", "retry_policy", "created_at"}),
 		"HistoryEntry": historyEntrySchema(),
 		"AuditEntry":   auditEntrySchema(),
 		"HistoryPage":  pageSchema(refSchema("HistoryEntry")),
@@ -196,12 +198,21 @@ func historyEntrySchema() map[string]any {
 		"status": actionStatusSchema(), "action_name": stringSchema(), "title": stringSchema(), "summary": stringSchema(),
 		"preview_json": stringSchema(), "input_text": stringSchema(), "input_json": stringSchema(),
 		"output_text": stringSchema(), "output_json": stringSchema(), "error": stringSchema(),
-		"exit_code": integerSchema(), "progress_current": integerSchema(), "progress_total": integerSchema(),
+		"retry_policy_json": stringSchema(),
+		"exit_code":         integerSchema(), "progress_current": integerSchema(), "progress_total": integerSchema(),
 		"bytes_done": integerSchema(), "bytes_total": integerSchema(), "approval_required": boolSchema(),
 		"user_note": stringSchema(), "created_at": dateTimeSchema(), "started_at": dateTimeSchema(),
 		"completed_at": dateTimeSchema(), "updated_at": dateTimeSchema(), "labels": arraySchema(historyLabelSchema()),
 	}
 	return objectSchema(properties, []string{"id", "source_ref_type", "source_ref_id", "connector_kind", "activity_type", "target_name", "source", "status", "action_name", "title", "summary", "progress_current", "progress_total", "bytes_done", "bytes_total", "approval_required", "created_at", "updated_at", "labels"})
+}
+
+func retryPolicySchema() map[string]any {
+	return objectSchema(map[string]any{
+		"class":               enumSchema("read_only", "idempotent", "conditional", "non_idempotent"),
+		"precondition_fields": arraySchema(stringSchema()),
+		"guidance":            stringSchema(),
+	}, []string{"class", "guidance"})
 }
 
 func auditEntrySchema() map[string]any {

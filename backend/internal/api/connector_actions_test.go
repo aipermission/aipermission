@@ -156,6 +156,15 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	if actionHash == baseHash {
 		t.Fatalf("action definition drift should change approval hash")
 	}
+	retryChanged := prepared
+	retryChanged.ActionDefinition.RetryPolicy = connectors.RetryPolicy{Class: connectors.RetryIdempotent}
+	_, retryHash, err := connectorApprovalContext(retryChanged, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil {
+		t.Fatalf("approval context with retry policy change: %v", err)
+	}
+	if retryHash == baseHash {
+		t.Fatalf("retry policy drift should change approval hash")
+	}
 	sensitiveFieldsChanged := prepared
 	sensitiveFieldsChanged.ActionDefinition.SensitiveInputFields = []string{"sql"}
 	_, sensitiveFieldsHash, err := connectorApprovalContext(sensitiveFieldsChanged, token, permission, "2026-06-12T12:00:00Z")

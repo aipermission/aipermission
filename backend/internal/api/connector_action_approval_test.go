@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -69,13 +70,20 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = ? WHERE id = ?`, encryptedPayload, result.Request.ID); err != nil {
 		t.Fatalf("restore encrypted approval payload: %v", err)
 	}
-	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/decline", "", declineConnectorActionApprovalRequest{UserNote: "not now"})
+	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/decline", "", declineConnectorActionApprovalRequest{UserNote: "credential secret"})
 	if declineResponse.Code != http.StatusOK || !strings.Contains(declineResponse.Body.String(), `"status":"declined"`) {
 		t.Fatalf("decline connector approval failed: %d %s", declineResponse.Code, declineResponse.Body.String())
 	}
 	mcpResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-action-requests/"+strconv.FormatInt(result.Request.ID, 10), token.TokenValue, nil)
-	if mcpResponse.Code != http.StatusOK || !strings.Contains(mcpResponse.Body.String(), `"status":"declined"`) || !strings.Contains(mcpResponse.Body.String(), "not now") {
+	if mcpResponse.Code != http.StatusOK || !strings.Contains(mcpResponse.Body.String(), `"status":"declined"`) || !strings.Contains(mcpResponse.Body.String(), "[REDACTED CREDENTIAL]") || strings.Contains(mcpResponse.Body.String(), "credential secret") {
 		t.Fatalf("mcp connector request should show decline: %d %s", mcpResponse.Code, mcpResponse.Body.String())
+	}
+	var storedError string
+	if err := fixture.db.QueryRow(`SELECT error FROM connector_action_requests WHERE id = ?`, result.Request.ID).Scan(&storedError); err != nil {
+		t.Fatalf("read declined request error: %v", err)
+	}
+	if strings.Contains(storedError, "credential secret") || !strings.Contains(storedError, "[REDACTED CREDENTIAL]") {
+		t.Fatalf("decline note was not credential-boundary redacted: %q", storedError)
 	}
 }
 
@@ -299,6 +307,66 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 	}
 	if historyStatus != string(connectors.ResultStale) {
 		t.Fatalf("history status = %q", historyStatus)
+	}
+}
+
+type approvalRetryPolicyConnector struct {
+	localActionTestConnector
+	retryPolicy connectors.RetryPolicy
+}
+
+func (connector *approvalRetryPolicyConnector) GetActionList(ctx context.Context, target connectors.TargetView, profile connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
+	actions, err := connector.localActionTestConnector.GetActionList(ctx, target, profile)
+	if err != nil {
+		return nil, err
+	}
+	actions[0].RetryPolicy = connector.retryPolicy
+	return actions, nil
+}
+
+func TestConnectorActionApprovalRunRejectsRetryPolicyDrift(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := t.Context()
+	store := connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "retry-policy-drift"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	target, profile := createApprovalObserverTargetProfile(t, store)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID, ActionName: "echo",
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set permission: %v", err)
+	}
+	connector := &approvalRetryPolicyConnector{retryPolicy: connectors.RetryPolicy{Class: connectors.RetryReadOnly}}
+	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{
+		Source: commandRequestSourceMCP, TokenID: token.ID,
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo", Input: map[string]any{"value": "retry policy"}, Reason: "verify retry policy drift",
+	})
+	if err != nil {
+		t.Fatalf("create pending request: %v", err)
+	}
+	connector.retryPolicy = connectors.RetryPolicy{Class: connectors.RetryIdempotent}
+
+	runResponse := performJSON(
+		fixture.server.Handler(), http.MethodPost,
+		"/api/connector-action-approvals/"+strconv.FormatInt(pending.Request.ID, 10)+"/run", "",
+		runConnectorActionApprovalRequest{},
+	)
+	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
+		t.Fatalf("retry policy drift response: %d %s", runResponse.Code, runResponse.Body.String())
+	}
+	stale, err := store.GetActionRequest(ctx, pending.Request.ID)
+	if err != nil {
+		t.Fatalf("read stale request: %v", err)
+	}
+	if stale.Status != connectors.ResultStale || stale.ApprovalContextDrift != "action_definition" {
+		t.Fatalf("stale request = %#v", stale)
 	}
 }
 
@@ -577,6 +645,10 @@ func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t
 	var requestID int64
 	observer := approvalExecutionObserverConnector{
 		beforeExecute: func(ctx context.Context) error {
+			if _, active := fixture.server.activeRuntime().connectorCredentialBoundary(requestID); !active {
+				return errors.New("approved request has no active execution boundary")
+			}
+			fixture.server.recoverOrphanedConnectorActions(ctx, fixture.server.activeRuntime(), time.Now().UTC())
 			var requestStatus, historyStatus, note string
 			if err := fixture.db.QueryRowContext(ctx, `SELECT status FROM connector_action_requests WHERE id = ?`, requestID).Scan(&requestStatus); err != nil {
 				return fmt.Errorf("read request status during execution: %w", err)
@@ -622,6 +694,9 @@ func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t
 		t.Fatalf("create pending connector action: %v", err)
 	}
 	requestID = pending.Request.ID
+	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET created_at = datetime('now', '-2 minutes') WHERE id = ?`, requestID); err != nil {
+		t.Fatalf("age pending connector action: %v", err)
+	}
 
 	runResponse := performJSON(
 		fixture.server.Handler(), http.MethodPost,

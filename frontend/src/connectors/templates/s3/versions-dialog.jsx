@@ -5,6 +5,7 @@ import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Notice } from "../../../components/ui/notice";
 import { formatBytes } from "../../../lib/file-transfer-utils";
+import { restoreDestinationGuard } from "./helpers";
 
 export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedClass, onClose, onRun, onChanged }) {
   const [versions, setVersions] = useState([]);
@@ -53,17 +54,17 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
     try {
       const input = { key: objectKey, version_id: confirmation.version.version_id };
       if (confirmation.action === "restore_object_version") {
-        const metadata = await onRun({
-          actionName: "get_object_metadata",
-          input: { key: objectKey },
-          reason: "manual S3 restore precondition check",
-          busy: "checking current object",
-        });
-        const currentETag = metadata?.output?.etag;
-        if (!currentETag) throw new Error("Current object ETag could not be read; restore was not started.");
-        input.expected_current_etag = currentETag;
-      } else if (confirmation.version.etag) {
-        input.expected_etag = confirmation.version.etag;
+        try {
+          const metadata = await onRun({
+            actionName: "get_object_metadata",
+            input: { key: objectKey },
+            reason: "manual S3 restore precondition check",
+            busy: "checking current object",
+          });
+          Object.assign(input, restoreDestinationGuard(metadata));
+        } catch (metadataError) {
+          Object.assign(input, restoreDestinationGuard(null, metadataError));
+        }
       }
       const item = await onRun({
         actionName: confirmation.action,

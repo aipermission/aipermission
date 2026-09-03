@@ -77,7 +77,6 @@ server.tool(
       .string()
       .min(1)
       .max(128)
-      .optional()
       .describe("Caller-stable key that makes retries return the original request without running twice."),
   },
   async ({ target_ref, action_name, input, reason, idempotency_key }) => {

@@ -76,14 +76,15 @@ type CredentialProfileView struct {
 // ActionDefinition is the machine-readable action contract returned by a
 // connector.
 type ActionDefinition struct {
-	Name                 string     `json:"name"`
-	Label                string     `json:"label"`
-	Description          string     `json:"description"`
-	Category             string     `json:"category,omitempty"`
-	Risk                 RiskLevel  `json:"risk"`
-	InputSchema          Schema     `json:"input_schema"`
-	SensitiveInputFields []string   `json:"sensitive_input_fields,omitempty"`
-	OutputHint           OutputHint `json:"output_hint,omitempty"`
+	Name                 string      `json:"name"`
+	Label                string      `json:"label"`
+	Description          string      `json:"description"`
+	Category             string      `json:"category,omitempty"`
+	Risk                 RiskLevel   `json:"risk"`
+	InputSchema          Schema      `json:"input_schema"`
+	SensitiveInputFields []string    `json:"sensitive_input_fields,omitempty"`
+	OutputHint           OutputHint  `json:"output_hint,omitempty"`
+	RetryPolicy          RetryPolicy `json:"retry_policy"`
 }
 
 // ActionRequest is a side-effect-free request to prepare a target action.
@@ -112,6 +113,9 @@ type PreparedAction struct {
 	Summary string         `json:"summary"`
 	Preview map[string]any `json:"preview,omitempty"`
 	Payload map[string]any `json:"payload,omitempty"`
+	// RetryPolicy overrides the catalog policy for this prepared input. It is
+	// used when optional preconditions make one concrete mutation retry-safe.
+	RetryPolicy *RetryPolicy `json:"retry_policy,omitempty"`
 
 	ContextMaterial map[string]any       `json:"context_material,omitempty"`
 	Dependencies    []ApprovalDependency `json:"dependencies,omitempty"`

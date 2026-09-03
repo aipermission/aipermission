@@ -172,6 +172,32 @@ func ValidateActionDefinitions(actions []ActionDefinition, usage string) error {
 		for _, field := range action.InputSchema.Fields {
 			inputFields[field.Name] = true
 		}
+		retryPolicy := EffectiveRetryPolicy(action)
+		if !validRetryClass(retryPolicy.Class) {
+			return fmt.Errorf("%s action %q has unsupported retry class %q", usage, action.Name, retryPolicy.Class)
+		}
+		if retryPolicy.Class == RetryReadOnly && action.Risk != RiskRead {
+			return fmt.Errorf("%s action %q with risk %q cannot declare read_only retry behavior", usage, action.Name, action.Risk)
+		}
+		if retryPolicy.Class == RetryConditional && action.Risk == RiskRead {
+			return fmt.Errorf("%s read action %q cannot declare conditional retry behavior", usage, action.Name)
+		}
+		seenPreconditions := map[string]bool{}
+		for _, field := range retryPolicy.PreconditionFields {
+			if !inputFields[field] {
+				return fmt.Errorf("%s action %q retry precondition field %q is not in its input schema", usage, action.Name, field)
+			}
+			if seenPreconditions[field] {
+				return fmt.Errorf("%s action %q contains duplicate retry precondition field %q", usage, action.Name, field)
+			}
+			seenPreconditions[field] = true
+		}
+		if retryPolicy.Class == RetryConditional && len(retryPolicy.PreconditionFields) == 0 {
+			return fmt.Errorf("%s action %q conditional retry policy requires a precondition field", usage, action.Name)
+		}
+		if retryPolicy.Class != RetryConditional && len(retryPolicy.PreconditionFields) != 0 {
+			return fmt.Errorf("%s action %q precondition fields require conditional retry class", usage, action.Name)
+		}
 		seenSensitiveFields := map[string]bool{}
 		for _, field := range action.SensitiveInputFields {
 			if !inputFields[field] {

@@ -49,7 +49,7 @@ type s3VersionCursor struct {
 
 func executeListObjectVersions(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
 	key := normalizeObjectKey(input, "key")
-	limit := normalizeInt(input, "limit", defaultVersionListLimit, 1, maxVersionListLimit)
+	limit := clampedInt(input, "limit", defaultVersionListLimit, 1, maxVersionListLimit)
 	cursor, err := decodeVersionCursor(stringValue(input, "cursor"))
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -120,19 +120,21 @@ func executeRestoreObjectVersion(ctx context.Context, client *s3Client, input ma
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	if expectedCurrentETag == "" {
-		return connectors.ActionResult{}, fmt.Errorf("expected_current_etag is required")
+	expectedCurrentAbsent := boolValue(input, "expected_current_absent")
+	if (expectedCurrentETag == "") == !expectedCurrentAbsent {
+		return connectors.ActionResult{}, fmt.Errorf("provide exactly one of expected_current_etag or expected_current_absent")
 	}
-	if err := client.CopyObjectVersion(ctx, key, versionID, expectedCurrentETag); err != nil {
+	if err := client.CopyObjectVersion(ctx, key, versionID, expectedCurrentETag, expectedCurrentAbsent); err != nil {
 		return connectors.ActionResult{}, err
 	}
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
-			"bucket":              client.bucket,
-			"key":                 key,
-			"restored_version_id": versionID,
-			"restored":            true,
+			"bucket":                  client.bucket,
+			"key":                     key,
+			"restored_version_id":     versionID,
+			"restored":                true,
+			"expected_current_absent": expectedCurrentAbsent,
 		},
 		DisplayText: fmt.Sprintf("Restored version %s of %s as the current object.", versionID, key),
 	}, nil
@@ -147,11 +149,7 @@ func executeDeleteObjectVersion(ctx context.Context, client *s3Client, input map
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	expectedETag, err := normalizeOptionalETag(input)
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
-	if err := client.DeleteObjectVersion(ctx, key, versionID, expectedETag); err != nil {
+	if err := client.DeleteObjectVersion(ctx, key, versionID); err != nil {
 		return connectors.ActionResult{}, err
 	}
 	return connectors.ActionResult{
@@ -188,13 +186,17 @@ func (client *s3Client) ListObjectVersions(ctx context.Context, key string, curs
 	return result, nil
 }
 
-func (client *s3Client) CopyObjectVersion(ctx context.Context, key string, versionID string, expectedCurrentETag string) error {
+func (client *s3Client) CopyObjectVersion(ctx context.Context, key string, versionID string, expectedCurrentETag string, expectedCurrentAbsent bool) error {
 	headers := http.Header{}
 	headers.Set("X-Amz-Copy-Source", "/"+awsPathEscape(client.bucket)+"/"+awsPathEscape(key)+"?versionId="+awsQueryEscape(versionID))
-	headers.Set("If-Match", quoteETag(expectedCurrentETag))
+	if expectedCurrentAbsent {
+		headers.Set("If-None-Match", "*")
+	} else {
+		headers.Set("If-Match", quoteETag(expectedCurrentETag))
+	}
 	data, _, err := client.Do(ctx, http.MethodPut, key, nil, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
 	if err != nil {
-		return err
+		return classifyS3MutationError(err, headers)
 	}
 	return validateCopyObjectResponse(data)
 }
@@ -207,25 +209,21 @@ func validateCopyObjectResponse(data []byte) error {
 		ETag    string `xml:"ETag"`
 	}
 	if err := xml.Unmarshal(data, &response); err != nil {
-		return fmt.Errorf("decode s3 copy response: %w", err)
+		return connectors.ClassifyActionError("outcome_unknown", connectors.ResultOutcomeUnknown, map[string]any{"dispatch_stage": "response_validation"}, fmt.Errorf("decode s3 copy response: %w", err))
 	}
 	if response.XMLName.Local == "Error" || strings.TrimSpace(response.Code) != "" {
 		return classifyS3ServiceError(http.StatusOK, response.Code, response.Message)
 	}
 	if response.XMLName.Local != "CopyObjectResult" || strings.TrimSpace(response.ETag) == "" {
-		return fmt.Errorf("s3 copy response did not confirm completion")
+		return connectors.ClassifyActionError("outcome_unknown", connectors.ResultOutcomeUnknown, map[string]any{"dispatch_stage": "response_validation"}, fmt.Errorf("s3 copy response did not confirm completion"))
 	}
 	return nil
 }
 
-func (client *s3Client) DeleteObjectVersion(ctx context.Context, key string, versionID string, expectedETag string) error {
+func (client *s3Client) DeleteObjectVersion(ctx context.Context, key string, versionID string) error {
 	query := url.Values{"versionId": []string{versionID}}
-	headers := http.Header{}
-	if expectedETag != "" {
-		headers.Set("If-Match", quoteETag(expectedETag))
-	}
-	_, _, err := client.Do(ctx, http.MethodDelete, key, query, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
-	return err
+	_, _, err := client.Do(ctx, http.MethodDelete, key, query, nil, maxS3ResponseBytes)
+	return classifyS3MutationError(err, nil)
 }
 
 func objectVersionOutput(version s3ObjectVersion, deleteMarker bool) map[string]any {
@@ -245,6 +243,9 @@ func normalizeVersionID(input map[string]any) (string, error) {
 	versionID := strings.TrimSpace(stringValue(input, "version_id"))
 	if versionID == "" {
 		return "", fmt.Errorf("version_id is required")
+	}
+	if strings.EqualFold(versionID, "null") {
+		return "", fmt.Errorf("version_id null is mutable in versioning-suspended buckets and is not accepted as an exact immutable version")
 	}
 	if len(versionID) > maxVersionIDBytes {
 		return "", fmt.Errorf("version_id is too large")

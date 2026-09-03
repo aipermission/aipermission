@@ -187,10 +187,8 @@ func supportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime
 				if !exists {
 					catalog.skip = true
 				} else {
-					actions, actionsErr := connector.GetActionList(ctx, target, profile)
+					actions, actionsErr := connectors.GetActionDefinitions(ctx, connector, target, profile)
 					if actionsErr != nil {
-						catalog.skip = true
-					} else if validateErr := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); validateErr != nil {
 						catalog.skip = true
 					} else {
 						for _, action := range actions {
@@ -237,11 +235,8 @@ func actionSupported(r *http.Request, connector connectors.Connector, target con
 	if !connectors.ValidIdentifier(actionName) {
 		return false
 	}
-	actions, err := connector.GetActionList(r.Context(), target, profile)
+	actions, err := connectors.GetActionDefinitions(r.Context(), connector, target, profile)
 	if err != nil {
-		return false
-	}
-	if err := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); err != nil {
 		return false
 	}
 	for _, action := range actions {

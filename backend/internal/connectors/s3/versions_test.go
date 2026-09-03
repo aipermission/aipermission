@@ -112,6 +112,40 @@ func TestRestoreObjectVersionUsesVersionedCopySource(t *testing.T) {
 	}
 }
 
+func TestRestoreObjectVersionCanGuardAbsentCurrentObject(t *testing.T) {
+	var ifNoneMatch string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ifNoneMatch = r.Header.Get("If-None-Match")
+		_, _ = w.Write([]byte(`<CopyObjectResult><ETag>&quot;restored-etag&quot;</ETag></CopyObjectResult>`))
+	}))
+	defer server.Close()
+
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionRestoreVersion,
+		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version-1", "expected_current_absent": true},
+	})
+	if err != nil {
+		t.Fatalf("execute absent-current restore: %v", err)
+	}
+	if ifNoneMatch != "*" {
+		t.Fatalf("destination if-none-match = %q", ifNoneMatch)
+	}
+}
+
+func TestRestoreObjectVersionRequiresExactlyOneDestinationGuard(t *testing.T) {
+	for _, input := range []map[string]any{
+		{"key": "daily/report.csv", "version_id": "version-1"},
+		{"key": "daily/report.csv", "version_id": "version-1", "expected_current_etag": "etag", "expected_current_absent": true},
+	} {
+		_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+			Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: ActionRestoreVersion, Input: input,
+		})
+		if err == nil || !strings.Contains(err.Error(), "exactly one") {
+			t.Fatalf("input=%#v error=%v", input, err)
+		}
+	}
+}
+
 func TestRestoreObjectVersionRejectsEmbeddedCopyError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -125,6 +159,21 @@ func TestRestoreObjectVersionRejectsEmbeddedCopyError(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "copy failed after acceptance") {
 		t.Fatalf("expected embedded copy error, got %v", err)
+	}
+}
+
+func TestRestoreObjectVersionClassifiesUnconfirmedSuccessAsOutcomeUnknown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<not-a-copy-result>`))
+	}))
+	defer server.Close()
+
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionRestoreVersion,
+		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version-1", "expected_current_etag": "etag-current"},
+	})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("error = %v, status = %q", err, connectors.ErrorStatus(err))
 	}
 }
 
@@ -149,8 +198,8 @@ func TestDeleteObjectVersionUsesExactVersionID(t *testing.T) {
 		if r.Method != http.MethodDelete || r.URL.Query().Get("versionId") != "version+1/2" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.String())
 		}
-		if r.Header.Get("If-Match") != `"etag-v1"` {
-			t.Fatalf("if-match = %q", r.Header.Get("If-Match"))
+		if r.Header.Get("If-Match") != "" {
+			t.Fatalf("version delete must not guard the current version ETag: %q", r.Header.Get("If-Match"))
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -158,10 +207,36 @@ func TestDeleteObjectVersionUsesExactVersionID(t *testing.T) {
 
 	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
 		ActionName: ActionDeleteVersion,
-		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version+1/2", "expected_etag": "etag-v1"},
+		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version+1/2"},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
+	}
+}
+
+func TestPrepareDeleteObjectVersionDropsObsoleteETagAndIsIdempotent(t *testing.T) {
+	prepared, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: ActionDeleteVersion,
+		Input: map[string]any{"key": "daily/report.csv", "version_id": "version-1", "expected_etag": "stale-current-etag"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if _, exists := prepared.Payload["expected_etag"]; exists {
+		t.Fatalf("prepared payload retained obsolete ETag: %#v", prepared.Payload)
+	}
+	if prepared.RetryPolicy == nil || prepared.RetryPolicy.Class != connectors.RetryIdempotent {
+		t.Fatalf("retry policy = %#v", prepared.RetryPolicy)
+	}
+}
+
+func TestPrepareDeleteObjectVersionRejectsMutableNullVersion(t *testing.T) {
+	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: ActionDeleteVersion,
+		Input: map[string]any{"key": "daily/report.csv", "version_id": "null"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "not accepted") {
+		t.Fatalf("expected mutable null version rejection, got %v", err)
 	}
 }
 
@@ -185,7 +260,7 @@ func TestPrepareObjectVersionActionsUseExplicitRisks(t *testing.T) {
 				input["expected_current_etag"] = "etag-current"
 			}
 			prepared, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
-				Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: test.action, Input: input,
+				Target: s3VerifiedTestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: test.action, Input: input,
 			})
 			if err != nil {
 				t.Fatalf("prepare: %v", err)

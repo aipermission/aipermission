@@ -58,6 +58,39 @@ func TestPresignObjectCreatesBoundedSigV4URL(t *testing.T) {
 	}
 }
 
+func TestPresignObjectMatchesAWSReferenceVector(t *testing.T) {
+	client := &s3Client{
+		scheme: "https", host: "s3.amazonaws.com", port: 443,
+		region: "us-east-1", bucket: "examplebucket", pathStyle: false,
+		accessKey: "AKIAIOSFODNN7EXAMPLE",
+		secretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+	}
+	now := time.Date(2013, time.May, 24, 0, 0, 0, 0, time.UTC)
+	signedURL, _, err := client.PresignObject(http.MethodGet, "test.txt", 86400, now)
+	if err == nil || !strings.Contains(err.Error(), "between") {
+		t.Fatalf("public expiry guard should reject the 24-hour AWS vector, url=%q err=%v", signedURL, err)
+	}
+
+	// Exercise the unchecked signing primitive because AIPermission deliberately
+	// restricts public presigned URLs to one hour while AWS's published SigV4
+	// reference vector uses 24 hours:
+	// https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
+	signedURL, _, err = client.buildPresignedObjectUnchecked(http.MethodGet, "test.txt", 86400, nil, now)
+	if err != nil {
+		t.Fatalf("presign bounded reference request: %v", err)
+	}
+	want := "https://examplebucket.s3.amazonaws.com/test.txt?" +
+		"X-Amz-Algorithm=AWS4-HMAC-SHA256&" +
+		"X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request&" +
+		"X-Amz-Date=20130524T000000Z&" +
+		"X-Amz-Expires=86400&" +
+		"X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404&" +
+		"X-Amz-SignedHeaders=host"
+	if signedURL != want {
+		t.Fatalf("AWS presigned URL\n got: %s\nwant: %s", signedURL, want)
+	}
+}
+
 func TestPreparePresignActionsUsesBoundedRisk(t *testing.T) {
 	connector := New()
 	download, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
@@ -74,7 +107,7 @@ func TestPreparePresignActionsUsesBoundedRisk(t *testing.T) {
 	}
 
 	upload, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
-		Target:     s3TestTarget(t, "http://127.0.0.1:9000"),
+		Target:     s3VerifiedTestTarget(t, "http://127.0.0.1:9000"),
 		Profile:    s3TestProfile(),
 		ActionName: ActionPresignUpload,
 		Input:      map[string]any{"key": "incoming/report.csv"},

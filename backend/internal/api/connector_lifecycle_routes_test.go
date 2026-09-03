@@ -83,7 +83,7 @@ func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
 	).Scan(&historyStatus); err != nil {
 		t.Fatalf("read stale action history: %v", err)
 	}
-	if historyStatus != string(connectors.ResultStale) {
+	if historyStatus != string(connectors.ResultOutcomeUnknown) {
 		t.Fatalf("history status = %q", historyStatus)
 	}
 }

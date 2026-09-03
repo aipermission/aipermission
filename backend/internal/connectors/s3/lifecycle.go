@@ -148,12 +148,12 @@ func (client *s3Client) PutBucketLifecycle(ctx context.Context, configuration s3
 	checksum := md5.Sum(data) // S3 requires Content-MD5 as a transport integrity checksum.
 	headers.Set("Content-MD5", base64.StdEncoding.EncodeToString(checksum[:]))
 	_, _, err = client.Do(ctx, http.MethodPut, "", url.Values{"lifecycle": []string{""}}, s3RequestBody{Headers: headers, Data: data}, maxLifecycleResponse)
-	return err
+	return classifyS3MutationError(err, headers)
 }
 
 func (client *s3Client) DeleteBucketLifecycle(ctx context.Context) error {
 	_, _, err := client.Do(ctx, http.MethodDelete, "", url.Values{"lifecycle": []string{""}}, nil, maxLifecycleResponse)
-	return err
+	return classifyS3MutationError(err, nil)
 }
 
 func lifecycleRuleFromInput(input map[string]any) s3LifecycleRule {

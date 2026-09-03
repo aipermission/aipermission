@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
@@ -31,6 +32,10 @@ func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transfe
 }
 
 func (s fileTransferHandlers) finishFileTransferError(runtime *databaseRuntime, transferID int64, ctx context.Context, err error) {
+	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
+		s.failFileTransfer(runtime, transferID, err, filetransfer.FailureKindOutcomeUnknown)
+		return
+	}
 	switch classifyFileTransferInterruption(ctx, err) {
 	case fileTransferTimedOut:
 		s.failFileTransfer(runtime, transferID, errFileTransferTimedOut, filetransfer.FailureKindTimeout)
@@ -50,6 +55,12 @@ func (s fileTransferHandlers) finishFileTransferBatchError(runtime *databaseRunt
 		message = "file transfer batch failed"
 	} else {
 		message = boundary.Redact(message)
+	}
+	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
+		if _, writeErr := runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, message, filetransfer.FailureKindOutcomeUnknown); writeErr != nil {
+			log.Printf("mark file transfer batch outcome unknown failed batch=%d error=%v", batchID, writeErr)
+		}
+		return
 	}
 	switch classifyFileTransferInterruption(ctx, err) {
 	case fileTransferTimedOut:

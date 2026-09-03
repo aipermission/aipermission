@@ -16,9 +16,19 @@ type s3StatusError struct {
 	message string
 }
 
+type s3TransportError struct {
+	stage string
+	err   error
+}
+
+func (err *s3TransportError) Error() string { return err.err.Error() }
+func (err *s3TransportError) Unwrap() error { return err.err }
+
 func (err *s3StatusError) Error() string {
 	return err.message
 }
+
+func (err *s3StatusError) HTTPStatusCode() int { return err.status }
 
 func s3HTTPError(status int, data []byte) error {
 	var serviceError struct {
@@ -49,6 +59,9 @@ func classifyS3ServiceError(status int, code string, detail string) error {
 	if status == http.StatusPreconditionFailed || (status == http.StatusConflict && err.code == "ConditionalRequestConflict") {
 		return connectors.ClassifyError("precondition_failed", err)
 	}
+	if status == http.StatusNotFound {
+		return connectors.ClassifyError("not_found", err)
+	}
 	return err
 }
 
@@ -57,10 +70,47 @@ func classifyConditionalS3Error(err error, headers http.Header) error {
 		return err
 	}
 	var statusErr *s3StatusError
-	if errors.As(err, &statusErr) && statusErr.status == http.StatusNotFound {
+	if errors.As(err, &statusErr) && statusErr.status == http.StatusNotFound && isConditionalObjectNotFound(statusErr.code) {
 		return connectors.ClassifyError("precondition_failed", err)
 	}
 	return err
+}
+
+func classifyS3MutationError(err error, headers http.Header) error {
+	err = classifyConditionalS3Error(err, headers)
+	if err == nil || connectors.ErrorCode(err) != "" {
+		return err
+	}
+	var transportErr *s3TransportError
+	if errors.As(err, &transportErr) {
+		if transportErr.stage == "before_dispatch" {
+			return err
+		}
+		return unknownS3MutationError(transportErr.stage, err)
+	}
+	var statusErr *s3StatusError
+	if errors.As(err, &statusErr) && (statusErr.status == http.StatusRequestTimeout || statusErr.status >= http.StatusInternalServerError) {
+		return unknownS3MutationError("response_status", err)
+	}
+	return err
+}
+
+func unknownS3MutationError(stage string, err error) error {
+	return connectors.ClassifyActionError(
+		"outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"dispatch_stage": stage},
+		fmt.Errorf("s3 mutation outcome is unknown after %s failure: %w", stage, err),
+	)
+}
+
+func isConditionalObjectNotFound(code string) bool {
+	switch strings.TrimSpace(code) {
+	case "", "NotFound", "NoSuchKey", "NoSuchVersion":
+		return true
+	default:
+		return false
+	}
 }
 
 func firstNonEmpty(values ...string) string {

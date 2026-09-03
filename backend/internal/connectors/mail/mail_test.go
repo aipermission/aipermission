@@ -70,7 +70,7 @@ func TestActionCatalogIsStableAndRiskClassified(t *testing.T) {
 }
 
 func TestActionCatalogSchemaSnapshot(t *testing.T) {
-	actions, err := Connector{}.GetActionList(context.Background(), connectors.TargetView{}, connectors.CredentialProfileView{})
+	actions, err := connectors.GetActionDefinitions(context.Background(), Connector{}, connectors.TargetView{}, connectors.CredentialProfileView{})
 	if err != nil {
 		t.Fatalf("get action list: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestActionCatalogSchemaSnapshot(t *testing.T) {
 	}
 	digest := sha256.Sum256(encoded)
 	got := hex.EncodeToString(digest[:])
-	const want = "a65ea9f8124553cb4734eb44f0d66e868652e6be1774e2edb8d8546c3e1f3b6c"
+	const want = "6532a1163bdf05b7912b1311da711e726c7bd2a9fd0939310739ca8096f2dc97"
 	if got != want {
 		t.Fatalf("action catalog schema changed: got sha256 %s, want %s; review the complete names, schemas, defaults, risks, and output hints before updating the snapshot", got, want)
 	}

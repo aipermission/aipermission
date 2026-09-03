@@ -229,7 +229,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		summary = "List cluster nodes."
 	case ActionListEvents:
 		input["namespace"] = normalizeOptionalName(input, "namespace")
-		input["limit"] = normalizeInt(input, "limit", 200, 1, 1000)
+		input["limit"] = boundedIntOrDefault(input, "limit", 200, 1, 1000)
 		title = "List Kubernetes events"
 		summary = namespaceSummary(input)
 	case ActionDescribe:
@@ -255,7 +255,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["namespace"] = namespace
 		input["pod"] = pod
 		input["container"] = normalizeOptionalName(input, "container")
-		input["tail"] = normalizeInt(input, "tail", defaultLogTail, 1, maxLogTail)
+		input["tail"] = boundedIntOrDefault(input, "tail", defaultLogTail, 1, maxLogTail)
 		title = "Read Kubernetes pod logs"
 		summary = fmt.Sprintf("%s/%s tail=%d", namespace, pod, input["tail"])
 	case ActionRolloutRestart:
@@ -277,7 +277,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 	default:
 		return connectors.PreparedAction{}, ErrUnsupportedAction
 	}
-	return connectors.PreparedAction{
+	prepared := connectors.PreparedAction{
 		ConnectorKind: Kind,
 		TargetRef:     req.Target.Ref,
 		ProfileID:     req.Profile.ID,
@@ -293,7 +293,11 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			"connection_mode": connectionMode(req.Target),
 			"scope_mode":      scopeMode(req.Profile),
 		},
-	}, nil
+	}
+	if req.ActionName == ActionRolloutRestart && strings.TrimSpace(stringValue(input, "expected_resource_version")) != "" {
+		prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_resource_version")
+	}
+	return prepared, nil
 }
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
@@ -512,7 +516,7 @@ func executeListNodes(ctx context.Context, client *kubeClient) (connectors.Actio
 }
 
 func executeListEvents(ctx context.Context, client *kubeClient, input map[string]any) (connectors.ActionResult, error) {
-	limit := normalizeInt(input, "limit", 200, 1, 1000)
+	limit := boundedIntOrDefault(input, "limit", 200, 1, 1000)
 	items, err := client.runNamespacedKubeList(ctx, "events", stringValue(input, "namespace"), 25)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -576,7 +580,7 @@ func executeLogs(ctx context.Context, client *kubeClient, input map[string]any) 
 	if err := client.scope.ensureNamespace(namespace); err != nil {
 		return connectors.ActionResult{}, err
 	}
-	tail := normalizeInt(input, "tail", defaultLogTail, 1, maxLogTail)
+	tail := boundedIntOrDefault(input, "tail", defaultLogTail, 1, maxLogTail)
 	command := fmt.Sprintf("%s logs -n %s %s --tail %d --timestamps=true", client.baseCommand(), shellQuote(namespace), shellQuote(pod), tail)
 	if container != "" {
 		command += " -c " + shellQuote(container)
@@ -623,12 +627,28 @@ func executeRolloutRestart(ctx context.Context, client *kubeClient, input map[st
 	}
 	result, err := client.run(ctx, command, 30)
 	if err != nil {
-		return connectors.ActionResult{}, err
+		if !result.DispatchStarted {
+			return connectors.ActionResult{}, err
+		}
+		return connectors.ActionResult{}, connectors.ClassifyActionError(
+			"outcome_unknown",
+			connectors.ResultOutcomeUnknown,
+			map[string]any{"dispatch_stage": "command_transport"},
+			fmt.Errorf("%s outcome is unknown after transport failure: %w", commandLabel, err),
+		)
 	}
 	if result.ExitCode != 0 {
 		err := kubeCommandError(commandLabel, result)
 		if resourceVersion != "" && isKubeConflictResult(result) {
 			return connectors.ActionResult{}, connectors.ClassifyError("precondition_failed", err)
+		}
+		if result.DispatchStarted && !isKubeDefiniteMutationFailure(result) {
+			return connectors.ActionResult{}, connectors.ClassifyActionError(
+				"outcome_unknown",
+				connectors.ResultOutcomeUnknown,
+				map[string]any{"dispatch_stage": "kubectl_response", "exit_code": result.ExitCode},
+				fmt.Errorf("%s outcome is unknown after kubectl transport failure: %w", commandLabel, err),
+			)
 		}
 		return connectors.ActionResult{}, err
 	}
@@ -970,6 +990,23 @@ func isKubeConflictResult(result connectors.CommandRunResult) bool {
 	return strings.Contains(text, "conflict") || strings.Contains(text, "object has been modified")
 }
 
+func isKubeDefiniteMutationFailure(result connectors.CommandRunResult) bool {
+	text := strings.ToLower(result.Stderr + "\n" + result.Stdout)
+	for _, marker := range []string{
+		"error from server (forbidden)",
+		"error from server (unauthorized)",
+		"error from server (notfound)",
+		"error from server (invalid)",
+		"error from server (badrequest)",
+		"error from server (unprocessableentity)",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func connectionMode(target connectors.TargetView) string {
 	mode := strings.TrimSpace(stringValue(target.Config, "connection_mode"))
 	if mode == "" {
@@ -1116,7 +1153,7 @@ func boolValue(source map[string]any, key string) bool {
 	return typed
 }
 
-func normalizeInt(input map[string]any, key string, fallback int, min int, max int) int {
+func boundedIntOrDefault(input map[string]any, key string, fallback int, min int, max int) int {
 	value, ok := input[key]
 	if !ok || value == nil {
 		return fallback

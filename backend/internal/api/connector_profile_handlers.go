@@ -400,12 +400,8 @@ func (s connectorTargetHandlers) listConnectorCredentialProfileActions(w http.Re
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	actions, err := connector.GetActionList(r.Context(), target, profile)
+	actions, err := connectors.GetActionDefinitions(r.Context(), connector, target, profile)
 	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); err != nil {
 		writeInternalError(w)
 		return
 	}

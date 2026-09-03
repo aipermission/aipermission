@@ -28,6 +28,7 @@ export function emptyForm() {
     region: "us-east-1",
     bucket: "",
     path_style: true,
+    trust_conditional_requests: false,
     transport_target_ref: "",
     profile_label: "default",
     access_key_id: "",
@@ -50,6 +51,7 @@ export function formFromTarget({ target, profile }) {
     region: target.config?.region || "us-east-1",
     bucket: target.config?.bucket || "",
     path_style: target.config?.path_style !== false,
+    trust_conditional_requests: target.config?.trust_conditional_requests === true,
     transport_target_ref: target.config?.transport_target_ref || "",
     profile_label: selectedProfile.label || "default",
     access_key_id: selectedProfile.public?.access_key_id || "",
@@ -179,7 +181,7 @@ export function operationFromError() {
   return null;
 }
 
-function s3TargetConfigFromForm(form) {
+export function s3TargetConfigFromForm(form) {
   return {
     connection_mode: form.connection_mode || "direct",
     scheme: form.scheme || "https",
@@ -188,6 +190,7 @@ function s3TargetConfigFromForm(form) {
     region: form.region || "us-east-1",
     bucket: form.bucket,
     path_style: form.path_style !== false,
+    trust_conditional_requests: form.trust_conditional_requests === true,
     transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref : "",
   };
 }

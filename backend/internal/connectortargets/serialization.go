@@ -201,6 +201,7 @@ func actionRequestSelectSQL() string {
 			r.source, r.input_json, r.encrypted_payload_json,
 			r.reason, r.status, r.output_json, r.display_text, r.error,
 			r.approval_context, r.approval_context_hash, r.approval_context_drift,
+			r.retry_policy_json,
 			r.idempotency_key, r.idempotency_identity_hash,
 			r.session_id, r.session_generation,
 			r.created_at, r.completed_at
@@ -216,6 +217,7 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 	var inputJSON string
 	var previewJSON string
 	var outputJSON string
+	var retryPolicyJSON string
 	var completedAt sql.NullString
 	var sessionID sql.NullInt64
 	var sessionGeneration sql.NullInt64
@@ -243,6 +245,7 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 		&request.ApprovalContext,
 		&request.ApprovalContextHash,
 		&request.ApprovalContextDrift,
+		&retryPolicyJSON,
 		&request.IdempotencyKey,
 		&request.IdempotencyIdentityHash,
 		&sessionID,
@@ -276,6 +279,10 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 		return ActionRequest{}, fmt.Errorf("decode connector action output: %w", err)
 	}
 	request.Output = output
+	if err := json.Unmarshal([]byte(retryPolicyJSON), &request.RetryPolicy); err != nil {
+		return ActionRequest{}, fmt.Errorf("decode connector action retry policy: %w", err)
+	}
+	request.RetryPolicy = connectors.NormalizePersistedRetryPolicy(request.RetryPolicy)
 	if completedAt.Valid {
 		request.CompletedAt = &completedAt.String
 	}

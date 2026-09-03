@@ -358,7 +358,7 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				Ref:           "s3:7:70",
 				ConnectorKind: s3connector.Kind,
 				Name:          "object-store",
-				Config:        map[string]any{"connection_mode": "direct", "scheme": "https", "host": "s3.example.com", "port": 443, "region": "us-east-1", "bucket": "app-backups", "path_style": true},
+				Config:        map[string]any{"connection_mode": "direct", "scheme": "https", "host": "s3.example.com", "port": 443, "region": "us-east-1", "bucket": "app-backups", "path_style": true, "trust_conditional_requests": true},
 			}, connectors.CredentialProfileView{
 				ID:            70,
 				TargetID:      7,
