@@ -23,7 +23,7 @@ is sent.
 list_connector_targets()
 get_connector_help(target_ref)
 get_connector_actions(target_ref)
-call_connector_action(target_ref, action_name, input?, reason?, idempotency_key?)
+call_connector_action(target_ref, action_name, input?, reason?, idempotency_key)
 get_connector_action_request(request_id)
 list_vault_items(project_ref?)
 call_vault_action(project_ref, action_name, input, reason, idempotency_key)
@@ -67,11 +67,15 @@ The profile chooses which stored credential is used. The connector action still
 runs locally through the gateway; AIPermission does not host a remote connector
 service.
 
-Supply a caller-stable `idempotency_key` for connector actions that may be
-retried. Repeating the same key with the same token, target/profile, action,
+Supply a caller-stable `idempotency_key` for every connector action. Repeating
+the same key with the same token, target/profile, action,
 input, and reason returns the original request and never executes twice or
 extends an approval lifetime. Reusing the key for a different logical request
 returns `409 Conflict`. Keys are limited to 128 UTF-8 bytes.
+
+Gateway 0.2.43 temporarily accepts missing keys only for read-only actions so
+older MCP clients can inspect state while they are upgraded. Every mutation
+fails closed without a key; current MCP packages always require one.
 
 Blocked and missing-permission results are idempotent too. If the operator
 changes the permission after a blocked result, create a new logical request
@@ -160,7 +164,11 @@ Example response:
     "profile_kind": "private_key",
     "actions": [
       { "name": "exec", "execution_rule": "approval_required" },
-      { "name": "read_console", "execution_rule": "always_run", "expires_at": "2026-06-11T12:30:00Z" }
+      {
+        "name": "read_console",
+        "execution_rule": "always_run",
+        "expires_at": "2026-06-11T12:30:00Z"
+      }
     ],
     "hints": [
       "Use get_connector_help and get_connector_actions before calling connector actions for the first time."
@@ -204,6 +212,17 @@ before using a connector kind for the first time in a session.
 ## get_connector_actions
 
 Returns the action list for one `target_ref`.
+
+Each action includes `retry_policy.class`, machine-readable
+`precondition_fields` when applicable, and short retry guidance. Treat
+`read_only` as safe for a new attempt after inspecting the recorded result.
+For `conditional`, fetch fresh state and supply every advertised precondition.
+After `outcome_unknown`, do not start another mutation until external state
+proves the original attempt did not commit.
+The same idempotency key only retrieves the same gateway submission; use a new
+key for a new external attempt. Never automatically repeat `non_idempotent`
+actions after execution starts or an `outcome_unknown`. Gateway deduplication
+does not prove whether an external side effect occurred.
 
 SSH actions currently include:
 
@@ -277,6 +296,19 @@ expiry from 60 to 3600 seconds. Their URLs are temporary bearer credentials.
 Send every returned `required_headers` entry unchanged when using an upload
 URL; no-overwrite uploads require the signed `If-None-Match: *` header.
 Use `list_object_versions` before restoring or deleting an exact version.
+For replacement or current-object deletion after reading object state, pass
+the current ETag as `expected_etag`; the provider then rejects the mutation if
+the object changed. Before version restore, read the destination object's
+current metadata and pass `expected_current_etag`; if that read returns the
+stable `not_found` code, pass `expected_current_absent=true` instead. Never
+send both. Exact-version deletion is bound by `version_id` and does not accept
+an ETag for a historical version. After `precondition_failed`, read fresh metadata and ask for
+a new decision rather than silently retrying.
+S3-compatible providers differ in conditional-request behavior. AIPermission
+requires the target's **Verified conditional requests** setting before it will
+dispatch no-overwrite uploads or presigned uploads, ETag-guarded mutations, or
+version restores. Enable the setting only after provider documentation or
+conformance testing confirms destination `If-Match` and `If-None-Match` behavior.
 `replace_bucket_lifecycle` replaces the complete lifecycle policy with one
 bounded rule; it and `delete_bucket_lifecycle` are destructive operations.
 
@@ -295,6 +327,9 @@ service/ingress/node/event listing, resource JSON describes, bounded pod log
 tails, and explicit `rollout_restart` for deployments. Kubernetes profiles can
 scope access by namespace visibility. Raw `kubectl`, manifest apply/edit/delete,
 pod deletion, scaling, and Secret value browsing are not exposed.
+For a drift-guarded restart, read the deployment with `describe_resource` and
+pass its `metadata.resourceVersion` as `expected_resource_version`. A conflict
+returns `precondition_failed`; refresh state before requesting another restart.
 
 Mail actions include folder discovery, bounded newest/unread checks, structured
 message search, exact message reads, attachment metadata, explicit
@@ -311,6 +346,11 @@ Prompt approval shows the exact bounded prepared Mail preview only in the local
 operator UI. MCP receives the normal redacted request fields and must not claim
 to know hidden recipients or body text removed by redaction.
 
+This exact-preview boundary applies to every connector. Only the authenticated
+local operator approval-detail view may decrypt the bounded prepared preview
+while the request is pending. MCP tokens, approval lists, History, Audit, and
+persisted display projections receive redacted fields.
+
 ## call_connector_action
 
 Creates or runs one connector action according to the token permission rule.
@@ -324,7 +364,8 @@ Example SSH command:
   "input": {
     "command": "systemctl is-active docker"
   },
-  "reason": "Check Docker service state before cleanup."
+  "reason": "Check Docker service state before cleanup.",
+  "idempotency_key": "ssh-core-1-docker-state-20260904T120000Z"
 }
 ```
 
@@ -339,7 +380,8 @@ Example bounded Mail check that does not change Seen state:
     "unread_only": true,
     "limit": 20
   },
-  "reason": "Check the support inbox for new unread messages."
+  "reason": "Check the support inbox for new unread messages.",
+  "idempotency_key": "mail-support-unread-20260904T120000Z"
 }
 ```
 
@@ -376,7 +418,8 @@ Example S3 directory browse:
     "prefix": "backups/2026/",
     "limit": 100
   },
-  "reason": "List backup objects under the requested prefix before reading metadata."
+  "reason": "List backup objects under the requested prefix before reading metadata.",
+  "idempotency_key": "s3-backups-browse-20260904T120000Z"
 }
 ```
 
@@ -471,7 +514,8 @@ For SSH live output, call:
   "target_ref": "ssh:3:1",
   "action_name": "read_console",
   "input": { "tail_bytes": 20000 },
-  "reason": "Inspect live output for the running command."
+  "reason": "Inspect live output for the running command.",
+  "idempotency_key": "ssh-core-1-console-read-20260904T120003Z"
 }
 ```
 
@@ -482,7 +526,8 @@ call:
 {
   "target_ref": "ssh:3:1",
   "action_name": "restart_console_session",
-  "reason": "Recover a stuck persistent SSH console session."
+  "reason": "Recover a stuck persistent SSH console session.",
+  "idempotency_key": "ssh-core-1-console-restart-20260904T120500Z"
 }
 ```
 
@@ -505,16 +550,24 @@ call:
 Reads one connector action request by id. The request must belong to the current
 MCP token.
 
-Terminal statuses:
+Request lifecycle statuses:
 
 ```txt
+approval_pending (nonterminal)
+running (nonterminal)
 completed
 failed
+canceled
 declined
 blocked
 error
 stale
+outcome_unknown
 ```
+
+`precondition_failed` is an error code on a terminal failed response, not a
+request status. Read fresh provider state before submitting a new guarded
+mutation with a new idempotency key.
 
 ## SSH Notes
 

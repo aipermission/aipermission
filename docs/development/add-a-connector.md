@@ -135,7 +135,7 @@ A connector implementation must provide:
 - credential profile schema fields for secrets and identity
 - `GetHelp` content for MCP/operator guidance
 - `GetActionList` action metadata for one target/profile, including stable
-  action names plus non-empty labels and descriptions
+  action names plus non-empty labels, descriptions, and retry semantics
 - `PrepareAction` validation and normalized action input
 - `ExecuteAction` transport-specific execution
 
@@ -145,6 +145,21 @@ request state, output, errors, and audit records.
 In the 0.2 baseline, `RuntimeContext.Events` is reserved/no-op and
 `ActionResult.Metadata` is not persisted or returned through MCP. Put
 operator- or AI-visible structured data in `ActionResult.Output`.
+
+The shared action catalog completes an omitted retry policy conservatively:
+`read` actions become `read_only`, while write, destructive, and
+credential-sensitive actions become `non_idempotent`. Set an explicit
+`RetryPolicy` only when the connector can make a stronger claim. Use
+`idempotent` for an operation whose exact repetition converges on the same
+remote state. Use `conditional` with `PreconditionFields` when the provider
+atomically checks those fields during mutation. The schema validator rejects
+unknown or duplicate precondition fields. Never describe a preflight read plus
+an unguarded write as conditional; the check must travel with the mutation.
+If the precondition is optional, keep the catalog policy `non_idempotent` and
+set `PreparedAction.RetryPolicy` with `connectors.ConditionalRetryPolicy(...)`
+only for prepared inputs that contain the actual provider-enforced guard.
+The local `idempotency_key` prevents duplicate gateway request creation, not
+duplicate remote execution after `outcome_unknown`.
 
 `ActionResult.Output` may use a typed Go struct, map, slice, pointer, or custom
 JSON marshaler, but it must encode as JSON. Before persistence or external

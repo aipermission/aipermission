@@ -104,6 +104,30 @@ whose values may contain customer data or secrets, such as a message key,
 payload, or headers. Core persists and returns redacted input values while
 keeping the exact execution payload only in the encrypted request envelope.
 
+Every action also exposes an effective `RetryPolicy`. Read actions default to
+`read_only`; every mutation defaults conservatively to `non_idempotent`.
+Connectors may explicitly use `idempotent` when repeating the exact operation
+converges on the same external state, or `conditional` when named input fields
+carry provider-enforced preconditions such as an ETag or resourceVersion.
+Conditional fields must exist in the action input schema. A gateway
+`idempotency_key` deduplicates local request submission only: it cannot prove
+whether a remote side effect completed after an uncertain transport outcome.
+When a precondition is optional, leave the catalog policy conservative and set
+`PreparedAction.RetryPolicy` only after `PrepareAction` has normalized a real
+provider-enforced precondition into the immutable payload. Reusing the old
+idempotency key retrieves the old gateway submission; a refreshed external
+attempt needs fresh preconditions and a new key.
+Keep retry classification and precondition fields stable because they are part
+of the approval-context fingerprint.
+
+Connector-internal transport retries are narrower than the public action retry
+policy. Use `RetryableIdempotentOperationError` only when the exact remote
+operation is independently known to be idempotent, such as uploading the same
+multipart part with one fixed upload id and part number. Never wrap an arbitrary
+mutation, finalization request, or operation with an uncertain remote identity
+in this helper. Cancellation and deadline expiry are terminal to the local
+attempt and must not be retried internally.
+
 Approval-required requests hash the connector kind/version, action definition,
 target/profile public metadata, profile revision, encrypted secret revision,
 permission rule, token validity, and prepared payload. If any of that context
