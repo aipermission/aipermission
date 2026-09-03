@@ -297,6 +297,7 @@ func objectActions() []connectors.ActionDefinition {
 				{Name: "content_base64", Label: "Base64 content", Type: connectors.FieldMultiline, Description: "Base64 payload for binary objects. Use this or content_text, not both."},
 				{Name: "content_type", Label: "Content type", Type: connectors.FieldString, Default: "application/octet-stream", Description: "Object content type to send with the upload."},
 				{Name: "overwrite", Label: "Overwrite existing object", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless the operator explicitly approved replacing an existing object."},
+				{Name: "expected_etag", Label: "Expected ETag", Type: connectors.FieldString, Description: "Optional current ETag. When set, overwrite succeeds only if the object still has this ETag."},
 			}},
 			SensitiveInputFields: []string{"content_text", "content_base64"},
 			OutputHint:           connectors.OutputHint{Format: "json", MaxBytes: 4000},
@@ -309,6 +310,7 @@ func objectActions() []connectors.ActionDefinition {
 			Risk:        connectors.RiskDestructive,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key to delete."},
+				{Name: "expected_etag", Label: "Expected ETag", Type: connectors.FieldString, Description: "Optional current ETag. When set, deletion succeeds only if the object still has this ETag."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -364,6 +366,7 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
 				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact stored version ID returned by list_object_versions."},
+				{Name: "expected_current_etag", Label: "Expected current ETag", Type: connectors.FieldString, Required: true, Description: "Current destination ETag read immediately before approval. Restore fails if the current object changes before execution."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -376,6 +379,7 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
 				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact version ID returned by list_object_versions."},
+				{Name: "expected_etag", Label: "Expected ETag", Type: connectors.FieldString, Description: "Optional ETag returned for this exact version. When set, deletion fails if it does not match."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -474,6 +478,11 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			return connectors.PreparedAction{}, fmt.Errorf("key is required")
 		}
 		input["key"] = key
+		expectedETag, err := normalizeOptionalETag(input)
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
+		input["expected_etag"] = expectedETag
 		title = "Delete S3 object"
 		summary = key
 	case ActionPresignDownload, ActionPresignUpload:
@@ -519,9 +528,22 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["key"] = key
 		input["version_id"] = versionID
 		if req.ActionName == ActionDeleteVersion {
+			expectedETag, err := normalizeOptionalETag(input)
+			if err != nil {
+				return connectors.PreparedAction{}, err
+			}
+			input["expected_etag"] = expectedETag
 			risk = connectors.RiskDestructive
 			title = "Delete S3 object version"
 		} else {
+			expectedCurrentETag, err := normalizeOptionalETagField(input, "expected_current_etag")
+			if err != nil {
+				return connectors.PreparedAction{}, err
+			}
+			if expectedCurrentETag == "" {
+				return connectors.PreparedAction{}, fmt.Errorf("expected_current_etag is required")
+			}
+			input["expected_current_etag"] = expectedCurrentETag
 			risk = connectors.RiskWrite
 			title = "Restore S3 object version"
 		}
@@ -586,6 +608,14 @@ func prepareUploadInput(input map[string]any) (string, error) {
 	input["content_type"] = contentType
 	input["content_bytes"] = len(contentBytes)
 	input["overwrite"] = boolValue(input, "overwrite")
+	expectedETag, err := normalizeOptionalETag(input)
+	if err != nil {
+		return "", err
+	}
+	input["expected_etag"] = expectedETag
+	if input["expected_etag"] != "" && !input["overwrite"].(bool) {
+		return "", fmt.Errorf("expected_etag requires overwrite=true")
+	}
 	delete(input, "content_text")
 	delete(input, "content_base64")
 	if contentBase64 != "" {
@@ -604,7 +634,7 @@ func finalizePreparedAction(req connectors.ActionRequest, input map[string]any, 
 	if _, ok := preview["content_base64"]; ok {
 		preview["content_base64"] = fmt.Sprintf("[base64 content: %v bytes]", input["content_bytes"])
 	}
-	return connectors.PreparedAction{
+	prepared := connectors.PreparedAction{
 		ConnectorKind: Kind,
 		TargetRef:     req.Target.Ref,
 		ProfileID:     req.Profile.ID,
@@ -620,7 +650,22 @@ func finalizePreparedAction(req connectors.ActionRequest, input map[string]any, 
 			"bucket":          s3Bucket(req.Target),
 			"connection_mode": connectionMode(req.Target),
 		},
-	}, nil
+	}
+	switch req.ActionName {
+	case ActionUploadObject:
+		if !boolValue(input, "overwrite") {
+			prepared.RetryPolicy = connectors.ConditionalRetryPolicy("overwrite")
+		} else if stringValue(input, "expected_etag") != "" {
+			prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_etag")
+		}
+	case ActionDeleteObject, ActionDeleteVersion:
+		if stringValue(input, "expected_etag") != "" {
+			prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_etag")
+		}
+	case ActionRestoreVersion:
+		prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_current_etag")
+	}
+	return prepared, nil
 }
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
@@ -884,6 +929,10 @@ func executeUploadObject(ctx context.Context, client *s3Client, input map[string
 	headers := http.Header{}
 	if !overwrite {
 		headers.Set("If-None-Match", "*")
+	} else if expectedETag, err := normalizeOptionalETag(input); err != nil {
+		return connectors.ActionResult{}, err
+	} else if expectedETag != "" {
+		headers.Set("If-Match", quoteETag(expectedETag))
 	}
 	if err := client.PutObject(ctx, key, data, contentType, headers); err != nil {
 		return connectors.ActionResult{}, err
@@ -903,7 +952,13 @@ func executeUploadObject(ctx context.Context, client *s3Client, input map[string
 
 func executeDeleteObject(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
 	key := normalizeObjectKey(input, "key")
-	if err := client.DeleteObject(ctx, key); err != nil {
+	headers := http.Header{}
+	if expectedETag, err := normalizeOptionalETag(input); err != nil {
+		return connectors.ActionResult{}, err
+	} else if expectedETag != "" {
+		headers.Set("If-Match", quoteETag(expectedETag))
+	}
+	if err := client.DeleteObject(ctx, key, headers); err != nil {
 		return connectors.ActionResult{}, err
 	}
 	return connectors.ActionResult{
@@ -1030,12 +1085,28 @@ func (client *s3Client) PutObject(ctx context.Context, key string, data []byte, 
 	}
 	headers.Set("Content-Type", contentType)
 	_, _, err := client.Do(ctx, http.MethodPut, key, nil, s3RequestBody{Headers: headers, Data: data}, maxS3ResponseBytes)
-	return err
+	return classifyConditionalS3Error(err, headers)
 }
 
-func (client *s3Client) DeleteObject(ctx context.Context, key string) error {
-	_, _, err := client.Do(ctx, http.MethodDelete, key, nil, nil, maxS3ResponseBytes)
-	return err
+func (client *s3Client) DeleteObject(ctx context.Context, key string, headers http.Header) error {
+	_, _, err := client.Do(ctx, http.MethodDelete, key, nil, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
+	return classifyConditionalS3Error(err, headers)
+}
+
+func normalizeOptionalETag(input map[string]any) (string, error) {
+	return normalizeOptionalETagField(input, "expected_etag")
+}
+
+func normalizeOptionalETagField(input map[string]any, field string) (string, error) {
+	value := strings.Trim(strings.TrimSpace(stringValue(input, field)), `"`)
+	if len(value) > 1024 || strings.ContainsAny(value, "\r\n") {
+		return "", fmt.Errorf("%s is invalid", field)
+	}
+	return value, nil
+}
+
+func quoteETag(value string) string {
+	return `"` + strings.Trim(value, `"`) + `"`
 }
 
 func (client *s3Client) Do(ctx context.Context, method string, key string, query url.Values, body any, limit int) ([]byte, http.Header, error) {
@@ -1283,62 +1354,6 @@ func awsQueryEscape(value string) string {
 
 func canonicalHeaderValue(value string) string {
 	return strings.Join(strings.Fields(value), " ")
-}
-
-type s3StatusError struct {
-	status  int
-	message string
-}
-
-func (err *s3StatusError) Error() string {
-	return err.message
-}
-
-func s3HTTPError(status int, data []byte) error {
-	message := strings.TrimSpace(string(data))
-	if len(message) > 800 {
-		message = message[:800] + "...[truncated]"
-	}
-	if message == "" {
-		message = http.StatusText(status)
-	}
-	switch status {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		message = fmt.Sprintf("s3 authentication or permission failed: %s", message)
-	case http.StatusNotFound:
-		message = fmt.Sprintf("s3 object or bucket not found: %s", message)
-	default:
-		message = fmt.Sprintf("s3 request failed with HTTP %d: %s", status, message)
-	}
-	return &s3StatusError{status: status, message: message}
-}
-
-func classifyS3TestError(err error) connectors.TestStatus {
-	if err == nil {
-		return connectors.TestOK
-	}
-	message := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(message, "authentication") || strings.Contains(message, "permission") || strings.Contains(message, "forbidden") || strings.Contains(message, "unauthorized"):
-		return connectors.TestFailedAuth
-	case strings.Contains(message, "no such host") || strings.Contains(message, "connection refused") || strings.Contains(message, "timeout") || strings.Contains(message, "deadline exceeded") || strings.Contains(message, "network"):
-		return connectors.TestFailedNetwork
-	case strings.Contains(message, "tls") || strings.Contains(message, "certificate"):
-		return connectors.TestFailedTLS
-	default:
-		return connectors.TestUnknownError
-	}
-}
-
-func isNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-	var statusErr *s3StatusError
-	if errors.As(err, &statusErr) {
-		return statusErr.status == http.StatusNotFound
-	}
-	return false
 }
 
 func objectMetadataOutput(bucket string, key string, headers http.Header) map[string]any {

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -184,7 +185,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{Name: ActionListEvents, Label: "List events", Description: "List warning-first Kubernetes events.", Category: "browser", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "namespace", Label: "Namespace", Type: connectors.FieldString, Description: "Optional namespace. Empty lists across allowed namespaces."}, {Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: 200}}}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: 1000}},
 		{Name: ActionDescribe, Label: "Describe resource", Description: "Read JSON metadata for one Kubernetes resource.", Category: "browser", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "resource_type", Label: "Resource type", Type: connectors.FieldSelect, Required: true, Options: []connectors.FieldOption{{Value: "pod", Label: "Pod"}, {Value: "deployment", Label: "Deployment"}, {Value: "statefulset", Label: "StatefulSet"}, {Value: "daemonset", Label: "DaemonSet"}, {Value: "service", Label: "Service"}, {Value: "ingress", Label: "Ingress"}, {Value: "node", Label: "Node"}}}, {Name: "name", Label: "Name", Type: connectors.FieldString, Required: true}, {Name: "namespace", Label: "Namespace", Type: connectors.FieldString, Description: "Required for namespaced resources unless target default namespace is set."}}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxKubectlBytes}},
 		{Name: ActionLogs, Label: "Pod logs", Description: "Read a bounded tail of pod logs.", Category: "browser", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "namespace", Label: "Namespace", Type: connectors.FieldString, Required: true}, {Name: "pod", Label: "Pod", Type: connectors.FieldString, Required: true}, {Name: "container", Label: "Container", Type: connectors.FieldString, Description: "Optional container name."}, {Name: "tail", Label: "Tail lines", Type: connectors.FieldInteger, Default: defaultLogTail}}}, OutputHint: connectors.OutputHint{Format: "text", MaxBytes: maxLogBytes}},
-		{Name: ActionRolloutRestart, Label: "Rollout restart", Description: "Restart one Kubernetes deployment.", Category: "lifecycle", Risk: connectors.RiskWrite, InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "namespace", Label: "Namespace", Type: connectors.FieldString, Required: true}, {Name: "deployment", Label: "Deployment", Type: connectors.FieldString, Required: true}}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000}},
+		{Name: ActionRolloutRestart, Label: "Rollout restart", Description: "Restart one Kubernetes deployment.", Category: "lifecycle", Risk: connectors.RiskWrite, InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "namespace", Label: "Namespace", Type: connectors.FieldString, Required: true}, {Name: "deployment", Label: "Deployment", Type: connectors.FieldString, Required: true}, {Name: "expected_resource_version", Label: "Expected resource version", Type: connectors.FieldString, Description: "Optional metadata.resourceVersion from describe_resource. When set, restart fails if the deployment changed."}}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000}},
 	}, nil
 }
 
@@ -266,6 +267,11 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		}
 		input["namespace"] = namespace
 		input["deployment"] = deployment
+		resourceVersion := strings.TrimSpace(stringValue(input, "expected_resource_version"))
+		if len(resourceVersion) > 256 || strings.ContainsAny(resourceVersion, "\r\n") {
+			return connectors.PreparedAction{}, fmt.Errorf("expected_resource_version is invalid")
+		}
+		input["expected_resource_version"] = resourceVersion
 		title = "Rollout restart Kubernetes deployment"
 		summary = fmt.Sprintf("%s/%s", namespace, deployment)
 	default:
@@ -596,15 +602,37 @@ func executeRolloutRestart(ctx context.Context, client *kubeClient, input map[st
 	if err := client.scope.ensureNamespace(namespace); err != nil {
 		return connectors.ActionResult{}, err
 	}
+	resourceVersion := strings.TrimSpace(stringValue(input, "expected_resource_version"))
+	if len(resourceVersion) > 256 || strings.ContainsAny(resourceVersion, "\r\n") {
+		return connectors.ActionResult{}, fmt.Errorf("expected_resource_version is invalid")
+	}
 	command := fmt.Sprintf("%s rollout restart deployment/%s -n %s 2>&1", client.baseCommand(), shellQuote(deployment), shellQuote(namespace))
+	commandLabel := "kubectl rollout restart"
+	if resourceVersion != "" {
+		patch, err := json.Marshal(map[string]any{
+			"metadata": map[string]any{"resourceVersion": resourceVersion},
+			"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{"annotations": map[string]any{
+				"kubectl.kubernetes.io/restartedAt": time.Now().UTC().Format(time.RFC3339),
+			}}}},
+		})
+		if err != nil {
+			return connectors.ActionResult{}, fmt.Errorf("encode rollout restart patch: %w", err)
+		}
+		command = fmt.Sprintf("%s patch deployment %s -n %s --type=merge -p %s -o json 2>&1", client.baseCommand(), shellQuote(deployment), shellQuote(namespace), shellQuote(string(patch)))
+		commandLabel = "kubectl conditional rollout restart"
+	}
 	result, err := client.run(ctx, command, 30)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
 	if result.ExitCode != 0 {
-		return connectors.ActionResult{}, kubeCommandError("kubectl rollout restart", result)
+		err := kubeCommandError(commandLabel, result)
+		if resourceVersion != "" && isKubeConflictResult(result) {
+			return connectors.ActionResult{}, connectors.ClassifyError("precondition_failed", err)
+		}
+		return connectors.ActionResult{}, err
 	}
-	return connectors.ActionResult{Status: connectors.ResultCompleted, Output: map[string]any{"namespace": namespace, "deployment": deployment, "response": strings.TrimSpace(result.Stdout), "duration_ms": result.DurationMS}, DisplayText: strings.TrimSpace(result.Stdout)}, nil
+	return connectors.ActionResult{Status: connectors.ResultCompleted, Output: map[string]any{"namespace": namespace, "deployment": deployment, "expected_resource_version": resourceVersion, "response": strings.TrimSpace(result.Stdout), "duration_ms": result.DurationMS}, DisplayText: strings.TrimSpace(result.Stdout)}, nil
 }
 
 func (client *kubeClient) runKubeList(ctx context.Context, command string, timeoutSeconds int) ([]map[string]any, error) {
@@ -935,6 +963,11 @@ func kubeCommandError(command string, result connectors.CommandRunResult) error 
 		text = fmt.Sprintf("exit code %d", result.ExitCode)
 	}
 	return fmt.Errorf("%s failed: %s", command, truncateString(text, 2000))
+}
+
+func isKubeConflictResult(result connectors.CommandRunResult) bool {
+	text := strings.ToLower(result.Stderr + "\n" + result.Stdout)
+	return strings.Contains(text, "conflict") || strings.Contains(text, "object has been modified")
 }
 
 func connectionMode(target connectors.TargetView) string {
