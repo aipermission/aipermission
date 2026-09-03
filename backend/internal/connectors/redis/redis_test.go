@@ -245,6 +245,80 @@ func TestExecuteActionScansBoundedKeys(t *testing.T) {
 	}
 }
 
+func TestScanKeysRejectsMalformedPage(t *testing.T) {
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		if command[0] != "SCAN" {
+			t.Fatalf("command = %#v", command)
+		}
+		return "*2\r\n$1\r\n0\r\n+not-an-array\r\n"
+	})
+	_, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+		ActionName: ActionScanKeys,
+		Payload:    map[string]any{"pattern": "*", "cursor": "0", "limit": 10},
+	})
+	if err == nil || !strings.Contains(err.Error(), "expected an array") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestGetKeyPropagatesCollectionPreviewFailures(t *testing.T) {
+	tests := []struct {
+		name     string
+		keyType  string
+		command  string
+		response string
+		want     string
+	}{
+		{
+			name: "sscan command error", keyType: "set", command: "SSCAN",
+			response: "-ERR set changed type during scan\r\n", want: "set changed type",
+		},
+		{
+			name: "malformed list", keyType: "list", command: "LRANGE",
+			response: "+not-an-array\r\n", want: "expected an array",
+		},
+		{
+			name: "incomplete hash", keyType: "hash", command: "HGETALL",
+			response: "*1\r\n$5\r\nfield\r\n", want: "pairs are incomplete",
+		},
+		{
+			name: "incomplete sorted set", keyType: "zset", command: "ZRANGE",
+			response: "*1\r\n$6\r\nmember\r\n", want: "pairs are incomplete",
+		},
+		{
+			name: "malformed ttl", keyType: "list", command: "PTTL",
+			response: "+not-an-integer\r\n", want: "expected an integer",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+				switch command[0] {
+				case "TYPE":
+					return "+" + test.keyType + "\r\n"
+				case "PTTL":
+					if test.command == "PTTL" {
+						return test.response
+					}
+					return ":-1\r\n"
+				case test.command:
+					return test.response
+				default:
+					t.Fatalf("unexpected command = %#v", command)
+					return ""
+				}
+			})
+			_, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+				ActionName: ActionGetKey,
+				Payload:    map[string]any{"key": "collection", "limit": 10, "max_bytes": 1024},
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestConnectionDetectsValkeyServerIdentity(t *testing.T) {
 	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
 		switch command[0] {

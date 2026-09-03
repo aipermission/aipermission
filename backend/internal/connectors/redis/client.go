@@ -66,7 +66,9 @@ func (client *redisClient) Do(args ...string) (respValue, error) {
 	if len(args) == 0 {
 		return respValue{}, fmt.Errorf("redis command is required")
 	}
-	_ = client.conn.SetDeadline(time.Now().Add(redisCommandTimeout))
+	if err := client.conn.SetDeadline(time.Now().Add(redisCommandTimeout)); err != nil {
+		return respValue{}, fmt.Errorf("set redis command deadline: %w", err)
+	}
 	var payload bytes.Buffer
 	payload.WriteByte('*')
 	payload.WriteString(strconv.Itoa(len(args)))
@@ -248,17 +250,6 @@ func respStringSlice(value respValue) []string {
 	out := make([]string, 0, len(value.array))
 	for _, item := range value.array {
 		out = append(out, respString(item))
-	}
-	return out
-}
-
-func respStringMap(value respValue) map[string]string {
-	if value.kind != respArray {
-		return nil
-	}
-	out := map[string]string{}
-	for index := 0; index+1 < len(value.array); index += 2 {
-		out[respString(value.array[index])] = respString(value.array[index+1])
 	}
 	return out
 }
