@@ -100,6 +100,11 @@ Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail, and fu
 credential profile, connector action, token action permission, approval,
 history, and audit.
 
+Action discovery returns a `retry_policy`: `read_only`, `idempotent`,
+`conditional`, or `non_idempotent`. Follow its guidance and precondition fields;
+the gateway idempotency key deduplicates local requests but cannot prove that a
+remote side effect did or did not complete.
+
 Projects group connector targets for one local developer. Each MCP token has an
 enabled project scope in addition to its target/profile/action grants. Targets
 from disabled projects are omitted from discovery and rejected on direct calls;
@@ -158,6 +163,14 @@ URLs are bearer credentials limited to one key and at most one hour. Read the
 current lifecycle policy before changing it: replacement and deletion affect
 the complete policy and are destructive. Keep version deletion and lifecycle
 changes in Prompt unless direct execution is deliberate.
+Use `expected_etag` from current object metadata when replacing or deleting the
+current object. Before restoring a version, read the destination object's
+current metadata and pass `expected_current_etag`; if that read returns the
+stable `not_found` code, pass `expected_current_absent=true` instead. Exact
+version deletion is bound by `version_id` and does not accept a historical
+version ETag. S3-compatible conditional semantics vary, so AIPermission rejects
+condition-dependent mutations until the target explicitly enables **Verified
+conditional requests** after provider verification.
 
 For Docker, call `get_connector_actions(target_ref)` to discover bounded
 actions such as `docker_version`, `list_containers`, `list_images`,
@@ -176,6 +189,8 @@ actions such as `cluster_version`, `list_namespaces`, `list_workloads`,
 through an SSH transport profile and can be scoped by namespace visibility. Raw
 `kubectl`, manifest apply/edit/delete, pod deletion, scaling, and Secret value
 browsing are not exposed.
+Pass `expected_resource_version` from a fresh deployment describe when a
+rollout restart must fail on concurrent change.
 
 For Mail, call `get_connector_actions(target_ref)` to discover bounded mailbox
 reads, explicit read/unread and folder mutations, and guarded SMTP send/reply

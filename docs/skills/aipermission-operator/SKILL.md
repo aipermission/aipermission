@@ -27,6 +27,14 @@ Before acting:
 4. Call `get_connector_actions(target_ref)` and choose the narrowest action.
 5. Call `call_connector_action(target_ref, action_name, input, reason, idempotency_key)`.
 
+Read the selected action's `retry_policy` before execution. Before a new
+attempt, inspect the recorded result and external state. `conditional` requires
+fresh values for every advertised precondition field. Reuse an idempotency key
+only to retrieve the same gateway submission; use a new key for a new external
+attempt. After `outcome_unknown`, do not start another mutation until external
+state proves the original attempt did not commit. Never automatically repeat
+`non_idempotent` or `outcome_unknown` mutations.
+
 If no target is visible, say that the current token has no accessible connector
 targets. A target can be absent because its project is disabled for the token or
 because no effective action grant exists; do not claim that it was deleted or
@@ -209,6 +217,10 @@ prefer this sequence:
    S3-compatible APIs do not provide an atomic cross-key move. Keep the source
    intact after creating a destination; deletion is a separate destructive
    operator decision and must not be inferred from copy verification.
+   When replacing an object already inspected, pass its current ETag as
+   `expected_etag` so the provider rejects concurrent changes.
+   Condition-dependent S3 actions fail before dispatch unless the operator has
+   enabled **Verified conditional requests** after checking provider behavior.
 7. Treat `delete_object` as destructive and ask for explicit confirmation if
    approval mode does not already provide it.
 8. Use `presign_download` and `presign_upload` only for one exact object key
@@ -218,7 +230,11 @@ prefer this sequence:
    `If-None-Match: *` header.
 9. Use `list_object_versions` before `restore_object_version` or
    `delete_object_version`. Restoring creates a new current version; deleting
-   an exact version or delete marker is permanent.
+   an exact version or delete marker is permanent. Before restore, read the
+   destination object's current metadata and pass its ETag as
+   `expected_current_etag`. If that read returns the stable `not_found` code,
+   pass `expected_current_absent=true` instead. Never send both. Exact-version
+   deletion is bound by `version_id`; do not send a historical ETag.
 10. Read `get_bucket_lifecycle` before changing retention. The bounded
     `replace_bucket_lifecycle` action replaces every existing rule with one
     explicit rule; `delete_bucket_lifecycle` removes the complete policy.

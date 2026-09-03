@@ -1233,7 +1233,10 @@ operator connector consoles. It runs one connector action as source `manual`
 without MCP token permission checks, stores the action request in the shared
 connector history/audit pipeline, and is protected by the UI session plus CSRF.
 MCP clients must use `POST /api/mcp/connector-actions/call` instead.
-Both endpoints accept an optional `idempotency_key` of at most 128 UTF-8 bytes.
+The MCP endpoint requires an `idempotency_key` of at most 128 UTF-8 bytes for
+mutations. Gateway 0.2.43 temporarily permits older MCP clients to omit it for
+read-only actions; current MCP packages require it for every action. The local
+UI endpoint accepts one and generates it in the browser when omitted.
 The browser generates one per deliberate local submission and retains it after
 an uncertain network failure. A replay with the same caller scope and request
 identity returns the original request with `replayed: true`; it does not execute

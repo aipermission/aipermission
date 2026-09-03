@@ -254,9 +254,7 @@ server with the package entry point:
 ```json
 {
   "command": "node",
-  "args": [
-    "packages/mcp/dist/cli.js"
-  ],
+  "args": ["packages/mcp/dist/cli.js"],
   "env": {
     "AIPERMISSION_API_URL": "http://localhost:3210",
     "AIPERMISSION_API_TOKEN": "TOKEN"
@@ -361,7 +359,7 @@ The MCP client should see:
 list_connector_targets()
 get_connector_help(target_ref)
 get_connector_actions(target_ref)
-call_connector_action(target_ref, action_name, input?, reason?, idempotency_key?)
+call_connector_action(target_ref, action_name, input?, reason?, idempotency_key)
 get_connector_action_request(request_id)
 list_vault_items(project_ref?)
 call_vault_action(project_ref, action_name, input, reason, idempotency_key)
