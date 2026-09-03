@@ -14,6 +14,7 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -24,7 +25,7 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -85,7 +86,7 @@ func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testi
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -130,7 +131,7 @@ func TestConnectorActionApprovalRunDeliversUserNote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -179,7 +180,7 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -233,7 +234,7 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	badAction := "missing_action"
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
@@ -244,13 +245,6 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
 	}
-	encryptedPayload, err := fixture.server.activeRuntime().vault.EncryptJSON(connectorActionExecutionEnvelope{
-		Input:   map[string]any{},
-		Payload: map[string]any{},
-	})
-	if err != nil {
-		t.Fatalf("encrypt pending payload: %v", err)
-	}
 	request, err := store.InsertActionRequest(context.Background(), connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
@@ -259,12 +253,22 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 		ActionName:           badAction,
 		Source:               commandRequestSourceMCP,
 		Input:                map[string]any{},
-		EncryptedPayloadJSON: encryptedPayload,
+		EncryptedPayloadJSON: "",
 		Status:               connectors.ResultApprovalPending,
 		ApprovalContextHash:  "old-context",
 	})
 	if err != nil {
 		t.Fatalf("insert pending connector request: %v", err)
+	}
+	encryptedPayload, err := recordcrypto.EncryptJSON(fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{
+		Input:   map[string]any{},
+		Payload: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("encrypt pending payload: %v", err)
+	}
+	if err := store.SetActionRequestEncryptedPayload(context.Background(), request.ID, encryptedPayload); err != nil {
+		t.Fatalf("store pending payload: %v", err)
 	}
 	if err := historypkg.NewStore(fixture.db).SyncConnectorActionRequest(context.Background(), request.ID); err != nil {
 		t.Fatalf("sync pending connector request: %v", err)
@@ -306,7 +310,7 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	pendingTarget, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
@@ -416,7 +420,7 @@ func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 			if err != nil {
 				t.Fatalf("create token: %v", err)
 			}
-			target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+			target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 			if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 				TokenID:       token.ID,
 				TargetID:      target.ID,

@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 var errMCPExecutionStopped = errors.New("MCP execution is stopped")
@@ -63,7 +64,8 @@ type connectorSecretAccessor struct {
 }
 
 type connectorActionExecutionSnapshot struct {
-	secrets map[string]any
+	secrets            map[string]any
+	credentialBoundary connectorCredentialBoundary
 }
 
 func (a connectorSecretAccessor) GetSecret(_ context.Context, name string) (string, error) {
@@ -242,6 +244,13 @@ func (s *Server) executeInsertedConnectorAction(
 		}
 		return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Output: finished.Output, Error: finished.Error}}, nil
 	}
+	runtime.setConnectorCredentialBoundary(request.ID, snapshot.credentialBoundary)
+	clearCredentialBoundary := true
+	defer func() {
+		if clearCredentialBoundary {
+			runtime.clearConnectorCredentialBoundary(request.ID)
+		}
+	}()
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared, snapshot)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)
@@ -286,6 +295,7 @@ func (s *Server) executeInsertedConnectorAction(
 			result.Handles.FollowupTool = options.FollowupTool
 		}
 		go s.finishActiveConnectorActionRequest(runtime, request.ID, prepared, principal, result.Handles)
+		clearCredentialBoundary = false
 		return connectorActionCallResult{Request: request, Permission: options.Permission, Result: result}, nil
 	}
 	if status == connectors.ResultApprovalPending {
@@ -316,11 +326,14 @@ func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *d
 	}
 	secrets := map[string]any{}
 	if profile.EncryptedSecretJSON != "" {
-		if err := runtime.vault.DecryptJSON(profile.EncryptedSecretJSON, &secrets); err != nil {
+		if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 			return connectorActionExecutionSnapshot{}, err
 		}
 	}
-	return connectorActionExecutionSnapshot{secrets: secrets}, nil
+	return connectorActionExecutionSnapshot{
+		secrets:            secrets,
+		credentialBoundary: newConnectorCredentialBoundary(secrets),
+	}, nil
 }
 
 func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, prepared actions.PreparedRequest, snapshot connectorActionExecutionSnapshot) (connectors.ActionResult, error) {
@@ -345,7 +358,7 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 	if err := validateConnectorActionResult(result); err != nil {
 		return connectors.ActionResult{}, err
 	}
-	redacted, err := s.redactConnectorActionResult(ctx, runtime, result, prepared.ActionDefinition.OutputHint)
+	redacted, err := s.redactConnectorActionResultWithCredentialBoundary(ctx, runtime, result, snapshot.credentialBoundary, prepared.ActionDefinition.OutputHint)
 	if err != nil {
 		return connectors.ActionResult{}, fmt.Errorf("process connector action result: %w", err)
 	}
@@ -373,6 +386,7 @@ func connectorActionExecutionFailureStatus(err error) connectors.ResultStatus {
 }
 
 func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
+	defer runtime.clearConnectorCredentialBoundary(requestID)
 	adapter := s.connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
 	if adapter == nil || !adapter.SupportsRunning(prepared) {
 		return
@@ -431,11 +445,15 @@ func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *data
 func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, allowedStatuses []connectors.ResultStatus, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), connectorActionFinishTimeout)
 	defer cancel()
-	redacted, err := s.redactConnectorActionResult(finishCtx, runtime, connectors.ActionResult{
+	boundary, err := connectorCredentialBoundaryForActionRequest(finishCtx, runtime, requestID)
+	if err != nil {
+		return connectortargets.ActionRequest{}, fmt.Errorf("load connector credential redaction boundary: %w", err)
+	}
+	redacted, err := s.redactConnectorActionResultWithCredentialBoundary(finishCtx, runtime, connectors.ActionResult{
 		Output:      output,
 		DisplayText: displayText,
 		Error:       errorText,
-	}, hints...)
+	}, boundary, hints...)
 	if err != nil {
 		return connectortargets.ActionRequest{}, fmt.Errorf("process connector action result: %w", err)
 	}
@@ -463,4 +481,61 @@ func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, ru
 		return connectortargets.ActionRequest{}, err
 	}
 	return finished, nil
+}
+
+func connectorCredentialBoundaryForActionRequest(ctx context.Context, runtime *databaseRuntime, requestID int64) (connectorCredentialBoundary, error) {
+	if runtime == nil || runtime.database == nil || runtime.vault == nil {
+		return connectorCredentialBoundary{}, errors.New("connector runtime is unavailable")
+	}
+	if boundary, ok := runtime.connectorCredentialBoundary(requestID); ok {
+		return boundary, nil
+	}
+	store := connectortargets.NewStore(runtime.database)
+	request, err := store.GetActionRequest(ctx, requestID)
+	if err != nil {
+		return connectorCredentialBoundary{}, err
+	}
+	profile, err := store.GetCredentialProfile(ctx, request.TargetID, request.ProfileID)
+	if err != nil {
+		return connectorCredentialBoundary{}, err
+	}
+	if profile.EncryptedSecretJSON == "" {
+		return connectorCredentialBoundary{}, nil
+	}
+	secrets := map[string]any{}
+	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+		return connectorCredentialBoundary{}, err
+	}
+	return newConnectorCredentialBoundary(secrets), nil
+}
+
+func (rt *databaseRuntime) setConnectorCredentialBoundary(requestID int64, boundary connectorCredentialBoundary) {
+	if rt == nil || requestID < 1 {
+		return
+	}
+	rt.credBoundaryMu.Lock()
+	if rt.credBoundaries == nil {
+		rt.credBoundaries = map[int64]connectorCredentialBoundary{}
+	}
+	rt.credBoundaries[requestID] = boundary
+	rt.credBoundaryMu.Unlock()
+}
+
+func (rt *databaseRuntime) connectorCredentialBoundary(requestID int64) (connectorCredentialBoundary, bool) {
+	if rt == nil || requestID < 1 {
+		return connectorCredentialBoundary{}, false
+	}
+	rt.credBoundaryMu.RLock()
+	boundary, ok := rt.credBoundaries[requestID]
+	rt.credBoundaryMu.RUnlock()
+	return boundary, ok
+}
+
+func (rt *databaseRuntime) clearConnectorCredentialBoundary(requestID int64) {
+	if rt == nil || requestID < 1 {
+		return
+	}
+	rt.credBoundaryMu.Lock()
+	delete(rt.credBoundaries, requestID)
+	rt.credBoundaryMu.Unlock()
 }

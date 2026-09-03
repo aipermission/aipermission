@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
 )
@@ -69,12 +70,13 @@ type PrivateKey struct {
 }
 
 type Store struct {
-	db    *sql.DB
-	vault *vault.Vault
+	db          *sql.DB
+	vault       *vault.Vault
+	workspaceID string
 }
 
-func NewStore(db *sql.DB, vault *vault.Vault) *Store {
-	return &Store{db: db, vault: vault}
+func NewStore(db *sql.DB, secretVault *vault.Vault, workspaceID string) *Store {
+	return &Store{db: db, vault: secretVault, workspaceID: strings.TrimSpace(workspaceID)}
 }
 
 func (s *Store) List(ctx context.Context) ([]SSHKey, error) {
@@ -125,8 +127,11 @@ func (s *Store) GetPrivateKey(ctx context.Context, id int64) (PrivateKey, error)
 		return PrivateKey{}, fmt.Errorf("get private ssh key: %w", err)
 	}
 
+	if s.workspaceID == "" {
+		return PrivateKey{}, fmt.Errorf("workspace ID is required to read an ssh key")
+	}
 	var secret privateKeySecret
-	if err := s.vault.DecryptJSON(encrypted, &secret); err != nil {
+	if err := recordcrypto.DecryptJSON(s.vault, s.workspaceID, recordcrypto.ConnectorCredentialResource, item.ID, encrypted, &secret); err != nil {
 		return PrivateKey{}, err
 	}
 	item.PrivateKey = secret.PrivateKey
@@ -151,36 +156,7 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (SSHKey, erro
 		return SSHKey{}, err
 	}
 
-	encrypted, err := s.vault.EncryptJSON(privateKeySecret{PrivateKey: privateKey})
-	if err != nil {
-		return SSHKey{}, err
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(
-		ctx,
-		`INSERT INTO connector_credential_resources (connector_kind, resource_kind, name, resource_type, public_data, encrypted_secret, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		connectorKind,
-		resourceKind,
-		request.Name,
-		request.KeyType,
-		publicKey,
-		encrypted,
-		fingerprint,
-		now,
-		now,
-	)
-	if err != nil {
-		if isUniqueConstraintError(err) {
-			return SSHKey{}, ValidationError("ssh key name already exists")
-		}
-		return SSHKey{}, fmt.Errorf("create ssh key: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return SSHKey{}, fmt.Errorf("read ssh key id: %w", err)
-	}
-	return s.Get(ctx, id)
+	return s.persistPrivateKey(ctx, request.Name, request.KeyType, privateKey, publicKey, fingerprint, "create")
 }
 
 func (s *Store) Import(ctx context.Context, request ImportRequest) (SSHKey, error) {
@@ -204,21 +180,27 @@ func (s *Store) Import(ctx context.Context, request ImportRequest) (SSHKey, erro
 		return SSHKey{}, err
 	}
 
-	encrypted, err := s.vault.EncryptJSON(privateKeySecret{PrivateKey: privateKey})
-	if err != nil {
-		return SSHKey{}, err
-	}
+	return s.persistPrivateKey(ctx, request.Name, keyType, privateKey, publicKey, fingerprint, "import")
+}
 
+func (s *Store) persistPrivateKey(ctx context.Context, name, keyType, privateKey, publicKey, fingerprint, operation string) (SSHKey, error) {
+	if s.workspaceID == "" {
+		return SSHKey{}, fmt.Errorf("workspace ID is required to %s an ssh key", operation)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SSHKey{}, fmt.Errorf("begin %s ssh key: %w", operation, err)
+	}
+	defer tx.Rollback()
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.ExecContext(
+	result, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO connector_credential_resources (connector_kind, resource_kind, name, resource_type, public_data, encrypted_secret, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO connector_credential_resources (connector_kind, resource_kind, name, resource_type, public_data, encrypted_secret, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?)`,
 		connectorKind,
 		resourceKind,
-		request.Name,
+		name,
 		keyType,
 		publicKey,
-		encrypted,
 		fingerprint,
 		now,
 		now,
@@ -227,11 +209,21 @@ func (s *Store) Import(ctx context.Context, request ImportRequest) (SSHKey, erro
 		if isUniqueConstraintError(err) {
 			return SSHKey{}, ValidationError("ssh key name already exists")
 		}
-		return SSHKey{}, fmt.Errorf("import ssh key: %w", err)
+		return SSHKey{}, fmt.Errorf("%s ssh key: %w", operation, err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
 		return SSHKey{}, fmt.Errorf("read ssh key id: %w", err)
+	}
+	encrypted, err := recordcrypto.EncryptJSON(s.vault, s.workspaceID, recordcrypto.ConnectorCredentialResource, id, privateKeySecret{PrivateKey: privateKey})
+	if err != nil {
+		return SSHKey{}, fmt.Errorf("encrypt ssh key: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE connector_credential_resources SET encrypted_secret = ? WHERE id = ?`, encrypted, id); err != nil {
+		return SSHKey{}, fmt.Errorf("store encrypted ssh key: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return SSHKey{}, fmt.Errorf("commit %s ssh key: %w", operation, err)
 	}
 	return s.Get(ctx, id)
 }

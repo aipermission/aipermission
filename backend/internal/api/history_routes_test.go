@@ -13,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -114,6 +115,73 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 	}
 	if auditRows != 1 {
 		t.Fatalf("expected one bulk audit event, got %d", auditRows)
+	}
+}
+
+func TestCommandRequestInsertRollsBackWhenHistoryProjectionFails(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	target := fixture.createKeyAndServer(t, "history-rollback")
+	if _, err := fixture.db.Exec(`
+		CREATE TRIGGER reject_command_history_insert
+		BEFORE INSERT ON history_entries
+		WHEN NEW.source_ref_type = 'command_request'
+		BEGIN
+			SELECT RAISE(ABORT, 'reject command history');
+		END`); err != nil {
+		t.Fatalf("install history rejection trigger: %v", err)
+	}
+
+	_, err := fixture.server.insertCommandRequestWithOptions(t.Context(), fixture.server.activeRuntime(), commandRequestInsert{
+		RuntimeID: target.ID,
+		Source:    commandRequestSourceManual,
+		Command:   "echo rollback",
+		Reason:    "atomic insert rollback",
+		Status:    "running",
+	})
+	if err == nil || !strings.Contains(err.Error(), "reject command history") {
+		t.Fatalf("expected history projection failure, got %v", err)
+	}
+	assertTableCount(t, fixture.db, "command_requests", 0)
+	assertTableCount(t, fixture.db, "history_entries", 0)
+	assertTableCount(t, fixture.db, "audit_outbox", 0)
+}
+
+func TestBulkConsoleCommandRollsBackEveryRequestWhenOneProjectionFails(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	serverOne := fixture.createKeyAndServer(t, "bulk-rollback-one")
+	serverTwo := fixture.createKeyAndServer(t, "bulk-rollback-two")
+	if _, err := fixture.db.Exec(`
+		CREATE TRIGGER reject_second_bulk_history_insert
+		BEFORE INSERT ON history_entries
+		WHEN NEW.source_ref_type = 'command_request' AND NEW.runtime_id = ` + strconv.FormatInt(serverTwo.ID, 10) + `
+		BEGIN
+			SELECT RAISE(ABORT, 'reject second bulk history');
+		END`); err != nil {
+		t.Fatalf("install bulk history rejection trigger: %v", err)
+	}
+
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
+		TargetIDs:    []int64{serverOne.ID, serverTwo.ID},
+		Command:      "echo atomic bulk",
+		Reason:       "atomic bulk rollback",
+		Confirmation: "RUN ON 2 TARGETS",
+	})
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected atomic bulk failure, got %d %s", response.Code, response.Body.String())
+	}
+	var requestCount int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM command_requests WHERE reason = 'atomic bulk rollback'`).Scan(&requestCount); err != nil {
+		t.Fatalf("count rolled back bulk requests: %v", err)
+	}
+	if requestCount != 0 {
+		t.Fatalf("expected every bulk request to roll back, got %d", requestCount)
+	}
+	var auditCount int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE action = 'console.bulk_exec.started'`).Scan(&auditCount); err != nil {
+		t.Fatalf("count rolled back bulk audit: %v", err)
+	}
+	if auditCount != 0 {
+		t.Fatalf("expected bulk audit to roll back, got %d", auditCount)
 	}
 }
 
@@ -253,7 +321,7 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if sshRuntimeHistoryPage.Total != 1 || len(sshRuntimeHistoryPage.Items) != 1 || sshRuntimeHistoryPage.Items[0].SourceRefID != dockerID {
 		t.Fatalf("ssh runtime filter should isolate the live-console command row, got %#v", sshRuntimeHistoryPage)
 	}
-	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	connectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
 		TargetID:             pgTarget.ID,
@@ -287,20 +355,23 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if connectorJSONSearchPage.Total != 1 || len(connectorJSONSearchPage.Items) != 1 || connectorJSONSearchPage.Items[0].SourceRefID != connectorRequest.ID {
 		t.Fatalf("unexpected unified connector json search page: %#v", connectorJSONSearchPage)
 	}
-	encryptedOtherSecret, err := fixture.server.activeRuntime().vault.EncryptJSON(map[string]any{"password": "other-secret"})
-	if err != nil {
-		t.Fatalf("encrypt second profile secret: %v", err)
-	}
 	secondPGProfile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
 		TargetID:            pgTarget.ID,
 		ConnectorKind:       "postgres",
 		Kind:                "username_password",
 		Label:               "analytics",
 		Public:              map[string]any{"username": "analytics_readonly"},
-		EncryptedSecretJSON: encryptedOtherSecret,
+		EncryptedSecretJSON: "",
 	})
 	if err != nil {
 		t.Fatalf("create second postgres profile: %v", err)
+	}
+	encryptedOtherSecret, err := recordcrypto.EncryptJSON(fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID, recordcrypto.ConnectorCredentialProfile, secondPGProfile.ID, map[string]any{"password": "other-secret"})
+	if err != nil {
+		t.Fatalf("encrypt second profile secret: %v", err)
+	}
+	if err := store.SetCredentialProfileEncryptedSecret(ctx, pgTarget.ID, secondPGProfile.ID, encryptedOtherSecret); err != nil {
+		t.Fatalf("store second profile secret: %v", err)
 	}
 	secondConnectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,

@@ -9,7 +9,15 @@ import (
 )
 
 func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool) (any, error) {
-	return actionresult.CanonicalizeAndRedact(value, actionresult.DefaultLimits(), actionresult.RedactionOptions{
+	return s.redactedConnectorValueWithLimits(ctx, runtime, value, sensitiveFields, capabilityFields, connectorCredentialBoundary{}, actionresult.DefaultLimits())
+}
+
+func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary connectorCredentialBoundary) (any, error) {
+	return s.redactedConnectorValueWithLimits(ctx, runtime, value, sensitiveFields, capabilityFields, boundary, actionresult.DefaultLimits())
+}
+
+func (s *Server) redactedConnectorValueWithLimits(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary connectorCredentialBoundary, sourceLimits actionresult.Limits) (any, error) {
+	return actionresult.CanonicalizeAndRedactWithSourceLimits(value, sourceLimits, actionresult.DefaultLimits(), actionresult.RedactionOptions{
 		SensitiveField: func(key string) bool {
 			return connectorOutputFieldSensitive(key, sensitiveFields)
 		},
@@ -17,24 +25,35 @@ func (s *Server) redactedConnectorValue(ctx context.Context, runtime *databaseRu
 			return connectorOutputFieldDeclared(key, capabilityFields)
 		},
 		RedactText: func(value string) string {
-			return s.redactForPersistence(ctx, runtime, value)
+			return boundary.Redact(s.redactForPersistence(ctx, runtime, value))
 		},
 		RedactCapability: func(value string) string {
-			return s.redactCustom(ctx, runtime, value)
+			return boundary.Redact(s.redactCustom(ctx, runtime, value))
 		},
 	})
 }
 
 func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+	return s.redactConnectorActionResultWithCredentialBoundary(ctx, runtime, result, connectorCredentialBoundary{}, hints...)
+}
+
+func (s *Server) redactConnectorActionResultWithCredentialBoundary(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, boundary connectorCredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
 	sensitiveFields := connectorSensitiveOutputFields(hints...)
 	capabilityFields := connectorTemporaryCapabilityFields(hints...)
-	result.DisplayText = s.redactForPersistence(ctx, runtime, result.DisplayText)
-	result.Error = s.redactForPersistence(ctx, runtime, result.Error)
-	redacted, err := s.redactedConnectorValue(ctx, runtime, result.Output, sensitiveFields, capabilityFields)
+	result.DisplayText = boundary.Redact(s.redactForPersistence(ctx, runtime, result.DisplayText))
+	result.Error = boundary.Redact(s.redactForPersistence(ctx, runtime, result.Error))
+	redacted, err := s.redactedConnectorValueWithCredentialBoundary(ctx, runtime, result.Output, sensitiveFields, capabilityFields, boundary)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
 	result.Output = redacted
+	if result.Metadata != nil {
+		redactedMetadata, err := s.redactedConnectorValueWithCredentialBoundary(ctx, runtime, result.Metadata, sensitiveFields, capabilityFields, boundary)
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		result.Metadata, _ = redactedMetadata.(map[string]any)
+	}
 	return result, nil
 }
 
@@ -49,7 +68,7 @@ func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databa
 			fields[normalized] = true
 		}
 	}
-	value, err := s.redactedConnectorValue(ctx, runtime, input, fields, nil)
+	value, err := s.redactedConnectorValueWithLimits(ctx, runtime, input, fields, nil, connectorCredentialBoundary{}, connectorActionInputRedactionLimits())
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +89,7 @@ func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *data
 			fields[normalized] = true
 		}
 	}
-	value, err := s.redactedConnectorValue(ctx, runtime, preview, fields, nil)
+	value, err := s.redactedConnectorValueWithLimits(ctx, runtime, preview, fields, nil, connectorCredentialBoundary{}, connectorActionInputRedactionLimits())
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +98,13 @@ func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *data
 		return nil, actionresult.ErrInvalidValue
 	}
 	return redacted, nil
+}
+
+func connectorActionInputRedactionLimits() actionresult.Limits {
+	limits := actionresult.DefaultLimits()
+	limits.EncodedBytes = connectorActionJSONBodyBytes
+	limits.StringBytes = connectorActionJSONBodyBytes
+	return limits
 }
 
 func connectorTemporaryCapabilityFields(hints ...connectors.OutputHint) map[string]bool {

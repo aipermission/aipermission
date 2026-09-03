@@ -169,7 +169,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	}
 	runtime := server.activeRuntime()
 	connectorStore := connectortargets.NewStore(runtime.database)
-	target, profile := createAPITestPostgresTargetProfile(t, connectorStore, runtime.vault)
+	target, profile := createAPITestPostgresTargetProfile(t, connectorStore, runtime.vault, runtime.workspaceUUID)
 	if _, err := connectorStore.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
 		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,
 		ActionName: "retention_fixture", Source: commandRequestSourceManual, Status: connectors.ResultCompleted,

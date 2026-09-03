@@ -11,6 +11,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 const provisioningFailureTestConnectorKind = "provisiontest"
@@ -23,6 +24,8 @@ type provisioningFailureTestConnector struct {
 	cleanupErr         error
 	managedAdminID     int64
 	provisionedSecret  any
+	provisionedResult  connectors.ActionResult
+	provisionErr       error
 	cleanupOutput      any
 }
 
@@ -51,6 +54,9 @@ func (*provisioningFailureTestConnector) CredentialSchemas() []connectors.Creden
 }
 
 func (c *provisioningFailureTestConnector) ProvisionCredentialProfile(context.Context, connectors.RuntimeContext, map[string]any) (connectors.ProvisionedCredentialProfile, error) {
+	if c.provisionErr != nil {
+		return connectors.ProvisionedCredentialProfile{}, c.provisionErr
+	}
 	secret := c.provisionedSecret
 	if secret == nil {
 		secret = make(chan int)
@@ -60,8 +66,15 @@ func (c *provisioningFailureTestConnector) ProvisionCredentialProfile(context.Co
 		Label:  "generated-profile",
 		Public: map[string]any{"username": "generated-user"},
 		Secret: map[string]any{"payload": secret},
-		Result: connectors.ActionResult{Status: connectors.ResultCompleted},
+		Result: firstProvisionedResult(c.provisionedResult),
 	}, nil
+}
+
+func firstProvisionedResult(result connectors.ActionResult) connectors.ActionResult {
+	if result.Status == "" {
+		result.Status = connectors.ResultCompleted
+	}
+	return result
 }
 
 func (c *provisioningFailureTestConnector) CleanupProvisionedCredentialProfile(ctx context.Context, _ connectors.RuntimeContext, _ connectors.CredentialProfileView) (connectors.ActionResult, error) {
@@ -102,20 +115,17 @@ func TestProvisionConnectorCredentialProfileCompensatesPersistenceFailure(t *tes
 	if err != nil {
 		t.Fatalf("create target: %v", err)
 	}
-	encrypted, err := fixture.server.activeRuntime().vault.EncryptJSON(map[string]any{"password": "admin-secret"})
-	if err != nil {
-		t.Fatalf("encrypt admin secret: %v", err)
-	}
 	adminProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
 		TargetID:            target.ID,
 		ConnectorKind:       target.ConnectorKind,
 		Kind:                "admin",
 		Label:               "admin",
-		EncryptedSecretJSON: encrypted,
+		EncryptedSecretJSON: "",
 	})
 	if err != nil {
 		t.Fatalf("create admin profile: %v", err)
 	}
+	setProvisionTestProfileSecret(t, fixture.server.activeRuntime(), store, adminProfile, map[string]any{"password": "admin-secret"})
 	if _, err := fixture.db.Exec(`
 		CREATE TRIGGER reject_generated_profile
 		BEFORE INSERT ON connector_credential_profiles
@@ -153,6 +163,64 @@ func TestProvisionConnectorCredentialProfileCompensatesPersistenceFailure(t *tes
 	}
 }
 
+func TestProvisionConnectorCredentialProfileRedactsAdminAndGeneratedSecrets(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	connector := &provisioningFailureTestConnector{
+		provisionedSecret: "generated-secret",
+		provisionedResult: connectors.ActionResult{
+			Status:      connectors.ResultCompleted,
+			Output:      map[string]any{"admin_echo": "admin-secret", "generated_echo": "generated-secret"},
+			DisplayText: "created with generated-secret",
+		},
+	}
+	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+		t.Fatal(err)
+	}
+	store := connectortargets.NewStore(fixture.db)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: provisioningFailureTestConnectorKind, Name: "provision-target", Config: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{TargetID: target.ID, ConnectorKind: target.ConnectorKind, Kind: "admin", Label: "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setProvisionTestProfileSecret(t, fixture.server.activeRuntime(), store, adminProfile, map[string]any{"password": "admin-secret"})
+
+	path := "/api/connector-targets/" + strconv.FormatInt(target.ID, 10) + "/profiles/" + strconv.FormatInt(adminProfile.ID, 10) + "/provision"
+	response := performJSON(fixture.server.Handler(), http.MethodPost, path, "", provisionConnectorCredentialProfileRequest{})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if body := response.Body.String(); strings.Contains(body, "admin-secret") || strings.Contains(body, "generated-secret") || !strings.Contains(body, connectorCredentialRedactionMarker) {
+		t.Fatalf("provision response crossed credential boundary: %s", body)
+	}
+}
+
+func TestProvisionConnectorCredentialProfileRedactsProvisioningErrors(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	connector := &provisioningFailureTestConnector{provisionErr: errors.New("remote rejected admin-secret")}
+	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+		t.Fatal(err)
+	}
+	store := connectortargets.NewStore(fixture.db)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: provisioningFailureTestConnectorKind, Name: "provision-target", Config: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{TargetID: target.ID, ConnectorKind: target.ConnectorKind, Kind: "admin", Label: "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setProvisionTestProfileSecret(t, fixture.server.activeRuntime(), store, adminProfile, map[string]any{"password": "admin-secret"})
+
+	path := "/api/connector-targets/" + strconv.FormatInt(target.ID, 10) + "/profiles/" + strconv.FormatInt(adminProfile.ID, 10) + "/provision"
+	response := performJSON(fixture.server.Handler(), http.MethodPost, path, "", provisionConnectorCredentialProfileRequest{})
+	if response.Code != http.StatusBadRequest || strings.Contains(response.Body.String(), "admin-secret") || !strings.Contains(response.Body.String(), connectorCredentialRedactionMarker) {
+		t.Fatalf("provision error crossed credential boundary: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestProvisionConnectorCredentialProfileCompensatesEncryptionFailure(t *testing.T) {
 	for _, testCase := range []struct {
 		name            string
@@ -167,7 +235,7 @@ func TestProvisionConnectorCredentialProfileCompensatesEncryptionFailure(t *test
 		},
 		{
 			name:            "cleanup could not be confirmed",
-			cleanupErr:      errors.New("remote cleanup fixture failed"),
+			cleanupErr:      errors.New("remote cleanup fixture failed with admin-secret"),
 			wantCode:        "provisioning_reconciliation_required",
 			wantAuditAction: "connector.profile.provisioning_reconciliation_required",
 		},
@@ -194,20 +262,17 @@ func TestProvisionConnectorCredentialProfileCompensatesEncryptionFailure(t *test
 			if err != nil {
 				t.Fatalf("create target: %v", err)
 			}
-			encrypted, err := fixture.server.activeRuntime().vault.EncryptJSON(map[string]any{"password": "admin-secret"})
-			if err != nil {
-				t.Fatalf("encrypt admin secret: %v", err)
-			}
 			adminProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
 				TargetID:            target.ID,
 				ConnectorKind:       target.ConnectorKind,
 				Kind:                "admin",
 				Label:               "admin",
-				EncryptedSecretJSON: encrypted,
+				EncryptedSecretJSON: "",
 			})
 			if err != nil {
 				t.Fatalf("create admin profile: %v", err)
 			}
+			setProvisionTestProfileSecret(t, fixture.server.activeRuntime(), store, adminProfile, map[string]any{"password": "admin-secret"})
 
 			path := "/api/connector-targets/" + strconv.FormatInt(target.ID, 10) + "/profiles/" + strconv.FormatInt(adminProfile.ID, 10) + "/provision"
 			response := performJSON(fixture.server.Handler(), http.MethodPost, path, "", provisionConnectorCredentialProfileRequest{})
@@ -273,20 +338,17 @@ func TestDeleteManagedCredentialProfileRequiresCompletedRemoteCleanup(t *testing
 	if err != nil {
 		t.Fatalf("create target: %v", err)
 	}
-	encrypted, err := fixture.server.activeRuntime().vault.EncryptJSON(map[string]any{"password": "admin-secret"})
-	if err != nil {
-		t.Fatalf("encrypt admin secret: %v", err)
-	}
 	adminProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
 		TargetID:            target.ID,
 		ConnectorKind:       target.ConnectorKind,
 		Kind:                "admin",
 		Label:               "admin",
-		EncryptedSecretJSON: encrypted,
+		EncryptedSecretJSON: "",
 	})
 	if err != nil {
 		t.Fatalf("create admin profile: %v", err)
 	}
+	setProvisionTestProfileSecret(t, fixture.server.activeRuntime(), store, adminProfile, map[string]any{"password": "admin-secret"})
 	connector.managedAdminID = adminProfile.ID
 	managedProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
 		TargetID:      target.ID,
@@ -320,11 +382,22 @@ func TestDeleteManagedCredentialProfileRequiresCompletedRemoteCleanup(t *testing
 	}
 }
 
+func setProvisionTestProfileSecret(t *testing.T, runtime *databaseRuntime, store *connectortargets.Store, profile connectortargets.CredentialProfile, secret map[string]any) {
+	t.Helper()
+	encrypted, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, secret)
+	if err != nil {
+		t.Fatalf("encrypt profile secret: %v", err)
+	}
+	if err := store.SetCredentialProfileEncryptedSecret(t.Context(), profile.TargetID, profile.ID, encrypted); err != nil {
+		t.Fatalf("store profile secret: %v", err)
+	}
+}
+
 func TestDeleteManagedCredentialProfileAuditsCompletedExternalCleanup(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{cleanupOutput: map[string]any{
 		"role_name": "app_reader", "ownership_reassigned_to": "postgres", "dropped": true,
-		"password": "cleanup-secret",
+		"password": "cleanup-secret", "admin_echo": "admin-secret", "managed_echo": "managed-secret",
 	}}
 	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
 		t.Fatalf("register provisioning connector: %v", err)
@@ -343,6 +416,7 @@ func TestDeleteManagedCredentialProfileAuditsCompletedExternalCleanup(t *testing
 	if err != nil {
 		t.Fatalf("create admin profile: %v", err)
 	}
+	setProvisionTestProfileSecret(t, fixture.server.activeRuntime(), store, adminProfile, map[string]any{"password": "admin-secret"})
 	connector.managedAdminID = adminProfile.ID
 	managedProfile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
 		TargetID: target.ID, ConnectorKind: target.ConnectorKind, Kind: "managed", Label: "managed-user",
@@ -350,6 +424,7 @@ func TestDeleteManagedCredentialProfileAuditsCompletedExternalCleanup(t *testing
 	if err != nil {
 		t.Fatalf("create managed profile: %v", err)
 	}
+	setProvisionTestProfileSecret(t, fixture.server.activeRuntime(), store, managedProfile, map[string]any{"payload": "managed-secret"})
 
 	path := "/api/connector-targets/" + strconv.FormatInt(target.ID, 10) + "/profiles/" + strconv.FormatInt(managedProfile.ID, 10)
 	response := performJSON(fixture.server.Handler(), http.MethodDelete, path, "", nil)
@@ -370,7 +445,7 @@ func TestDeleteManagedCredentialProfileAuditsCompletedExternalCleanup(t *testing
 			t.Fatalf("delete audit missing %s: %s", expected, payload)
 		}
 	}
-	if strings.Contains(payload, "cleanup-secret") || !strings.Contains(payload, `"password":"[REDACTED]"`) {
+	if strings.Contains(payload, "cleanup-secret") || strings.Contains(payload, "admin-secret") || strings.Contains(payload, "managed-secret") || !strings.Contains(payload, `"password":"[REDACTED]"`) {
 		t.Fatalf("delete audit did not redact cleanup output: %s", payload)
 	}
 }

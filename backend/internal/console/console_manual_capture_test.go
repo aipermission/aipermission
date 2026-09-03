@@ -19,6 +19,73 @@ func TestManualInputCreatesUntrackedHistoryRow(t *testing.T) {
 	}
 }
 
+func TestManualCommandInsertRollsBackWhenHistoryProjectionFails(t *testing.T) {
+	database, _, session := newManualHistoryTestSession(t)
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_manual_history_insert
+		BEFORE INSERT ON history_entries
+		WHEN NEW.source_ref_type = 'command_request'
+		BEGIN
+			SELECT RAISE(ABORT, 'forced history projection failure');
+		END;`); err != nil {
+		t.Fatal(err)
+	}
+	err := session.insertManualCommand(manualCommandRecord{
+		Command: "hostname", TrackingReason: "manual_output_not_tracked", TrackOutput: true,
+	})
+	if err == nil {
+		t.Fatal("expected history projection failure")
+	}
+	assertManualHistoryCount(t, database, 0)
+}
+
+func TestManualCommandUpdateRollsBackWhenHistoryProjectionFails(t *testing.T) {
+	database, _, session := newManualHistoryTestSession(t)
+	if err := session.insertManualCommand(manualCommandRecord{
+		Command: "sleep 1", TrackingReason: "manual_output_not_tracked", TrackOutput: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var requestID int64
+	if err := database.QueryRow(`SELECT id FROM command_requests WHERE source = 'manual' ORDER BY id DESC LIMIT 1`).Scan(&requestID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_manual_history_update
+		BEFORE UPDATE ON history_entries
+		WHEN NEW.source_ref_type = 'command_request'
+		BEGIN
+			SELECT RAISE(ABORT, 'forced history projection failure');
+		END;`); err != nil {
+		t.Fatal(err)
+	}
+	session.updateManualActiveCommand(&manualActiveCommandUpdate{RequestID: requestID, Command: "sleep 1\nhostname"})
+	row := readManualHistoryRow(t, database)
+	if row.command != "sleep 1" || row.status != "running" {
+		t.Fatalf("canonical command escaped failed projection transaction: %#v", row)
+	}
+}
+
+func TestStaleManualCommandCloseRollsBackWhenHistoryProjectionFails(t *testing.T) {
+	database, _, session := newManualHistoryTestSession(t)
+	insertStaleManualRunningRow(t, database, session, "sleep 60")
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_manual_history_insert
+		BEFORE INSERT ON history_entries
+		WHEN NEW.source_ref_type = 'command_request'
+		BEGIN
+			SELECT RAISE(ABORT, 'forced history projection failure');
+		END;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.closeStaleManualRunningRows(0, manualCaptureSuperseded); err == nil {
+		t.Fatal("expected history projection failure")
+	}
+	if count := countManualRunningRows(t, database, session.id); count != 1 {
+		t.Fatalf("stale canonical command escaped failed projection transaction: running=%d", count)
+	}
+}
+
 func TestManualInputHandlesBackspaceBeforeRecording(t *testing.T) {
 	database, _, session := newManualHistoryTestSession(t)
 

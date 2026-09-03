@@ -13,6 +13,7 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -99,10 +100,11 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 		t.Fatalf("register local test connector: %v", err)
 	}
 	runtime := &databaseRuntime{
-		database: database,
-		vault:    secretVault,
-		tokens:   tokens.NewStore(database),
-		registry: registry,
+		database:      database,
+		vault:         secretVault,
+		tokens:        tokens.NewStore(database),
+		registry:      registry,
+		workspaceUUID: connectorActionTestWorkspaceID,
 	}
 	server := &Server{}
 	store := connectortargets.NewStore(database)
@@ -208,7 +210,7 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := &databaseRuntime{database: database, vault: secretVault, tokens: tokens.NewStore(database), registry: registry}
+	runtime := &databaseRuntime{database: database, vault: secretVault, tokens: tokens.NewStore(database), registry: registry, workspaceUUID: connectorActionTestWorkspaceID}
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "idempotent-local", Config: map[string]any{}})
 	if err != nil {
@@ -257,7 +259,7 @@ func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {
 	if err := registry.Register(localActionTestConnector{}); err != nil {
 		t.Fatalf("register local test connector: %v", err)
 	}
-	runtime := &databaseRuntime{database: database, vault: secretVault, registry: registry}
+	runtime := &databaseRuntime{database: database, vault: secretVault, registry: registry, workspaceUUID: connectorActionTestWorkspaceID}
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(context.Background(), connectortargets.CreateTargetInput{
 		ConnectorKind: localActionTestConnectorKind,
@@ -418,7 +420,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("approval list projection exposed exact preview: %#v", redactedApproval.Preview)
 	}
 	var decryptedPayload connectorActionExecutionEnvelope
-	if err := secretVault.DecryptJSON(encryptedPayload, &decryptedPayload); err != nil {
+	if err := recordcrypto.DecryptJSON(secretVault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
 		t.Fatalf("decrypt execution payload: %v", err)
 	}
 	if decryptedPayload.Input["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Input["sql"].(string), "super-secret") {

@@ -12,15 +12,24 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
+
+const connectorActionTestWorkspaceID = "connector-action-test-workspace"
 
 func openAPITestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "test-password")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO settings (key, value, updated_at)
+		VALUES ('workspace_uuid', ?, datetime('now'))
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, connectorActionTestWorkspaceID); err != nil {
+		t.Fatalf("set test workspace identity: %v", err)
 	}
 	t.Cleanup(func() {
 		_ = database.Close()
@@ -31,10 +40,11 @@ func openAPITestDB(t *testing.T) *sql.DB {
 func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vault.Vault) *databaseRuntime {
 	t.Helper()
 	runtime := &databaseRuntime{
-		database: database,
-		vault:    secretVault,
-		tokens:   tokens.NewStore(database),
-		registry: testConnectorRegistry(t),
+		database:      database,
+		vault:         secretVault,
+		tokens:        tokens.NewStore(database),
+		registry:      testConnectorRegistry(t),
+		workspaceUUID: connectorActionTestWorkspaceID,
 	}
 	runtime.setMCPStarted(true)
 	return runtime
@@ -49,8 +59,12 @@ func openAPITestVault(t *testing.T) *vault.Vault {
 	return secretVault
 }
 
-func createAPITestPostgresTargetProfile(t *testing.T, store *connectortargets.Store, secretVault *vault.Vault) (connectortargets.Target, connectortargets.CredentialProfile) {
+func createAPITestPostgresTargetProfile(t *testing.T, store *connectortargets.Store, secretVault *vault.Vault, workspaceIDs ...string) (connectortargets.Target, connectortargets.CredentialProfile) {
 	t.Helper()
+	workspaceID := connectorActionTestWorkspaceID
+	if len(workspaceIDs) > 0 {
+		workspaceID = workspaceIDs[0]
+	}
 	ctx := context.Background()
 	target, err := store.CreateTarget(ctx, connectortargets.CreateTargetInput{
 		ConnectorKind: postgresconnector.Kind,
@@ -66,21 +80,25 @@ func createAPITestPostgresTargetProfile(t *testing.T, store *connectortargets.St
 	if err != nil {
 		t.Fatalf("create postgres target: %v", err)
 	}
-	encryptedSecret, err := secretVault.EncryptJSON(map[string]any{"password": "secret"})
-	if err != nil {
-		t.Fatalf("encrypt profile secret: %v", err)
-	}
 	profile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
 		TargetID:            target.ID,
 		ConnectorKind:       postgresconnector.Kind,
 		Kind:                "username_password",
 		Label:               "readonly",
 		Public:              map[string]any{"username": "app_readonly"},
-		EncryptedSecretJSON: encryptedSecret,
+		EncryptedSecretJSON: "",
 	})
 	if err != nil {
 		t.Fatalf("create postgres profile: %v", err)
 	}
+	encryptedSecret, err := recordcrypto.EncryptJSON(secretVault, workspaceID, recordcrypto.ConnectorCredentialProfile, profile.ID, map[string]any{"password": "secret"})
+	if err != nil {
+		t.Fatalf("encrypt profile secret: %v", err)
+	}
+	if err := store.SetCredentialProfileEncryptedSecret(ctx, target.ID, profile.ID, encryptedSecret); err != nil {
+		t.Fatalf("store profile secret: %v", err)
+	}
+	profile.EncryptedSecretJSON = encryptedSecret
 	return target, profile
 }
 
@@ -195,9 +213,21 @@ func (localActionTestConnector) PrepareAction(_ context.Context, req connectors.
 	}, nil
 }
 
-func (localActionTestConnector) ExecuteAction(_ context.Context, _ connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+func (localActionTestConnector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	if action.Payload["value"] == "classified-error" {
 		return connectors.ActionResult{}, connectors.ClassifyError("fixture_failure", fmt.Errorf("fixture failed"))
+	}
+	if action.Payload["value"] == "reflect-credential" {
+		secret, err := runtime.Secrets.GetSecret(ctx, "password")
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		return connectors.ActionResult{
+			Status:      connectors.ResultCompleted,
+			Output:      map[string]any{"echo": "permitted-target-output-may-be-sensitive-7f3a", "reflection": secret},
+			DisplayText: "permitted-target-output-may-be-sensitive-7f3a " + secret,
+			Metadata:    map[string]any{"reflection": secret},
+		}, nil
 	}
 	result := connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
@@ -211,4 +241,16 @@ func (localActionTestConnector) ExecuteAction(_ context.Context, _ connectors.Ru
 		result.Handles = connectors.ActionHandles{SessionID: 123}
 	}
 	return result, nil
+}
+
+func (localActionTestConnector) TestConnection(ctx context.Context, runtime connectors.RuntimeContext) (connectors.TestResult, error) {
+	secret, err := runtime.Secrets.GetSecret(ctx, "password")
+	if err != nil {
+		return connectors.TestResult{}, err
+	}
+	return connectors.TestResult{
+		Status:  connectors.TestOK,
+		Message: "connection accepted " + secret,
+		Details: map[string]any{"reflection": secret},
+	}, nil
 }

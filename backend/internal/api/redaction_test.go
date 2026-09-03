@@ -147,6 +147,26 @@ func TestCommandRequestErrorsAreRedactedBeforePersistence(t *testing.T) {
 	}
 }
 
+func TestConnectorInputRedactionRemovesLargeSensitivePayloadBeforeProjectionLimits(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	largeUpload := strings.Repeat("s", 2<<20)
+	redacted, err := fixture.server.redactConnectorActionInput(t.Context(), fixture.server.activeRuntime(), map[string]any{
+		"key":          "artifact.txt",
+		"content_text": largeUpload,
+	}, []string{"content_text"})
+	if err != nil {
+		t.Fatalf("redact large connector input: %v", err)
+	}
+	if redacted["content_text"] != "[REDACTED]" || redacted["key"] != "artifact.txt" {
+		t.Fatalf("unexpected redacted connector input: %#v", redacted)
+	}
+	if _, err := fixture.server.redactConnectorActionInput(t.Context(), fixture.server.activeRuntime(), map[string]any{
+		"content_text": largeUpload,
+	}, nil); err == nil {
+		t.Fatal("large non-sensitive projection should retain strict display limits")
+	}
+}
+
 func TestRedactionRuleCacheInvalidatesOnUpdate(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()

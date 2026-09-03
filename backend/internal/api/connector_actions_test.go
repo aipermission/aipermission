@@ -17,7 +17,7 @@ import (
 
 func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
-	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, openAPITestVault(t)), "core-1")
+	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, openAPITestVault(t), "connector-actions-test-workspace"), "core-1")
 	targetRef := profile.TargetRef
 	runtime := &databaseRuntime{database: database, registry: testConnectorRegistry(t)}
 

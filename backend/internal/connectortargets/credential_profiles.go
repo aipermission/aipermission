@@ -220,6 +220,35 @@ func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredent
 	return s.GetCredentialProfile(ctx, input.TargetID, input.ProfileID)
 }
 
+func (s *Store) SetCredentialProfileEncryptedSecret(ctx context.Context, targetID int64, profileID int64, encrypted string) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("connector target store is not configured")
+	}
+	if targetID < 1 || profileID < 1 || strings.TrimSpace(encrypted) == "" {
+		return ErrTargetProfileNotFound
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE connector_credential_profiles
+		SET encrypted_secret_json = ?
+		WHERE id = ? AND target_id = ? AND status = ?`,
+		encrypted,
+		profileID,
+		targetID,
+		TargetStatusActive,
+	)
+	if err != nil {
+		return fmt.Errorf("set connector credential profile secret: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read connector credential profile secret rows affected: %w", err)
+	}
+	if affected != 1 {
+		return ErrTargetProfileNotFound
+	}
+	return nil
+}
+
 func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, profileID int64) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("connector target store is not configured")

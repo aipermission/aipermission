@@ -2,12 +2,14 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 const maxBackupProviderJSONBytes = 16 << 10
@@ -144,7 +146,7 @@ func (s backupHandlers) createProvider(w http.ResponseWriter, r *http.Request) {
 		handleBackupProviderError(w, err)
 		return
 	}
-	encrypted, err := encryptBackupServiceToken(runtime, request.Secret, true)
+	secret, err := backupServiceTokenSecret(request.Secret, true)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
@@ -154,12 +156,24 @@ func (s backupHandlers) createProvider(w http.ResponseWriter, r *http.Request) {
 		r.Context(), runtime, "user", nil, 0, "backup.provider.created",
 		func() any { return backupProviderAuditPayload(item) },
 		func(tx *sql.Tx) error {
+			store := backups.NewTxStore(tx)
 			var err error
-			item, err = backups.NewTxStore(tx).CreateProvider(r.Context(), backups.CreateProviderRequest{
+			item, err = store.CreateProvider(r.Context(), backups.CreateProviderRequest{
 				ProviderType: backups.ServiceProviderType, Name: strings.TrimSpace(request.Name),
-				Status: "disabled", Public: public, Encrypted: encrypted,
+				Status: "disabled", Public: public, Encrypted: "",
 			})
-			return err
+			if err != nil {
+				return err
+			}
+			encrypted, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.BackupProvider, item.ID, secret)
+			if err != nil {
+				return fmt.Errorf("encrypt backup provider secret: %w", err)
+			}
+			if err := store.SetProviderEncryptedSecret(r.Context(), item.ID, encrypted); err != nil {
+				return err
+			}
+			item.EncryptedSecretJSON = encrypted
+			return nil
 		},
 	)
 	if err != nil {
@@ -210,9 +224,14 @@ func (s backupHandlers) updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	var encrypted *string
 	if request.Secret != nil {
-		value, err := encryptBackupServiceToken(runtime, request.Secret, true)
+		secret, err := backupServiceTokenSecret(request.Secret, true)
 		if err != nil {
 			handleBackupProviderError(w, err)
+			return
+		}
+		value, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.BackupProvider, existing.ID, secret)
+		if err != nil {
+			writeInternalError(w)
 			return
 		}
 		encrypted = &value

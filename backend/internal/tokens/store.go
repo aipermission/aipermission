@@ -9,11 +9,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -43,9 +43,10 @@ type CreateResponse struct {
 }
 
 type Store struct {
-	db    storeDB
-	begin func(context.Context, *sql.TxOptions) (*sql.Tx, error)
-	vault *vault.Vault
+	db          storeDB
+	begin       func(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	vault       *vault.Vault
+	workspaceID string
 }
 
 type storeDB = sqldb.Executor
@@ -56,6 +57,10 @@ func NewStore(db *sql.DB, secretVault ...*vault.Vault) *Store {
 		store.vault = secretVault[0]
 	}
 	return store
+}
+
+func NewEncryptedStore(db *sql.DB, secretVault *vault.Vault, workspaceID string) *Store {
+	return &Store{db: db, begin: db.BeginTx, vault: secretVault, workspaceID: workspaceID}
 }
 
 func NewTxStore(tx *sql.Tx, secretVault ...*vault.Vault) *Store {
@@ -70,7 +75,9 @@ func (s *Store) WithTx(tx *sql.Tx) *Store {
 	if s == nil {
 		return NewTxStore(tx)
 	}
-	return NewTxStore(tx, s.vault)
+	store := NewTxStore(tx, s.vault)
+	store.workspaceID = s.workspaceID
+	return store
 }
 
 func (s *Store) List(ctx context.Context) ([]Token, error) {
@@ -86,7 +93,10 @@ func (s *Store) List(ctx context.Context) ([]Token, error) {
 		if err := rows.Scan(&item.ID, &item.Name, &item.TokenPrefix, &item.TokenValue, &item.RevokedAt, &item.ExpiresAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan token: %w", err)
 		}
-		item.TokenValue = s.decryptTokenValue(item.TokenValue)
+		item.TokenValue, err = s.decryptTokenValue(item.ID, item.TokenValue)
+		if err != nil {
+			return nil, err
+		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -105,7 +115,10 @@ func (s *Store) Get(ctx context.Context, id int64) (Token, error) {
 	if err != nil {
 		return Token{}, fmt.Errorf("get token: %w", err)
 	}
-	item.TokenValue = s.decryptTokenValue(item.TokenValue)
+	item.TokenValue, err = s.decryptTokenValue(item.ID, item.TokenValue)
+	if err != nil {
+		return Token{}, err
+	}
 	return item, nil
 }
 
@@ -136,12 +149,6 @@ func (s *Store) Create(ctx context.Context, request CreateRequest, options ...Cr
 	if createOptions.StoreReusableToken {
 		storedTokenValue = tokenValue
 	}
-	if s.vault != nil && storedTokenValue != "" {
-		storedTokenValue, err = s.vault.EncryptJSON(tokenValueSecret{Token: tokenValue})
-		if err != nil {
-			return CreateResponse{}, err
-		}
-	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	if s.begin != nil {
@@ -150,7 +157,7 @@ func (s *Store) Create(ctx context.Context, request CreateRequest, options ...Cr
 			return CreateResponse{}, fmt.Errorf("begin create token: %w", err)
 		}
 		defer tx.Rollback()
-		item, err := NewTxStore(tx, s.vault).create(ctx, request, tokenValue, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now)
+		item, err := s.WithTx(tx).create(ctx, request, tokenValue, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now)
 		if err != nil {
 			return CreateResponse{}, err
 		}
@@ -163,7 +170,14 @@ func (s *Store) Create(ctx context.Context, request CreateRequest, options ...Cr
 }
 
 func (s *Store) create(ctx context.Context, request CreateRequest, tokenValue, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now string) (CreateResponse, error) {
-	result, err := s.db.ExecContext(ctx, `INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, request.Name, tokenHash, tokenPrefix, storedTokenValue, expiresAt, now, now)
+	insertedTokenValue := storedTokenValue
+	if s.vault != nil && storedTokenValue != "" {
+		if strings.TrimSpace(s.workspaceID) == "" {
+			return CreateResponse{}, fmt.Errorf("workspace ID is required for reusable token encryption")
+		}
+		insertedTokenValue = ""
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, request.Name, tokenHash, tokenPrefix, insertedTokenValue, expiresAt, now, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return CreateResponse{}, ValidationError("token name already exists")
@@ -173,6 +187,15 @@ func (s *Store) create(ctx context.Context, request CreateRequest, tokenValue, t
 	id, err := result.LastInsertId()
 	if err != nil {
 		return CreateResponse{}, fmt.Errorf("read token id: %w", err)
+	}
+	if s.vault != nil && storedTokenValue != "" {
+		encrypted, err := recordcrypto.EncryptJSON(s.vault, s.workspaceID, recordcrypto.APIToken, id, tokenValueSecret{Token: tokenValue})
+		if err != nil {
+			return CreateResponse{}, fmt.Errorf("encrypt reusable token: %w", err)
+		}
+		if _, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET token_value = ? WHERE id = ?`, encrypted, id); err != nil {
+			return CreateResponse{}, fmt.Errorf("store encrypted reusable token: %w", err)
+		}
 	}
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
@@ -240,17 +263,24 @@ func HashToken(value string) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-func (s *Store) decryptTokenValue(value string) string {
-	if s.vault == nil || value == "" {
-		return value
+func (s *Store) decryptTokenValue(id int64, value string) (string, error) {
+	if value == "" {
+		return value, nil
+	}
+	if s.vault == nil {
+		if vault.IsRecordEnvelope(value) {
+			return "", fmt.Errorf("decrypt reusable token %d: encrypted store is not configured", id)
+		}
+		return value, nil
 	}
 	var secret tokenValueSecret
-	if err := s.vault.DecryptJSON(value, &secret); err == nil {
-		return secret.Token
-	} else {
-		log.Printf("reusable token value could not be decrypted; returning empty token value: %v", err)
+	if strings.TrimSpace(s.workspaceID) == "" {
+		return "", fmt.Errorf("decrypt reusable token %d: workspace ID is missing", id)
 	}
-	return ""
+	if err := recordcrypto.DecryptJSON(s.vault, s.workspaceID, recordcrypto.APIToken, id, value, &secret); err != nil {
+		return "", fmt.Errorf("decrypt reusable token %d: %w", id, err)
+	}
+	return secret.Token, nil
 }
 
 func validateTokenName(name string) error {

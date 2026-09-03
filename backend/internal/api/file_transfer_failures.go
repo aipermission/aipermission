@@ -13,6 +13,14 @@ var errFileTransferTimedOut = errors.New("file transfer timed out")
 
 func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transferID int64, err error, failureKind string) {
 	message := fileTransferFailureMessage(err)
+	item, readErr := runtime.fileTransfers.Get(context.Background(), transferID)
+	if readErr != nil {
+		message = "file transfer failed"
+	} else if boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(context.Background(), runtime, item.RuntimeID); boundaryErr != nil {
+		message = "file transfer failed"
+	} else {
+		message = boundary.Redact(message)
+	}
 	changed, writeErr := runtime.fileTransfers.FailWithKind(context.Background(), transferID, message, failureKind)
 	if writeErr != nil {
 		log.Printf("fail file transfer failed transfer=%d error=%v", transferID, writeErr)
@@ -34,6 +42,15 @@ func (s fileTransferHandlers) finishFileTransferError(runtime *databaseRuntime, 
 }
 
 func (s fileTransferHandlers) finishFileTransferBatchError(runtime *databaseRuntime, batchID int64, ctx context.Context, err error) {
+	message := fileTransferFailureMessage(err)
+	batch, readErr := runtime.fileTransfers.GetBatch(context.Background(), batchID)
+	if readErr != nil {
+		message = "file transfer batch failed"
+	} else if boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(context.Background(), runtime, batch.RuntimeID); boundaryErr != nil {
+		message = "file transfer batch failed"
+	} else {
+		message = boundary.Redact(message)
+	}
 	switch classifyFileTransferInterruption(ctx, err) {
 	case fileTransferTimedOut:
 		if _, writeErr := runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, "file transfer batch timed out", filetransfer.FailureKindTimeout); writeErr != nil {
@@ -44,7 +61,7 @@ func (s fileTransferHandlers) finishFileTransferBatchError(runtime *databaseRunt
 			log.Printf("cancel file transfer batch failed batch=%d error=%v", batchID, writeErr)
 		}
 	default:
-		if _, writeErr := runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, fileTransferFailureMessage(err), filetransfer.FailureKindUnknown); writeErr != nil {
+		if _, writeErr := runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, message, filetransfer.FailureKindUnknown); writeErr != nil {
 			log.Printf("fail file transfer batch failed batch=%d error=%v", batchID, writeErr)
 		}
 	}

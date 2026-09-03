@@ -8,6 +8,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 func (s connectorTargetHandlers) listConnectorCredentialProfiles(w http.ResponseWriter, r *http.Request) {
@@ -76,11 +77,21 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 			Kind:                preparedProfile.Kind,
 			Label:               preparedProfile.Label,
 			Public:              preparedProfile.Public,
-			EncryptedSecretJSON: preparedProfile.EncryptedSecretJSON,
+			EncryptedSecretJSON: "",
 			RiskLabel:           preparedProfile.RiskLabel,
 		})
 		if err != nil {
 			return err
+		}
+		encrypted, err := encryptPreparedCredentialSecret(runtime, profile.ID, preparedProfile)
+		if err != nil {
+			return err
+		}
+		if encrypted != nil {
+			if err := txStore.SetCredentialProfileEncryptedSecret(r.Context(), target.ID, profile.ID, *encrypted); err != nil {
+				return err
+			}
+			profile.EncryptedSecretJSON = *encrypted
 		}
 		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 			return err
@@ -153,7 +164,10 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 	var profile connectortargets.CredentialProfile
 	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 		txStore := connectortargets.NewTxStore(tx)
-		var err error
+		encrypted, err := encryptPreparedCredentialSecret(runtime, profileID, preparedProfile)
+		if err != nil {
+			return err
+		}
 		profile, err = txStore.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
 			TargetID:            target.ID,
 			ProfileID:           profileID,
@@ -161,7 +175,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 			Kind:                preparedProfile.Kind,
 			Label:               preparedProfile.Label,
 			Public:              preparedProfile.Public,
-			EncryptedSecretJSON: preparedProfile.EncryptedSecretPtr,
+			EncryptedSecretJSON: encrypted,
 			RiskLabel:           preparedProfile.RiskLabel,
 		})
 		if err != nil {
@@ -306,7 +320,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 	}
 	secrets := map[string]any{}
 	if fullProfile.EncryptedSecretJSON != "" {
-		if err := runtime.vault.DecryptJSON(fullProfile.EncryptedSecretJSON, &secrets); err != nil {
+		if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, fullProfile.ID, fullProfile.EncryptedSecretJSON, &secrets); err != nil {
 			writeInternalError(w)
 			return
 		}
@@ -314,6 +328,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	start := time.Now()
+	credentialBoundary := newConnectorCredentialBoundary(secrets)
 	result, err := testable.TestConnection(ctx, connectors.RuntimeContext{
 		Target:       target,
 		Profile:      profile,
@@ -328,12 +343,12 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 			ConnectorKind: target.ConnectorKind,
 			OK:            false,
 			Status:        string(connectors.TestUnknownError),
-			Message:       s.redactForPersistence(r.Context(), runtime, err.Error()),
+			Message:       credentialBoundary.Redact(s.redactForPersistence(r.Context(), runtime, err.Error())),
 			DurationMS:    time.Since(start).Milliseconds(),
 		})
 		return
 	}
-	redactedDetails, err := s.redactedConnectorValue(r.Context(), runtime, result.Details, connectorSensitiveOutputFields(), nil)
+	redactedDetails, err := s.redactedConnectorValueWithCredentialBoundary(r.Context(), runtime, result.Details, connectorSensitiveOutputFields(), nil, credentialBoundary)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -344,7 +359,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		ConnectorKind: target.ConnectorKind,
 		OK:            result.Status == connectors.TestOK,
 		Status:        string(result.Status),
-		Message:       s.redactForPersistence(r.Context(), runtime, result.Message),
+		Message:       credentialBoundary.Redact(s.redactForPersistence(r.Context(), runtime, result.Message)),
 		Details:       redactedMapValue(redactedDetails),
 		DurationMS:    time.Since(start).Milliseconds(),
 	})

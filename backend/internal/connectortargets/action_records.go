@@ -498,6 +498,27 @@ func (s *Store) GetActionRequestByIdempotency(ctx context.Context, tokenID *int6
 	return getActionRequestByIdempotencyWithExecutor(ctx, s.db, actionRequestIdempotencyScope(tokenID, source), key)
 }
 
+func (s *Store) SetActionRequestEncryptedPayload(ctx context.Context, id int64, encrypted string) error {
+	if s == nil || s.db == nil || id < 1 || strings.TrimSpace(encrypted) == "" {
+		return ErrActionRequestNotFound
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE connector_action_requests
+		SET encrypted_payload_json = ?
+		WHERE id = ? AND encrypted_payload_json = ''`, encrypted, id)
+	if err != nil {
+		return fmt.Errorf("set connector action encrypted payload: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read connector action encrypted payload rows affected: %w", err)
+	}
+	if affected != 1 {
+		return ErrActionRequestNotFound
+	}
+	return nil
+}
+
 func getActionRequestByIdempotencyWithExecutor(ctx context.Context, executor storeDB, scope, key string) (ActionRequest, error) {
 	request, err := scanActionRequest(executor.QueryRowContext(ctx,
 		actionRequestSelectSQL()+` WHERE r.idempotency_scope = ? AND r.idempotency_key = ?`,

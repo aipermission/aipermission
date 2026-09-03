@@ -80,7 +80,7 @@ func TestTokenStoreEncryptsReusableTokenValueWhenReusableStorageIsEnabled(t *tes
 	if err != nil {
 		t.Fatalf("vault: %v", err)
 	}
-	store := NewStore(database, secretVault)
+	store := NewEncryptedStore(database, secretVault, "token-test-workspace")
 
 	created, err := store.Create(ctx, CreateRequest{Name: "codex"}, CreateOptions{StoreReusableToken: true})
 	if err != nil {
@@ -115,7 +115,7 @@ func TestTokenStoreDoesNotReturnCiphertextWhenReusableTokenDecryptFails(t *testi
 	if err != nil {
 		t.Fatalf("vault: %v", err)
 	}
-	store := NewStore(database, secretVault)
+	store := NewEncryptedStore(database, secretVault, "token-test-workspace")
 
 	created, err := store.Create(ctx, CreateRequest{Name: "codex"}, CreateOptions{StoreReusableToken: true})
 	if err != nil {
@@ -130,13 +130,65 @@ func TestTokenStoreDoesNotReturnCiphertextWhenReusableTokenDecryptFails(t *testi
 	if err != nil {
 		t.Fatalf("wrong vault: %v", err)
 	}
-	wrongStore := NewStore(database, wrongVault)
+	wrongStore := NewEncryptedStore(database, wrongVault, "token-test-workspace")
 	got, err := wrongStore.Get(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("get token: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "decrypt reusable token") {
+		t.Fatalf("decrypt failure should fail closed, token=%#v err=%v ciphertext=%q", got, err, storedTokenValue)
 	}
-	if got.TokenValue != "" {
-		t.Fatalf("decrypt failure should hide reusable token value, got %q from ciphertext %q", got.TokenValue, storedTokenValue)
+}
+
+func TestTokenStoreRejectsReusableTokenCiphertextMovedBetweenRows(t *testing.T) {
+	ctx := context.Background()
+	database := openTokenTestDB(t)
+	secretVault, err := vault.New("test-gateway-secret")
+	if err != nil {
+		t.Fatalf("vault: %v", err)
+	}
+	store := NewEncryptedStore(database, secretVault, "token-test-workspace")
+	first, err := store.Create(ctx, CreateRequest{Name: "first"}, CreateOptions{StoreReusableToken: true})
+	if err != nil {
+		t.Fatalf("create first token: %v", err)
+	}
+	second, err := store.Create(ctx, CreateRequest{Name: "second"}, CreateOptions{StoreReusableToken: true})
+	if err != nil {
+		t.Fatalf("create second token: %v", err)
+	}
+	var firstCiphertext string
+	var secondCiphertext string
+	if err := database.QueryRowContext(ctx, `SELECT token_value FROM api_tokens WHERE id = ?`, first.ID).Scan(&firstCiphertext); err != nil {
+		t.Fatalf("read first token ciphertext: %v", err)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT token_value FROM api_tokens WHERE id = ?`, second.ID).Scan(&secondCiphertext); err != nil {
+		t.Fatalf("read second token ciphertext: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE api_tokens SET token_value = CASE id WHEN ? THEN ? WHEN ? THEN ? END WHERE id IN (?, ?)`, first.ID, secondCiphertext, second.ID, firstCiphertext, first.ID, second.ID); err != nil {
+		t.Fatalf("swap token ciphertext: %v", err)
+	}
+	for _, id := range []int64{first.ID, second.ID} {
+		got, err := store.Get(ctx, id)
+		if err == nil || !strings.Contains(err.Error(), "decrypt reusable token") {
+			t.Fatalf("swapped token %d should fail closed, token=%#v err=%v", id, got, err)
+		}
+	}
+}
+
+func TestTokenStoreListFailsClosedForUnreadableReusableToken(t *testing.T) {
+	ctx := context.Background()
+	database := openTokenTestDB(t)
+	secretVault, err := vault.New("test-gateway-secret")
+	if err != nil {
+		t.Fatalf("vault: %v", err)
+	}
+	store := NewEncryptedStore(database, secretVault, "token-test-workspace")
+	created, err := store.Create(ctx, CreateRequest{Name: "corrupt-list"}, CreateOptions{StoreReusableToken: true})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE api_tokens SET token_value = ? WHERE id = ?`, `{"version":1,"algorithm":"AES-256-GCM","nonce":"bad","ciphertext":"bad"}`, created.ID); err != nil {
+		t.Fatalf("corrupt token envelope: %v", err)
+	}
+	if items, err := store.List(ctx); err == nil || !strings.Contains(err.Error(), "decrypt reusable token") {
+		t.Fatalf("list should fail closed for corrupt token, items=%#v err=%v", items, err)
 	}
 }
 

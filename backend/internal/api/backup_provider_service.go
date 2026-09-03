@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 func (s backupHandlers) activeBackupServiceProvider(w http.ResponseWriter, r *http.Request) (*databaseRuntime, backups.Provider, *backups.ServiceClient, bool) {
@@ -87,18 +88,18 @@ func (s backupHandlers) activeDatabaseDisplayName() string {
 	return s.currentDatabaseNameLocked()
 }
 
-func encryptBackupServiceToken(runtime *databaseRuntime, secret map[string]any, required bool) (string, error) {
+func backupServiceTokenSecret(secret map[string]any, required bool) (map[string]any, error) {
 	token := stringFromMap(secret, "token")
 	if token == "" {
 		if required {
-			return "", backups.ValidationError("backup service token is required")
+			return nil, backups.ValidationError("backup service token is required")
 		}
-		return "", nil
+		return nil, nil
 	}
 	if err := backups.ValidateServiceToken(token); err != nil {
-		return "", err
+		return nil, err
 	}
-	return runtime.vault.EncryptJSON(map[string]any{"token": token})
+	return map[string]any{"token": token}, nil
 }
 
 func decryptBackupProviderSecret(runtime *databaseRuntime, provider backups.Provider) (map[string]any, error) {
@@ -106,7 +107,7 @@ func decryptBackupProviderSecret(runtime *databaseRuntime, provider backups.Prov
 		return map[string]any{}, nil
 	}
 	secrets := map[string]any{}
-	if err := runtime.vault.DecryptJSON(provider.EncryptedSecretJSON, &secrets); err != nil {
+	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.BackupProvider, provider.ID, provider.EncryptedSecretJSON, &secrets); err != nil {
 		return nil, err
 	}
 	return secrets, nil

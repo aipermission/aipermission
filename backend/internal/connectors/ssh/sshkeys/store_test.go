@@ -32,7 +32,7 @@ func openSSHKeyTestStore(t *testing.T) (*sql.DB, *Store) {
 	if err != nil {
 		t.Fatalf("new vault: %v", err)
 	}
-	return database, NewStore(database, secretVault)
+	return database, NewStore(database, secretVault, "ssh-key-test-workspace")
 }
 
 func TestInstallCommandShellQuotesPublicKey(t *testing.T) {
@@ -91,6 +91,20 @@ func TestSSHKeyStoreCreateListGetPrivateKeyAndDelete(t *testing.T) {
 	}
 }
 
+func TestSSHKeyStoreRejectsPrivateKeyReadWithoutWorkspaceIdentity(t *testing.T) {
+	ctx := context.Background()
+	database, store := openSSHKeyTestStore(t)
+	created, err := store.Create(ctx, CreateRequest{Name: "workspace-bound", KeyType: TypeED25519})
+	if err != nil {
+		t.Fatalf("create ssh key: %v", err)
+	}
+
+	withoutWorkspace := NewStore(database, store.vault, "")
+	if _, err := withoutWorkspace.GetPrivateKey(ctx, created.ID); err == nil || !strings.Contains(err.Error(), "workspace ID is required") {
+		t.Fatalf("private key read without workspace identity error = %v", err)
+	}
+}
+
 func TestSSHKeyStoreCreatesRSAKey(t *testing.T) {
 	ctx := context.Background()
 	_, store := openSSHKeyTestStore(t)
@@ -101,6 +115,35 @@ func TestSSHKeyStoreCreatesRSAKey(t *testing.T) {
 	}
 	if created.KeyType != TypeRSA || !strings.HasPrefix(created.PublicKey, "ssh-rsa ") {
 		t.Fatalf("unexpected rsa key: %#v", created)
+	}
+}
+
+func TestSSHKeyStoreRejectsPrivateKeyCiphertextMovedBetweenRows(t *testing.T) {
+	ctx := context.Background()
+	database, store := openSSHKeyTestStore(t)
+	first, err := store.Create(ctx, CreateRequest{Name: "first", KeyType: TypeED25519})
+	if err != nil {
+		t.Fatalf("create first key: %v", err)
+	}
+	second, err := store.Create(ctx, CreateRequest{Name: "second", KeyType: TypeED25519})
+	if err != nil {
+		t.Fatalf("create second key: %v", err)
+	}
+	var firstCiphertext string
+	var secondCiphertext string
+	if err := database.QueryRowContext(ctx, `SELECT encrypted_secret FROM connector_credential_resources WHERE id = ?`, first.ID).Scan(&firstCiphertext); err != nil {
+		t.Fatalf("read first key ciphertext: %v", err)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT encrypted_secret FROM connector_credential_resources WHERE id = ?`, second.ID).Scan(&secondCiphertext); err != nil {
+		t.Fatalf("read second key ciphertext: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE connector_credential_resources SET encrypted_secret = CASE id WHEN ? THEN ? WHEN ? THEN ? END WHERE id IN (?, ?)`, first.ID, secondCiphertext, second.ID, firstCiphertext, first.ID, second.ID); err != nil {
+		t.Fatalf("swap key ciphertext: %v", err)
+	}
+	for _, id := range []int64{first.ID, second.ID} {
+		if _, err := store.GetPrivateKey(ctx, id); err == nil {
+			t.Fatalf("swapped key %d decrypted across a record boundary", id)
+		}
 	}
 }
 

@@ -27,7 +27,22 @@ func (s *Store) SyncCommandRequest(ctx context.Context, id int64) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("history store is not configured")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	return SyncCommandRequestWithExecutor(ctx, s.db, id)
+}
+
+type CommandProjectionExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+// SyncCommandRequestWithExecutor keeps the canonical command and its history
+// projection inside the caller's transaction.
+func SyncCommandRequestWithExecutor(ctx context.Context, executor CommandProjectionExecutor, id int64) error {
+	if executor == nil {
+		return fmt.Errorf("history executor is not configured")
+	}
+	_, err := executor.ExecContext(ctx, `
 		INSERT INTO history_entries (
 			source_ref_type, source_ref_id, connector_kind, activity_type, token_id, runtime_id,
 			project_id, target_id, profile_id, target_name, profile_label, source, status, action_name,
@@ -85,7 +100,7 @@ func (s *Store) SyncCommandRequest(ctx context.Context, id int64) error {
 	if err != nil {
 		return fmt.Errorf("sync command history entry: %w", err)
 	}
-	return s.syncCommandVaultContext(ctx, id)
+	return syncCommandVaultContextWithExecutor(ctx, executor, id)
 }
 
 func (s *Store) SyncVaultActionRequest(ctx context.Context, id int64) error {
@@ -160,10 +175,10 @@ func SyncVaultActionRequestWithExecutor(ctx context.Context, executor projection
 	return nil
 }
 
-func (s *Store) syncCommandVaultContext(ctx context.Context, commandRequestID int64) error {
+func syncCommandVaultContextWithExecutor(ctx context.Context, executor CommandProjectionExecutor, commandRequestID int64) error {
 	var sessionID, generation int64
 	var environmentHash, approvalHash string
-	err := s.db.QueryRowContext(ctx, `
+	err := executor.QueryRowContext(ctx, `
 		SELECT cs.id, cs.generation, cs.environment_content_hash, cs.approval_context_hash
 		FROM command_requests cr
 		JOIN console_sessions cs ON cs.id = cr.session_id
@@ -176,7 +191,7 @@ func (s *Store) syncCommandVaultContext(ctx context.Context, commandRequestID in
 	if err != nil {
 		return fmt.Errorf("read command Vault context: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := executor.QueryContext(ctx, `
 		SELECT vsi.vault_item_id, vsi.vault_item_name, vsi.source_project_id,
 		       COALESCE(vsi.binding_id, 0), vsi.binding_revision
 		FROM vault_session_items vsi
@@ -214,7 +229,7 @@ func (s *Store) syncCommandVaultContext(ctx context.Context, commandRequestID in
 	if err != nil {
 		return fmt.Errorf("encode command Vault context: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := executor.ExecContext(ctx, `
 		UPDATE history_entries SET preview_json = ?
 		WHERE source_ref_type = ? AND source_ref_id = ?`,
 		string(payload), SourceCommandRequest, commandRequestID,

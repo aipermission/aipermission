@@ -53,6 +53,7 @@ func (r RouteDefinition) Pattern() string {
 type GatewayRuntime interface {
 	ConnectorDatabase() *sql.DB
 	ConnectorVault() *vault.Vault
+	ConnectorWorkspaceID() string
 	ConnectorResource(kind string, name string) any
 	ConnectorConsoleSessions() *console.Manager
 	ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error)
@@ -212,7 +213,7 @@ type RouteRegistrar interface {
 // stores for one unlocked database without making the generic runtime own those
 // resource types.
 type RuntimeResourceProvider interface {
-	RuntimeResources(database *sql.DB, vault *vault.Vault) map[string]any
+	RuntimeResources(database *sql.DB, vault *vault.Vault, workspaceID string) map[string]any
 }
 
 // LiveConsoleAdapter marks an adapter with a persistent console action.

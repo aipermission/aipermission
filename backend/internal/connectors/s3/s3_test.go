@@ -62,6 +62,24 @@ func TestPrepareUploadRedactsContentPreview(t *testing.T) {
 	}
 }
 
+func TestUploadActionDeclaresContentInputsSensitive(t *testing.T) {
+	actions, err := New().GetActionList(context.Background(), connectors.TargetView{}, connectors.CredentialProfileView{})
+	if err != nil {
+		t.Fatalf("get action list: %v", err)
+	}
+	for _, action := range actions {
+		if action.Name != ActionUploadObject {
+			continue
+		}
+		joined := strings.Join(action.SensitiveInputFields, ",")
+		if !strings.Contains(joined, "content_text") || !strings.Contains(joined, "content_base64") {
+			t.Fatalf("sensitive input fields = %#v", action.SensitiveInputFields)
+		}
+		return
+	}
+	t.Fatal("upload_object action not found")
+}
+
 func TestExecuteListObjectsSignsBoundedRequest(t *testing.T) {
 	var requestedPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

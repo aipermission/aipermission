@@ -298,7 +298,8 @@ func objectActions() []connectors.ActionDefinition {
 				{Name: "content_type", Label: "Content type", Type: connectors.FieldString, Default: "application/octet-stream", Description: "Object content type to send with the upload."},
 				{Name: "overwrite", Label: "Overwrite existing object", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless the operator explicitly approved replacing an existing object."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+			SensitiveInputFields: []string{"content_text", "content_base64"},
+			OutputHint:           connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
 		{
 			Name:        ActionDeleteObject,

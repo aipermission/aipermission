@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -37,7 +39,7 @@ func TestMergeConnectorCredentialSecretsPreservesUnchangedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
-	previous, err := secretVault.EncryptJSON(map[string]any{
+	previous, err := recordcrypto.EncryptJSON(secretVault, "credential-test-workspace", recordcrypto.ConnectorCredentialProfile, 1, map[string]any{
 		"primary_username":   "operator@example.com",
 		"primary_password":   "old-primary-password",
 		"secondary_username": "service@example.com",
@@ -46,7 +48,8 @@ func TestMergeConnectorCredentialSecretsPreservesUnchangedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encrypt previous secret: %v", err)
 	}
-	merged, err := mergeConnectorCredentialSecrets(&databaseRuntime{vault: secretVault}, previous, map[string]any{
+	profile := &connectors.CredentialProfileView{ID: 1}
+	merged, err := mergeConnectorCredentialSecrets(&databaseRuntime{vault: secretVault, workspaceUUID: "credential-test-workspace"}, profile, previous, map[string]any{
 		"secondary_password": "new-secondary-password",
 	})
 	if err != nil {
@@ -65,11 +68,12 @@ func TestMergeConnectorCredentialSecretsLoadsPreviousFieldsForMetadataOnlyEdit(t
 	if err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
-	previous, err := secretVault.EncryptJSON(map[string]any{"username": "support", "password": "secret"})
+	previous, err := recordcrypto.EncryptJSON(secretVault, "credential-test-workspace", recordcrypto.ConnectorCredentialProfile, 1, map[string]any{"username": "support", "password": "secret"})
 	if err != nil {
 		t.Fatalf("encrypt previous secret: %v", err)
 	}
-	merged, err := mergeConnectorCredentialSecrets(&databaseRuntime{vault: secretVault}, previous, nil)
+	profile := &connectors.CredentialProfileView{ID: 1}
+	merged, err := mergeConnectorCredentialSecrets(&databaseRuntime{vault: secretVault, workspaceUUID: "credential-test-workspace"}, profile, previous, nil)
 	if err != nil {
 		t.Fatalf("merge secrets: %v", err)
 	}
@@ -83,11 +87,12 @@ func TestMergeConnectorCredentialSecretsAllowsExplicitRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
-	previous, err := secretVault.EncryptJSON(map[string]any{"password": "secret", "session_token": "temporary"})
+	previous, err := recordcrypto.EncryptJSON(secretVault, "credential-test-workspace", recordcrypto.ConnectorCredentialProfile, 1, map[string]any{"password": "secret", "session_token": "temporary"})
 	if err != nil {
 		t.Fatalf("encrypt previous secret: %v", err)
 	}
-	merged, err := mergeConnectorCredentialSecrets(&databaseRuntime{vault: secretVault}, previous, map[string]any{"session_token": nil})
+	profile := &connectors.CredentialProfileView{ID: 1}
+	merged, err := mergeConnectorCredentialSecrets(&databaseRuntime{vault: secretVault, workspaceUUID: "credential-test-workspace"}, profile, previous, map[string]any{"session_token": nil})
 	if err != nil {
 		t.Fatalf("merge secrets: %v", err)
 	}
@@ -102,7 +107,7 @@ func TestMergeConnectorCredentialSecretsAllowsExplicitRemoval(t *testing.T) {
 func TestTransportConfigRejectsTargetsWithoutReviewedTCPAdapter(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	err := fixture.server.validateConnectorTransportConfig(context.Background(), store, target.ProjectID, map[string]any{
 		"connection_mode":      "over_ssh",
 		"transport_target_ref": connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID),
