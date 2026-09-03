@@ -360,6 +360,65 @@ func TestManagedConsoleSessionRedactsVaultValueAcrossOutputChunks(t *testing.T) 
 	}
 }
 
+func TestSecretLeakCanaryNeverEntersConsoleTranscript(t *testing.T) {
+	const canary = "AIPERMISSION_SECRET_CANARY_43_9f7c2e"
+	database, _, session := newManualHistoryTestSession(t)
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+		Name: "CANARY_TOKEN", Value: []byte(canary),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer envelope.Destroy()
+	redactor, err := envelope.ExactValueRedactor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.exactRedactor = redactor
+
+	session.appendOutput("canary=" + canary[:17])
+	session.appendOutput(canary[17:] + "\n")
+	session.appendDisplayOutput("[AI command]\n$ printf '" + canary + "'\n")
+	session.flushTranscript()
+
+	var snapshot string
+	if err := database.QueryRow(`SELECT transcript FROM console_sessions WHERE id = ?`, session.id).Scan(&snapshot); err != nil {
+		t.Fatalf("read persisted console snapshot: %v", err)
+	}
+	rows, err := database.Query(`SELECT data FROM console_session_chunks WHERE session_id = ? ORDER BY seq`, session.id)
+	if err != nil {
+		t.Fatalf("read persisted console chunks: %v", err)
+	}
+	defer rows.Close()
+	var persistedChunks strings.Builder
+	for rows.Next() {
+		var chunk string
+		if err := rows.Scan(&chunk); err != nil {
+			t.Fatalf("scan persisted console chunk: %v", err)
+		}
+		persistedChunks.WriteString(chunk)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate persisted console chunks: %v", err)
+	}
+
+	for surface, value := range map[string]string{
+		"raw transcript":              session.rawTranscript,
+		"display transcript":          session.transcript,
+		"persistence text":            session.redactForPersistence("result=" + canary),
+		"persisted transcript":        snapshot,
+		"persisted transcript chunks": persistedChunks.String(),
+	} {
+		if strings.Contains(value, canary) {
+			t.Fatalf("%s leaked the secret canary: %q", surface, value)
+		}
+		if !strings.Contains(value, "[REDACTED VAULT VALUE]") {
+			t.Fatalf("%s is missing the redaction marker: %q", surface, value)
+		}
+	}
+	session.closeExactRedactor()
+}
+
 func TestManagedConsoleSessionKeepsStdoutAndStderrRedactionStateIndependent(t *testing.T) {
 	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
 		Name: "MY_PROJECT_TOKEN", Value: []byte("secret-value"),

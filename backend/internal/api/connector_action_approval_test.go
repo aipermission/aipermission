@@ -47,12 +47,21 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("call connector action: %v", err)
 	}
+	approvalPath := "/api/connector-action-approvals/" + strconv.FormatInt(result.Request.ID, 10)
+	unauthenticatedDetail := performJSONWithoutUICookie(fixture.server.Handler(), http.MethodGet, approvalPath, "", nil)
+	if unauthenticatedDetail.Code != http.StatusUnauthorized || strings.Contains(unauthenticatedDetail.Body.String(), "select 1") {
+		t.Fatalf("approval detail must require an authenticated local UI session: %d %s", unauthenticatedDetail.Code, unauthenticatedDetail.Body.String())
+	}
+	tokenDetail := performJSON(fixture.server.Handler(), http.MethodGet, approvalPath, token.TokenValue, nil)
+	if tokenDetail.Code != http.StatusUnauthorized || strings.Contains(tokenDetail.Body.String(), "select 1") {
+		t.Fatalf("MCP token must not access exact approval preview: %d %s", tokenDetail.Code, tokenDetail.Body.String())
+	}
 
 	listResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?status=approval_pending", "", nil)
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list connector approvals failed: %d %s", listResponse.Code, listResponse.Body.String())
 	}
-	detailResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10), "", nil)
+	detailResponse := performJSON(fixture.server.Handler(), http.MethodGet, approvalPath, "", nil)
 	if detailResponse.Code != http.StatusOK || !strings.Contains(detailResponse.Body.String(), "select 1") {
 		t.Fatalf("approval detail must expose exact pending preview: %d %s", detailResponse.Code, detailResponse.Body.String())
 	}
