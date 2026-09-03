@@ -35,11 +35,17 @@ test("nginx CSP keeps browser connections local plus manual update checks", () =
 });
 
 test("nginx keeps route-specific upload limits and JSON error responses aligned", () => {
-  assert.match(nginxSource, /client_max_body_size 256m/);
+  assert.match(nginxSource, /server \{[\s\S]*client_max_body_size 1m/);
+  assert.match(nginxSource, /location = \/api\/connector-actions\/local-run[\s\S]*client_max_body_size 32m/);
+  assert.match(nginxSource, /location = \/api\/mcp\/connector-actions\/call[\s\S]*client_max_body_size 32m/);
+  assert.match(nginxSource, /location = \/api\/backup\/import[\s\S]*client_max_body_size 256m/);
+  assert.match(nginxSource, /location ~ \^\/api\/connector-targets\/[\s\S]*client_max_body_size 256m/);
   assert.match(nginxSource, /location = \/api\/file-transfers\/upload[\s\S]*client_max_body_size 528m/);
   assert.match(nginxSource, /location = \/api\/file-transfers\/upload-batch[\s\S]*client_max_body_size 1040m/);
-  assert.match(nginxSource, /error_page 413 = @payload_too_large/);
+  assert.match(nginxSource, /error_page 413 = @json_payload_too_large/);
+  assert.match(nginxSource, /request_body_too_large/);
   assert.match(nginxSource, /Uploaded database is too large/);
+  assert.match(nginxSource, /Uploaded restore file is too large/);
   assert.match(nginxSource, /Maximum file size is 512 MiB/);
   assert.match(nginxSource, /Maximum batch size is 1 GiB/);
   assert.doesNotMatch(nginxSource, /proxy_intercept_errors\s+on/);

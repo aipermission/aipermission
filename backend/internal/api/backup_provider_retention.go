@@ -34,8 +34,7 @@ func (s backupHandlers) previewBackupProviderRetention(w http.ResponseWriter, r 
 		return
 	}
 	var request pruneBackupProviderRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if request.KeepLatest < 1 || request.KeepLatest > 1000 {
@@ -56,8 +55,7 @@ func (s backupHandlers) updateBackupProviderRetention(w http.ResponseWriter, r *
 		return
 	}
 	var request updateBackupRetentionRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if (request.Enabled && (request.KeepLatest < 1 || request.KeepLatest > 1000)) || (!request.Enabled && request.KeepLatest != 0) {

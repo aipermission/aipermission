@@ -49,8 +49,7 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var input createConsoleSessionRequest
-	if err := decodeJSON(w, r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &input) {
 		return
 	}
 	request := console.CreateRequest{
@@ -178,8 +177,7 @@ func (s consoleHandlers) inputConsoleSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var request console.InputRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	principal, err := localExecutionPrincipal(runtime)

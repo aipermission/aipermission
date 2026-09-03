@@ -37,8 +37,7 @@ type changeDatabasePasswordRequest struct {
 
 func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request) {
 	var request renameDatabaseRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.CurrentPassword)
@@ -100,8 +99,7 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 
 func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request) {
 	var request deleteDatabaseRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.CurrentPassword)
@@ -171,8 +169,7 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 
 func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Request) {
 	var request deleteLockedDatabaseRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.CurrentPassword)
@@ -233,8 +230,7 @@ func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Re
 
 func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request) {
 	var request switchDatabaseRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.Password)
@@ -326,8 +322,7 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 
 func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.Request) {
 	var request changeDatabasePasswordRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.CurrentPassword, &request.NewPassword, &request.ConfirmPassword)

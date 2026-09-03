@@ -60,8 +60,7 @@ func writeDatabaseUnlockError(w http.ResponseWriter, err error) {
 
 func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 	var request setupUnlockRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.Password, &request.ConfirmPassword)
@@ -112,8 +111,7 @@ func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 
 func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 	var request unlockRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.Password)
@@ -223,8 +221,7 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 		Scope string `json:"scope"`
 	}
 	if r.Body != nil && r.ContentLength != 0 {
-		if err := decodeJSON(w, r, &request); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json body")
+		if !decodeJSON(w, r, &request) {
 			return
 		}
 	}

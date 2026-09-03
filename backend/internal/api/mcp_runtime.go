@@ -40,8 +40,7 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request updateMCPRuntimeRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	var release func()

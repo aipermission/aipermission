@@ -37,8 +37,7 @@ func (s tokenHandlers) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request tokens.CreateRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 

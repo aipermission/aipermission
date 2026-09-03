@@ -129,8 +129,7 @@ func (s backupHandlers) createProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request backupProviderRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if !validateBackupProviderPayload(w, request.Public, request.Secret) {
@@ -180,8 +179,7 @@ func (s backupHandlers) updateProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request backupProviderRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if !validateBackupProviderPayload(w, request.Public, request.Secret) {
@@ -264,8 +262,7 @@ func (s backupHandlers) enableProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request enableBackupProviderRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.CurrentPassword)

@@ -114,8 +114,7 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		return
 	}
 	var request createConnectorTargetRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	registry := runtime.connectorRegistry()

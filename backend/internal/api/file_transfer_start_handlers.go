@@ -261,8 +261,7 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var request startDownloadRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	remotePath, err := normalizeRemoteFilePath(request.RemotePath)
@@ -329,8 +328,7 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 		return
 	}
 	var request startDownloadBatchRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)

@@ -123,8 +123,7 @@ func (s vaultItemHandlers) createVaultItem(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var request createVaultItemRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	input := projectvault.CreateInput{
@@ -177,8 +176,7 @@ func (s vaultItemHandlers) updateVaultItem(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var request updateVaultItemRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())
@@ -239,8 +237,7 @@ func (s vaultItemHandlers) replaceVaultItemValue(w http.ResponseWriter, r *http.
 		return
 	}
 	var request replaceVaultItemValueRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.Source = strings.TrimSpace(request.Source)
@@ -335,8 +332,7 @@ func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *ht
 		return
 	}
 	var request generateVaultItemPreviewRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.GeneratorKind = strings.TrimSpace(request.GeneratorKind)
@@ -480,8 +476,7 @@ func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var request deleteVaultItemRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())

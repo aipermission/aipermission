@@ -129,8 +129,7 @@ func (s backupHandlers) pruneProviderBackups(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var request pruneBackupProviderRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if request.KeepLatest < 1 || request.KeepLatest > 1000 {
@@ -168,8 +167,7 @@ func (s backupHandlers) deleteProviderBackupRecords(w http.ResponseWriter, r *ht
 		return
 	}
 	var request deleteBackupRecordsRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if len(request.RecordIDs) < 1 || len(request.RecordIDs) > 100 {
@@ -254,8 +252,7 @@ func (s backupHandlers) restoreProviderRecord(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var request restoreBackupRecordRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.DatabasePassword)

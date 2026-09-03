@@ -54,8 +54,7 @@ func (s securityHandlers) updateSecuritySettings(w http.ResponseWriter, r *http.
 		return
 	}
 	var request updateSecuritySettingsRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	settings := securitySettingsResponse{

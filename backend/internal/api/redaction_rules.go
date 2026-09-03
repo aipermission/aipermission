@@ -53,8 +53,7 @@ func (s redactionRuleHandlers) createRedactionRule(w http.ResponseWriter, r *htt
 		return
 	}
 	var request redactionRuleRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request = normalizeRedactionRuleRequest(request)
@@ -99,8 +98,7 @@ func (s redactionRuleHandlers) updateRedactionRule(w http.ResponseWriter, r *htt
 		return
 	}
 	var request redactionRuleRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request = normalizeRedactionRuleRequest(request)

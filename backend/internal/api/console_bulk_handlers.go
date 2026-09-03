@@ -44,8 +44,7 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var request bulkConsoleCommandRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.Command = strings.TrimSpace(request.Command)

@@ -133,8 +133,7 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var input mcpVaultActionCallRequest
-	if err := decodeJSON(w, r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &input) {
 		return
 	}
 	input.ProjectRef = strings.TrimSpace(input.ProjectRef)

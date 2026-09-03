@@ -189,8 +189,7 @@ func (s fileTransferHandlers) updateFileTransferBatchQueue(w http.ResponseWriter
 		return
 	}
 	var request updateFileTransferBatchQueueRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	removed, err := runtime.fileTransfers.UpdatePausedBatchQueue(r.Context(), id, request.ItemIDs)
@@ -233,8 +232,7 @@ func (s fileTransferHandlers) approveFileTransferBatch(w http.ResponseWriter, r 
 		return
 	}
 	var request approveFileTransferBatchRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	batch, rejected, err := runtime.fileTransfers.ApproveBatch(r.Context(), id, filetransfer.BatchApprovalRequest{
@@ -284,8 +282,7 @@ func (s fileTransferHandlers) declineFileTransferBatch(w http.ResponseWriter, r 
 		return
 	}
 	var request declineFileTransferBatchRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	batch, rejected, err := runtime.fileTransfers.DeclineBatch(r.Context(), id, request.Note)

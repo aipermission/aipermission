@@ -42,8 +42,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		return
 	}
 	var request createConnectorCredentialProfileRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	store := connectortargets.NewStore(runtime.database)
@@ -112,8 +111,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		return
 	}
 	var request updateConnectorCredentialProfileRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	store := connectortargets.NewStore(runtime.database)
