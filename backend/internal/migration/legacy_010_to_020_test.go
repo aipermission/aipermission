@@ -10,6 +10,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -117,13 +118,18 @@ func TestRecoveryDrillLegacy010To020CopiesMinimumSSHConfiguration(t *testing.T) 
 	if err != nil {
 		t.Fatalf("create target vault: %v", err)
 	}
-	privateKey, err := sshkeys.NewStore(targetDB, secretVault).GetPrivateKey(ctx, 1)
+	workspaceID, err := projectvault.EnsureWorkspaceUUID(ctx, targetDB)
+	if err != nil {
+		t.Fatalf("read migrated workspace UUID: %v", err)
+	}
+	privateKey, err := sshkeys.NewStore(targetDB, secretVault, workspaceID).GetPrivateKey(ctx, 1)
 	if err != nil {
 		t.Fatalf("read migrated private key: %v", err)
 	}
 	if privateKey.PrivateKey == "" {
 		t.Fatalf("migrated private key should decrypt")
 	}
+	assertCount(t, targetDB, `SELECT COUNT(*) FROM settings WHERE key = 'encrypted_record_envelope_version' AND value = '1'`, 1)
 }
 
 func TestMigrateLegacy010To020KeepsOldSourcePasswordButRequiresStrongNewPassword(t *testing.T) {

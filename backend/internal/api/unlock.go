@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -51,11 +52,27 @@ func (status unlockStatusResponse) withoutLocalPaths() unlockStatusResponse {
 }
 
 func writeDatabaseUnlockError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errDatabaseAuthentication) {
+		writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
+		return
+	}
 	if message := db.UnsupportedSchemaMessage(err); message != "" {
 		writeError(w, http.StatusConflict, message)
 		return
 	}
-	writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
+	if errors.Is(err, errDatabaseInitialization) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "database runtime initialization failed")
+}
+
+func recordDatabaseUnlockAttempt(attempt databasePasswordAttempt, err error) {
+	if errors.Is(err, errDatabaseAuthentication) {
+		attempt.failure()
+		return
+	}
+	attempt.success()
 }
 
 func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
@@ -139,11 +156,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 			s.activeDataPath = targetPath
 			s.activeDatabase = targetID
 			if err := s.openUnlockedLocked(request.Password); err != nil {
-				if db.UnsupportedSchemaMessage(err) == "" {
-					attempt.failure()
-				} else {
-					attempt.success()
-				}
+				recordDatabaseUnlockAttempt(attempt, err)
 				writeDatabaseUnlockError(w, err)
 				return
 			}
@@ -195,11 +208,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.openUnlockedLocked(request.Password); err != nil {
-		if db.UnsupportedSchemaMessage(err) == "" {
-			attempt.failure()
-		} else {
-			attempt.success()
-		}
+		recordDatabaseUnlockAttempt(attempt, err)
 		writeDatabaseUnlockError(w, err)
 		return
 	}

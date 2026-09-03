@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -19,6 +22,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
+)
+
+var (
+	errDatabaseAuthentication = errors.New("database authentication failed")
+	errDatabaseInitialization = errors.New("database initialization failed")
 )
 
 func (s *Server) isUnlocked() bool {
@@ -109,6 +117,21 @@ func (s *Server) moveDatabase(currentPath string, targetPath string) error {
 }
 
 func (s *Server) openRuntime(path string, id string, password string) (*databaseRuntime, error) {
+	existingDatabase := db.Exists(path)
+	snapshotsBeforeOpen := preMigrationSnapshotSet(path)
+	if existingDatabase {
+		if err := db.ValidateEncrypted(path, password); err != nil {
+			return nil, fmt.Errorf("%w: encrypted database validation failed", errDatabaseAuthentication)
+		}
+	}
+	runtime, err := s.openValidatedRuntime(path, id, password)
+	if err == nil || !existingDatabase {
+		return runtime, err
+	}
+	return nil, databaseInitializationError(path, err, snapshotsBeforeOpen)
+}
+
+func (s *Server) openValidatedRuntime(path string, id string, password string) (*databaseRuntime, error) {
 	database, err := db.OpenEncrypted(path, password)
 	if err != nil {
 		return nil, err
@@ -168,6 +191,34 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 	s.configureVaultSessionRuntime(runtime)
 	s.configureAuditDispatcher(runtime)
 	return runtime, nil
+}
+
+func databaseInitializationError(path string, cause error, snapshotsBeforeOpen map[string]struct{}) error {
+	err := fmt.Errorf("%w: %w", errDatabaseInitialization, cause)
+	matches, globErr := filepath.Glob(path + ".pre-migration-v*.aipdb")
+	if globErr != nil {
+		return err
+	}
+	created := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if _, existed := snapshotsBeforeOpen[match]; !existed {
+			created = append(created, match)
+		}
+	}
+	if len(created) == 0 {
+		return err
+	}
+	sort.Strings(created)
+	return fmt.Errorf("%w; encrypted pre-migration snapshot retained at %s", err, created[len(created)-1])
+}
+
+func preMigrationSnapshotSet(path string) map[string]struct{} {
+	matches, _ := filepath.Glob(path + ".pre-migration-v*.aipdb")
+	set := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		set[match] = struct{}{}
+	}
+	return set
 }
 
 func gatewaySecretFromDatabase(database *sql.DB, fallback string) (string, error) {

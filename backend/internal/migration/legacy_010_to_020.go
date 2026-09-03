@@ -12,6 +12,8 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -159,6 +161,17 @@ func MigrateLegacy010To020(ctx context.Context, request Legacy010To020Request) (
 	result, err := migrateLegacyRows(ctx, sourceDB, targetDB, sourceSecret)
 	if err != nil {
 		return Legacy010To020Result{}, err
+	}
+	workspaceID, err := projectvault.EnsureWorkspaceUUID(ctx, targetDB)
+	if err != nil {
+		return Legacy010To020Result{}, fmt.Errorf("initialize migrated workspace identity: %w", err)
+	}
+	targetVault, err := vault.New(sourceSecret)
+	if err != nil {
+		return Legacy010To020Result{}, err
+	}
+	if _, err := recordcrypto.RewriteLegacy(ctx, targetDB, targetVault, workspaceID); err != nil {
+		return Legacy010To020Result{}, fmt.Errorf("bind migrated encrypted records: %w", err)
 	}
 	if err := targetDB.Close(); err != nil {
 		return Legacy010To020Result{}, fmt.Errorf("close migrated target database: %w", err)

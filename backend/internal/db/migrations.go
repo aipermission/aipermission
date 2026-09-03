@@ -20,11 +20,30 @@ func UnsupportedSchemaMessage(err error) string {
 	if !errors.Is(err, ErrUnsupportedSchema) {
 		return ""
 	}
-	message := strings.TrimPrefix(err.Error(), ErrUnsupportedSchema.Error()+": ")
-	if message == err.Error() {
-		return "database uses an unsupported schema"
+	if message := unsupportedSchemaMessageInChain(err); message != "" {
+		return message
 	}
-	return message
+	return "database uses an unsupported schema"
+}
+
+func unsupportedSchemaMessageInChain(err error) string {
+	if err == nil {
+		return ""
+	}
+	prefix := ErrUnsupportedSchema.Error() + ": "
+	if strings.HasPrefix(err.Error(), prefix) {
+		return strings.TrimPrefix(err.Error(), prefix)
+	}
+	type multiUnwrapper interface{ Unwrap() []error }
+	if joined, ok := err.(multiUnwrapper); ok {
+		for _, nested := range joined.Unwrap() {
+			if message := unsupportedSchemaMessageInChain(nested); message != "" {
+				return message
+			}
+		}
+		return ""
+	}
+	return unsupportedSchemaMessageInChain(errors.Unwrap(err))
 }
 
 type migration struct {
@@ -1327,6 +1346,9 @@ var migrations = []migration{
 		},
 	},
 	retentionIndexMigration,
+	recordEnvelopeBoundaryMigration,
+	s3UploadProjectionScrubMigration,
+	recordEnvelopeWriteGuardMigration,
 }
 
 func sqlStatements(groups ...[]string) []string {

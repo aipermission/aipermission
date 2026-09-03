@@ -159,12 +159,13 @@ func MoveDatabase(currentPath string, targetPath string) error {
 }
 
 func DeleteDatabase(path string) error {
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("delete database: %w", err)
+	var cleanupErrors []error
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Remove(candidate); err != nil && !os.IsNotExist(err) {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("delete database file %q: %w", candidate, err))
+		}
 	}
-	_ = os.Remove(path + "-wal")
-	_ = os.Remove(path + "-shm")
-	return nil
+	return errors.Join(cleanupErrors...)
 }
 
 func DatabasesDir(defaultPath string) string {

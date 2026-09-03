@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -151,6 +152,13 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if strings.Contains(connectorTriggerSQL, "upload_files") {
 		t.Fatalf("ssh permission mirror trigger should not create unsupported upload_files action:\n%s", connectorTriggerSQL)
 	}
+	if _, err := database.Exec(`
+		INSERT INTO connector_action_requests (
+			target_id, profile_id, connector_kind, action_name, status, session_id, created_at
+		) VALUES (999, 999, 'test', 'test', 'running', 1, datetime('now'))
+	`); err == nil || !strings.Contains(err.Error(), "session_id and session_generation") {
+		t.Fatalf("partial connector action session handle should be rejected, got %v", err)
+	}
 	var foreignKeys int
 	if err := database.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
 		t.Fatalf("query foreign keys pragma: %v", err)
@@ -166,6 +174,335 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if wrong, err := OpenEncrypted(path, "wrong-password"); err == nil {
 		_ = wrong.Close()
 		t.Fatalf("expected wrong password to fail")
+	}
+}
+
+func TestOpenEncryptedSnapshotsSchema18BeforeRecordEnvelopeBoundary(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "schema-18.aipdb")
+	password := "SnapshotBoundaryPassword123"
+	database, err := OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatalf("create current database: %v", err)
+	}
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	requestResult, err := database.Exec(`
+		INSERT INTO connector_action_requests (
+			target_id, profile_id, connector_kind, action_name, status, created_at
+		) VALUES (?, ?, 'postgres', 'query_readonly', 'completed', datetime('now'))`, targetID, profileID)
+	if err != nil {
+		t.Fatalf("insert schema 18 action fixture: %v", err)
+	}
+	requestID, err := requestResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("read schema 18 action id: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO history_entries (
+			source_ref_type, source_ref_id, connector_kind, activity_type, status, created_at, updated_at
+		) VALUES ('connector_action_request', ?, 'postgres', 'action', 'completed', datetime('now'), datetime('now'))`, requestID); err != nil {
+		t.Fatalf("insert schema 18 history fixture: %v", err)
+	}
+	if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatalf("remove request retry policy from schema 18 fixture: %v", err)
+	}
+	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
+	}
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 19`); err != nil {
+		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close schema 18 fixture: %v", err)
+	}
+
+	database, err = OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatalf("migrate schema 18 fixture: %v", err)
+	}
+	for _, table := range []string{"connector_action_requests", "history_entries"} {
+		var policy string
+		if err := database.QueryRow(`SELECT retry_policy_json FROM ` + table + ` LIMIT 1`).Scan(&policy); err != nil {
+			t.Fatalf("read migrated %s retry policy: %v", table, err)
+		}
+		if !strings.Contains(policy, `"class":"non_idempotent"`) || !strings.Contains(policy, `"guidance":`) {
+			t.Fatalf("migrated %s retry policy = %q", table, policy)
+		}
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close migrated database: %v", err)
+	}
+	snapshots, err := filepath.Glob(path + ".pre-migration-v18-*.aipdb")
+	if err != nil {
+		t.Fatalf("list pre-migration snapshots: %v", err)
+	}
+	if len(snapshots) != 1 {
+		t.Fatalf("pre-migration snapshots = %d, want 1", len(snapshots))
+	}
+	if err := ValidateEncrypted(snapshots[0], password); err != nil {
+		t.Fatalf("validate schema 18 snapshot: %v", err)
+	}
+}
+
+func TestOpenEncryptedScrubsLegacyS3UploadProjections(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "schema-19.aipdb")
+	password := "S3ProjectionScrubPassword123"
+	database, err := OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatalf("create current database: %v", err)
+	}
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	requestResult, err := database.Exec(`
+		INSERT INTO connector_action_requests (
+			target_id, profile_id, connector_kind, action_name, status,
+			preview_json, input_json, encrypted_payload_json, created_at
+		) VALUES (?, ?, 's3', 'upload_object', 'completed', ?, ?, ?, datetime('now'))`,
+		targetID,
+		profileID,
+		`{"key":"artifact.txt","content_text":"legacy-preview-text","content_base64":"bGVnYWN5LXByZXZpZXctYnl0ZXM="}`,
+		`{"key":"artifact.txt","content_text":"legacy-text","content_base64":"bGVnYWN5LWJ5dGVz"}`,
+		"encrypted-action-envelope",
+	)
+	if err != nil {
+		t.Fatalf("insert legacy S3 action: %v", err)
+	}
+	requestID, err := requestResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("read legacy S3 action id: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO history_entries (
+			source_ref_type, source_ref_id, connector_kind, activity_type,
+			target_id, profile_id, status, action_name, preview_json, input_json,
+			created_at, updated_at
+		) VALUES ('connector_action_request', ?, 's3', 'action', ?, ?,
+			'completed', 'upload_object', ?, ?, datetime('now'), datetime('now'))`,
+		requestID,
+		targetID,
+		profileID,
+		`{"key":"artifact.txt","content_text":"legacy-preview-text","content_base64":"bGVnYWN5LXByZXZpZXctYnl0ZXM="}`,
+		`{"key":"artifact.txt","content_text":"legacy-text","content_base64":"bGVnYWN5LWJ5dGVz"}`,
+	); err != nil {
+		t.Fatalf("insert legacy S3 history projection: %v", err)
+	}
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 20`); err != nil {
+		t.Fatalf("downgrade fixture metadata to schema 19: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close schema 19 fixture: %v", err)
+	}
+
+	database, err = OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatalf("migrate schema 19 fixture: %v", err)
+	}
+	defer database.Close()
+	for _, table := range []string{"connector_action_requests", "history_entries"} {
+		var previewJSON, inputJSON string
+		if err := database.QueryRow(`SELECT preview_json, input_json FROM `+table+` WHERE connector_kind = 's3' AND action_name = 'upload_object' LIMIT 1`).Scan(&previewJSON, &inputJSON); err != nil {
+			t.Fatalf("read migrated %s projections: %v", table, err)
+		}
+		if strings.Contains(inputJSON, "legacy-text") || strings.Contains(inputJSON, "bGVnYWN5LWJ5dGVz") {
+			t.Fatalf("migrated %s retained upload content: %s", table, inputJSON)
+		}
+		if strings.Count(inputJSON, "[REDACTED]") != 2 {
+			t.Fatalf("migrated %s input = %s, want both upload fields redacted", table, inputJSON)
+		}
+		if strings.Contains(previewJSON, "legacy-preview") || strings.Count(previewJSON, "[REDACTED]") != 2 {
+			t.Fatalf("migrated %s preview = %s, want both upload fields redacted", table, previewJSON)
+		}
+	}
+	var encryptedPayload string
+	if err := database.QueryRow(`SELECT encrypted_payload_json FROM connector_action_requests WHERE id = ?`, requestID).Scan(&encryptedPayload); err != nil {
+		t.Fatalf("read encrypted action payload: %v", err)
+	}
+	if encryptedPayload != "encrypted-action-envelope" {
+		t.Fatalf("encrypted action payload = %q, want unchanged envelope", encryptedPayload)
+	}
+}
+
+func TestRecordEnvelopeWriteGuardsRejectLegacySecretWritesAfterMarker(t *testing.T) {
+	database, err := OpenEncrypted(filepath.Join(t.TempDir(), "envelope-guards.aipdb"), "EnvelopeGuardPassword123")
+	if err != nil {
+		t.Fatalf("open encrypted database: %v", err)
+	}
+	defer database.Close()
+	var guardCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'guard_%_envelope_%'`).Scan(&guardCount); err != nil {
+		t.Fatalf("count record envelope guards: %v", err)
+	}
+	if guardCount != 12 {
+		t.Fatalf("record envelope guard count = %d, want 12", guardCount)
+	}
+	if _, err := database.Exec(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))`, recordEnvelopeMarkerKey, "1"); err != nil {
+		t.Fatalf("insert envelope marker: %v", err)
+	}
+
+	_, err = database.Exec(`
+		INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, created_at, updated_at)
+		VALUES ('legacy-token', 'legacy-token-hash', 'aip_legacy', 'legacy-ciphertext', datetime('now'), datetime('now'))`)
+	if err == nil || !strings.Contains(err.Error(), "record-bound encrypted envelope is required") {
+		t.Fatalf("legacy token insert error = %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, created_at, updated_at)
+		VALUES ('current-token', 'current-token-hash', 'aip_current', '', datetime('now'), datetime('now'))`); err != nil {
+		t.Fatalf("insert token without reusable value: %v", err)
+	}
+	_, err = database.Exec(`UPDATE api_tokens SET token_value = 'legacy-ciphertext' WHERE name = 'current-token'`)
+	if err == nil || !strings.Contains(err.Error(), "record-bound encrypted envelope is required") {
+		t.Fatalf("legacy token update error = %v", err)
+	}
+	validShape := `{"version":1,"algorithm":"AES-256-GCM","nonce":"nonce","ciphertext":"ciphertext"}`
+	if _, err := database.Exec(`UPDATE api_tokens SET token_value = ? WHERE name = 'current-token'`, validShape); err != nil {
+		t.Fatalf("record envelope-shaped token update was rejected: %v", err)
+	}
+}
+
+func TestRecordEnvelopeWriteGuardMigrationRejectsExistingInvalidShape(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "invalid-envelope.aipdb")
+	password := "InvalidEnvelopePassword123"
+	database, err := OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatalf("open encrypted database: %v", err)
+	}
+	for _, recordType := range []string{
+		"connector_credential_profile", "connector_credential_resource", "api_token",
+		"connector_action_request", "command_request", "backup_provider",
+	} {
+		for _, operation := range []string{"insert", "update"} {
+			if _, err := database.Exec(`DROP TRIGGER guard_` + recordType + `_envelope_` + operation); err != nil {
+				t.Fatalf("drop %s %s guard: %v", recordType, operation, err)
+			}
+		}
+	}
+	if _, err := database.Exec(`
+		INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, created_at, updated_at)
+		VALUES ('invalid-token', 'invalid-token-hash', 'aip_invalid', 'legacy-ciphertext', datetime('now'), datetime('now'))`); err != nil {
+		t.Fatalf("insert invalid envelope fixture: %v", err)
+	}
+	if _, err := database.Exec(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))`, recordEnvelopeMarkerKey, "1"); err != nil {
+		t.Fatalf("insert envelope marker: %v", err)
+	}
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 21`); err != nil {
+		t.Fatalf("downgrade fixture metadata to schema 20: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close schema 20 fixture: %v", err)
+	}
+
+	opened, err := OpenEncrypted(path, password)
+	if opened != nil {
+		_ = opened.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "invalid record envelope") {
+		t.Fatalf("write guard migration error = %v", err)
+	}
+}
+
+func TestRecordEnvelopeBoundaryRejectsExistingPartialSessionHandle(t *testing.T) {
+	for name, open := range map[string]func(string, string) (*sql.DB, error){
+		"normal migration": OpenEncrypted,
+		"import migration": OpenEncryptedImportCandidate,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "partial-session-handle.aipdb")
+			password := "PartialSessionHandlePassword123"
+			database, err := OpenEncrypted(path, password)
+			if err != nil {
+				t.Fatalf("create current database: %v", err)
+			}
+			targetID, profileID := insertConnectorTargetAndProfile(t, database)
+			for _, trigger := range []string{
+				"connector_action_requests_session_pair_insert",
+				"connector_action_requests_session_pair_update",
+			} {
+				if _, err := database.Exec(`DROP TRIGGER ` + trigger); err != nil {
+					t.Fatalf("remove current session-pair trigger %s: %v", trigger, err)
+				}
+			}
+			if _, err := database.Exec(`
+				INSERT INTO connector_action_requests (
+					target_id, profile_id, connector_kind, action_name, status,
+					session_id, session_generation, created_at
+				) VALUES (?, ?, 'test', 'test', 'running', 7, NULL, datetime('now'))
+			`, targetID, profileID); err != nil {
+				t.Fatalf("insert partial session handle fixture: %v", err)
+			}
+			if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
+				t.Fatalf("remove request retry policy from schema 18 fixture: %v", err)
+			}
+			if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
+				t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
+			}
+			if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 19`); err != nil {
+				t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
+			}
+			if err := database.Close(); err != nil {
+				t.Fatalf("close schema 18 fixture: %v", err)
+			}
+
+			opened, err := open(path, password)
+			if opened != nil {
+				_ = opened.Close()
+			}
+			if err == nil || !strings.Contains(err.Error(), "partial session handle") {
+				t.Fatalf("migration error = %v, want partial session handle rejection", err)
+			}
+		})
+	}
+}
+
+func TestOpenEncryptedImportCandidateMigratesWithoutSnapshot(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "schema-18.import")
+	password := "ImportCandidatePassword123"
+	database, err := OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatalf("create current database: %v", err)
+	}
+	if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatalf("remove request retry policy from schema 18 fixture: %v", err)
+	}
+	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
+	}
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 19`); err != nil {
+		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close schema 18 fixture: %v", err)
+	}
+
+	database, err = OpenEncryptedImportCandidate(path, password)
+	if err != nil {
+		t.Fatalf("migrate import candidate: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close migrated import candidate: %v", err)
+	}
+	var version int
+	verified, err := OpenEncryptedForMigration(path, password)
+	if err != nil {
+		t.Fatalf("open migrated import candidate: %v", err)
+	}
+	if err := verified.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
+		_ = verified.Close()
+		t.Fatalf("read migrated schema version: %v", err)
+	}
+	if err := verified.Close(); err != nil {
+		t.Fatalf("close verified import candidate: %v", err)
+	}
+	if version != currentSchemaVersion {
+		t.Fatalf("schema version = %d, want %d", version, currentSchemaVersion)
+	}
+	snapshots, err := filepath.Glob(path + ".pre-migration-*.aipdb")
+	if err != nil {
+		t.Fatalf("list import candidate snapshots: %v", err)
+	}
+	if len(snapshots) != 0 {
+		t.Fatalf("disposable import candidate left %d pre-migration snapshot(s)", len(snapshots))
 	}
 }
 
@@ -185,7 +522,7 @@ func TestConnectorTargetsRequireProjectIdentity(t *testing.T) {
 
 func TestOpenEncryptedMigratesConnectorNativeBaseline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secure.db")
-	database, err := openEncrypted(path, "correct-password", false)
+	database, err := openEncrypted(path, "correct-password", openOptions{})
 	if err != nil {
 		t.Fatalf("open encrypted db: %v", err)
 	}
@@ -221,7 +558,7 @@ func TestOpenEncryptedMigratesConnectorNativeBaseline(t *testing.T) {
 
 func TestOpenEncryptedAppliesAuditRecoveryThenRepairsVaultSessionLeaseSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault-session-schema-drift.db")
-	database, err := openEncrypted(path, "correct-password", false)
+	database, err := openEncrypted(path, "correct-password", openOptions{})
 	if err != nil {
 		t.Fatalf("open encrypted db: %v", err)
 	}
@@ -263,7 +600,7 @@ func TestOpenEncryptedAppliesAuditRecoveryThenRepairsVaultSessionLeaseSchema(t *
 
 func TestOpenEncryptedRepairsRecordedAuditRecoverySchemaDrift(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit-recovery-schema-drift.db")
-	database, err := openEncrypted(path, "correct-password", false)
+	database, err := openEncrypted(path, "correct-password", openOptions{})
 	if err != nil {
 		t.Fatalf("open encrypted db: %v", err)
 	}
@@ -334,7 +671,7 @@ func TestOpenEncryptedRepairsRecordedAuditRecoverySchemaDrift(t *testing.T) {
 
 func TestSelfHostedBackupMigrationArchivesGoogleProviderAndClearsSecret(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "backup-provider.db")
-	database, err := openEncrypted(path, "correct-password", false)
+	database, err := openEncrypted(path, "correct-password", openOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +709,7 @@ func TestSelfHostedBackupMigrationArchivesGoogleProviderAndClearsSecret(t *testi
 
 func TestVaultGlobalNameMigrationRejectsCrossProjectDuplicates(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault-duplicate.db")
-	database, err := openEncrypted(path, "correct-password", false)
+	database, err := openEncrypted(path, "correct-password", openOptions{})
 	if err != nil {
 		t.Fatalf("open raw encrypted db: %v", err)
 	}
@@ -414,7 +751,7 @@ func TestVaultGlobalNameMigrationRejectsCrossProjectDuplicates(t *testing.T) {
 
 func TestOpenEncryptedRejectsPre02PreviewSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secure.db")
-	database, err := openEncrypted(path, "correct-password", false)
+	database, err := openEncrypted(path, "correct-password", openOptions{})
 	if err != nil {
 		t.Fatalf("open encrypted db: %v", err)
 	}
@@ -445,6 +782,18 @@ func TestOpenEncryptedRejectsPre02PreviewSchema(t *testing.T) {
 	}
 	if message := UnsupportedSchemaMessage(err); !strings.Contains(message, "pre-0.2") {
 		t.Fatalf("expected user-facing unsupported schema message, got %q", message)
+	}
+}
+
+func TestUnsupportedSchemaMessageSurvivesNestedAndJoinedWrapping(t *testing.T) {
+	cause := fmt.Errorf("%w: migration guidance", ErrUnsupportedSchema)
+	wrapped := fmt.Errorf("runtime initialization failed: %w", cause)
+	if got := UnsupportedSchemaMessage(wrapped); got != "migration guidance" {
+		t.Fatalf("nested unsupported schema message = %q", got)
+	}
+	joined := fmt.Errorf("%w: %w", errors.New("database initialization failed"), cause)
+	if got := UnsupportedSchemaMessage(joined); got != "migration guidance" {
+		t.Fatalf("joined unsupported schema message = %q", got)
 	}
 }
 

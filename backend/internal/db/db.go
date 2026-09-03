@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	currentSchemaVersion     = 18
+	currentSchemaVersion     = 21
 	expectedSQLCipherVersion = "4.16.0"
 	expectedSQLiteVersion    = "3.53.1"
 	expectedKDFIterations    = 256000
@@ -26,15 +26,22 @@ func CurrentSchemaVersion() int {
 }
 
 func OpenEncrypted(path string, password string) (*sql.DB, error) {
-	return openEncrypted(path, password, true)
+	return openEncrypted(path, password, openOptions{runMigrations: true, createMigrationSnapshot: true})
 }
 
 func OpenEncryptedForMigration(path string, password string) (*sql.DB, error) {
-	return openEncrypted(path, password, false)
+	return openEncrypted(path, password, openOptions{})
+}
+
+// OpenEncryptedImportCandidate upgrades a disposable import copy without
+// creating a sibling pre-migration snapshot. The caller must not use this for
+// an installed database: failed imports are discarded instead of recovered.
+func OpenEncryptedImportCandidate(path string, password string) (*sql.DB, error) {
+	return openEncrypted(path, password, openOptions{runMigrations: true})
 }
 
 func ValidateEncrypted(path string, password string) error {
-	database, err := openEncrypted(path, password, false)
+	database, err := openEncrypted(path, password, openOptions{})
 	if err != nil {
 		return err
 	}
@@ -47,7 +54,12 @@ func ValidateEncrypted(path string, password string) error {
 	return nil
 }
 
-func openEncrypted(path string, password string, runMigrations bool) (*sql.DB, error) {
+type openOptions struct {
+	runMigrations           bool
+	createMigrationSnapshot bool
+}
+
+func openEncrypted(path string, password string, options openOptions) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
@@ -73,11 +85,15 @@ func openEncrypted(path string, password string, runMigrations bool) (*sql.DB, e
 		_ = database.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	if runMigrations {
-		snapshotPath, err := createPreMigrationSnapshot(database, path)
-		if err != nil {
-			_ = database.Close()
-			return nil, err
+	if options.runMigrations {
+		snapshotPath := ""
+		if options.createMigrationSnapshot {
+			var err error
+			snapshotPath, err = createPreMigrationSnapshot(database, path)
+			if err != nil {
+				_ = database.Close()
+				return nil, err
+			}
 		}
 		if err := migrate(database); err != nil {
 			_ = database.Close()

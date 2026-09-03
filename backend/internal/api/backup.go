@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -148,21 +149,22 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeInternalError(w)
 		return
 	}
-	_ = os.Remove(tmpPath)
+	if err := dbpkg.DeleteDatabase(tmpPath); err != nil {
+		writeInternalError(w)
+		return
+	}
+	defer cleanupImportCandidate(tmpPath)
 	if err := writeTemp(tmpPath); err != nil {
-		_ = os.Remove(tmpPath)
 		writeInternalError(w)
 		return
 	}
 
 	if dbpkg.LooksLikePlainSQLite(tmpPath) {
-		_ = os.Remove(tmpPath)
 		writeError(w, http.StatusBadRequest, "plaintext SQLite imports are not supported; import an encrypted .aipdb database")
 		return
 	}
-	testDB, err := dbpkg.OpenEncrypted(tmpPath, databasePassword)
+	testDB, err := dbpkg.OpenEncryptedImportCandidate(tmpPath, databasePassword)
 	if err != nil {
-		_ = os.Remove(tmpPath)
 		if message := dbpkg.UnsupportedSchemaMessage(err); message != "" {
 			attempt.success()
 			writeError(w, http.StatusConflict, message)
@@ -174,28 +176,32 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 	}
 	attempt.success()
 	if _, err := gatewaySecretFromDatabase(testDB, s.config.GatewaySecret); err != nil {
-		_ = testDB.Close()
-		_ = os.Remove(tmpPath)
+		if closeErr := closeImportCandidate(testDB); closeErr != nil {
+			writeInternalError(w)
+			return
+		}
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if mutate != nil {
 		if err := mutate(testDB); err != nil {
-			_ = testDB.Close()
-			_ = os.Remove(tmpPath)
+			if closeErr := closeImportCandidate(testDB); closeErr != nil {
+				log.Printf("failed closing rejected import candidate path=%q error=%v", tmpPath, closeErr)
+			}
 			writeInternalError(w)
 			return
 		}
 	}
-	_ = testDB.Close()
+	if err := closeImportCandidate(testDB); err != nil {
+		writeInternalError(w)
+		return
+	}
 
 	if dbpkg.Exists(targetPath) {
-		_ = os.Remove(tmpPath)
 		writeError(w, http.StatusConflict, "database name already exists")
 		return
 	}
 	if err := os.Rename(tmpPath, targetPath); err != nil {
-		_ = os.Remove(tmpPath)
 		writeInternalError(w)
 		return
 	}
@@ -227,6 +233,23 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		"database_id": targetID,
 		"imported_at": time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func closeImportCandidate(database *sql.DB) error {
+	if _, err := database.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		_ = database.Close()
+		return fmt.Errorf("checkpoint import candidate: %w", err)
+	}
+	if err := database.Close(); err != nil {
+		return fmt.Errorf("close import candidate: %w", err)
+	}
+	return nil
+}
+
+func cleanupImportCandidate(path string) {
+	if err := dbpkg.DeleteDatabase(path); err != nil {
+		log.Printf("failed import candidate cleanup path=%q error=%v", path, err)
+	}
 }
 
 func rollbackImportedDatabase(targetPath string) error {

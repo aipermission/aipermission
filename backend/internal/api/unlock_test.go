@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,68 @@ func newLockedAPITestServer(t *testing.T) *Server {
 		WithConnectorRegistry(catalog.connectors),
 		WithConnectorAdapterRegistry(catalog.adapters),
 	)
+}
+
+func TestDatabaseUnlockErrorsSeparateAuthenticationFromInitialization(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "authentication",
+			err:        fmt.Errorf("%w: encrypted database validation failed", errDatabaseAuthentication),
+			wantStatus: http.StatusUnauthorized,
+			wantBody:   "invalid unlock password or database",
+		},
+		{
+			name:       "initialization",
+			err:        fmt.Errorf("%w: migrate encrypted records: invalid envelope", errDatabaseInitialization),
+			wantStatus: http.StatusConflict,
+			wantBody:   "database initialization failed",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			writeDatabaseUnlockError(response, test.err)
+			if response.Code != test.wantStatus || !strings.Contains(response.Body.String(), test.wantBody) {
+				t.Fatalf("response = %d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestDatabaseInitializationErrorIncludesLatestMigrationSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "workspace.aipdb")
+	older := path + ".pre-migration-v18-20260101T000000.000000000Z.aipdb"
+	latest := path + ".pre-migration-v19-20260904T010000.000000000Z.aipdb"
+	if err := os.WriteFile(older, []byte("snapshot"), 0o600); err != nil {
+		t.Fatalf("write old snapshot fixture: %v", err)
+	}
+	before := preMigrationSnapshotSet(path)
+	if err := os.WriteFile(latest, []byte("snapshot"), 0o600); err != nil {
+		t.Fatalf("write new snapshot fixture: %v", err)
+	}
+	err := databaseInitializationError(path, errors.New("rewrite failed"), before)
+	if !errors.Is(err, errDatabaseInitialization) || !strings.Contains(err.Error(), latest) {
+		t.Fatalf("initialization error = %v", err)
+	}
+}
+
+func TestDatabaseInitializationFailureDoesNotConsumePasswordAttempts(t *testing.T) {
+	limiter := newConfiguredAuthRateLimiter(1, authRateLimitLockoutFailures)
+	attempt := databasePasswordAttempt{limiter: limiter, key: "unlock:test"}
+	attempt.failure()
+	recordDatabaseUnlockAttempt(attempt, fmt.Errorf("%w: rewrite failed", errDatabaseInitialization))
+	if delay := limiter.delay(attempt.key); delay != 0 {
+		t.Fatalf("initialization failure retained password backoff: %s", delay)
+	}
+	recordDatabaseUnlockAttempt(attempt, fmt.Errorf("%w: validation failed", errDatabaseAuthentication))
+	if delay := limiter.delay(attempt.key); delay == 0 {
+		t.Fatal("authentication failure did not consume password attempt")
+	}
 }
 
 func TestRuntimeCloseMarksRunningConnectorActionsOutcomeUnknown(t *testing.T) {
@@ -504,6 +567,15 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	if _, err := sourceDB.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('gateway_secret', 'source-secret', datetime('now'))`); err != nil {
 		t.Fatalf("insert source gateway secret: %v", err)
 	}
+	if _, err := sourceDB.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatalf("remove request retry policy from import fixture: %v", err)
+	}
+	if _, err := sourceDB.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatalf("remove history retry policy from import fixture: %v", err)
+	}
+	if _, err := sourceDB.Exec(`DELETE FROM schema_migrations WHERE version = 19`); err != nil {
+		t.Fatalf("downgrade import fixture to schema 18: %v", err)
+	}
 	if err := sourceDB.Close(); err != nil {
 		t.Fatalf("close source db: %v", err)
 	}
@@ -514,6 +586,15 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 
 	server := newLockedAPITestServer(t)
 	defer server.Close()
+	_, importedTargetPath, err := dbpkg.NewDatabasePathExact(server.config.DataPath, "Imported Project")
+	if err != nil {
+		t.Fatalf("resolve import staging path: %v", err)
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.WriteFile(importedTargetPath+".import"+suffix, []byte("stale import sidecar"), 0o600); err != nil {
+			t.Fatalf("seed stale import sidecar %s: %v", suffix, err)
+		}
+	}
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	if err := writer.WriteField("database_name", "Imported Project"); err != nil {
@@ -545,6 +626,22 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	}
 	if !server.isUnlocked() {
 		t.Fatalf("server should be unlocked after multipart import")
+	}
+	importedPath, err := dbpkg.DatabasePath(server.config.DataPath, "imported-project")
+	if err != nil {
+		t.Fatalf("resolve imported database path: %v", err)
+	}
+	snapshots, err := filepath.Glob(importedPath + ".import.pre-migration-*.aipdb")
+	if err != nil {
+		t.Fatalf("list disposable import snapshots: %v", err)
+	}
+	if len(snapshots) != 0 {
+		t.Fatalf("successful import left %d disposable migration snapshot(s)", len(snapshots))
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if _, err := os.Stat(importedPath + ".import" + suffix); !os.IsNotExist(err) {
+			t.Fatalf("successful import left stale staging sidecar %s: %v", suffix, err)
+		}
 	}
 }
 
