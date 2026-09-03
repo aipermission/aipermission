@@ -1,6 +1,6 @@
 module github.com/aipermission/aipermission/backend
 
-go 1.25.0
+go 1.26.0
 
 toolchain go1.26.6
 
@@ -22,7 +22,7 @@ require (
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260729023516-cc159eb5ddb9
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.57.0
 	golang.org/x/sys v0.47.0
 )
