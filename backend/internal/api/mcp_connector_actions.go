@@ -183,8 +183,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var request mcpConnectorActionCallRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.TargetRef = strings.TrimSpace(request.TargetRef)

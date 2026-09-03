@@ -204,8 +204,7 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		return
 	}
 	var request browseRemoteFilesRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if request.RuntimeID < 1 {
@@ -259,8 +258,7 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 		return
 	}
 	var request expandRemoteFilesRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if request.RuntimeID < 1 {

@@ -79,8 +79,7 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 		return
 	}
 	var request updateConnectorPermissionsRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	store := connectortargets.NewStore(runtime.database)

@@ -32,8 +32,7 @@ func (s projectHandlers) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request projectRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	var item projectstore.Project
@@ -61,8 +60,7 @@ func (s projectHandlers) updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request projectRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	var item projectstore.Project

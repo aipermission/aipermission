@@ -47,8 +47,7 @@ func (s tokenHandlers) updateTokenProjectScopes(w http.ResponseWriter, r *http.R
 		return
 	}
 	var request updateTokenProjectScopesRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	var items []projectstore.TokenScope

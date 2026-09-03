@@ -117,8 +117,7 @@ func (s connectorActionApprovalHandlers) runConnectorActionApproval(w http.Respo
 	}
 	var request runConnectorActionApprovalRequest
 	if r.ContentLength != 0 {
-		if err := decodeJSON(w, r, &request); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json body")
+		if !decodeJSON(w, r, &request) {
 			return
 		}
 	}
@@ -153,8 +152,7 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 		return
 	}
 	var request declineConnectorActionApprovalRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.UserNote = strings.TrimSpace(request.UserNote)

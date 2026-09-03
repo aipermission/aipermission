@@ -25,8 +25,7 @@ func (s connectorActionHandlers) runLocalConnectorAction(w http.ResponseWriter, 
 		return
 	}
 	var request localConnectorActionRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.TargetRef = strings.TrimSpace(request.TargetRef)

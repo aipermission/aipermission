@@ -53,8 +53,7 @@ func (s connectorTargetHandlers) pingConnectorTargetHost(w http.ResponseWriter, 
 		return
 	}
 	var request connectorTargetHostPingRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.Host = strings.TrimSpace(request.Host)

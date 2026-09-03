@@ -34,8 +34,7 @@ type transientBackupStreamResponse struct {
 
 func (s backupHandlers) listTransientRemoteBackups(w http.ResponseWriter, r *http.Request) {
 	var request transientBackupServiceRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.Token)
@@ -81,8 +80,7 @@ func (s backupHandlers) listTransientRemoteBackups(w http.ResponseWriter, r *htt
 
 func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *http.Request) {
 	var request transientBackupRestoreRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	defer clearStringReferences(&request.Token, &request.DatabasePassword)

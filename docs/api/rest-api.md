@@ -30,6 +30,15 @@ must not parse the human-readable `error` string.
 
 Request bodies reject unknown fields where structured decoding is used.
 
+JSON request bodies are limited to 1 MiB by default. The two connector-action
+execution routes, `POST /api/connector-actions/local-run` and
+`POST /api/mcp/connector-actions/call`, allow up to 32 MiB because a connector
+may carry its own explicitly bounded binary input as encoded action data.
+Oversized JSON returns `413 Payload Too Large` with
+`code: "request_body_too_large"`. Database restore and file-transfer multipart
+routes use their separately documented route-specific limits; they do not
+inherit the JSON allowance.
+
 ## Health And Unlock
 
 ```txt

@@ -117,8 +117,7 @@ func (s vaultActionApprovalHandlers) decline(w http.ResponseWriter, r *http.Requ
 func decodeVaultDecision(w http.ResponseWriter, r *http.Request) (vaultActionDecisionRequest, bool) {
 	var request vaultActionDecisionRequest
 	if r.ContentLength != 0 {
-		if err := decodeJSON(w, r, &request); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json body")
+		if !decodeJSON(w, r, &request) {
 			return vaultActionDecisionRequest{}, false
 		}
 	}

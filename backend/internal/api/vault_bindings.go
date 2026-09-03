@@ -58,8 +58,7 @@ func (s vaultItemHandlers) saveVaultDefaultBinding(w http.ResponseWriter, r *htt
 		return
 	}
 	var request saveVaultDefaultBindingRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())
@@ -154,8 +153,7 @@ func (s vaultItemHandlers) deleteVaultDefaultBinding(w http.ResponseWriter, r *h
 		return
 	}
 	var request deleteVaultDefaultBindingRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	release, err := runtime.vaultDelivery.acquire(r.Context())

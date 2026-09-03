@@ -2,13 +2,17 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 )
 
-const maxJSONBodyBytes = 32 << 20
+const (
+	defaultJSONBodyBytes         = 1 << 20
+	connectorActionJSONBodyBytes = 32 << 20
+)
 
 type errorResponse struct {
 	Error string `json:"error"`
@@ -27,12 +31,25 @@ func writeInternalError(w http.ResponseWriter) {
 	writeError(w, http.StatusInternalServerError, "internal server error")
 }
 
-func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
+func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
+	if err := decodeJSONBody(w, r, target); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeErrorWithCode(w, http.StatusRequestEntityTooLarge, "request body is too large", "request_body_too_large")
+			return false
+		}
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return false
+	}
+	return true
+}
+
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, target any) error {
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || contentType != "application/json" {
 		return fmt.Errorf("content type must be application/json")
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, jsonBodyLimitForPath(r.URL.Path))
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
@@ -44,4 +61,13 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 		return fmt.Errorf("invalid json body")
 	}
 	return nil
+}
+
+func jsonBodyLimitForPath(path string) int64 {
+	switch path {
+	case "/api/connector-actions/local-run", "/api/mcp/connector-actions/call":
+		return connectorActionJSONBodyBytes
+	default:
+		return defaultJSONBodyBytes
+	}
 }

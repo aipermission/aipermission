@@ -63,8 +63,7 @@ func (s messageHandlers) createMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request createMessageRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	item, err := s.insertMessage(r.Context(), runtime, request)
@@ -81,8 +80,7 @@ func (s messageHandlers) markMessagesRead(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var request markMessagesReadRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if request.RuntimeID < 1 {

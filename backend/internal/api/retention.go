@@ -58,8 +58,7 @@ func (s retentionHandlers) updateRetentionSettings(w http.ResponseWriter, r *htt
 		return
 	}
 	var request updateRetentionSettingsRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	settings := retentionSettingsResponse(request)
@@ -103,8 +102,7 @@ func (s retentionHandlers) purgeRetention(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var request purgeRetentionRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if request.Days < 1 {

@@ -15,8 +15,7 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	var request createConnectorTargetRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	registry := runtime.connectorRegistry()
@@ -75,8 +74,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	var request createConnectorTargetWithProfileRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	registry := runtime.connectorRegistry()
@@ -168,8 +166,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		return
 	}
 	var request updateConnectorTargetRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	store := connectortargets.NewStore(runtime.database)
@@ -268,8 +265,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		return
 	}
 	var request updateConnectorTargetWithProfileRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	store := connectortargets.NewStore(runtime.database)

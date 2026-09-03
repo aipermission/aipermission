@@ -58,8 +58,7 @@ func (s tokenHandlers) updateTokenProjectCapabilities(w http.ResponseWriter, r *
 		return
 	}
 	var request updateProjectCapabilitiesRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	inputs := make([]projectcapabilities.SetInput, 0, len(request.Capabilities))

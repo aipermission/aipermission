@@ -46,8 +46,7 @@ func (s historyLabelHandlers) createHistoryLabel(w http.ResponseWriter, r *http.
 		return
 	}
 	var request createHistoryLabelRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	var label historyLabelRecord
@@ -123,8 +122,7 @@ func (s historyLabelHandlers) attachHistoryEntryLabel(w http.ResponseWriter, r *
 		return
 	}
 	var request attachHistoryLabelRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if !historyEntryExists(r.Context(), runtime, id) {
