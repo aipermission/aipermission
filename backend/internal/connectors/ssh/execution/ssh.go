@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -22,10 +23,11 @@ type Target struct {
 }
 
 type Result struct {
-	Stdout     string `json:"stdout"`
-	Stderr     string `json:"stderr"`
-	ExitCode   int    `json:"exit_code"`
-	DurationMS int64  `json:"duration_ms"`
+	Stdout          string `json:"stdout"`
+	Stderr          string `json:"stderr"`
+	ExitCode        int    `json:"exit_code"`
+	DurationMS      int64  `json:"duration_ms"`
+	DispatchStarted bool   `json:"-"`
 }
 
 func RunCommand(ctx context.Context, target Target, command string) (Result, error) {
@@ -45,6 +47,7 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 	}
 	done := make(chan response, 1)
 	var mu sync.Mutex
+	var dispatchStarted atomic.Bool
 	var client *ssh.Client
 	var session *ssh.Session
 	closeActive := func() {
@@ -95,6 +98,7 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 			fn:     onStderr,
 		}
 
+		dispatchStarted.Store(true)
 		err = sshSession.Run(command)
 		exitCode := 0
 		var runErr error
@@ -110,10 +114,11 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 
 		done <- response{
 			result: Result{
-				Stdout:     stdout.String(),
-				Stderr:     stderr.String(),
-				ExitCode:   exitCode,
-				DurationMS: time.Since(started).Milliseconds(),
+				Stdout:          stdout.String(),
+				Stderr:          stderr.String(),
+				ExitCode:        exitCode,
+				DurationMS:      time.Since(started).Milliseconds(),
+				DispatchStarted: true,
 			},
 			err: runErr,
 		}
@@ -122,7 +127,7 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 	select {
 	case <-ctx.Done():
 		closeActive()
-		return Result{}, ctx.Err()
+		return Result{DurationMS: time.Since(started).Milliseconds(), DispatchStarted: dispatchStarted.Load()}, ctx.Err()
 	case value := <-done:
 		return value.result, value.err
 	}

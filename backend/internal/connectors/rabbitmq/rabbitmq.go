@@ -248,16 +248,17 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{
 			Name:        ActionPeekMessages,
 			Label:       "Peek messages",
-			Description: "Read a bounded preview of queue messages with ack_requeue_true.",
+			Description: "Inspect and requeue a bounded message preview. RabbitMQ delivery state or order may change.",
 			Category:    "browser",
-			Risk:        connectors.RiskRead,
+			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
 				{Name: "queue", Label: "Queue", Type: connectors.FieldString, Required: true},
 				{Name: "count", Label: "Count", Type: connectors.FieldInteger, Default: defaultPeekCount},
 				{Name: "max_payload_bytes", Label: "Max payload bytes", Type: connectors.FieldInteger, Default: defaultPayloadMaxBytes},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxPayloadBytes},
+			RetryPolicy: connectors.RetryPolicy{Class: connectors.RetryNonIdempotent},
+			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: maxPayloadBytes},
 		},
 		{
 			Name:        ActionPublish,
@@ -328,6 +329,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			summary = fmt.Sprintf("List bindings in vhost %q.", vhost)
 		}
 	case ActionPeekMessages:
+		risk = connectors.RiskWrite
 		vhost = normalizeVHost(input, "vhost", vhost)
 		queue := strings.TrimSpace(stringValue(input, "queue"))
 		if queue == "" {
@@ -573,7 +575,7 @@ func executePeekMessages(ctx context.Context, client *rabbitClient, input map[st
 	}
 	var rows []map[string]any
 	if err := client.Post(ctx, "/api/queues/"+pathPart(vhost)+"/"+pathPart(queue)+"/get", body, &rows); err != nil {
-		return connectors.ActionResult{}, err
+		return connectors.ActionResult{}, classifyRabbitMutationError("peek messages", err)
 	}
 	for _, row := range rows {
 		if payload, ok := row["payload"].(string); ok && len(payload) > maxBytes {
@@ -629,7 +631,7 @@ func executePublishMessage(ctx context.Context, client *rabbitClient, input map[
 	}
 	var output map[string]any
 	if err := client.Post(ctx, "/api/exchanges/"+pathPart(vhost)+"/"+pathPart(exchange)+"/publish", body, &output); err != nil {
-		return connectors.ActionResult{}, err
+		return connectors.ActionResult{}, classifyRabbitMutationError("publish message", err)
 	}
 	routed, _ := output["routed"].(bool)
 	return connectors.ActionResult{
@@ -692,56 +694,81 @@ func newRabbitClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 }
 
 func (client *rabbitClient) Get(ctx context.Context, path string, out any) error {
-	return client.Do(ctx, http.MethodGet, path, nil, out)
+	_, _, err := client.do(ctx, http.MethodGet, path, nil, out)
+	return err
 }
 
 func (client *rabbitClient) Post(ctx context.Context, path string, payload any, out any) error {
-	return client.Do(ctx, http.MethodPost, path, payload, out)
+	dispatched, definiteResponse, err := client.do(ctx, http.MethodPost, path, payload, out)
+	if err == nil || !dispatched || definiteResponse {
+		return err
+	}
+	return &rabbitPostDispatchError{err: err}
 }
 
-func (client *rabbitClient) Do(ctx context.Context, method string, path string, payload any, out any) error {
+func (client *rabbitClient) do(ctx context.Context, method string, path string, payload any, out any) (dispatched bool, definiteResponse bool, err error) {
 	var body io.Reader
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
 		if err != nil {
-			return err
+			return false, false, err
 		}
 		body = bytes.NewReader(encoded)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, client.baseURL+path, body)
 	if err != nil {
-		return err
+		return false, false, err
 	}
 	req.SetBasicAuth(client.username, client.password)
 	req.Header.Set("Accept", "application/json")
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	req, requestDispatched := connectors.TrackHTTPRequestDispatch(req)
 	resp, err := client.httpClient.Do(req)
 	if err != nil {
-		return err
+		return requestDispatched(), false, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxRabbitHTTPBodyBytes+1))
 	if err != nil {
-		return err
+		return true, false, err
 	}
 	if len(data) > maxRabbitHTTPBodyBytes {
-		return fmt.Errorf("rabbitmq response is larger than %d bytes", maxRabbitHTTPBodyBytes)
+		return true, false, fmt.Errorf("rabbitmq response is larger than %d bytes", maxRabbitHTTPBodyBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return rabbitHTTPError(resp.StatusCode, data)
+		definiteResponse := resp.StatusCode != http.StatusRequestTimeout && resp.StatusCode < http.StatusInternalServerError
+		return true, definiteResponse, rabbitHTTPError(resp.StatusCode, data)
 	}
 	if out == nil {
-		return nil
+		return true, true, nil
 	}
 	if len(data) == 0 {
-		return nil
+		return true, true, nil
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("decode rabbitmq response: %w", err)
+		return true, false, fmt.Errorf("decode rabbitmq response: %w", err)
 	}
-	return nil
+	return true, true, nil
+}
+
+type rabbitPostDispatchError struct{ err error }
+
+func (e *rabbitPostDispatchError) Error() string { return e.err.Error() }
+func (e *rabbitPostDispatchError) Unwrap() error { return e.err }
+
+func classifyRabbitMutationError(operation string, err error) error {
+	var dispatchErr *rabbitPostDispatchError
+	if !errors.As(err, &dispatchErr) {
+		return err
+	}
+	return connectors.ClassifyActionError(
+		"outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"dispatch_stage": "management_api_request"},
+		fmt.Errorf("RabbitMQ %s outcome is unknown after dispatch: %w", operation, err),
+	)
 }
 
 func rabbitHTTPError(status int, data []byte) error {

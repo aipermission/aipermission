@@ -42,21 +42,22 @@ type mcpConnectorActionCallRequest struct {
 }
 
 type mcpConnectorActionResponse struct {
-	Status            string         `json:"status"`
-	RequestID         int64          `json:"request_id,omitempty"`
-	TargetRef         string         `json:"target_ref"`
-	TargetName        string         `json:"target_name,omitempty"`
-	ConnectorKind     string         `json:"connector_kind"`
-	ProfileLabel      string         `json:"profile_label,omitempty"`
-	ActionName        string         `json:"action_name"`
-	Input             map[string]any `json:"input,omitempty"`
-	Output            any            `json:"output,omitempty"`
-	DisplayText       string         `json:"display_text,omitempty"`
-	Error             string         `json:"error,omitempty"`
-	RetryAfterSeconds int            `json:"retry_after_seconds,omitempty"`
-	AssistantHint     string         `json:"assistant_hint,omitempty"`
-	OutputWithheld    bool           `json:"output_withheld,omitempty"`
-	Replayed          bool           `json:"replayed,omitempty"`
+	Status            string                 `json:"status"`
+	RequestID         int64                  `json:"request_id,omitempty"`
+	TargetRef         string                 `json:"target_ref"`
+	TargetName        string                 `json:"target_name,omitempty"`
+	ConnectorKind     string                 `json:"connector_kind"`
+	ProfileLabel      string                 `json:"profile_label,omitempty"`
+	ActionName        string                 `json:"action_name"`
+	Input             map[string]any         `json:"input,omitempty"`
+	Output            any                    `json:"output,omitempty"`
+	DisplayText       string                 `json:"display_text,omitempty"`
+	Error             string                 `json:"error,omitempty"`
+	RetryPolicy       connectors.RetryPolicy `json:"retry_policy"`
+	RetryAfterSeconds int                    `json:"retry_after_seconds,omitempty"`
+	AssistantHint     string                 `json:"assistant_hint,omitempty"`
+	OutputWithheld    bool                   `json:"output_withheld,omitempty"`
+	Replayed          bool                   `json:"replayed,omitempty"`
 }
 
 func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Request) {
@@ -154,12 +155,8 @@ func (s mcpHandlers) mcpGetConnectorActions(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	actions, err := connector.GetActionList(r.Context(), target, profile)
+	actions, err := connectors.GetActionDefinitions(r.Context(), connector, target, profile)
 	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -242,7 +239,7 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		"action_name":    request.ActionName,
 		"replayed":       result.Replayed,
 	})
-	response := connectorActionToMCPResponse(s.connectorAdapterRegistry(), result.Request, result.Result)
+	response := connectorActionResponseForToken(r.Context(), s.connectorAdapterRegistry(), auth.runtime, auth.TokenID, result.Request, result.Result)
 	response.Replayed = result.Replayed
 	writeJSON(w, http.StatusOK, response)
 }
@@ -269,19 +266,34 @@ func (s mcpHandlers) mcpGetConnectorActionRequest(w http.ResponseWriter, r *http
 		writeError(w, http.StatusNotFound, "connector action request not found")
 		return
 	}
-	response := connectorActionRequestToMCPResponse(s.connectorAdapterRegistry(), request)
-	if !connectorActionVaultPollAuthorized(r.Context(), auth.runtime, auth.TokenID, request) {
-		response.Output = nil
-		response.DisplayText = ""
-		response.OutputWithheld = true
-		response.AssistantHint = "Current Vault session authorization no longer permits returning this connector output."
-	}
+	response := connectorActionResponseForToken(r.Context(), s.connectorAdapterRegistry(), auth.runtime, auth.TokenID, request, connectors.ActionResult{
+		Status: request.Status, Output: request.Output, DisplayText: request.DisplayText, Error: request.Error,
+	})
 	writeJSON(w, http.StatusOK, response)
 }
 
+func connectorActionResponseForToken(ctx context.Context, adapterRegistry *connectorapi.Registry, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
+	response := connectorActionToMCPResponse(adapterRegistry, request, result)
+	if !connectorActionVaultPollAuthorized(ctx, runtime, tokenID, request) {
+		response.Output = nil
+		response.DisplayText = ""
+		response.OutputWithheld = true
+		const authorizationHint = "Current Vault session authorization no longer permits returning this connector output."
+		if response.AssistantHint == "" {
+			response.AssistantHint = authorizationHint
+		} else {
+			response.AssistantHint += " " + authorizationHint
+		}
+	}
+	return response
+}
+
 func connectorActionVaultPollAuthorized(ctx context.Context, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest) bool {
-	if request.SessionID == nil || request.SessionGeneration == nil {
+	if request.SessionID == nil && request.SessionGeneration == nil {
 		return true
+	}
+	if request.SessionID == nil || request.SessionGeneration == nil {
+		return false
 	}
 	return vaultSessionObserveAuthorized(
 		ctx,
@@ -372,6 +384,7 @@ func connectorActionRequestToMCPResponse(adapterRegistry *connectorapi.Registry,
 		Output:        request.Output,
 		DisplayText:   request.DisplayText,
 		Error:         request.Error,
+		RetryPolicy:   request.RetryPolicy,
 	}
 	if request.Status == connectors.ResultApprovalPending {
 		response.RetryAfterSeconds = 3
@@ -382,7 +395,7 @@ func connectorActionRequestToMCPResponse(adapterRegistry *connectorapi.Registry,
 		response.AssistantHint = connectorActionRunningHintForRequest(adapterRegistry, request)
 	}
 	if request.Status == connectors.ResultOutcomeUnknown {
-		response.AssistantHint = "Do not retry this action automatically. The command may have been dispatched; inspect the target with read_console or an equivalent read-only action first."
+		response.AssistantHint = "Do not retry this action automatically. The operation may have been dispatched; inspect external state with a connector-specific read-only action first."
 	}
 	return response
 }

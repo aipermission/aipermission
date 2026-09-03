@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
 func TestBrowseRemoteFilesReturnsVirtualDirectoriesAndObjects(t *testing.T) {
@@ -75,7 +77,7 @@ func TestUploadFileUsesMultipartAndReportsProgress(t *testing.T) {
 				t.Fatalf("multipart completion did not enforce no-overwrite: %#v", r.Header)
 			}
 			completed = true
-			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<CompleteMultipartUploadResult><ETag>&quot;complete&quot;</ETag></CompleteMultipartUploadResult>`))
 		default:
 			t.Fatalf("unexpected multipart request: %s %s", r.Method, r.URL.String())
 		}
@@ -96,6 +98,83 @@ func TestUploadFileUsesMultipartAndReportsProgress(t *testing.T) {
 	}
 	if partCount != 3 || !completed || progress != int64(len(data)) || result.Bytes != int64(len(data)) || result.ChecksumSHA256 == "" {
 		t.Fatalf("unexpected multipart result: parts=%d completed=%t progress=%d result=%#v", partCount, completed, progress, result)
+	}
+}
+
+func TestMultipartCompletionClassifiesUncertainProviderResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Query().Has("uploads"):
+			_, _ = w.Write([]byte(`<InitiateMultipartUploadResult><UploadId>upload-unknown</UploadId></InitiateMultipartUploadResult>`))
+		case r.Method == http.MethodPut && r.URL.Query().Get("uploadId") == "upload-unknown":
+			w.Header().Set("ETag", `"part"`)
+		case r.Method == http.MethodPost && r.URL.Query().Get("uploadId") == "upload-unknown":
+			w.WriteHeader(http.StatusGatewayTimeout)
+		case r.Method == http.MethodDelete && r.URL.Query().Get("uploadId") == "upload-unknown":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected multipart request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	fileName := t.TempDir() + "/large.bin"
+	if err := os.WriteFile(fileName, []byte(strings.Repeat("x", multipartThreshold+1)), 0o600); err != nil {
+		t.Fatalf("write upload fixture: %v", err)
+	}
+	_, err := UploadFile(context.Background(), s3TestRuntime(t, server.URL), fileName, "/large.bin", true, TransferOptions{})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("completion error = %v, status = %q", err, connectors.ErrorStatus(err))
+	}
+}
+
+func TestMultipartInitiationReportsUnknownOutcomeAndCleanup(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !r.URL.Query().Has("uploads") {
+			t.Fatalf("unexpected multipart request: %s %s", r.Method, r.URL.String())
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<InitiateMultipartUploadResult>`))
+	}))
+	defer server.Close()
+
+	fileName := t.TempDir() + "/large.bin"
+	if err := os.WriteFile(fileName, []byte(strings.Repeat("x", multipartThreshold+1)), 0o600); err != nil {
+		t.Fatalf("write upload fixture: %v", err)
+	}
+	_, err := UploadFile(context.Background(), s3TestRuntime(t, server.URL), fileName, "/large.bin", true, TransferOptions{})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+		t.Fatalf("initiation error = %v, code = %q, status = %q", err, connectors.ErrorCode(err), connectors.ErrorStatus(err))
+	}
+	if !strings.Contains(err.Error(), "clean up incomplete uploads") {
+		t.Fatalf("initiation error omitted cleanup guidance: %v", err)
+	}
+}
+
+func TestMultipartCompletionRejectsUnconfirmedSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Query().Has("uploads"):
+			_, _ = w.Write([]byte(`<InitiateMultipartUploadResult><UploadId>upload-unconfirmed</UploadId></InitiateMultipartUploadResult>`))
+		case r.Method == http.MethodPut && r.URL.Query().Get("uploadId") == "upload-unconfirmed":
+			w.Header().Set("ETag", `"part"`)
+		case r.Method == http.MethodPost && r.URL.Query().Get("uploadId") == "upload-unconfirmed":
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodDelete && r.URL.Query().Get("uploadId") == "upload-unconfirmed":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected multipart request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	fileName := t.TempDir() + "/large.bin"
+	if err := os.WriteFile(fileName, []byte(strings.Repeat("x", multipartThreshold+1)), 0o600); err != nil {
+		t.Fatalf("write upload fixture: %v", err)
+	}
+	_, err := UploadFile(context.Background(), s3TestRuntime(t, server.URL), fileName, "/large.bin", true, TransferOptions{})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("completion error = %v, status = %q", err, connectors.ErrorStatus(err))
 	}
 }
 
@@ -236,7 +315,7 @@ func TestMultipartUploadRetriesServerFailure(t *testing.T) {
 			}
 			w.Header().Set("ETag", fmt.Sprintf(`"part-%s"`, r.URL.Query().Get("partNumber")))
 		case r.Method == http.MethodPost && r.URL.Query().Get("uploadId") == "upload-retry":
-			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<CompleteMultipartUploadResult><ETag>&quot;complete&quot;</ETag></CompleteMultipartUploadResult>`))
 		default:
 			t.Fatalf("unexpected multipart request: %s %s", r.Method, r.URL.String())
 		}

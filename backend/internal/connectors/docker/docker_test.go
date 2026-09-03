@@ -3,6 +3,7 @@ package dockerconnector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -350,9 +351,12 @@ func (capabilities fakeCapabilities) RuntimeCapability(name string) connectors.R
 }
 
 type fakeCommandTransport struct {
-	results   map[string]connectors.CommandRunResult
-	sequences map[string][]connectors.CommandRunResult
-	calls     map[string]int
+	results      map[string]connectors.CommandRunResult
+	sequences    map[string][]connectors.CommandRunResult
+	calls        map[string]int
+	errorResult  connectors.CommandRunResult
+	err          error
+	errorCommand string
 }
 
 func (transport *fakeCommandTransport) ConnectorRuntimeCapability() string {
@@ -360,6 +364,9 @@ func (transport *fakeCommandTransport) ConnectorRuntimeCapability() string {
 }
 
 func (transport *fakeCommandTransport) RunConnectorCommand(_ context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
+	if transport.err != nil && (transport.errorCommand == "" || strings.Contains(request.Command, transport.errorCommand)) {
+		return transport.errorResult, transport.err
+	}
 	command := request.Command
 	normalizedCommand := strings.TrimPrefix(command, "command ")
 	if sequence := transport.sequences[command]; len(sequence) == 0 {
@@ -390,6 +397,40 @@ func (transport *fakeCommandTransport) RunConnectorCommand(_ context.Context, re
 		return connectors.CommandRunResult{ExitCode: 127, Stderr: "unexpected command: " + request.Command}, nil
 	}
 	return result, nil
+}
+
+func TestDockerMutationsClassifyPostDispatchTransportFailures(t *testing.T) {
+	for _, action := range []string{ActionContainerExec, ActionStartContainer, ActionStopContainer, ActionRestartContainer} {
+		t.Run(action, func(t *testing.T) {
+			transport := &fakeCommandTransport{
+				results: map[string]connectors.CommandRunResult{
+					"docker ps -a --no-trunc --format '{{json .}}'": {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
+				},
+				errorResult: connectors.CommandRunResult{DispatchStarted: true},
+				err:         errors.New("transport closed"),
+			}
+			switch action {
+			case ActionContainerExec:
+				transport.errorCommand = "docker exec"
+			case ActionStartContainer:
+				transport.errorCommand = "docker start"
+			case ActionStopContainer:
+				transport.errorCommand = "docker stop"
+			case ActionRestartContainer:
+				transport.errorCommand = "docker restart"
+			}
+			input := map[string]any{"container": "api"}
+			if action == ActionContainerExec {
+				input["command"] = "printf hi"
+			}
+			_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+				Target: dockerTarget(), Profile: dockerProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+			}, connectors.PreparedAction{ActionName: action, Payload: input})
+			if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+				t.Fatalf("error = %v code=%q status=%q", err, connectors.ErrorCode(err), connectors.ErrorStatus(err))
+			}
+		})
+	}
 }
 
 func validDockerVersionJSON() string {

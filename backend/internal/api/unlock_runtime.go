@@ -388,6 +388,7 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) {
 	s.stopRetentionWorker(runtime)
+	s.stopConnectorActionRecoveryWorker(runtime)
 	if runtime.vaultLeases != nil {
 		runtime.vaultLeases.Clear()
 	}

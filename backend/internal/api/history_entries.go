@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -52,6 +54,7 @@ type historyEntryRecord struct {
 	OutputText       string               `json:"output_text,omitempty"`
 	OutputJSON       string               `json:"output_json,omitempty"`
 	Error            string               `json:"error,omitempty"`
+	RetryPolicyJSON  string               `json:"retry_policy_json,omitempty"`
 	ExitCode         *int                 `json:"exit_code,omitempty"`
 	ProgressCurrent  int64                `json:"progress_current"`
 	ProgressTotal    int64                `json:"progress_total"`
@@ -267,7 +270,7 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 		       he.token_id, COALESCE(tok.name, ''), he.project_id, COALESCE(project.name, ''), he.runtime_id, he.target_id, he.profile_id,
 		       he.target_name, he.profile_label, he.source, he.status, he.action_name,
 		       he.title, he.summary, he.preview_json, he.input_text, he.input_json, '' AS output_text,
-		       '{}' AS output_json, he.error, he.exit_code, he.progress_current,
+		       '{}' AS output_json, he.error, he.retry_policy_json, he.exit_code, he.progress_current,
 		       he.progress_total, he.bytes_done, he.bytes_total, he.approval_required,
 		       he.user_note, he.created_at, he.started_at, he.completed_at, he.updated_at
 		FROM history_entries he
@@ -305,7 +308,7 @@ func (s *Server) getHistoryEntryRecord(ctx context.Context, runtime *databaseRun
 		       he.token_id, COALESCE(tok.name, ''), he.project_id, COALESCE(project.name, ''), he.runtime_id, he.target_id, he.profile_id,
 		       he.target_name, he.profile_label, he.source, he.status, he.action_name,
 		       he.title, he.summary, he.preview_json, he.input_text, he.input_json, he.output_text,
-		       he.output_json, he.error, he.exit_code, he.progress_current,
+		       he.output_json, he.error, he.retry_policy_json, he.exit_code, he.progress_current,
 		       he.progress_total, he.bytes_done, he.bytes_total, he.approval_required,
 		       he.user_note, he.created_at, he.started_at, he.completed_at, he.updated_at
 		FROM history_entries he
@@ -412,6 +415,7 @@ func scanHistoryEntry(scanner interface {
 		&item.OutputText,
 		&item.OutputJSON,
 		&item.Error,
+		&item.RetryPolicyJSON,
 		&exitCode,
 		&item.ProgressCurrent,
 		&item.ProgressTotal,
@@ -456,6 +460,20 @@ func scanHistoryEntry(scanner interface {
 	}
 	if completedAt.Valid {
 		item.CompletedAt = stringPtr(completedAt.String)
+	}
+	if item.SourceRefType == "connector_action_request" {
+		var policy connectors.RetryPolicy
+		if err := json.Unmarshal([]byte(item.RetryPolicyJSON), &policy); err != nil {
+			return historyEntryRecord{}, err
+		}
+		policy = connectors.NormalizePersistedRetryPolicy(policy)
+		encoded, err := json.Marshal(policy)
+		if err != nil {
+			return historyEntryRecord{}, err
+		}
+		item.RetryPolicyJSON = string(encoded)
+	} else {
+		item.RetryPolicyJSON = ""
 	}
 	item.ApprovalRequired = approvalRequired != 0
 	item.Labels = []historyLabelRecord{}

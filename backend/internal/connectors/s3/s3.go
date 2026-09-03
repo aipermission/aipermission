@@ -152,6 +152,13 @@ func (Connector) TargetSchema() connectors.Schema {
 			Description: "Use /bucket/key paths. Keep enabled for most S3-compatible providers such as MinIO.",
 		},
 		{
+			Name:        "trust_conditional_requests",
+			Label:       "Verified conditional requests",
+			Type:        connectors.FieldBoolean,
+			Default:     false,
+			Description: "Enable condition-dependent mutations only after this provider's destination If-Match and If-None-Match behavior has been verified.",
+		},
+		{
 			Name:        "transport_target_ref",
 			Label:       "SSH transport target",
 			Type:        connectors.FieldString,
@@ -366,7 +373,8 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
 				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact stored version ID returned by list_object_versions."},
-				{Name: "expected_current_etag", Label: "Expected current ETag", Type: connectors.FieldString, Required: true, Description: "Current destination ETag read immediately before approval. Restore fails if the current object changes before execution."},
+				{Name: "expected_current_etag", Label: "Expected current ETag", Type: connectors.FieldString, Description: "Current destination ETag read immediately before approval. Mutually exclusive with expected_current_absent."},
+				{Name: "expected_current_absent", Label: "Expect current object to be absent", Type: connectors.FieldBoolean, Default: false, Description: "Use only after a metadata read confirms the destination key is absent. Mutually exclusive with expected_current_etag."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -379,9 +387,9 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
 				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact version ID returned by list_object_versions."},
-				{Name: "expected_etag", Label: "Expected ETag", Type: connectors.FieldString, Description: "Optional ETag returned for this exact version. When set, deletion fails if it does not match."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
+			RetryPolicy: connectors.RetryPolicy{Class: connectors.RetryIdempotent},
+			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
 	}
 }
@@ -436,7 +444,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		prefix := strings.TrimSpace(stringValue(input, "prefix"))
 		search := strings.TrimSpace(stringValue(input, "search"))
 		cursor := strings.TrimSpace(stringValue(input, "cursor"))
-		limit := normalizeInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
+		limit := clampedInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
 		input["prefix"] = prefix
 		input["search"] = search
 		input["cursor"] = cursor
@@ -456,7 +464,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		if key == "" {
 			return connectors.PreparedAction{}, fmt.Errorf("key is required")
 		}
-		maxBytes := normalizeInt(input, "max_bytes", defaultDownloadMax, 1, maxDownloadBytes)
+		maxBytes := clampedInt(input, "max_bytes", defaultDownloadMax, 1, maxDownloadBytes)
 		input["key"] = key
 		input["max_bytes"] = maxBytes
 		title = "Download S3 object"
@@ -490,7 +498,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		if key == "" {
 			return connectors.PreparedAction{}, fmt.Errorf("key is required")
 		}
-		expiresSeconds := normalizeInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds)
+		expiresSeconds := clampedInt(input, "expires_seconds", defaultPresignedExpirySeconds, minPresignedExpirySeconds, maxPresignedExpirySeconds)
 		input["key"] = key
 		input["expires_seconds"] = expiresSeconds
 		if req.ActionName == ActionPresignUpload {
@@ -513,7 +521,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		}
 		input["key"] = key
 		input["cursor"] = cursor
-		input["limit"] = normalizeInt(input, "limit", defaultVersionListLimit, 1, maxVersionListLimit)
+		input["limit"] = clampedInt(input, "limit", defaultVersionListLimit, 1, maxVersionListLimit)
 		title = "List S3 object versions"
 		summary = key
 	case ActionRestoreVersion, ActionDeleteVersion:
@@ -528,11 +536,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["key"] = key
 		input["version_id"] = versionID
 		if req.ActionName == ActionDeleteVersion {
-			expectedETag, err := normalizeOptionalETag(input)
-			if err != nil {
-				return connectors.PreparedAction{}, err
-			}
-			input["expected_etag"] = expectedETag
+			delete(input, "expected_etag")
 			risk = connectors.RiskDestructive
 			title = "Delete S3 object version"
 		} else {
@@ -540,10 +544,12 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			if err != nil {
 				return connectors.PreparedAction{}, err
 			}
-			if expectedCurrentETag == "" {
-				return connectors.PreparedAction{}, fmt.Errorf("expected_current_etag is required")
+			expectedCurrentAbsent := boolValue(input, "expected_current_absent")
+			if (expectedCurrentETag == "") == !expectedCurrentAbsent {
+				return connectors.PreparedAction{}, fmt.Errorf("provide exactly one of expected_current_etag or expected_current_absent")
 			}
 			input["expected_current_etag"] = expectedCurrentETag
+			input["expected_current_absent"] = expectedCurrentAbsent
 			risk = connectors.RiskWrite
 			title = "Restore S3 object version"
 		}
@@ -630,6 +636,10 @@ func finalizePreparedAction(req connectors.ActionRequest, input map[string]any, 
 	if len(req.Reason) > maxS3ReasonBytes {
 		return connectors.PreparedAction{}, fmt.Errorf("reason is too large")
 	}
+	trustedConditions := s3TrustConditionalRequests(req.Target)
+	if s3ActionRequiresTrustedConditions(req.ActionName, input) && !trustedConditions {
+		return connectors.PreparedAction{}, fmt.Errorf("%s requires verified conditional requests for this S3 provider", req.ActionName)
+	}
 	preview := copyMap(input)
 	if _, ok := preview["content_base64"]; ok {
 		preview["content_base64"] = fmt.Sprintf("[base64 content: %v bytes]", input["content_bytes"])
@@ -645,32 +655,53 @@ func finalizePreparedAction(req connectors.ActionRequest, input map[string]any, 
 		Preview:       preview,
 		Payload:       input,
 		ContextMaterial: map[string]any{
-			"target":          req.Target.Name,
-			"profile":         req.Profile.Label,
-			"bucket":          s3Bucket(req.Target),
-			"connection_mode": connectionMode(req.Target),
+			"target":                     req.Target.Name,
+			"profile":                    req.Profile.Label,
+			"bucket":                     s3Bucket(req.Target),
+			"connection_mode":            connectionMode(req.Target),
+			"trust_conditional_requests": s3TrustConditionalRequests(req.Target),
 		},
 	}
 	switch req.ActionName {
 	case ActionUploadObject:
-		if !boolValue(input, "overwrite") {
+		if trustedConditions && !boolValue(input, "overwrite") {
 			prepared.RetryPolicy = connectors.ConditionalRetryPolicy("overwrite")
-		} else if stringValue(input, "expected_etag") != "" {
-			prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_etag")
 		}
-	case ActionDeleteObject, ActionDeleteVersion:
-		if stringValue(input, "expected_etag") != "" {
+	case ActionDeleteObject:
+		if trustedConditions && stringValue(input, "expected_etag") != "" {
 			prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_etag")
 		}
 	case ActionRestoreVersion:
-		prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_current_etag")
+		if trustedConditions && boolValue(input, "expected_current_absent") {
+			prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_current_absent")
+		}
+	case ActionDeleteVersion:
+		prepared.RetryPolicy = &connectors.RetryPolicy{Class: connectors.RetryIdempotent}
 	}
 	return prepared, nil
+}
+
+func s3ActionRequiresTrustedConditions(actionName string, input map[string]any) bool {
+	switch actionName {
+	case ActionUploadObject:
+		return !boolValue(input, "overwrite") || stringValue(input, "expected_etag") != ""
+	case ActionDeleteObject:
+		return stringValue(input, "expected_etag") != ""
+	case ActionPresignUpload:
+		return !boolValue(input, "overwrite")
+	case ActionRestoreVersion:
+		return true
+	default:
+		return false
+	}
 }
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	if action.ActionName == ActionRenameObject {
 		return connectors.ActionResult{}, errors.New("S3 rename_object is disabled because object stores do not provide an atomic cross-key move")
+	}
+	if s3ActionRequiresTrustedConditions(action.ActionName, action.Payload) && !s3TrustConditionalRequests(runtime.Target) {
+		return connectors.ActionResult{}, fmt.Errorf("%s requires verified conditional requests for this S3 provider", action.ActionName)
 	}
 	client, err := newS3Client(ctx, runtime)
 	if err != nil {
@@ -752,7 +783,7 @@ func executeListObjects(ctx context.Context, client *s3Client, input map[string]
 	prefix := strings.TrimSpace(stringValue(input, "prefix"))
 	search := strings.ToLower(strings.TrimSpace(stringValue(input, "search")))
 	cursor := strings.TrimSpace(stringValue(input, "cursor"))
-	limit := normalizeInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
+	limit := clampedInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
 
 	objects := make([]map[string]any, 0, limit)
 	directories := make([]map[string]any, 0)
@@ -887,7 +918,7 @@ func executeGetObjectMetadata(ctx context.Context, client *s3Client, input map[s
 
 func executeDownloadObject(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
 	key := normalizeObjectKey(input, "key")
-	maxBytes := normalizeInt(input, "max_bytes", defaultDownloadMax, 1, maxDownloadBytes)
+	maxBytes := clampedInt(input, "max_bytes", defaultDownloadMax, 1, maxDownloadBytes)
 	data, headers, err := client.GetObject(ctx, key, maxBytes)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -1085,12 +1116,12 @@ func (client *s3Client) PutObject(ctx context.Context, key string, data []byte, 
 	}
 	headers.Set("Content-Type", contentType)
 	_, _, err := client.Do(ctx, http.MethodPut, key, nil, s3RequestBody{Headers: headers, Data: data}, maxS3ResponseBytes)
-	return classifyConditionalS3Error(err, headers)
+	return classifyS3MutationError(err, headers)
 }
 
 func (client *s3Client) DeleteObject(ctx context.Context, key string, headers http.Header) error {
 	_, _, err := client.Do(ctx, http.MethodDelete, key, nil, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
-	return classifyConditionalS3Error(err, headers)
+	return classifyS3MutationError(err, headers)
 }
 
 func normalizeOptionalETag(input map[string]any) (string, error) {
@@ -1132,9 +1163,14 @@ func (client *s3Client) Do(ctx context.Context, method string, key string, query
 		}
 	}
 	client.Sign(req, payload)
+	req, requestDispatched := connectors.TrackHTTPRequestDispatch(req)
 	resp, err := client.httpClient.Do(req)
 	if err != nil {
-		return nil, nil, err
+		stage := "before_dispatch"
+		if requestDispatched() {
+			stage = "dispatch"
+		}
+		return nil, nil, &s3TransportError{stage: stage, err: err}
 	}
 	defer resp.Body.Close()
 	readLimit := limit
@@ -1143,10 +1179,10 @@ func (client *s3Client) Do(ctx context.Context, method string, key string, query
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(readLimit)+1))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, &s3TransportError{stage: "response_read", err: err}
 	}
 	if len(data) > readLimit {
-		return nil, resp.Header, fmt.Errorf("s3 response is larger than %d bytes", readLimit)
+		return nil, resp.Header, &s3TransportError{stage: "response_validation", err: fmt.Errorf("s3 response is larger than %d bytes", readLimit)}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, resp.Header, s3HTTPError(resp.StatusCode, data)
@@ -1188,7 +1224,11 @@ func (client *s3Client) URL(key string, query url.Values) *url.URL {
 }
 
 func (client *s3Client) Sign(req *http.Request, payload []byte) {
-	now := time.Now().UTC()
+	client.signAt(req, payload, time.Now().UTC())
+}
+
+func (client *s3Client) signAt(req *http.Request, payload []byte, now time.Time) {
+	now = now.UTC()
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")
 	payloadHash := sha256Hex(payload)

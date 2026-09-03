@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"reflect"
 	"strings"
 	"testing"
@@ -43,8 +44,11 @@ func TestPrepareActionNormalizesPeekMessages(t *testing.T) {
 	if prepared.Payload["vhost"] != "/" {
 		t.Fatalf("vhost = %#v", prepared.Payload["vhost"])
 	}
-	if prepared.Risk != connectors.RiskRead {
+	if prepared.Risk != connectors.RiskWrite {
 		t.Fatalf("risk = %q", prepared.Risk)
+	}
+	if policy := connectors.EffectiveRetryPolicy(connectors.ActionDefinition{Risk: prepared.Risk}); policy.Class != connectors.RetryNonIdempotent {
+		t.Fatalf("retry policy = %#v", policy)
 	}
 }
 
@@ -366,4 +370,60 @@ func TestPublishMarksPayloadAndPropertiesAsSensitiveInput(t *testing.T) {
 		}
 	}
 	t.Fatal("publish_message action was not found")
+}
+
+func TestRabbitMutationPostDispatchFailureIsOutcomeUnknown(t *testing.T) {
+	err := classifyRabbitMutationError("publish message", &rabbitPostDispatchError{err: errors.New("unexpected EOF")})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+		t.Fatalf("error = %v code=%q status=%q", err, connectors.ErrorCode(err), connectors.ErrorStatus(err))
+	}
+	definite := errors.New("permission denied")
+	if classified := classifyRabbitMutationError("publish message", definite); classified != definite {
+		t.Fatalf("definite response was reclassified: %v", classified)
+	}
+}
+
+func TestRabbitPostTracksMutationDispatchAndAmbiguousStatuses(t *testing.T) {
+	preDispatch := &rabbitClient{
+		baseURL: "http://rabbit.invalid",
+		httpClient: &http.Client{Transport: rabbitRoundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial refused")
+		})},
+	}
+	if err := preDispatch.Post(t.Context(), "/publish", map[string]any{"payload": "x"}, nil); err == nil || connectors.ErrorStatus(classifyRabbitMutationError("publish message", err)) == connectors.ResultOutcomeUnknown {
+		t.Fatalf("pre-dispatch error was misclassified: %v", err)
+	}
+
+	postDispatch := &rabbitClient{
+		baseURL: "http://rabbit.invalid",
+		httpClient: &http.Client{Transport: rabbitRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			trace := httptrace.ContextClientTrace(request.Context())
+			trace.WroteRequest(httptrace.WroteRequestInfo{})
+			return nil, errors.New("connection reset")
+		})},
+	}
+	err := postDispatch.Post(t.Context(), "/publish", map[string]any{"payload": "x"}, nil)
+	if connectors.ErrorStatus(classifyRabbitMutationError("publish message", err)) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("post-dispatch error was not classified as unknown: %v", err)
+	}
+
+	for _, status := range []int{http.StatusRequestTimeout, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, "ambiguous", status)
+			}))
+			defer server.Close()
+			client := &rabbitClient{baseURL: server.URL, httpClient: server.Client()}
+			err := client.Post(t.Context(), "/publish", map[string]any{"payload": "x"}, nil)
+			if connectors.ErrorStatus(classifyRabbitMutationError("publish message", err)) != connectors.ResultOutcomeUnknown {
+				t.Fatalf("status %d was not classified as unknown: %v", status, err)
+			}
+		})
+	}
+}
+
+type rabbitRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function rabbitRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }

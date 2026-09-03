@@ -26,6 +26,8 @@ const (
 	connectorActionRunningHint       = "Wait 3 seconds, then call get_connector_action_request again. Use the connector-specific read or recovery actions when the connector exposes them."
 	connectorActionMissingPermission = "This token is not allowed to run this connector action for the selected target/profile"
 	connectorActionFinishTimeout     = 10 * time.Second
+	connectorActionFinishAttempts    = 3
+	connectorActionFinishRetryDelay  = 50 * time.Millisecond
 )
 
 type connectorActionCall struct {
@@ -114,6 +116,9 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	})
 	if err != nil {
 		return connectorActionCallResult{}, err
+	}
+	if call.Source == commandRequestSourceMCP && call.IdempotencyKey == "" && prepared.Action.Risk != connectors.RiskRead {
+		return connectorActionCallResult{}, errors.New("idempotency_key is required for connector mutations; update the MCP client and retry with a caller-stable key")
 	}
 
 	store := connectortargets.NewStore(runtime.database)
@@ -458,12 +463,33 @@ func (s *Server) finishConnectorActionRequestWithAllowed(ctx context.Context, ru
 		return connectortargets.ActionRequest{}, fmt.Errorf("process connector action result: %w", err)
 	}
 	var finished connectortargets.ActionRequest
-	err = s.withAuditedTransaction(finishCtx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+	for attempt := 0; attempt < connectorActionFinishAttempts; attempt++ {
+		finished, err = s.persistConnectorActionFinish(finishCtx, runtime, requestID, status, redacted, allowedStatuses)
+		if err == nil {
+			return finished, nil
+		}
+		if finishCtx.Err() != nil || attempt == connectorActionFinishAttempts-1 {
+			break
+		}
+		timer := time.NewTimer(connectorActionFinishRetryDelay * time.Duration(attempt+1))
+		select {
+		case <-finishCtx.Done():
+			timer.Stop()
+			return connectortargets.ActionRequest{}, errors.Join(err, finishCtx.Err())
+		case <-timer.C:
+		}
+	}
+	return connectortargets.ActionRequest{}, fmt.Errorf("persist connector action terminal state after %d attempts: %w", connectorActionFinishAttempts, err)
+}
+
+func (s *Server) persistConnectorActionFinish(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, result connectors.ActionResult, allowedStatuses []connectors.ResultStatus) (connectortargets.ActionRequest, error) {
+	var finished connectortargets.ActionRequest
+	err := s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 		var err error
 		var changed bool
-		finished, changed, err = connectortargets.NewTxStore(tx).FinishActionRequestWithChange(finishCtx, connectortargets.FinishActionRequestInput{
-			ID: requestID, Status: status, Output: redacted.Output,
-			DisplayText: redacted.DisplayText, Error: redacted.Error,
+		finished, changed, err = connectortargets.NewTxStore(tx).FinishActionRequestWithChange(ctx, connectortargets.FinishActionRequestInput{
+			ID: requestID, Status: status, Output: result.Output,
+			DisplayText: result.DisplayText, Error: result.Error,
 			AllowedStatuses: allowedStatuses,
 		})
 		if err == nil && !changed {

@@ -208,10 +208,11 @@ type CommandRunRequest struct {
 
 // CommandRunResult is the captured result of one connector transport command.
 type CommandRunResult struct {
-	Stdout     string `json:"stdout"`
-	Stderr     string `json:"stderr"`
-	ExitCode   int    `json:"exit_code"`
-	DurationMS int64  `json:"duration_ms"`
+	Stdout          string `json:"stdout"`
+	Stderr          string `json:"stderr"`
+	ExitCode        int    `json:"exit_code"`
+	DurationMS      int64  `json:"duration_ms"`
+	DispatchStarted bool   `json:"-"`
 }
 
 // CommandTransport is a generic command transport capability injected by the

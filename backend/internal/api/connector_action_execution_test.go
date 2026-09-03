@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/actions"
@@ -805,5 +806,49 @@ func TestFinishConnectorActionRequestDoesNotAuditLateCompletion(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("terminal audit events=%d, want 1", count)
+	}
+}
+
+func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	createRunning := func() connectortargets.ActionRequest {
+		request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+			TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+			ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+			Status: connectors.ResultRunning,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.Exec(`UPDATE connector_action_requests SET created_at = datetime('now', '-2 minutes') WHERE id = ?`, request.ID); err != nil {
+			t.Fatal(err)
+		}
+		return request
+	}
+	orphaned := createRunning()
+	active := createRunning()
+	runtime.setConnectorCredentialBoundary(active.ID, connectorCredentialBoundary{})
+
+	server.recoverOrphanedConnectorActions(t.Context(), runtime, time.Now().UTC())
+
+	gotOrphaned, err := store.GetActionRequest(t.Context(), orphaned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotOrphaned.Status != connectors.ResultOutcomeUnknown || gotOrphaned.Error != connectorActionPersistenceUnknownMessage {
+		t.Fatalf("orphaned request was not recovered: %#v", gotOrphaned)
+	}
+	gotActive, err := store.GetActionRequest(t.Context(), active.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotActive.Status != connectors.ResultRunning {
+		t.Fatalf("active request was recovered prematurely: %#v", gotActive)
 	}
 }

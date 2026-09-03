@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -23,6 +24,7 @@ func connectorApprovalContext(prepared actions.PreparedRequest, token tokens.Tok
 		"description":            prepared.ActionDefinition.Description,
 		"category":               prepared.ActionDefinition.Category,
 		"risk":                   prepared.ActionDefinition.Risk,
+		"retry_policy":           connectors.EffectiveRetryPolicy(prepared.ActionDefinition),
 		"input_schema":           prepared.ActionDefinition.InputSchema,
 		"sensitive_input_fields": prepared.ActionDefinition.SensitiveInputFields,
 		"output_hint":            prepared.ActionDefinition.OutputHint,

@@ -10,27 +10,29 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (s connectorTargetHandlers) staleConnectorActionRequestsForTarget(ctx context.Context, runtime *databaseRuntime, targetID int64, profileID int64, reason string, includeRunning bool) (int64, error) {
+func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx context.Context, runtime *databaseRuntime, targetID int64, profileID int64, reason string, includeRunning bool) (int64, error) {
 	if runtime == nil || runtime.database == nil || targetID < 1 {
 		return 0, nil
 	}
-	input := connectortargets.StaleActionRequestsForTargetInput{
+	input := connectortargets.InvalidateActionRequestsForTargetInput{
 		TargetID: targetID, ProfileID: profileID,
 		Error:         s.redactForPersistence(ctx, runtime, reason),
+		RunningError:  s.redactForPersistence(ctx, runtime, "connector configuration changed after dispatch; the external outcome is unknown and must be inspected before retrying"),
 		ApprovalDrift: connectorLifecycleApprovalDrift(profileID), IncludeRunning: includeRunning,
 	}
-	var result connectortargets.StaleActionRequestsForTargetResult
+	var result connectortargets.InvalidateActionRequestsForTargetResult
 	err := s.withAuditedMutation(
-		ctx, runtime, "gateway", nil, 0, "connector_action.requests.stale",
+		ctx, runtime, "gateway", nil, 0, "connector_action.requests.invalidated",
 		func() any {
 			return map[string]any{
 				"target_id": targetID, "profile_id": profileID,
-				"request_ids": result.IDs, "affected": result.Affected,
+				"request_ids": result.IDs, "stale_request_ids": result.StaleIDs,
+				"outcome_unknown_request_ids": result.OutcomeUnknownIDs, "affected": result.Affected,
 			}
 		},
 		func(tx *sql.Tx) error {
 			var err error
-			result, err = connectortargets.NewTxStore(tx).StaleActionRequestsForTarget(ctx, input)
+			result, err = connectortargets.NewTxStore(tx).InvalidateActionRequestsForTarget(ctx, input)
 			if err == nil && result.Affected == 0 {
 				return errAuditedMutationUnchanged
 			}

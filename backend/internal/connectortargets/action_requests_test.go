@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,9 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 		Status:               connectors.ResultRunning,
 		ApprovalContext:      `{"target":"postgres:1:1"}`,
 		ApprovalContextHash:  "ctx-hash",
+		RetryPolicy: connectors.RetryPolicy{
+			Class: connectors.RetryReadOnly, Guidance: "inspect before repeating",
+		},
 	})
 	if err != nil {
 		t.Fatalf("insert action request: %v", err)
@@ -53,6 +57,16 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	}
 	if request.Title != "Run Postgres read-only query" || request.Summary != "Run a bounded read-only SQL query" || request.Preview["sql"] != "select 1" {
 		t.Fatalf("unexpected request display metadata: %#v", request)
+	}
+	if request.RetryPolicy.Class != connectors.RetryReadOnly || request.RetryPolicy.Guidance != "inspect before repeating" {
+		t.Fatalf("unexpected request retry policy: %#v", request.RetryPolicy)
+	}
+	var historyRetryPolicy string
+	if err := database.QueryRow(`SELECT retry_policy_json FROM history_entries WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, request.ID).Scan(&historyRetryPolicy); err != nil {
+		t.Fatalf("read history retry policy: %v", err)
+	}
+	if !strings.Contains(historyRetryPolicy, `"class":"read_only"`) {
+		t.Fatalf("history retry policy = %s", historyRetryPolicy)
 	}
 	if output, ok := request.Output.(map[string]any); !ok || len(output) != 0 {
 		t.Fatalf("new request output should be empty object, got %#v", request.Output)
@@ -224,7 +238,7 @@ func TestStoreActionRequestHistoryProjectionIsAtomic(t *testing.T) {
 	})
 }
 
-func TestStoreFinishActionRequestDoesNotOverwriteStaleRequest(t *testing.T) {
+func TestStoreFinishActionRequestDoesNotOverwriteInvalidatedRequest(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)
 	ctx := context.Background()
@@ -243,13 +257,14 @@ func TestStoreFinishActionRequestDoesNotOverwriteStaleRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert running request: %v", err)
 	}
-	if _, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
+	if _, err := store.InvalidateActionRequestsForTarget(ctx, InvalidateActionRequestsForTargetInput{
 		TargetID:       target.ID,
 		ProfileID:      profile.ID,
 		Error:          "target changed",
+		RunningError:   "target changed after dispatch",
 		IncludeRunning: true,
 	}); err != nil {
-		t.Fatalf("mark stale: %v", err)
+		t.Fatalf("invalidate request: %v", err)
 	}
 
 	finished, err := store.FinishActionRequest(ctx, FinishActionRequestInput{
@@ -261,8 +276,8 @@ func TestStoreFinishActionRequestDoesNotOverwriteStaleRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("late finish should return current request without failing: %v", err)
 	}
-	if finished.Status != connectors.ResultStale || finished.Error != "target changed" || finished.DisplayText != "" {
-		t.Fatalf("late finish overwrote stale request: %#v", finished)
+	if finished.Status != connectors.ResultOutcomeUnknown || finished.Error != "target changed after dispatch" || finished.DisplayText != "" {
+		t.Fatalf("late finish overwrote invalidated request: %#v", finished)
 	}
 }
 
@@ -459,7 +474,7 @@ func TestStoreActionRequestApprovalHelpers(t *testing.T) {
 	}
 }
 
-func TestStoreStaleActionRequestsForTarget(t *testing.T) {
+func TestStoreInvalidateActionRequestsForTargetSeparatesRunningOutcome(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)
 	ctx := context.Background()
@@ -503,27 +518,33 @@ func TestStoreStaleActionRequestsForTarget(t *testing.T) {
 		t.Fatalf("insert completed action request: %v", err)
 	}
 
-	result, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
+	result, err := store.InvalidateActionRequestsForTarget(ctx, InvalidateActionRequestsForTargetInput{
 		TargetID:       target.ID,
 		ProfileID:      profile.ID,
 		Error:          "target deleted",
+		RunningError:   "target deleted after dispatch; outcome unknown",
 		ApprovalDrift:  "profile",
 		IncludeRunning: true,
 	})
 	if err != nil {
 		t.Fatalf("stale action requests: %v", err)
 	}
-	if result.Affected != 2 || len(result.IDs) != 2 {
+	if result.Affected != 2 || len(result.IDs) != 2 || len(result.StaleIDs) != 1 || len(result.OutcomeUnknownIDs) != 1 {
 		t.Fatalf("unexpected stale result: %#v", result)
 	}
-	for _, id := range []int64{pending.ID, running.ID} {
-		item, err := store.GetActionRequest(ctx, id)
-		if err != nil {
-			t.Fatalf("read stale request %d: %v", id, err)
-		}
-		if item.Status != connectors.ResultStale || item.Error != "target deleted" || item.ApprovalContextDrift != "profile" || item.CompletedAt == nil {
-			t.Fatalf("request %d was not marked stale: %#v", id, item)
-		}
+	gotPending, err := store.GetActionRequest(ctx, pending.ID)
+	if err != nil {
+		t.Fatalf("read stale request: %v", err)
+	}
+	if gotPending.Status != connectors.ResultStale || gotPending.Error != "target deleted" || gotPending.ApprovalContextDrift != "profile" || gotPending.CompletedAt == nil {
+		t.Fatalf("pending request was not marked stale: %#v", gotPending)
+	}
+	gotRunning, err := store.GetActionRequest(ctx, running.ID)
+	if err != nil {
+		t.Fatalf("read outcome-unknown request: %v", err)
+	}
+	if gotRunning.Status != connectors.ResultOutcomeUnknown || gotRunning.Error != "target deleted after dispatch; outcome unknown" || gotRunning.ApprovalContextDrift != "profile" || gotRunning.CompletedAt == nil {
+		t.Fatalf("running request was not marked outcome_unknown: %#v", gotRunning)
 	}
 	unchanged, err := store.GetActionRequest(ctx, completed.ID)
 	if err != nil {
@@ -534,7 +555,7 @@ func TestStoreStaleActionRequestsForTarget(t *testing.T) {
 	}
 }
 
-func TestStoreStaleActionRequestsForTargetLeavesRunningByDefault(t *testing.T) {
+func TestStoreInvalidateActionRequestsForTargetLeavesRunningByDefault(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)
 	ctx := context.Background()
@@ -566,7 +587,7 @@ func TestStoreStaleActionRequestsForTargetLeavesRunningByDefault(t *testing.T) {
 		t.Fatalf("insert running action request: %v", err)
 	}
 
-	result, err := store.StaleActionRequestsForTarget(ctx, StaleActionRequestsForTargetInput{
+	result, err := store.InvalidateActionRequestsForTarget(ctx, InvalidateActionRequestsForTargetInput{
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
 		Error:         "target updated",

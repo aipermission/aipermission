@@ -83,6 +83,7 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		Status:                  status,
 		ApprovalContext:         approvalContext,
 		ApprovalContextHash:     approvalHash,
+		RetryPolicy:             connectors.EffectiveRetryPolicy(prepared.ActionDefinition),
 		IdempotencyKey:          strings.TrimSpace(idempotencyKey),
 		IdempotencyIdentityHash: identityHash,
 	}

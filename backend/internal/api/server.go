@@ -88,6 +88,7 @@ type databaseRuntime struct {
 	retentionMu        sync.Mutex
 	retentionCancel    context.CancelFunc
 	retentionDone      chan struct{}
+	actionRecovery     connectorActionRecoveryWorker
 }
 
 type serverOptions struct {

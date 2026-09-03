@@ -64,3 +64,11 @@ export function shortDate(value) {
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
 }
+
+export function restoreDestinationGuard(metadata, error) {
+  const etag = String(metadata?.output?.etag || "").trim();
+  if (etag) return { expected_current_etag: etag };
+  if (error?.actionItem?.output?.code === "not_found") return { expected_current_absent: true };
+  if (error) throw error;
+  throw new Error("Current object ETag could not be read; restore was not started.");
+}

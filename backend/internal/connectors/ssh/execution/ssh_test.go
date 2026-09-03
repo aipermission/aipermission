@@ -18,7 +18,7 @@ func TestStreamCommandValidatesCommandBeforeSSHSetup(t *testing.T) {
 }
 
 func TestStreamCommandRejectsInvalidPrivateKey(t *testing.T) {
-	_, err := StreamCommand(context.Background(), Target{
+	result, err := StreamCommand(context.Background(), Target{
 		Host:       "127.0.0.1",
 		Port:       22,
 		Username:   "root",
@@ -26,6 +26,9 @@ func TestStreamCommandRejectsInvalidPrivateKey(t *testing.T) {
 	}, "ls", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "parse private key") {
 		t.Fatalf("expected private key parsing to fail")
+	}
+	if result.DispatchStarted {
+		t.Fatal("invalid private key was incorrectly marked as dispatched")
 	}
 }
 

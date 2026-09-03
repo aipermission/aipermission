@@ -81,6 +81,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", actionsResponse.Code, actionsResponse.Body.String())
 	}
 	if !strings.Contains(actionsResponse.Body.String(), postgresconnector.ActionGetSchemas) ||
+		!strings.Contains(actionsResponse.Body.String(), `"retry_policy":{"class":"read_only"`) ||
 		strings.Contains(actionsResponse.Body.String(), postgresconnector.ActionQueryReadonly) ||
 		strings.Contains(actionsResponse.Body.String(), "no_longer_supported") {
 		t.Fatalf("unexpected action discovery response: %s", actionsResponse.Body.String())
@@ -120,9 +121,32 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	generation := int64(1)
 	request := connectortargets.ActionRequest{
 		TokenID: &token.ID, SessionID: &sessionID, SessionGeneration: &generation,
+		Output: map[string]any{"secret_derived_result": "withhold-me"}, DisplayText: "withhold-me",
+	}
+	for name, malformed := range map[string]connectortargets.ActionRequest{
+		"missing session id":         {SessionGeneration: &generation},
+		"missing session generation": {SessionID: &sessionID},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, malformed) {
+				t.Fatalf("partial Vault session handle authorized output")
+			}
+			response := connectorActionResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), runtime, token.ID, malformed, connectors.ActionResult{
+				Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
+			})
+			if !response.OutputWithheld || response.Output != nil || response.DisplayText != "" {
+				t.Fatalf("partial Vault session handle exposed output: %#v", response)
+			}
+		})
 	}
 	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
 		t.Fatalf("Vault session output was authorized without a lease")
+	}
+	withheld := connectorActionResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), runtime, token.ID, request, connectors.ActionResult{
+		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
+	})
+	if !withheld.OutputWithheld || withheld.Output != nil || withheld.DisplayText != "" {
+		t.Fatalf("completed call/replay response exposed output without a lease: %#v", withheld)
 	}
 	if err := runtime.vaultLeases.Grant(vaultsessions.Lease{
 		WorkspaceID: runtime.workspaceUUID, RuntimeInstanceID: runtime.runtimeInstanceID,
@@ -145,6 +169,12 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}
 	if !connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
 		t.Fatalf("valid exact Vault lease did not authorize connector output")
+	}
+	authorized := connectorActionResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), runtime, token.ID, request, connectors.ActionResult{
+		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
+	})
+	if authorized.OutputWithheld || authorized.Output == nil || authorized.DisplayText == "" {
+		t.Fatalf("valid exact Vault lease did not expose connector output: %#v", authorized)
 	}
 	runtime.vaultLeases.RevokeToken(token.ID)
 	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
@@ -204,9 +234,10 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		t.Fatalf("disabled project should be hidden: %d %s", hidden.Code, hidden.Body.String())
 	}
 	action := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
-		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName: postgresconnector.ActionGetSchemas,
-		Reason:     "verify disabled project scope",
+		TargetRef:      connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		ActionName:     postgresconnector.ActionGetSchemas,
+		Reason:         "verify disabled project scope",
+		IdempotencyKey: "disabled-project-scope",
 	})
 	if action.Code != http.StatusOK || !strings.Contains(action.Body.String(), `"status":"blocked"`) {
 		t.Fatalf("disabled project action should be blocked: %d %s", action.Code, action.Body.String())
@@ -253,8 +284,52 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 	if secondResponse.RequestID != firstResponse.RequestID || !secondResponse.Replayed || secondResponse.Status != string(connectors.ResultApprovalPending) {
 		t.Fatalf("unexpected replay: first=%#v second=%#v", firstResponse, secondResponse)
 	}
+	if firstResponse.RetryPolicy.Class != connectors.RetryReadOnly || secondResponse.RetryPolicy.Class != firstResponse.RetryPolicy.Class || secondResponse.RetryPolicy.Guidance != firstResponse.RetryPolicy.Guidance {
+		t.Fatalf("retry policy did not survive call/replay: first=%#v second=%#v", firstResponse.RetryPolicy, secondResponse.RetryPolicy)
+	}
+	poll := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-action-requests/"+strconv.FormatInt(firstResponse.RequestID, 10), token.TokenValue, nil)
+	if poll.Code != http.StatusOK || !strings.Contains(poll.Body.String(), `"retry_policy":{"class":"read_only"`) {
+		t.Fatalf("poll retry policy: %d %s", poll.Code, poll.Body.String())
+	}
+	approval := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals/"+strconv.FormatInt(firstResponse.RequestID, 10), "", nil)
+	if approval.Code != http.StatusOK || !strings.Contains(approval.Body.String(), `"retry_policy":{"class":"read_only"`) {
+		t.Fatalf("approval retry policy: %d %s", approval.Code, approval.Body.String())
+	}
+	var historyPolicy string
+	if err := fixture.db.QueryRow(`SELECT retry_policy_json FROM history_entries WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, firstResponse.RequestID).Scan(&historyPolicy); err != nil {
+		t.Fatalf("read history retry policy: %v", err)
+	}
+	if !strings.Contains(historyPolicy, `"class":"read_only"`) {
+		t.Fatalf("history retry policy = %s", historyPolicy)
+	}
+	historyResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?target_id="+strconv.FormatInt(target.ID, 10)+"&limit=10", "", nil)
+	if historyResponse.Code != http.StatusOK {
+		t.Fatalf("history response: %d %s", historyResponse.Code, historyResponse.Body.String())
+	}
+	historyPage := decodeRouteResponse[pageResponse[historyEntryRecord]](t, historyResponse.Body.Bytes())
+	responsePolicy := ""
+	for _, item := range historyPage.Items {
+		if item.SourceRefType == "connector_action_request" && item.SourceRefID == firstResponse.RequestID {
+			responsePolicy = item.RetryPolicyJSON
+			break
+		}
+	}
+	if !strings.Contains(responsePolicy, `"class":"read_only"`) {
+		t.Fatalf("history response retry policy = %#v", historyPage.Items)
+	}
 	if secondResponse.Error != "Waiting for user approval." {
 		t.Fatalf("approval replay error = %q", secondResponse.Error)
+	}
+	refreshedAttempt := request
+	refreshedAttempt.Reason = "inspect schema after refreshing external state"
+	sameKey := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, refreshedAttempt)
+	if sameKey.Code != http.StatusConflict {
+		t.Fatalf("changed logical attempt with old key: %d %s", sameKey.Code, sameKey.Body.String())
+	}
+	refreshedAttempt.IdempotencyKey = "connector-request-2"
+	newKey := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, refreshedAttempt)
+	if newKey.Code != http.StatusOK || !strings.Contains(newKey.Body.String(), `"status":"approval_pending"`) {
+		t.Fatalf("refreshed logical attempt with new key: %d %s", newKey.Code, newKey.Body.String())
 	}
 	fixture.server.activeRuntime().setMCPStarted(false)
 	stoppedReplay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
@@ -289,6 +364,43 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 	}
 }
 
+func TestMCPConnectorActionAllowsLegacyReadsButRequiresIdempotencyForMutations(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := t.Context()
+	token, err := fixture.tokens.Create(t.Context(), tokens.CreateRequest{Name: "missing-idempotency"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	store := connectortargets.NewStore(fixture.db)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
+		ActionName: postgresconnector.ActionGetSchemas, ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set read permission: %v", err)
+	}
+	readResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
+		TargetRef: connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID), ActionName: postgresconnector.ActionGetSchemas,
+	})
+	if readResponse.Code != http.StatusOK || !strings.Contains(readResponse.Body.String(), `"status":"approval_pending"`) {
+		t.Fatalf("legacy read without idempotency key = %d %s", readResponse.Code, readResponse.Body.String())
+	}
+
+	sshProfile := fixture.createKeyAndServer(t, "missing-idempotency-mutation")
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: sshProfile.TargetID, ProfileID: sshProfile.ProfileID,
+		ActionName: "exec", ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set mutation permission: %v", err)
+	}
+	mutationResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
+		TargetRef: sshProfile.TargetRef, ActionName: "exec", Input: map[string]any{"command": "true"},
+	})
+	if mutationResponse.Code != http.StatusBadRequest || !strings.Contains(mutationResponse.Body.String(), "idempotency_key is required for connector mutations") {
+		t.Fatalf("mutation without idempotency key = %d %s", mutationResponse.Code, mutationResponse.Body.String())
+	}
+}
+
 func TestMCPConnectorActionOutcomeUnknownForbidsAutomaticRetry(t *testing.T) {
 	response := connectorActionRequestToMCPResponse(nil, connectortargets.ActionRequest{
 		ID: 42, Status: connectors.ResultOutcomeUnknown,
@@ -297,7 +409,27 @@ func TestMCPConnectorActionOutcomeUnknownForbidsAutomaticRetry(t *testing.T) {
 	if response.RetryAfterSeconds != 0 {
 		t.Fatalf("outcome_unknown retry_after_seconds = %d", response.RetryAfterSeconds)
 	}
-	if !strings.Contains(response.AssistantHint, "Do not retry") || !strings.Contains(response.AssistantHint, "read_console") {
+	if !strings.Contains(response.AssistantHint, "Do not retry") || !strings.Contains(response.AssistantHint, "connector-specific read-only action") || strings.Contains(response.AssistantHint, "read_console") {
 		t.Fatalf("outcome_unknown assistant hint = %q", response.AssistantHint)
+	}
+}
+
+func TestMCPConnectorActionWithheldOutputPreservesNoRetryGuidance(t *testing.T) {
+	sessionID := int64(41)
+	request := connectortargets.ActionRequest{
+		ID: 42, Status: connectors.ResultOutcomeUnknown,
+		ConnectorKind: "ssh", TargetID: 7, ProfileID: 8, ActionName: "exec",
+		SessionID: &sessionID,
+		Output:    map[string]any{"secret_derived_result": "withhold-me"},
+	}
+	response := connectorActionResponseForToken(context.Background(), nil, nil, 9, request, connectors.ActionResult{
+		Status: connectors.ResultOutcomeUnknown,
+		Output: request.Output,
+	})
+	if !response.OutputWithheld || response.Output != nil {
+		t.Fatalf("response did not withhold output: %#v", response)
+	}
+	if !strings.Contains(response.AssistantHint, "Do not retry") || !strings.Contains(response.AssistantHint, "authorization") {
+		t.Fatalf("withheld response lost safety guidance: %q", response.AssistantHint)
 	}
 }

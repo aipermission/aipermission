@@ -63,12 +63,8 @@ func (s connectorTargetHandlers) listConnectorTargetInventory(w http.ResponseWri
 				Config:        target.Config,
 			}
 			profileView := connectortargets.CredentialProfileView(profile)
-			actions, err := connector.GetActionList(r.Context(), targetView, profileView)
+			actions, err := connectors.GetActionDefinitions(r.Context(), connector, targetView, profileView)
 			if err != nil {
-				writeInternalError(w)
-				return
-			}
-			if err := connectors.ValidateActionDefinitions(actions, target.ConnectorKind+" actions"); err != nil {
 				writeInternalError(w)
 				return
 			}

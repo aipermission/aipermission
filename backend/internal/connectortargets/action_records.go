@@ -3,6 +3,7 @@ package connectortargets
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -73,6 +74,7 @@ type ActionRequest struct {
 	ApprovalContext         string
 	ApprovalContextHash     string
 	ApprovalContextDrift    string
+	RetryPolicy             connectors.RetryPolicy
 	IdempotencyKey          string
 	IdempotencyIdentityHash string
 	SessionID               *int64
@@ -97,6 +99,7 @@ type InsertActionRequestInput struct {
 	Status                  connectors.ResultStatus
 	ApprovalContext         string
 	ApprovalContextHash     string
+	RetryPolicy             connectors.RetryPolicy
 	IdempotencyKey          string
 	IdempotencyIdentityHash string
 }
@@ -111,17 +114,20 @@ type FinishActionRequestInput struct {
 	AllowedStatuses []connectors.ResultStatus
 }
 
-type StaleActionRequestsForTargetInput struct {
+type InvalidateActionRequestsForTargetInput struct {
 	TargetID       int64
 	ProfileID      int64
 	Error          string
+	RunningError   string
 	ApprovalDrift  string
 	IncludeRunning bool
 }
 
-type StaleActionRequestsForTargetResult struct {
-	IDs      []int64
-	Affected int64
+type InvalidateActionRequestsForTargetResult struct {
+	IDs               []int64
+	StaleIDs          []int64
+	OutcomeUnknownIDs []int64
+	Affected          int64
 }
 
 type ActionRequestFilter struct {
@@ -386,6 +392,10 @@ func (s *Store) InsertActionRequestIdempotent(ctx context.Context, input InsertA
 	if err != nil {
 		return ActionRequest{}, false, ValidationError("action preview must be a JSON object")
 	}
+	retryPolicyJSON, err := json.Marshal(input.RetryPolicy)
+	if err != nil {
+		return ActionRequest{}, false, ValidationError("retry policy must be JSON serializable")
+	}
 	now := nowString()
 	idempotencyScope := actionRequestIdempotencyScope(input.TokenID, input.Source)
 	executor, commit, rollback, err := s.transaction(ctx, "connector action request")
@@ -398,9 +408,9 @@ func (s *Store) InsertActionRequestIdempotent(ctx context.Context, input InsertA
 			token_id, target_id, profile_id, connector_kind, action_name, title, summary,
 			preview_json, source, input_json,
 			encrypted_payload_json, reason, status, approval_context,
-			approval_context_hash, idempotency_key, idempotency_identity_hash, idempotency_scope, created_at
+			approval_context_hash, retry_policy_json, idempotency_key, idempotency_identity_hash, idempotency_scope, created_at
 		)
-		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
 		WHERE
@@ -423,6 +433,7 @@ func (s *Store) InsertActionRequestIdempotent(ctx context.Context, input InsertA
 		string(input.Status),
 		strings.TrimSpace(input.ApprovalContext),
 		strings.TrimSpace(input.ApprovalContextHash),
+		string(retryPolicyJSON),
 		strings.TrimSpace(input.IdempotencyKey),
 		strings.TrimSpace(input.IdempotencyIdentityHash),
 		idempotencyScope,
@@ -620,21 +631,21 @@ func (s *Store) SetActionRequestSessionHandle(ctx context.Context, id int64, ses
 	return s.GetActionRequest(ctx, id)
 }
 
-func (s *Store) StaleActionRequestsForTarget(ctx context.Context, input StaleActionRequestsForTargetInput) (StaleActionRequestsForTargetResult, error) {
+func (s *Store) InvalidateActionRequestsForTarget(ctx context.Context, input InvalidateActionRequestsForTargetInput) (InvalidateActionRequestsForTargetResult, error) {
 	if s == nil || s.db == nil {
-		return StaleActionRequestsForTargetResult{}, fmt.Errorf("connector target store is not configured")
+		return InvalidateActionRequestsForTargetResult{}, fmt.Errorf("connector target store is not configured")
 	}
 	if input.TargetID < 1 {
-		return StaleActionRequestsForTargetResult{}, ErrTargetNotFound
+		return InvalidateActionRequestsForTargetResult{}, ErrTargetNotFound
 	}
 	if input.ProfileID < 0 {
-		return StaleActionRequestsForTargetResult{}, ErrTargetProfileNotFound
+		return InvalidateActionRequestsForTargetResult{}, ErrTargetProfileNotFound
 	}
-	where := "target_id = ? AND status IN (?)"
-	args := []any{input.TargetID, string(connectors.ResultApprovalPending)}
+	where := "target_id = ?"
+	args := []any{input.TargetID}
+	statuses := []connectors.ResultStatus{connectors.ResultApprovalPending}
 	if input.IncludeRunning {
-		where = "target_id = ? AND status IN (?, ?)"
-		args = []any{input.TargetID, string(connectors.ResultApprovalPending), string(connectors.ResultRunning)}
+		statuses = append(statuses, connectors.ResultRunning)
 	}
 	if input.ProfileID > 0 {
 		where += " AND profile_id = ?"
@@ -642,52 +653,88 @@ func (s *Store) StaleActionRequestsForTarget(ctx context.Context, input StaleAct
 	}
 	executor, commit, rollback, err := s.transaction(ctx, "stale connector action requests")
 	if err != nil {
-		return StaleActionRequestsForTargetResult{}, err
+		return InvalidateActionRequestsForTargetResult{}, err
 	}
 	defer rollback()
-	rows, err := executor.QueryContext(ctx, `SELECT id FROM connector_action_requests WHERE `+where, args...)
-	if err != nil {
-		return StaleActionRequestsForTargetResult{}, err
+	statusValues := make([]any, 0, len(statuses))
+	statusPlaceholders := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		statusValues = append(statusValues, string(status))
+		statusPlaceholders = append(statusPlaceholders, "?")
 	}
-	ids := []int64{}
+	queryArgs := append(append([]any{}, args...), statusValues...)
+	rows, err := executor.QueryContext(ctx, `SELECT id, status FROM connector_action_requests WHERE `+where+` AND status IN (`+strings.Join(statusPlaceholders, ",")+`) ORDER BY id`, queryArgs...)
+	if err != nil {
+		return InvalidateActionRequestsForTargetResult{}, err
+	}
+	result := InvalidateActionRequestsForTargetResult{}
 	for rows.Next() {
 		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var status connectors.ResultStatus
+		if err := rows.Scan(&id, &status); err != nil {
 			rows.Close()
-			return StaleActionRequestsForTargetResult{}, err
+			return InvalidateActionRequestsForTargetResult{}, err
 		}
-		ids = append(ids, id)
+		result.IDs = append(result.IDs, id)
+		if status == connectors.ResultRunning {
+			result.OutcomeUnknownIDs = append(result.OutcomeUnknownIDs, id)
+		} else {
+			result.StaleIDs = append(result.StaleIDs, id)
+		}
 	}
 	if err := rows.Close(); err != nil {
-		return StaleActionRequestsForTargetResult{}, err
+		return InvalidateActionRequestsForTargetResult{}, err
 	}
-	if len(ids) == 0 {
-		return StaleActionRequestsForTargetResult{}, nil
+	if len(result.IDs) == 0 {
+		return InvalidateActionRequestsForTargetResult{}, nil
 	}
 	updateArgs := []any{string(connectors.ResultStale), strings.TrimSpace(input.Error), strings.TrimSpace(input.ApprovalDrift), nowString()}
 	updateArgs = append(updateArgs, args...)
-	result, err := executor.ExecContext(ctx, `
+	updateArgs = append(updateArgs, string(connectors.ResultApprovalPending))
+	updated, err := executor.ExecContext(ctx, `
 		UPDATE connector_action_requests
 		SET status = ?, error = ?, approval_context_drift = ?, completed_at = COALESCE(completed_at, ?)
-		WHERE `+where,
+		WHERE `+where+` AND status = ?`,
 		updateArgs...,
 	)
 	if err != nil {
-		return StaleActionRequestsForTargetResult{}, err
+		return InvalidateActionRequestsForTargetResult{}, err
 	}
-	affected, err := result.RowsAffected()
+	affected, err := updated.RowsAffected()
 	if err != nil {
-		return StaleActionRequestsForTargetResult{}, err
+		return InvalidateActionRequestsForTargetResult{}, err
 	}
-	for _, id := range ids {
+	result.Affected = affected
+	if input.IncludeRunning {
+		runningError := strings.TrimSpace(input.RunningError)
+		if runningError == "" {
+			runningError = "connector target changed after dispatch; the external outcome is unknown"
+		}
+		runningArgs := []any{string(connectors.ResultOutcomeUnknown), runningError, strings.TrimSpace(input.ApprovalDrift), nowString()}
+		runningArgs = append(runningArgs, args...)
+		runningArgs = append(runningArgs, string(connectors.ResultRunning))
+		updated, err := executor.ExecContext(ctx, `
+			UPDATE connector_action_requests
+			SET status = ?, error = ?, approval_context_drift = ?, completed_at = COALESCE(completed_at, ?)
+			WHERE `+where+` AND status = ?`, runningArgs...)
+		if err != nil {
+			return InvalidateActionRequestsForTargetResult{}, err
+		}
+		runningAffected, err := updated.RowsAffected()
+		if err != nil {
+			return InvalidateActionRequestsForTargetResult{}, err
+		}
+		result.Affected += runningAffected
+	}
+	for _, id := range result.IDs {
 		if err := history.SyncConnectorActionRequestWithExecutor(ctx, executor, id); err != nil {
-			return StaleActionRequestsForTargetResult{}, err
+			return InvalidateActionRequestsForTargetResult{}, err
 		}
 	}
 	if err := commit(); err != nil {
-		return StaleActionRequestsForTargetResult{}, err
+		return InvalidateActionRequestsForTargetResult{}, err
 	}
-	return StaleActionRequestsForTargetResult{IDs: ids, Affected: affected}, nil
+	return result, nil
 }
 
 func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64) (ActionRequest, error) {

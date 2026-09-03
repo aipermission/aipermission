@@ -30,30 +30,31 @@ type runConnectorActionApprovalRequest struct {
 }
 
 type connectorActionApprovalItem struct {
-	ID                  int64          `json:"id"`
-	TokenID             *int64         `json:"token_id,omitempty"`
-	TokenName           string         `json:"token_name,omitempty"`
-	TargetID            int64          `json:"target_id"`
-	TargetName          string         `json:"target_name"`
-	TargetRef           string         `json:"target_ref"`
-	ProfileID           int64          `json:"profile_id"`
-	ProfileLabel        string         `json:"profile_label"`
-	ConnectorKind       string         `json:"connector_kind"`
-	ActionName          string         `json:"action_name"`
-	Title               string         `json:"title,omitempty"`
-	Summary             string         `json:"summary,omitempty"`
-	Preview             map[string]any `json:"preview,omitempty"`
-	Input               map[string]any `json:"input,omitempty"`
-	Reason              string         `json:"reason,omitempty"`
-	Status              string         `json:"status"`
-	Output              any            `json:"output,omitempty"`
-	DisplayText         string         `json:"display_text,omitempty"`
-	Error               string         `json:"error,omitempty"`
-	ApprovalContextHash string         `json:"approval_context_hash,omitempty"`
-	CreatedAt           string         `json:"created_at"`
-	CompletedAt         *string        `json:"completed_at,omitempty"`
-	RetryAfterSeconds   int            `json:"retry_after_seconds,omitempty"`
-	AssistantHint       string         `json:"assistant_hint,omitempty"`
+	ID                  int64                  `json:"id"`
+	TokenID             *int64                 `json:"token_id,omitempty"`
+	TokenName           string                 `json:"token_name,omitempty"`
+	TargetID            int64                  `json:"target_id"`
+	TargetName          string                 `json:"target_name"`
+	TargetRef           string                 `json:"target_ref"`
+	ProfileID           int64                  `json:"profile_id"`
+	ProfileLabel        string                 `json:"profile_label"`
+	ConnectorKind       string                 `json:"connector_kind"`
+	ActionName          string                 `json:"action_name"`
+	Title               string                 `json:"title,omitempty"`
+	Summary             string                 `json:"summary,omitempty"`
+	Preview             map[string]any         `json:"preview,omitempty"`
+	Input               map[string]any         `json:"input,omitempty"`
+	Reason              string                 `json:"reason,omitempty"`
+	Status              string                 `json:"status"`
+	Output              any                    `json:"output,omitempty"`
+	DisplayText         string                 `json:"display_text,omitempty"`
+	Error               string                 `json:"error,omitempty"`
+	RetryPolicy         connectors.RetryPolicy `json:"retry_policy"`
+	ApprovalContextHash string                 `json:"approval_context_hash,omitempty"`
+	CreatedAt           string                 `json:"created_at"`
+	CompletedAt         *string                `json:"completed_at,omitempty"`
+	RetryAfterSeconds   int                    `json:"retry_after_seconds,omitempty"`
+	AssistantHint       string                 `json:"assistant_hint,omitempty"`
 }
 
 func (s connectorActionApprovalHandlers) listConnectorActionApprovals(w http.ResponseWriter, r *http.Request) {
@@ -165,8 +166,13 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 	if request.UserNote != "" {
 		message = message + ": " + request.UserNote
 	}
+	message, err := s.redactConnectorActionOperatorText(r.Context(), runtime, id, message)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	var item connectortargets.ActionRequest
-	err := s.withAuditedMutation(
+	err = s.withAuditedMutation(
 		r.Context(), runtime, "user", nil, 0, "connector_action.request.declined",
 		func() any { return connectorActionRequestAuditPayload(item) },
 		func(tx *sql.Tx) error {
@@ -215,7 +221,9 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
+	runtime.setConnectorCredentialBoundary(execution.request.ID, execution.snapshot.credentialBoundary)
 	if _, err := s.markPendingConnectorActionRunning(ctx, runtime, execution.request); err != nil {
+		runtime.clearConnectorCredentialBoundary(execution.request.ID)
 		return connectortargets.ActionRequest{}, err
 	}
 	release()
@@ -278,6 +286,10 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 		prepared.Action.Payload = rawPayload
 	}
 	if userNote != "" {
+		userNote, err = s.redactConnectorActionOperatorText(ctx, runtime, item.ID, userNote)
+		if err != nil {
+			return pendingConnectorActionExecution{}, err
+		}
 		if _, err := s.insertMessage(ctx, runtime, createMessageRequest{
 			TokenID:   tokenID,
 			Direction: "user_to_ai",
@@ -299,6 +311,15 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 		request: item, prepared: prepared, snapshot: snapshot, principal: principal,
 		targetRef: targetRef, userNote: userNote,
 	}, nil
+}
+
+func (s *Server) redactConnectorActionOperatorText(ctx context.Context, runtime *databaseRuntime, requestID int64, value string) (string, error) {
+	redacted := s.redactForPersistence(ctx, runtime, value)
+	boundary, err := connectorCredentialBoundaryForActionRequest(ctx, runtime, requestID)
+	if err != nil {
+		return "", fmt.Errorf("load connector credential boundary for operator text: %w", err)
+	}
+	return boundary.Redact(redacted), nil
 }
 
 func (s *Server) currentConnectorApprovalToken(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest) (tokens.Token, error) {
@@ -350,6 +371,12 @@ func (s *Server) markPendingConnectorActionRunning(ctx context.Context, runtime 
 func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *databaseRuntime, execution pendingConnectorActionExecution) (connectortargets.ActionRequest, error) {
 	item := execution.request
 	prepared := execution.prepared
+	clearCredentialBoundary := true
+	defer func() {
+		if clearCredentialBoundary {
+			runtime.clearConnectorCredentialBoundary(item.ID)
+		}
+	}()
 	result, err := s.executePreparedConnectorAction(ctx, runtime, execution.principal, prepared, execution.snapshot)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)
@@ -390,6 +417,7 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 			result.Handles.FollowupTool = "get_connector_action_request"
 		}
 		go s.finishActiveConnectorActionRequest(runtime, item.ID, prepared, execution.principal, result.Handles)
+		clearCredentialBoundary = false
 		running, err := connectortargets.NewStore(runtime.database).GetActionRequest(context.Background(), item.ID)
 		if err != nil {
 			return connectortargets.ActionRequest{}, err
@@ -498,6 +526,7 @@ func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest)
 		Output:              item.Output,
 		DisplayText:         item.DisplayText,
 		Error:               item.Error,
+		RetryPolicy:         item.RetryPolicy,
 		ApprovalContextHash: item.ApprovalContextHash,
 		CreatedAt:           item.CreatedAt,
 		CompletedAt:         item.CompletedAt,

@@ -65,6 +65,19 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
           <span className="text-xs">Use /bucket/key URLs. Keep this enabled for most S3-compatible providers such as MinIO.</span>
         </span>
       </label>
+      <label className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark-notice-warn">
+        <Checkbox
+          checked={form.trust_conditional_requests === true}
+          onChange={(event) => onChange("trust_conditional_requests", event.target.checked)}
+        />
+        <span>
+          <span className="block font-semibold">Verified conditional requests</span>
+          <span className="text-xs">
+            Enable only after this provider's destination If-Match and If-None-Match behavior has been verified. Guarded mutations fail
+            closed while disabled; approval requirements do not change.
+          </span>
+        </span>
+      </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
           Profile label

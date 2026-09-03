@@ -104,12 +104,9 @@ func ValidateConnectorContract(connector Connector) error {
 	}
 	baselineTarget := TargetView{ConnectorKind: kind}
 	baselineProfile := CredentialProfileView{ConnectorKind: kind}
-	actions, err := connector.GetActionList(context.Background(), baselineTarget, baselineProfile)
+	actions, err := GetActionDefinitions(context.Background(), connector, baselineTarget, baselineProfile)
 	if err != nil {
 		return fmt.Errorf("connector %q actions: %w", kind, err)
-	}
-	if err := ValidateActionDefinitions(actions, kind+" actions"); err != nil {
-		return fmt.Errorf("connector %q: %w", kind, err)
 	}
 	baselineActions := canonicalActionDefinitions(actions)
 	profileKinds := []string{""}
@@ -132,12 +129,9 @@ func ValidateConnectorContract(connector Connector) error {
 				Label:         "__contract_check__",
 				Public:        map[string]any{"__contract_variant": profileKind},
 			}
-			exemplarActions, err := connector.GetActionList(context.Background(), target, exemplarProfile)
+			exemplarActions, err := GetActionDefinitions(context.Background(), connector, target, exemplarProfile)
 			if err != nil {
 				return fmt.Errorf("connector %q exemplar actions: %w", kind, err)
-			}
-			if err := ValidateActionDefinitions(exemplarActions, kind+" actions"); err != nil {
-				return fmt.Errorf("connector %q: %w", kind, err)
 			}
 			if !ActionDefinitionsEqual(baselineActions, exemplarActions) {
 				return fmt.Errorf("connector %q action list must be stable for the connector kind", kind)
@@ -176,6 +170,7 @@ func equalActionDefinition(left ActionDefinition, right ActionDefinition) bool {
 		left.Description != right.Description ||
 		left.Category != right.Category ||
 		left.Risk != right.Risk ||
+		!reflect.DeepEqual(EffectiveRetryPolicy(left), EffectiveRetryPolicy(right)) ||
 		left.OutputHint.Format != right.OutputHint.Format ||
 		left.OutputHint.MaxRows != right.OutputHint.MaxRows ||
 		left.OutputHint.MaxBytes != right.OutputHint.MaxBytes {

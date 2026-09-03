@@ -149,6 +149,16 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
               <span className="font-semibold">Not tracked:</span> output or exit status was not captured for this manual terminal command.
             </p>
           ) : null}
+          {item.status === "outcome_unknown" ? (
+            <Notice tone="warn">
+              <span className="font-semibold">Remote outcome unknown.</span> {retryPolicyGuidance(item)}
+            </Notice>
+          ) : null}
+          {item.status !== "outcome_unknown" && historyErrorCode(item) === "precondition_failed" ? (
+            <Notice tone="warn">
+              <span className="font-semibold">Precondition failed.</span> {retryPolicyGuidance(item)}
+            </Notice>
+          ) : null}
           {item.error ? <Notice tone="bad">{item.error}</Notice> : null}
 
           <form className="relative min-w-0" onSubmit={(event) => event.preventDefault()}>
@@ -303,6 +313,7 @@ function StatusBadge({ status }) {
       pending_approval: "warn",
       declined: "warn",
       stale: "warn",
+      outcome_unknown: "warn",
       untracked: "warn",
       failed: "bad",
       error: "bad",
@@ -384,6 +395,25 @@ function prettyJSON(value) {
   }
 }
 
+function retryPolicyGuidance(item) {
+  try {
+    const value = typeof item.retry_policy_json === "string" ? JSON.parse(item.retry_policy_json) : item.retry_policy_json;
+    if (value?.guidance) return value.guidance;
+  } catch {
+    // The API normalizes connector retry policies; retain a safe UI fallback.
+  }
+  return "Inspect the target state before deciding whether to submit a new request.";
+}
+
+function historyErrorCode(item) {
+  try {
+    const output = JSON.parse(item?.output_json || "{}");
+    return typeof output?.code === "string" ? output.code : "";
+  } catch {
+    return "";
+  }
+}
+
 function progressPercent(item) {
   const total = Number(item.bytes_total || item.progress_total || 0);
   const done = Number(item.bytes_done || item.progress_current || 0);
@@ -430,5 +460,7 @@ export {
   StatusBadge,
   entrySummary,
   formatShortTime,
+  historyErrorCode,
+  retryPolicyGuidance,
   targetOptionLabel,
 };
