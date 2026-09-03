@@ -75,37 +75,12 @@ func sharedSchemas() map[string]any {
 			"created_at":          dateTimeSchema(),
 			"updated_at":          dateTimeSchema(),
 		}, []string{"ref", "project_id", "project_name", "project_slug", "connector_kind", "target_id", "target_name", "profile_id", "profile_kind", "profile_label", "status", "created_at", "updated_at"}),
-		"ConnectorActionApproval": objectSchema(map[string]any{
-			"id":                    integerSchema(),
-			"token_id":              integerSchema(),
-			"token_name":            stringSchema(),
-			"target_id":             integerSchema(),
-			"target_name":           stringSchema(),
-			"target_ref":            stringSchema(),
-			"profile_id":            integerSchema(),
-			"profile_label":         stringSchema(),
-			"connector_kind":        stringSchema(),
-			"action_name":           stringSchema(),
-			"title":                 stringSchema(),
-			"summary":               stringSchema(),
-			"preview":               stringMap,
-			"input":                 stringMap,
-			"reason":                stringSchema(),
-			"status":                actionStatusSchema(),
-			"output":                map[string]any{},
-			"display_text":          stringSchema(),
-			"error":                 stringSchema(),
-			"retry_policy":          retryPolicySchema(),
-			"approval_context_hash": stringSchema(),
-			"created_at":            dateTimeSchema(),
-			"completed_at":          dateTimeSchema(),
-			"retry_after_seconds":   integerSchema(),
-			"assistant_hint":        stringSchema(),
-		}, []string{"id", "target_id", "target_name", "target_ref", "profile_id", "profile_label", "connector_kind", "action_name", "status", "retry_policy", "created_at"}),
-		"HistoryEntry": historyEntrySchema(),
-		"AuditEntry":   auditEntrySchema(),
-		"HistoryPage":  pageSchema(refSchema("HistoryEntry")),
-		"AuditPage":    pageSchema(refSchema("AuditEntry")),
+		"ConnectorActionApprovalSummary": connectorActionApprovalSchema(false),
+		"ConnectorActionApprovalDetail":  connectorActionApprovalSchema(true),
+		"HistoryEntry":                   historyEntrySchema(),
+		"AuditEntry":                     auditEntrySchema(),
+		"HistoryPage":                    pageSchema(refSchema("HistoryEntry")),
+		"AuditPage":                      pageSchema(refSchema("AuditEntry")),
 		"DiagnosticsConnector": objectSchema(map[string]any{
 			"kind": stringSchema(), "version": stringSchema(),
 		}, []string{"kind", "version"}),
@@ -124,16 +99,64 @@ func typedOperationContracts() map[Route]operationContract {
 		{Method: "GET", Path: "/api/connector-targets/{id}"}:                               okContract(refSchema("ConnectorTarget")),
 		{Method: "GET", Path: "/api/connector-targets/{id}/profiles"}:                      okContract(itemsSchema(refSchema("ConnectorCredentialProfile"))),
 		{Method: "GET", Path: "/api/connector-targets/{id}/profiles/{profile_id}/actions"}: okContract(itemsSchema(refSchema("ConnectorActionDefinition"))),
-		{Method: "GET", Path: "/api/connector-action-approvals"}:                           okContract(arraySchema(refSchema("ConnectorActionApproval"))),
-		{Method: "GET", Path: "/api/connector-action-approvals/{id}"}:                      okContract(refSchema("ConnectorActionApproval")),
-		{Method: "POST", Path: "/api/connector-action-approvals/{id}/run"}:                 okContract(refSchema("ConnectorActionApproval")),
-		{Method: "POST", Path: "/api/connector-action-approvals/{id}/decline"}:             okContract(refSchema("ConnectorActionApproval")),
+		{Method: "GET", Path: "/api/connector-action-approvals"}:                           okContract(arraySchema(refSchema("ConnectorActionApprovalSummary"))),
+		{Method: "GET", Path: "/api/connector-action-approvals/{id}"}:                      okContract(refSchema("ConnectorActionApprovalDetail")),
+		{Method: "POST", Path: "/api/connector-action-approvals/{id}/run"}:                 okContract(refSchema("ConnectorActionApprovalSummary")),
+		{Method: "POST", Path: "/api/connector-action-approvals/{id}/decline"}:             okContract(refSchema("ConnectorActionApprovalSummary")),
 		{Method: "GET", Path: "/api/history"}:                                              okContract(refSchema("HistoryPage")),
 		{Method: "GET", Path: "/api/history/{id}"}:                                         okContract(refSchema("HistoryEntry")),
 		{Method: "GET", Path: "/api/audit-logs"}:                                           okContract(refSchema("AuditPage")),
 		{Method: "GET", Path: "/api/audit-logs/{id}"}:                                      okContract(refSchema("AuditEntry")),
 		{Method: "GET", Path: "/api/settings/diagnostics"}:                                 okContract(refSchema("DiagnosticsReport")),
 	}
+}
+
+func connectorActionApprovalSchema(exactPreview bool) map[string]any {
+	stringMap := objectSchema(map[string]any{}, nil)
+	stringMap["additionalProperties"] = true
+	preview := stringMap
+	if exactPreview {
+		preview = cloneSchema(stringMap)
+		preview["description"] = "Exact bounded prepared preview, available only from the authenticated local UI detail endpoint while approval is pending."
+	} else {
+		preview = cloneSchema(stringMap)
+		preview["description"] = "Redacted approval preview safe for list and mutation responses."
+	}
+	return objectSchema(map[string]any{
+		"id":                    integerSchema(),
+		"token_id":              integerSchema(),
+		"token_name":            stringSchema(),
+		"target_id":             integerSchema(),
+		"target_name":           stringSchema(),
+		"target_ref":            stringSchema(),
+		"profile_id":            integerSchema(),
+		"profile_label":         stringSchema(),
+		"connector_kind":        stringSchema(),
+		"action_name":           stringSchema(),
+		"title":                 stringSchema(),
+		"summary":               stringSchema(),
+		"preview":               preview,
+		"input":                 stringMap,
+		"reason":                stringSchema(),
+		"status":                actionStatusSchema(),
+		"output":                map[string]any{},
+		"display_text":          stringSchema(),
+		"error":                 stringSchema(),
+		"retry_policy":          retryPolicySchema(),
+		"approval_context_hash": stringSchema(),
+		"created_at":            dateTimeSchema(),
+		"completed_at":          dateTimeSchema(),
+		"retry_after_seconds":   integerSchema(),
+		"assistant_hint":        stringSchema(),
+	}, []string{"id", "target_id", "target_name", "target_ref", "profile_id", "profile_label", "connector_kind", "action_name", "status", "retry_policy", "created_at"})
+}
+
+func cloneSchema(schema map[string]any) map[string]any {
+	clone := make(map[string]any, len(schema)+1)
+	for key, value := range schema {
+		clone[key] = value
+	}
+	return clone
 }
 
 func diagnosticsReportSchema() map[string]any {

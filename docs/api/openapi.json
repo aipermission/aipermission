@@ -110,7 +110,7 @@
         ],
         "type": "object"
       },
-      "ConnectorActionApproval": {
+      "ConnectorActionApprovalDetail": {
         "additionalProperties": false,
         "properties": {
           "action_name": {
@@ -151,6 +151,153 @@
           "output": {},
           "preview": {
             "additionalProperties": true,
+            "description": "Exact bounded prepared preview, available only from the authenticated local UI detail endpoint while approval is pending.",
+            "properties": {},
+            "type": "object"
+          },
+          "profile_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "profile_label": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "retry_after_seconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "retry_policy": {
+            "additionalProperties": false,
+            "properties": {
+              "class": {
+                "enum": [
+                  "read_only",
+                  "idempotent",
+                  "conditional",
+                  "non_idempotent"
+                ],
+                "type": "string"
+              },
+              "guidance": {
+                "type": "string"
+              },
+              "precondition_fields": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "class",
+              "guidance"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "failed",
+              "canceled",
+              "running",
+              "approval_pending",
+              "pending_approval",
+              "blocked",
+              "stale",
+              "declined",
+              "expired",
+              "error",
+              "outcome_unknown",
+              "pending",
+              "paused",
+              "untracked"
+            ],
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "target_name": {
+            "type": "string"
+          },
+          "target_ref": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "token_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "token_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_id",
+          "target_name",
+          "target_ref",
+          "profile_id",
+          "profile_label",
+          "connector_kind",
+          "action_name",
+          "status",
+          "retry_policy",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ConnectorActionApprovalSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "type": "string"
+          },
+          "approval_context_hash": {
+            "type": "string"
+          },
+          "assistant_hint": {
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "display_text": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "input": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "output": {},
+          "preview": {
+            "additionalProperties": true,
+            "description": "Redacted approval preview safe for list and mutation responses.",
             "properties": {},
             "type": "object"
           },
@@ -1773,7 +1920,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/ConnectorActionApproval"
+                    "$ref": "#/components/schemas/ConnectorActionApprovalSummary"
                   },
                   "type": "array"
                 }
@@ -1816,7 +1963,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConnectorActionApproval"
+                  "$ref": "#/components/schemas/ConnectorActionApprovalDetail"
                 }
               }
             },
@@ -1857,7 +2004,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConnectorActionApproval"
+                  "$ref": "#/components/schemas/ConnectorActionApprovalSummary"
                 }
               }
             },
@@ -1898,7 +2045,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConnectorActionApproval"
+                  "$ref": "#/components/schemas/ConnectorActionApprovalSummary"
                 }
               }
             },
