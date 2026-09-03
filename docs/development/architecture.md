@@ -18,7 +18,7 @@ browser -> localhost frontend/nginx -> backend API -> encrypted SQLite + connect
 MCP client -> localhost frontend/nginx -> backend /api/mcp/* -> connector targets
 ```
 
-The backend is not a LAN service. Docker Compose publishes the UI on `127.0.0.1`, the backend binds to loopback, and nginx proxies `/api` internally.
+The backend is not a LAN service. Docker Compose publishes the UI on `127.0.0.1` by default, the backend binds to loopback, and nginx proxies `/api` internally. Backend origin checks and nginx Host validation also recognize `[::1]` for operators who explicitly publish the UI on IPv6 loopback; generated MCP configuration follows the loopback origin that opened the UI.
 
 Connector targets use one shared security pipeline:
 
