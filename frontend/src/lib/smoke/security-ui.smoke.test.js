@@ -30,6 +30,15 @@ test("MCP setup defaults to the local Docker frontend origin", () => {
 test("nginx CSP keeps browser connections local plus manual update checks", () => {
   assert.match(nginxSource, /connect-src 'self'/);
   assert.match(nginxSource, /https:\/\/api\.github\.com/);
+  assert.match(nginxSource, /object-src 'none'/);
+  assert.match(nginxSource, /form-action 'self'/);
+  assert.match(nginxSource, /frame-src 'none'/);
+  assert.match(nginxSource, /worker-src 'self' blob:/);
+  assert.match(nginxSource, /style-src 'self'; style-src-attr 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'/);
+  assert.match(nginxSource, /Permissions-Policy/);
+  assert.match(nginxSource, /Cross-Origin-Opener-Policy "same-origin"/);
+  assert.match(nginxSource, /Cross-Origin-Resource-Policy "same-origin"/);
+  assert.match(nginxSource, /proxy_hide_header X-Content-Type-Options/);
   assert.doesNotMatch(nginxSource, /ws:\/\/localhost:3210/);
   assert.doesNotMatch(nginxSource, /ws:\/\/localhost:\*/);
 });

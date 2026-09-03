@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
-import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { ProgressBar } from "../ui/progress-bar";
 import { fileTransferFailureText, formatBytes, formatETA, pendingBatchItemIDs, transferProgress } from "../../lib/file-transfer-utils";
 
 export function QueueSummary({ batch, queue, mode, progress }) {
@@ -37,12 +37,7 @@ export function QueueSummary({ batch, queue, mode, progress }) {
           <span className="font-mono text-stone-800">{formatETA(batch?.eta_seconds)}</span>
         </div>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-        <div
-          className={cn("h-full rounded-full bg-emerald-700 transition-all", batch?.status === "running" ? "animate-pulse" : "")}
-          style={{ width: `${progress.percent}%` }}
-        />
-      </div>
+      <ProgressBar value={progress.percent} active={batch?.status === "running"} />
     </div>
   );
 }
@@ -137,14 +132,7 @@ function QueueRow({ item, index, total, active, batchMode, canEditPausedBatch, c
         <span>{formatBytes(item.size || item.size_bytes || 0)}</span>
         {batchMode ? <span>{formatETA(item.eta_seconds)}</span> : <span>#{index + 1}</span>}
       </div>
-      {batchMode ? (
-        <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
-          <div
-            className={cn("h-full rounded-full bg-emerald-700 transition-all", item.status === "running" ? "animate-pulse" : "")}
-            style={{ width: `${progress.percent}%` }}
-          />
-        </div>
-      ) : null}
+      {batchMode ? <ProgressBar value={progress.percent} active={item.status === "running"} compact /> : null}
       {failureText ? <p className="text-xs text-red-700">{failureText}</p> : null}
     </div>
   );

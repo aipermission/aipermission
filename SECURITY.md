@@ -119,7 +119,7 @@ Known risks:
   and mail-triggered cross-connector actions require an independent operator
   instruction. See [Mail Connector](docs/setup/mail.md) and the
   [threat model](docs/security/threat-model.md#hostile-mail-content).
-- The frontend CSP is intentionally compatible with the current Vite/React build and nginx deployment; future hardening can remove any remaining inline-style allowances when the UI build supports it cleanly.
+- The frontend CSP blocks inline scripts, frames, objects, and cross-origin form submissions. First-party inline styles are restricted by regression tests to validated, user-selected history label colors. Monaco and xterm still require runtime-generated element and attribute styles, so `style-src-elem` and `style-src-attr` retain a narrowly documented `unsafe-inline` compatibility allowance; this allowance never applies to `script-src`.
 
 Expected CodeQL notes:
 

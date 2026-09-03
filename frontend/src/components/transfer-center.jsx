@@ -5,6 +5,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Drawer } from "./ui/drawer";
 import { Notice } from "./ui/notice";
+import { ProgressBar } from "./ui/progress-bar";
 
 const activeStatuses = new Set(["pending_approval", "pending", "running", "paused"]);
 
@@ -156,12 +157,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
       </div>
 
       <div className="grid gap-1.5">
-        <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-          <div
-            className={`h-full rounded-full bg-emerald-700 transition-all ${active ? "animate-pulse" : ""}`}
-            style={{ width: `${progress.percent}%` }}
-          />
-        </div>
+        <ProgressBar value={progress.percent} active={active} />
         <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
           <span>{progress.percent}%</span>
           <span>{batch.bytes_per_second ? `${formatBytes(batch.bytes_per_second)}/s` : "-"}</span>

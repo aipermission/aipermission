@@ -30,11 +30,7 @@ export function KubernetesResourceDetail({ tab, resource, detail, logs, search, 
         searchPlaceholder={tab === "pods" ? "Search logs" : "Search metadata"}
       />
       {showLogSurface ? (
-        <TerminalBlock
-          className="h-full min-h-0 max-h-full overflow-auto whitespace-pre text-xs"
-          surface="log"
-          style={{ whiteSpace: "pre", overflowWrap: "normal", wordBreak: "normal" }}
-        >
+        <TerminalBlock className="h-full min-h-0 max-h-full overflow-auto whitespace-pre text-xs" surface="log">
           <HighlightedText text={logs || "Click Logs to load bounded pod logs for this pod."} query={search} />
         </TerminalBlock>
       ) : (

@@ -163,10 +163,7 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
         ) : null}
 
         {load.state === "ready" && load.projects.length > 0 ? (
-          <div
-            className="grid overflow-hidden rounded-lg border border-stone-200 bg-white lg:grid-cols-[320px_minmax(0,1fr)]"
-            style={{ height: "clamp(360px, calc(100vh - 320px), 560px)" }}
-          >
+          <div className="grid h-[clamp(360px,calc(100vh-320px),560px)] overflow-hidden rounded-lg border border-stone-200 bg-white lg:grid-cols-[320px_minmax(0,1fr)]">
             <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-b border-stone-200 lg:border-b-0 lg:border-r">
               <div className="border-b border-stone-200 bg-stone-50 px-3 py-2">
                 <p className="text-xs font-semibold uppercase text-stone-500">Projects</p>
@@ -241,10 +238,7 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
                           <span className="truncate font-mono text-xs font-semibold text-stone-950">{definition.label}</span>
                           <span className="text-xs text-stone-500">{definition.description}</span>
                         </div>
-                        <div
-                          className="grid gap-1 self-start"
-                          style={{ gridTemplateColumns: `repeat(${definition.allowed_rules.length + 1}, minmax(0, 1fr))` }}
-                        >
+                        <div className={`grid gap-1 self-start ${vaultRuleGridClass(definition.allowed_rules.length)}`}>
                           <ConnectorRuleButton
                             active={!rule}
                             onClick={() => setCapabilityRule(selectedProject.project_id, definition.name, "")}
@@ -322,4 +316,10 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
       </form>
     </Dialog>
   );
+}
+
+function vaultRuleGridClass(ruleCount) {
+  if (ruleCount >= 2) return "grid-cols-3";
+  if (ruleCount === 1) return "grid-cols-2";
+  return "grid-cols-1";
 }

@@ -521,12 +521,7 @@ export function ConsolePage() {
   }
 
   return (
-    <section
-      className="grid h-[calc(100vh-40px)] min-h-[640px] gap-4"
-      style={{
-        gridTemplateColumns: `${targetsCompact ? "56px" : "360px"} minmax(0, 1fr) ${tokensCompact ? "56px" : "360px"}`,
-      }}
-    >
+    <section className={`grid h-[calc(100vh-40px)] min-h-[640px] gap-4 ${consoleShellGridClass(targetsCompact, tokensCompact)}`}>
       <ConsoleTargetSidebar
         compact={targetsCompact}
         onCompactChange={setTargetsCompact}
@@ -635,13 +630,7 @@ export function ConsolePage() {
           </div>
         </header>
 
-        <div
-          className="grid h-full min-h-0 overflow-hidden"
-          style={{
-            gridTemplateRows:
-              consoleBannerCount > 0 ? `${Array(consoleBannerCount).fill("auto").join(" ")} minmax(0, 1fr)` : "minmax(0, 1fr)",
-          }}
-        >
+        <div className={`grid h-full min-h-0 overflow-hidden ${consoleContentGridClass(consoleBannerCount)}`}>
           {showAlwaysRunWarning ? (
             <div className="sticky top-0 z-10 border-b border-red-800/50 bg-red-950 px-4 py-2 text-xs font-semibold text-red-50">
               MCP is started and {alwaysRunTokenPermissions.length} token{alwaysRunTokenPermissions.length === 1 ? "" : "s"} can run
@@ -774,6 +763,20 @@ export function ConsolePage() {
       ) : null}
     </section>
   );
+}
+
+function consoleShellGridClass(targetsCompact, tokensCompact) {
+  if (targetsCompact && tokensCompact) return "grid-cols-[56px_minmax(0,1fr)_56px]";
+  if (targetsCompact) return "grid-cols-[56px_minmax(0,1fr)_360px]";
+  if (tokensCompact) return "grid-cols-[360px_minmax(0,1fr)_56px]";
+  return "grid-cols-[360px_minmax(0,1fr)_360px]";
+}
+
+function consoleContentGridClass(bannerCount) {
+  if (bannerCount >= 3) return "grid-rows-[auto_auto_auto_minmax(0,1fr)]";
+  if (bannerCount === 2) return "grid-rows-[auto_auto_minmax(0,1fr)]";
+  if (bannerCount === 1) return "grid-rows-[auto_minmax(0,1fr)]";
+  return "grid-rows-[minmax(0,1fr)]";
 }
 
 function newStructuredConsoleSession() {

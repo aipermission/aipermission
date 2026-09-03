@@ -60,11 +60,6 @@ export function DockerResultView({ item, search, onSearch, inputClass }) {
             : "min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]"
         }
         surface={isLogs ? "log" : "dark"}
-        style={
-          isLogs
-            ? { whiteSpace: "pre", overflowWrap: "normal", wordBreak: "normal" }
-            : { whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word" }
-        }
       >
         <HighlightedText text={text} query={search} />
       </TerminalBlock>
