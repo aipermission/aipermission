@@ -90,7 +90,12 @@ Current MVP boundaries:
   `govulncheck` and Dependabot watch the Go wrapper, while the separate
   [native dependency inventory](docs/security/native-dependencies.md) records
   the embedded C runtime and its manual advisory-review policy.
-- Secret fields are encrypted with the gateway vault secret inside the encrypted database. The vault derives its AES-GCM key with HKDF-SHA256; the HKDF salt is public domain-separation data, not a second secret.
+- Persistent secret fields are encrypted with versioned AES-256-GCM envelopes
+  inside the SQLCipher database. Associated data binds each envelope to its
+  workspace, secret domain, record id, and field; moving ciphertext to another
+  identity fails authentication. The vault key is derived from the gateway
+  secret with HKDF-SHA256, and supported legacy field ciphertext is rewritten
+  atomically during unlock before normal execution resumes.
 - `AIPERMISSION_GATEWAY_SECRET` can be omitted for automatic generation. If it is set explicitly, it must be at least 32 characters. The visible local-development placeholder is replaced by a generated high-entropy secret at startup.
 - API tokens are shown once by default. If reusable token copy is enabled in Security, newly created token values are stored with gateway vault encryption for local MCP setup. Disabling the setting clears stored reusable token values.
 - API token authentication stores and compares SHA256 hashes of high-entropy random tokens. This is not password hashing; low-entropy user passwords are handled by SQLCipher instead.
@@ -104,7 +109,7 @@ Current MVP boundaries:
 Known risks:
 
 - SSH connector `exec` runs the exact command text through a shell on the target server. Shell operators such as `;`, `&&`, pipes, redirects, command substitution, and globs are interpreted by that shell. This is intentional command execution, not an injection bug, but approval means approving the shell-interpreted command body.
-- Connector action input, command text, action output, approval notes, console transcripts, messages, and audit records may be stored in the encrypted local database and can persist secrets if the AI is instructed to read sensitive files or environment values. Basic redaction is enabled by default for common token/password/API-key/private-key patterns, and users can add custom regex rules in Security. Redaction is best-effort and cannot guarantee detection of every secret format. Approval requests keep a separate encrypted raw action payload for execution so redaction never mutates the connector action that is run. A pending local approval may transiently decrypt only its exact bounded prepared preview for operator review; normal lists, persisted previews, MCP responses, History, Messages, and Audit remain redacted.
+- Connector action input, command text, action output, approval notes, console transcripts, messages, and audit records may be stored in the encrypted local database and can persist secrets if the AI is instructed to read sensitive files or environment values. Basic redaction is enabled by default for common token/password/API-key/private-key patterns, and users can add custom regex rules in Security. Redaction is best-effort and cannot guarantee detection of every secret format. Approval requests keep a separate encrypted raw action payload for execution so redaction never mutates the connector action that is run. A pending local approval may transiently decrypt only its exact bounded prepared preview through the authenticated localhost operator approval-detail view so the human can make an informed decision. MCP tokens cannot access that view; approval lists, persisted previews, MCP responses, History, Messages, and Audit remain redacted.
 - Pending connector action approvals store an approval-context snapshot. If target/profile metadata, credential revision, SSH key fingerprint when applicable, token permission, token validity, MCP tool metadata, connector metadata, or action payload hash changes before Run, the request becomes `stale` and must be requested again.
 - The unlocked backend process is part of the trust boundary. Keep the default Docker bind on localhost; do not expose the gateway on LAN or the public internet.
 - Database passwords are necessarily present in backend process memory while an unlock, import, or password-change request is being handled. The password is not stored as a bearer token or written to audit logs, but process memory should be treated as trusted while the gateway is running.

@@ -1309,10 +1309,13 @@ Deleting a label removes its history-entry relationships. The history records re
 
 Approval-required connector actions use connector action request endpoints.
 `GET /api/connector-action-approvals?status=approval_pending` lists pending
-connector requests for the local UI. For a pending request only, the response
-transiently decrypts the exact bounded prepared preview from its encrypted
-execution envelope so the operator can review what will run. The stored
-preview and normal history, audit, and MCP fields remain redacted.
+connector requests for the local UI with their stored redacted previews.
+`GET /api/connector-action-approvals/{id}` transiently decrypts the exact
+bounded prepared preview from its encrypted execution envelope for a pending
+request so the operator can review what will run. This detail endpoint requires
+an authenticated local UI session; it is not available to MCP bearer tokens.
+The stored preview and normal list, history, audit, and MCP fields remain
+redacted.
 
 Run changes an `approval_pending` connector action to `running`, validates the
 current token/target/profile/action permission and approval-context hash, then
