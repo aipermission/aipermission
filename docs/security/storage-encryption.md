@@ -11,6 +11,23 @@ silently moved to a different item or revision. Metadata lists never decrypt
 values; explicit local reveal and approved session application are the only
 decryption paths.
 
+Other persistent gateway secrets use a versioned AES-256-GCM record envelope.
+Its authenticated associated data binds the ciphertext to the workspace,
+secret domain, database record id, and encrypted field. Connector credentials,
+connector credential resources such as SSH private keys, reusable API token
+values, prepared connector actions, encrypted command bodies, and backup
+provider credentials therefore fail authentication if ciphertext is copied to
+another record, field, domain, or workspace.
+
+When an existing supported database is unlocked for the first time after this
+format is introduced, the gateway verifies current envelopes and rewrites
+legacy field ciphertext in one database transaction. The completion marker is
+committed only after every encrypted record succeeds. A malformed record,
+unknown envelope version, authentication failure, or write failure rolls back
+the complete rewrite and fails unlock instead of leaving a partly migrated
+secret store. Current execution paths accept only the versioned record format;
+legacy decoding is restricted to this explicit migration boundary.
+
 ## Current Model
 
 The SQLite file is encrypted with SQLCipher 4.16.0 through a pinned Go wrapper
@@ -150,7 +167,7 @@ The active backup model is a `.aipdb` file:
 - import requires the database password
 - the backup opens with the database password used at download time
 
-The gateway vault derives its AES-GCM key from the gateway secret with HKDF-SHA256. The HKDF salt is public domain-separation data, not a second secret. The gateway vault secret is also stored in encrypted DB settings, so a single `.aipdb` file is enough to restore encrypted SSH key payloads on another machine.
+The gateway vault derives its AES-GCM key from the gateway secret with HKDF-SHA256. The HKDF salt is public domain-separation data, not a second secret. The gateway vault secret is also stored in encrypted DB settings, so a single `.aipdb` file is enough to restore encrypted connector credentials on another machine. Record-bound associated data is derived from database identity and contains no additional secret.
 
 The same `.aipdb` relationship applies to Project Vault values. Restoring the
 encrypted database restores their ciphertext, metadata, revisions, and the

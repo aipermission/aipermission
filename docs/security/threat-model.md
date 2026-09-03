@@ -98,6 +98,9 @@ Mitigations:
   traversal; encrypted history and MCP reuse the same redacted projection
 - Security can add custom regex redaction rules on top of the built-in basic rules
 - approval execution uses a separate encrypted raw action payload so redaction cannot change the connector action that runs after approval
+- only an authenticated localhost operator approval-detail request may
+  transiently decrypt the exact bounded prepared preview needed for informed
+  approval; MCP tokens and list/history/audit projections remain redacted
 - approval-required connector actions store an approval-context snapshot and become
   `stale` if token permission, token validity, target/profile context, SSH key
   fingerprint, MCP tool metadata, connector kind/version, action definition, or
