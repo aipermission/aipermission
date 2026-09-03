@@ -45,6 +45,11 @@ rather than separate product modes. The generated
 [connector catalog](docs/connectors.md) is the canonical current list and owns
 their capability summaries.
 
+History and audit are encrypted, local, retention-controlled records for the
+active database. They are not an immutable external audit archive: configured
+retention can delete them, and deleting or replacing the local database removes
+its records.
+
 > **Local-only security boundary:** run AIPermission on your own machine and
 > keep its published Docker port bound to `127.0.0.1`. It is not a remote
 > multi-user service, LAN gateway, hosted control plane, or team RBAC system.
@@ -125,7 +130,7 @@ Avoid opting into mutable `latest` when you need reproducible upgrades or
 rollback.
 
 ```bash
-export AIPERMISSION_VERSION=0.2.36
+export AIPERMISSION_VERSION=VERSION
 docker compose -f docker-compose.release.yml up -d
 ```
 
@@ -156,7 +161,7 @@ secret inventory and exact-session application flow; see
 Install the official MCP bridge into a supported client:
 
 ```bash
-npx -y @aipermission/mcp@0.2.40 setup \
+npx -y @aipermission/mcp@VERSION setup \
   --provider codex \
   --scope user \
   --name aipermission
@@ -169,16 +174,16 @@ skill. Restart the AI client after installation.
 Validate both paths without printing the token:
 
 ```bash
-npx -y @aipermission/mcp@0.2.40 doctor --client codex --scope user
+npx -y @aipermission/mcp@VERSION doctor --client codex --scope user
 ```
 
 Supported client presets and source-development setup are documented in
 [MCP Client Setup](docs/setup/mcp-client-setup.md). The MCP tool contract is
 documented in [MCP Tools](docs/api/mcp-tools.md).
 
-Release preparation replaces `VERSION` with the published release. When reading
-a development branch, use the matching local package build instead of copying a
-placeholder command.
+Replace `VERSION` with the exact published version you intend to pin.
+When reading a development branch, use the matching local package build instead
+of copying a placeholder command.
 
 ## Execution Rules
 

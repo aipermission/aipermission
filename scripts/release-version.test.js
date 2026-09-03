@@ -7,11 +7,11 @@ const test = require("node:test");
 const {
   commitFileUpdates,
   pinnedDockerReleaseValue,
+  requireMCPConfigPlaceholder,
   stagePinnedDockerCompose,
-  stagePinnedMCPConfigDocs,
 } = require("./release-version");
 
-test("release staging composes MCP docs and Docker image pin updates", () => {
+test("release staging keeps MCP docs placeholder and updates Docker image pins", () => {
   const updates = new Map([
     ["README.md", "npx -y @aipermission/mcp@VERSION setup\n"],
     [
@@ -23,10 +23,30 @@ test("release staging composes MCP docs and Docker image pin updates", () => {
       ].join("\n"),
     ],
   ]);
-  stagePinnedMCPConfigDocs(updates, "1.2.3");
   stagePinnedDockerCompose(updates, "1.2.3");
-  assert.match(updates.get("README.md"), /@aipermission\/mcp@1\.2\.3/);
+  assert.match(updates.get("README.md"), /@aipermission\/mcp@VERSION/);
   assert.equal(pinnedDockerReleaseValue(updates.get("docker-compose.release.yml"), "1.2.3"), "1.2.3");
+});
+
+test("MCP config docs require placeholders for every setup example", () => {
+  assert.doesNotThrow(() =>
+    requireMCPConfigPlaceholder(
+      "@aipermission/mcp@VERSION\n@aipermission/mcp@VERSION",
+      "README.md",
+    ),
+  );
+  assert.throws(
+    () => requireMCPConfigPlaceholder("@aipermission/mcp@0.2.40", "README.md"),
+    /VERSION placeholder/,
+  );
+  assert.throws(
+    () =>
+      requireMCPConfigPlaceholder(
+        "@aipermission/mcp@VERSION\n@aipermission/mcp@0.2.40",
+        "README.md",
+      ),
+    /VERSION placeholder/,
+  );
 });
 
 test("pinnedDockerReleaseValue rejects missing and stale image pins", () => {

@@ -163,7 +163,7 @@ MCP server config shape:
   "mcpServers": {
     "aipermission": {
       "command": "npx",
-      "args": ["-y", "@aipermission/mcp@0.2.40"],
+      "args": ["-y", "@aipermission/mcp@VERSION"],
       "env": {
         "NODE_ENV": "production",
         "AIPERMISSION_API_URL": "http://localhost:3210",
@@ -174,8 +174,8 @@ MCP server config shape:
 }
 ```
 
-Replace `VERSION` with the release you intend to pin. Setup writes the current
-package version automatically. Copilot CLI output additionally includes
+Replace `VERSION` with the exact release you intend to pin. Setup writes the
+current package version automatically. Copilot CLI output additionally includes
 `"type": "local"` and `"tools": ["*"]`; Grok output sets
 `startup_timeout_sec = 60` for cold `npx` startup.
 
@@ -221,7 +221,7 @@ On native Windows, some clients cannot spawn `npx` directly even when it works
 in an interactive terminal. First make Node.js 20+ visible to the GUI process
 and restart that client. If it still reports `spawn npx ENOENT`, use `init --print`
 and adapt the server command to `cmd` with arguments beginning
-`["/d", "/s", "/c", "npx", "-y", "@aipermission/mcp@0.2.40"]`.
+`["/d", "/s", "/c", "npx", "-y", "@aipermission/mcp@VERSION"]`.
 
 Copilot CLI also accepts `.github/mcp.json`, but setup intentionally uses the
 local `.mcp.json` project target because the generated object contains a bearer

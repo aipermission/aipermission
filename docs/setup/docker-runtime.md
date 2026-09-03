@@ -27,13 +27,14 @@ set `AIPERMISSION_VERSION` without the leading `v` before pull/start. For
 example, in a POSIX shell:
 
 ```txt
-export AIPERMISSION_VERSION=0.2.36
+export AIPERMISSION_VERSION=VERSION
 docker compose -f docker-compose.release.yml up -d
 ```
 
-In PowerShell use `$env:AIPERMISSION_VERSION = "0.2.36"`; in Command Prompt
-use `set AIPERMISSION_VERSION=0.2.36`. Set it to `latest` only when explicitly
-accepting a mutable deployment.
+Replace `VERSION` with the exact published version you intend to pin. In
+PowerShell use `$env:AIPERMISSION_VERSION = "VERSION"`; in Command Prompt use
+`set AIPERMISSION_VERSION=VERSION`. Set it to `latest` only
+when explicitly accepting a mutable deployment.
 
 Replace the pinned value with another tagged release only when intentionally
 upgrading or rolling back. An unpinned `latest` deployment is supported as an
