@@ -3,6 +3,44 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.41",
+      "date": "2026-09-03",
+      "label": "Retention and connector error correctness",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Unlocked workspaces now enforce configured history and audit retention every hour instead of waiting for the next unlock, with supporting indexes and query shapes for high-volume local use.",
+            "Connector integer fields now use exact shared semantics and reject fractional, unsafe, or out-of-range values consistently.",
+            "Source builds now require Go 1.26 or newer while the repository remains pinned to the reviewed Go 1.26.6 toolchain."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Redis and Valkey scans and collection previews now surface malformed protocol replies, deadline failures, and iteration errors instead of recording false completion.",
+            "Live connector consoles now preserve unexpected runtime lookup, database, cancellation, and deadline errors while continuing only when a runtime surface is explicitly unavailable.",
+            "Connector background finalization, Mail deadline cleanup, and S3 multipart abort failures are now reported instead of being silently discarded."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Concurrent first-time gateway-secret creation now uses an exclusive winner-and-reload flow with durable file and directory synchronization, preventing competing processes from silently selecting different secrets.",
+            "The Go cryptography dependency now includes the SSH channel deadlock denial-of-service fixes reported as GO-2026-6354 and GO-2026-6355.",
+            "The MCP package now resolves query-string parsing through the patched dependency release that closes GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Setup documentation now uses version-neutral placeholders, and the local audit guarantee now clearly describes configured retention and deletion boundaries.",
+            "Focused regression coverage now locks retention scheduling, exact integer decoding, runtime error propagation, gateway-secret races, and connector cleanup failures."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.40",
       "date": "2026-09-02",
       "label": "Transfer and local secret hardening",

@@ -1,6 +1,43 @@
 {
-  "version": "0.2.40",
+  "version": "0.2.41",
   "entries": [
+    {
+      "version": "0.2.41",
+      "label": "Retention and connector error correctness",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Unlocked workspaces now enforce configured history and audit retention every hour instead of waiting for the next unlock, with supporting indexes and query shapes for high-volume local use.",
+            "Connector integer fields now use exact shared semantics and reject fractional, unsafe, or out-of-range values consistently.",
+            "Source builds now require Go 1.26 or newer while the repository remains pinned to the reviewed Go 1.26.6 toolchain."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Redis and Valkey scans and collection previews now surface malformed protocol replies, deadline failures, and iteration errors instead of recording false completion.",
+            "Live connector consoles now preserve unexpected runtime lookup, database, cancellation, and deadline errors while continuing only when a runtime surface is explicitly unavailable.",
+            "Connector background finalization, Mail deadline cleanup, and S3 multipart abort failures are now reported instead of being silently discarded."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Concurrent first-time gateway-secret creation now uses an exclusive winner-and-reload flow with durable file and directory synchronization, preventing competing processes from silently selecting different secrets.",
+            "The Go cryptography dependency now includes the SSH channel deadlock denial-of-service fixes reported as GO-2026-6354 and GO-2026-6355.",
+            "The MCP package now resolves query-string parsing through the patched dependency release that closes GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Setup documentation now uses version-neutral placeholders, and the local audit guarantee now clearly describes configured retention and deletion boundaries.",
+            "Focused regression coverage now locks retention scheduling, exact integer decoding, runtime error propagation, gateway-secret races, and connector cleanup failures."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.40",
       "label": "Transfer and local secret hardening",
@@ -206,28 +243,6 @@
           "items": [
             "Offline Markdown link validation and Go and frontend function-complexity budgets now run in repository hygiene checks.",
             "Deterministic recovery drills now cover the self-hosted backup download path and interrupted legacy migration publication."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.33",
-      "label": "Release confidence and recovery drills",
-      "sections": [
-        {
-          "title": "Maintenance",
-          "items": [
-            "Critical backend packages and frontend authorization/session surfaces now have explicit coverage floors enforced by CI and release checks.",
-            "A real encrypted backend browser flow now verifies Prompt approval, connector completion, stale-context rejection, lock/unlock, and backend restart recovery.",
-            "Deterministic recovery drills now exercise encrypted backup/import, wrong-password rejection, legacy migration fixtures, and gateway-secret continuity across restart.",
-            "Bounded fuzz gates now protect approval contexts, SQL safety, redaction, Redis parsing, transfer paths, backup metadata, and connector payload normalization."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Read-only SQL validation now rejects unterminated quoted values, identifiers, dollar quotes, and block comments instead of passing malformed input to a connector.",
-            "Connector number fields now reject NaN and infinite values before canonical approval hashing or JSON persistence."
           ]
         }
       ]
