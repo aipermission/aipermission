@@ -337,6 +337,7 @@ type trackedConn struct {
 	memoryConn
 	mu            sync.Mutex
 	closed        bool
+	deadlineErr   error
 	deadline      time.Time
 	readDeadline  time.Time
 	writeDeadline time.Time
@@ -352,8 +353,9 @@ func (conn *trackedConn) Close() error {
 func (conn *trackedConn) SetDeadline(deadline time.Time) error {
 	conn.mu.Lock()
 	conn.deadline = deadline
+	err := conn.deadlineErr
 	conn.mu.Unlock()
-	return nil
+	return err
 }
 
 func (conn *trackedConn) SetReadDeadline(deadline time.Time) error {
@@ -374,6 +376,18 @@ func (conn *trackedConn) isClosed() bool {
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 	return conn.closed
+}
+
+func TestReleaseBootstrapDeadlinePropagatesConnectionFailure(t *testing.T) {
+	want := errors.New("deadline reset failed")
+	base := &trackedConn{memoryConn: memoryConn{Reader: bytes.NewReader(nil)}, deadlineErr: want}
+	conn := newDeadlineCapConn(base, time.Now().Add(time.Second))
+	if err := releaseBootstrapDeadline(conn); !errors.Is(err, want) {
+		t.Fatalf("release deadline error = %v, want %v", err, want)
+	}
+	if !base.deadline.IsZero() {
+		t.Fatalf("released deadline = %s, want zero", base.deadline)
+	}
 }
 
 func TestBoundedReadConnStopsOversizedProtocolResponses(t *testing.T) {

@@ -21,6 +21,7 @@ const (
 	consoleConnectTimeout    = 15 * time.Second
 	initialExecTimeout       = 3 * time.Second
 	backgroundCommandTimeout = 30 * time.Minute
+	finishRequestTimeout     = 10 * time.Second
 	maxConfigParseBytes      = 256 * 1024
 )
 

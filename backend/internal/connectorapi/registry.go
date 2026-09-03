@@ -197,7 +197,7 @@ func (r *Registry) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
 type RuntimeAdapter interface {
 	RuntimeCapabilities(server GatewayServer, runtime GatewayRuntime) map[string]connectors.RuntimeCapability
 	SupportsRunning(prepared actions.PreparedRequest) bool
-	FinishRunning(server GatewayServer, runtime GatewayRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles)
+	FinishRunning(server GatewayServer, runtime GatewayRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) error
 	RunningHint(request connectortargets.ActionRequest) string
 }
 
