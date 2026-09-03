@@ -3,6 +3,8 @@ package vault
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -119,5 +121,123 @@ func TestVaultAssociatedDataFailsClosed(t *testing.T) {
 	}
 	if err := v.DecryptJSONWithAAD(encrypted, &decoded, nil); err == nil {
 		t.Fatalf("expected empty aad to fail decryption")
+	}
+}
+
+func TestVaultRecordEnvelopeRoundTrip(t *testing.T) {
+	v, err := New("secret-one")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	context := RecordContext{
+		WorkspaceID: "workspace-1",
+		Domain:      "connector-profile",
+		RecordID:    "42",
+		Field:       "encrypted_secret_json",
+	}
+	encrypted, err := v.EncryptRecordJSON(vaultSecret{Value: "private"}, context)
+	if err != nil {
+		t.Fatalf("encrypt record: %v", err)
+	}
+	if !IsRecordEnvelope(encrypted) || strings.Contains(encrypted, "private") {
+		t.Fatalf("unexpected encrypted record envelope: %q", encrypted)
+	}
+
+	var envelope recordEnvelope
+	if err := json.Unmarshal([]byte(encrypted), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Version != recordEnvelopeVersion || envelope.Algorithm != recordEnvelopeAlgorithm {
+		t.Fatalf("unexpected envelope metadata: %+v", envelope)
+	}
+
+	var decoded vaultSecret
+	if err := v.DecryptRecordJSON(encrypted, &decoded, context); err != nil {
+		t.Fatalf("decrypt record: %v", err)
+	}
+	if decoded.Value != "private" {
+		t.Fatalf("unexpected value: %q", decoded.Value)
+	}
+}
+
+func TestVaultRecordEnvelopeRejectsContextSwap(t *testing.T) {
+	v, err := New("secret-one")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	context := RecordContext{WorkspaceID: "workspace-1", Domain: "token", RecordID: "7", Field: "token_value"}
+	encrypted, err := v.EncryptRecordJSON(vaultSecret{Value: "private"}, context)
+	if err != nil {
+		t.Fatalf("encrypt record: %v", err)
+	}
+
+	mutations := []RecordContext{
+		{WorkspaceID: "workspace-2", Domain: context.Domain, RecordID: context.RecordID, Field: context.Field},
+		{WorkspaceID: context.WorkspaceID, Domain: "ssh-key", RecordID: context.RecordID, Field: context.Field},
+		{WorkspaceID: context.WorkspaceID, Domain: context.Domain, RecordID: "8", Field: context.Field},
+		{WorkspaceID: context.WorkspaceID, Domain: context.Domain, RecordID: context.RecordID, Field: "other_field"},
+	}
+	for _, mutated := range mutations {
+		var decoded vaultSecret
+		if err := v.DecryptRecordJSON(encrypted, &decoded, mutated); err == nil {
+			t.Fatalf("expected context swap to fail: %+v", mutated)
+		}
+	}
+}
+
+func TestVaultRecordEnvelopeRejectsMalformedAndUnknownVersions(t *testing.T) {
+	v, err := New("secret-one")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	context := RecordContext{WorkspaceID: "workspace-1", Domain: "token", RecordID: "7", Field: "token_value"}
+	var decoded vaultSecret
+	for _, encrypted := range []string{
+		`{"version":2,"algorithm":"AES-256-GCM","nonce":"AA==","ciphertext":"AA=="}`,
+		`{"version":1,"algorithm":"other","nonce":"AA==","ciphertext":"AA=="}`,
+		`{"version":1`,
+	} {
+		if err := v.DecryptRecordJSON(encrypted, &decoded, context); err == nil {
+			t.Fatalf("expected invalid envelope to fail: %s", encrypted)
+		}
+	}
+	if _, err := v.EncryptRecordJSON(vaultSecret{Value: "private"}, RecordContext{}); err == nil {
+		t.Fatalf("expected empty record context to fail")
+	}
+}
+
+func TestVaultRecordEnvelopeLegacyBridgeIsExplicit(t *testing.T) {
+	v, err := New("secret-one")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	context := RecordContext{WorkspaceID: "workspace-1", Domain: "token", RecordID: "7", Field: "token_value"}
+	legacy, err := v.EncryptJSON(vaultSecret{Value: "private"})
+	if err != nil {
+		t.Fatalf("encrypt legacy record: %v", err)
+	}
+
+	var decoded vaultSecret
+	if err := v.DecryptRecordJSON(legacy, &decoded, context); err == nil {
+		t.Fatalf("strict record decryption must reject a legacy payload")
+	}
+	wasLegacy, err := v.DecryptRecordJSONWithLegacy(legacy, &decoded, context, nil)
+	if err != nil {
+		t.Fatalf("decrypt legacy record: %v", err)
+	}
+	if !wasLegacy || decoded.Value != "private" {
+		t.Fatalf("unexpected legacy bridge result: legacy=%t value=%q", wasLegacy, decoded.Value)
+	}
+
+	versioned, err := v.EncryptRecordJSON(vaultSecret{Value: "private"}, context)
+	if err != nil {
+		t.Fatalf("encrypt versioned record: %v", err)
+	}
+	wasLegacy, err = v.DecryptRecordJSONWithLegacy(versioned, &decoded, context, nil)
+	if err != nil {
+		t.Fatalf("decrypt versioned record: %v", err)
+	}
+	if wasLegacy {
+		t.Fatalf("versioned record was reported as legacy")
 	}
 }
