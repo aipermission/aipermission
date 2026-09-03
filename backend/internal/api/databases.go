@@ -293,11 +293,7 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 
 	runtime, err := s.openRuntime(targetPath, targetID, request.Password)
 	if err != nil {
-		if dbpkg.UnsupportedSchemaMessage(err) == "" {
-			attempt.failure()
-		} else {
-			attempt.success()
-		}
+		recordDatabaseUnlockAttempt(attempt, err)
 		writeDatabaseUnlockError(w, err)
 		return
 	}
