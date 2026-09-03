@@ -9,6 +9,57 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.43] - 2026-09-04
+
+### Changed
+
+- Connector action discovery now publishes an effective retry policy that distinguishes
+  read-only, idempotent, conditional, and non-idempotent operations.
+- MCP guidance now requires callers to preserve one idempotency key only for the same
+  logical request and avoid automatic retries when a mutation outcome is uncertain.
+- Connector action responses and history now preserve retry guidance, and the history
+  detail view visibly warns when the remote outcome is unknown.
+
+### Security
+
+- Persistent connector credentials, SSH keys, reusable token values, prepared actions,
+  MCP execution command bodies, and backup-provider secrets now use versioned
+  AES-256-GCM envelopes bound to their workspace, domain, record, and field.
+  Manual-console history remains redacted-only inside the encrypted SQLCipher database.
+- Supported legacy encrypted fields are verified and rewritten atomically during unlock,
+  with fail-closed rollback for malformed, unknown, or unauthenticated records.
+- Connector credential provisioning and cleanup now apply an unconditional
+  credential-output boundary to responses, failures, and compensation audits.
+- Condition-dependent S3 object mutations fail closed when provider conditional
+  semantics are unverified, enforce available preconditions, classify uncertain
+  transport or completion outcomes, and advertise conditional retries only after
+  explicit operator verification. Explicitly unguarded mutations remain non-idempotent.
+- RabbitMQ and S3 mutations distinguish failures before request dispatch from uncertain
+  transport or service failures after dispatch.
+- Approved connector actions register their active execution boundary before entering
+  the running state, preventing recovery from treating live work as orphaned.
+- Kubernetes rollout restart failures distinguish errors before remote dispatch from
+  uncertain outcomes after command execution begins.
+
+### Fixed
+
+- Database deletion now durably quarantines the encrypted database and sidecars before
+  catalog removal, allowing interrupted, partially failed, or power-loss-affected
+  deletion to recover safely.
+- Manual console command records and their normalized history projections now commit
+  atomically.
+
+### Maintenance
+
+- Secret-leak canary coverage now exercises approval previews, connector errors,
+  history, audit logs, terminal transcripts, MCP responses, and plaintext persistence
+  surfaces.
+- Connector contract tests now lock retry-policy defaults, validation, approval-context
+  drift, guarded mutation behavior, and legacy read-only MCP compatibility.
+- The frontend browser compatibility metadata chain now uses a patched Browserslist
+  release, and release gates audit both production dependencies and the complete build
+  dependency tree.
+
 ## [0.2.42] - 2026-09-03
 
 ### Changed
