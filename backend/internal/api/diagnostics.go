@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 )
 
 func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
 	runtime, ok := h.activeRuntimeOrLocked(w)
 	if !ok {
 		return
@@ -36,6 +34,6 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "settings.diagnostics.downloaded", map[string]any{
 		"report_format_version": diagnostics.ReportFormatVersion,
 	})
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aipermission-diagnostics-%s.json"`, time.Now().UTC().Format("20060102T150405Z")))
+	setAttachmentHeaders(w, "aipermission-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json", "application/json")
 	writeJSON(w, http.StatusOK, report)
 }

@@ -2,7 +2,6 @@ package api
 
 import (
 	"database/sql"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -241,8 +240,7 @@ func (s backupHandlers) downloadProviderRecord(w http.ResponseWriter, r *http.Re
 		"provider_id": provider.ID, "record_id": record.ID, "filename": record.Filename,
 	})
 	filename := safeBackupDownloadFilename(record.Filename, record.DatabaseName)
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, filename))
+	setAttachmentHeaders(w, filename, "application/octet-stream")
 	http.ServeFile(w, r, tmpPath)
 }
 
