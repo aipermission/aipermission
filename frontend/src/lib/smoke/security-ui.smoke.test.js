@@ -23,7 +23,7 @@ test("App uses the current unlock API endpoints", () => {
 });
 
 test("MCP setup defaults to the local Docker frontend origin", () => {
-  assert.match(apiSource, /"http:\/\/localhost:3210"/);
+  assert.match(apiSource, /mcpApiUrl = normalizeApiUrl\(viteEnv\.VITE_MCP_API_URL \|\| browserOrigin\(\)\)/);
   assert.doesNotMatch(apiSource, /mcpApiUrl[\s\S]*"http:\/\/localhost:8080"/);
 });
 
@@ -32,6 +32,13 @@ test("nginx CSP keeps browser connections local plus manual update checks", () =
   assert.match(nginxSource, /https:\/\/api\.github\.com/);
   assert.doesNotMatch(nginxSource, /ws:\/\/localhost:3210/);
   assert.doesNotMatch(nginxSource, /ws:\/\/localhost:\*/);
+});
+
+test("nginx accepts each supported loopback Host spelling", () => {
+  assert.match(nginxSource, /localhost 0/);
+  assert.match(nginxSource, /127\.0\.0\.1 0/);
+  assert.match(nginxSource, /"::1" 0/);
+  assert.match(nginxSource, /"\[::1\]" 0/);
 });
 
 test("nginx keeps route-specific upload limits and JSON error responses aligned", () => {

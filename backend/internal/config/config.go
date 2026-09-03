@@ -35,7 +35,7 @@ func Load() (Config, error) {
 		),
 		AllowedOrigins: parseOrigins(env(
 			"AIPERMISSION_ALLOWED_ORIGINS",
-			fmt.Sprintf("http://localhost:%s,http://127.0.0.1:%s", frontendPort, frontendPort),
+			fmt.Sprintf("http://localhost:%s,http://127.0.0.1:%s,http://[::1]:%s", frontendPort, frontendPort, frontendPort),
 		)),
 	}
 
@@ -62,7 +62,7 @@ func Load() (Config, error) {
 }
 
 func (c Config) Address() string {
-	return fmt.Sprintf("%s:%s", c.Host, c.Port)
+	return net.JoinHostPort(c.Host, c.Port)
 }
 
 func (c Config) PublicStatus() map[string]any {

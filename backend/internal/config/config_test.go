@@ -25,7 +25,7 @@ func TestLoadCreatesAndReusesGatewaySecretWhenDefaultConfigured(t *testing.T) {
 	if first.Address() != "127.0.0.1:8080" {
 		t.Fatalf("unexpected address: %s", first.Address())
 	}
-	if got := first.AllowedOrigins; len(got) != 2 || got[0] != "http://localhost:3333" || got[1] != "http://127.0.0.1:3333" {
+	if got := first.AllowedOrigins; len(got) != 3 || got[0] != "http://localhost:3333" || got[1] != "http://127.0.0.1:3333" || got[2] != "http://[::1]:3333" {
 		t.Fatalf("unexpected origins from frontend port: %#v", got)
 	}
 	if first.PublicStatus()["gateway_secret"] != "configured" {
@@ -105,7 +105,7 @@ func TestLoadDefaultsCORSOriginsToFrontendPort3210(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if got := cfg.AllowedOrigins; len(got) != 2 || got[0] != "http://localhost:3210" || got[1] != "http://127.0.0.1:3210" {
+	if got := cfg.AllowedOrigins; len(got) != 3 || got[0] != "http://localhost:3210" || got[1] != "http://127.0.0.1:3210" || got[2] != "http://[::1]:3210" {
 		t.Fatalf("unexpected default origins: %#v", got)
 	}
 }
@@ -129,6 +129,12 @@ func TestLoadHonorsExplicitEnv(t *testing.T) {
 	}
 	if _, err := os.Stat(GatewaySecretPath(cfg.DataPath)); !os.IsNotExist(err) {
 		t.Fatalf("explicit gateway secret should not create gateway.secret, err=%v", err)
+	}
+}
+
+func TestConfigAddressBracketsIPv6Loopback(t *testing.T) {
+	if got := (Config{Host: "::1", Port: "8080"}).Address(); got != "[::1]:8080" {
+		t.Fatalf("IPv6 address = %q, want [::1]:8080", got)
 	}
 }
 

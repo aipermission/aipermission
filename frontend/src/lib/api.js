@@ -3,8 +3,7 @@ import { scopedUICookieName } from "./ui-cookie.js";
 const viteEnv = import.meta.env || {};
 
 export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
-export const mcpApiUrl =
-  viteEnv.VITE_MCP_API_URL === undefined ? "http://localhost:3210" : normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
+export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 const localActionRetryKeys = new Map();
 const localActionRetryKeyTTL = 5 * 60 * 1000;
