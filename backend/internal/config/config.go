@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -182,10 +183,68 @@ func LoadOrCreateGatewaySecret(dataPath string) (string, error) {
 		return "", fmt.Errorf("generate gateway secret: %w", err)
 	}
 	encoded := base64.StdEncoding.EncodeToString(secret)
-	if err := SaveGatewaySecret(dataPath, encoded); err != nil {
+	created, err := createGatewaySecretExclusive(path, encoded)
+	if err != nil {
 		return "", err
 	}
-	return encoded, nil
+	if created {
+		return encoded, nil
+	}
+	return readGatewaySecretAfterConcurrentCreate(path)
+}
+
+func createGatewaySecretExclusive(path string, secret string) (bool, error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return false, fmt.Errorf("create gateway secret directory: %w", err)
+	}
+	file, err := os.CreateTemp(dir, ".gateway.secret.tmp-*")
+	if err != nil {
+		return false, fmt.Errorf("create gateway secret candidate: %w", err)
+	}
+	tempPath := file.Name()
+	defer func() {
+		_ = file.Close()
+		_ = os.Remove(tempPath)
+	}()
+	if err := file.Chmod(0o600); err != nil {
+		return false, fmt.Errorf("secure gateway secret candidate: %w", err)
+	}
+	if _, err := file.WriteString(secret + "\n"); err != nil {
+		return false, fmt.Errorf("write gateway secret candidate: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		return false, fmt.Errorf("sync gateway secret candidate: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return false, fmt.Errorf("close gateway secret candidate: %w", err)
+	}
+	if err := os.Link(tempPath, path); os.IsExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("publish gateway secret: %w", err)
+	}
+	if err := os.Remove(tempPath); err != nil {
+		return false, fmt.Errorf("remove gateway secret candidate: %w", err)
+	}
+	if err := syncDirectory(dir); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func readGatewaySecretAfterConcurrentCreate(path string) (string, error) {
+	const attempts = 100
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		value, err := readGatewaySecret(path)
+		if err == nil {
+			return value, nil
+		}
+		lastErr = err
+		time.Sleep(10 * time.Millisecond)
+	}
+	return "", fmt.Errorf("read concurrently created gateway secret: %w", lastErr)
 }
 
 func SaveGatewaySecret(dataPath string, secret string) error {
@@ -234,6 +293,10 @@ func SaveGatewaySecret(dataPath string, secret string) error {
 		return fmt.Errorf("replace gateway secret: %w", err)
 	}
 	committed = true
+	return syncDirectory(dir)
+}
+
+func syncDirectory(dir string) error {
 	directory, err := os.Open(dir)
 	if err != nil {
 		return fmt.Errorf("open gateway secret directory: %w", err)
