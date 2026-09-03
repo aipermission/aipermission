@@ -89,21 +89,58 @@ func TestExecuteListObjectVersionsSkipsEmptyPrefixCollisionPages(t *testing.T) {
 
 func TestRestoreObjectVersionUsesVersionedCopySource(t *testing.T) {
 	var copySource string
+	var expectedETag string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		copySource = r.Header.Get("X-Amz-Copy-Source")
-		w.WriteHeader(http.StatusOK)
+		expectedETag = r.Header.Get("If-Match")
+		_, _ = w.Write([]byte(`<CopyObjectResult><ETag>&quot;restored-etag&quot;</ETag></CopyObjectResult>`))
 	}))
 	defer server.Close()
 
 	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
 		ActionName: ActionRestoreVersion,
-		Payload:    map[string]any{"key": "daily/report #1.csv", "version_id": "v/1+two"},
+		Payload:    map[string]any{"key": "daily/report #1.csv", "version_id": "v/1+two", "expected_current_etag": "etag-current"},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	if copySource != "/test-bucket/daily/report%20%231.csv?versionId=v%2F1%2Btwo" {
 		t.Fatalf("copy source = %q", copySource)
+	}
+	if expectedETag != `"etag-current"` {
+		t.Fatalf("destination if-match = %q", expectedETag)
+	}
+}
+
+func TestRestoreObjectVersionRejectsEmbeddedCopyError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<Error><Code>InternalError</Code><Message>copy failed after acceptance</Message></Error>`))
+	}))
+	defer server.Close()
+
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionRestoreVersion,
+		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version-1", "expected_current_etag": "etag-current"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "copy failed after acceptance") {
+		t.Fatalf("expected embedded copy error, got %v", err)
+	}
+}
+
+func TestRestoreObjectVersionClassifiesConditionalConflict(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`<Error><Code>ConditionalRequestConflict</Code><Message>destination changed</Message></Error>`))
+	}))
+	defer server.Close()
+
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionRestoreVersion,
+		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version-1", "expected_current_etag": "etag-current"},
+	})
+	if connectors.ErrorCode(err) != "precondition_failed" {
+		t.Fatalf("error = %v, code = %q", err, connectors.ErrorCode(err))
 	}
 }
 
@@ -112,13 +149,16 @@ func TestDeleteObjectVersionUsesExactVersionID(t *testing.T) {
 		if r.Method != http.MethodDelete || r.URL.Query().Get("versionId") != "version+1/2" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.String())
 		}
+		if r.Header.Get("If-Match") != `"etag-v1"` {
+			t.Fatalf("if-match = %q", r.Header.Get("If-Match"))
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
 	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
 		ActionName: ActionDeleteVersion,
-		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version+1/2"},
+		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version+1/2", "expected_etag": "etag-v1"},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -140,6 +180,9 @@ func TestPrepareObjectVersionActionsUseExplicitRisks(t *testing.T) {
 			input := map[string]any{"key": "/daily/report.csv"}
 			if test.action != ActionListVersions {
 				input["version_id"] = "version-1"
+			}
+			if test.action == ActionRestoreVersion {
+				input["expected_current_etag"] = "etag-current"
 			}
 			prepared, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
 				Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: test.action, Input: input,

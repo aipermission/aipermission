@@ -116,7 +116,14 @@ func executeRestoreObjectVersion(ctx context.Context, client *s3Client, input ma
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	if err := client.CopyObjectVersion(ctx, key, versionID); err != nil {
+	expectedCurrentETag, err := normalizeOptionalETagField(input, "expected_current_etag")
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	if expectedCurrentETag == "" {
+		return connectors.ActionResult{}, fmt.Errorf("expected_current_etag is required")
+	}
+	if err := client.CopyObjectVersion(ctx, key, versionID, expectedCurrentETag); err != nil {
 		return connectors.ActionResult{}, err
 	}
 	return connectors.ActionResult{
@@ -140,7 +147,11 @@ func executeDeleteObjectVersion(ctx context.Context, client *s3Client, input map
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	if err := client.DeleteObjectVersion(ctx, key, versionID); err != nil {
+	expectedETag, err := normalizeOptionalETag(input)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	if err := client.DeleteObjectVersion(ctx, key, versionID, expectedETag); err != nil {
 		return connectors.ActionResult{}, err
 	}
 	return connectors.ActionResult{
@@ -177,16 +188,43 @@ func (client *s3Client) ListObjectVersions(ctx context.Context, key string, curs
 	return result, nil
 }
 
-func (client *s3Client) CopyObjectVersion(ctx context.Context, key string, versionID string) error {
+func (client *s3Client) CopyObjectVersion(ctx context.Context, key string, versionID string, expectedCurrentETag string) error {
 	headers := http.Header{}
 	headers.Set("X-Amz-Copy-Source", "/"+awsPathEscape(client.bucket)+"/"+awsPathEscape(key)+"?versionId="+awsQueryEscape(versionID))
-	_, _, err := client.Do(ctx, http.MethodPut, key, nil, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
-	return err
+	headers.Set("If-Match", quoteETag(expectedCurrentETag))
+	data, _, err := client.Do(ctx, http.MethodPut, key, nil, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
+	if err != nil {
+		return err
+	}
+	return validateCopyObjectResponse(data)
 }
 
-func (client *s3Client) DeleteObjectVersion(ctx context.Context, key string, versionID string) error {
+func validateCopyObjectResponse(data []byte) error {
+	var response struct {
+		XMLName xml.Name
+		Code    string `xml:"Code"`
+		Message string `xml:"Message"`
+		ETag    string `xml:"ETag"`
+	}
+	if err := xml.Unmarshal(data, &response); err != nil {
+		return fmt.Errorf("decode s3 copy response: %w", err)
+	}
+	if response.XMLName.Local == "Error" || strings.TrimSpace(response.Code) != "" {
+		return classifyS3ServiceError(http.StatusOK, response.Code, response.Message)
+	}
+	if response.XMLName.Local != "CopyObjectResult" || strings.TrimSpace(response.ETag) == "" {
+		return fmt.Errorf("s3 copy response did not confirm completion")
+	}
+	return nil
+}
+
+func (client *s3Client) DeleteObjectVersion(ctx context.Context, key string, versionID string, expectedETag string) error {
 	query := url.Values{"versionId": []string{versionID}}
-	_, _, err := client.Do(ctx, http.MethodDelete, key, query, nil, maxS3ResponseBytes)
+	headers := http.Header{}
+	if expectedETag != "" {
+		headers.Set("If-Match", quoteETag(expectedETag))
+	}
+	_, _, err := client.Do(ctx, http.MethodDelete, key, query, s3RequestBody{Headers: headers}, maxS3ResponseBytes)
 	return err
 }
 

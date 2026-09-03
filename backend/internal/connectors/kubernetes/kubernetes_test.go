@@ -125,6 +125,41 @@ func TestRolloutRestartRunsBoundedKubectlTemplate(t *testing.T) {
 	}
 }
 
+func TestRolloutRestartUsesResourceVersionPrecondition(t *testing.T) {
+	transport := &fakeCommandTransport{fallback: connectors.CommandRunResult{Stdout: `{"kind":"Deployment"}`, ExitCode: 0, DurationMS: 8}}
+	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionRolloutRestart, Payload: map[string]any{
+		"namespace": "production", "deployment": "api", "expected_resource_version": "12345",
+	}})
+	if err != nil {
+		t.Fatalf("conditional rollout restart: %v", err)
+	}
+	if len(transport.commands) != 1 {
+		t.Fatalf("commands = %#v", transport.commands)
+	}
+	command := transport.commands[0]
+	if !strings.Contains(command, "kubectl patch deployment 'api'") || !strings.Contains(command, `"resourceVersion":"12345"`) || strings.Contains(command, "rollout restart") {
+		t.Fatalf("conditional command = %q", command)
+	}
+	output := result.Output.(map[string]any)
+	if output["expected_resource_version"] != "12345" {
+		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestRolloutRestartClassifiesResourceVersionConflict(t *testing.T) {
+	transport := &fakeCommandTransport{fallback: connectors.CommandRunResult{Stderr: "Error from server (Conflict): Operation cannot be fulfilled: the object has been modified", ExitCode: 1}}
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionRolloutRestart, Payload: map[string]any{
+		"namespace": "production", "deployment": "api", "expected_resource_version": "12345",
+	}})
+	if connectors.ErrorCode(err) != "precondition_failed" {
+		t.Fatalf("error = %v, code = %q", err, connectors.ErrorCode(err))
+	}
+}
+
 func TestDescribeReturnsResourceSummary(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
@@ -177,7 +212,9 @@ func (capabilities fakeCapabilities) RuntimeCapability(name string) connectors.R
 }
 
 type fakeCommandTransport struct {
-	results map[string]connectors.CommandRunResult
+	results  map[string]connectors.CommandRunResult
+	fallback connectors.CommandRunResult
+	commands []string
 }
 
 func (transport *fakeCommandTransport) ConnectorRuntimeCapability() string {
@@ -185,8 +222,12 @@ func (transport *fakeCommandTransport) ConnectorRuntimeCapability() string {
 }
 
 func (transport *fakeCommandTransport) RunConnectorCommand(_ context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
+	transport.commands = append(transport.commands, request.Command)
 	result, ok := transport.results[request.Command]
 	if !ok {
+		if transport.fallback.Stdout != "" || transport.fallback.Stderr != "" || transport.fallback.ExitCode != 0 || transport.fallback.DurationMS != 0 {
+			return transport.fallback, nil
+		}
 		return connectors.CommandRunResult{ExitCode: 127, Stderr: "unexpected command: " + request.Command}, nil
 	}
 	return result, nil

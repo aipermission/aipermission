@@ -376,7 +376,7 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				s3connector.ActionPresignDownload:   {"key": "daily/app.aipdb", "expires_seconds": 900},
 				s3connector.ActionPresignUpload:     {"key": "incoming/app.aipdb", "expires_seconds": 900, "overwrite": false},
 				s3connector.ActionListVersions:      {"key": "daily/app.aipdb", "limit": 10},
-				s3connector.ActionRestoreVersion:    {"key": "daily/app.aipdb", "version_id": "version-1"},
+				s3connector.ActionRestoreVersion:    {"key": "daily/app.aipdb", "version_id": "version-1", "expected_current_etag": `"current-etag"`},
 				s3connector.ActionDeleteVersion:     {"key": "daily/app.aipdb", "version_id": "version-2"},
 				s3connector.ActionGetLifecycle:      {},
 				s3connector.ActionReplaceLifecycle:  {"rule_id": "cleanup", "prefix": "tmp/", "expire_current_after_days": 30, "abort_incomplete_multipart_days": 7, "enabled": true},

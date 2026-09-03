@@ -317,6 +317,65 @@ func TestExecuteUploadRejectsExistingObjectWithoutOverwrite(t *testing.T) {
 	}
 }
 
+func TestS3ObjectMutationsSendExpectedETagPreconditions(t *testing.T) {
+	tests := []struct {
+		name   string
+		action connectors.PreparedAction
+		method string
+	}{
+		{
+			name: "overwrite",
+			action: connectors.PreparedAction{ActionName: ActionUploadObject, Payload: map[string]any{
+				"key": "daily/app.txt", "content_base64": base64.StdEncoding.EncodeToString([]byte("hello")), "content_type": "text/plain", "overwrite": true, "expected_etag": "etag-1",
+			}},
+			method: http.MethodPut,
+		},
+		{
+			name:   "delete",
+			action: connectors.PreparedAction{ActionName: ActionDeleteObject, Payload: map[string]any{"key": "daily/app.txt", "expected_etag": `"etag-1"`}},
+			method: http.MethodDelete,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != test.method || r.Header.Get("If-Match") != `"etag-1"` {
+					t.Fatalf("request method=%s if-match=%q", r.Method, r.Header.Get("If-Match"))
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer server.Close()
+			if _, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), test.action); err != nil {
+				t.Fatalf("execute conditional mutation: %v", err)
+			}
+		})
+	}
+}
+
+func TestPrepareUploadRequiresOverwriteForExpectedETag(t *testing.T) {
+	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+		Target: s3TestTarget(t, "http://127.0.0.1:9000"), Profile: s3TestProfile(), ActionName: ActionUploadObject,
+		Input: map[string]any{"key": "daily/app.txt", "content_text": "hello", "expected_etag": "etag-1"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "requires overwrite") {
+		t.Fatalf("expected overwrite validation error, got %v", err)
+	}
+}
+
+func TestS3MutationClassifiesPreconditionFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "etag changed", http.StatusPreconditionFailed)
+	}))
+	defer server.Close()
+	_, err := New().ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionDeleteObject,
+		Payload:    map[string]any{"key": "daily/app.txt", "expected_etag": "etag-1"},
+	})
+	if connectors.ErrorCode(err) != "precondition_failed" {
+		t.Fatalf("error = %v, code = %q", err, connectors.ErrorCode(err))
+	}
+}
+
 func TestRenameObjectIsNotExposedAndLegacyRequestsFailClosed(t *testing.T) {
 	actions, err := New().GetActionList(context.Background(), connectors.TargetView{}, connectors.CredentialProfileView{})
 	if err != nil {
