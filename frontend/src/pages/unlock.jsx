@@ -17,6 +17,10 @@ import {
   shortBackupStreamID,
 } from "./remote-restore-helpers";
 
+function unlockTabsGridClass(tabCount) {
+  return tabCount === 4 ? "grid-cols-4" : "grid-cols-3";
+}
+
 export function UnlockPage({ status, onUnlocked }) {
   const databases = useMemo(() => status?.databases || [], [status?.databases]);
   const firstDatabaseID = status?.database_id || databases[0]?.id || "default";
@@ -191,10 +195,7 @@ export function UnlockPage({ status, onUnlocked }) {
           local copy when you no longer need it.
         </Notice>
       ) : null}
-      <div
-        className="grid rounded-md border border-stone-200 bg-stone-100 p-1"
-        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
-      >
+      <div className={`grid rounded-md border border-stone-200 bg-stone-100 p-1 ${unlockTabsGridClass(tabs.length)}`}>
         {tabs.map(([value, label]) => (
           <button
             key={value}

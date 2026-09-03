@@ -9,6 +9,7 @@ import { Button } from "../ui/button";
 import { CopyButton } from "../ui/copy-button";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
+import { ProgressBar } from "../ui/progress-bar";
 import { TerminalBlock } from "../ui/terminal-block";
 function HistoryStat({ label, value, tone = "neutral" }) {
   return (
@@ -246,9 +247,7 @@ function TransferDetail({ item }) {
         <TransferField label="Bytes" value={`${formatBytes(item.bytes_done || 0)} / ${formatBytes(item.bytes_total || 0)}`} />
       </div>
       <div className="grid gap-1">
-        <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-          <div className="h-full rounded-full bg-emerald-700" style={{ width: `${percent}%` }} />
-        </div>
+        <ProgressBar value={percent} />
         <div className="flex items-center justify-between text-xs text-stone-500">
           <span>{item.status}</span>
           <span>{percent}%</span>
