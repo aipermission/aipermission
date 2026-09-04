@@ -2,7 +2,11 @@ package mailconnector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net"
+	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/emersion/go-imap"
@@ -87,7 +91,7 @@ func mutateMessage(imapClient imapMutationClient, profile profileConfig, action 
 			seen = false
 		}
 		if err := imapClient.UidStore(set, imap.FormatFlagsOp(op, true), []interface{}{imap.SeenFlag}, nil); err != nil {
-			return nil, classifyProtocolError("IMAP UID STORE", err)
+			return nil, classifyIMAPMutationError("UID STORE", err)
 		}
 		return map[string]any{"message_ref": ref.mapValue(), "read": seen, "changed_flag": imap.SeenFlag}, nil
 	case ActionMoveMessage, ActionArchiveMessage, ActionDeleteMessage:
@@ -121,7 +125,7 @@ func mutateMessage(imapClient imapMutationClient, profile profileConfig, action 
 			return nil, fmt.Errorf("IMAP server does not support UID-safe MOVE; unsafe copy/delete/expunge fallback was not used")
 		}
 		if err := imapClient.UidMove(set, destination); err != nil {
-			return nil, classifyProtocolError("IMAP UID MOVE", err)
+			return nil, classifyIMAPMutationError("UID MOVE", err)
 		}
 		return map[string]any{
 			"source_ref":                ref.mapValue(),
@@ -132,6 +136,35 @@ func mutateMessage(imapClient imapMutationClient, profile profileConfig, action 
 	default:
 		return nil, ErrUnsupportedAction
 	}
+}
+
+func classifyIMAPMutationError(operation string, err error) error {
+	if !isAmbiguousIMAPTransportError(err) {
+		return classifyProtocolError("IMAP "+operation, err)
+	}
+	return connectors.ClassifyActionError(
+		"outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"dispatch_stage": "imap_command", "retry_safe": false},
+		fmt.Errorf("IMAP %s outcome is unknown after dispatch; inspect message state before retrying: %w", operation, err),
+	)
+}
+
+func isAmbiguousIMAPTransportError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	for _, fragment := range []string{"connection closed", "broken pipe", "connection reset", "unexpected eof"} {
+		if strings.Contains(message, fragment) {
+			return true
+		}
+	}
+	return false
 }
 
 var _ imapMutationClient = (*client.Client)(nil)
