@@ -176,6 +176,33 @@ func TestTypedContractsReferenceDefinedSchemas(t *testing.T) {
 	schemas := sharedSchemas()
 	for route, contract := range typedOperationContracts() {
 		walkSchemaRefs(t, route, contract.ResponseSchema, schemas)
+		walkSchemaRefs(t, route, contract.RequestSchema, schemas)
+		for _, schema := range contract.AdditionalResponses {
+			walkSchemaRefs(t, route, schema, schemas)
+		}
+	}
+}
+
+func TestGenerateTypesLocalConnectorActionRequestAndUncertainOutcome(t *testing.T) {
+	source := []byte(`package api
+func routes() { mux.HandleFunc("POST /api/connector-actions/local-run", run) }`)
+	output, err := Generate(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(output, &document); err != nil {
+		t.Fatal(err)
+	}
+	operation := document["paths"].(map[string]any)["/api/connector-actions/local-run"].(map[string]any)["post"].(map[string]any)
+	if operation["x-aipermission-contract-level"] != "typed-request-response" || operation["requestBody"] == nil {
+		t.Fatalf("local connector action contract = %#v", operation)
+	}
+	responses := operation["responses"].(map[string]any)
+	for _, status := range []string{"200", "409", "503", "default"} {
+		if responses[status] == nil {
+			t.Fatalf("local connector action response %s missing: %#v", status, responses)
+		}
 	}
 }
 

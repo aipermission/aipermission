@@ -62,6 +62,20 @@ export async function runGuardedConnectorAction({
     return request.isCurrent() ? item : null;
   } catch (error) {
     if (!request.isCurrent()) return null;
+    const uncertain =
+      error?.actionItem?.status === "outcome_unknown" ? error.actionItem : error?.data?.status === "outcome_unknown" ? error.data : null;
+    if (uncertain) {
+      let message = uncertain.error || errorMessage(error, `${product} action outcome is unknown.`);
+      if (uncertain.request_id) message += ` Request ${uncertain.request_id}.`;
+      if (uncertain.assistant_hint) message += ` ${uncertain.assistant_hint}`;
+      try {
+        await onRefreshActivity?.();
+      } catch (refreshError) {
+        message += ` Activity refresh failed: ${errorMessage(refreshError)}`;
+      }
+      if (request.isCurrent()) setState({ state: "error", error: message, message: "" });
+      throw error;
+    }
     setState(
       suppressError
         ? { state: "idle", error: "", message: "" }

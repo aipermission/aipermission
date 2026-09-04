@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,7 +26,9 @@ func (s *Server) Close() {
 	s.closeMaintenanceConsoleForLifecycle("server_shutdown")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.closeAllUnlockedResources()
+	if err := s.closeAllUnlockedResources(); err != nil {
+		log.Printf("close unlocked database resources failed: %v", err)
+	}
 }
 
 func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
@@ -45,34 +48,41 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "cross-site mutation requests are not allowed")
 		return
 	}
+	streaming := isStreamingRoute(r.URL.Path)
+	managesLifecycle := managesLifecycleLock(r.URL.Path)
+	if !streaming && !managesLifecycle {
+		if isLifecycleMutation(r.URL.Path) {
+			s.lifecycleMu.Lock()
+			defer s.lifecycleMu.Unlock()
+		} else {
+			s.lifecycleMu.RLock()
+			defer s.lifecycleMu.RUnlock()
+		}
+	}
 
 	unlocked := s.isUnlocked()
 	if !unlocked && !isAllowedWhileLocked(r.URL.Path) {
 		writeError(w, http.StatusLocked, "database is locked")
 		return
 	}
-	if unlocked && !isUISessionExempt(r.URL.Path) && !s.hasValidUISession(r) {
-		writeError(w, http.StatusUnauthorized, "ui session required")
-		return
+	if unlocked && !isUISessionExempt(r.URL.Path) {
+		if !s.hasValidUISession(r) {
+			writeError(w, http.StatusUnauthorized, "ui session required")
+			return
+		}
+		s.ensureUIWorkspaceCookie(w, r)
 	}
 	if unlocked && requiresUICSRF(r.Method, r.URL.Path) && !s.hasValidUICSRF(r) {
 		writeError(w, http.StatusForbidden, "csrf token required")
 		return
 	}
-	if isStreamingRoute(r.URL.Path) {
+	if streaming {
 		s.mux.ServeHTTP(w, r)
 		return
 	}
-	if managesLifecycleLock(r.URL.Path) {
+	if managesLifecycle {
 		s.mux.ServeHTTP(w, r)
 		return
-	}
-	if isLifecycleMutation(r.URL.Path) {
-		s.lifecycleMu.Lock()
-		defer s.lifecycleMu.Unlock()
-	} else {
-		s.lifecycleMu.RLock()
-		defer s.lifecycleMu.RUnlock()
 	}
 	s.mux.ServeHTTP(w, r)
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { apiDownload, apiPost } from "./api.js";
+import { listLocalActionRetryEntries, resolveLocalActionRetryEntry } from "./local-action-retry.js";
 
 test("picker downloads stream the response directly to the selected file", async () => {
   const originalFetch = globalThis.fetch;
@@ -161,12 +162,38 @@ test("local connector action retains idempotency after malformed or incomplete s
   }
 });
 
+test("local connector action requires explicit reconciliation after an unknown outcome", async () => {
+  const originalFetch = globalThis.fetch;
+  const keys = [];
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    keys.push(JSON.parse(options.body).idempotency_key);
+    calls += 1;
+    return response(calls === 1 ? localActionResponse("outcome_unknown") : localActionResponse());
+  };
+  try {
+    const body = { target_ref: "fixture:unknown", action_name: "mutate", input: {}, reason: "test" };
+    await apiPost("/api/connector-actions/local-run", body);
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /new external attempt was canceled/i);
+    assert.equal(keys.length, 1);
+    const [entry] = listLocalActionRetryEntries();
+    assert.equal(entry.state, "outcome_unknown");
+    assert.equal(resolveLocalActionRetryEntry(entry.signature), true);
+    await apiPost("/api/connector-actions/local-run", body);
+    assert.notEqual(keys[0], keys[1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("local connector action retry keys survive browser reload until acknowledged", async () => {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
   const keys = [];
   const storage = memoryStorage();
-  globalThis.window = { localStorage: storage };
+  globalThis.window = { localStorage: storage, location: { protocol: "http:", port: "3210" } };
+  globalThis.document = { cookie: "aipermission_workspace_3210=workspace-one" };
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
     keys.push(JSON.parse(options.body).idempotency_key);
@@ -191,6 +218,36 @@ test("local connector action retry keys survive browser reload until acknowledge
   } finally {
     globalThis.fetch = originalFetch;
     restoreWindow(originalWindow);
+    restoreDocument(originalDocument);
+  }
+});
+
+test("browser retry keys are isolated by persistent workspace identity", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  const keys = [];
+  const storage = memoryStorage();
+  globalThis.window = { localStorage: storage, location: { protocol: "http:", port: "3210" } };
+  globalThis.fetch = async (_url, options) => {
+    keys.push(JSON.parse(options.body).idempotency_key);
+    if (keys.length < 3) throw new TypeError("network disconnected");
+    return response(localActionResponse());
+  };
+  const body = { target_ref: "fixture:1:1", action_name: "mutate", input: {}, reason: "test" };
+  try {
+    globalThis.document = { cookie: "aipermission_workspace_3210=workspace-one" };
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
+    globalThis.document.cookie = "aipermission_workspace_3210=workspace-two";
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
+    globalThis.document.cookie = "aipermission_workspace_3210=workspace-one";
+    await apiPost("/api/connector-actions/local-run", body);
+    assert.notEqual(keys[0], keys[1]);
+    assert.equal(keys[0], keys[2]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
+    restoreDocument(originalDocument);
   }
 });
 
@@ -240,13 +297,18 @@ function rawResponse(body, status = 200) {
   };
 }
 
-function localActionResponse() {
-  return { request_id: 41, status: "completed" };
+function localActionResponse(status = "completed") {
+  return { request_id: 41, status };
 }
 
 function restoreWindow(value) {
   if (value === undefined) delete globalThis.window;
   else globalThis.window = value;
+}
+
+function restoreDocument(value) {
+  if (value === undefined) delete globalThis.document;
+  else globalThis.document = value;
 }
 
 function memoryStorage() {

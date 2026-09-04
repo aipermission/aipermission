@@ -11,6 +11,8 @@ import {
   normalizeCredentialResources,
 } from "./app-shell-runtime";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
+import { LocalActionReconciliationDialog } from "./local-action-reconciliation-dialog";
+import { useLocalActionReconciliation } from "./use-local-action-reconciliation";
 import { createFileTransferBatchActions } from "./file-transfer/file-transfer-actions";
 import { createFileTransferListState, loadCurrentFileTransferBatches } from "./file-transfer/file-transfer-list-state";
 import { TransferCenter } from "./transfer-center";
@@ -43,6 +45,7 @@ export function Shell({ theme, setTheme }) {
   const [backupFreshness, setBackupFreshness] = useState({ state: "loading", data: [], checkErrors: [], error: null });
   const [switchDialog, setSwitchDialog] = useState({ open: false, database_id: "", password: "", state: "idle", error: null });
   const [lockDialog, setLockDialog] = useState({ open: false, state: "idle", error: null });
+  const [actionRetryDialog, closeActionRetryDialog] = useLocalActionReconciliation();
   const [transferCenterOpen, setTransferCenterOpen] = useState(false);
   const [vaultSessionDialog, setVaultSessionDialog] = useState({
     open: false,
@@ -623,6 +626,8 @@ export function Shell({ theme, setTheme }) {
           </div>
         </div>
       </Dialog>
+
+      <LocalActionReconciliationDialog value={actionRetryDialog} onClose={closeActionRetryDialog} />
 
       <section className="lg:pl-72">
         <div className={`mx-auto grid gap-6 p-5 ${location.pathname === "/console" ? "max-w-none" : "max-w-7xl"}`}>

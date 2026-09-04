@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	uiSessionCookieName = "aipermission_ui_session"
-	uiCSRFCookieName    = "aipermission_csrf"
-	uiCSRFHeaderName    = "X-AIPermission-CSRF"
-	uiSessionMaxAge     = 12 * time.Hour
+	uiSessionCookieName   = "aipermission_ui_session"
+	uiCSRFCookieName      = "aipermission_csrf"
+	uiWorkspaceCookieName = "aipermission_workspace"
+	uiCSRFHeaderName      = "X-AIPermission-CSRF"
+	uiSessionMaxAge       = 12 * time.Hour
 )
 
 type uiSessionRecord struct {
@@ -22,48 +23,87 @@ type uiSessionRecord struct {
 	DatabaseID string
 }
 
-func (s *Server) issueUISession(w http.ResponseWriter) error {
+type preparedUISession struct {
+	token   string
+	csrf    string
+	hash    string
+	expires time.Time
+}
+
+func prepareUISession() (preparedUISession, error) {
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
-		return err
+		return preparedUISession{}, err
 	}
 	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
 	expires := time.Now().UTC().Add(uiSessionMaxAge)
-	hash := hashUISessionToken(token)
+	csrfBytes := make([]byte, 32)
+	if _, err := rand.Read(csrfBytes); err != nil {
+		return preparedUISession{}, err
+	}
+	return preparedUISession{
+		token:   token,
+		csrf:    base64.RawURLEncoding.EncodeToString(csrfBytes),
+		hash:    hashUISessionToken(token),
+		expires: expires,
+	}, nil
+}
+
+// issueUISessionLocked requires s.mu to be held by the lifecycle caller.
+func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
+	prepared, err := prepareUISession()
+	if err != nil {
+		return err
+	}
+	s.issuePreparedUISessionLocked(w, prepared)
+	return nil
+}
+
+// issuePreparedUISessionLocked requires s.mu to be held by the lifecycle caller.
+func (s *Server) issuePreparedUISessionLocked(w http.ResponseWriter, prepared preparedUISession) {
 	databaseID := s.activeDatabase
+	workspaceID := ""
+	if runtime := s.workspaces[databaseID]; runtime != nil {
+		workspaceID = runtime.workspaceUUID
+	}
+	retryIdentity := uiRetryIdentity(databaseID, workspaceID)
 
 	s.uiSessionMu.Lock()
 	if s.uiSessions == nil {
 		s.uiSessions = map[string]uiSessionRecord{}
 	}
 	s.pruneUISessionsLocked(time.Now().UTC())
-	s.uiSessions[hash] = uiSessionRecord{Expires: expires, DatabaseID: databaseID}
+	s.uiSessions[prepared.hash] = uiSessionRecord{Expires: prepared.expires, DatabaseID: databaseID}
 	s.uiSessionMu.Unlock()
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.uiSessionCookieName(),
-		Value:    token,
+		Value:    prepared.token,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(uiSessionMaxAge.Seconds()),
-		Expires:  expires,
+		Expires:  prepared.expires,
 	})
-	csrfBytes := make([]byte, 32)
-	if _, err := rand.Read(csrfBytes); err != nil {
-		return err
-	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.uiCSRFCookieName(),
-		Value:    base64.RawURLEncoding.EncodeToString(csrfBytes),
+		Value:    prepared.csrf,
 		Path:     "/",
 		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(uiSessionMaxAge.Seconds()),
-		Expires:  expires,
+		Expires:  prepared.expires,
 	})
-	return nil
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.uiWorkspaceCookieName(),
+		Value:    retryIdentity,
+		Path:     "/",
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   int(uiSessionMaxAge.Seconds()),
+		Expires:  prepared.expires,
+	})
 }
 
 func (s *Server) clearUISessions(w http.ResponseWriter) {
@@ -83,6 +123,15 @@ func (s *Server) clearUISessions(w http.ResponseWriter) {
 	})
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.uiCSRFCookieName(),
+		Value:    "",
+		Path:     "/",
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0).UTC(),
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.uiWorkspaceCookieName(),
 		Value:    "",
 		Path:     "/",
 		Secure:   true,
@@ -133,6 +182,37 @@ func (s *Server) hasValidUICSRF(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(header)) == 1
 }
 
+func (s *Server) ensureUIWorkspaceCookie(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	databaseID := s.activeDatabase
+	runtime := s.workspaces[databaseID]
+	s.mu.RUnlock()
+	if runtime == nil || strings.TrimSpace(runtime.workspaceUUID) == "" {
+		return
+	}
+	retryIdentity := uiRetryIdentity(databaseID, runtime.workspaceUUID)
+	if cookie, err := r.Cookie(s.uiWorkspaceCookieName()); err == nil && strings.TrimSpace(cookie.Value) == retryIdentity {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.uiWorkspaceCookieName(),
+		Value:    retryIdentity,
+		Path:     "/",
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   int(uiSessionMaxAge.Seconds()),
+		Expires:  time.Now().UTC().Add(uiSessionMaxAge),
+	})
+}
+
+func uiRetryIdentity(databaseID, workspaceID string) string {
+	if strings.TrimSpace(databaseID) == "" || strings.TrimSpace(workspaceID) == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(databaseID + "\x00" + workspaceID))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
 func (s *Server) pruneUISessionsLocked(now time.Time) {
 	for hash, session := range s.uiSessions {
 		if !session.Expires.After(now) {
@@ -152,6 +232,10 @@ func (s *Server) uiSessionCookieName() string {
 
 func (s *Server) uiCSRFCookieName() string {
 	return scopedUICookieName(uiCSRFCookieName, s.config.FrontendPort)
+}
+
+func (s *Server) uiWorkspaceCookieName() string {
+	return scopedUICookieName(uiWorkspaceCookieName, s.config.FrontendPort)
 }
 
 func scopedUICookieName(base string, frontendPort string) string {
