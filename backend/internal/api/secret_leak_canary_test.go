@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 const (
 	secretLeakCanaryConnectorKind = "secretcanary"
 	secretLeakCanaryValue         = "AIPERMISSION_SECRET_CANARY_43_9f7c2e"
+	secretLeakInputCanaryValue    = "OPAQUE_INPUT_CANARY_43_7ac418"
 )
 
 type secretLeakCanaryConnector struct{}
@@ -81,17 +83,20 @@ func (secretLeakCanaryConnector) ExecuteAction(ctx context.Context, runtime conn
 		return connectors.ActionResult{}, err
 	}
 	payload := fmt.Sprint(action.Payload["payload"])
+	wireCredential := "Basic " + base64.StdEncoding.EncodeToString([]byte("canary-user:"+secret))
+	connectors.RegisterSensitiveValue(runtime.Secrets, wireCredential)
 	return connectors.ActionResult{
 		Status: connectors.ResultFailed,
 		Output: map[string]any{
 			"canary": secret,
 			"nested": map[string]any{
-				"password":     secret,
-				"secret_value": payload,
+				"password":        secret,
+				"reflected_input": payload,
 			},
+			wireCredential: "credential-derived-key",
 		},
-		DisplayText: "password=" + secret + " token=" + payload,
-		Error:       "canary failure password=" + secret + " secret=" + payload,
+		DisplayText: "credential=" + wireCredential + " input=" + payload,
+		Error:       "canary failure credential=" + wireCredential + " input=" + payload,
 	}, nil
 }
 
@@ -140,10 +145,13 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 		t.Fatalf("set action permission: %v", err)
 	}
 
+	wireCredential := "Basic " + base64.StdEncoding.EncodeToString([]byte("canary-user:"+secretLeakCanaryValue))
 	assertCanaryAbsent := func(surface string, value string) {
 		t.Helper()
-		if strings.Contains(value, secretLeakCanaryValue) {
-			t.Fatalf("%s leaked the secret canary: %s", surface, value)
+		for _, canary := range []string{secretLeakCanaryValue, secretLeakInputCanaryValue, wireCredential} {
+			if strings.Contains(value, canary) {
+				t.Fatalf("%s leaked canary %q: %s", surface, canary, value)
+			}
 		}
 	}
 	assertRedacted := func(surface string, value string) {
@@ -157,7 +165,7 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 	targetRef := connectortargets.ConnectorTargetRef(secretLeakCanaryConnectorKind, target.ID, profile.ID)
 	callResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
 		TargetRef: targetRef, ActionName: "emit_secret",
-		Input: map[string]any{"payload": secretLeakCanaryValue}, Reason: "exercise secret canary boundaries",
+		Input: map[string]any{"payload": secretLeakInputCanaryValue}, Reason: "exercise secret canary boundaries",
 		IdempotencyKey: "secret-canary-action",
 	})
 	if callResponse.Code != http.StatusOK {
@@ -238,8 +246,9 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 		assertCanaryAbsent("audit detail", detail.Body.String())
 	}
 
-	var plaintextReferences int
-	if err := fixture.db.QueryRowContext(ctx, `
+	for _, canary := range []string{secretLeakCanaryValue, secretLeakInputCanaryValue, wireCredential} {
+		var plaintextReferences int
+		if err := fixture.db.QueryRowContext(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM connector_action_requests
 			 WHERE preview_json LIKE ? OR input_json LIKE ? OR output_json LIKE ? OR display_text LIKE ? OR error LIKE ?)
@@ -248,13 +257,14 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 			 WHERE preview_json LIKE ? OR input_text LIKE ? OR input_json LIKE ? OR output_text LIKE ? OR output_json LIKE ? OR error LIKE ?)
 			+
 			(SELECT COUNT(*) FROM audit_logs WHERE payload_json LIKE ?)`,
-		"%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%",
-		"%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%", "%"+secretLeakCanaryValue+"%",
-		"%"+secretLeakCanaryValue+"%",
-	).Scan(&plaintextReferences); err != nil {
-		t.Fatalf("inspect plaintext persistence surfaces: %v", err)
-	}
-	if plaintextReferences != 0 {
-		t.Fatalf("secret canary appeared in %d plaintext persistence surfaces", plaintextReferences)
+			"%"+canary+"%", "%"+canary+"%", "%"+canary+"%", "%"+canary+"%", "%"+canary+"%",
+			"%"+canary+"%", "%"+canary+"%", "%"+canary+"%", "%"+canary+"%", "%"+canary+"%", "%"+canary+"%",
+			"%"+canary+"%",
+		).Scan(&plaintextReferences); err != nil {
+			t.Fatalf("inspect plaintext persistence surfaces for %q: %v", canary, err)
+		}
+		if plaintextReferences != 0 {
+			t.Fatalf("canary %q appeared in %d plaintext persistence surfaces", canary, plaintextReferences)
+		}
 	}
 }

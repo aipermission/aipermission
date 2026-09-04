@@ -126,6 +126,29 @@ func TestCanonicalizeAndRedactAllowsBoundedSensitiveSourceBeforeProjectionLimits
 	}
 }
 
+func TestRedactAppliesTextBoundaryToObjectKeys(t *testing.T) {
+	redacted, err := Redact(map[string]any{"credential-canary": "safe"}, RedactionOptions{
+		RedactKey: func(value string) string {
+			return strings.ReplaceAll(value, "credential-canary", "[REDACTED]")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := redacted.(map[string]any)["credential-canary"]; exists {
+		t.Fatalf("redacted output preserved a sensitive object key: %#v", redacted)
+	}
+}
+
+func TestRedactRejectsObjectKeyCollisions(t *testing.T) {
+	_, err := Redact(map[string]any{"secret-a": 1, "secret-b": 2}, RedactionOptions{
+		RedactKey: func(string) string { return "[REDACTED]" },
+	})
+	if !errors.Is(err, ErrInvalidValue) {
+		t.Fatalf("collision error = %v, want ErrInvalidValue", err)
+	}
+}
+
 func jsonText(value any) (string, error) {
 	encoded, err := json.Marshal(value)
 	return string(encoded), err

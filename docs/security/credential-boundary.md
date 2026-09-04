@@ -132,6 +132,14 @@ the same recursive redaction to typed, map, slice, and custom-marshaled output
 and reuses that exact projection for encrypted history and MCP. Redaction is
 best-effort and can be extended with custom regex rules in Security.
 
+Connector credentials use a separate mandatory execution-scoped boundary that
+remains active even when optional redaction is disabled. It covers stored
+credential values, normalized representations, connector-registered reusable
+wire credentials, and action fields declared by `SensitiveInputFields`.
+Structured output keys and values, display text, connector errors, history, and
+audit projections cross this boundary. If redacting object keys would create a
+duplicate key, the result is rejected instead of silently replacing data.
+
 If a connector has already performed remote work but its result cannot cross
 the canonical output boundary, the gateway records `outcome_unknown`. Agents
 must not blindly retry that action because its side effect may have completed.

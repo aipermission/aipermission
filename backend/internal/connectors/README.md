@@ -103,6 +103,17 @@ Use `ActionDefinition.SensitiveInputFields` for non-credential action inputs
 whose values may contain customer data or secrets, such as a message key,
 payload, or headers. Core persists and returns redacted input values while
 keeping the exact execution payload only in the encrypted request envelope.
+The execution boundary also suppresses those exact values if an untrusted
+remote endpoint reflects them through output or errors.
+
+If a connector derives a reusable wire credential from one or more stored
+secrets, register both the token portion and complete wire representation with
+`connectors.RegisterSensitiveValue(runtime.Secrets, ...)` before dispatch. For
+example, an HTTP Basic connector registers the encoded `username:password`
+token and the complete `Basic ...` header. The execution-scoped registrar does
+not persist the value; it extends the mandatory response, error, history, and
+audit redaction boundary. Do not rely on optional operator redaction for
+connector credentials.
 
 Every action also exposes an effective `RetryPolicy`. Read actions default to
 `read_only`; every mutation defaults conservatively to `non_idempotent`.

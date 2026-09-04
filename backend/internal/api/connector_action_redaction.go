@@ -27,6 +27,9 @@ func (s *Server) redactedConnectorValueWithLimits(ctx context.Context, runtime *
 		RedactText: func(value string) string {
 			return boundary.Redact(s.redactForPersistence(ctx, runtime, value))
 		},
+		RedactKey: func(value string) string {
+			return boundary.RedactKey(s.redactForPersistence(ctx, runtime, value))
+		},
 		RedactCapability: func(value string) string {
 			return boundary.Redact(s.redactCustom(ctx, runtime, value))
 		},

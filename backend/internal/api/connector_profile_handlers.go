@@ -332,7 +332,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 	result, err := testable.TestConnection(ctx, connectors.RuntimeContext{
 		Target:       target,
 		Profile:      profile,
-		Secrets:      connectorSecretAccessor{values: secrets},
+		Secrets:      connectorSecretAccessor{values: secrets, boundary: credentialBoundary},
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 		Events:       noopConnectorEventSink{},
 	})

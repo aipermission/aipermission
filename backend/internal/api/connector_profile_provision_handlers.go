@@ -77,18 +77,19 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 	if !ok {
 		return
 	}
+	credentialBoundary := newConnectorCredentialBoundary(secrets)
 	provisioned, err := provisioner.ProvisionCredentialProfile(r.Context(), connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),
-		Secrets:      connectorSecretAccessor{values: secrets},
+		Secrets:      connectorSecretAccessor{values: secrets, boundary: credentialBoundary},
 		Events:       noopConnectorEventSink{},
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, request.Input)
 	if err != nil {
-		handleConnectorProvisionError(w, errors.New(newConnectorCredentialBoundary(secrets).Redact(s.redactForPersistence(r.Context(), runtime, err.Error()))))
+		handleConnectorProvisionError(w, errors.New(credentialBoundary.Redact(s.redactForPersistence(r.Context(), runtime, err.Error()))))
 		return
 	}
-	credentialBoundary := combinedConnectorCredentialBoundary(secrets, provisioned.Secret)
+	credentialBoundary.AddStructured(provisioned.Secret)
 	if err := validateProvisionedCredentialProfile(connector, provisioned); err != nil {
 		s.failProvisionedCredentialProfile(w, runtime, provisioner, target, adminProfile, secrets, provisioned, "validation", err, func() {
 			handleConnectorTargetError(w, err)
@@ -222,10 +223,11 @@ func (s connectorTargetHandlers) compensateProvisionedCredentialProfile(
 		return provisionCompensationOutcome{cleanupErr: fmt.Errorf("credential provisioner is unavailable")}
 	}
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), provisionCompensationTimeout)
+	credentialBoundary := combinedConnectorCredentialBoundary(secrets, provisioned.Secret)
 	cleanupResult, cleanupErr := provisioner.CleanupProvisionedCredentialProfile(cleanupCtx, connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),
-		Secrets:      connectorSecretAccessor{values: secrets},
+		Secrets:      connectorSecretAccessor{values: secrets, boundary: credentialBoundary},
 		Events:       noopConnectorEventSink{},
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, connectors.CredentialProfileView{
@@ -239,8 +241,6 @@ func (s connectorTargetHandlers) compensateProvisionedCredentialProfile(
 	})
 	cleanupCancel()
 	cleanupErr = requireCompletedCredentialCleanup(cleanupResult, cleanupErr)
-	credentialBoundary := combinedConnectorCredentialBoundary(secrets, provisioned.Secret)
-
 	action := "connector.profile.provisioning_compensated"
 	cleanupStatus := "completed"
 	if cleanupErr != nil {
@@ -309,7 +309,7 @@ func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx
 	result, err := provisioner.CleanupProvisionedCredentialProfile(ctx, connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),
-		Secrets:      connectorSecretAccessor{values: secrets},
+		Secrets:      connectorSecretAccessor{values: secrets, boundary: credentialBoundary},
 		Events:       noopConnectorEventSink{},
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, connectortargets.CredentialProfileView(profile))
