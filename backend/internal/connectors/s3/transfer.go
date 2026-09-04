@@ -354,7 +354,12 @@ func (client *s3Client) multipartUpload(ctx context.Context, key string, file *o
 			defer cancel()
 			abortQuery := url.Values{"uploadId": []string{uploadID}}
 			if _, _, abortErr := client.Do(abortCtx, http.MethodDelete, key, abortQuery, nil, maxS3ResponseBytes); abortErr != nil {
-				err = errors.Join(err, fmt.Errorf("abort incomplete multipart upload: %w", abortErr))
+				err = connectors.ClassifyActionError(
+					"outcome_unknown",
+					connectors.ResultOutcomeUnknown,
+					map[string]any{"cleanup_required": true, "retry_safe": false, "dispatch_stage": "multipart_abort"},
+					errors.Join(err, fmt.Errorf("abort incomplete multipart upload: %w", abortErr)),
+				)
 			}
 		}
 	}()

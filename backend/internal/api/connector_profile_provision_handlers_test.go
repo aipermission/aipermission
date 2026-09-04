@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -97,6 +98,28 @@ func (c *provisioningFailureTestConnector) ProvisionedCredentialAdminProfileID(p
 
 func (*provisioningFailureTestConnector) PreserveProvisionedCredentialPublic(_ connectors.CredentialProfileView, requested map[string]any) (map[string]any, error) {
 	return requested, nil
+}
+
+func TestHandleConnectorProvisionErrorPreservesUncertainOutcomeCode(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	err := connectors.ClassifyActionError(
+		"outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"retry_safe": false},
+		errors.New("unsafe source message"),
+	)
+	handleConnectorProvisionError(recorder, err, "safe reconciled message")
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	for _, expected := range []string{`"code":"outcome_unknown"`, `"error":"safe reconciled message"`} {
+		if !strings.Contains(recorder.Body.String(), expected) {
+			t.Fatalf("response missing %s: %s", expected, recorder.Body.String())
+		}
+	}
+	if strings.Contains(recorder.Body.String(), "unsafe source message") {
+		t.Fatalf("response leaked original message: %s", recorder.Body.String())
+	}
 }
 
 func TestProvisionConnectorCredentialProfileCompensatesPersistenceFailure(t *testing.T) {

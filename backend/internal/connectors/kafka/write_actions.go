@@ -132,13 +132,13 @@ func executePublishMessage(ctx context.Context, runtime connectors.RuntimeContex
 }
 
 func classifyKafkaPublishFailure(err error) connectors.ActionResult {
-	if isDefiniteKafkaPublishRejection(err) {
+	if isDefiniteKafkaBrokerRejection(err) {
 		return failedResult(fmt.Errorf("publish Kafka message rejected by broker: %w", err))
 	}
 	return outcomeUnknownResult("produce_request", fmt.Errorf("publish Kafka message: %w; delivery may be unknown, inspect the topic before retrying", err))
 }
 
-func isDefiniteKafkaPublishRejection(err error) bool {
+func isDefiniteKafkaBrokerRejection(err error) bool {
 	for _, definite := range []error{
 		kerr.TopicAuthorizationFailed,
 		kerr.ClusterAuthorizationFailed,
@@ -202,16 +202,26 @@ func executeSetConsumerGroupOffset(ctx context.Context, client *kgo.Client, payl
 	if err != nil {
 		return outcomeUnknownResult("offset_commit_request", fmt.Errorf("commit consumer group offset: %w", err)), nil
 	}
-	if err := responses.Error(); err != nil {
-		return failedResult(fmt.Errorf("commit consumer group offset: %w", err)), nil
+	offsetVerified := false
+	if responseErr := responses.Error(); responseErr != nil {
+		matched, verifyErr := committedOffsetMatches(ctx, admin, group, topic, partition, offset)
+		if matched {
+			offsetVerified = true
+		} else if verifyErr == nil && isDefiniteKafkaBrokerRejection(responseErr) {
+			return failedResult(fmt.Errorf("commit consumer group offset: %w", responseErr)), nil
+		} else {
+			return outcomeUnknownResult("offset_commit_response", errors.Join(fmt.Errorf("commit consumer group offset: %w", responseErr), verifyErr)), nil
+		}
 	}
-	verified, err := admin.FetchOffsets(kadm.RequireStable(requestCtx), group)
-	if err != nil {
-		return outcomeUnknownResult("offset_commit_verification", fmt.Errorf("verify consumer group offset: %w", err)), nil
-	}
-	actual, found := verified.Lookup(topic, partition)
-	if !found || actual.Err != nil || actual.At != offset {
-		return outcomeUnknownResult("offset_commit_verification", errors.New("consumer group offset verification failed")), nil
+	if !offsetVerified {
+		verified, err := admin.FetchOffsets(kadm.RequireStable(requestCtx), group)
+		if err != nil {
+			return outcomeUnknownResult("offset_commit_verification", fmt.Errorf("verify consumer group offset: %w", err)), nil
+		}
+		actual, found := verified.Lookup(topic, partition)
+		if !found || actual.Err != nil || actual.At != offset {
+			return outcomeUnknownResult("offset_commit_verification", errors.New("consumer group offset verification failed")), nil
+		}
 	}
 	postCommitState := "unknown"
 	postCommitWarning := ""
@@ -238,6 +248,23 @@ func executeSetConsumerGroupOffset(ctx context.Context, client *kgo.Client, payl
 		"offset_commit_verified": true,
 	}
 	return completedResult(output, fmt.Sprintf("Set consumer group %s offset for %s partition %d from %d to %d.", group, topic, partition, previous, offset)), nil
+}
+
+func committedOffsetMatches(ctx context.Context, admin *kadm.Client, group, topic string, partition int32, expected int64) (bool, error) {
+	verifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	verified, err := admin.FetchOffsets(kadm.RequireStable(verifyCtx), group)
+	if err != nil {
+		return false, fmt.Errorf("verify consumer group offset after ambiguous response: %w", err)
+	}
+	actual, found := verified.Lookup(topic, partition)
+	if !found {
+		return false, nil
+	}
+	if actual.Err != nil {
+		return false, fmt.Errorf("verify consumer group offset after ambiguous response: %w", actual.Err)
+	}
+	return actual.At == expected, nil
 }
 
 func requireInactiveConsumerGroup(ctx context.Context, admin *kadm.Client, group string) (kadm.DescribedGroup, error) {
