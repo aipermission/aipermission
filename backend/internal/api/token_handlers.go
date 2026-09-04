@@ -72,7 +72,7 @@ func (s tokenHandlers) revokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "token revoke was canceled")
 		return

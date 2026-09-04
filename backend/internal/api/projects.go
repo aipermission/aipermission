@@ -87,7 +87,7 @@ func (s projectHandlers) archiveProject(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "project archive was canceled")
 		return

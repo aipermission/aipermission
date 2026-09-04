@@ -55,6 +55,9 @@ func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert connector action request: %v", err)
 	}
+	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET dispatch_started_at = ? WHERE id = ?`, now, actionRequest.ID); err != nil {
+		t.Fatalf("mark connector action dispatched: %v", err)
+	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodDelete, "/api/connector-targets/"+strconv.FormatInt(server.TargetID, 10), "", nil)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"ok":true`) {

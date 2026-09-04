@@ -705,6 +705,22 @@ func TestSigV4MatchesAWSGetBucketLifecycleReferenceVector(t *testing.T) {
 	}
 }
 
+func TestSigV4RegistersAuthorizationAsSensitive(t *testing.T) {
+	var registered string
+	client := &s3Client{
+		region: "us-east-1", accessKey: "access", secretKey: "secret",
+		registerSensitive: func(value string) { registered = value },
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://example.test/object", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.signAt(req, nil, time.Date(2026, time.September, 4, 12, 0, 0, 0, time.UTC))
+	if registered == "" || registered != req.Header.Get("Authorization") {
+		t.Fatalf("registered sensitive value = %q, authorization = %q", registered, req.Header.Get("Authorization"))
+	}
+}
+
 func s3TestRuntime(t *testing.T, rawURL string) connectors.RuntimeContext {
 	t.Helper()
 	target := s3TestTarget(t, rawURL)

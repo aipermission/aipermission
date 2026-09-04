@@ -69,10 +69,10 @@ func (secretLeakCanaryConnector) PrepareAction(_ context.Context, request connec
 		Risk:          connectors.RiskRead,
 		Title:         "Emit secret canary",
 		Summary:       "Exercise every redacted connector result boundary.",
-		Preview:       map[string]any{"payload": payload},
+		Preview:       map[string]any{"payload": "[sensitive input omitted]"},
 		Payload:       map[string]any{"payload": payload},
 		ContextMaterial: map[string]any{
-			"payload": payload,
+			"purpose": "secret output boundary canary",
 		},
 	}, nil
 }
@@ -171,7 +171,7 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 	if callResponse.Code != http.StatusOK {
 		t.Fatalf("create pending canary action: %d %s", callResponse.Code, callResponse.Body.String())
 	}
-	assertRedacted("MCP pending response", callResponse.Body.String())
+	assertCanaryAbsent("MCP pending response", callResponse.Body.String())
 	pending := decodeRouteResponse[mcpConnectorActionResponse](t, callResponse.Body.Bytes())
 	if pending.Status != string(connectors.ResultApprovalPending) || pending.RequestID < 1 {
 		t.Fatalf("pending response = %#v", pending)
@@ -181,7 +181,7 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 	if approvalList.Code != http.StatusOK {
 		t.Fatalf("list approvals: %d %s", approvalList.Code, approvalList.Body.String())
 	}
-	assertRedacted("approval list preview", approvalList.Body.String())
+	assertCanaryAbsent("approval list preview", approvalList.Body.String())
 	approvalDetail := performJSON(
 		fixture.server.Handler(), http.MethodGet,
 		"/api/connector-action-approvals/"+strconv.FormatInt(pending.RequestID, 10), "", nil,
@@ -189,7 +189,7 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 	if approvalDetail.Code != http.StatusOK {
 		t.Fatalf("read approval detail: %d %s", approvalDetail.Code, approvalDetail.Body.String())
 	}
-	assertRedacted("approval detail preview", approvalDetail.Body.String())
+	assertCanaryAbsent("approval detail preview", approvalDetail.Body.String())
 
 	runResponse := performJSON(
 		fixture.server.Handler(), http.MethodPost,

@@ -179,7 +179,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "connector target update was canceled")
 		return
@@ -278,7 +278,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "connector target update was canceled")
 		return
@@ -403,7 +403,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "connector target deletion was canceled")
 		return

@@ -61,7 +61,7 @@ func (s vaultItemHandlers) saveVaultDefaultBinding(w http.ResponseWriter, r *htt
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault binding update was canceled")
 		return
@@ -156,7 +156,7 @@ func (s vaultItemHandlers) deleteVaultDefaultBinding(w http.ResponseWriter, r *h
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault binding deletion was canceled")
 		return

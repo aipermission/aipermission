@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/url"
 	"sort"
 	"strconv"
@@ -17,7 +18,8 @@ import (
 
 const (
 	connectorCredentialRedactionMarker   = "[REDACTED CREDENTIAL]"
-	connectorCredentialSubstringMinBytes = 8
+	connectorCredentialSubstringMinBytes = 3
+	connectorCredentialKeySubstringBytes = 8
 	connectorCredentialDelimitedMinBytes = 1
 )
 
@@ -168,10 +170,16 @@ func connectorCredentialVariants(secret string) []string {
 	if len(quoted) >= 2 {
 		quoted = quoted[1 : len(quoted)-1]
 	}
+	jsonQuoted := ""
+	if encoded, err := json.Marshal(secret); err == nil && len(encoded) >= 2 {
+		jsonQuoted = string(encoded[1 : len(encoded)-1])
+	}
 	encoded := []string{
 		secret,
 		strings.TrimSpace(secret),
 		quoted,
+		jsonQuoted,
+		html.EscapeString(secret),
 		url.QueryEscape(secret),
 		url.PathEscape(secret),
 		base64.StdEncoding.EncodeToString([]byte(secret)),
@@ -226,7 +234,7 @@ func (r connectorCredentialBoundary) RedactKey(value string) string {
 		if value == secret {
 			return connectorCredentialRedactionMarker
 		}
-		if len(secret) >= connectorCredentialSubstringMinBytes {
+		if len(secret) >= connectorCredentialKeySubstringBytes {
 			value = strings.ReplaceAll(value, secret, connectorCredentialRedactionMarker)
 		} else if len(secret) >= connectorCredentialDelimitedMinBytes {
 			value = redactDelimitedCredential(value, secret)

@@ -384,6 +384,16 @@ func validatePreparedAction(prepared connectors.PreparedAction, resolved Resolve
 	if prepared.Risk != definition.Risk {
 		return fmt.Errorf("prepared action risk drifted from %q to %q", definition.Risk, prepared.Risk)
 	}
+	sensitiveVariants, err := declaredSensitivePreparationVariants(request.Input, definition.SensitiveInputFields)
+	if err != nil {
+		return fmt.Errorf("validate prepared sensitive input boundary: %w", err)
+	}
+	if preparedValueContainsSensitive(prepared.Title, sensitiveVariants) || preparedValueContainsSensitive(prepared.Summary, sensitiveVariants) {
+		return errors.New("prepared action title or summary contains sensitive input")
+	}
+	if preparedValueContainsSensitive(prepared.Preview, sensitiveVariants) || preparedValueContainsSensitive(prepared.ContextMaterial, sensitiveVariants) {
+		return errors.New("prepared action display context contains sensitive input")
+	}
 	if field, ok := secretPayloadField(prepared.Payload); ok {
 		return fmt.Errorf("prepared action payload field %q must not contain secrets; store secrets in credential profiles instead", field)
 	}
@@ -408,6 +418,52 @@ func validatePreparedAction(prepared connectors.PreparedAction, resolved Resolve
 		return fmt.Errorf("prepared action context exceeds %d bytes", maxPreparedActionPreviewBytes)
 	}
 	return nil
+}
+
+func declaredSensitivePreparationVariants(input map[string]any, fields []string) ([]string, error) {
+	unique := map[string]struct{}{}
+	for _, field := range fields {
+		value, ok := input[field]
+		if !ok || value == nil {
+			continue
+		}
+		variants, err := sensitivePreparationVariants(value)
+		if err != nil {
+			return nil, err
+		}
+		for _, variant := range variants {
+			if variant != "" && variant != "null" {
+				unique[variant] = struct{}{}
+			}
+		}
+	}
+	variants := make([]string, 0, len(unique))
+	for variant := range unique {
+		variants = append(variants, variant)
+	}
+	sort.Slice(variants, func(i, j int) bool { return len(variants[i]) > len(variants[j]) })
+	return variants, nil
+}
+
+func preparedValueContainsSensitive(value any, variants []string) bool {
+	if text, ok := value.(string); ok {
+		for _, variant := range variants {
+			if text == variant || len(variant) >= 4 && strings.Contains(text, variant) {
+				return true
+			}
+		}
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return true
+	}
+	text := string(encoded)
+	for _, variant := range variants {
+		if text == variant || len(variant) >= 4 && strings.Contains(text, variant) {
+			return true
+		}
+	}
+	return false
 }
 
 func secretPayloadField(value any) (string, bool) {

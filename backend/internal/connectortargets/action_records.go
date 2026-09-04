@@ -764,7 +764,7 @@ func (s *Store) InvalidateActionRequestsForTarget(ctx context.Context, input Inv
 		statusPlaceholders = append(statusPlaceholders, "?")
 	}
 	queryArgs := append(append([]any{}, args...), statusValues...)
-	rows, err := executor.QueryContext(ctx, `SELECT id, status FROM connector_action_requests WHERE `+where+` AND status IN (`+strings.Join(statusPlaceholders, ",")+`) ORDER BY id`, queryArgs...)
+	rows, err := executor.QueryContext(ctx, `SELECT id, status, COALESCE(dispatch_started_at, '') FROM connector_action_requests WHERE `+where+` AND status IN (`+strings.Join(statusPlaceholders, ",")+`) ORDER BY id`, queryArgs...)
 	if err != nil {
 		return InvalidateActionRequestsForTargetResult{}, err
 	}
@@ -772,12 +772,13 @@ func (s *Store) InvalidateActionRequestsForTarget(ctx context.Context, input Inv
 	for rows.Next() {
 		var id int64
 		var status connectors.ResultStatus
-		if err := rows.Scan(&id, &status); err != nil {
+		var dispatchStartedAt string
+		if err := rows.Scan(&id, &status, &dispatchStartedAt); err != nil {
 			rows.Close()
 			return InvalidateActionRequestsForTargetResult{}, err
 		}
 		result.IDs = append(result.IDs, id)
-		if status == connectors.ResultRunning {
+		if status == connectors.ResultRunning && strings.TrimSpace(dispatchStartedAt) != "" {
 			result.OutcomeUnknownIDs = append(result.OutcomeUnknownIDs, id)
 		} else {
 			result.StaleIDs = append(result.StaleIDs, id)
@@ -807,6 +808,22 @@ func (s *Store) InvalidateActionRequestsForTarget(ctx context.Context, input Inv
 	}
 	result.Affected = affected
 	if input.IncludeRunning {
+		predispatchArgs := []any{string(connectors.ResultStale), strings.TrimSpace(input.Error), strings.TrimSpace(input.ApprovalDrift), nowString()}
+		predispatchArgs = append(predispatchArgs, args...)
+		predispatchArgs = append(predispatchArgs, string(connectors.ResultRunning))
+		updated, err := executor.ExecContext(ctx, `
+			UPDATE connector_action_requests
+			SET status = ?, error = ?, approval_context_drift = ?, completed_at = COALESCE(completed_at, ?)
+			WHERE `+where+` AND status = ? AND trim(COALESCE(dispatch_started_at, '')) = ''`, predispatchArgs...)
+		if err != nil {
+			return InvalidateActionRequestsForTargetResult{}, err
+		}
+		predispatchAffected, err := updated.RowsAffected()
+		if err != nil {
+			return InvalidateActionRequestsForTargetResult{}, err
+		}
+		result.Affected += predispatchAffected
+
 		runningError := strings.TrimSpace(input.RunningError)
 		if runningError == "" {
 			runningError = "connector target changed after dispatch; the external outcome is unknown"
@@ -814,10 +831,10 @@ func (s *Store) InvalidateActionRequestsForTarget(ctx context.Context, input Inv
 		runningArgs := []any{string(connectors.ResultOutcomeUnknown), runningError, strings.TrimSpace(input.ApprovalDrift), nowString()}
 		runningArgs = append(runningArgs, args...)
 		runningArgs = append(runningArgs, string(connectors.ResultRunning))
-		updated, err := executor.ExecContext(ctx, `
+		updated, err = executor.ExecContext(ctx, `
 			UPDATE connector_action_requests
 			SET status = ?, error = ?, approval_context_drift = ?, completed_at = COALESCE(completed_at, ?)
-			WHERE `+where+` AND status = ?`, runningArgs...)
+			WHERE `+where+` AND status = ? AND trim(COALESCE(dispatch_started_at, '')) <> ''`, runningArgs...)
 		if err != nil {
 			return InvalidateActionRequestsForTargetResult{}, err
 		}

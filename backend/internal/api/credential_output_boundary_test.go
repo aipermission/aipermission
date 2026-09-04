@@ -157,6 +157,7 @@ func TestConnectorCredentialBoundaryRedactsEncodedVariants(t *testing.T) {
 	boundary := newConnectorCredentialBoundary(map[string]any{
 		"password": "credential+/value",
 		"nested":   map[string]any{"token": "second-value"},
+		"quoted":   `credential"value`,
 	})
 	for _, value := range []string{
 		"credential+/value",
@@ -164,10 +165,15 @@ func TestConnectorCredentialBoundaryRedactsEncodedVariants(t *testing.T) {
 		"credential%2B%2Fvalue",
 		"Y3JlZGVudGlhbCsvdmFsdWU=",
 		"second-value",
+		`credential\"value`,
 	} {
 		if redacted := boundary.Redact("prefix " + value + " suffix"); strings.Contains(redacted, value) || !strings.Contains(redacted, connectorCredentialRedactionMarker) {
 			t.Fatalf("credential variant was not redacted: input=%q output=%q", value, redacted)
 		}
+	}
+	htmlBoundary := newConnectorCredentialBoundary(map[string]any{"password": `<admin&"secret">`})
+	if redacted := htmlBoundary.Redact(`remote said &lt;admin&amp;&#34;secret&#34;&gt;`); strings.Contains(redacted, "secret") {
+		t.Fatalf("HTML-encoded credential was not redacted: %q", redacted)
 	}
 }
 
@@ -185,6 +191,9 @@ func TestConnectorCredentialBoundaryDoesNotCorruptTextForShortSecrets(t *testing
 	boundary = newConnectorCredentialBoundary(map[string]any{"password": "abc"})
 	if got := boundary.Redact("authentication rejected abc"); strings.Contains(got, "abc") {
 		t.Fatalf("delimited three-byte credential remained visible: %q", got)
+	}
+	if got := boundary.Redact("prefixabcsuffix"); strings.Contains(got, "abc") {
+		t.Fatalf("embedded three-byte credential remained visible: %q", got)
 	}
 	boundary = newConnectorCredentialBoundary(map[string]any{"password": "secret"})
 	if got := boundary.Redact("credential secret rejected"); strings.Contains(got, "secret") {

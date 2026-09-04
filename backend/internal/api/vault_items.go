@@ -179,7 +179,7 @@ func (s vaultItemHandlers) updateVaultItem(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault item update was canceled")
 		return
@@ -262,7 +262,7 @@ func (s vaultItemHandlers) replaceVaultItemValue(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, "source must select an imported value or a supported generator")
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault value replacement was canceled")
 		return
@@ -340,7 +340,7 @@ func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *ht
 		handleVaultItemError(w, err)
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireDelivery(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault item preview generation was canceled")
 		return
@@ -479,7 +479,7 @@ func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "Vault item deletion was canceled")
 		return

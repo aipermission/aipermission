@@ -207,7 +207,7 @@ func compensateVaultActionEffect(ctx context.Context, runtime *databaseRuntime, 
 		if itemID < 1 || valueVersion < 1 || metadataRevision < 1 {
 			return nil
 		}
-		release, err := runtime.vaultDelivery.acquire(ctx)
+		release, err := runtime.vaultDelivery.acquireExclusive(ctx)
 		if err != nil {
 			return err
 		}

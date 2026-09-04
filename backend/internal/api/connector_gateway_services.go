@@ -88,7 +88,7 @@ func (s *Server) ConnectorChangeVaultPeerTrust(ctx context.Context, change func(
 	})
 	releases := make([]func(), 0, len(runtimes))
 	for _, runtime := range runtimes {
-		release, err := runtime.vaultDelivery.acquire(ctx)
+		release, err := runtime.vaultDelivery.acquireExclusive(ctx)
 		if err != nil {
 			for index := len(releases) - 1; index >= 0; index-- {
 				releases[index]()

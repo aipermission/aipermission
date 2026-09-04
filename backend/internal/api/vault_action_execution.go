@@ -65,7 +65,7 @@ func executeVaultGenerate(
 	if input.Name == "" || input.GeneratorKind == "" {
 		return nil, errors.New("name and generator_kind are required")
 	}
-	release, err := runtime.vaultDelivery.acquire(ctx)
+	release, err := runtime.vaultDelivery.acquireExclusive(ctx)
 	if err != nil {
 		return nil, err
 	}

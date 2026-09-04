@@ -254,8 +254,8 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if incompleteHandle.Request.Status != connectors.ResultFailed ||
-		incompleteHandle.Result.Status != connectors.ResultFailed ||
+	if incompleteHandle.Request.Status != connectors.ResultOutcomeUnknown ||
+		incompleteHandle.Result.Status != connectors.ResultOutcomeUnknown ||
 		!strings.Contains(incompleteHandle.Result.Error, "incomplete session handle") {
 		t.Fatalf("incomplete session handle should fail terminally: %#v", incompleteHandle)
 	}
@@ -1034,6 +1034,25 @@ func TestConnectorActionResultRejectsOversizedTypedOutput(t *testing.T) {
 	output, ok := connectorActionFailureOutput(unknown).(map[string]any)
 	if !ok || output["command_dispatched"] != true || output["retry_safe"] != false || output["output_withheld"] != true {
 		t.Fatalf("dispatched command failure metadata = %#v", output)
+	}
+}
+
+func TestValidateConnectorActionResultRejectsMissingAndGatewayStatuses(t *testing.T) {
+	for _, status := range []connectors.ResultStatus{
+		"", connectors.ResultApprovalPending, connectors.ResultBlocked,
+		connectors.ResultCanceled, connectors.ResultDeclined, connectors.ResultStale,
+	} {
+		if err := validateConnectorActionResult(connectors.ActionResult{Status: status}); err == nil {
+			t.Fatalf("status %q was accepted", status)
+		}
+	}
+	for _, status := range []connectors.ResultStatus{
+		connectors.ResultCompleted, connectors.ResultFailed, connectors.ResultError,
+		connectors.ResultOutcomeUnknown, connectors.ResultRunning,
+	} {
+		if err := validateConnectorActionResult(connectors.ActionResult{Status: status}); err != nil {
+			t.Fatalf("status %q was rejected: %v", status, err)
+		}
 	}
 }
 

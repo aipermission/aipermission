@@ -209,7 +209,7 @@ type pendingConnectorActionExecution struct {
 }
 
 func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (connectortargets.ActionRequest, error) {
-	release, err := runtime.vaultDelivery.acquire(ctx)
+	release, err := runtime.vaultDelivery.acquireDelivery(ctx)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -273,13 +273,13 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "target_or_action")
 	}
 	permission, err := store.GetActionPermission(ctx, tokenID, item.TargetID, item.ProfileID, item.ActionName, time.Now().UTC())
-	if err != nil || permission.ExecutionRule != connectortargets.ActionPermissionApprovalRequired {
+	if err != nil && !errors.Is(err, connectortargets.ErrActionPermissionNotFound) {
+		return pendingConnectorActionExecution{}, err
+	}
+	if errors.Is(err, connectortargets.ErrActionPermissionNotFound) || permission.ExecutionRule != connectortargets.ActionPermissionApprovalRequired {
 		reason := "connector approval context changed; ask the AI to send a fresh request"
 		if _, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, reason, "permission"); staleErr != nil {
 			return pendingConnectorActionExecution{}, staleErr
-		}
-		if err != nil && !errors.Is(err, connectortargets.ErrActionPermissionNotFound) {
-			return pendingConnectorActionExecution{}, err
 		}
 		return pendingConnectorActionExecution{}, errors.New(reason)
 	}
@@ -336,7 +336,10 @@ func (s *Server) currentConnectorApprovalToken(ctx context.Context, runtime *dat
 		return tokens.Token{}, s.staleConnectorApproval(ctx, runtime, item.ID, storedReason, responseReason, "token")
 	}
 	token, err := runtime.tokens.Get(ctx, *item.TokenID)
-	if err != nil {
+	if err != nil && !errors.Is(err, tokens.ErrNotFound) {
+		return tokens.Token{}, err
+	}
+	if errors.Is(err, tokens.ErrNotFound) {
 		reason := "connector approval token no longer exists; ask the AI to send a fresh request"
 		return tokens.Token{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "token")
 	}
@@ -399,7 +402,7 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 			runtime.clearConnectorCredentialBoundary(item.ID)
 		}
 	}()
-	release, err := runtime.vaultDelivery.acquire(ctx)
+	release, err := runtime.vaultDelivery.acquireDelivery(ctx)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -441,9 +444,6 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 		return finished, nil
 	}
 	status := result.Status
-	if status == "" {
-		status = connectors.ResultCompleted
-	}
 	item, err = s.captureConnectorActionSessionHandleIfReturned(ctx, runtime, item, result.Handles)
 	if err != nil {
 		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultOutcomeUnknown, nil, "", connectorActionHandleError, prepared.ActionDefinition.OutputHint)

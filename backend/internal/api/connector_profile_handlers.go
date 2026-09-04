@@ -125,7 +125,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "connector credential profile update was canceled")
 		return
@@ -229,7 +229,7 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "connector credential profile deletion was canceled")
 		return
