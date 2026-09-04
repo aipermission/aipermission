@@ -213,6 +213,10 @@ tokens, private keys, and tenant-specific secret material in credential profile
 schemas so the gateway can encrypt and redact them consistently. `PrepareAction`
 may validate references to credential profile metadata, but raw secrets are
 available only through `RuntimeContext.Secrets` during approved execution.
+Credential update handlers serialize read/decrypt/merge/write through the
+shared Vault delivery coordinator, and secret writes use a monotonic database
+revision compare-and-swap. Connector code must not read, merge, or persist a
+credential envelope through a separate update path.
 Prepared action payload keys must also avoid secret-looking field names such as
 `password`, `token`, `api_key`, or `private_key`; the action service rejects
 those payloads so connector secrets stay in credential profiles.
