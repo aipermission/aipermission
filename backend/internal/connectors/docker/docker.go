@@ -754,10 +754,9 @@ func dockerMutationTransportError(operation string, result connectors.CommandRun
 	if err == nil || !result.DispatchStarted {
 		return err
 	}
-	return connectors.ClassifyActionError(
-		"outcome_unknown",
-		connectors.ResultOutcomeUnknown,
-		map[string]any{"dispatch_stage": "command_transport"},
+	return connectors.ClassifyOutcomeUnknown(
+		"command_transport",
+		nil,
 		fmt.Errorf("%s outcome is unknown after dispatch: %w", operation, err),
 	)
 }

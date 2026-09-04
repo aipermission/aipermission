@@ -580,10 +580,9 @@ func executePeekMessages(ctx context.Context, client *rabbitClient, input map[st
 		return connectors.ActionResult{}, classifyRabbitMutationError("peek messages", err)
 	}
 	if rows == nil {
-		return connectors.ActionResult{}, connectors.ClassifyActionError(
-			"outcome_unknown",
-			connectors.ResultOutcomeUnknown,
-			map[string]any{"dispatch_stage": "response_validation", "retry_safe": false},
+		return connectors.ActionResult{}, connectors.ClassifyOutcomeUnknown(
+			"response_validation",
+			nil,
 			fmt.Errorf("peek messages returned an invalid null response after dispatch"),
 		)
 	}
@@ -645,10 +644,9 @@ func executePublishMessage(ctx context.Context, client *rabbitClient, input map[
 	}
 	routed, ok := output["routed"].(bool)
 	if !ok {
-		return connectors.ActionResult{}, connectors.ClassifyActionError(
-			"outcome_unknown",
-			connectors.ResultOutcomeUnknown,
-			map[string]any{"dispatch_stage": "management_api_response", "retry_safe": false},
+		return connectors.ActionResult{}, connectors.ClassifyOutcomeUnknown(
+			"management_api_response",
+			nil,
 			errors.New("RabbitMQ publish outcome is unknown because the management API response omitted the required routed boolean"),
 		)
 	}
@@ -783,10 +781,9 @@ func classifyRabbitMutationError(operation string, err error) error {
 	if !errors.As(err, &dispatchErr) {
 		return err
 	}
-	return connectors.ClassifyActionError(
-		"outcome_unknown",
-		connectors.ResultOutcomeUnknown,
-		map[string]any{"dispatch_stage": "management_api_request"},
+	return connectors.ClassifyOutcomeUnknown(
+		"management_api_request",
+		nil,
 		fmt.Errorf("RabbitMQ %s outcome is unknown after dispatch: %w", operation, err),
 	)
 }

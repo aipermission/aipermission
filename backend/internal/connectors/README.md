@@ -139,6 +139,13 @@ mutation, finalization request, or operation with an uncertain remote identity
 in this helper. Cancellation and deadline expiry are terminal to the local
 attempt and must not be retried internally.
 
+After a mutation may have crossed the external dispatch boundary, use the
+shared `ClassifyOutcomeUnknown` or `OutcomeUnknownResult` helper. These helpers
+enforce `status: outcome_unknown`, a stable `dispatch_stage`, and
+`retry_safe: false`. Connector-specific code may add bounded metadata, but must
+not invent a weaker retry contract or return a normal failure that invites an
+automatic second mutation.
+
 Approval-required requests hash the connector kind/version, action definition,
 target/profile public metadata, profile revision, encrypted secret revision,
 permission rule, token validity, and prepared payload. If any of that context

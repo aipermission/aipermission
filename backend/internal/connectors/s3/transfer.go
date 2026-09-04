@@ -354,10 +354,9 @@ func (client *s3Client) multipartUpload(ctx context.Context, key string, file *o
 			defer cancel()
 			abortQuery := url.Values{"uploadId": []string{uploadID}}
 			if _, _, abortErr := client.Do(abortCtx, http.MethodDelete, key, abortQuery, nil, maxS3ResponseBytes); abortErr != nil {
-				err = connectors.ClassifyActionError(
-					"outcome_unknown",
-					connectors.ResultOutcomeUnknown,
-					map[string]any{"cleanup_required": true, "retry_safe": false, "dispatch_stage": "multipart_abort"},
+				err = connectors.ClassifyOutcomeUnknown(
+					"multipart_abort",
+					map[string]any{"cleanup_required": true},
 					errors.Join(err, fmt.Errorf("abort incomplete multipart upload: %w", abortErr)),
 				)
 			}
@@ -444,10 +443,9 @@ func classifyMultipartInitiationError(err error) error {
 }
 
 func unknownMultipartInitiationError(stage string, err error) error {
-	return connectors.ClassifyActionError(
-		"outcome_unknown",
-		connectors.ResultOutcomeUnknown,
-		map[string]any{"dispatch_stage": stage, "cleanup_required": true},
+	return connectors.ClassifyOutcomeUnknown(
+		stage,
+		map[string]any{"cleanup_required": true},
 		fmt.Errorf("multipart upload initiation outcome is unknown; inspect or clean up incomplete uploads before retrying: %w", err),
 	)
 }

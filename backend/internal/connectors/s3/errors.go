@@ -96,10 +96,9 @@ func classifyS3MutationError(err error, headers http.Header) error {
 }
 
 func unknownS3MutationError(stage string, err error) error {
-	return connectors.ClassifyActionError(
-		"outcome_unknown",
-		connectors.ResultOutcomeUnknown,
-		map[string]any{"dispatch_stage": stage},
+	return connectors.ClassifyOutcomeUnknown(
+		stage,
+		nil,
 		fmt.Errorf("s3 mutation outcome is unknown after %s failure: %w", stage, err),
 	)
 }

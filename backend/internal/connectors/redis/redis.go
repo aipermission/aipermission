@@ -741,19 +741,17 @@ func classifyRedisMutationError(operation string, err error) error {
 	if !errors.As(err, &dispatchErr) {
 		return err
 	}
-	return connectors.ClassifyActionError(
-		"outcome_unknown",
-		connectors.ResultOutcomeUnknown,
-		map[string]any{"dispatch_stage": "resp_command", "retry_safe": false},
+	return connectors.ClassifyOutcomeUnknown(
+		"resp_command",
+		nil,
 		fmt.Errorf("Redis %s outcome is unknown after dispatch; inspect key state before retrying: %w", operation, err),
 	)
 }
 
 func invalidRedisMutationResponse(operation string, expected string) error {
-	return connectors.ClassifyActionError(
-		"outcome_unknown",
-		connectors.ResultOutcomeUnknown,
-		map[string]any{"dispatch_stage": "response_validation", "retry_safe": false},
+	return connectors.ClassifyOutcomeUnknown(
+		"response_validation",
+		nil,
 		fmt.Errorf("Redis %s returned an invalid response after dispatch; expected %s, inspect key state before retrying", operation, expected),
 	)
 }

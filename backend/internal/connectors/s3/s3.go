@@ -1131,8 +1131,16 @@ func normalizeOptionalETag(input map[string]any) (string, error) {
 
 func normalizeOptionalETagField(input map[string]any, field string) (string, error) {
 	value := strings.Trim(strings.TrimSpace(stringValue(input, field)), `"`)
-	if len(value) > 1024 || strings.ContainsAny(value, "\r\n") {
+	if len(value) == 0 {
+		return "", nil
+	}
+	if len(value) > 1024 || value == "*" {
 		return "", fmt.Errorf("%s is invalid", field)
+	}
+	for _, character := range []byte(value) {
+		if character <= 0x20 || character == 0x7f || character == '"' {
+			return "", fmt.Errorf("%s is invalid", field)
+		}
 	}
 	return value, nil
 }

@@ -626,10 +626,9 @@ func executeRolloutRestart(ctx context.Context, client *kubeClient, input map[st
 		if !result.DispatchStarted {
 			return connectors.ActionResult{}, err
 		}
-		return connectors.ActionResult{}, connectors.ClassifyActionError(
-			"outcome_unknown",
-			connectors.ResultOutcomeUnknown,
-			map[string]any{"dispatch_stage": "command_transport"},
+		return connectors.ActionResult{}, connectors.ClassifyOutcomeUnknown(
+			"command_transport",
+			nil,
 			fmt.Errorf("%s outcome is unknown after transport failure: %w", commandLabel, err),
 		)
 	}
@@ -639,10 +638,9 @@ func executeRolloutRestart(ctx context.Context, client *kubeClient, input map[st
 			return connectors.ActionResult{}, connectors.ClassifyError("precondition_failed", err)
 		}
 		if result.DispatchStarted && !isKubeDefiniteMutationFailure(result) {
-			return connectors.ActionResult{}, connectors.ClassifyActionError(
-				"outcome_unknown",
-				connectors.ResultOutcomeUnknown,
-				map[string]any{"dispatch_stage": "kubectl_response", "exit_code": result.ExitCode},
+			return connectors.ActionResult{}, connectors.ClassifyOutcomeUnknown(
+				"kubectl_response",
+				map[string]any{"exit_code": result.ExitCode},
 				fmt.Errorf("%s outcome is unknown after kubectl transport failure: %w", commandLabel, err),
 			)
 		}
@@ -996,7 +994,7 @@ func kubeCommandError(command string, result connectors.CommandRunResult) error 
 
 func isKubeConflictResult(result connectors.CommandRunResult) bool {
 	text := strings.ToLower(result.Stderr + "\n" + result.Stdout)
-	return strings.Contains(text, "conflict") || strings.Contains(text, "object has been modified")
+	return strings.Contains(text, "error from server (conflict)")
 }
 
 func isKubeDefiniteMutationFailure(result connectors.CommandRunResult) bool {
