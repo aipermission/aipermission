@@ -135,7 +135,9 @@ jobs:
         run: npm run build
       - name: Audit
         working-directory: frontend
-        run: npm audit --omit=dev --audit-level=moderate
+        run: |
+          npm audit --omit=dev --audit-level=moderate
+          npm audit --audit-level=high
 
   mcp:
     name: MCP Package
@@ -164,7 +166,9 @@ jobs:
         run: npm run build
       - name: Audit
         working-directory: packages/mcp
-        run: npm audit --omit=dev --audit-level=moderate
+        run: |
+          npm audit --omit=dev --audit-level=moderate
+          npm audit --audit-level=high
       - name: Pack dry run
         working-directory: packages/mcp
         run: npm pack --dry-run

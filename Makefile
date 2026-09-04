@@ -92,6 +92,7 @@ frontend-build:
 
 frontend-audit:
 	cd frontend && npm audit --omit=dev --audit-level=moderate
+	cd frontend && npm audit --audit-level=high
 
 mcp-test:
 	cd packages/mcp && npm test
@@ -107,6 +108,7 @@ mcp-build:
 
 mcp-audit:
 	cd packages/mcp && npm audit --omit=dev --audit-level=moderate
+	cd packages/mcp && npm audit --audit-level=high
 
 mcp-pack:
 	cd packages/mcp && npm pack --dry-run
