@@ -444,6 +444,19 @@ func failedResult(err error) connectors.ActionResult {
 	return connectors.ActionResult{Status: connectors.ResultFailed, Error: err.Error(), DisplayText: err.Error()}
 }
 
+func outcomeUnknownResult(stage string, err error) connectors.ActionResult {
+	message := "Kafka mutation outcome is unknown after dispatch; inspect broker state before retrying"
+	if err != nil {
+		message += ": " + err.Error()
+	}
+	return connectors.ActionResult{
+		Status:      connectors.ResultOutcomeUnknown,
+		Output:      map[string]any{"dispatch_stage": stage, "retry_safe": false},
+		Error:       message,
+		DisplayText: message,
+	}
+}
+
 func completedResult(output any, display string) connectors.ActionResult {
 	return connectors.ActionResult{Status: connectors.ResultCompleted, Output: output, DisplayText: display}
 }

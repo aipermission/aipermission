@@ -634,7 +634,15 @@ func executePublishMessage(ctx context.Context, client *rabbitClient, input map[
 	if err := client.Post(ctx, "/api/exchanges/"+pathPart(vhost)+"/"+pathPart(exchange)+"/publish", body, &output); err != nil {
 		return connectors.ActionResult{}, classifyRabbitMutationError("publish message", err)
 	}
-	routed, _ := output["routed"].(bool)
+	routed, ok := output["routed"].(bool)
+	if !ok {
+		return connectors.ActionResult{}, connectors.ClassifyActionError(
+			"outcome_unknown",
+			connectors.ResultOutcomeUnknown,
+			map[string]any{"dispatch_stage": "management_api_response", "retry_safe": false},
+			errors.New("RabbitMQ publish outcome is unknown because the management API response omitted the required routed boolean"),
+		)
+	}
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
