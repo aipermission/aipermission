@@ -77,6 +77,9 @@ secret locally. The provider service receives only its own bearer token,
 already-encrypted `.aipdb` bytes, and bounded backup metadata. It never receives
 the database password, gateway vault key, decrypted contents, MCP tokens,
 connector credentials, SSH keys, or permission rules.
+Responses that reflect the token, a normalized or encoded token representation,
+or the derived bearer value in metadata, headers, or errors are rejected before
+they can be persisted, audited, or returned to the browser.
 
 `Upload backup` creates a temporary consistent SQLCipher snapshot and uploads it
 unchanged as a new immutable version. The stable random workspace UUID stored

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,8 +17,10 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const (
@@ -125,13 +128,9 @@ type servicePage[T any] struct {
 type ServiceError struct {
 	StatusCode int
 	Code       string
-	Message    string
 }
 
 func (e ServiceError) Error() string {
-	if e.Message != "" {
-		return e.Message
-	}
 	return fmt.Sprintf("backup service returned HTTP %d", e.StatusCode)
 }
 
@@ -440,11 +439,14 @@ func (c *ServiceClient) Upload(ctx context.Context, streamID, databaseName, sour
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
-		return ServiceBackup{}, decodeServiceError(response)
+		return ServiceBackup{}, c.decodeServiceError(response)
 	}
 	var backup ServiceBackup
 	if err := decodeBoundedJSON(response.Body, &backup); err != nil {
 		return ServiceBackup{}, fmt.Errorf("parse backup service upload response: %w", err)
+	}
+	if err := c.rejectReflectedToken(backup); err != nil {
+		return ServiceBackup{}, err
 	}
 	if err := validateServiceBackup(backup, streamID, fileInfo.Size()); err != nil {
 		return ServiceBackup{}, err
@@ -485,12 +487,19 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return ServiceBackup{}, decodeServiceError(response)
+		return ServiceBackup{}, c.decodeServiceError(response)
 	}
 	if response.ContentLength > maxBytes && response.ContentLength >= 0 {
 		return ServiceBackup{}, ValidationError("remote backup exceeds the local import limit")
 	}
 	responseBackupID := strings.TrimSpace(response.Header.Get("X-AIPermission-Backup-ID"))
+	if err := c.rejectReflectedToken(map[string]string{
+		"backup_id":           responseBackupID,
+		"sha256":              response.Header.Get("X-AIPermission-SHA256"),
+		"content_disposition": response.Header.Get("Content-Disposition"),
+	}); err != nil {
+		return ServiceBackup{}, err
+	}
 	if responseBackupID != "" && responseBackupID != backupID {
 		return ServiceBackup{}, errors.New("backup service returned a mismatched version id")
 	}
@@ -556,12 +565,12 @@ func (c *ServiceClient) doJSON(ctx context.Context, method, endpoint string, pay
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return decodeServiceError(response)
+		return c.decodeServiceError(response)
 	}
 	if err := decodeBoundedJSON(response.Body, target); err != nil {
 		return fmt.Errorf("parse backup service response: %w", err)
 	}
-	return nil
+	return c.rejectReflectedToken(target)
 }
 
 func (c *ServiceClient) request(ctx context.Context, method, endpoint string, body io.Reader, protocol bool) (*http.Request, error) {
@@ -586,7 +595,7 @@ func (c *ServiceClient) request(ctx context.Context, method, endpoint string, bo
 	return request, nil
 }
 
-func decodeServiceError(response *http.Response) error {
+func (c *ServiceClient) decodeServiceError(response *http.Response) error {
 	var payload struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -594,7 +603,70 @@ func decodeServiceError(response *http.Response) error {
 		} `json:"error"`
 	}
 	_ = decodeBoundedJSON(response.Body, &payload)
-	return ServiceError{StatusCode: response.StatusCode, Code: strings.TrimSpace(payload.Error.Code), Message: strings.TrimSpace(payload.Error.Message)}
+	if err := c.rejectReflectedToken(payload); err != nil {
+		return err
+	}
+	code := strings.TrimSpace(payload.Error.Code)
+	if !validServiceErrorCode(code) {
+		code = ""
+	}
+	return ServiceError{StatusCode: response.StatusCode, Code: code}
+}
+
+func (c *ServiceClient) rejectReflectedToken(value any) error {
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return errors.New("backup service returned invalid metadata")
+	}
+	for _, variant := range serviceTokenVariants(c.token) {
+		if variant != "" && bytes.Contains(encoded.Bytes(), []byte(variant)) {
+			return errors.New("backup service response violated the credential boundary")
+		}
+	}
+	return nil
+}
+
+func serviceTokenVariants(token string) []string {
+	token = strings.TrimSpace(token)
+	quoted := strconv.Quote(token)
+	if len(quoted) >= 2 {
+		quoted = quoted[1 : len(quoted)-1]
+	}
+	bearer := "Bearer " + token
+	return []string{
+		token,
+		quoted,
+		url.QueryEscape(token),
+		url.PathEscape(token),
+		base64.StdEncoding.EncodeToString([]byte(token)),
+		base64.RawStdEncoding.EncodeToString([]byte(token)),
+		base64.URLEncoding.EncodeToString([]byte(token)),
+		base64.RawURLEncoding.EncodeToString([]byte(token)),
+		bearer,
+		url.QueryEscape(bearer),
+		url.PathEscape(bearer),
+		base64.StdEncoding.EncodeToString([]byte(bearer)),
+		base64.RawStdEncoding.EncodeToString([]byte(bearer)),
+		base64.URLEncoding.EncodeToString([]byte(bearer)),
+		base64.RawURLEncoding.EncodeToString([]byte(bearer)),
+	}
+}
+
+func validServiceErrorCode(value string) bool {
+	if value == "" {
+		return true
+	}
+	if len(value) > 64 {
+		return false
+	}
+	for _, char := range value {
+		if !(char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 func decodeBoundedJSON(reader io.Reader, target any) error {
@@ -633,7 +705,7 @@ func validateServiceBackup(item ServiceBackup, streamID string, expectedSize int
 	createdAt, err := time.Parse(time.RFC3339Nano, item.CreatedAt)
 	if err != nil || createdAt.IsZero() || !validServiceIdentifier(item.ID) || item.StreamID != streamID ||
 		strings.TrimSpace(item.DatabaseName) == "" || len(item.DatabaseName) > 128 ||
-		!validServiceIdentifier(item.SourceInstallationID) || strings.TrimSpace(item.Filename) == "" ||
+		!validServiceIdentifier(item.SourceInstallationID) || !validServiceBackupFilename(item.Filename) ||
 		item.SizeBytes < 1 || item.RetentionDeletedCount < 0 || !validSHA256(strings.ToLower(strings.TrimSpace(item.SHA256))) {
 		return errors.New("backup service returned invalid backup metadata")
 	}
@@ -641,6 +713,21 @@ func validateServiceBackup(item ServiceBackup, streamID string, expectedSize int
 		return errors.New("backup service returned a size that does not match the uploaded snapshot")
 	}
 	return nil
+}
+
+func validServiceBackupFilename(value string) bool {
+	if value == "" || value != strings.TrimSpace(value) || len(value) > 255 || !strings.HasSuffix(strings.ToLower(value), ".aipdb") {
+		return false
+	}
+	if path.Base(strings.ReplaceAll(value, "\\", "/")) != value {
+		return false
+	}
+	for _, char := range value {
+		if unicode.IsControl(char) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateServiceStorageUsage(item ServiceStorageUsage) error {

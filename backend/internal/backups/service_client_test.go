@@ -68,6 +68,92 @@ func TestServiceClientRejectsInvalidUploadMetadata(t *testing.T) {
 	}
 }
 
+func TestServiceClientRejectsReflectedAccessToken(t *testing.T) {
+	assertRejected := func(t *testing.T, err error) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), "credential boundary") {
+			t.Fatalf("expected credential-boundary rejection, got %v", err)
+		}
+		if strings.Contains(err.Error(), serviceTestToken) {
+			t.Fatalf("service token leaked through error: %v", err)
+		}
+	}
+
+	t.Run("stream metadata", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(servicePage[ServiceStream]{Items: []ServiceStream{{ID: "stream-a", DatabaseName: serviceTestToken}}})
+		}))
+		defer server.Close()
+		client, err := NewServiceClient(server.URL, serviceTestToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.ListStreams(t.Context())
+		assertRejected(t, err)
+	})
+
+	t.Run("backup filename", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(servicePage[ServiceBackup]{Items: []ServiceBackup{{
+				ID: "bkp_123", StreamID: "stream-a", DatabaseName: "Project A", SourceInstallationID: "install-a",
+				Filename: serviceTestToken, SizeBytes: 10, SHA256: strings.Repeat("0", 64), CreatedAt: "2026-07-31T12:00:00Z",
+			}}})
+		}))
+		defer server.Close()
+		client, err := NewServiceClient(server.URL, serviceTestToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.ListBackups(t.Context(), "stream-a")
+		assertRejected(t, err)
+	})
+
+	t.Run("service error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "backup_not_found", "message": serviceTestToken}})
+		}))
+		defer server.Close()
+		client, err := NewServiceClient(server.URL, serviceTestToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.Info(t.Context())
+		assertRejected(t, err)
+	})
+
+	t.Run("download header", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Disposition", `attachment; filename="`+serviceTestToken+`"`)
+			_, _ = w.Write([]byte("encrypted"))
+		}))
+		defer server.Close()
+		client, err := NewServiceClient(server.URL, serviceTestToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = client.Download(t.Context(), "stream-a", "bkp_123", filepath.Join(t.TempDir(), "download.aipdb"), 1024)
+		assertRejected(t, err)
+	})
+}
+
+func TestValidateServiceBackupRequiresSafeAIPDBFilename(t *testing.T) {
+	valid := ServiceBackup{
+		ID: "bkp_123", StreamID: "stream-a", DatabaseName: "Project A", SourceInstallationID: "install-a",
+		Filename: "project-a-20260731T120000Z.aipdb", SizeBytes: 10, SHA256: strings.Repeat("0", 64), CreatedAt: "2026-07-31T12:00:00Z",
+	}
+	if err := validateServiceBackup(valid, "stream-a", 10); err != nil {
+		t.Fatalf("valid filename rejected: %v", err)
+	}
+	for _, filename := range []string{"", "../project.aipdb", `folder\\project.aipdb`, "project.txt", " project.aipdb", strings.Repeat("a", 250) + ".aipdb"} {
+		invalid := valid
+		invalid.Filename = filename
+		if err := validateServiceBackup(invalid, "stream-a", 10); err == nil {
+			t.Fatalf("unsafe filename accepted: %q", filename)
+		}
+	}
+}
+
 func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 	payload := []byte("encrypted-aipdb")
 	digest := sha256.Sum256(payload)

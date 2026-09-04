@@ -338,7 +338,7 @@ func handleBackupServiceError(w http.ResponseWriter, err error) {
 			writeError(w, http.StatusBadGateway, "backup service rejected its access token")
 		case http.StatusNotFound:
 			if serviceError.Code == "backup_not_found" || serviceError.Code == "stream_not_found" {
-				writeError(w, http.StatusNotFound, serviceError.Message)
+				writeError(w, http.StatusNotFound, "backup service stream or version was not found")
 			} else {
 				writeError(w, http.StatusConflict, "backup service does not support this operation; upgrade AIPermission Backup")
 			}
