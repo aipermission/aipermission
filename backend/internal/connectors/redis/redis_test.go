@@ -69,6 +69,45 @@ func TestRedisDefiniteErrorResponseRemainsFailed(t *testing.T) {
 	<-done
 }
 
+func TestRedisMutationsRejectInvalidResponseTypesAsOutcomeUnknown(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		response string
+		run      func(*redisClient) error
+	}{
+		{name: "set integer", response: ":1\r\n", run: func(client *redisClient) error {
+			_, err := executeSetString(client, map[string]any{"key": "job", "value": "running"})
+			return err
+		}},
+		{name: "expiry string", response: "+OK\r\n", run: func(client *redisClient) error {
+			_, err := executeExpireKey(client, map[string]any{"key": "job", "ttl_seconds": 60})
+			return err
+		}},
+		{name: "delete oversized count", response: ":2\r\n", run: func(client *redisClient) error {
+			_, err := executeDeleteKeys(client, map[string]any{"keys": []any{"job"}})
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			clientConn, serverConn := net.Pipe()
+			client := newRedisClient(clientConn)
+			defer client.Close()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				defer serverConn.Close()
+				_, _ = readRESPValue(bufio.NewReader(serverConn))
+				_, _ = serverConn.Write([]byte(test.response))
+			}()
+			err := test.run(client)
+			if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+				t.Fatalf("invalid mutation response = %v, want outcome_unknown", err)
+			}
+			<-done
+		})
+	}
+}
+
 func TestRedisTLSConfigPreservesSavedValuesAndSecuresNewRemoteTargets(t *testing.T) {
 	plaintextTargets := []connectors.TargetView{
 		{Config: map[string]any{"host": "cache.internal"}},

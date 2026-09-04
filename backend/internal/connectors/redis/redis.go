@@ -676,6 +676,9 @@ func executeSetString(client *redisClient, input map[string]any) (connectors.Act
 	if err != nil {
 		return connectors.ActionResult{}, classifyRedisMutationError("set string", err)
 	}
+	if response.kind != respSimpleString || response.text != "OK" {
+		return connectors.ActionResult{}, invalidRedisMutationResponse("set string", "simple-string OK")
+	}
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
 		Output:      map[string]any{"key": key, "response": respString(response)},
@@ -699,6 +702,9 @@ func executeExpireKey(client *redisClient, input map[string]any) (connectors.Act
 	if err != nil {
 		return connectors.ActionResult{}, classifyRedisMutationError("update key expiry", err)
 	}
+	if value.kind != respInteger || (value.number != 0 && value.number != 1) {
+		return connectors.ActionResult{}, invalidRedisMutationResponse("update key expiry", "integer 0 or 1")
+	}
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
 		Output:      map[string]any{"key": key, "changed": value.number == 1, "ttl_seconds": ttl},
@@ -715,6 +721,9 @@ func executeDeleteKeys(client *redisClient, input map[string]any) (connectors.Ac
 	value, err := client.DoMutation(args...)
 	if err != nil {
 		return connectors.ActionResult{}, classifyRedisMutationError("delete keys", err)
+	}
+	if value.kind != respInteger || value.number < 0 || value.number > int64(len(keys)) {
+		return connectors.ActionResult{}, invalidRedisMutationResponse("delete keys", "non-negative integer within the requested key count")
 	}
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
@@ -736,6 +745,15 @@ func classifyRedisMutationError(operation string, err error) error {
 		connectors.ResultOutcomeUnknown,
 		map[string]any{"dispatch_stage": "resp_command", "retry_safe": false},
 		fmt.Errorf("Redis %s outcome is unknown after dispatch; inspect key state before retrying: %w", operation, err),
+	)
+}
+
+func invalidRedisMutationResponse(operation string, expected string) error {
+	return connectors.ClassifyActionError(
+		"outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"dispatch_stage": "response_validation", "retry_safe": false},
+		fmt.Errorf("Redis %s returned an invalid response after dispatch; expected %s, inspect key state before retrying", operation, expected),
 	)
 }
 
