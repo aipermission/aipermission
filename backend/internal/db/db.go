@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	_ "github.com/SE-I-T-Digital/go-sqlcipher"
 )
@@ -124,12 +123,23 @@ func createPreMigrationSnapshot(database *sql.DB, databasePath string) (string, 
 	if version < 1 || version >= currentSchemaVersion {
 		return "", nil
 	}
-	timestamp := time.Now().UTC().Format("20060102T150405.000000000Z")
-	targetPath := databasePath + ".pre-migration-v" + strconv.Itoa(version) + "-" + timestamp + ".aipdb"
-	if err := Snapshot(database, targetPath); err != nil {
+	targetPath := databasePath + ".pre-migration-v" + strconv.Itoa(version) + ".aipdb"
+	if err := replacePreMigrationSnapshot(database, targetPath); err != nil {
 		return "", fmt.Errorf("create encrypted pre-migration snapshot: %w", err)
 	}
 	return targetPath, nil
+}
+
+func replacePreMigrationSnapshot(database *sql.DB, targetPath string) error {
+	pendingPath := targetPath + ".pending"
+	if err := Snapshot(database, pendingPath); err != nil {
+		return err
+	}
+	if err := os.Rename(pendingPath, targetPath); err != nil {
+		_ = os.Remove(pendingPath)
+		return fmt.Errorf("publish pre-migration snapshot: %w", err)
+	}
+	return nil
 }
 
 func LooksLikePlainSQLite(path string) bool {

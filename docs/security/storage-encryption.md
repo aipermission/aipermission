@@ -50,12 +50,15 @@ tracked under the [native dependency inventory](native-dependencies.md).
 
 Schema migrations never rewrite the only database copy. Before opening a
 supported older schema, the gateway creates an encrypted sibling file named
-`<database>.pre-migration-v<version>-<timestamp>.aipdb` with owner-only
-permissions. It uses the same database password and remains available if the
-migration fails. To recover, stop the gateway, preserve the failed database,
-rename the pre-migration snapshot to a normal `.aipdb` filename, and open it
-with a gateway version that supports the snapshot schema. A successful upgrade
-does not delete this rollback copy automatically; remove it only after the new
+`<database>.pre-migration-v<version>.aipdb` with owner-only permissions. It uses
+the same database password and remains available if the migration fails.
+Repeated attempts from the same schema atomically replace this one recovery
+slot instead of retaining an unbounded series of full database copies. A
+completed pending snapshot replaces the previous slot only after creation
+succeeds. To recover, stop the gateway, preserve the failed database, rename
+the pre-migration snapshot to a normal `.aipdb` filename, and open it with a
+gateway version that supports the snapshot schema. A successful upgrade does
+not delete this rollback copy automatically; remove it only after the new
 database has been verified or retain it as an encrypted recovery artifact.
 
 Databases created with non-default SQLCipher 4 parameters are not guessed open:

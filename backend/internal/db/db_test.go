@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -232,7 +233,7 @@ func TestOpenEncryptedSnapshotsSchema18BeforeRecordEnvelopeBoundary(t *testing.T
 	if err := database.Close(); err != nil {
 		t.Fatalf("close migrated database: %v", err)
 	}
-	snapshots, err := filepath.Glob(path + ".pre-migration-v18-*.aipdb")
+	snapshots, err := filepath.Glob(path + ".pre-migration-v18*.aipdb")
 	if err != nil {
 		t.Fatalf("list pre-migration snapshots: %v", err)
 	}
@@ -241,6 +242,100 @@ func TestOpenEncryptedSnapshotsSchema18BeforeRecordEnvelopeBoundary(t *testing.T
 	}
 	if err := ValidateEncrypted(snapshots[0], password); err != nil {
 		t.Fatalf("validate schema 18 snapshot: %v", err)
+	}
+}
+
+func TestRepeatedMigrationFailureKeepsOneSnapshotPerSourceSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "repeated-failure.aipdb")
+	password := "RepeatedFailurePassword123"
+	database, err := OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	for _, trigger := range []string{
+		"connector_action_requests_session_pair_insert",
+		"connector_action_requests_session_pair_update",
+	} {
+		if _, err := database.Exec(`DROP TRIGGER ` + trigger); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.Exec(`
+		INSERT INTO connector_action_requests (
+			target_id, profile_id, connector_kind, action_name, status,
+			session_id, session_generation, created_at
+		) VALUES (?, ?, 'test', 'test', 'running', 7, NULL, datetime('now'))
+	`, targetID, profileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for attempt := 0; attempt < 3; attempt++ {
+		opened, err := OpenEncrypted(path, password)
+		if opened != nil {
+			_ = opened.Close()
+		}
+		if err == nil || !strings.Contains(err.Error(), "partial session handle") {
+			t.Fatalf("attempt %d migration error = %v", attempt+1, err)
+		}
+		snapshots, globErr := filepath.Glob(path + ".pre-migration-v18*.aipdb")
+		if globErr != nil {
+			t.Fatal(globErr)
+		}
+		if len(snapshots) != 1 || snapshots[0] != path+".pre-migration-v18.aipdb" {
+			t.Fatalf("attempt %d snapshots = %#v, want one bounded recovery slot", attempt+1, snapshots)
+		}
+		if err := ValidateEncrypted(snapshots[0], password); err != nil {
+			t.Fatalf("attempt %d snapshot validation: %v", attempt+1, err)
+		}
+		if Exists(snapshots[0] + ".pending") {
+			t.Fatalf("attempt %d left a pending snapshot", attempt+1)
+		}
+	}
+}
+
+func TestReplacePreMigrationSnapshotPreservesExistingOnFailure(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "source.aipdb")
+	database, err := OpenEncrypted(path, "SnapshotReplaceFailure123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	targetPath := path + ".pre-migration-v18.aipdb"
+	previous := []byte("existing-recovery-copy")
+	if err := os.WriteFile(targetPath, previous, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pendingPath := targetPath + ".pending"
+	if err := os.Mkdir(pendingPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pendingPath, "block-removal"), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replacePreMigrationSnapshot(database, targetPath); err == nil {
+		t.Fatal("expected pending snapshot creation failure")
+	}
+	got, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(previous) {
+		t.Fatalf("existing recovery copy changed after failure: %q", got)
 	}
 }
 
