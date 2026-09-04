@@ -1245,6 +1245,9 @@
       "HistoryPage": {
         "additionalProperties": false,
         "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/HistoryEntry"
@@ -1255,13 +1258,8 @@
             "format": "int64",
             "type": "integer"
           },
-          "next_offset": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "offset": {
-            "format": "int64",
-            "type": "integer"
+          "next_cursor": {
+            "type": "string"
           },
           "total": {
             "format": "int64",
@@ -1270,9 +1268,8 @@
         },
         "required": [
           "items",
-          "total",
           "limit",
-          "offset"
+          "has_more"
         ],
         "type": "object"
       },

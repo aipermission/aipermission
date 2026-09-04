@@ -1353,6 +1353,7 @@ var migrations = []migration{
 	connectorActionExecutionClaimMigration,
 	connectorActionKeyedIdentityMigration,
 	connectorActionIdempotencyTombstoneMigration,
+	historyKeysetPaginationMigration,
 }
 
 func sqlStatements(groups ...[]string) []string {

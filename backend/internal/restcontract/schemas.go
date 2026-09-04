@@ -113,7 +113,7 @@ func sharedSchemas() map[string]any {
 		}, []string{"status", "code", "request_id", "error", "assistant_hint"}),
 		"HistoryEntry": historyEntrySchema(),
 		"AuditEntry":   auditEntrySchema(),
-		"HistoryPage":  pageSchema(refSchema("HistoryEntry")),
+		"HistoryPage":  cursorPageSchema(refSchema("HistoryEntry")),
 		"AuditPage":    pageSchema(refSchema("AuditEntry")),
 		"DiagnosticsConnector": objectSchema(map[string]any{
 			"kind": stringSchema(), "version": stringSchema(),
@@ -296,6 +296,13 @@ func pageSchema(item map[string]any) map[string]any {
 		"items": arraySchema(item), "total": integerSchema(), "limit": integerSchema(), "offset": integerSchema(),
 		"next_offset": integerSchema(),
 	}, []string{"items", "total", "limit", "offset"})
+}
+
+func cursorPageSchema(item map[string]any) map[string]any {
+	return objectSchema(map[string]any{
+		"items": arraySchema(item), "total": integerSchema(), "limit": integerSchema(),
+		"next_cursor": stringSchema(), "has_more": boolSchema(),
+	}, []string{"items", "limit", "has_more"})
 }
 
 func itemsSchema(item map[string]any) map[string]any {

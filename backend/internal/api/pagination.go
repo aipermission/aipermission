@@ -26,16 +26,9 @@ type pageResponse[T any] struct {
 }
 
 func parsePageRequest(r *http.Request) (pageRequest, error) {
-	limit := defaultPageLimit
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 {
-			return pageRequest{}, errInvalidQuery("invalid limit")
-		}
-		limit = value
-	}
-	if limit > maxPageLimit {
-		limit = maxPageLimit
+	limit, err := parsePageLimit(r)
+	if err != nil {
+		return pageRequest{}, err
 	}
 
 	offset := 0
@@ -52,6 +45,21 @@ func parsePageRequest(r *http.Request) (pageRequest, error) {
 		Offset: offset,
 		Query:  strings.TrimSpace(r.URL.Query().Get("q")),
 	}, nil
+}
+
+func parsePageLimit(r *http.Request) (int, error) {
+	limit := defaultPageLimit
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 {
+			return 0, errInvalidQuery("invalid limit")
+		}
+		limit = value
+	}
+	if limit > maxPageLimit {
+		limit = maxPageLimit
+	}
+	return limit, nil
 }
 
 func makePageResponse[T any](items []T, total int, page pageRequest) pageResponse[T] {

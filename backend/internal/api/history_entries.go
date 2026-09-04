@@ -25,7 +25,7 @@ type historyEntryFilter struct {
 	LabelID       int64
 	Query         string
 	Limit         int
-	Offset        int
+	Cursor        *historyCursor
 }
 
 type historyEntryRecord struct {
@@ -100,7 +100,7 @@ func (s historyEntryHandlers) listHistoryEntries(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	page, err := parsePageRequest(r)
+	page, err := parseHistoryPageRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -112,7 +112,7 @@ func (s historyEntryHandlers) listHistoryEntries(w http.ResponseWriter, r *http.
 		Source:        strings.TrimSpace(r.URL.Query().Get("source")),
 		Query:         page.Query,
 		Limit:         page.Limit,
-		Offset:        page.Offset,
+		Cursor:        page.Cursor,
 	}
 	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
 		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
@@ -149,12 +149,28 @@ func (s historyEntryHandlers) listHistoryEntries(w http.ResponseWriter, r *http.
 		}
 		filter.LabelID = id
 	}
-	items, total, err := s.listHistoryEntrySummaries(r.Context(), runtime, filter)
+	var total *int
+	if page.IncludeTotal {
+		countFilter := filter
+		countFilter.Cursor = nil
+		count, err := s.countHistoryEntrySummaries(r.Context(), runtime, countFilter)
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		total = &count
+	}
+	items, hasMore, err := s.listHistoryEntrySummaries(r.Context(), runtime, filter)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, makePageResponse(items, total, page))
+	response := historyPageResponse{Items: items, Total: total, Limit: page.Limit, HasMore: hasMore}
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+		response.NextCursor = encodeHistoryCursor(historyCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s historyEntryHandlers) getHistoryEntry(w http.ResponseWriter, r *http.Request) {
@@ -246,7 +262,7 @@ func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntim
 	return items, rows.Err()
 }
 
-func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databaseRuntime, filter historyEntryFilter) ([]historyEntryRecord, int, error) {
+func (s *Server) countHistoryEntrySummaries(ctx context.Context, runtime *databaseRuntime, filter historyEntryFilter) (int, error) {
 	where, args := historyEntryWhere(filter)
 	countJoins := ""
 	if filter.Query != "" {
@@ -261,10 +277,14 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 			WHERE `+where,
 		args...,
 	).Scan(&total); err != nil {
-		return nil, 0, err
+		return 0, err
 	}
+	return total, nil
+}
 
-	queryArgs := append(append([]any{}, args...), filter.Limit, filter.Offset)
+func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databaseRuntime, filter historyEntryFilter) ([]historyEntryRecord, bool, error) {
+	where, args := historyEntryWhere(filter)
+	queryArgs := append(append([]any{}, args...), filter.Limit+1)
 	rows, err := runtime.database.QueryContext(ctx, `
 		SELECT he.id, he.source_ref_type, he.source_ref_id, he.connector_kind, he.activity_type,
 		       he.token_id, COALESCE(tok.name, ''), he.project_id, COALESCE(project.name, ''), he.runtime_id, he.target_id, he.profile_id,
@@ -278,28 +298,32 @@ func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databas
 		LEFT JOIN projects project ON project.id = he.project_id
 		WHERE `+where+`
 		ORDER BY he.created_at DESC, he.id DESC
-		LIMIT ? OFFSET ?`,
+		LIMIT ?`,
 		queryArgs...,
 	)
 	if err != nil {
-		return nil, 0, err
+		return nil, false, err
 	}
 	defer rows.Close()
 	items := []historyEntryRecord{}
 	for rows.Next() {
 		item, err := scanHistoryEntry(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, false, err
 		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, err
+		return nil, false, err
+	}
+	hasMore := len(items) > filter.Limit
+	if hasMore {
+		items = items[:filter.Limit]
 	}
 	if err := s.attachLabelsToHistoryEntries(ctx, runtime, items); err != nil {
-		return nil, 0, err
+		return nil, false, err
 	}
-	return items, total, nil
+	return items, hasMore, nil
 }
 
 func (s *Server) getHistoryEntryRecord(ctx context.Context, runtime *databaseRuntime, id int64) (historyEntryRecord, error) {
@@ -372,6 +396,10 @@ func historyEntryWhere(filter historyEntryFilter) (string, []any) {
 		like := "%" + filter.Query + "%"
 		where = append(where, `(he.title LIKE ? OR he.summary LIKE ? OR he.preview_json LIKE ? OR he.input_text LIKE ? OR he.input_json LIKE ? OR he.output_text LIKE ? OR he.output_json LIKE ? OR he.error LIKE ? OR he.target_name LIKE ? OR he.profile_label LIKE ? OR he.action_name LIKE ? OR COALESCE(tok.name, '') LIKE ? OR COALESCE(project.name, '') LIKE ?)`)
 		args = append(args, like, like, like, like, like, like, like, like, like, like, like, like, like)
+	}
+	if filter.Cursor != nil {
+		where = append(where, "(he.created_at, he.id) < (?, ?)")
+		args = append(args, filter.Cursor.CreatedAt, filter.Cursor.ID)
 	}
 	return strings.Join(where, " AND "), args
 }

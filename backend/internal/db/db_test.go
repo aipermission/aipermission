@@ -38,6 +38,57 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if count != currentSchemaVersion {
 		t.Fatalf("expected %d recorded migrations, got %d", currentSchemaVersion, count)
 	}
+	for _, indexName := range []string{
+		"idx_history_entries_created",
+		"idx_history_entries_kind_created",
+		"idx_history_entries_activity_created",
+		"idx_history_entries_status_created",
+		"idx_history_entries_target_created",
+		"idx_history_entries_profile_created",
+		"idx_history_entries_runtime_created",
+		"idx_history_entries_source_created",
+		"idx_history_entries_project_created",
+	} {
+		var definition string
+		if err := database.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, indexName).Scan(&definition); err != nil {
+			t.Fatalf("read history cursor index %s: %v", indexName, err)
+		}
+		if !strings.Contains(definition, "created_at DESC, id DESC") {
+			t.Fatalf("history cursor index %s does not cover the stable cursor order: %s", indexName, definition)
+		}
+	}
+	planRows, err := database.Query(`
+		EXPLAIN QUERY PLAN
+		SELECT id
+		FROM history_entries
+		WHERE connector_kind = ? AND (created_at, id) < (?, ?)
+		ORDER BY created_at DESC, id DESC
+		LIMIT ?`,
+		"ssh",
+		"2026-09-05T12:00:00.000Z",
+		int64(100),
+		50,
+	)
+	if err != nil {
+		t.Fatalf("explain history cursor query: %v", err)
+	}
+	defer planRows.Close()
+	var plan strings.Builder
+	for planRows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := planRows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatalf("scan history cursor query plan: %v", err)
+		}
+		plan.WriteString(detail)
+		plan.WriteByte('\n')
+	}
+	if err := planRows.Err(); err != nil {
+		t.Fatalf("read history cursor query plan: %v", err)
+	}
+	if !strings.Contains(plan.String(), "idx_history_entries_kind_created") || strings.Contains(plan.String(), "TEMP B-TREE") {
+		t.Fatalf("history cursor query does not use its covering order index:\n%s", plan.String())
+	}
 	if !tableExists(t, database, "redaction_rules") {
 		t.Fatalf("redaction_rules table was not created")
 	}
