@@ -160,6 +160,10 @@ set `PreparedAction.RetryPolicy` with `connectors.ConditionalRetryPolicy(...)`
 only for prepared inputs that contain the actual provider-enforced guard.
 The local `idempotency_key` prevents duplicate gateway request creation, not
 duplicate remote execution after `outcome_unknown`.
+For local UI actions, the browser retains an uncertain attempt's generated key
+across reloads until the gateway returns a recognized request id and status.
+Only a SHA-256 request fingerprint and the generated key enter browser storage;
+action input and credentials do not.
 
 `ActionResult.Output` may use a typed Go struct, map, slice, pointer, or custom
 JSON marshaler, but it must encode as JSON. Before persistence or external
