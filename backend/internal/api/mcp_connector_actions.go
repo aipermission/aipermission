@@ -213,6 +213,9 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		IdempotencyKey: request.IdempotencyKey,
 	})
 	if err != nil {
+		if writeConnectorActionTerminalPersistenceError(w, err) {
+			return
+		}
 		if errors.Is(err, errMCPExecutionStopped) {
 			writeStoppedMCP(w)
 			return

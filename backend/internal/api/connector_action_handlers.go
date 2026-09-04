@@ -57,6 +57,9 @@ func (s connectorActionHandlers) runLocalConnectorAction(w http.ResponseWriter, 
 		IdempotencyKey: request.IdempotencyKey,
 	})
 	if err != nil {
+		if writeConnectorActionTerminalPersistenceError(w, err) {
+			return
+		}
 		if errors.Is(err, connectortargets.ErrActionRequestIdempotency) {
 			writeError(w, http.StatusConflict, err.Error())
 			return
@@ -82,4 +85,19 @@ func (s connectorActionHandlers) runLocalConnectorAction(w http.ResponseWriter, 
 	response := connectorActionToMCPResponse(s.connectorAdapterRegistry(), result.Request, result.Result)
 	response.Replayed = result.Replayed
 	writeJSON(w, http.StatusOK, response)
+}
+
+func writeConnectorActionTerminalPersistenceError(w http.ResponseWriter, err error) bool {
+	var persistenceErr *connectorActionTerminalPersistenceError
+	if !errors.As(err, &persistenceErr) {
+		return false
+	}
+	writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+		"status":         connectors.ResultOutcomeUnknown,
+		"code":           "connector_action_persistence_unknown",
+		"request_id":     persistenceErr.RequestID,
+		"error":          connectorActionPersistenceError,
+		"assistant_hint": "Do not retry automatically. Inspect the recorded request and external target state first.",
+	})
+	return true
 }

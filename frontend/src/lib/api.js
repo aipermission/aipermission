@@ -23,10 +23,37 @@ export async function apiPost(path, body, options = {}) {
     signal: options.signal,
     credentials: "include",
   });
-  if (prepared.retrySignature && (response.ok || response.status < 500)) {
+  const data = await readResponse(response, { requireJSON: Boolean(prepared.retrySignature) });
+  if (prepared.retrySignature && response.ok && isAcknowledgedLocalActionResponse(data)) {
     localActionRetryKeys.delete(prepared.retrySignature);
   }
-  return readResponse(response);
+  if (prepared.retrySignature && response.ok && !isAcknowledgedLocalActionResponse(data)) {
+    throw new Error("Invalid connector action response from gateway.");
+  }
+  return data;
+}
+
+const acknowledgedLocalActionStatuses = new Set([
+  "completed",
+  "failed",
+  "canceled",
+  "running",
+  "approval_pending",
+  "blocked",
+  "stale",
+  "declined",
+  "error",
+  "outcome_unknown",
+]);
+
+function isAcknowledgedLocalActionResponse(data) {
+  return (
+    data !== null &&
+    typeof data === "object" &&
+    Number.isSafeInteger(data.request_id) &&
+    data.request_id > 0 &&
+    acknowledgedLocalActionStatuses.has(data.status)
+  );
 }
 
 function preparePostBody(path, body) {
@@ -130,9 +157,9 @@ export async function apiDownload(path, filename, options = {}) {
   return saveBlob(blob, safeFilename, { ...options, picker: false });
 }
 
-async function readResponse(response) {
+async function readResponse(response, options = {}) {
   const text = await response.text();
-  const data = parseResponseBody(text);
+  const data = parseResponseBody(text, options);
   if (!response.ok) {
     if (response.status === 401 && data?.error === "ui session required" && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("aipermission:ui-session-required"));
@@ -145,14 +172,19 @@ async function readResponse(response) {
   return data;
 }
 
-function parseResponseBody(text) {
-  if (!text) return null;
+function parseResponseBody(text, options = {}) {
+  if (!text) {
+    if (options.requireJSON) throw new Error("Empty JSON response from gateway.");
+    return null;
+  }
   if (looksLikeHTML(text)) {
+    if (options.requireJSON) throw new Error("Gateway returned HTML instead of JSON.");
     return { error: "Gateway is starting or temporarily unavailable. Please retry in a few seconds." };
   }
   try {
     return JSON.parse(text);
   } catch {
+    if (options.requireJSON) throw new Error("Invalid JSON response from gateway.");
     return { error: text.trim() || "Invalid non-JSON response from gateway." };
   }
 }

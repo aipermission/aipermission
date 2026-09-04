@@ -77,6 +77,12 @@ Gateway 0.2.43 temporarily accepts missing keys only for read-only actions so
 older MCP clients can inspect state while they are upgraded. Every mutation
 fails closed without a key; current MCP packages always require one.
 
+If connector execution returns but terminal database/audit persistence cannot
+be confirmed, the gateway responds with HTTP `503`, status `outcome_unknown`,
+code `connector_action_persistence_unknown`, and the existing `request_id`.
+Keep the same idempotency key, inspect that request and external state, and do
+not submit a new logical mutation automatically.
+
 Blocked and missing-permission results are idempotent too. If the operator
 changes the permission after a blocked result, create a new logical request
 with a new `idempotency_key`; retrying the old key deliberately replays the
