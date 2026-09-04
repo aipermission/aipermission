@@ -7,14 +7,76 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
+
+type reflectingFileTransferErrorPresenter struct {
+	responseValue string
+}
+
+func (presenter reflectingFileTransferErrorPresenter) WriteConnectorError(w http.ResponseWriter, _ error) bool {
+	if presenter.responseValue == "" {
+		return false
+	}
+	writeJSON(w, http.StatusConflict, map[string]any{"detail": presenter.responseValue})
+	return true
+}
+
+func (presenter reflectingFileTransferErrorPresenter) ConnectorErrorMessage(prefix string, _ error) string {
+	if presenter.responseValue == "" {
+		return prefix
+	}
+	return prefix + ": " + presenter.responseValue
+}
+
+func TestFileTransferConnectorErrorsDoNotReflectCredentials(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	runtime := fixture.server.activeRuntime()
+	store := connectortargets.NewStore(runtime.database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, runtime.vault, runtime.workspaceUUID)
+	surface, err := store.EnsureRuntimeSurface(t.Context(), connectortargets.EnsureRuntimeSurfaceInput{
+		ConnectorKind:  target.ConnectorKind,
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		CapabilityKind: connectortargets.RuntimeCapabilityFileTransfer,
+		Label:          "test transfer",
+	})
+	if err != nil {
+		t.Fatalf("create transfer runtime: %v", err)
+	}
+	handlers := fileTransferHandlers{fixture.server}
+
+	for _, testCase := range []struct {
+		name      string
+		presenter reflectingFileTransferErrorPresenter
+		err       error
+	}{
+		{name: "raw connector error", err: errors.New("remote rejected secret")},
+		{name: "presented structured error", presenter: reflectingFileTransferErrorPresenter{responseValue: "secret"}, err: errors.New("remote rejected request")},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handlers.writeCredentialSafeConnectorError(response, t.Context(), runtime, surface.ID, testCase.presenter, http.StatusBadGateway, "remote operation failed", testCase.err)
+			if response.Code != http.StatusBadGateway {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if bytes.Contains(response.Body.Bytes(), []byte("secret")) {
+				t.Fatalf("credential leaked in response: %s", response.Body.String())
+			}
+			if !bytes.Contains(response.Body.Bytes(), []byte("remote operation failed")) {
+				t.Fatalf("generic error missing: %s", response.Body.String())
+			}
+		})
+	}
+}
 
 func TestClassifyFileTransferInterruption(t *testing.T) {
 	canceledCtx, cancel := context.WithCancel(context.Background())

@@ -21,10 +21,7 @@ func (s fileTransferHandlers) checkUploadOverwrite(w http.ResponseWriter, r *htt
 	status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeID, remotePath)
 	if err != nil {
 		_ = os.Remove(tempPath)
-		if writeConnectorError(w, adapter, err) {
-			return false
-		}
-		writeError(w, http.StatusBadGateway, connectorErrorMessage(adapter, "remote path check failed", err))
+		s.writeCredentialSafeConnectorError(w, ctx, runtime, runtimeID, adapter, http.StatusBadGateway, "remote path check failed", err)
 		return false
 	}
 	if !status.Exists {
@@ -69,10 +66,7 @@ func (s fileTransferHandlers) checkUploadBatchOverwrite(w http.ResponseWriter, r
 		status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeID, item.RemotePath)
 		if err != nil {
 			cleanupTempPaths(tempPaths)
-			if writeConnectorError(w, adapter, err) {
-				return nil, false
-			}
-			writeError(w, http.StatusBadGateway, connectorErrorMessage(adapter, "remote path check failed", err))
+			s.writeCredentialSafeConnectorError(w, ctx, runtime, runtimeID, adapter, http.StatusBadGateway, "remote path check failed", err)
 			return nil, false
 		}
 		if !status.Exists {

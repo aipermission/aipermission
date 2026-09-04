@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"path"
 	"strconv"
 	"strings"
@@ -44,6 +47,83 @@ func connectorErrorMessage(adapter any, prefix string, err error) string {
 		return prefix
 	}
 	return prefix + ": " + strings.TrimSpace(err.Error())
+}
+
+func (s fileTransferHandlers) writeCredentialSafeConnectorError(
+	w http.ResponseWriter,
+	ctx context.Context,
+	runtime *databaseRuntime,
+	runtimeID int64,
+	adapter any,
+	status int,
+	prefix string,
+	err error,
+) {
+	boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(ctx, runtime, runtimeID)
+	if boundaryErr != nil || err == nil || boundary.Redact(err.Error()) != err.Error() {
+		writeError(w, status, prefix)
+		return
+	}
+	presenter, _ := adapter.(connectorapi.ErrorPresenter)
+	if presenter != nil {
+		response := httptest.NewRecorder()
+		if presenter.WriteConnectorError(response, err) {
+			if connectorResponseContainsCredential(boundary, response.Result()) {
+				writeError(w, status, prefix)
+				return
+			}
+			for key, values := range response.Header() {
+				for _, value := range values {
+					w.Header().Add(key, value)
+				}
+			}
+			w.WriteHeader(response.Code)
+			_, _ = w.Write(response.Body.Bytes())
+			return
+		}
+	}
+	message := connectorErrorMessage(adapter, prefix, err)
+	if boundary.Redact(message) != message {
+		message = prefix
+	}
+	writeError(w, status, message)
+}
+
+func connectorResponseContainsCredential(boundary connectorCredentialBoundary, response *http.Response) bool {
+	if response == nil || boundary.Redact(response.Header.Get("Location")) != response.Header.Get("Location") {
+		return true
+	}
+	for key, values := range response.Header {
+		if boundary.Redact(key) != key {
+			return true
+		}
+		for _, value := range values {
+			if boundary.Redact(value) != value {
+				return true
+			}
+		}
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return true
+	}
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	return boundary.Redact(string(body)) != string(body)
+}
+
+func credentialSafeFileTransferErrorMessage(ctx context.Context, runtime *databaseRuntime, runtimeID int64, prefix string, adapter any, err error) string {
+	if err == nil {
+		return prefix
+	}
+	boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(ctx, runtime, runtimeID)
+	if boundaryErr != nil || boundary.Redact(err.Error()) != err.Error() {
+		return prefix
+	}
+	message := connectorErrorMessage(adapter, prefix, err)
+	if boundary.Redact(message) != message {
+		return prefix
+	}
+	return message
 }
 
 func parseFormInt64(w http.ResponseWriter, r *http.Request, field string) (int64, bool) {

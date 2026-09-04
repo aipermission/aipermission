@@ -139,6 +139,9 @@ wire credentials, and action fields declared by `SensitiveInputFields`.
 Structured output keys and values, display text, connector errors, history, and
 audit projections cross this boundary. If redacting object keys would create a
 duplicate key, the result is rejected instead of silently replacing data.
+Generic file-transfer browse, stat, conflict, batch-validation, and transfer
+failure paths load the same runtime credential boundary before returning,
+logging, auditing, or persisting connector-originated error text.
 
 If a connector has already performed remote work but its result cannot cross
 the canonical output boundary, the gateway records `outcome_unknown`. Agents
