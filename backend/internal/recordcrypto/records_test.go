@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"testing"
 
 	_ "github.com/SE-I-T-Digital/go-sqlcipher"
@@ -87,7 +88,7 @@ func TestRewriteLegacyUsesKeysetTraversalAcrossManySparseRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	insertEncryptedRecord(t, database, APIToken, -3, negativeIDRecord)
+	insertEncryptedRecord(t, database, APIToken, math.MinInt64, negativeIDRecord)
 	for index := 1; index <= recordCount; index++ {
 		legacy, err := secretVault.EncryptJSON(map[string]any{"secret": fmt.Sprintf("value-%d", index)})
 		if err != nil {
@@ -103,10 +104,21 @@ func TestRewriteLegacyUsesKeysetTraversalAcrossManySparseRecords(t *testing.T) {
 	if stats != (RewriteStats{Rewritten: recordCount + 1}) {
 		t.Fatalf("unexpected migration stats: %+v", stats)
 	}
-	for _, id := range []int64{-3, 3, 300, 771} {
+	for _, id := range []int64{math.MinInt64, 3, 300, 771} {
 		if encrypted := encryptedRecordValue(t, database, APIToken, id); !vault.IsRecordEnvelope(encrypted) {
 			t.Fatalf("record %d was not rewritten", id)
 		}
+	}
+}
+
+func TestRewriteLegacyRejectsWrongStorageBindingOnMarkerFastPath(t *testing.T) {
+	database := newMigrationDatabase(t)
+	secretVault := newTestVault(t)
+	if _, err := RewriteLegacy(t.Context(), database, secretVault, "workspace-one"); err != nil {
+		t.Fatalf("initialize binding marker: %v", err)
+	}
+	if _, err := RewriteLegacy(t.Context(), database, secretVault, "workspace-two"); err == nil {
+		t.Fatal("wrong workspace identity passed the authenticated binding sentinel")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,8 +13,10 @@ import (
 )
 
 const (
-	EnvelopeVersion = "1"
-	markerKey       = "encrypted_record_envelope_version"
+	EnvelopeVersion      = "1"
+	markerKey            = "encrypted_record_envelope_version"
+	bindingSentinelKey   = "encrypted_record_binding_sentinel"
+	bindingSentinelValue = "aipermission-record-storage-binding-v1"
 )
 
 type RecordType struct {
@@ -74,6 +77,21 @@ func DecryptJSON(secretVault *vault.Vault, workspaceID string, recordType Record
 	return secretVault.DecryptRecordJSON(encrypted, target, Context(workspaceID, recordType, recordID))
 }
 
+func EnvelopeMarkerPresent(ctx context.Context, database *sql.DB) (bool, error) {
+	var marker string
+	err := database.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, markerKey).Scan(&marker)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read encrypted record migration marker: %w", err)
+	}
+	if marker != EnvelopeVersion {
+		return false, fmt.Errorf("unsupported encrypted record migration version %q", marker)
+	}
+	return true, nil
+}
+
 // RewriteLegacy rewrites every legacy encrypted database field atomically.
 // The completion marker is committed only after every legacy payload has been
 // authenticated and every current envelope has been verified in place.
@@ -96,13 +114,21 @@ func RewriteLegacy(ctx context.Context, database *sql.DB, secretVault *vault.Vau
 	if markerPresent && marker != EnvelopeVersion {
 		return RewriteStats{}, fmt.Errorf("unsupported encrypted record migration version %q", marker)
 	}
-	if markerPresent {
+	var sentinel string
+	sentinelErr := tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, bindingSentinelKey).Scan(&sentinel)
+	if sentinelErr != nil && !errors.Is(sentinelErr, sql.ErrNoRows) {
+		return RewriteStats{}, fmt.Errorf("read encrypted record binding sentinel: %w", sentinelErr)
+	}
+	if markerPresent && sentinelErr == nil {
+		if err := verifyBindingSentinel(secretVault, workspaceID, sentinel); err != nil {
+			return RewriteStats{}, err
+		}
 		return RewriteStats{}, nil
 	}
 
 	stats := RewriteStats{}
 	for _, recordType := range persistentRecordTypes {
-		lastID := int64(-1 << 63)
+		var lastID *int64
 		for {
 			record, found, err := loadNextEncryptedRecord(ctx, tx, recordType, lastID)
 			if err != nil {
@@ -111,14 +137,14 @@ func RewriteLegacy(ctx context.Context, database *sql.DB, secretVault *vault.Vau
 			if !found {
 				break
 			}
-			lastID = record.id
+			lastID = &record.id
 			context := Context(workspaceID, recordType, record.id)
 			var plain json.RawMessage
 			legacy, err := secretVault.DecryptRecordJSONWithLegacy(record.encrypted, &plain, context, nil)
 			if err != nil {
 				return RewriteStats{}, fmt.Errorf("verify %s record %d: %w", recordType.Domain, record.id, err)
 			}
-			if !legacy {
+			if !legacy || markerPresent {
 				stats.Verified++
 				continue
 			}
@@ -141,9 +167,20 @@ func RewriteLegacy(ctx context.Context, database *sql.DB, secretVault *vault.Vau
 			stats.Rewritten++
 		}
 	}
+	sentinel, err = secretVault.EncryptRecordJSON(bindingSentinelValue, bindingContext(workspaceID))
+	if err != nil {
+		return RewriteStats{}, fmt.Errorf("encrypt record binding sentinel: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO settings (key, value, updated_at)
-		VALUES (?, ?, datetime('now'))`, markerKey, EnvelopeVersion); err != nil {
+		VALUES (?, ?, datetime('now'))
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, bindingSentinelKey, sentinel); err != nil {
+		return RewriteStats{}, fmt.Errorf("write encrypted record binding sentinel: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO settings (key, value, updated_at)
+		VALUES (?, ?, datetime('now'))
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, markerKey, EnvelopeVersion); err != nil {
 		return RewriteStats{}, fmt.Errorf("write encrypted record migration marker: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -157,19 +194,45 @@ type encryptedRecord struct {
 	encrypted string
 }
 
-func loadNextEncryptedRecord(ctx context.Context, tx *sql.Tx, recordType RecordType, afterID int64) (encryptedRecord, bool, error) {
+func loadNextEncryptedRecord(ctx context.Context, tx *sql.Tx, recordType RecordType, afterID *int64) (encryptedRecord, bool, error) {
 	if err := validateRecordType(recordType); err != nil {
 		return encryptedRecord{}, false, err
 	}
-	query := fmt.Sprintf(`SELECT id, %s FROM %s WHERE %s <> '' AND id > ? ORDER BY id LIMIT 1`, recordType.Column, recordType.Table, recordType.Column)
+	query := fmt.Sprintf(`SELECT id, %s FROM %s WHERE %s <> ''`, recordType.Column, recordType.Table, recordType.Column)
+	args := []any{}
+	if afterID != nil {
+		query += ` AND id > ?`
+		args = append(args, *afterID)
+	}
+	query += ` ORDER BY id LIMIT 1`
 	var record encryptedRecord
-	if err := tx.QueryRowContext(ctx, query, afterID).Scan(&record.id, &record.encrypted); err != nil {
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&record.id, &record.encrypted); err != nil {
 		if err == sql.ErrNoRows {
 			return encryptedRecord{}, false, nil
 		}
 		return encryptedRecord{}, false, fmt.Errorf("read next %s encrypted record: %w", recordType.Domain, err)
 	}
 	return record, true, nil
+}
+
+func bindingContext(workspaceID string) vault.RecordContext {
+	return vault.RecordContext{
+		WorkspaceID: workspaceID,
+		Domain:      "record-storage-binding",
+		RecordID:    "1",
+		Field:       bindingSentinelKey,
+	}
+}
+
+func verifyBindingSentinel(secretVault *vault.Vault, workspaceID, encrypted string) error {
+	var value string
+	if err := secretVault.DecryptRecordJSON(encrypted, &value, bindingContext(workspaceID)); err != nil {
+		return fmt.Errorf("verify encrypted record storage binding: %w", err)
+	}
+	if value != bindingSentinelValue {
+		return fmt.Errorf("verify encrypted record storage binding: sentinel mismatch")
+	}
+	return nil
 }
 
 func validateRecordType(recordType RecordType) error {
