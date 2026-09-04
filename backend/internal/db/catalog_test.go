@@ -1,8 +1,10 @@
 package db
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -103,5 +105,251 @@ func TestNewRenameDeleteAndListDatabases(t *testing.T) {
 	}
 	if Exists(renamedPath) {
 		t.Fatalf("database should be deleted")
+	}
+}
+
+func TestDeleteDatabaseRollsBackEveryQuarantineRenameFailure(t *testing.T) {
+	for _, failedCandidate := range []int{0, 1, 2} {
+		t.Run(strconv.Itoa(failedCandidate), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "rollback.db")
+			candidates := []string{path, path + "-wal", path + "-shm"}
+			for index, candidate := range candidates {
+				if err := os.WriteFile(candidate, []byte{byte(index + 1)}, 0o600); err != nil {
+					t.Fatalf("seed candidate: %v", err)
+				}
+			}
+			ops := defaultDatabaseDeleteOps()
+			ops.rename = func(oldPath string, newPath string) error {
+				if oldPath == candidates[failedCandidate] {
+					return errors.New("injected rename failure")
+				}
+				return os.Rename(oldPath, newPath)
+			}
+			if err := deleteDatabaseWithOps(path, ops); err == nil || !strings.Contains(err.Error(), "injected rename failure") {
+				t.Fatalf("expected injected rename failure, got %v", err)
+			}
+			for _, candidate := range candidates {
+				if _, err := os.Stat(candidate); err != nil {
+					t.Fatalf("candidate %q was not rolled back: %v", candidate, err)
+				}
+			}
+			quarantined, err := filepath.Glob(filepath.Join(filepath.Dir(path), databaseDeleteQuarantinePrefix+"*"))
+			if err != nil || len(quarantined) != 0 {
+				t.Fatalf("rollback left quarantined files: paths=%v err=%v", quarantined, err)
+			}
+		})
+	}
+}
+
+func TestDeleteDatabaseDefersFailedQuarantineCleanup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cleanup.db")
+	if err := os.WriteFile(path, []byte("encrypted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ops := defaultDatabaseDeleteOps()
+	ops.removeAll = func(string) error {
+		return errors.New("injected cleanup failure")
+	}
+	if err := deleteDatabaseWithOps(path, ops); err != nil {
+		t.Fatalf("completed quarantine should be a successful logical delete: %v", err)
+	}
+	if Exists(path) {
+		t.Fatalf("database should no longer be addressable after quarantine")
+	}
+	quarantined, err := filepath.Glob(filepath.Join(filepath.Dir(path), databaseDeleteQuarantinePrefix+"*"))
+	if err != nil || len(quarantined) != 1 {
+		t.Fatalf("expected deferred quarantine cleanup: paths=%v err=%v", quarantined, err)
+	}
+	if err := recoverDatabaseDeleteQuarantines(filepath.Dir(path)); err != nil {
+		t.Fatalf("retry deferred cleanup: %v", err)
+	}
+	quarantined, err = filepath.Glob(filepath.Join(filepath.Dir(path), databaseDeleteQuarantinePrefix+"*"))
+	if err != nil || len(quarantined) != 0 {
+		t.Fatalf("expected deferred cleanup to finish: paths=%v err=%v", quarantined, err)
+	}
+}
+
+func TestDeleteDatabaseRollsBackWhenCompletionMarkerFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "marker.db")
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.WriteFile(candidate, []byte("preserved"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ops := defaultDatabaseDeleteOps()
+	ops.write = func(string, []byte, os.FileMode) error {
+		return errors.New("injected marker failure")
+	}
+	if err := deleteDatabaseWithOps(path, ops); err == nil || !strings.Contains(err.Error(), "injected marker failure") {
+		t.Fatalf("expected marker failure, got %v", err)
+	}
+	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+		if !Exists(candidate) {
+			t.Fatalf("marker failure did not restore %q", candidate)
+		}
+	}
+}
+
+func TestDeleteDatabaseRollsBackWhenQuarantineDurabilityFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sync.db")
+	if err := os.WriteFile(path, []byte("preserved"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ops := defaultDatabaseDeleteOps()
+	ops.syncFile = func(syncPath string) error {
+		if strings.Contains(syncPath, databaseDeleteQuarantinePrefix) && filepath.Base(syncPath) != databaseDeleteCompleteMarker {
+			return errors.New("injected file sync failure")
+		}
+		return syncDatabaseDeletePath(syncPath)
+	}
+	if err := deleteDatabaseWithOps(path, ops); err == nil || !strings.Contains(err.Error(), "injected file sync failure") {
+		t.Fatalf("expected sync failure, got %v", err)
+	}
+	if !Exists(path) {
+		t.Fatal("sync failure did not restore the database")
+	}
+	quarantines, err := filepath.Glob(filepath.Join(filepath.Dir(path), databaseDeleteQuarantinePrefix+"*"))
+	if err != nil || len(quarantines) != 0 {
+		t.Fatalf("sync rollback left quarantine state: paths=%v err=%v", quarantines, err)
+	}
+}
+
+func TestDeleteDatabaseSyncsMovedFilesAndCompletionMarker(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "durable.db")
+	if err := os.WriteFile(path, []byte("encrypted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ops := defaultDatabaseDeleteOps()
+	syncedFiles := []string{}
+	syncedDirs := []string{}
+	ops.syncFile = func(path string) error {
+		syncedFiles = append(syncedFiles, filepath.Base(path))
+		return nil
+	}
+	ops.syncDir = func(path string) error {
+		syncedDirs = append(syncedDirs, path)
+		return nil
+	}
+	if err := deleteDatabaseWithOps(path, ops); err != nil {
+		t.Fatal(err)
+	}
+	if !containsString(syncedFiles, filepath.Base(path)) || !containsString(syncedFiles, databaseDeleteCompleteMarker) {
+		t.Fatalf("durable delete did not sync data and marker files: %#v", syncedFiles)
+	}
+	if len(syncedDirs) < 3 {
+		t.Fatalf("durable delete did not sync quarantine and parent directories: %#v", syncedDirs)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDeleteDatabasePreservesQuarantineWhenRollbackRenameFails(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "rollback-recovery.db")
+	walPath := path + "-wal"
+	for _, candidate := range []string{path, walPath} {
+		if err := os.WriteFile(candidate, []byte(filepath.Base(candidate)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ops := defaultDatabaseDeleteOps()
+	restoreFailed := false
+	ops.rename = func(oldPath string, newPath string) error {
+		if oldPath == walPath {
+			return errors.New("injected quarantine failure")
+		}
+		if strings.Contains(oldPath, databaseDeleteQuarantinePrefix) && newPath == path && !restoreFailed {
+			restoreFailed = true
+			return errors.New("injected rollback failure")
+		}
+		return os.Rename(oldPath, newPath)
+	}
+	if err := deleteDatabaseWithOps(path, ops); err == nil || !strings.Contains(err.Error(), "injected rollback failure") {
+		t.Fatalf("expected rollback failure, got %v", err)
+	}
+	if Exists(path) {
+		t.Fatal("failed rollback should leave the database in quarantine")
+	}
+	quarantines, err := filepath.Glob(filepath.Join(directory, databaseDeleteQuarantinePrefix+"*"))
+	if err != nil || len(quarantines) != 1 {
+		t.Fatalf("failed rollback must retain one recovery quarantine: paths=%v err=%v", quarantines, err)
+	}
+	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+		t.Fatalf("recover retained rollback quarantine: %v", err)
+	}
+	for _, candidate := range []string{path, walPath} {
+		if !Exists(candidate) {
+			t.Fatalf("recovery did not restore %q", candidate)
+		}
+	}
+}
+
+func TestDeleteDatabaseRemovesMarkerBeforeFailedDurabilityRollback(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "marker-rollback.db")
+	if err := os.WriteFile(path, []byte("preserved"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ops := defaultDatabaseDeleteOps()
+	ops.syncFile = func(syncPath string) error {
+		if filepath.Base(syncPath) == databaseDeleteCompleteMarker {
+			return errors.New("injected marker sync failure")
+		}
+		return syncDatabaseDeletePath(syncPath)
+	}
+	restoreFailed := false
+	ops.rename = func(oldPath string, newPath string) error {
+		if strings.Contains(oldPath, databaseDeleteQuarantinePrefix) && newPath == path && !restoreFailed {
+			restoreFailed = true
+			return errors.New("injected rollback failure")
+		}
+		return os.Rename(oldPath, newPath)
+	}
+	if err := deleteDatabaseWithOps(path, ops); err == nil || !strings.Contains(err.Error(), "injected marker sync failure") || !strings.Contains(err.Error(), "injected rollback failure") {
+		t.Fatalf("expected marker sync and rollback failures, got %v", err)
+	}
+	quarantines, err := filepath.Glob(filepath.Join(directory, databaseDeleteQuarantinePrefix+"*"))
+	if err != nil || len(quarantines) != 1 {
+		t.Fatalf("expected retained recovery quarantine: paths=%v err=%v", quarantines, err)
+	}
+	if Exists(filepath.Join(quarantines[0], databaseDeleteCompleteMarker)) {
+		t.Fatal("failed rollback retained a completion marker that could destroy recoverable data")
+	}
+	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+		t.Fatalf("recover durability rollback quarantine: %v", err)
+	}
+	if !Exists(path) {
+		t.Fatal("recovery did not restore the database")
+	}
+}
+
+func TestDatabaseCatalogRecoversInterruptedDeleteQuarantine(t *testing.T) {
+	defaultPath := filepath.Join(t.TempDir(), "aipermission.db")
+	quarantineDir := filepath.Join(filepath.Dir(defaultPath), databaseDeleteQuarantinePrefix+"interrupted")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []string{defaultPath, defaultPath + "-wal"} {
+		if err := os.WriteFile(filepath.Join(quarantineDir, filepath.Base(candidate)), []byte("preserved"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	items, err := ListDatabases(defaultPath, "")
+	if err != nil {
+		t.Fatalf("list databases after interrupted delete: %v", err)
+	}
+	if len(items) != 1 || !Exists(defaultPath) || !Exists(defaultPath+"-wal") {
+		t.Fatalf("interrupted delete was not rolled back: items=%#v", items)
+	}
+	if Exists(quarantineDir) {
+		t.Fatalf("recovered quarantine directory should be removed")
 	}
 }
