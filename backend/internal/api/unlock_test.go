@@ -271,6 +271,24 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	}
 }
 
+func TestUnlockStatusSurfacesDatabaseCatalogRecoveryFailure(t *testing.T) {
+	server := newLockedAPITestServer(t)
+	defer server.Close()
+
+	quarantine := filepath.Join(filepath.Dir(server.config.DataPath), ".aipermission-delete-interrupted")
+	if err := os.MkdirAll(filepath.Join(quarantine, "unexpected-directory"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	response := performJSON(server.Handler(), http.MethodGet, "/api/unlock/status", "", nil)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("catalog recovery failure status = %d, want 500: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "setup_required") {
+		t.Fatalf("catalog recovery failure was disguised as setup_required: %s", response.Body.String())
+	}
+}
+
 func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
 	server := newLockedAPITestServer(t)
 	handler := server.Handler()

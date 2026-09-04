@@ -36,14 +36,17 @@ func (s *Server) isUnlocked() bool {
 	return len(s.workspaces) > 0
 }
 
-func (s *Server) currentUnlockStatus() unlockStatusResponse {
+func (s *Server) currentUnlockStatus() (unlockStatusResponse, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.currentUnlockStatusLocked()
 }
 
-func (s *Server) currentUnlockStatusLocked() unlockStatusResponse {
-	databases, _ := db.ListDatabases(s.config.DataPath, s.activeDataPath)
+func (s *Server) currentUnlockStatusLocked() (unlockStatusResponse, error) {
+	databases, err := db.ListDatabases(s.config.DataPath, s.activeDataPath)
+	if err != nil {
+		return unlockStatusResponse{}, fmt.Errorf("list encrypted databases: %w", err)
+	}
 	for i := range databases {
 		if runtime := s.workspaces[databases[i].ID]; runtime != nil && runtime.path == databases[i].Path {
 			databases[i].Unlocked = true
@@ -62,10 +65,10 @@ func (s *Server) currentUnlockStatusLocked() unlockStatusResponse {
 		}
 	}
 	if s.database != nil {
-		return unlockStatusResponse{State: "unlocked", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, DatabaseSizeBytes: fileSize(s.activeDataPath), UISessionAuthenticated: true, Databases: databases}
+		return unlockStatusResponse{State: "unlocked", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, DatabaseSizeBytes: fileSize(s.activeDataPath), UISessionAuthenticated: true, Databases: databases}, nil
 	}
 	if len(databases) == 0 {
-		return unlockStatusResponse{State: "setup_required", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, Databases: databases}
+		return unlockStatusResponse{State: "setup_required", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, Databases: databases}, nil
 	}
 	selected := databases[0]
 	for _, item := range databases {
@@ -80,7 +83,7 @@ func (s *Server) currentUnlockStatusLocked() unlockStatusResponse {
 		DatabaseID:   selected.ID,
 		DatabaseName: selected.Name,
 		Databases:    databases,
-	}
+	}, nil
 }
 
 func fileSize(path string) int64 {

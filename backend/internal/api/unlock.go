@@ -32,7 +32,11 @@ type unlockStatusResponse struct {
 }
 
 func (s unlockHandlers) unlockStatus(w http.ResponseWriter, r *http.Request) {
-	status := s.currentUnlockStatus()
+	status, err := s.currentUnlockStatus()
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	if status.State == "unlocked" {
 		status.UISessionAuthenticated = s.hasValidUISession(r)
 		if !status.UISessionAuthenticated {
@@ -90,7 +94,12 @@ func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 
 	if s.database != nil {
-		writeJSON(w, http.StatusOK, s.currentUnlockStatusLocked())
+		status, err := s.currentUnlockStatusLocked()
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		writeJSON(w, http.StatusOK, status)
 		return
 	}
 
@@ -189,7 +198,12 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w)
 			return
 		}
-		writeJSON(w, http.StatusOK, s.currentUnlockStatusLocked())
+		status, err := s.currentUnlockStatusLocked()
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		writeJSON(w, http.StatusOK, status)
 		return
 	}
 	targetPath, targetID, err := s.unlockTargetPathLocked(request.DatabaseID)
@@ -260,7 +274,12 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, s.currentUnlockStatusLocked())
+	status, err := s.currentUnlockStatusLocked()
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }
 
 func (s *Server) currentLockLeavesNoUnlockedRuntime() bool {
