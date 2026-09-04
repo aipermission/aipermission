@@ -179,6 +179,13 @@ func TestConnectorCredentialBoundaryDoesNotCorruptTextForShortSecrets(t *testing
 	if got := boundary.Redact("a"); got != connectorCredentialRedactionMarker {
 		t.Fatalf("exact short credential scalar = %q, want redacted", got)
 	}
+	if got := boundary.Redact("authentication rejected a"); strings.Contains(got, "rejected a") {
+		t.Fatalf("delimited one-byte credential remained visible: %q", got)
+	}
+	boundary = newConnectorCredentialBoundary(map[string]any{"password": "abc"})
+	if got := boundary.Redact("authentication rejected abc"); strings.Contains(got, "abc") {
+		t.Fatalf("delimited three-byte credential remained visible: %q", got)
+	}
 	boundary = newConnectorCredentialBoundary(map[string]any{"password": "secret"})
 	if got := boundary.Redact("credential secret rejected"); strings.Contains(got, "secret") {
 		t.Fatalf("delimited short credential remained visible: %q", got)

@@ -18,7 +18,7 @@ import (
 const (
 	connectorCredentialRedactionMarker   = "[REDACTED CREDENTIAL]"
 	connectorCredentialSubstringMinBytes = 8
-	connectorCredentialDelimitedMinBytes = 4
+	connectorCredentialDelimitedMinBytes = 1
 )
 
 // connectorCredentialBoundary is an unconditional last-mile boundary for
@@ -96,7 +96,28 @@ func connectorActionSensitiveValues(input map[string]any, payload map[string]any
 	for value := range values {
 		result = append(result, value)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if len(result[i]) == len(result[j]) {
+			return result[i] < result[j]
+		}
+		return len(result[i]) > len(result[j])
+	})
 	return result
+}
+
+func redactConnectorActionSensitiveText(value string, sensitiveValues []string) string {
+	sort.Slice(sensitiveValues, func(i, j int) bool { return len(sensitiveValues[i]) > len(sensitiveValues[j]) })
+	for _, sensitive := range sensitiveValues {
+		if sensitive == "" {
+			continue
+		}
+		if value == sensitive || len(sensitive) >= connectorCredentialSubstringMinBytes {
+			value = strings.ReplaceAll(value, sensitive, connectorCredentialRedactionMarker)
+		} else {
+			value = redactDelimitedCredential(value, sensitive)
+		}
+	}
+	return value
 }
 
 func collectDeclaredSensitiveValues(value any, fields map[string]bool, sensitive bool, values map[string]struct{}) {
@@ -267,6 +288,9 @@ func (r connectorCredentialBoundary) Add(values ...string) {
 }
 
 func (r connectorCredentialBoundary) AddStructured(value any) {
+	if r.state == nil {
+		return
+	}
 	unique := map[string]struct{}{}
 	collectConnectorCredentialStrings(value, unique)
 	values := make([]string, 0, len(unique))

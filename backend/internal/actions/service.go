@@ -119,7 +119,7 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 	}
 	input, err := connectors.NormalizeSchemaValues(actionDefinition.InputSchema, request.Input)
 	if err != nil {
-		return PreparedRequest{}, err
+		return PreparedRequest{}, redactSensitivePreparationError(err, request.Input, actionDefinition.SensitiveInputFields)
 	}
 	request.Input = input
 
@@ -139,7 +139,7 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 
 	prepared, err := connector.PrepareAction(ctx, actionRequest)
 	if err != nil {
-		return PreparedRequest{}, err
+		return PreparedRequest{}, redactSensitivePreparationError(err, request.Input, actionDefinition.SensitiveInputFields)
 	}
 	if err := validatePreparedAction(prepared, resolved, actionDefinition, request); err != nil {
 		return PreparedRequest{}, err
@@ -172,6 +172,130 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (Prepared
 	}, nil
 }
 
+func redactSensitivePreparationError(err error, input map[string]any, sensitiveFields []string) error {
+	if err == nil || len(sensitiveFields) == 0 {
+		return err
+	}
+	message := err.Error()
+	allVariants := make([]string, 0, len(sensitiveFields))
+	for _, field := range sensitiveFields {
+		value, ok := input[field]
+		if !ok || value == nil {
+			continue
+		}
+		variants, collectErr := sensitivePreparationVariants(value)
+		if collectErr != nil {
+			return preserveConnectorErrorClassification(err, "connector action preparation failed while validating sensitive input", nil)
+		}
+		allVariants = append(allVariants, variants...)
+		for _, variant := range variants {
+			if variant == "" || variant == "null" || !strings.Contains(message, variant) {
+				continue
+			}
+			if len(variant) < 4 {
+				message = "connector action preparation failed while validating sensitive input"
+				break
+			}
+			message = strings.ReplaceAll(message, variant, "[REDACTED SENSITIVE INPUT]")
+		}
+	}
+	return preserveConnectorErrorClassification(err, message, redactSensitiveErrorDetails(connectors.ErrorDetails(err), allVariants))
+}
+
+func sensitivePreparationVariants(value any) ([]string, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	unique := map[string]struct{}{}
+	var collect func(any)
+	collect = func(current any) {
+		switch typed := current.(type) {
+		case map[string]any:
+			for _, nested := range typed {
+				collect(nested)
+			}
+		case []any:
+			for _, nested := range typed {
+				collect(nested)
+			}
+		case nil:
+		default:
+			unique[fmt.Sprint(typed)] = struct{}{}
+		}
+	}
+	collect(value)
+	unique[fmt.Sprint(value)] = struct{}{}
+	unique[string(encoded)] = struct{}{}
+	variants := make([]string, 0, len(unique))
+	for variant := range unique {
+		variants = append(variants, variant)
+	}
+	sort.Slice(variants, func(i, j int) bool { return len(variants[i]) > len(variants[j]) })
+	return variants, nil
+}
+
+func preserveConnectorErrorClassification(source error, message string, details map[string]any) error {
+	redacted := errors.New(message)
+	if code := connectors.ErrorCode(source); code != "" {
+		return connectors.ClassifyActionError(code, connectors.ErrorStatus(source), details, redacted)
+	}
+	return redacted
+}
+
+func redactSensitiveErrorDetails(details map[string]any, variants []string) map[string]any {
+	if len(details) == 0 {
+		return nil
+	}
+	redactString := func(value string) string {
+		for _, variant := range variants {
+			if variant == "" || variant == "null" || !strings.Contains(value, variant) {
+				continue
+			}
+			if len(variant) < 4 {
+				return "[REDACTED SENSITIVE INPUT]"
+			}
+			value = strings.ReplaceAll(value, variant, "[REDACTED SENSITIVE INPUT]")
+		}
+		return value
+	}
+	isSensitiveScalar := func(value any) bool {
+		text := fmt.Sprint(value)
+		for _, variant := range variants {
+			if variant != "" && variant != "null" && text == variant {
+				return true
+			}
+		}
+		return false
+	}
+	var redact func(any) any
+	redact = func(value any) any {
+		switch typed := value.(type) {
+		case string:
+			return redactString(typed)
+		case map[string]any:
+			result := make(map[string]any, len(typed))
+			for key, nested := range typed {
+				result[redactString(key)] = redact(nested)
+			}
+			return result
+		case []any:
+			result := make([]any, len(typed))
+			for index, nested := range typed {
+				result[index] = redact(nested)
+			}
+			return result
+		default:
+			if isSensitiveScalar(typed) {
+				return "[REDACTED SENSITIVE INPUT]"
+			}
+			return typed
+		}
+	}
+	redacted, _ := redact(details).(map[string]any)
+	return redacted
+}
+
 func preparedRetryPreconditionPresent(payload map[string]any, field string) bool {
 	value, ok := payload[field]
 	if !ok || value == nil {
@@ -191,12 +315,6 @@ func preparedRetryPreconditionPresent(payload map[string]any, field string) bool
 
 func (s *Service) resolveApprovalDependencies(ctx context.Context, target connectors.TargetView, declared []connectors.ApprovalDependency) ([]ResolvedDependency, error) {
 	dependencies := append([]connectors.ApprovalDependency(nil), declared...)
-	if stringMapValue(target.Config, "connection_mode") == "over_ssh" {
-		dependencies = append(dependencies, connectors.ApprovalDependency{
-			TargetRef: stringMapValue(target.Config, "transport_target_ref"),
-			Purpose:   "network_transport",
-		})
-	}
 	for index := range dependencies {
 		dependencies[index].TargetRef = strings.TrimSpace(dependencies[index].TargetRef)
 		dependencies[index].Purpose = strings.TrimSpace(dependencies[index].Purpose)
