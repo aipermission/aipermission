@@ -20,7 +20,7 @@ func (s tokenHandlers) mutateTokenWithVaultInvalidation(
 	invalidationReason string,
 	mutate func(*sql.Tx) (bool, error),
 ) (bool, error) {
-	release, err := runtime.vaultDelivery.acquire(ctx)
+	release, err := runtime.vaultDelivery.acquireExclusive(ctx)
 	if err != nil {
 		return false, errVaultDeliveryCanceled
 	}

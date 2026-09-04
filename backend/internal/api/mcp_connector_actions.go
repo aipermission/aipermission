@@ -298,7 +298,7 @@ func (s mcpHandlers) writeMCPConnectorActionResponse(
 		writeInternalError(w)
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
+	release, err := runtime.vaultDelivery.acquireDelivery(r.Context())
 	if err != nil {
 		return
 	}
@@ -338,7 +338,7 @@ func connectorActionVaultPollAuthorized(ctx context.Context, runtime *databaseRu
 	if runtime == nil || runtime.tokens == nil || runtime.database == nil || request.TokenID == nil || *request.TokenID != tokenID {
 		return false
 	}
-	release, err := runtime.vaultDelivery.acquire(ctx)
+	release, err := runtime.vaultDelivery.acquireDelivery(ctx)
 	if err != nil {
 		return false
 	}

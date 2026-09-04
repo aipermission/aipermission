@@ -135,7 +135,7 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	var replayed bool
 	var err error
 	if call.Source == commandRequestSourceMCP {
-		release, acquireErr := runtime.vaultDelivery.acquire(ctx)
+		release, acquireErr := runtime.vaultDelivery.acquireDelivery(ctx)
 		if acquireErr != nil {
 			return connectorActionCallResult{}, acquireErr
 		}
@@ -292,7 +292,7 @@ func (s *Server) executeInsertedConnectorAction(
 	principal executionprincipal.Principal,
 	options connectorActionExecutionOptions,
 ) (connectorActionCallResult, error) {
-	release, err := runtime.vaultDelivery.acquire(ctx)
+	release, err := runtime.vaultDelivery.acquireDelivery(ctx)
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
@@ -349,9 +349,6 @@ func (s *Server) executeInsertedConnectorAction(
 		return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Output: finished.Output, Error: finished.Error}}, nil
 	}
 	status := result.Status
-	if status == "" {
-		status = connectors.ResultCompleted
-	}
 	request, err = s.captureConnectorActionSessionHandleIfReturned(ctx, runtime, request, result.Handles)
 	if err != nil {
 		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultOutcomeUnknown, nil, "", connectorActionHandleError, prepared.ActionDefinition.OutputHint)
@@ -491,7 +488,7 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 		return connectors.ActionResult{}, err
 	}
 	if err := validateConnectorActionResult(result); err != nil {
-		return connectors.ActionResult{}, err
+		return connectors.ActionResult{}, connectors.ClassifyOutcomeUnknown("response_validation", nil, err)
 	}
 	redacted, err := s.redactConnectorActionResultWithCredentialBoundary(ctx, runtime, result, snapshot.credentialBoundary, prepared.ActionDefinition.OutputHint)
 	if err != nil {
@@ -501,6 +498,13 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 }
 
 func validateConnectorActionResult(result connectors.ActionResult) error {
+	switch result.Status {
+	case connectors.ResultCompleted, connectors.ResultFailed, connectors.ResultError,
+		connectors.ResultOutcomeUnknown, connectors.ResultRunning:
+		// Connector-owned execution states.
+	default:
+		return fmt.Errorf("connector returned invalid action status %q", result.Status)
+	}
 	hasSessionID := result.Handles.SessionID > 0
 	hasGeneration := result.Handles.SessionGeneration > 0
 	if hasSessionID != hasGeneration {

@@ -46,7 +46,7 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 	var release func()
 	if !request.Enabled {
 		var err error
-		release, err = runtime.vaultDelivery.acquire(r.Context())
+		release, err = runtime.vaultDelivery.acquireExclusive(r.Context())
 		if err != nil {
 			writeError(w, http.StatusRequestTimeout, "MCP stop was canceled")
 			return

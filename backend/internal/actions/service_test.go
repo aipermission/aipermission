@@ -332,6 +332,33 @@ func TestServicePrepareRedactsSensitiveInputFromConnectorErrors(t *testing.T) {
 	}
 }
 
+func TestServicePrepareRejectsSensitiveInputInDisplayFields(t *testing.T) {
+	for _, prepared := range []connectors.PreparedAction{
+		{ConnectorKind: "memory", TargetRef: "memory:21:34", ProfileID: 34, ActionName: "query_readonly", Risk: connectors.RiskRead, Title: "Send secret-value"},
+		{ConnectorKind: "memory", TargetRef: "memory:21:34", ProfileID: 34, ActionName: "query_readonly", Risk: connectors.RiskRead, Summary: "secret-value"},
+		{ConnectorKind: "memory", TargetRef: "memory:21:34", ProfileID: 34, ActionName: "query_readonly", Risk: connectors.RiskRead, Preview: map[string]any{"value": "secret-value"}},
+	} {
+		connector := &prepareConnector{kind: "memory", prepared: &prepared, actions: []connectors.ActionDefinition{{
+			Name: "query_readonly", Label: "Query", Description: "Query.", Risk: connectors.RiskRead,
+			InputSchema:          connectors.Schema{Fields: []connectors.Field{{Name: "payload", Label: "Payload", Type: connectors.FieldString, Required: true}}},
+			SensitiveInputFields: []string{"payload"},
+		}}}
+		registry := connectors.NewRegistry()
+		if err := registry.Register(connector); err != nil {
+			t.Fatal(err)
+		}
+		service := NewService(registry, &fakeResolver{
+			target:  connectors.TargetView{ID: 21, Ref: "memory:21:34", ConnectorKind: "memory"},
+			profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory"},
+		})
+		if _, err := service.Prepare(t.Context(), PrepareRequest{
+			TargetRef: "memory:21:34", ActionName: "query_readonly", Input: map[string]any{"payload": "secret-value"},
+		}); err == nil || !strings.Contains(err.Error(), "sensitive input") {
+			t.Fatalf("prepared display leak was accepted: prepared=%#v err=%v", prepared, err)
+		}
+	}
+}
+
 func TestServicePreparePreservesClassifiedSensitiveInputError(t *testing.T) {
 	registry := connectors.NewRegistry()
 	connector := &prepareConnector{

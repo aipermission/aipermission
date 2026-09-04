@@ -107,7 +107,7 @@ func newVaultEnvironmentPreparer(
 	finalize func(context.Context, console.SessionHandle) error,
 ) console.EnvironmentPreparer {
 	return func(ctx context.Context, actualPeerIdentity string) (console.EnvironmentPreparation, error) {
-		release, err := runtime.vaultDelivery.acquire(ctx)
+		release, err := runtime.vaultDelivery.acquireDelivery(ctx)
 		if err != nil {
 			return console.EnvironmentPreparation{}, err
 		}

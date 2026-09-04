@@ -389,7 +389,7 @@ func TestStoreFinishActionRequestDoesNotOverwriteInvalidatedRequest(t *testing.T
 	if err != nil {
 		t.Fatalf("late finish should return current request without failing: %v", err)
 	}
-	if finished.Status != connectors.ResultOutcomeUnknown || finished.Error != "target changed after dispatch" || finished.DisplayText != "" {
+	if finished.Status != connectors.ResultStale || finished.Error != "target changed" || finished.DisplayText != "" {
 		t.Fatalf("late finish overwrote invalidated request: %#v", finished)
 	}
 }
@@ -612,16 +612,25 @@ func TestStoreInvalidateActionRequestsForTargetSeparatesRunningOutcome(t *testin
 		t.Fatalf("insert pending action request: %v", err)
 	}
 	running, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
-		TokenID:       &tokenID,
-		TargetID:      target.ID,
-		ProfileID:     profile.ID,
-		ConnectorKind: "postgres",
-		ActionName:    "query_readonly",
-		Input:         map[string]any{"sql": "select 1"},
-		Status:        connectors.ResultRunning,
+		TokenID:              &tokenID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        "postgres",
+		ActionName:           "query_readonly",
+		Input:                map[string]any{"sql": "select 1"},
+		Status:               connectors.ResultApprovalPending,
+		EncryptedPayloadJSON: "encrypted", ApprovalContext: `{}`, ApprovalContextHash: "running-hash",
 	})
 	if err != nil {
 		t.Fatalf("insert running action request: %v", err)
+	}
+	running, err = store.MarkActionRequestRunning(ctx, running.ID, "test-owner", time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("claim running action request: %v", err)
+	}
+	running, err = store.BeginActionRequestDispatch(ctx, running.ID, "test-owner", time.Now(), time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("begin running action dispatch: %v", err)
 	}
 	completed, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
 		TokenID:       &tokenID,
@@ -670,6 +679,45 @@ func TestStoreInvalidateActionRequestsForTargetSeparatesRunningOutcome(t *testin
 	}
 	if unchanged.Status != connectors.ResultCompleted || unchanged.Error != "" || unchanged.CompletedAt != nil {
 		t.Fatalf("completed request should remain unchanged: %#v", unchanged)
+	}
+}
+
+func TestStoreInvalidateActionRequestsForTargetDoesNotMarkPredispatchRunningOutcomeUnknown(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: "postgres", ActionName: "query_readonly",
+		Input: map[string]any{"sql": "select 1"}, Status: connectors.ResultApprovalPending,
+		EncryptedPayloadJSON: "encrypted", ApprovalContext: `{}`, ApprovalContextHash: "approval-hash",
+	})
+	if err != nil {
+		t.Fatalf("insert action request: %v", err)
+	}
+	if _, err := store.MarkActionRequestRunning(ctx, request.ID, "test-owner", time.Now().Add(time.Minute)); err != nil {
+		t.Fatalf("claim action request: %v", err)
+	}
+
+	result, err := store.InvalidateActionRequestsForTarget(ctx, InvalidateActionRequestsForTargetInput{
+		TargetID: target.ID, ProfileID: profile.ID, Error: "profile changed before dispatch",
+		RunningError: "profile changed after dispatch", ApprovalDrift: "profile", IncludeRunning: true,
+	})
+	if err != nil {
+		t.Fatalf("invalidate action request: %v", err)
+	}
+	if len(result.StaleIDs) != 1 || result.StaleIDs[0] != request.ID || len(result.OutcomeUnknownIDs) != 0 {
+		t.Fatalf("predispatch invalidation classification = %#v", result)
+	}
+	updated, err := store.GetActionRequest(ctx, request.ID)
+	if err != nil {
+		t.Fatalf("read invalidated action request: %v", err)
+	}
+	if updated.Status != connectors.ResultStale || updated.Error != "profile changed before dispatch" {
+		t.Fatalf("predispatch action request = %#v", updated)
 	}
 }
 

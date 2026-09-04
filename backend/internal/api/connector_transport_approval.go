@@ -38,7 +38,7 @@ func (approved approvedConnectorTransports) acquire(
 	if runtime == nil || runtime.database == nil {
 		return nil, errors.New("database runtime is not available")
 	}
-	release, err := runtime.vaultDelivery.acquire(ctx)
+	release, err := runtime.vaultDelivery.acquireDelivery(ctx)
 	if err != nil {
 		return nil, err
 	}

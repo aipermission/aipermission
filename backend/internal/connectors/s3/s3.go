@@ -1005,16 +1005,17 @@ func executeDeleteObject(ctx context.Context, client *s3Client, input map[string
 }
 
 type s3Client struct {
-	scheme       string
-	host         string
-	port         int
-	region       string
-	bucket       string
-	pathStyle    bool
-	accessKey    string
-	secretKey    string
-	sessionToken string
-	httpClient   *http.Client
+	scheme            string
+	host              string
+	port              int
+	region            string
+	bucket            string
+	pathStyle         bool
+	accessKey         string
+	secretKey         string
+	sessionToken      string
+	httpClient        *http.Client
+	registerSensitive func(string)
 }
 
 func newS3Client(ctx context.Context, runtime connectors.RuntimeContext) (*s3Client, error) {
@@ -1048,6 +1049,9 @@ func newS3ClientWithTimeout(ctx context.Context, runtime connectors.RuntimeConte
 		accessKey:    accessKey,
 		secretKey:    strings.TrimSpace(secretKey),
 		sessionToken: strings.TrimSpace(sessionToken),
+		registerSensitive: func(value string) {
+			connectors.RegisterSensitiveValue(runtime.Secrets, value)
+		},
 	}
 	if client.bucket == "" {
 		return nil, fmt.Errorf("%w: bucket is required", ErrInvalidConfig)
@@ -1256,13 +1260,17 @@ func (client *s3Client) signAt(req *http.Request, payload []byte, now time.Time)
 	}, "\n")
 	signingKey := awsSigningKey(client.secretKey, dateStamp, client.region)
 	signature := hmacSHA256Hex(signingKey, stringToSign)
-	req.Header.Set("Authorization", fmt.Sprintf(
+	authorization := fmt.Sprintf(
 		"AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
 		client.accessKey,
 		credentialScope,
 		signedHeaders,
 		signature,
-	))
+	)
+	req.Header.Set("Authorization", authorization)
+	if client.registerSensitive != nil {
+		client.registerSensitive(authorization)
+	}
 }
 
 func (client *s3Client) endpointDisplay() string {
