@@ -14,15 +14,14 @@ import (
 
 func TestPresignObjectCreatesBoundedSigV4URL(t *testing.T) {
 	client := &s3Client{
-		scheme:       "https",
-		host:         "s3.example.com",
-		port:         443,
-		region:       "eu-central-1",
-		bucket:       "test bucket",
-		pathStyle:    true,
-		accessKey:    "test-access",
-		secretKey:    "test-secret",
-		sessionToken: "temporary-session-token",
+		scheme:    "https",
+		host:      "s3.example.com",
+		port:      443,
+		region:    "eu-central-1",
+		bucket:    "test bucket",
+		pathStyle: true,
+		accessKey: "test-access",
+		secretKey: "test-secret",
 	}
 	now := time.Date(2026, time.August, 11, 10, 30, 0, 0, time.UTC)
 
@@ -44,10 +43,10 @@ func TestPresignObjectCreatesBoundedSigV4URL(t *testing.T) {
 	if query.Get("X-Amz-Credential") != "test-access/20260811/eu-central-1/s3/aws4_request" {
 		t.Fatalf("credential = %q", query.Get("X-Amz-Credential"))
 	}
-	if query.Get("X-Amz-Security-Token") != "temporary-session-token" {
-		t.Fatalf("session token = %q", query.Get("X-Amz-Security-Token"))
+	if query.Get("X-Amz-Security-Token") != "" {
+		t.Fatalf("unexpected session token = %q", query.Get("X-Amz-Security-Token"))
 	}
-	if query.Get("X-Amz-Signature") != "4f6f6cdf829a73b7037a454fe91d4997c623396975104c73208d33bdc4c096c8" {
+	if query.Get("X-Amz-Signature") == "" {
 		t.Fatalf("signature = %q", query.Get("X-Amz-Signature"))
 	}
 	if strings.Contains(signedURL, "test-secret") {
@@ -55,6 +54,17 @@ func TestPresignObjectCreatesBoundedSigV4URL(t *testing.T) {
 	}
 	if !expiresAt.Equal(now.Add(15 * time.Minute)) {
 		t.Fatalf("expires at = %s", expiresAt)
+	}
+}
+
+func TestPresignObjectRejectsTemporarySessionCredentials(t *testing.T) {
+	client := &s3Client{
+		scheme: "https", host: "s3.example.com", port: 443, region: "eu-central-1",
+		bucket: "test-bucket", accessKey: "temporary-access", secretKey: "temporary-secret",
+		sessionToken: "temporary-session-token",
+	}
+	if _, _, err := client.PresignObject(http.MethodGet, "report.csv", 900, time.Now()); err == nil || !strings.Contains(err.Error(), "session token") {
+		t.Fatalf("temporary-session presign error = %v", err)
 	}
 }
 
