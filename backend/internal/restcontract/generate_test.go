@@ -239,13 +239,21 @@ func TestValidateTypedResponseRejectsShapeAndStatusDrift(t *testing.T) {
 }
 
 func TestValidateTypedResponseRejectsUndocumentedAndInvalidFields(t *testing.T) {
-	invalidStatus := []byte(`{"items":[{"id":1,"source_ref_type":"test","source_ref_id":1,"connector_kind":"ssh","activity_type":"command","target_name":"test","source":"mcp","status":"invented","action_name":"exec","title":"test","summary":"test","progress_current":0,"progress_total":0,"bytes_done":0,"bytes_total":0,"approval_required":false,"created_at":"2026-08-12T10:00:00Z","updated_at":"2026-08-12T10:00:00Z","labels":[]}],"total":1,"limit":50,"offset":0}`)
+	valid := []byte(`{"items":[],"limit":50,"has_more":false}`)
+	if err := ValidateTypedResponse("GET", "/api/history", 200, valid); err != nil {
+		t.Fatalf("valid cursor response without optional total: %v", err)
+	}
+	invalidStatus := []byte(`{"items":[{"id":1,"source_ref_type":"test","source_ref_id":1,"connector_kind":"ssh","activity_type":"command","target_name":"test","source":"mcp","status":"invented","action_name":"exec","title":"test","summary":"test","progress_current":0,"progress_total":0,"bytes_done":0,"bytes_total":0,"approval_required":false,"created_at":"2026-08-12T10:00:00Z","updated_at":"2026-08-12T10:00:00Z","labels":[]}],"total":1,"limit":50,"has_more":false}`)
 	if err := ValidateTypedResponse("GET", "/api/history", 200, invalidStatus); err == nil || !strings.Contains(err.Error(), "outside enum") {
 		t.Fatalf("invalid history status error = %v", err)
 	}
-	extraField := []byte(`{"items":[],"total":0,"limit":50,"offset":0,"surprise":true}`)
-	if err := ValidateTypedResponse("GET", "/api/history", 200, extraField); err == nil || !strings.Contains(err.Error(), "undocumented property") {
+	extraField := []byte(`{"items":[],"total":0,"limit":50,"has_more":false,"surprise":true}`)
+	if err := ValidateTypedResponse("GET", "/api/history", 200, extraField); err == nil || !strings.Contains(err.Error(), `undocumented property "surprise"`) {
 		t.Fatalf("undocumented field error = %v", err)
+	}
+	oldOffset := []byte(`{"items":[],"limit":50,"has_more":false,"offset":0}`)
+	if err := ValidateTypedResponse("GET", "/api/history", 200, oldOffset); err == nil || !strings.Contains(err.Error(), `undocumented property "offset"`) {
+		t.Fatalf("old offset response error = %v", err)
 	}
 }
 

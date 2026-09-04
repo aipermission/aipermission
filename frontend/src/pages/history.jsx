@@ -1,5 +1,5 @@
 import { RefreshCcw, Search } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input, Select } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
@@ -16,7 +16,15 @@ import {
   targetOptionLabel,
 } from "../components/history/history-components";
 import { connectorKindLabel } from "../connectors/templates/common";
+import { useRequestGuard } from "../connectors/templates/_shared/request-guard";
 import { apiDelete, apiGet, apiPost } from "../lib/api";
+import {
+  currentHistoryPage,
+  firstHistoryPage,
+  nextHistoryPage,
+  previousHistoryPage,
+  resolvedHistoryTotal,
+} from "../lib/history-pagination";
 
 const statusOptions = [
   { value: "", label: "All statuses" },
@@ -55,16 +63,32 @@ export function HistoryPage() {
     state: "idle",
     data: [],
     total: 0,
-    limit: 50,
-    offset: 0,
-    next_offset: null,
+    ...firstHistoryPage(50),
+    nextCursor: null,
     error: null,
   });
   const [labels, setLabels] = useState({ state: "idle", data: [], error: null });
   const [targets, setTargets] = useState({ state: "idle", data: [], error: null });
   const [projects, setProjects] = useState({ state: "idle", data: [], error: null });
   const [selected, setSelected] = useState(null);
-  const loadHistoryForEffect = useEffectEvent((offset, options) => loadHistory(offset, options));
+  const targetItems = useMemo(() => targets.data || [], [targets.data]);
+  const targetSignature = targetItems.map((target) => `${target.ref}:${target.project_id || ""}:${target.project_name || ""}`).join(",");
+  const requestScope = JSON.stringify([
+    filters.query,
+    filters.projectID,
+    filters.connectorKind,
+    filters.status,
+    filters.source,
+    filters.targetRef,
+    filters.labelID,
+    state.limit,
+    targetSignature,
+  ]);
+  const requestGuard = useRequestGuard(requestScope);
+  const filterGenerationRef = useRef(0);
+  const filterTransitionPendingRef = useRef(true);
+  const interactiveRequestPendingRef = useRef(false);
+  const loadHistoryForEffect = useEffectEvent((page, options) => loadHistory(page, options));
 
   useEffect(() => {
     void loadLabels();
@@ -72,16 +96,25 @@ export function HistoryPage() {
     void loadProjects();
   }, []);
 
-  const targetItems = useMemo(() => targets.data || [], [targets.data]);
-  const targetSignature = targetItems.map((target) => `${target.ref}:${target.project_id || ""}:${target.project_name || ""}`).join(",");
   const connectorKindOptions = useMemo(() => {
     const kinds = Array.from(new Set(targetItems.map((target) => target.connector_kind).filter(Boolean))).sort();
     return [{ value: "", label: "All connectors" }, ...kinds.map((kind) => ({ value: kind, label: connectorKindLabel(kind) }))];
   }, [targetItems]);
 
   useEffect(() => {
+    const generation = ++filterGenerationRef.current;
+    filterTransitionPendingRef.current = true;
+    requestGuard.invalidate("list");
+    requestGuard.invalidate("poll");
+    setState((current) => ({
+      ...current,
+      ...firstHistoryPage(current.limit),
+      nextCursor: null,
+    }));
     const timer = window.setTimeout(() => {
-      void loadHistoryForEffect(0);
+      void loadHistoryForEffect(firstHistoryPage(state.limit), { includeTotal: true }).finally(() => {
+        if (filterGenerationRef.current === generation) filterTransitionPendingRef.current = false;
+      });
     }, 250);
     return () => window.clearTimeout(timer);
   }, [
@@ -92,17 +125,37 @@ export function HistoryPage() {
     filters.source,
     filters.targetRef,
     filters.labelID,
+    state.limit,
     targetSignature,
+    requestGuard,
   ]);
 
+  const hasActiveHistory = state.data.some((item) => ["pending", "pending_approval", "running", "paused"].includes(item.status));
+
   useEffect(() => {
-    const hasActive = state.data.some((item) => ["pending", "pending_approval", "running", "paused"].includes(item.status));
-    if (!hasActive) return undefined;
-    const timer = window.setInterval(() => {
-      void loadHistoryForEffect(state.offset, { silent: true });
-    }, 1500);
-    return () => window.clearInterval(timer);
-  }, [state.data, state.offset]);
+    if (!hasActiveHistory) return undefined;
+    let canceled = false;
+    let timer = null;
+    const poll = async () => {
+      if (!filterTransitionPendingRef.current && !interactiveRequestPendingRef.current) {
+        await loadHistoryForEffect(
+          {
+            limit: state.limit,
+            cursor: state.cursor,
+            pageIndex: state.pageIndex,
+            cursorStack: state.cursorStack,
+          },
+          { silent: true, includeTotal: false, poll: true },
+        );
+      }
+      if (!canceled) timer = window.setTimeout(poll, 1500);
+    };
+    timer = window.setTimeout(poll, 1500);
+    return () => {
+      canceled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [hasActiveHistory, state.cursor, state.cursorStack, state.limit, state.pageIndex]);
 
   const stats = useMemo(() => {
     const data = state.data;
@@ -144,14 +197,28 @@ export function HistoryPage() {
     }
   }
 
-  async function loadHistory(offset = state.offset, options = {}) {
+  async function loadHistory(page = currentHistoryPage(state), options = {}) {
+    const channel = options.poll ? "poll" : "list";
+    if (!options.poll) {
+      interactiveRequestPendingRef.current = true;
+      requestGuard.invalidate("poll");
+    }
+    const request = requestGuard.begin(channel);
     if (!options.silent) {
-      setState((current) => ({ ...current, state: "loading", error: null }));
+      setState((current) => ({
+        ...current,
+        state: "loading",
+        cursor: page.cursor,
+        pageIndex: page.pageIndex,
+        cursorStack: page.cursorStack,
+        error: null,
+      }));
     }
     const params = new URLSearchParams({
-      limit: String(state.limit),
-      offset: String(Math.max(0, offset)),
+      limit: String(page.limit),
     });
+    if (page.cursor) params.set("cursor", page.cursor);
+    if (options.includeTotal !== undefined) params.set("include_total", String(options.includeTotal));
     if (filters.query.trim()) params.set("q", filters.query.trim());
     if (filters.projectID) params.set("project_id", filters.projectID);
     if (filters.connectorKind) params.set("connector_kind", filters.connectorKind);
@@ -170,28 +237,49 @@ export function HistoryPage() {
     if (filters.labelID) params.set("label_id", filters.labelID);
     try {
       const data = await apiGet(`/api/history?${params.toString()}`);
-      setState({
+      if (!request.isCurrent()) return;
+      setState((current) => ({
         state: "ready",
         data: data.items || [],
-        total: data.total || 0,
-        limit: data.limit || state.limit,
-        offset: data.offset || 0,
-        next_offset: data.next_offset ?? null,
+        total: resolvedHistoryTotal(current.total, data, page),
+        limit: data.limit || page.limit,
+        cursor: page.cursor,
+        pageIndex: page.pageIndex,
+        cursorStack: page.cursorStack,
+        nextCursor: data.next_cursor || null,
         error: null,
-      });
+      }));
     } catch (error) {
+      if (!request.isCurrent()) return;
       setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
+    } finally {
+      if (!options.poll && request.isCurrent()) interactiveRequestPendingRef.current = false;
     }
   }
 
+  function updateFilters(updater) {
+    filterGenerationRef.current += 1;
+    filterTransitionPendingRef.current = true;
+    requestGuard.invalidate("list");
+    requestGuard.invalidate("poll");
+    setState((current) => ({ ...current, ...firstHistoryPage(current.limit), nextCursor: null }));
+    setFilters(updater);
+  }
+
   async function openHistoryItem(item) {
+    const request = requestGuard.begin("detail");
     setSelected(item);
     try {
       const detail = await apiGet(`/api/history/${item.id}`);
-      setSelected(detail);
+      if (request.isCurrent()) setSelected(detail);
     } catch {
-      setSelected(item);
+      if (request.isCurrent()) setSelected(item);
     }
+  }
+
+  function closeHistoryItem() {
+    requestGuard.invalidate("detail");
+    setSelected(null);
   }
 
   function updateItemLabels(id, nextLabels) {
@@ -220,8 +308,8 @@ export function HistoryPage() {
     }
   }
 
-  const pageStart = state.total === 0 ? 0 : state.offset + 1;
-  const pageEnd = Math.min(state.offset + state.data.length, state.total);
+  const pageStart = state.total === 0 ? 0 : state.pageIndex * state.limit + 1;
+  const pageEnd = Math.min(state.pageIndex * state.limit + state.data.length, state.total);
 
   return (
     <section className="mx-auto grid w-full max-w-7xl gap-5">
@@ -235,7 +323,7 @@ export function HistoryPage() {
           variant="outline"
           onClick={() => {
             void loadHistoryTargets();
-            void loadHistory(state.offset);
+            void loadHistory(currentHistoryPage(state), { includeTotal: true });
           }}
           disabled={state.state === "loading"}
         >
@@ -255,7 +343,7 @@ export function HistoryPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[1fr_.8fr_.8fr_.8fr_1.2fr_.9fr]">
           <Select
             value={filters.projectID}
-            onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetRef: "" }))}
+            onChange={(event) => updateFilters((current) => ({ ...current, projectID: event.target.value, targetRef: "" }))}
           >
             <option value="">All projects</option>
             {projects.data.map((project) => (
@@ -266,7 +354,7 @@ export function HistoryPage() {
           </Select>
           <Select
             value={filters.connectorKind}
-            onChange={(event) => setFilters((current) => ({ ...current, connectorKind: event.target.value }))}
+            onChange={(event) => updateFilters((current) => ({ ...current, connectorKind: event.target.value }))}
           >
             {connectorKindOptions.map((option) => (
               <option key={option.value || "all"} value={option.value}>
@@ -274,21 +362,24 @@ export function HistoryPage() {
               </option>
             ))}
           </Select>
-          <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+          <Select value={filters.status} onChange={(event) => updateFilters((current) => ({ ...current, status: event.target.value }))}>
             {statusOptions.map((option) => (
               <option key={option.value || "all"} value={option.value}>
                 {option.label}
               </option>
             ))}
           </Select>
-          <Select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}>
+          <Select value={filters.source} onChange={(event) => updateFilters((current) => ({ ...current, source: event.target.value }))}>
             {sourceOptions.map((option) => (
               <option key={option.value || "all"} value={option.value}>
                 {option.label}
               </option>
             ))}
           </Select>
-          <Select value={filters.targetRef} onChange={(event) => setFilters((current) => ({ ...current, targetRef: event.target.value }))}>
+          <Select
+            value={filters.targetRef}
+            onChange={(event) => updateFilters((current) => ({ ...current, targetRef: event.target.value }))}
+          >
             <option value="">All connectors</option>
             {targetItems
               .filter((target) => !filters.projectID || String(target.project_id) === String(filters.projectID))
@@ -298,7 +389,7 @@ export function HistoryPage() {
                 </option>
               ))}
           </Select>
-          <Select value={filters.labelID} onChange={(event) => setFilters((current) => ({ ...current, labelID: event.target.value }))}>
+          <Select value={filters.labelID} onChange={(event) => updateFilters((current) => ({ ...current, labelID: event.target.value }))}>
             <option value="">All labels</option>
             {labels.data.map((label) => (
               <option key={label.id} value={label.id}>
@@ -312,7 +403,7 @@ export function HistoryPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
             <Input
               value={filters.query}
-              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              onChange={(event) => updateFilters((current) => ({ ...current, query: event.target.value }))}
               placeholder="Search targets, actions, output, paths, or tokens"
               className="pl-9"
             />
@@ -320,7 +411,9 @@ export function HistoryPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => setFilters({ query: "", projectID: "", connectorKind: "", status: "", source: "", targetRef: "", labelID: "" })}
+            onClick={() =>
+              updateFilters({ query: "", projectID: "", connectorKind: "", status: "", source: "", targetRef: "", labelID: "" })
+            }
           >
             Clear filters
           </Button>
@@ -394,16 +487,22 @@ export function HistoryPage() {
         end={pageEnd}
         total={state.total}
         disabled={state.state === "loading"}
-        onPrevious={() => loadHistory(Math.max(0, state.offset - state.limit))}
-        onNext={() => loadHistory(state.next_offset)}
-        hasPrevious={state.offset > 0}
-        hasNext={state.next_offset !== null && state.next_offset !== undefined}
+        onPrevious={() => {
+          const previous = previousHistoryPage(state);
+          if (previous) void loadHistory(previous);
+        }}
+        onNext={() => {
+          const next = nextHistoryPage(state);
+          if (next) void loadHistory(next);
+        }}
+        hasPrevious={state.pageIndex > 0}
+        hasNext={Boolean(state.nextCursor)}
       />
 
       <HistoryDialog
         item={selected}
         labels={labels.data}
-        onClose={() => setSelected(null)}
+        onClose={closeHistoryItem}
         onAttachLabel={attachLabel}
         onDetachLabel={detachLabel}
       />

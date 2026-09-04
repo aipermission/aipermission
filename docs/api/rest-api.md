@@ -1235,7 +1235,7 @@ payloads. Use `target_id` to filter one connector target, and `profile_id` when
 the target has multiple credential profiles such as `admin` and `readonly`:
 
 ```txt
-GET /api/history?limit=50&offset=0&connector_kind=ssh&activity_type=file_transfer&status=completed&q=backup
+GET /api/history?limit=50&connector_kind=ssh&activity_type=file_transfer&status=completed&q=backup
 GET /api/history?connector_kind=postgres&target_id=7&profile_id=11
 GET /api/history?connector_kind=mail&target_id=13&profile_id=8&status=completed
 ```
@@ -1296,15 +1296,22 @@ entry. List responses omit large output bodies; detail responses include
 request detail row for UI bulk command polling and output inspection. It is not
 an approval API. MCP approvals use connector action requests only.
 
-The History page uses paginated search. `q` searches command text, structured
-connector input/output JSON, reason, status, captured output, error,
-target/profile name, action name, and token name. Command text and output
-fields use SQLCipher-backed FTS4 indexes where available; connector JSON,
-target/profile names, action names, and token names remain regular filtered
-fields:
+The History page uses stable cursor pagination ordered by `(created_at, id)`.
+The first page includes an exact `total` by default. Follow `next_cursor` for
+later pages; cursor pages omit the count unless `include_total=true` is
+explicitly requested. This avoids both deep `OFFSET` scans and repeated exact
+counts during polling. Cursors are opaque and must not be constructed or
+modified by clients. `offset` is rejected on this endpoint.
+
+`q` searches command text, structured connector input/output JSON, reason,
+status, captured output, error, target/profile name, action name, and token
+name. Command text and output fields use SQLCipher-backed FTS4 indexes where
+available; connector JSON, target/profile names, action names, and token names
+remain regular filtered fields:
 
 ```txt
-GET /api/history?limit=50&offset=0&q=docker&connector_kind=ssh&status=completed&label_id=4
+GET /api/history?limit=50&q=docker&connector_kind=ssh&status=completed&label_id=4
+GET /api/history?limit=50&cursor=MjAyNi0wOS0wNVQxMjozMDowMC4wMDBaCjEyMA
 ```
 
 History response items include `source`, `tracking_reason`, and `output_truncated`. Manual Console command logging records typed or pasted terminal input as `source = manual`. For simple commands, AIPermission uses the normal PTY transcript to capture output when the shell prompt returns, then marks the row `completed` or `canceled`. Because the gateway does not install shell hooks or append hidden command suffixes, it cannot reliably infer every interactive shell state. Interactive commands, nested shells, heredocs, and unsafe control sequences are stored as `untracked` best-effort rows, with output still available in the Console transcript. Arrow/history recall uses a placeholder command because the terminal does not send the recalled command text; simple recalled commands may still capture output when the prompt returns, while ambiguous interactive recalled commands are left `untracked`.
@@ -1316,10 +1323,14 @@ The paginated response is an envelope:
   "items": [],
   "total": 120,
   "limit": 50,
-  "offset": 0,
-  "next_offset": 50
+  "next_cursor": "MjAyNi0wOS0wNVQxMjozMDowMC4wMDBaCjEyMA",
+  "has_more": true
 }
 ```
+
+`total` is optional on cursor pages. `has_more = false` means
+`next_cursor` is omitted. A changed filter set starts a new traversal without
+a cursor.
 
 Paginated list responses omit full stdout/stderr. `GET /api/history/{id}` returns the normalized detail payload. `GET /api/console/command-requests/{id}` returns the raw command request detail for Console-specific flows.
 
@@ -1415,7 +1426,8 @@ and token names remain regular filtered fields:
 GET /api/audit-logs?limit=50&offset=0&q=docker&actor=mcp&runtime_id=3
 ```
 
-List responses use the same pagination envelope as History and include a payload preview. `GET /api/audit-logs/{id}` returns the full payload.
+Audit list responses use the shared offset pagination envelope and include a
+payload preview. `GET /api/audit-logs/{id}` returns the full payload.
 
 Token create/revoke, permission changes, security settings changes, retention cleanup, maintenance console lifecycle, connector console lifecycle/input, MCP execution states, and approval decisions are written.
 
