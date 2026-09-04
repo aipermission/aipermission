@@ -223,7 +223,7 @@ func TestStoreActionRequestHistoryProjectionIsAtomic(t *testing.T) {
 			t.Fatalf("drop history projection: %v", err)
 		}
 
-		if _, err := store.MarkActionRequestRunning(ctx, request.ID); err == nil {
+		if _, err := store.MarkActionRequestRunning(ctx, request.ID, "test-owner", time.Now().Add(time.Minute)); err == nil {
 			t.Fatalf("claim should fail when its history projection cannot be written")
 		}
 		var status string
@@ -471,7 +471,7 @@ func TestStoreActionRequestApprovalHelpers(t *testing.T) {
 	if len(pending) != 1 || pending[0].ID != request.ID {
 		t.Fatalf("unexpected pending requests: %#v", pending)
 	}
-	running, err := store.MarkActionRequestRunning(ctx, request.ID)
+	running, err := store.MarkActionRequestRunning(ctx, request.ID, "test-owner", time.Now().Add(time.Minute))
 	if err != nil {
 		t.Fatalf("mark running: %v", err)
 	}

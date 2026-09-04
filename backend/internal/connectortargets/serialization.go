@@ -24,6 +24,7 @@ var (
 	ErrActionRequestNotPending     = errors.New("connector action request is not pending")
 	ErrActionRequestIdempotency    = errors.New("connector action idempotency key was already used for a different request")
 	ErrActionRequestInsertConflict = errors.New("connector action request could not be inserted; retry with the same idempotency key")
+	ErrActionRequestExecutionClaim = errors.New("connector action execution claim is no longer valid")
 )
 
 const MaxIdempotencyKeyBytes = 128
@@ -205,6 +206,7 @@ func actionRequestSelectSQL() string {
 			r.retry_policy_json,
 			r.idempotency_key, r.idempotency_identity_hash,
 			r.session_id, r.session_generation,
+			r.execution_owner, r.execution_lease_expires_at, r.dispatch_started_at,
 			r.created_at, r.completed_at
 		FROM connector_action_requests r
 		JOIN connector_targets t ON t.id = r.target_id
@@ -251,6 +253,9 @@ func scanActionRequest(row rowScanner) (ActionRequest, error) {
 		&request.IdempotencyIdentityHash,
 		&sessionID,
 		&sessionGeneration,
+		&request.ExecutionOwner,
+		&request.ExecutionLeaseExpiresAt,
+		&request.DispatchStartedAt,
 		&request.CreatedAt,
 		&completedAt,
 	); err != nil {

@@ -369,7 +369,9 @@ func (s *Server) markPendingConnectorActionRunning(ctx context.Context, runtime 
 		func() any { return connectorActionRequestAuditPayload(running) },
 		func(tx *sql.Tx) error {
 			var err error
-			running, err = connectortargets.NewTxStore(tx).MarkActionRequestRunning(ctx, item.ID)
+			running, err = connectortargets.NewTxStore(tx).MarkActionRequestRunning(
+				ctx, item.ID, runtime.runtimeInstanceID, connectorActionLeaseExpiry(time.Now().UTC()),
+			)
 			return err
 		},
 	); err != nil {
@@ -387,6 +389,13 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 			runtime.clearConnectorCredentialBoundary(item.ID)
 		}
 	}()
+	claimed, dispatched, err := s.beginConnectorActionDispatch(ctx, runtime, item.ID)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	if !dispatched {
+		return claimed, nil
+	}
 	result, err := s.executePreparedConnectorAction(ctx, runtime, execution.principal, prepared, execution.snapshot)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)
