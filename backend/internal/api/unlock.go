@@ -123,7 +123,7 @@ func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.issueUISession(w); err != nil {
+	if err := s.issueUISessionLocked(w); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -170,7 +170,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			attempt.success()
-			if err := s.issueUISession(w); err != nil {
+			if err := s.issueUISessionLocked(w); err != nil {
 				writeInternalError(w)
 				return
 			}
@@ -194,7 +194,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 			s.applyRuntimeLocked(runtime)
 		}
 		attempt.success()
-		if err := s.issueUISession(w); err != nil {
+		if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
 			return
 		}
@@ -227,7 +227,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	attempt.success()
-	if err := s.issueUISession(w); err != nil {
+	if err := s.issueUISessionLocked(w); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -275,7 +275,7 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 		}
 		if s.database == nil {
 			s.clearUISessions(w)
-		} else if err := s.issueUISession(w); err != nil {
+		} else if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
 			return
 		}

@@ -131,6 +131,9 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 		if contract, ok := typedContracts[route]; ok {
 			responses[contract.StatusCode] = responseWithSchema("Successful response", contract.ResponseSchema)
 			contractLevel = "typed-response"
+			for status, schema := range contract.AdditionalResponses {
+				responses[status] = responseWithSchema("Documented error response", schema)
+			}
 		}
 		operation := map[string]any{
 			"operationId":                   operationID,
@@ -140,6 +143,15 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 		}
 		if parameters := pathParameters(route.Path); len(parameters) > 0 {
 			operation["parameters"] = parameters
+		}
+		if contract, ok := typedContracts[route]; ok && contract.RequestSchema != nil {
+			operation["requestBody"] = map[string]any{
+				"required": true,
+				"content": map[string]any{
+					"application/json": map[string]any{"schema": contract.RequestSchema},
+				},
+			}
+			operation["x-aipermission-contract-level"] = "typed-request-response"
 		}
 		if paths[route.Path] == nil {
 			paths[route.Path] = map[string]any{}

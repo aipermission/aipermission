@@ -3,8 +3,10 @@ package restcontract
 import "fmt"
 
 type operationContract struct {
-	StatusCode     string
-	ResponseSchema map[string]any
+	StatusCode          string
+	RequestSchema       map[string]any
+	ResponseSchema      map[string]any
+	AdditionalResponses map[string]map[string]any
 }
 
 func sharedSchemas() map[string]any {
@@ -77,10 +79,42 @@ func sharedSchemas() map[string]any {
 		}, []string{"ref", "project_id", "project_name", "project_slug", "connector_kind", "target_id", "target_name", "profile_id", "profile_kind", "profile_label", "status", "created_at", "updated_at"}),
 		"ConnectorActionApprovalSummary": connectorActionApprovalSchema(false),
 		"ConnectorActionApprovalDetail":  connectorActionApprovalSchema(true),
-		"HistoryEntry":                   historyEntrySchema(),
-		"AuditEntry":                     auditEntrySchema(),
-		"HistoryPage":                    pageSchema(refSchema("HistoryEntry")),
-		"AuditPage":                      pageSchema(refSchema("AuditEntry")),
+		"LocalConnectorActionRequest": objectSchema(map[string]any{
+			"target_ref":      stringSchema(),
+			"action_name":     stringSchema(),
+			"input":           stringMap,
+			"reason":          stringSchema(),
+			"idempotency_key": stringSchema(),
+		}, []string{"target_ref", "action_name"}),
+		"ConnectorActionResponse": objectSchema(map[string]any{
+			"status":              actionStatusSchema(),
+			"request_id":          integerSchema(),
+			"target_ref":          stringSchema(),
+			"target_name":         stringSchema(),
+			"connector_kind":      stringSchema(),
+			"profile_label":       stringSchema(),
+			"action_name":         stringSchema(),
+			"input":               stringMap,
+			"output":              map[string]any{},
+			"display_text":        stringSchema(),
+			"error":               stringSchema(),
+			"retry_policy":        retryPolicySchema(),
+			"retry_after_seconds": integerSchema(),
+			"assistant_hint":      stringSchema(),
+			"output_withheld":     boolSchema(),
+			"replayed":            boolSchema(),
+		}, []string{"status", "request_id", "target_ref", "connector_kind", "action_name", "retry_policy"}),
+		"ConnectorActionOutcomeUnknown": objectSchema(map[string]any{
+			"status":         enumSchema("outcome_unknown"),
+			"code":           enumSchema("connector_action_persistence_unknown"),
+			"request_id":     integerSchema(),
+			"error":          stringSchema(),
+			"assistant_hint": stringSchema(),
+		}, []string{"status", "code", "request_id", "error", "assistant_hint"}),
+		"HistoryEntry": historyEntrySchema(),
+		"AuditEntry":   auditEntrySchema(),
+		"HistoryPage":  pageSchema(refSchema("HistoryEntry")),
+		"AuditPage":    pageSchema(refSchema("AuditEntry")),
 		"DiagnosticsConnector": objectSchema(map[string]any{
 			"kind": stringSchema(), "version": stringSchema(),
 		}, []string{"kind", "version"}),
@@ -108,6 +142,15 @@ func typedOperationContracts() map[Route]operationContract {
 		{Method: "GET", Path: "/api/audit-logs"}:                                           okContract(refSchema("AuditPage")),
 		{Method: "GET", Path: "/api/audit-logs/{id}"}:                                      okContract(refSchema("AuditEntry")),
 		{Method: "GET", Path: "/api/settings/diagnostics"}:                                 okContract(refSchema("DiagnosticsReport")),
+		{Method: "POST", Path: "/api/connector-actions/local-run"}: {
+			StatusCode:     "200",
+			RequestSchema:  refSchema("LocalConnectorActionRequest"),
+			ResponseSchema: refSchema("ConnectorActionResponse"),
+			AdditionalResponses: map[string]map[string]any{
+				"409": refSchema("Error"),
+				"503": refSchema("ConnectorActionOutcomeUnknown"),
+			},
+		},
 	}
 }
 

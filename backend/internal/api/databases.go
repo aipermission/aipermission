@@ -171,7 +171,7 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 	state := "locked"
 	if s.database != nil {
 		state = "unlocked"
-		if err := s.issueUISession(w); err != nil {
+		if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
 			return
 		}
@@ -300,7 +300,7 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 	}
 	if runtime := s.workspaces[targetID]; runtime != nil && runtime.path == targetPath {
 		s.applyRuntimeLocked(runtime)
-		if err := s.issueUISession(w); err != nil {
+		if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
 			return
 		}
@@ -337,7 +337,7 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 	s.workspaces[targetID] = runtime
 	s.applyRuntimeLocked(runtime)
 	s.initializeRetention(runtime)
-	if err := s.issueUISession(w); err != nil {
+	if err := s.issueUISessionLocked(w); err != nil {
 		writeInternalError(w)
 		return
 	}

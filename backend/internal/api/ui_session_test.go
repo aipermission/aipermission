@@ -15,7 +15,10 @@ func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {
 	}
 
 	issueResponse := httptest.NewRecorder()
-	if err := srv.issueUISession(issueResponse); err != nil {
+	srv.mu.Lock()
+	err := srv.issueUISessionLocked(issueResponse)
+	srv.mu.Unlock()
+	if err != nil {
 		t.Fatalf("issue ui session: %v", err)
 	}
 	for _, cookie := range issueResponse.Result().Cookies() {
@@ -37,20 +40,28 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 	first := &Server{
 		config:         config.Config{FrontendPort: "3210"},
 		activeDatabase: "default",
+		workspaces:     map[string]*databaseRuntime{"default": {workspaceUUID: "workspace-one"}},
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 	second := &Server{
 		config:         config.Config{FrontendPort: "3212"},
 		activeDatabase: "default",
+		workspaces:     map[string]*databaseRuntime{"default": {workspaceUUID: "workspace-two"}},
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 
 	firstResponse := httptest.NewRecorder()
-	if err := first.issueUISession(firstResponse); err != nil {
+	first.mu.Lock()
+	err := first.issueUISessionLocked(firstResponse)
+	first.mu.Unlock()
+	if err != nil {
 		t.Fatalf("issue first ui session: %v", err)
 	}
 	secondResponse := httptest.NewRecorder()
-	if err := second.issueUISession(secondResponse); err != nil {
+	second.mu.Lock()
+	err = second.issueUISessionLocked(secondResponse)
+	second.mu.Unlock()
+	if err != nil {
 		t.Fatalf("issue second ui session: %v", err)
 	}
 
@@ -63,6 +74,9 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 	}
 	if firstCookies["aipermission_csrf_3210"] == nil || secondCookies["aipermission_csrf_3212"] == nil {
 		t.Fatalf("expected port-scoped csrf cookies, got first=%v second=%v", firstCookies, secondCookies)
+	}
+	if firstCookies["aipermission_workspace_3210"].Value != uiRetryIdentity("default", "workspace-one") || secondCookies["aipermission_workspace_3212"].Value != uiRetryIdentity("default", "workspace-two") {
+		t.Fatalf("expected workspace-bound cookies, got first=%v second=%v", firstCookies, secondCookies)
 	}
 
 	firstRequest := httptest.NewRequest(http.MethodGet, "/api/status", nil)
@@ -94,6 +108,30 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 	secondMutation.Header.Set(uiCSRFHeaderName, secondCSRF.Value)
 	if !second.hasValidUICSRF(secondMutation) {
 		t.Fatal("second instance should accept its own csrf cookie")
+	}
+}
+
+func TestEnsureUIWorkspaceCookieReplacesStaleDatabaseIdentity(t *testing.T) {
+	srv := &Server{
+		config:         config.Config{FrontendPort: "3212"},
+		activeDatabase: "second",
+		workspaces:     map[string]*databaseRuntime{"second": {workspaceUUID: "current-workspace"}},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	request.AddCookie(&http.Cookie{Name: "aipermission_workspace_3212", Value: "old-workspace"})
+	recorder := httptest.NewRecorder()
+	srv.ensureUIWorkspaceCookie(recorder, request)
+	cookie := cookiesByName(recorder.Result().Cookies())["aipermission_workspace_3212"]
+	if cookie == nil || cookie.Value != uiRetryIdentity("second", "current-workspace") {
+		t.Fatalf("workspace cookie=%v, want current workspace", cookie)
+	}
+}
+
+func TestUIRetryIdentitySeparatesRestoredDatabaseCopies(t *testing.T) {
+	original := uiRetryIdentity("primary", "restored-workspace")
+	copy := uiRetryIdentity("restored-copy", "restored-workspace")
+	if original == "" || copy == "" || original == copy {
+		t.Fatalf("retry identities must differ across database instances: original=%q copy=%q", original, copy)
 	}
 }
 

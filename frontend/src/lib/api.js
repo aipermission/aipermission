@@ -1,12 +1,10 @@
+import { completeLocalActionRetry, markLocalActionRetryOutcome, prepareLocalActionRetry } from "./local-action-retry.js";
 import { scopedUICookieName } from "./ui-cookie.js";
 
 const viteEnv = import.meta.env || {};
 
 export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
-
-const localActionRetryKeys = new Map();
-const localActionRetryStoragePrefix = "aipermission.local-action-retry.v1.";
 
 export async function apiGet(path) {
   const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
@@ -22,11 +20,20 @@ export async function apiPost(path, body, options = {}) {
     signal: options.signal,
     credentials: "include",
   });
-  const data = await readResponse(response, { requireJSON: Boolean(prepared.retrySignature) });
-  if (prepared.retrySignature && response.ok && isAcknowledgedLocalActionResponse(data)) {
-    clearLocalActionRetryKey(prepared.retrySignature, prepared.idempotencyKey);
+  let data;
+  try {
+    data = await readResponse(response, { requireJSON: Boolean(prepared.retry) });
+  } catch (error) {
+    if (prepared.retry && error?.data?.status === "outcome_unknown") markLocalActionRetryOutcome(prepared.retry, error.data);
+    throw error;
   }
-  if (prepared.retrySignature && response.ok && !isAcknowledgedLocalActionResponse(data)) {
+  if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status !== "outcome_unknown") {
+    completeLocalActionRetry(prepared.retry);
+  }
+  if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status === "outcome_unknown") {
+    markLocalActionRetryOutcome(prepared.retry, data);
+  }
+  if (prepared.retry && response.ok && !isAcknowledgedLocalActionResponse(data)) {
     throw new Error("Invalid connector action response from gateway.");
   }
   return data;
@@ -56,60 +63,9 @@ function isAcknowledgedLocalActionResponse(data) {
 }
 
 async function preparePostBody(path, body) {
-  if (path !== "/api/connector-actions/local-run" || body?.idempotency_key) return { body, retrySignature: "" };
-  const signature = stableRequestSignature(body || {});
-  const storage = browserLocalStorage();
-  const retrySignature = storage ? `${localActionRetryStoragePrefix}${await sha256Hex(signature)}` : signature;
-  let idempotencyKey = storage ? readPersistedRetryKey(storage, retrySignature) : localActionRetryKeys.get(retrySignature);
-  if (!idempotencyKey) {
-    idempotencyKey = globalThis.crypto?.randomUUID?.() || `ui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    if (storage) storage.setItem(retrySignature, idempotencyKey);
-    else localActionRetryKeys.set(retrySignature, idempotencyKey);
-  }
-  return { body: { ...body, idempotency_key: idempotencyKey }, retrySignature, idempotencyKey };
-}
-
-function clearLocalActionRetryKey(retrySignature, idempotencyKey) {
-  const storage = browserLocalStorage();
-  if (storage) {
-    if (storage.getItem(retrySignature) === idempotencyKey) storage.removeItem(retrySignature);
-    return;
-  }
-  if (localActionRetryKeys.get(retrySignature) === idempotencyKey) localActionRetryKeys.delete(retrySignature);
-}
-
-function browserLocalStorage() {
-  if (typeof window === "undefined") return null;
-  try {
-    if (!window.localStorage) throw new Error("storage unavailable");
-    return window.localStorage;
-  } catch {
-    throw new Error("Secure retry storage is unavailable; the connector action was not sent.");
-  }
-}
-
-function readPersistedRetryKey(storage, key) {
-  const value = storage.getItem(key);
-  return typeof value === "string" && value.length > 0 ? value : "";
-}
-
-async function sha256Hex(value) {
-  if (!globalThis.crypto?.subtle || typeof TextEncoder === "undefined") {
-    throw new Error("Secure request hashing is unavailable; the connector action was not sent.");
-  }
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function stableRequestSignature(value) {
-  if (Array.isArray(value)) return `[${value.map(stableRequestSignature).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableRequestSignature(value[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+  if (path !== "/api/connector-actions/local-run" || body?.idempotency_key) return { body, retry: null };
+  const retry = await prepareLocalActionRetry(body || {});
+  return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry };
 }
 
 export async function apiPostForm(path, formData, options = {}) {

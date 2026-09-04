@@ -481,6 +481,147 @@
         ],
         "type": "object"
       },
+      "ConnectorActionOutcomeUnknown": {
+        "additionalProperties": false,
+        "properties": {
+          "assistant_hint": {
+            "type": "string"
+          },
+          "code": {
+            "enum": [
+              "connector_action_persistence_unknown"
+            ],
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "request_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "outcome_unknown"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "code",
+          "request_id",
+          "error",
+          "assistant_hint"
+        ],
+        "type": "object"
+      },
+      "ConnectorActionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "type": "string"
+          },
+          "assistant_hint": {
+            "type": "string"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "display_text": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "output": {},
+          "output_withheld": {
+            "type": "boolean"
+          },
+          "profile_label": {
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "request_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "retry_after_seconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "retry_policy": {
+            "additionalProperties": false,
+            "properties": {
+              "class": {
+                "enum": [
+                  "read_only",
+                  "idempotent",
+                  "conditional",
+                  "non_idempotent"
+                ],
+                "type": "string"
+              },
+              "guidance": {
+                "type": "string"
+              },
+              "precondition_fields": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "class",
+              "guidance"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "failed",
+              "canceled",
+              "running",
+              "approval_pending",
+              "pending_approval",
+              "blocked",
+              "stale",
+              "declined",
+              "expired",
+              "error",
+              "outcome_unknown",
+              "pending",
+              "paused",
+              "untracked"
+            ],
+            "type": "string"
+          },
+          "target_name": {
+            "type": "string"
+          },
+          "target_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "request_id",
+          "target_ref",
+          "connector_kind",
+          "action_name",
+          "retry_policy"
+        ],
+        "type": "object"
+      },
       "ConnectorCredentialProfile": {
         "additionalProperties": false,
         "properties": {
@@ -1132,6 +1273,33 @@
           "total",
           "limit",
           "offset"
+        ],
+        "type": "object"
+      },
+      "LocalConnectorActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "target_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_ref",
+          "action_name"
         ],
         "type": "object"
       },
@@ -2071,7 +2239,47 @@
     "/api/connector-actions/local-run": {
       "post": {
         "operationId": "postApiConnectorActionsLocalRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalConnectorActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorActionResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorActionOutcomeUnknown"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -2086,7 +2294,7 @@
         "tags": [
           "connector-actions"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/connector-targets": {

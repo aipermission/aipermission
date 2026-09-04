@@ -75,6 +75,12 @@ telemetry are a separate best-effort class. See
 
 Most `/api/*` application endpoints return `423 Locked` until a database is unlocked. Setup/import/unlock endpoints remain available while locked. After a database is unlocked, protected web REST endpoints return `401 Unauthorized` if the local browser session cookie is missing or invalid.
 
+The browser session and local connector retry cookies are scoped by the local
+HTTP origin and bound to the active local database identity. A restored copy
+with the same embedded workspace UUID receives a distinct retry identity, so a
+pending mutation from the source database cannot be replayed accidentally from
+the restored copy.
+
 Database unlock is process state. Closing the browser does not lock the backend. If the browser session cookie is deleted or expires while the backend remains unlocked, `GET /api/unlock/status` returns `state: "session_required"` and the UI asks for the same database password to issue a new session cookie. Unlock status lists database IDs/names/states for the UI, but omits local filesystem paths. `Switch` can move the UI context to another already-unlocked database without stopping work in the previous workspace.
 
 If a target database is locked, `switch` requires its password. If the same API token exists in more than one unlocked database, MCP authentication returns `409 Conflict`.
@@ -926,6 +932,12 @@ one-time manual purge:
 
 Valid targets are `history`, `audit`, `console`, and `messages`.
 
+Completed idempotent connector actions leave a non-secret replay tombstone when
+their detailed history expires. The tombstone preserves target/profile/action
+identity and retry policy, but not input, output, reason, or credential data.
+It expires independently after 30 days and is pruned by the hourly retention
+worker even when configurable history retention is disabled.
+
 The maintenance console is a local UI-only realtime PTY for diagnostics inside
 the gateway runtime container. It is protected by the normal local HTTP
 boundary, UI session, and CSRF checks, is not exposed through MCP, and uses the
@@ -1233,11 +1245,10 @@ operator connector consoles. It runs one connector action as source `manual`
 without MCP token permission checks, stores the action request in the shared
 connector history/audit pipeline, and is protected by the UI session plus CSRF.
 MCP clients must use `POST /api/mcp/connector-actions/call` instead.
-The MCP endpoint requires an `idempotency_key` of at most 128 UTF-8 bytes for
-mutations. Gateway 0.2.43 temporarily permits older MCP clients to omit it for
-read-only actions; current MCP packages require it for every action. The local
-UI endpoint accepts one and generates it in the browser when omitted.
-The browser generates one per deliberate local submission and retains it after
+Both execution routes require an `idempotency_key` of at most 128 UTF-8 bytes
+for mutations. Gateway 0.2.43 temporarily permits older MCP clients to omit it
+for read-only actions; current MCP packages require it for every action. The
+browser generates one key per deliberate local submission and retains it after
 an uncertain network failure, unreadable response body, malformed success JSON,
 or `5xx` response. It releases the key only after reading a valid response with
 a positive `request_id` and recognized connector lifecycle `status`. If remote
@@ -1251,6 +1262,14 @@ Conflict`.
 Blocked and missing-permission outcomes are also replayed. After changing a
 permission, a client must use a new key for the new logical attempt rather than
 retrying the previously blocked request.
+
+The browser keeps unresolved local retry identities in an origin-local bounded
+ledger. Transport failures reuse the same identity on the next identical
+submission. An `outcome_unknown` identity is never discarded automatically:
+the operator must inspect History and external state, then explicitly mark it
+reconciled in Settings or confirm that the next identical submission is a new
+external attempt. Browser storage corruption also fails closed and requires an
+explicit ledger reset from Settings.
 
 `GET /api/history/targets` returns target/profile facets derived from
 `history_entries`, not only currently active connector targets. Use it for

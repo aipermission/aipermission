@@ -30,6 +30,13 @@ type databaseSnapshot struct {
 
 func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request) {
 	s.lifecycleMu.RLock()
+	// This route releases the lifecycle lock before streaming the completed
+	// snapshot, so repeat the database-bound session check after acquiring it.
+	if !s.hasValidUISession(r) {
+		s.lifecycleMu.RUnlock()
+		writeError(w, http.StatusUnauthorized, "ui session required")
+		return
+	}
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		s.lifecycleMu.RUnlock()
@@ -244,7 +251,7 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeInternalError(w)
 		return
 	}
-	s.issuePreparedUISession(w, preparedSession)
+	s.issuePreparedUISessionLocked(w, preparedSession)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "imported",

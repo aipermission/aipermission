@@ -98,4 +98,25 @@ describe("runGuardedConnectorAction", () => {
     await expect(runGuardedConnectorAction(options)).rejects.toBe(failure);
     expect(setState).toHaveBeenLastCalledWith({ state: "idle", error: "", message: "" });
   });
+
+  it("surfaces structured uncertain outcomes and refreshes activity", async () => {
+    const onRefreshActivity = vi.fn();
+    const failure = Object.assign(new Error("persistence uncertain"), {
+      data: {
+        status: "outcome_unknown",
+        request_id: 91,
+        error: "The action may have completed.",
+        assistant_hint: "Inspect external state before retrying.",
+      },
+    });
+    const { setState, options } = runnerOptions({ post: async () => Promise.reject(failure), onRefreshActivity });
+
+    await expect(runGuardedConnectorAction(options)).rejects.toBe(failure);
+    expect(onRefreshActivity).toHaveBeenCalledOnce();
+    expect(setState).toHaveBeenLastCalledWith({
+      state: "error",
+      error: "The action may have completed. Request 91. Inspect external state before retrying.",
+      message: "",
+    });
+  });
 });
