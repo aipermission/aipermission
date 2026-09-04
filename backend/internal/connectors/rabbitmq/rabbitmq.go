@@ -756,7 +756,7 @@ func (client *rabbitClient) do(ctx context.Context, method string, path string, 
 		return true, true, nil
 	}
 	if len(data) == 0 {
-		return true, true, nil
+		return true, false, fmt.Errorf("rabbitmq response body is empty")
 	}
 	if err := json.Unmarshal(data, out); err != nil {
 		return true, false, fmt.Errorf("decode rabbitmq response: %w", err)
