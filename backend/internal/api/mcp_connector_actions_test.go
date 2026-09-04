@@ -1,12 +1,15 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -130,7 +133,8 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	request := connectortargets.ActionRequest{
 		TokenID: &token.ID, SessionID: &sessionID, SessionGeneration: &generation,
 		TargetID: target.ID, ProfileID: target.ProfileID, ConnectorKind: "ssh", ActionName: "exec",
-		Output: map[string]any{"secret_derived_result": "withhold-me"}, DisplayText: "withhold-me",
+		Input: map[string]any{"secret_input": "withhold-me"}, Output: map[string]any{"secret_derived_result": "withhold-me"},
+		DisplayText: "withhold-me", Error: "withhold-me",
 	}
 	for name, malformed := range map[string]connectortargets.ActionRequest{
 		"missing session id":         {SessionGeneration: &generation},
@@ -143,7 +147,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 			response := connectorActionResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), runtime, token.ID, malformed, connectors.ActionResult{
 				Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 			})
-			if !response.OutputWithheld || response.Output != nil || response.DisplayText != "" {
+			if !response.OutputWithheld || response.Input != nil || response.Output != nil || response.DisplayText != "" || response.Error != "" {
 				t.Fatalf("partial Vault session handle exposed output: %#v", response)
 			}
 		})
@@ -154,7 +158,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	withheld := connectorActionResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), runtime, token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
-	if !withheld.OutputWithheld || withheld.Output != nil || withheld.DisplayText != "" {
+	if !withheld.OutputWithheld || withheld.Input != nil || withheld.Output != nil || withheld.DisplayText != "" || withheld.Error != "" {
 		t.Fatalf("completed call/replay response exposed output without a lease: %#v", withheld)
 	}
 	if err := runtime.vaultLeases.Grant(vaultsessions.Lease{
@@ -461,4 +465,98 @@ func TestMCPConnectorActionWithheldOutputPreservesNoRetryGuidance(t *testing.T) 
 	if !strings.Contains(response.AssistantHint, "Do not retry") || !strings.Contains(response.AssistantHint, "authorization") {
 		t.Fatalf("withheld response lost safety guidance: %q", response.AssistantHint)
 	}
+}
+
+func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := t.Context()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "response-fence"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	store := connectortargets.NewStore(fixture.db)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
+		ActionName: postgresconnector.ActionGetSchemas, ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("set permission: %v", err)
+	}
+	runtime := fixture.server.activeRuntime()
+	runtime.setMCPStarted(true)
+	request := connectortargets.ActionRequest{
+		ID: 1, TokenID: &token.ID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionGetSchemas,
+	}
+	response := connectorActionRequestToMCPResponse(fixture.server.connectorAdapterRegistry(), request)
+	response.Output = map[string]any{"sensitive": "bounded-result"}
+	w := newBlockingResponseWriter()
+	writeDone := make(chan struct{})
+	go func() {
+		defer close(writeDone)
+		mcpHandlers{fixture.server}.writeMCPConnectorActionResponse(
+			w,
+			httptest.NewRequest(http.MethodGet, "/api/mcp/connector-action-requests/1", nil),
+			runtime,
+			token.ID,
+			request,
+			response,
+		)
+	}()
+	select {
+	case <-w.entered:
+	case <-time.After(time.Second):
+		t.Fatal("response writer was not reached")
+	}
+	revokeDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		revokeDone <- performJSON(fixture.server.Handler(), http.MethodPost, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/revoke", "", nil)
+	}()
+	select {
+	case <-revokeDone:
+		t.Fatal("token revocation crossed an in-progress authorized response write")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(w.release)
+	<-writeDone
+	revoked := <-revokeDone
+	if revoked.Code != http.StatusOK {
+		t.Fatalf("revoke token: %d %s", revoked.Code, revoked.Body.String())
+	}
+	if !strings.Contains(w.body.String(), "bounded-result") {
+		t.Fatalf("authorized response was not written before revocation: %s", w.body.String())
+	}
+
+	after := httptest.NewRecorder()
+	mcpHandlers{fixture.server}.writeMCPConnectorActionResponse(
+		after,
+		httptest.NewRequest(http.MethodGet, "/api/mcp/connector-action-requests/1", nil),
+		runtime,
+		token.ID,
+		request,
+		response,
+	)
+	if strings.Contains(after.Body.String(), "bounded-result") || !strings.Contains(after.Body.String(), `"output_withheld":true`) {
+		t.Fatalf("revoked response crossed the write boundary: %s", after.Body.String())
+	}
+}
+
+type blockingResponseWriter struct {
+	header  http.Header
+	body    bytes.Buffer
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newBlockingResponseWriter() *blockingResponseWriter {
+	return &blockingResponseWriter{header: make(http.Header), entered: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (w *blockingResponseWriter) Header() http.Header { return w.header }
+func (w *blockingResponseWriter) WriteHeader(int)     {}
+func (w *blockingResponseWriter) Write(value []byte) (int, error) {
+	w.once.Do(func() { close(w.entered) })
+	<-w.release
+	return w.body.Write(value)
 }

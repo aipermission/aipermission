@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -243,9 +244,9 @@ func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Reque
 		"action_name":    request.ActionName,
 		"replayed":       result.Replayed,
 	})
-	response := connectorActionResponseForToken(r.Context(), s.connectorAdapterRegistry(), auth.runtime, auth.TokenID, result.Request, result.Result)
+	response := connectorActionToMCPResponse(s.connectorAdapterRegistry(), result.Request, result.Result)
 	response.Replayed = result.Replayed
-	writeJSON(w, http.StatusOK, response)
+	s.writeMCPConnectorActionResponse(w, r, auth.runtime, auth.TokenID, result.Request, response)
 }
 
 func (s mcpHandlers) mcpGetConnectorActionRequest(w http.ResponseWriter, r *http.Request) {
@@ -270,26 +271,67 @@ func (s mcpHandlers) mcpGetConnectorActionRequest(w http.ResponseWriter, r *http
 		writeError(w, http.StatusNotFound, "connector action request not found")
 		return
 	}
-	response := connectorActionResponseForToken(r.Context(), s.connectorAdapterRegistry(), auth.runtime, auth.TokenID, request, connectors.ActionResult{
+	response := connectorActionToMCPResponse(s.connectorAdapterRegistry(), request, connectors.ActionResult{
 		Status: request.Status, Output: request.Output, DisplayText: request.DisplayText, Error: request.Error,
 	})
-	writeJSON(w, http.StatusOK, response)
+	s.writeMCPConnectorActionResponse(w, r, auth.runtime, auth.TokenID, request, response)
 }
 
 func connectorActionResponseForToken(ctx context.Context, adapterRegistry *connectorapi.Registry, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
 	response := connectorActionToMCPResponse(adapterRegistry, request, result)
 	if !connectorActionVaultPollAuthorized(ctx, runtime, tokenID, request) {
-		response.Output = nil
-		response.DisplayText = ""
-		response.OutputWithheld = true
-		const authorizationHint = "Current Vault session authorization no longer permits returning this connector output."
-		if response.AssistantHint == "" {
-			response.AssistantHint = authorizationHint
-		} else {
-			response.AssistantHint += " " + authorizationHint
-		}
+		withholdMCPConnectorActionResponse(&response)
 	}
 	return response
+}
+
+func (s mcpHandlers) writeMCPConnectorActionResponse(
+	w http.ResponseWriter,
+	r *http.Request,
+	runtime *databaseRuntime,
+	tokenID int64,
+	request connectortargets.ActionRequest,
+	response mcpConnectorActionResponse,
+) {
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		return
+	}
+	defer release()
+	if !connectorActionVaultPollAuthorizedLocked(r.Context(), runtime, tokenID, request) {
+		withholdMCPConnectorActionResponse(&response)
+		encoded, err = json.Marshal(response)
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+	}
+	controller := http.NewResponseController(w)
+	_ = controller.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store, private")
+	w.Header().Set("Pragma", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(append(encoded, '\n'))
+}
+
+func withholdMCPConnectorActionResponse(response *mcpConnectorActionResponse) {
+	response.Input = nil
+	response.Output = nil
+	response.DisplayText = ""
+	response.Error = ""
+	response.OutputWithheld = true
+	const authorizationHint = "Current Vault session authorization no longer permits returning this connector output."
+	if response.AssistantHint == "" {
+		response.AssistantHint = authorizationHint
+	} else if !strings.Contains(response.AssistantHint, authorizationHint) {
+		response.AssistantHint += " " + authorizationHint
+	}
 }
 
 func connectorActionVaultPollAuthorized(ctx context.Context, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest) bool {
@@ -301,6 +343,11 @@ func connectorActionVaultPollAuthorized(ctx context.Context, runtime *databaseRu
 		return false
 	}
 	defer release()
+	return connectorActionVaultPollAuthorizedLocked(ctx, runtime, tokenID, request)
+}
+
+// connectorActionVaultPollAuthorizedLocked requires runtime.vaultDelivery.
+func connectorActionVaultPollAuthorizedLocked(ctx context.Context, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest) bool {
 	if !runtime.isMCPStarted() {
 		return false
 	}
