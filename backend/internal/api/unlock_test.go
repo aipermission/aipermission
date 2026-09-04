@@ -585,6 +585,10 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	if _, err := sourceDB.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('gateway_secret', 'source-secret', datetime('now'))`); err != nil {
 		t.Fatalf("insert source gateway secret: %v", err)
 	}
+	// Current-schema triggers may reference columns introduced after schema 18.
+	if _, err := sourceDB.Exec(`DROP TRIGGER IF EXISTS retain_connector_action_idempotency_tombstone`); err != nil {
+		t.Fatalf("remove current tombstone trigger from import fixture: %v", err)
+	}
 	if _, err := sourceDB.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
 		t.Fatalf("remove request retry policy from import fixture: %v", err)
 	}

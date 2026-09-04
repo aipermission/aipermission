@@ -154,6 +154,91 @@ func TestStoreActionRequestIdempotency(t *testing.T) {
 	}
 }
 
+func TestStoreActionRequestIdempotencySurvivesRequestRetention(t *testing.T) {
+	database := openTargetTestDB(t)
+	var triggerCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'retain_connector_action_idempotency_tombstone'`).Scan(&triggerCount); err != nil {
+		t.Fatal(err)
+	}
+	if triggerCount != 1 {
+		t.Fatalf("idempotency retention trigger count=%d", triggerCount)
+	}
+	store := NewStore(database)
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, t.Context(), store)
+	input := InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: "postgres", ActionName: "query_readonly",
+		Input: map[string]any{"sql": "select 1"}, Status: connectors.ResultRunning,
+		EncryptedPayloadJSON: "encrypted", ApprovalContext: `{}`, ApprovalContextHash: "approval-hash",
+		IdempotencyKey: "retained-request", IdempotencyIdentityHash: "retained-identity",
+		RetryPolicy: connectors.RetryPolicy{Class: connectors.RetryIdempotent, Guidance: "Reuse the same key."},
+	}
+	request, created, err := store.InsertActionRequestIdempotent(t.Context(), input)
+	if err != nil || !created {
+		t.Fatalf("create idempotent request: created=%v err=%v", created, err)
+	}
+	finished, changed, err := store.FinishActionRequestWithChange(t.Context(), FinishActionRequestInput{ID: request.ID, Status: connectors.ResultCompleted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || finished.CompletedAt == nil {
+		t.Fatalf("complete idempotent request: changed=%v request=%#v", changed, finished)
+	}
+	var storedScope, storedKey, storedHash string
+	var completedAt sql.NullString
+	if err := database.QueryRow(`
+		SELECT idempotency_scope, idempotency_key, idempotency_identity_hash, completed_at
+		FROM connector_action_requests WHERE id = ?`, request.ID).Scan(&storedScope, &storedKey, &storedHash, &completedAt); err != nil {
+		t.Fatal(err)
+	}
+	if storedScope == "" || storedKey == "" || storedHash == "" || !completedAt.Valid {
+		t.Fatalf("completed idempotent request was not fully persisted: scope=%q key=%q hash=%q completed=%v", storedScope, storedKey, storedHash, completedAt.Valid)
+	}
+	if _, err := database.Exec(`DELETE FROM connector_action_requests WHERE id = ?`, request.ID); err != nil {
+		t.Fatal(err)
+	}
+	var retainedScope, retainedKey, retainedHash string
+	if err := database.QueryRow(`
+		SELECT idempotency_scope, idempotency_key, idempotency_identity_hash
+		FROM connector_action_idempotency_tombstones
+		WHERE request_id = ?`, request.ID).Scan(&retainedScope, &retainedKey, &retainedHash); err != nil {
+		t.Fatalf("read retained idempotency tombstone: %v", err)
+	}
+	if retainedScope != actionRequestIdempotencyScope(input.TokenID, input.Source) ||
+		retainedKey != input.IdempotencyKey || retainedHash != input.IdempotencyIdentityHash {
+		t.Fatalf("unexpected retained idempotency identity: scope=%q key=%q hash=%q", retainedScope, retainedKey, retainedHash)
+	}
+
+	replayed, created, err := store.InsertActionRequestIdempotent(t.Context(), input)
+	if err != nil || created {
+		t.Fatalf("replay retained idempotency tombstone: created=%v err=%v", created, err)
+	}
+	if replayed.ID != request.ID || replayed.Status != connectors.ResultCompleted || replayed.DisplayText != expiredIdempotencyResultText {
+		t.Fatalf("unexpected retained replay: %#v", replayed)
+	}
+	if replayed.TargetID != target.ID || replayed.TargetName == "" || replayed.ProfileID != profile.ID || replayed.ProfileLabel == "" ||
+		replayed.ConnectorKind != input.ConnectorKind || replayed.ActionName != input.ActionName || replayed.Source != "mcp" ||
+		replayed.RetryPolicy.Class != connectors.RetryIdempotent {
+		t.Fatalf("retained replay lost non-secret request identity: %#v", replayed)
+	}
+	input.IdempotencyIdentityHash = "changed-identity"
+	if _, _, err := store.InsertActionRequestIdempotent(t.Context(), input); !errors.Is(err, ErrActionRequestIdempotency) {
+		t.Fatalf("retained identity conflict = %v", err)
+	}
+	if _, err := database.Exec(`
+		UPDATE connector_action_idempotency_tombstones
+		SET expires_at = '2000-01-01T00:00:00Z'
+		WHERE request_id = ?`, request.ID); err != nil {
+		t.Fatal(err)
+	}
+	input.IdempotencyIdentityHash = "retained-identity"
+	recreated, created, err := store.InsertActionRequestIdempotent(t.Context(), input)
+	if err != nil || !created || recreated.ID == request.ID {
+		t.Fatalf("expired tombstone should release key: request=%#v created=%v err=%v", recreated, created, err)
+	}
+}
+
 func TestStoreSealedActionRequestRollsBackWhenSealingFails(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)

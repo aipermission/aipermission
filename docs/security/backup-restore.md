@@ -133,7 +133,12 @@ boundary:
 
 A failed download, checksum, password, schema, or gateway-secret check leaves
 the active database untouched. Temporary candidates are not exposed as local
-databases and are cleaned at the import boundary.
+databases and are cleaned at the import boundary. Local import, provider
+download, and first-run remote restore files are staged under the same private
+temporary directory; abandoned files older than 24 hours are scavenged during
+startup. Database rename/move writes a durable local journal before moving the
+SQLCipher file, WAL/SHM sidecars, or migration snapshots. Startup rolls an
+incomplete journal back to its source and preserves a durably completed move.
 
 The database password and gateway secret serve different purposes. The password
 opens the SQLCipher file; the gateway secret decrypts connector credentials

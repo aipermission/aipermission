@@ -299,11 +299,12 @@ func (s *Server) unlockTargetPathLocked(databaseID string) (string, string, erro
 	return path, databaseID, nil
 }
 
-func (s *Server) closeActiveRuntimeLocked(promote bool) {
+func (s *Server) closeActiveRuntimeLocked(promote bool) error {
 	activeID := s.activeDatabase
+	var closeErr error
 	if activeID != "" {
 		if runtime := s.workspaces[activeID]; runtime != nil {
-			s.closeRuntime(runtime)
+			closeErr = s.closeRuntime(runtime)
 		}
 		delete(s.workspaces, activeID)
 	}
@@ -314,43 +315,49 @@ func (s *Server) closeActiveRuntimeLocked(promote bool) {
 		for _, runtime := range s.workspaces {
 			if runtime != nil {
 				s.applyRuntimeLocked(runtime)
-				return
+				return closeErr
 			}
 		}
 	}
+	return closeErr
 }
 
-func (s *Server) closeUnlockedResources() {
-	s.closeActiveRuntimeLocked(false)
+func (s *Server) closeUnlockedResources() error {
+	return s.closeActiveRuntimeLocked(false)
 }
 
-func (s *Server) closeAllUnlockedResources() {
+func (s *Server) closeAllUnlockedResources() error {
 	seen := map[*databaseRuntime]bool{}
+	var closeErrors []error
 	for _, runtime := range s.workspaces {
 		if runtime == nil || seen[runtime] {
 			continue
 		}
 		seen[runtime] = true
-		s.closeRuntime(runtime)
+		if err := s.closeRuntime(runtime); err != nil {
+			closeErrors = append(closeErrors, err)
+		}
 	}
 	s.workspaces = map[string]*databaseRuntime{}
 	s.database = nil
 	s.vault = nil
 	s.tokens = nil
+	return errors.Join(closeErrors...)
 }
 
-func (s *Server) closeRuntimeByIDLocked(id string) {
+func (s *Server) closeRuntimeByIDLocked(id string) error {
 	runtime := s.workspaces[id]
 	if runtime == nil {
-		return
+		return nil
 	}
-	s.closeRuntime(runtime)
+	closeErr := s.closeRuntime(runtime)
 	delete(s.workspaces, id)
 	if s.activeDatabase == id {
 		s.database = nil
 		s.vault = nil
 		s.tokens = nil
 	}
+	return closeErr
 }
 
 func (s *Server) unlockedRuntimeSnapshot() []*databaseRuntime {
@@ -396,7 +403,7 @@ func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 	s.tokens = runtime.tokens
 }
 
-func (s *Server) closeRuntime(runtime *databaseRuntime) {
+func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 	s.stopRetentionWorker(runtime)
 	s.stopConnectorActionRecoveryWorker(runtime)
 	if runtime.vaultLeases != nil {
@@ -421,8 +428,11 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) {
 		runtime.auditDispatcher.Stop()
 	}
 	if runtime.database != nil {
-		_ = runtime.database.Close()
+		if err := runtime.database.Close(); err != nil {
+			return fmt.Errorf("close encrypted database runtime %q: %w", runtime.id, err)
+		}
 	}
+	return nil
 }
 
 func (s *Server) markRunningConnectorActionsOutcomeUnknown(runtime *databaseRuntime) error {

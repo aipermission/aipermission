@@ -4,9 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
 )
@@ -110,9 +108,14 @@ func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *h
 		writeError(w, http.StatusRequestEntityTooLarge, "remote backup is too large to restore through the gateway")
 		return
 	}
-	tmpPath := filepath.Join(filepath.Dir(s.config.DataPath), ".first-run-restore-"+time.Now().UTC().Format("20060102150405.000000000")+".aipdb")
+	tmpPath, err := reserveDatabaseTempPath(s.config.DataPath, "first-run-restore-*.aipdb")
+	if err != nil {
+		handleBackupServiceError(w, err)
+		return
+	}
 	downloaded, err := client.Download(r.Context(), stream.ID, version.ID, tmpPath, maxImportBodyBytes)
 	if err != nil {
+		_ = os.Remove(tmpPath)
 		handleBackupServiceError(w, err)
 		return
 	}

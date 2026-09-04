@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -105,6 +106,221 @@ func TestNewRenameDeleteAndListDatabases(t *testing.T) {
 	}
 	if Exists(renamedPath) {
 		t.Fatalf("database should be deleted")
+	}
+}
+
+func TestMoveDatabasePreservesSidecarsAndRecoveryArtifactsDurably(t *testing.T) {
+	root := t.TempDir()
+	currentPath := filepath.Join(root, "current.db")
+	targetPath := filepath.Join(root, "databases", "renamed.db")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	suffixes := []string{"", "-wal", "-shm", ".pre-migration-v24.aipdb", ".pre-migration-v25.aipdb.pending"}
+	for _, suffix := range suffixes {
+		if err := os.WriteFile(currentPath+suffix, []byte("preserved"+suffix), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := MoveDatabase(currentPath, targetPath); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range suffixes {
+		if Exists(currentPath+suffix) || !Exists(targetPath+suffix) {
+			t.Fatalf("artifact suffix %q was not moved", suffix)
+		}
+	}
+}
+
+func TestMoveDatabaseRollsBackPartialArtifactMove(t *testing.T) {
+	root := t.TempDir()
+	currentPath := filepath.Join(root, "current.db")
+	targetPath := filepath.Join(root, "renamed.db")
+	for _, path := range []string{currentPath, currentPath + "-wal"} {
+		if err := os.WriteFile(path, []byte("preserved"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ops := defaultDatabaseMoveOps()
+	moveCount := 0
+	ops.rename = func(source, target string) error {
+		moveCount++
+		if moveCount == 2 {
+			return errors.New("injected move failure")
+		}
+		return os.Rename(source, target)
+	}
+	if err := moveDatabaseWithOps(currentPath, targetPath, ops); err == nil || !strings.Contains(err.Error(), "injected move failure") {
+		t.Fatalf("expected move failure, got %v", err)
+	}
+	for _, path := range []string{currentPath, currentPath + "-wal"} {
+		if !Exists(path) {
+			t.Fatalf("rollback did not restore %q", path)
+		}
+	}
+	if Exists(targetPath) {
+		t.Fatal("rollback retained target database")
+	}
+}
+
+func TestMoveDatabasePreservesCompletedTargetWhenMarkerCannotBeRemoved(t *testing.T) {
+	root := t.TempDir()
+	currentPath := filepath.Join(root, "current.db")
+	targetPath := filepath.Join(root, "renamed.db")
+	if err := os.WriteFile(currentPath, []byte("preserved"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ops := defaultDatabaseMoveOps()
+	rootSyncs := 0
+	ops.syncDir = func(path string) error {
+		if path == root {
+			rootSyncs++
+			if rootSyncs == 3 {
+				return errors.New("injected final root sync failure")
+			}
+		}
+		return syncDatabaseDeletePath(path)
+	}
+	ops.remove = func(path string) error {
+		if filepath.Base(path) == databaseMoveCompleteFile {
+			return errors.New("injected marker removal failure")
+		}
+		return os.Remove(path)
+	}
+	if err := moveDatabaseWithOps(currentPath, targetPath, ops); err == nil ||
+		!strings.Contains(err.Error(), "injected marker removal failure") {
+		t.Fatalf("expected uncertain completion failure, got %v", err)
+	}
+	if Exists(currentPath) || !Exists(targetPath) {
+		t.Fatal("durably marked target must remain authoritative")
+	}
+	if err := recoverDatabaseMoveJournals(root); err != nil {
+		t.Fatalf("recover durably completed move: %v", err)
+	}
+	if Exists(currentPath) || !Exists(targetPath) {
+		t.Fatal("startup recovery did not preserve completed target")
+	}
+}
+
+func TestDatabaseCatalogRecoversInterruptedMoveJournal(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	targetPath := filepath.Join(root, "databases", "renamed.db")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(defaultPath, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(defaultPath+"-wal", []byte("wal"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journalDir := filepath.Join(root, databaseMoveJournalPrefix+"interrupted")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := databaseMoveManifest{
+		SourceBase: defaultPath,
+		TargetBase: targetPath,
+		Moves: []databaseMove{
+			{Source: defaultPath, Target: targetPath},
+			{Source: defaultPath + "-wal", Target: targetPath + "-wal"},
+		},
+	}
+	writeDatabaseMoveManifestFixture(t, journalDir, manifest)
+	if err := os.Rename(defaultPath, targetPath); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := ListDatabases(defaultPath, "")
+	if err != nil {
+		t.Fatalf("list databases after interrupted move: %v", err)
+	}
+	if len(items) != 1 || !Exists(defaultPath) || !Exists(defaultPath+"-wal") {
+		t.Fatalf("interrupted move was not rolled back: items=%#v", items)
+	}
+	if Exists(targetPath) || Exists(journalDir) {
+		t.Fatal("interrupted move recovery retained target or journal")
+	}
+}
+
+func TestDatabaseCatalogRecoversInterruptedNamedDatabaseMoveJournal(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	databaseDir := DatabasesDir(defaultPath)
+	sourcePath := filepath.Join(databaseDir, "source.db")
+	targetPath := filepath.Join(databaseDir, "renamed.db")
+	if err := os.MkdirAll(databaseDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sourcePath, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journalDir := filepath.Join(databaseDir, databaseMoveJournalPrefix+"interrupted-named")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeDatabaseMoveManifestFixture(t, journalDir, databaseMoveManifest{
+		SourceBase: sourcePath,
+		TargetBase: targetPath,
+		Moves:      []databaseMove{{Source: sourcePath, Target: targetPath}},
+	})
+	if err := os.Rename(sourcePath, targetPath); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := ListDatabases(defaultPath, "")
+	if err != nil {
+		t.Fatalf("list databases after interrupted named move: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "source" || !Exists(sourcePath) {
+		t.Fatalf("interrupted named move was not rolled back: items=%#v", items)
+	}
+	if Exists(targetPath) || Exists(journalDir) {
+		t.Fatal("interrupted named move recovery retained target or journal")
+	}
+}
+
+func TestDatabaseCatalogFinishesCompletedMoveJournalCleanup(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	targetPath := filepath.Join(root, "databases", "renamed.db")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetPath, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journalDir := filepath.Join(root, databaseMoveJournalPrefix+"completed")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeDatabaseMoveManifestFixture(t, journalDir, databaseMoveManifest{
+		SourceBase: defaultPath,
+		TargetBase: targetPath,
+		Moves:      []databaseMove{{Source: defaultPath, Target: targetPath}},
+	})
+	if err := os.WriteFile(filepath.Join(journalDir, databaseMoveCompleteFile), []byte("complete\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := ListDatabases(defaultPath, targetPath)
+	if err != nil {
+		t.Fatalf("list databases after completed move: %v", err)
+	}
+	if len(items) != 1 || !items[0].Current || !Exists(targetPath) || Exists(journalDir) {
+		t.Fatalf("completed move cleanup mismatch: items=%#v", items)
+	}
+}
+
+func writeDatabaseMoveManifestFixture(t *testing.T, journalDir string, manifest databaseMoveManifest) {
+	t.Helper()
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(journalDir, databaseMoveManifestFile), encoded, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

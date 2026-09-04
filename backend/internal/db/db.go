@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	currentSchemaVersion     = 24
+	currentSchemaVersion     = 25
 	expectedSQLCipherVersion = "4.16.0"
 	expectedSQLiteVersion    = "3.53.1"
 	expectedKDFIterations    = 256000
@@ -174,13 +174,22 @@ func PublishFile(sourcePath string, targetPath string) error {
 	if err := os.Rename(sourcePath, targetPath); err != nil {
 		return fmt.Errorf("rename published file: %w", err)
 	}
-	directory, err := os.Open(filepath.Dir(targetPath))
-	if err != nil {
-		return fmt.Errorf("open published file directory: %w", err)
+	directories := []string{filepath.Dir(targetPath)}
+	if sourceDirectory := filepath.Dir(sourcePath); sourceDirectory != directories[0] {
+		directories = append(directories, sourceDirectory)
 	}
-	defer directory.Close()
-	if err := directory.Sync(); err != nil {
-		return fmt.Errorf("sync published file directory: %w", err)
+	for _, directoryPath := range directories {
+		directory, err := os.Open(directoryPath)
+		if err != nil {
+			return fmt.Errorf("open published file directory: %w", err)
+		}
+		if err := directory.Sync(); err != nil {
+			_ = directory.Close()
+			return fmt.Errorf("sync published file directory: %w", err)
+		}
+		if err := directory.Close(); err != nil {
+			return fmt.Errorf("close published file directory: %w", err)
+		}
 	}
 	return nil
 }

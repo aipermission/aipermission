@@ -64,6 +64,25 @@ func TestPeriodicRetentionCleansUnlockedWorkspace(t *testing.T) {
 	}
 }
 
+func TestPeriodicRetentionPrunesExpiredIdempotencyTombstonesWhenHistoryRetentionIsDisabled(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	if _, err := fixture.db.Exec(`
+		INSERT INTO connector_action_idempotency_tombstones (
+			idempotency_scope, idempotency_key, idempotency_identity_hash, request_id,
+			token_id, target_id, target_name, profile_id, profile_label, connector_kind,
+			action_name, source, retry_policy_json, status, completed_at, retained_at, expires_at
+		) VALUES (
+			'source:manual', 'expired', 'identity', 999, NULL, 1, 'target', 1, 'profile', 'test',
+			'read', 'manual', '{}', 'completed', '2000-01-01T00:00:00Z',
+			'2000-01-01T00:00:00Z', '2000-01-02T00:00:00Z'
+		)`); err != nil {
+		t.Fatalf("insert expired tombstone: %v", err)
+	}
+
+	fixture.server.runPeriodicRetention(t.Context(), fixture.server.activeRuntime())
+	assertTableCount(t, fixture.db, "connector_action_idempotency_tombstones", 0)
+}
+
 func TestStopRetentionWorkerWaitsForShutdown(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()

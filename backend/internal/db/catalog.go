@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 var ErrDatabaseExists = errors.New("database name already exists")
 
 const databaseDeleteQuarantinePrefix = ".aipermission-delete-"
 const databaseDeleteCompleteMarker = ".complete"
+
+var databaseRecoveryMu sync.Mutex
 
 type DatabaseInfo struct {
 	ID       string `json:"id"`
@@ -26,7 +29,12 @@ type DatabaseInfo struct {
 }
 
 func ListDatabases(defaultPath string, currentPath string) ([]DatabaseInfo, error) {
+	databaseRecoveryMu.Lock()
+	defer databaseRecoveryMu.Unlock()
 	items := []DatabaseInfo{}
+	if err := recoverDatabaseMoveJournals(filepath.Dir(defaultPath)); err != nil {
+		return nil, err
+	}
 	if err := recoverDatabaseDeleteQuarantines(filepath.Dir(defaultPath)); err != nil {
 		return nil, err
 	}
@@ -35,6 +43,9 @@ func ListDatabases(defaultPath string, currentPath string) ([]DatabaseInfo, erro
 	}
 
 	dir := DatabasesDir(defaultPath)
+	if err := recoverDatabaseMoveJournals(dir); err != nil {
+		return nil, err
+	}
 	if err := recoverDatabaseDeleteQuarantines(dir); err != nil {
 		return nil, err
 	}
@@ -161,15 +172,17 @@ func RenameDatabaseTarget(defaultPath string, currentPath string, name string) (
 }
 
 func MoveDatabase(currentPath string, targetPath string) error {
-	if err := os.Rename(currentPath, targetPath); err != nil {
-		return fmt.Errorf("rename database: %w", err)
+	databaseRecoveryMu.Lock()
+	defer databaseRecoveryMu.Unlock()
+	if err := recoverDatabaseMoveJournals(databaseMoveRoot(currentPath, targetPath)); err != nil {
+		return err
 	}
-	_ = os.Remove(currentPath + "-wal")
-	_ = os.Remove(currentPath + "-shm")
-	return nil
+	return moveDatabaseWithOps(currentPath, targetPath, defaultDatabaseMoveOps())
 }
 
 func DeleteDatabase(path string) error {
+	databaseRecoveryMu.Lock()
+	defer databaseRecoveryMu.Unlock()
 	return deleteDatabaseWithOps(path, defaultDatabaseDeleteOps())
 }
 

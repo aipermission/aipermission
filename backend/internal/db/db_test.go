@@ -205,15 +205,7 @@ func TestOpenEncryptedSnapshotsSchema18BeforeRecordEnvelopeBoundary(t *testing.T
 		) VALUES ('connector_action_request', ?, 'postgres', 'action', 'completed', datetime('now'), datetime('now'))`, requestID); err != nil {
 		t.Fatalf("insert schema 18 history fixture: %v", err)
 	}
-	if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
-		t.Fatalf("remove request retry policy from schema 18 fixture: %v", err)
-	}
-	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
-		t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
-	}
-	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
-		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
-	}
+	downgradeDatabaseToSchema18(t, database)
 	if err := database.Close(); err != nil {
 		t.Fatalf("close schema 18 fixture: %v", err)
 	}
@@ -270,15 +262,7 @@ func TestRepeatedMigrationFailureKeepsOneSnapshotPerSourceSchema(t *testing.T) {
 	`, targetID, profileID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
-		t.Fatal(err)
-	}
+	downgradeDatabaseToSchema18(t, database)
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -627,15 +611,7 @@ func TestRecordEnvelopeBoundaryRejectsExistingPartialSessionHandle(t *testing.T)
 			`, targetID, profileID); err != nil {
 				t.Fatalf("insert partial session handle fixture: %v", err)
 			}
-			if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
-				t.Fatalf("remove request retry policy from schema 18 fixture: %v", err)
-			}
-			if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
-				t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
-			}
-			if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
-				t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
-			}
+			downgradeDatabaseToSchema18(t, database)
 			if err := database.Close(); err != nil {
 				t.Fatalf("close schema 18 fixture: %v", err)
 			}
@@ -659,15 +635,7 @@ func TestOpenEncryptedImportCandidateMigratesWithoutSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create current database: %v", err)
 	}
-	if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
-		t.Fatalf("remove request retry policy from schema 18 fixture: %v", err)
-	}
-	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
-		t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
-	}
-	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
-		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
-	}
+	downgradeDatabaseToSchema18(t, database)
 	if err := database.Close(); err != nil {
 		t.Fatalf("close schema 18 fixture: %v", err)
 	}
@@ -700,6 +668,24 @@ func TestOpenEncryptedImportCandidateMigratesWithoutSnapshot(t *testing.T) {
 	}
 	if len(snapshots) != 0 {
 		t.Fatalf("disposable import candidate left %d pre-migration snapshot(s)", len(snapshots))
+	}
+}
+
+func downgradeDatabaseToSchema18(t *testing.T, database *sql.DB) {
+	t.Helper()
+	// Current-schema triggers may reference columns introduced after schema 18.
+	// Remove them before shaping a current test database into a legacy fixture.
+	if _, err := database.Exec(`DROP TRIGGER IF EXISTS retain_connector_action_idempotency_tombstone`); err != nil {
+		t.Fatalf("remove current tombstone trigger from schema 18 fixture: %v", err)
+	}
+	if _, err := database.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatalf("remove request retry policy from schema 18 fixture: %v", err)
+	}
+	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
+		t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
+	}
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
+		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
 	}
 }
 

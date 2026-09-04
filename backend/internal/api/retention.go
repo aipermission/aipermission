@@ -214,6 +214,13 @@ func applyRetentionSettingsWithExecutor(ctx context.Context, executor sqldb.Exec
 		}
 		deleted[target] = count
 	}
+	count, err := purgeExpiredConnectorActionIdempotencyTombstones(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		deleted["idempotency"] = count
+	}
 	return deleted, nil
 }
 
@@ -284,7 +291,17 @@ func purgeHistoryRetentionWithExecutor(ctx context.Context, executor sqldb.Execu
 		return 0, err
 	}
 	total += deleted
+	deleted, err = purgeExpiredConnectorActionIdempotencyTombstones(ctx, executor)
+	if err != nil {
+		return 0, err
+	}
+	total += deleted
 	return total, nil
+}
+
+func purgeExpiredConnectorActionIdempotencyTombstones(ctx context.Context, executor sqldb.Executor) (int64, error) {
+	return execRetentionDeleteWithCutoff(ctx, executor,
+		`DELETE FROM connector_action_idempotency_tombstones WHERE julianday(expires_at) <= julianday('now')`)
 }
 
 // Retention emits one audited summary for the purge transaction. The normal

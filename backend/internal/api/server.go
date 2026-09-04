@@ -142,6 +142,7 @@ func resolveServerOptions(options []ServerOption) serverOptions {
 }
 
 func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) (*Server, error) {
+	scavengeDatabaseTempPaths(cfg.DataPath, time.Now())
 	activeID := dbpkg.DefaultDatabaseID(cfg.DataPath)
 	resolved := resolveServerOptions(options)
 	registry := resolved.registry
@@ -203,6 +204,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 }
 
 func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
+	scavengeDatabaseTempPaths(cfg.DataPath, time.Now())
 	resolved := resolveServerOptions(options)
 	server := &Server{
 		config:               cfg,

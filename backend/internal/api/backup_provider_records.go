@@ -77,9 +77,7 @@ func (s backupHandlers) uploadProviderBackup(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	s.lifecycleMu.RLock()
 	snapshot, err := createDatabaseSnapshot(runtime)
-	s.lifecycleMu.RUnlock()
 	if err != nil {
 		writeInternalError(w)
 		return
