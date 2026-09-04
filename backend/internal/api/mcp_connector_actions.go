@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -292,6 +293,29 @@ func connectorActionResponseForToken(ctx context.Context, adapterRegistry *conne
 }
 
 func connectorActionVaultPollAuthorized(ctx context.Context, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest) bool {
+	if runtime == nil || runtime.tokens == nil || runtime.database == nil || request.TokenID == nil || *request.TokenID != tokenID {
+		return false
+	}
+	release, err := runtime.vaultDelivery.acquire(ctx)
+	if err != nil {
+		return false
+	}
+	defer release()
+	token, err := runtime.tokens.Get(ctx, tokenID)
+	if err != nil || token.RevokedAt != "" || expired(token.ExpiresAt, time.Now().UTC()) {
+		return false
+	}
+	permission, err := connectortargets.NewStore(runtime.database).GetActionPermission(
+		ctx,
+		tokenID,
+		request.TargetID,
+		request.ProfileID,
+		request.ActionName,
+		time.Now().UTC(),
+	)
+	if err != nil || permission.ExecutionRule == connectortargets.ActionPermissionBlocked {
+		return false
+	}
 	if request.SessionID == nil && request.SessionGeneration == nil {
 		return true
 	}

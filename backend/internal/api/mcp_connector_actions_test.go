@@ -97,6 +97,13 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}
 	target := fixture.createKeyAndServer(t, "vault-session-output")
 	runtime := fixture.server.activeRuntime()
+	store := connectortargets.NewStore(fixture.db)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: target.ID, ProfileID: target.ProfileID,
+		ActionName: "exec", ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("set action permission: %v", err)
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	result, err := fixture.db.ExecContext(ctx, `
 		INSERT INTO console_sessions (
@@ -121,6 +128,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	generation := int64(1)
 	request := connectortargets.ActionRequest{
 		TokenID: &token.ID, SessionID: &sessionID, SessionGeneration: &generation,
+		TargetID: target.ID, ProfileID: target.ProfileID, ConnectorKind: "ssh", ActionName: "exec",
 		Output: map[string]any{"secret_derived_result": "withhold-me"}, DisplayText: "withhold-me",
 	}
 	for name, malformed := range map[string]connectortargets.ActionRequest{
@@ -175,6 +183,21 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	})
 	if authorized.OutputWithheld || authorized.Output == nil || authorized.DisplayText == "" {
 		t.Fatalf("valid exact Vault lease did not expose connector output: %#v", authorized)
+	}
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: target.ID, ProfileID: target.ProfileID,
+		ActionName: "exec", ExecutionRule: connectortargets.ActionPermissionBlocked,
+	}); err != nil {
+		t.Fatalf("block action permission: %v", err)
+	}
+	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
+		t.Fatalf("blocked action permission still authorized stored output")
+	}
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID: token.ID, TargetID: target.ID, ProfileID: target.ProfileID,
+		ActionName: "exec", ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+	}); err != nil {
+		t.Fatalf("restore action permission: %v", err)
 	}
 	runtime.vaultLeases.RevokeToken(token.ID)
 	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
@@ -347,7 +370,8 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 		t.Fatalf("archive target: %v", err)
 	}
 	archivedReplay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
-	if archivedReplay.Code != http.StatusOK || !strings.Contains(archivedReplay.Body.String(), `"replayed":true`) {
+	if archivedReplay.Code != http.StatusOK || !strings.Contains(archivedReplay.Body.String(), `"replayed":true`) ||
+		!strings.Contains(archivedReplay.Body.String(), `"output_withheld":true`) {
 		t.Fatalf("archived target replay: %d %s", archivedReplay.Code, archivedReplay.Body.String())
 	}
 	request.Reason = "different reason"
