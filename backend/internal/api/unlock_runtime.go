@@ -120,6 +120,13 @@ func (s *Server) moveDatabase(currentPath string, targetPath string) error {
 	return db.MoveDatabase(currentPath, targetPath)
 }
 
+func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
+	if s.databasePublish != nil {
+		return s.databasePublish(sourcePath, targetPath)
+	}
+	return db.PublishFile(sourcePath, targetPath)
+}
+
 func (s *Server) openRuntime(path string, id string, password string) (*databaseRuntime, error) {
 	existingDatabase := db.Exists(path)
 	snapshotsBeforeOpen := preMigrationSnapshotSet(path)

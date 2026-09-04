@@ -212,7 +212,12 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeError(w, http.StatusConflict, "database name already exists")
 		return
 	}
-	if err := dbpkg.PublishFile(tmpPath, targetPath); err != nil {
+	if err := s.publishDatabase(tmpPath, targetPath); err != nil {
+		if dbpkg.Exists(targetPath) {
+			if cleanupErr := rollbackImportedDatabase(targetPath); cleanupErr != nil {
+				log.Printf("failed partially published database cleanup path=%q error=%v", targetPath, cleanupErr)
+			}
+		}
 		writeInternalError(w)
 		return
 	}

@@ -46,6 +46,7 @@ type Server struct {
 	uiSessions           map[string]uiSessionRecord
 	auditHealth          auditHealthState
 	databaseMove         func(string, string) error
+	databasePublish      func(string, string) error
 	runtimeOpen          func(string, string, string) (*databaseRuntime, error)
 	retentionInterval    time.Duration
 }
