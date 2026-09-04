@@ -347,6 +347,7 @@ func recoverDatabaseDeleteQuarantines(dir string) error {
 		if err != nil {
 			return fmt.Errorf("inspect incomplete database delete quarantine: %w", err)
 		}
+		restored := make([]string, 0, len(files))
 		for _, file := range files {
 			if file.IsDir() || file.Name() == databaseDeleteCompleteMarker {
 				continue
@@ -358,9 +359,24 @@ func recoverDatabaseDeleteQuarantines(dir string) error {
 			if err := os.Rename(filepath.Join(quarantineDir, file.Name()), original); err != nil {
 				return fmt.Errorf("recover database file %q: %w", original, err)
 			}
+			restored = append(restored, original)
+		}
+		for _, restoredPath := range restored {
+			if err := syncDatabaseDeletePath(restoredPath); err != nil {
+				return fmt.Errorf("sync recovered database file %q: %w", restoredPath, err)
+			}
+		}
+		if err := syncDatabaseDeletePath(quarantineDir); err != nil {
+			return fmt.Errorf("sync recovered database quarantine: %w", err)
+		}
+		if err := syncDatabaseDeletePath(dir); err != nil {
+			return fmt.Errorf("sync recovered database directory: %w", err)
 		}
 		if err := os.Remove(quarantineDir); err != nil {
 			return fmt.Errorf("remove recovered database delete quarantine: %w", err)
+		}
+		if err := syncDatabaseDeletePath(dir); err != nil {
+			return fmt.Errorf("sync removed database delete quarantine: %w", err)
 		}
 	}
 	return nil
