@@ -25,8 +25,11 @@ legacy field ciphertext in one database transaction. The completion marker is
 committed only after every encrypted record succeeds. A malformed record,
 unknown envelope version, authentication failure, or write failure rolls back
 the complete rewrite and fails unlock instead of leaving a partly migrated
-secret store. Current execution paths accept only the versioned record format;
-legacy decoding is restricted to this explicit migration boundary.
+secret store. Records are traversed by increasing primary key and only one
+ciphertext is held for migration at a time, so unlock memory use is bounded by
+the largest supported record rather than total encrypted history size. Current
+execution paths accept only the versioned record format; legacy decoding is
+restricted to this explicit migration boundary.
 
 ## Current Model
 

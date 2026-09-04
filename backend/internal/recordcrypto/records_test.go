@@ -79,6 +79,37 @@ func TestRewriteLegacyMigratesMixedLegacyAndCurrentRecords(t *testing.T) {
 	}
 }
 
+func TestRewriteLegacyUsesKeysetTraversalAcrossManySparseRecords(t *testing.T) {
+	database := newMigrationDatabase(t)
+	secretVault := newTestVault(t)
+	const recordCount = 257
+	negativeIDRecord, err := secretVault.EncryptJSON(map[string]any{"secret": "negative-id"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	insertEncryptedRecord(t, database, APIToken, -3, negativeIDRecord)
+	for index := 1; index <= recordCount; index++ {
+		legacy, err := secretVault.EncryptJSON(map[string]any{"secret": fmt.Sprintf("value-%d", index)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		insertEncryptedRecord(t, database, APIToken, int64(index*3), legacy)
+	}
+
+	stats, err := RewriteLegacy(t.Context(), database, secretVault, "workspace-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats != (RewriteStats{Rewritten: recordCount + 1}) {
+		t.Fatalf("unexpected migration stats: %+v", stats)
+	}
+	for _, id := range []int64{-3, 3, 300, 771} {
+		if encrypted := encryptedRecordValue(t, database, APIToken, id); !vault.IsRecordEnvelope(encrypted) {
+			t.Fatalf("record %d was not rewritten", id)
+		}
+	}
+}
+
 func TestRewriteLegacyTrustsCompletionMarkerWithoutRescanning(t *testing.T) {
 	database := newMigrationDatabase(t)
 	secretVault := newTestVault(t)

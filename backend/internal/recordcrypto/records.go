@@ -102,11 +102,16 @@ func RewriteLegacy(ctx context.Context, database *sql.DB, secretVault *vault.Vau
 
 	stats := RewriteStats{}
 	for _, recordType := range persistentRecordTypes {
-		records, err := loadEncryptedRecords(ctx, tx, recordType)
-		if err != nil {
-			return RewriteStats{}, err
-		}
-		for _, record := range records {
+		lastID := int64(-1 << 63)
+		for {
+			record, found, err := loadNextEncryptedRecord(ctx, tx, recordType, lastID)
+			if err != nil {
+				return RewriteStats{}, err
+			}
+			if !found {
+				break
+			}
+			lastID = record.id
 			context := Context(workspaceID, recordType, record.id)
 			var plain json.RawMessage
 			legacy, err := secretVault.DecryptRecordJSONWithLegacy(record.encrypted, &plain, context, nil)
@@ -152,28 +157,19 @@ type encryptedRecord struct {
 	encrypted string
 }
 
-func loadEncryptedRecords(ctx context.Context, tx *sql.Tx, recordType RecordType) ([]encryptedRecord, error) {
+func loadNextEncryptedRecord(ctx context.Context, tx *sql.Tx, recordType RecordType, afterID int64) (encryptedRecord, bool, error) {
 	if err := validateRecordType(recordType); err != nil {
-		return nil, err
+		return encryptedRecord{}, false, err
 	}
-	query := fmt.Sprintf(`SELECT id, %s FROM %s WHERE %s <> '' ORDER BY id`, recordType.Column, recordType.Table, recordType.Column)
-	rows, err := tx.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("list %s encrypted records: %w", recordType.Domain, err)
-	}
-	defer rows.Close()
-	records := []encryptedRecord{}
-	for rows.Next() {
-		var record encryptedRecord
-		if err := rows.Scan(&record.id, &record.encrypted); err != nil {
-			return nil, fmt.Errorf("scan %s encrypted record: %w", recordType.Domain, err)
+	query := fmt.Sprintf(`SELECT id, %s FROM %s WHERE %s <> '' AND id > ? ORDER BY id LIMIT 1`, recordType.Column, recordType.Table, recordType.Column)
+	var record encryptedRecord
+	if err := tx.QueryRowContext(ctx, query, afterID).Scan(&record.id, &record.encrypted); err != nil {
+		if err == sql.ErrNoRows {
+			return encryptedRecord{}, false, nil
 		}
-		records = append(records, record)
+		return encryptedRecord{}, false, fmt.Errorf("read next %s encrypted record: %w", recordType.Domain, err)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate %s encrypted records: %w", recordType.Domain, err)
-	}
-	return records, nil
+	return record, true, nil
 }
 
 func validateRecordType(recordType RecordType) error {
