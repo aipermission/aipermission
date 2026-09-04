@@ -613,16 +613,11 @@ func executeRolloutRestart(ctx context.Context, client *kubeClient, input map[st
 	command := fmt.Sprintf("%s rollout restart deployment/%s -n %s 2>&1", client.baseCommand(), shellQuote(deployment), shellQuote(namespace))
 	commandLabel := "kubectl rollout restart"
 	if resourceVersion != "" {
-		patch, err := json.Marshal(map[string]any{
-			"metadata": map[string]any{"resourceVersion": resourceVersion},
-			"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{"annotations": map[string]any{
-				"kubectl.kubernetes.io/restartedAt": time.Now().UTC().Format(time.RFC3339),
-			}}}},
-		})
+		patch, err := conditionalRolloutRestartPatch(resourceVersion, time.Now().UTC())
 		if err != nil {
 			return connectors.ActionResult{}, fmt.Errorf("encode rollout restart patch: %w", err)
 		}
-		command = fmt.Sprintf("%s patch deployment %s -n %s --type=merge -p %s -o json 2>&1", client.baseCommand(), shellQuote(deployment), shellQuote(namespace), shellQuote(string(patch)))
+		command = fmt.Sprintf("%s patch deployment %s -n %s --type=merge -p %s -o json 2>&1", client.baseCommand(), shellQuote(deployment), shellQuote(namespace), shellQuote(patch))
 		commandLabel = "kubectl conditional rollout restart"
 	}
 	result, err := client.run(ctx, command, 30)
@@ -653,6 +648,19 @@ func executeRolloutRestart(ctx context.Context, client *kubeClient, input map[st
 		return connectors.ActionResult{}, err
 	}
 	return connectors.ActionResult{Status: connectors.ResultCompleted, Output: map[string]any{"namespace": namespace, "deployment": deployment, "expected_resource_version": resourceVersion, "response": strings.TrimSpace(result.Stdout), "duration_ms": result.DurationMS}, DisplayText: strings.TrimSpace(result.Stdout)}, nil
+}
+
+func conditionalRolloutRestartPatch(resourceVersion string, restartedAt time.Time) (string, error) {
+	patch, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{"resourceVersion": resourceVersion},
+		"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{"annotations": map[string]any{
+			"kubectl.kubernetes.io/restartedAt": restartedAt.UTC().Format(time.RFC3339Nano),
+		}}}},
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(patch), nil
 }
 
 func (client *kubeClient) runKubeList(ctx context.Context, command string, timeoutSeconds int) ([]map[string]any, error) {

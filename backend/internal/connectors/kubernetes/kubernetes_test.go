@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -147,6 +148,26 @@ func TestRolloutRestartUsesResourceVersionPrecondition(t *testing.T) {
 	output := result.Output.(map[string]any)
 	if output["expected_resource_version"] != "12345" {
 		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestConditionalRolloutRestartPatchChangesWithinOneSecond(t *testing.T) {
+	firstTime := time.Date(2026, time.September, 4, 12, 0, 0, 123, time.UTC)
+	secondTime := firstTime.Add(time.Nanosecond)
+	first, err := conditionalRolloutRestartPatch("12345", firstTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := conditionalRolloutRestartPatch("12345", secondTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatalf("same-second restart patches must differ: %s", first)
+	}
+	if !strings.Contains(first, `"2026-09-04T12:00:00.000000123Z"`) ||
+		!strings.Contains(second, `"2026-09-04T12:00:00.000000124Z"`) {
+		t.Fatalf("restart patches lost nanosecond precision: first=%s second=%s", first, second)
 	}
 }
 
