@@ -73,11 +73,17 @@ func (s backupHandlers) backupFreshness(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s backupHandlers) uploadProviderBackup(w http.ResponseWriter, r *http.Request) {
+	releaseBackup, err := s.acquireBackupOperation(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "database backup was canceled")
+		return
+	}
+	defer releaseBackup()
 	runtime, provider, client, ok := s.activeBackupServiceProvider(w, r)
 	if !ok {
 		return
 	}
-	snapshot, err := createDatabaseSnapshot(runtime)
+	snapshot, err := createDatabaseSnapshot(r.Context(), runtime)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -224,6 +230,12 @@ func (s backupHandlers) deleteProviderBackupRecords(w http.ResponseWriter, r *ht
 }
 
 func (s backupHandlers) downloadProviderRecord(w http.ResponseWriter, r *http.Request) {
+	releaseBackup, err := s.acquireBackupOperation(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "backup download was canceled")
+		return
+	}
+	defer releaseBackup()
 	runtime, provider, record, client, ok := s.resolveBackupServiceRecord(w, r)
 	if !ok {
 		return
@@ -243,6 +255,12 @@ func (s backupHandlers) downloadProviderRecord(w http.ResponseWriter, r *http.Re
 }
 
 func (s backupHandlers) restoreProviderRecord(w http.ResponseWriter, r *http.Request) {
+	releaseBackup, err := s.acquireBackupOperation(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "backup restore was canceled")
+		return
+	}
+	defer releaseBackup()
 	runtime, provider, record, client, ok := s.resolveBackupServiceRecord(w, r)
 	if !ok {
 		return

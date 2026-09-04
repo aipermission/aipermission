@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -10,13 +11,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
-const maxImportBodyBytes = 256 << 20
+const (
+	maxImportBodyBytes           = 256 << 20
+	maxConcurrentDatabaseBackups = 2
+)
 
 type importDatabaseRequest struct {
 	DatabaseName     string `json:"database_name"`
@@ -30,6 +35,12 @@ type databaseSnapshot struct {
 }
 
 func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request) {
+	releaseBackup, err := s.acquireBackupOperation(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "database backup was canceled")
+		return
+	}
+	defer releaseBackup()
 	s.lifecycleMu.RLock()
 	// This route releases the lifecycle lock before streaming the completed
 	// snapshot, so repeat the database-bound session check after acquiring it.
@@ -43,7 +54,7 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 		s.lifecycleMu.RUnlock()
 		return
 	}
-	snapshot, err := createDatabaseSnapshot(runtime)
+	snapshot, err := createDatabaseSnapshot(r.Context(), runtime)
 	if err != nil {
 		s.lifecycleMu.RUnlock()
 		writeInternalError(w)
@@ -56,15 +67,31 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 	http.ServeFile(w, r, snapshot.Path)
 }
 
-func createDatabaseSnapshot(runtime *databaseRuntime) (databaseSnapshot, error) {
+func createDatabaseSnapshot(ctx context.Context, runtime *databaseRuntime) (databaseSnapshot, error) {
+	info, err := os.Stat(runtime.path)
+	if err != nil {
+		return databaseSnapshot{}, fmt.Errorf("inspect database before snapshot: %w", err)
+	}
+	if info.Size() > maxImportBodyBytes {
+		return databaseSnapshot{}, fmt.Errorf("database is too large to snapshot through the gateway: %d bytes", info.Size())
+	}
 	createdAt := time.Now().UTC()
 	databaseID := runtime.id
 	snapshotPath, err := reserveDatabaseTempPath(runtime.path, "snapshot-"+databaseID+"-*.aipdb")
 	if err != nil {
 		return databaseSnapshot{}, fmt.Errorf("reserve database snapshot path: %w", err)
 	}
-	if err := dbpkg.Snapshot(runtime.database, snapshotPath); err != nil {
+	if err := dbpkg.SnapshotContext(ctx, runtime.database, snapshotPath); err != nil {
 		return databaseSnapshot{}, err
+	}
+	info, err = os.Stat(snapshotPath)
+	if err != nil {
+		_ = os.Remove(snapshotPath)
+		return databaseSnapshot{}, fmt.Errorf("inspect completed database snapshot: %w", err)
+	}
+	if info.Size() > maxImportBodyBytes {
+		_ = os.Remove(snapshotPath)
+		return databaseSnapshot{}, fmt.Errorf("database snapshot exceeds the gateway limit: %d bytes", info.Size())
 	}
 	filename := strings.Trim(databaseID, "-")
 	if filename == "" {
@@ -75,6 +102,25 @@ func createDatabaseSnapshot(runtime *databaseRuntime) (databaseSnapshot, error) 
 		Filename:  filename + "-" + createdAt.Format("20060102-150405") + ".aipdb",
 		CreatedAt: createdAt,
 	}, nil
+}
+
+func (s backupHandlers) acquireBackupOperation(ctx context.Context) (func(), error) {
+	if s.Server == nil {
+		return nil, errors.New("database runtime is not available")
+	}
+	s.backupOperationMu.Lock()
+	if s.backupOperations == nil {
+		s.backupOperations = make(chan struct{}, maxConcurrentDatabaseBackups)
+	}
+	operations := s.backupOperations
+	s.backupOperationMu.Unlock()
+	select {
+	case operations <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-operations }) }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (s backupHandlers) importDatabase(w http.ResponseWriter, r *http.Request) {
@@ -282,8 +328,10 @@ func closeImportCandidate(database *sql.DB) error {
 }
 
 func cleanupImportCandidate(path string) {
-	if err := dbpkg.DeleteDatabase(path); err != nil {
-		log.Printf("failed import candidate cleanup path=%q error=%v", path, err)
+	for _, candidate := range []string{path, path + "-wal", path + "-shm", path + "-journal"} {
+		if err := os.Remove(candidate); err != nil && !os.IsNotExist(err) {
+			log.Printf("failed import candidate cleanup path=%q error=%v", candidate, err)
+		}
 	}
 }
 
