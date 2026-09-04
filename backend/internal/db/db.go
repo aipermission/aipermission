@@ -1,7 +1,9 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -12,8 +14,10 @@ import (
 	_ "github.com/SE-I-T-Digital/go-sqlcipher"
 )
 
+var ErrPublishTargetExists = errors.New("publish target already exists")
+
 const (
-	currentSchemaVersion     = 25
+	currentSchemaVersion     = 26
 	expectedSQLCipherVersion = "4.16.0"
 	expectedSQLiteVersion    = "3.53.1"
 	expectedKDFIterations    = 256000
@@ -160,6 +164,18 @@ func replacePreMigrationSnapshot(database *sql.DB, targetPath string) error {
 // filesystem. The source contents and containing directory are synchronized
 // so a successful return survives a power loss at the publication boundary.
 func PublishFile(sourcePath string, targetPath string) error {
+	return publishFile(sourcePath, targetPath, true)
+}
+
+// PublishFileNoReplace durably publishes sourcePath only when targetPath does
+// not exist. The hard-link boundary is atomic across processes on the same
+// filesystem and prevents a stale preflight check from replacing another
+// database.
+func PublishFileNoReplace(sourcePath string, targetPath string) error {
+	return publishFile(sourcePath, targetPath, false)
+}
+
+func publishFile(sourcePath string, targetPath string, replace bool) error {
 	file, err := os.Open(sourcePath)
 	if err != nil {
 		return fmt.Errorf("open file for durable publish: %w", err)
@@ -171,8 +187,23 @@ func PublishFile(sourcePath string, targetPath string) error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close file for durable publish: %w", err)
 	}
-	if err := os.Rename(sourcePath, targetPath); err != nil {
-		return fmt.Errorf("rename published file: %w", err)
+	if replace {
+		if err := os.Rename(sourcePath, targetPath); err != nil {
+			return fmt.Errorf("rename published file: %w", err)
+		}
+	} else {
+		if err := os.Link(sourcePath, targetPath); err != nil {
+			if errors.Is(err, os.ErrExist) {
+				return ErrPublishTargetExists
+			}
+			return fmt.Errorf("link published file: %w", err)
+		}
+		if err := os.Remove(sourcePath); err != nil {
+			if rollbackErr := removeOwnedPublishedLink(sourcePath, targetPath); rollbackErr != nil {
+				return errors.Join(fmt.Errorf("remove published source: %w", err), rollbackErr)
+			}
+			return fmt.Errorf("remove published source: %w", err)
+		}
 	}
 	directories := []string{filepath.Dir(targetPath)}
 	if sourceDirectory := filepath.Dir(sourcePath); sourceDirectory != directories[0] {
@@ -181,15 +212,45 @@ func PublishFile(sourcePath string, targetPath string) error {
 	for _, directoryPath := range directories {
 		directory, err := os.Open(directoryPath)
 		if err != nil {
-			return fmt.Errorf("open published file directory: %w", err)
+			return rollbackNoReplacePublication(sourcePath, targetPath, replace, fmt.Errorf("open published file directory: %w", err))
 		}
 		if err := directory.Sync(); err != nil {
 			_ = directory.Close()
-			return fmt.Errorf("sync published file directory: %w", err)
+			return rollbackNoReplacePublication(sourcePath, targetPath, replace, fmt.Errorf("sync published file directory: %w", err))
 		}
 		if err := directory.Close(); err != nil {
-			return fmt.Errorf("close published file directory: %w", err)
+			return rollbackNoReplacePublication(sourcePath, targetPath, replace, fmt.Errorf("close published file directory: %w", err))
 		}
+	}
+	return nil
+}
+
+func rollbackNoReplacePublication(sourcePath, targetPath string, replace bool, cause error) error {
+	if replace {
+		return cause
+	}
+	if err := os.Link(targetPath, sourcePath); err != nil {
+		return errors.Join(cause, fmt.Errorf("restore unpublished source: %w", err))
+	}
+	if err := os.Remove(targetPath); err != nil {
+		return errors.Join(cause, fmt.Errorf("remove rolled back published target: %w", err))
+	}
+	for _, directoryPath := range uniqueDatabaseDirs(sourcePath, targetPath) {
+		if err := syncDatabaseDeletePath(directoryPath); err != nil {
+			return errors.Join(cause, fmt.Errorf("sync publication rollback directory: %w", err))
+		}
+	}
+	return cause
+}
+
+func removeOwnedPublishedLink(sourcePath, targetPath string) error {
+	source, sourceErr := os.Stat(sourcePath)
+	target, targetErr := os.Stat(targetPath)
+	if sourceErr != nil || targetErr != nil || !os.SameFile(source, target) {
+		return errors.New("published target ownership could not be verified")
+	}
+	if err := os.Remove(targetPath); err != nil {
+		return fmt.Errorf("remove partially published target: %w", err)
 	}
 	return nil
 }
@@ -224,11 +285,15 @@ func Rekey(database *sql.DB, newPassword string) error {
 }
 
 func Snapshot(database *sql.DB, targetPath string) error {
+	return SnapshotContext(context.Background(), database, targetPath)
+}
+
+func SnapshotContext(ctx context.Context, database *sql.DB, targetPath string) error {
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
 		return fmt.Errorf("create snapshot directory: %w", err)
 	}
 	_ = os.Remove(targetPath)
-	if _, err := database.Exec(`VACUUM INTO ?`, targetPath); err != nil {
+	if _, err := database.ExecContext(ctx, `VACUUM INTO ?`, targetPath); err != nil {
 		_ = os.Remove(targetPath)
 		return fmt.Errorf("snapshot encrypted sqlite: %w", err)
 	}

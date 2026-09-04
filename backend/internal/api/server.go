@@ -49,6 +49,8 @@ type Server struct {
 	databasePublish      func(string, string) error
 	runtimeOpen          func(string, string, string) (*databaseRuntime, error)
 	retentionInterval    time.Duration
+	backupOperationMu    sync.Mutex
+	backupOperations     chan struct{}
 }
 
 type databaseRuntime struct {
@@ -90,6 +92,7 @@ type databaseRuntime struct {
 	retentionCancel    context.CancelFunc
 	retentionDone      chan struct{}
 	actionRecovery     connectorActionRecoveryWorker
+	databaseOwnership  *dbpkg.DatabaseOwnership
 }
 
 type serverOptions struct {

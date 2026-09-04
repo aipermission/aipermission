@@ -1,7 +1,7 @@
 package db
 
 var connectorActionIdempotencyTombstoneMigration = migration{
-	version:     25,
+	version:     26,
 	description: "retain connector action idempotency tombstones",
 	statements: []string{
 		`CREATE TABLE IF NOT EXISTS connector_action_idempotency_tombstones (

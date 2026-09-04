@@ -120,6 +120,16 @@ func MigrateLegacy010To020(ctx context.Context, request Legacy010To020Request) (
 	if db.Exists(targetPath) {
 		return Legacy010To020Result{}, ErrTargetExists
 	}
+	sourceOwnership, err := db.AcquireDatabaseOwnership(sourcePath)
+	if err != nil {
+		return Legacy010To020Result{}, fmt.Errorf("claim source database: %w", err)
+	}
+	defer sourceOwnership.Close()
+	targetOwnership, err := db.AcquireDatabaseOwnership(targetPath)
+	if err != nil {
+		return Legacy010To020Result{}, fmt.Errorf("claim target database: %w", err)
+	}
+	defer targetOwnership.Close()
 	stagingFile, err := os.CreateTemp(filepath.Dir(targetPath), "."+filepath.Base(targetPath)+".migration-*")
 	if err != nil {
 		return Legacy010To020Result{}, fmt.Errorf("create target migration staging file: %w", err)
@@ -177,8 +187,8 @@ func MigrateLegacy010To020(ctx context.Context, request Legacy010To020Request) (
 		return Legacy010To020Result{}, fmt.Errorf("close migrated target database: %w", err)
 	}
 	targetOpen = false
-	if err := os.Link(stagingPath, targetPath); err != nil {
-		if os.IsExist(err) {
+	if err := db.PublishFileNoReplace(stagingPath, targetPath); err != nil {
+		if errors.Is(err, db.ErrPublishTargetExists) {
 			return Legacy010To020Result{}, ErrTargetExists
 		}
 		return Legacy010To020Result{}, fmt.Errorf("publish migrated target database: %w", err)

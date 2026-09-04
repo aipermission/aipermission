@@ -324,6 +324,97 @@ func TestReplacePreMigrationSnapshotPreservesExistingOnFailure(t *testing.T) {
 	}
 }
 
+func TestPublishFileNoReplacePreservesExistingTarget(t *testing.T) {
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "source.aipdb")
+	targetPath := filepath.Join(directory, "target.aipdb")
+	if err := os.WriteFile(sourcePath, []byte("candidate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetPath, []byte("foreign"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := PublishFileNoReplace(sourcePath, targetPath); !errors.Is(err, ErrPublishTargetExists) {
+		t.Fatalf("publish conflict = %v", err)
+	}
+	content, err := os.ReadFile(targetPath)
+	if err != nil || string(content) != "foreign" {
+		t.Fatalf("foreign target changed: content=%q err=%v", content, err)
+	}
+	if content, err := os.ReadFile(sourcePath); err != nil || string(content) != "candidate" {
+		t.Fatalf("candidate source changed: content=%q err=%v", content, err)
+	}
+}
+
+func TestPublishFileNoReplaceMovesCandidateAtomically(t *testing.T) {
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "source.aipdb")
+	targetPath := filepath.Join(directory, "target.aipdb")
+	if err := os.WriteFile(sourcePath, []byte("candidate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := PublishFileNoReplace(sourcePath, targetPath); err != nil {
+		t.Fatal(err)
+	}
+	if Exists(sourcePath) {
+		t.Fatal("published source still exists")
+	}
+	content, err := os.ReadFile(targetPath)
+	if err != nil || string(content) != "candidate" {
+		t.Fatalf("published target = %q err=%v", content, err)
+	}
+}
+
+func TestRollbackNoReplacePublicationRestoresSource(t *testing.T) {
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "source.aipdb")
+	targetPath := filepath.Join(directory, "target.aipdb")
+	if err := os.WriteFile(targetPath, []byte("candidate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("injected durability failure")
+	if err := rollbackNoReplacePublication(sourcePath, targetPath, false, cause); !errors.Is(err, cause) {
+		t.Fatalf("rollback error = %v, want original cause", err)
+	}
+	if Exists(targetPath) {
+		t.Fatal("publication rollback retained the target")
+	}
+	content, err := os.ReadFile(sourcePath)
+	if err != nil || string(content) != "candidate" {
+		t.Fatalf("publication rollback source = %q err=%v", content, err)
+	}
+	if err := rollbackNoReplacePublication(sourcePath, targetPath, true, cause); !errors.Is(err, cause) {
+		t.Fatalf("replace publication changed original error: %v", err)
+	}
+}
+
+func TestRemoveOwnedPublishedLinkRequiresSharedInode(t *testing.T) {
+	directory := t.TempDir()
+	sourcePath := filepath.Join(directory, "source.aipdb")
+	targetPath := filepath.Join(directory, "target.aipdb")
+	if err := os.WriteFile(sourcePath, []byte("candidate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetPath, []byte("foreign"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeOwnedPublishedLink(sourcePath, targetPath); err == nil {
+		t.Fatal("unrelated publication target was removed")
+	}
+	if err := os.Remove(targetPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(sourcePath, targetPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeOwnedPublishedLink(sourcePath, targetPath); err != nil {
+		t.Fatalf("remove owned publication link: %v", err)
+	}
+	if !Exists(sourcePath) || Exists(targetPath) {
+		t.Fatalf("owned publication cleanup mismatch: source=%v target=%v", Exists(sourcePath), Exists(targetPath))
+	}
+}
+
 func TestPreMigrationSnapshotDetectsMigrationLedgerGapAtCurrentVersion(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "migration-gap.aipdb")
@@ -545,6 +636,70 @@ func TestActionApprovalIntegrityMigrationStalesIncompletePendingRequests(t *test
 	}
 	if status != "stale" || drift != "request_integrity" {
 		t.Fatalf("incomplete pending request status=%q drift=%q", status, drift)
+	}
+}
+
+func TestExecutionClaimMigrationMarksLegacyRunningRowsAsDispatched(t *testing.T) {
+	database, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`CREATE TABLE connector_action_requests (id INTEGER PRIMARY KEY, status TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO connector_action_requests (status) VALUES ('running'), ('approval_pending')`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureConnectorActionExecutionClaimColumns(tx); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("apply execution claim preflight: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var runningDispatch, pendingDispatch string
+	if err := database.QueryRow(`SELECT dispatch_started_at FROM connector_action_requests WHERE status = 'running'`).Scan(&runningDispatch); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT dispatch_started_at FROM connector_action_requests WHERE status = 'approval_pending'`).Scan(&pendingDispatch); err != nil {
+		t.Fatal(err)
+	}
+	if runningDispatch == "" || pendingDispatch != "" {
+		t.Fatalf("legacy dispatch markers: running=%q pending=%q", runningDispatch, pendingDispatch)
+	}
+}
+
+func TestKeyedIdentityMigrationRunsBeforeTombstoneSchema(t *testing.T) {
+	database, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`
+		CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, description TEXT NOT NULL, applied_at TEXT NOT NULL);
+		CREATE TABLE connector_action_requests (id INTEGER PRIMARY KEY, idempotency_key TEXT NOT NULL, idempotency_identity_hash TEXT NOT NULL);
+		INSERT INTO connector_action_requests VALUES (1, 'retry-me', 'legacy-sha256');
+		INSERT INTO connector_action_requests VALUES (2, 'keep-me', 'h1:keyed');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := runSingleMigration(database, connectorActionKeyedIdentityMigration); err != nil {
+		t.Fatalf("run keyed identity migration: %v", err)
+	}
+	var legacyHash, keyedHash string
+	if err := database.QueryRow(`SELECT idempotency_identity_hash FROM connector_action_requests WHERE id = 1`).Scan(&legacyHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT idempotency_identity_hash FROM connector_action_requests WHERE id = 2`).Scan(&keyedHash); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(legacyHash, "legacy-invalid:") || keyedHash != "h1:keyed" {
+		t.Fatalf("migrated hashes: legacy=%q keyed=%q", legacyHash, keyedHash)
 	}
 }
 

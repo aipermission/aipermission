@@ -17,9 +17,15 @@ func TestScavengeDatabaseTempPathsRemovesOnlyStaleTemporaryFiles(t *testing.T) {
 	stale := filepath.Join(directory, "snapshot-stale.aipdb")
 	staleRemote := filepath.Join(directory, "remote-backup-1-stale.aipdb")
 	staleFirstRun := filepath.Join(directory, "first-run-restore-stale.aipdb")
+	legacyRemote := filepath.Join(root, ".remote-backup-legacy.aipdb")
+	legacyFirstRun := filepath.Join(root, "databases", ".first-run-restore-legacy.aipdb")
+	legacyBackup := filepath.Join(root, ".default-123.backup.aipdb")
 	fresh := filepath.Join(directory, "import-fresh.aipdb")
 	unowned := filepath.Join(directory, "operator-note.txt")
-	for _, path := range []string{stale, staleRemote, staleFirstRun, fresh, unowned} {
+	if err := os.MkdirAll(filepath.Dir(legacyFirstRun), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{stale, staleRemote, staleFirstRun, legacyRemote, legacyFirstRun, legacyBackup, fresh, unowned} {
 		if err := os.WriteFile(path, []byte("temporary"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -28,7 +34,7 @@ func TestScavengeDatabaseTempPathsRemovesOnlyStaleTemporaryFiles(t *testing.T) {
 	if err := os.Chtimes(stale, now.Add(-25*time.Hour), now.Add(-25*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{staleRemote, staleFirstRun} {
+	for _, path := range []string{staleRemote, staleFirstRun, legacyRemote, legacyFirstRun, legacyBackup} {
 		if err := os.Chtimes(path, now.Add(-25*time.Hour), now.Add(-25*time.Hour)); err != nil {
 			t.Fatal(err)
 		}
@@ -40,7 +46,7 @@ func TestScavengeDatabaseTempPathsRemovesOnlyStaleTemporaryFiles(t *testing.T) {
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Fatalf("stale temporary file remains: %v", err)
 	}
-	for _, path := range []string{staleRemote, staleFirstRun} {
+	for _, path := range []string{staleRemote, staleFirstRun, legacyRemote, legacyFirstRun, legacyBackup} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("stale remote temporary file remains: %s: %v", path, err)
 		}

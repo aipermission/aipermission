@@ -177,12 +177,22 @@ func MoveDatabase(currentPath string, targetPath string) error {
 	if err := recoverDatabaseMoveJournals(databaseMoveRoot(currentPath, targetPath)); err != nil {
 		return err
 	}
+	ownerships, err := acquireDatabaseOwnershipSet(currentPath, targetPath)
+	if err != nil {
+		return err
+	}
+	defer closeDatabaseOwnershipSet(ownerships)
 	return moveDatabaseWithOps(currentPath, targetPath, defaultDatabaseMoveOps())
 }
 
 func DeleteDatabase(path string) error {
 	databaseRecoveryMu.Lock()
 	defer databaseRecoveryMu.Unlock()
+	ownership, err := AcquireDatabaseOwnership(path)
+	if err != nil {
+		return err
+	}
+	defer ownership.Close()
 	return deleteDatabaseWithOps(path, defaultDatabaseDeleteOps())
 }
 
@@ -212,7 +222,7 @@ func defaultDatabaseDeleteOps() databaseDeleteOps {
 }
 
 func deleteDatabaseWithOps(path string, ops databaseDeleteOps) error {
-	candidates := []string{path, path + "-wal", path + "-shm"}
+	candidates := []string{path, path + "-wal", path + "-shm", path + "-journal"}
 	for _, pattern := range []string{path + ".pre-migration-v*.aipdb", path + ".pre-migration-v*.aipdb.pending"} {
 		matches, err := ops.glob(pattern)
 		if err != nil {
@@ -348,6 +358,10 @@ func databaseDeleteQuarantineSuffix() (string, error) {
 }
 
 func recoverDatabaseDeleteQuarantines(dir string) error {
+	return recoverDatabaseDeleteQuarantinesWithPublish(dir, PublishFileNoReplace)
+}
+
+func recoverDatabaseDeleteQuarantinesWithPublish(dir string, publish func(string, string) error) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -368,37 +382,79 @@ func recoverDatabaseDeleteQuarantines(dir string) error {
 		if err != nil {
 			return fmt.Errorf("inspect incomplete database delete quarantine: %w", err)
 		}
-		restored := make([]string, 0, len(files))
+		restoreCandidates := make([]quarantinedDatabaseFile, 0, len(files))
+		var databasePath string
 		for _, file := range files {
 			if file.IsDir() || file.Name() == databaseDeleteCompleteMarker {
 				continue
 			}
 			original := filepath.Join(dir, file.Name())
-			if _, err := os.Lstat(original); err == nil || !os.IsNotExist(err) {
-				continue
+			if databasePath == "" && filepath.Ext(file.Name()) == ".db" {
+				databasePath = original
 			}
-			if err := os.Rename(filepath.Join(quarantineDir, file.Name()), original); err != nil {
-				return fmt.Errorf("recover database file %q: %w", original, err)
-			}
-			restored = append(restored, original)
+			restoreCandidates = append(restoreCandidates, quarantinedDatabaseFile{
+				original: original, quarantine: filepath.Join(quarantineDir, file.Name()),
+			})
 		}
-		for _, restoredPath := range restored {
-			if err := syncDatabaseDeletePath(restoredPath); err != nil {
-				return fmt.Errorf("sync recovered database file %q: %w", restoredPath, err)
+		if databasePath == "" {
+			return fmt.Errorf("incomplete database delete quarantine has no database file")
+		}
+		ownership, err := AcquireDatabaseOwnership(databasePath)
+		if errors.Is(err, ErrDatabaseInUse) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("claim incomplete database delete quarantine: %w", err)
+		}
+		conflicted := false
+		for _, item := range restoreCandidates {
+			if _, err := os.Lstat(item.original); err == nil || !os.IsNotExist(err) {
+				conflicted = true
+				break
+			}
+		}
+		if conflicted {
+			_ = ownership.Close()
+			continue
+		}
+		restored := make([]quarantinedDatabaseFile, 0, len(restoreCandidates))
+		for _, item := range restoreCandidates {
+			if err := publish(item.quarantine, item.original); err != nil {
+				rollbackErrors := []error{fmt.Errorf("recover database file %q: %w", item.original, err)}
+				for index := len(restored) - 1; index >= 0; index-- {
+					restoredItem := restored[index]
+					if rollbackErr := publish(restoredItem.original, restoredItem.quarantine); rollbackErr != nil {
+						rollbackErrors = append(rollbackErrors, fmt.Errorf("roll back recovered database file %q: %w", restoredItem.original, rollbackErr))
+					}
+				}
+				_ = ownership.Close()
+				return errors.Join(rollbackErrors...)
+			}
+			restored = append(restored, item)
+		}
+		for _, item := range restoreCandidates {
+			if err := syncDatabaseDeletePath(item.original); err != nil {
+				_ = ownership.Close()
+				return fmt.Errorf("sync recovered database file %q: %w", item.original, err)
 			}
 		}
 		if err := syncDatabaseDeletePath(quarantineDir); err != nil {
+			_ = ownership.Close()
 			return fmt.Errorf("sync recovered database quarantine: %w", err)
 		}
 		if err := syncDatabaseDeletePath(dir); err != nil {
+			_ = ownership.Close()
 			return fmt.Errorf("sync recovered database directory: %w", err)
 		}
 		if err := os.Remove(quarantineDir); err != nil {
+			_ = ownership.Close()
 			return fmt.Errorf("remove recovered database delete quarantine: %w", err)
 		}
 		if err := syncDatabaseDeletePath(dir); err != nil {
+			_ = ownership.Close()
 			return fmt.Errorf("sync removed database delete quarantine: %w", err)
 		}
+		_ = ownership.Close()
 	}
 	return nil
 }
