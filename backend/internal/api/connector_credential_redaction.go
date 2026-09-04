@@ -15,7 +15,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
-const connectorCredentialRedactionMarker = "[REDACTED CREDENTIAL]"
+const (
+	connectorCredentialRedactionMarker   = "[REDACTED CREDENTIAL]"
+	connectorCredentialSubstringMinBytes = 8
+	connectorCredentialDelimitedMinBytes = 4
+)
 
 // connectorCredentialBoundary is an unconditional last-mile boundary for
 // values the gateway makes available to connector code. Operator-configured
@@ -178,7 +182,14 @@ func (r connectorCredentialBoundary) Redact(value string) string {
 	values := append([]string(nil), r.state.values...)
 	r.state.mu.RUnlock()
 	for _, secret := range values {
-		value = strings.ReplaceAll(value, secret, connectorCredentialRedactionMarker)
+		if value == secret {
+			return connectorCredentialRedactionMarker
+		}
+		if len(secret) >= connectorCredentialSubstringMinBytes {
+			value = strings.ReplaceAll(value, secret, connectorCredentialRedactionMarker)
+		} else if len(secret) >= connectorCredentialDelimitedMinBytes {
+			value = redactDelimitedCredential(value, secret)
+		}
 	}
 	return value
 }
@@ -194,11 +205,37 @@ func (r connectorCredentialBoundary) RedactKey(value string) string {
 		if value == secret {
 			return connectorCredentialRedactionMarker
 		}
-		if len(secret) >= 8 {
+		if len(secret) >= connectorCredentialSubstringMinBytes {
 			value = strings.ReplaceAll(value, secret, connectorCredentialRedactionMarker)
+		} else if len(secret) >= connectorCredentialDelimitedMinBytes {
+			value = redactDelimitedCredential(value, secret)
 		}
 	}
 	return value
+}
+
+func redactDelimitedCredential(value string, secret string) string {
+	start := 0
+	for {
+		index := strings.Index(value[start:], secret)
+		if index < 0 {
+			return value
+		}
+		index += start
+		end := index + len(secret)
+		leftDelimited := index == 0 || !credentialWordByte(value[index-1])
+		rightDelimited := end == len(value) || !credentialWordByte(value[end])
+		if leftDelimited && rightDelimited {
+			value = value[:index] + connectorCredentialRedactionMarker + value[end:]
+			start = index + len(connectorCredentialRedactionMarker)
+			continue
+		}
+		start = end
+	}
+}
+
+func credentialWordByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || value == '_'
 }
 
 func (r connectorCredentialBoundary) Empty() bool {
