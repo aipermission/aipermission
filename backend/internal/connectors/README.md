@@ -151,6 +151,15 @@ should call `connectortest.AssertPrepareActionDeterministic` so approval
 context hashes cannot drift because of timestamps, random defaults, map
 iteration order, or hidden runtime state.
 
+When an action reaches its endpoint through another connector target,
+`PrepareAction` must declare that target in `PreparedAction.Dependencies`.
+Core resolves, authorizes, and fingerprints only dependencies declared by the
+connector; it must not infer transport configuration. Network connectors using
+the standard `connection_mode=over_ssh` contract should call
+`connectors.NetworkTransportDependencies(req.Target)`. New transport modes
+belong in connector-owned helpers and preparation logic, not in the shared
+action service.
+
 Target/profile deletion is archival from the connector action point of view.
 Archived targets and profiles are hidden from future permission checks and
 action execution, but existing action requests remain readable so history and

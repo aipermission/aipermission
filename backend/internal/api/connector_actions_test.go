@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,61 @@ func TestConnectorNetworkTransportFailsClosedWithoutSourceIdentity(t *testing.T)
 	})
 	if err == nil || !strings.Contains(err.Error(), "source target or project identity is required") {
 		t.Fatalf("expected missing source identity error, got %v", err)
+	}
+}
+
+func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
+	database := openAPITestDB(t)
+	runtime := &databaseRuntime{database: database}
+	transport := connectorNetworkTransport{
+		runtime:  runtime,
+		approved: newApprovedConnectorTransports(nil),
+	}
+
+	_, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
+		Mode:               "over_ssh",
+		Host:               "127.0.0.1",
+		Port:               5432,
+		SourceTargetRef:    "postgres:1:1",
+		TransportTargetRef: "ssh:2:2",
+	})
+	if !errors.Is(err, errConnectorTransportApprovalChanged) {
+		t.Fatalf("undeclared transport dependency error = %v", err)
+	}
+}
+
+func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
+	database := openAPITestDB(t)
+	vault := openAPITestVault(t)
+	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, vault, "transport-drift-workspace"), "transport")
+	store := connectortargets.NewStore(database)
+	targetView, profileView, err := store.ResolveConnectorActionTarget(t.Context(), profile.TargetRef)
+	if err != nil {
+		t.Fatalf("resolve transport dependency: %v", err)
+	}
+	approved := newApprovedConnectorTransports([]actions.ResolvedDependency{{
+		Purpose: connectors.NetworkTransportCapabilityName,
+		Target:  targetView,
+		Profile: profileView,
+	}})
+
+	if _, err := store.UpdateCredentialProfile(t.Context(), connectortargets.UpdateCredentialProfileInput{
+		TargetID:      profile.TargetID,
+		ProfileID:     profile.ProfileID,
+		ConnectorKind: sshconnector.Kind,
+		Kind:          "private_key",
+		Label:         "changed-after-approval",
+		Public:        profileView.Public,
+	}); err != nil {
+		t.Fatalf("update transport profile: %v", err)
+	}
+
+	release, err := approved.acquire(t.Context(), &databaseRuntime{database: database}, connectors.NetworkTransportCapabilityName, profile.TargetRef)
+	if !errors.Is(err, errConnectorTransportApprovalChanged) {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("changed transport dependency error = %v", err)
 	}
 }
 

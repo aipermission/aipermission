@@ -151,7 +151,9 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		summary = fmt.Sprintf("Move %s UID %d to %s without permanent expunge.", ref.Folder, ref.UID, trash)
 		preview = map[string]any{"message_ref": ref.mapValue(), "destination_folder": trash, "permanent_expunge": false}
 	case ActionSendMessage, ActionReplyMessage:
-		return prepareOutboundAction(req, targetConfig, profile)
+		prepared, err := prepareOutboundAction(req, targetConfig, profile)
+		prepared.Dependencies = connectors.NetworkTransportDependencies(req.Target)
+		return prepared, err
 	default:
 		return connectors.PreparedAction{}, ErrUnsupportedAction
 	}
@@ -161,6 +163,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		TargetRef:       req.Target.Ref,
 		ProfileID:       req.Profile.ID,
 		ActionName:      req.ActionName,
+		Dependencies:    connectors.NetworkTransportDependencies(req.Target),
 		Risk:            risk,
 		Title:           title,
 		Summary:         summary,

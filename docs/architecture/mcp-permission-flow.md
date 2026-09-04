@@ -83,7 +83,10 @@ Gateway flow:
 11. If the rule is `always_run`, execute the connector action.
 12. If the rule is `approval_required`, create a pending connector action approval.
 13. If the rule is `blocked`, reject the action without execution.
-14. Record project-snapshotted history and audit events.
+14. For a declared network or command transport, allow only the exact
+    dependency captured during preparation and re-resolve it under the Vault
+    delivery gate immediately before opening the transport.
+15. Record project-snapshotted history and audit events.
 
 ```mermaid
 flowchart TD
