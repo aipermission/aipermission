@@ -1,10 +1,12 @@
 package backups
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -16,6 +18,31 @@ import (
 )
 
 const serviceTestToken = "service-client-test-token-with-thirty-two-characters"
+
+func TestValidateServiceTokenRejectsAmbiguousAndControlCharacters(t *testing.T) {
+	for _, token := range []string{
+		strings.Repeat("a", 31),
+		strings.Repeat("a", 32) + "\x01",
+		strings.Repeat("a", 32) + `"`,
+		strings.Repeat("a", 32) + `\`,
+	} {
+		if err := ValidateServiceToken(token); err == nil {
+			t.Fatalf("accepted unsafe service token %q", token)
+		}
+	}
+}
+
+func TestCredentialScanningWriterFindsTokenAcrossWriteBoundaries(t *testing.T) {
+	var destination bytes.Buffer
+	writer := newCredentialScanningWriter(&destination, serviceTokenVariants(serviceTestToken))
+	split := len(serviceTestToken) / 2
+	if _, err := writer.Write([]byte("prefix-" + serviceTestToken[:split])); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write([]byte(serviceTestToken[split:] + "-suffix")); !errors.Is(err, errReflectedBackupCredential) {
+		t.Fatalf("split reflected token error = %v", err)
+	}
+}
 
 func TestValidateServiceURL(t *testing.T) {
 	valid := []string{"https://backup.example.com", "http://127.0.0.1:8080", "http://[::1]:8080"}
@@ -135,6 +162,23 @@ func TestServiceClientRejectsReflectedAccessToken(t *testing.T) {
 		_, err = client.Download(t.Context(), "stream-a", "bkp_123", filepath.Join(t.TempDir(), "download.aipdb"), 1024)
 		assertRejected(t, err)
 	})
+
+	t.Run("download body", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("encrypted-prefix-" + serviceTestToken + "-suffix"))
+		}))
+		defer server.Close()
+		client, err := NewServiceClient(server.URL, serviceTestToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "download.aipdb")
+		_, err = client.Download(t.Context(), "stream-a", "bkp_123", path, 1024)
+		assertRejected(t, err)
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Fatalf("reflected-token download was retained: %v", statErr)
+		}
+	})
 }
 
 func TestValidateServiceBackupRequiresSafeAIPDBFilename(t *testing.T) {
@@ -151,6 +195,25 @@ func TestValidateServiceBackupRequiresSafeAIPDBFilename(t *testing.T) {
 		if err := validateServiceBackup(invalid, "stream-a", 10); err == nil {
 			t.Fatalf("unsafe filename accepted: %q", filename)
 		}
+	}
+}
+
+func TestCredentialScanningWriterWithholdsCrossChunkCredentialPrefix(t *testing.T) {
+	token := "0123456789abcdefghijklmnopqrstuvwxyz"
+	var destination bytes.Buffer
+	writer := newCredentialScanningWriter(&destination, []string{token})
+	first := []byte("safe-prefix-" + token[:20])
+	if written, err := writer.Write(first); err != nil || written != len(first) {
+		t.Fatalf("write token prefix: written=%d err=%v", written, err)
+	}
+	if strings.Contains(destination.String(), token[:20]) {
+		t.Fatal("possible credential prefix reached the destination before validation")
+	}
+	if _, err := writer.Write([]byte(token[20:] + "-suffix")); !errors.Is(err, errReflectedBackupCredential) {
+		t.Fatalf("cross-chunk credential = %v, want reflected credential rejection", err)
+	}
+	if strings.Contains(destination.String(), token) {
+		t.Fatal("reflected credential reached the destination")
 	}
 }
 

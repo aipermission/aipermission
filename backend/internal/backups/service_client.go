@@ -167,8 +167,13 @@ func backupServiceTransport() *http.Transport {
 
 func ValidateServiceToken(token string) error {
 	token = strings.TrimSpace(token)
-	if len(token) < 32 || strings.ContainsAny(token, "\r\n\t ") {
-		return ValidationError("backup service token must contain at least 32 characters without whitespace")
+	if len(token) < 32 {
+		return ValidationError("backup service token must contain at least 32 printable ASCII characters")
+	}
+	for _, character := range []byte(token) {
+		if character < 0x21 || character > 0x7e || character == '"' || character == '\\' {
+			return ValidationError("backup service token must use printable ASCII without whitespace, quotes, or backslashes")
+		}
 	}
 	return nil
 }
@@ -515,9 +520,16 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 		}
 	}()
 	digest := sha256.New()
-	written, err := io.Copy(io.MultiWriter(output, digest), io.LimitReader(response.Body, maxBytes+1))
+	scanner := newCredentialScanningWriter(io.MultiWriter(output, digest), serviceTokenVariants(c.token))
+	written, err := io.Copy(scanner, io.LimitReader(response.Body, maxBytes+1))
 	if err != nil {
+		if errors.Is(err, errReflectedBackupCredential) {
+			return ServiceBackup{}, errReflectedBackupCredential
+		}
 		return ServiceBackup{}, fmt.Errorf("download encrypted backup: %w", err)
+	}
+	if err := scanner.Flush(); err != nil {
+		return ServiceBackup{}, fmt.Errorf("flush scanned backup download: %w", err)
 	}
 	if written > maxBytes {
 		return ServiceBackup{}, ValidationError("remote backup exceeds the local import limit")
@@ -622,7 +634,7 @@ func (c *ServiceClient) rejectReflectedToken(value any) error {
 	}
 	for _, variant := range serviceTokenVariants(c.token) {
 		if variant != "" && bytes.Contains(encoded.Bytes(), []byte(variant)) {
-			return errors.New("backup service response violated the credential boundary")
+			return errReflectedBackupCredential
 		}
 	}
 	return nil
@@ -635,9 +647,12 @@ func serviceTokenVariants(token string) []string {
 		quoted = quoted[1 : len(quoted)-1]
 	}
 	bearer := "Bearer " + token
+	jsonQuoted, _ := json.Marshal(token)
+	jsonBearer, _ := json.Marshal(bearer)
 	return []string{
 		token,
 		quoted,
+		strings.Trim(string(jsonQuoted), `"`),
 		url.QueryEscape(token),
 		url.PathEscape(token),
 		base64.StdEncoding.EncodeToString([]byte(token)),
@@ -645,6 +660,7 @@ func serviceTokenVariants(token string) []string {
 		base64.URLEncoding.EncodeToString([]byte(token)),
 		base64.RawURLEncoding.EncodeToString([]byte(token)),
 		bearer,
+		strings.Trim(string(jsonBearer), `"`),
 		url.QueryEscape(bearer),
 		url.PathEscape(bearer),
 		base64.StdEncoding.EncodeToString([]byte(bearer)),
@@ -652,6 +668,76 @@ func serviceTokenVariants(token string) []string {
 		base64.URLEncoding.EncodeToString([]byte(bearer)),
 		base64.RawURLEncoding.EncodeToString([]byte(bearer)),
 	}
+}
+
+var errReflectedBackupCredential = errors.New("backup service response violated the credential boundary")
+
+type credentialScanningWriter struct {
+	destination io.Writer
+	patterns    [][]byte
+	tail        []byte
+	maxPattern  int
+}
+
+func newCredentialScanningWriter(destination io.Writer, variants []string) *credentialScanningWriter {
+	writer := &credentialScanningWriter{destination: destination}
+	seen := map[string]bool{}
+	for _, variant := range variants {
+		if variant == "" || seen[variant] {
+			continue
+		}
+		seen[variant] = true
+		writer.patterns = append(writer.patterns, []byte(variant))
+		if len(variant) > writer.maxPattern {
+			writer.maxPattern = len(variant)
+		}
+	}
+	return writer
+}
+
+func (w *credentialScanningWriter) Write(p []byte) (int, error) {
+	window := make([]byte, 0, len(w.tail)+len(p))
+	window = append(window, w.tail...)
+	window = append(window, p...)
+	for _, pattern := range w.patterns {
+		if bytes.Contains(window, pattern) {
+			return 0, errReflectedBackupCredential
+		}
+	}
+	keep := w.maxPattern - 1
+	if keep < 0 {
+		keep = 0
+	}
+	if keep > len(window) {
+		keep = len(window)
+	}
+	safe := window[:len(window)-keep]
+	if len(safe) > 0 {
+		written, err := w.destination.Write(safe)
+		if err != nil {
+			return 0, err
+		}
+		if written != len(safe) {
+			return 0, io.ErrShortWrite
+		}
+	}
+	w.tail = append(w.tail[:0], window[len(window)-keep:]...)
+	return len(p), nil
+}
+
+func (w *credentialScanningWriter) Flush() error {
+	if len(w.tail) == 0 {
+		return nil
+	}
+	written, err := w.destination.Write(w.tail)
+	if err != nil {
+		return err
+	}
+	if written != len(w.tail) {
+		return io.ErrShortWrite
+	}
+	w.tail = nil
+	return nil
 }
 
 func validServiceErrorCode(value string) bool {
