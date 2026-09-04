@@ -1349,6 +1349,7 @@ var migrations = []migration{
 	s3UploadProjectionScrubMigration,
 	recordEnvelopeWriteGuardMigration,
 	actionApprovalIntegrityMigration,
+	credentialSecretRevisionMigration,
 }
 
 func sqlStatements(groups ...[]string) []string {

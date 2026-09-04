@@ -240,6 +240,8 @@ func handleConnectorTargetError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, connectortargets.ErrTargetUpdateConflict):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, connectortargets.ErrCredentialProfileUpdateConflict):
+		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, connectortargets.ErrTargetNotFound), errors.Is(err, connectortargets.ErrTargetProfileNotFound):
 		writeError(w, http.StatusNotFound, "connector target not found")
 	case errors.Is(err, connectortargets.ErrInvalidTargetRef):

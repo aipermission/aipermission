@@ -152,6 +152,7 @@ func scanCredentialProfile(row rowScanner) (CredentialProfile, error) {
 		&publicJSON,
 		&profile.EncryptedSecretJSON,
 		&profile.RiskLabel,
+		&profile.SecretRevision,
 		&profile.CreatedAt,
 		&profile.UpdatedAt,
 	); err != nil {

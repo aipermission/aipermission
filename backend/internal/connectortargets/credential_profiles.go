@@ -19,6 +19,7 @@ type CredentialProfile struct {
 	Public              map[string]any
 	EncryptedSecretJSON string
 	RiskLabel           string
+	SecretRevision      int64
 	CreatedAt           string
 	UpdatedAt           string
 }
@@ -48,15 +49,18 @@ type CreateCredentialProfileInput struct {
 }
 
 type UpdateCredentialProfileInput struct {
-	TargetID            int64
-	ProfileID           int64
-	ConnectorKind       string
-	Kind                string
-	Label               string
-	Public              map[string]any
-	EncryptedSecretJSON *string
-	RiskLabel           string
+	TargetID               int64
+	ProfileID              int64
+	ConnectorKind          string
+	Kind                   string
+	Label                  string
+	Public                 map[string]any
+	EncryptedSecretJSON    *string
+	ExpectedSecretRevision *int64
+	RiskLabel              string
 }
+
+var ErrCredentialProfileUpdateConflict = errors.New("connector credential profile changed while it was being updated")
 
 func (s *Store) CreateCredentialProfile(ctx context.Context, input CreateCredentialProfileInput) (CredentialProfile, error) {
 	if s == nil || s.db == nil {
@@ -126,6 +130,7 @@ func (s *Store) CreateCredentialProfile(ctx context.Context, input CreateCredent
 		Public:              cloneMap(input.Public),
 		EncryptedSecretJSON: input.EncryptedSecretJSON,
 		RiskLabel:           strings.TrimSpace(input.RiskLabel),
+		SecretRevision:      1,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}, nil
@@ -188,10 +193,15 @@ func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredent
 			input.ConnectorKind,
 		)
 	} else {
+		if input.ExpectedSecretRevision == nil || *input.ExpectedSecretRevision < 1 {
+			return CredentialProfile{}, ValidationError("expected credential secret revision is required")
+		}
 		result, err = s.db.ExecContext(ctx, `
 			UPDATE connector_credential_profiles
-			SET connector_kind = ?, kind = ?, label = ?, public_json = ?, encrypted_secret_json = ?, risk_label = ?, updated_at = ?
-			WHERE id = ? AND target_id = ? AND connector_kind = ? AND status = 'active'`,
+			SET connector_kind = ?, kind = ?, label = ?, public_json = ?, encrypted_secret_json = ?,
+				secret_revision = secret_revision + 1, risk_label = ?, updated_at = ?
+			WHERE id = ? AND target_id = ? AND connector_kind = ? AND status = 'active'
+				AND secret_revision = ?`,
 			input.ConnectorKind,
 			input.Kind,
 			label,
@@ -202,6 +212,7 @@ func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredent
 			input.ProfileID,
 			input.TargetID,
 			input.ConnectorKind,
+			*input.ExpectedSecretRevision,
 		)
 	}
 	if err != nil {
@@ -215,6 +226,19 @@ func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredent
 		return CredentialProfile{}, err
 	}
 	if affected == 0 {
+		if input.EncryptedSecretJSON != nil {
+			var exists int
+			if lookupErr := s.db.QueryRowContext(ctx, `
+				SELECT COUNT(*) FROM connector_credential_profiles
+				WHERE id = ? AND target_id = ? AND connector_kind = ? AND status = 'active'`,
+				input.ProfileID, input.TargetID, input.ConnectorKind,
+			).Scan(&exists); lookupErr != nil {
+				return CredentialProfile{}, lookupErr
+			}
+			if exists == 1 {
+				return CredentialProfile{}, ErrCredentialProfileUpdateConflict
+			}
+		}
 		return CredentialProfile{}, ErrTargetProfileNotFound
 	}
 	return s.GetCredentialProfile(ctx, input.TargetID, input.ProfileID)
@@ -229,7 +253,7 @@ func (s *Store) SetCredentialProfileEncryptedSecret(ctx context.Context, targetI
 	}
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE connector_credential_profiles
-		SET encrypted_secret_json = ?
+		SET encrypted_secret_json = ?, secret_revision = secret_revision + 1
 		WHERE id = ? AND target_id = ? AND status = ?`,
 		encrypted,
 		profileID,
@@ -314,7 +338,7 @@ func (s *Store) ListCredentialProfiles(ctx context.Context, targetID int64) ([]C
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json,
-			p.encrypted_secret_json, p.risk_label, p.created_at, p.updated_at
+			p.encrypted_secret_json, p.risk_label, p.secret_revision, p.created_at, p.updated_at
 		FROM connector_credential_profiles p
 		JOIN connector_targets t ON t.id = p.target_id
 			WHERE p.target_id = ? AND p.connector_kind = t.connector_kind AND t.status = 'active' AND p.status = 'active'
@@ -350,7 +374,7 @@ func (s *Store) GetCredentialProfile(ctx context.Context, targetID int64, profil
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
 			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json,
-			p.encrypted_secret_json, p.risk_label, p.created_at, p.updated_at
+			p.encrypted_secret_json, p.risk_label, p.secret_revision, p.created_at, p.updated_at
 		FROM connector_credential_profiles p
 		JOIN connector_targets t ON t.id = p.target_id
 			WHERE p.target_id = ? AND p.id = ? AND p.connector_kind = t.connector_kind AND t.status = 'active' AND p.status = 'active'`,

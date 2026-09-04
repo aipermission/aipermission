@@ -125,6 +125,12 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 	if !decodeJSON(w, r, &request) {
 		return
 	}
+	release, err := runtime.vaultDelivery.acquire(r.Context())
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, "connector credential profile update was canceled")
+		return
+	}
+	defer release()
 	store := connectortargets.NewStore(runtime.database)
 	target, err := store.GetTarget(r.Context(), targetID)
 	if err != nil {
@@ -155,12 +161,6 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 	if !ok {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquire(r.Context())
-	if err != nil {
-		writeError(w, http.StatusRequestTimeout, "connector credential profile update was canceled")
-		return
-	}
-	defer release()
 	var profile connectortargets.CredentialProfile
 	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 		txStore := connectortargets.NewTxStore(tx)
@@ -169,14 +169,15 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 			return err
 		}
 		profile, err = txStore.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
-			TargetID:            target.ID,
-			ProfileID:           profileID,
-			ConnectorKind:       target.ConnectorKind,
-			Kind:                preparedProfile.Kind,
-			Label:               preparedProfile.Label,
-			Public:              preparedProfile.Public,
-			EncryptedSecretJSON: encrypted,
-			RiskLabel:           preparedProfile.RiskLabel,
+			TargetID:               target.ID,
+			ProfileID:              profileID,
+			ConnectorKind:          target.ConnectorKind,
+			Kind:                   preparedProfile.Kind,
+			Label:                  preparedProfile.Label,
+			Public:                 preparedProfile.Public,
+			EncryptedSecretJSON:    encrypted,
+			ExpectedSecretRevision: &existingProfile.SecretRevision,
+			RiskLabel:              preparedProfile.RiskLabel,
 		})
 		if err != nil {
 			return err

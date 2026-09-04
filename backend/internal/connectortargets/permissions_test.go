@@ -203,19 +203,53 @@ func TestStoreCredentialKindChangeRequiresSecret(t *testing.T) {
 	}
 	encrypted := "encrypted-token"
 	updated, err := store.UpdateCredentialProfile(ctx, UpdateCredentialProfileInput{
-		TargetID:            target.ID,
-		ProfileID:           profile.ID,
-		ConnectorKind:       "postgres",
-		Kind:                "token",
-		Label:               "token-profile",
-		Public:              map[string]any{"username": "app_token"},
-		EncryptedSecretJSON: &encrypted,
+		TargetID:               target.ID,
+		ProfileID:              profile.ID,
+		ConnectorKind:          "postgres",
+		Kind:                   "token",
+		Label:                  "token-profile",
+		Public:                 map[string]any{"username": "app_token"},
+		EncryptedSecretJSON:    &encrypted,
+		ExpectedSecretRevision: &profile.SecretRevision,
 	})
 	if err != nil {
 		t.Fatalf("credential kind change with secret should succeed: %v", err)
 	}
 	if updated.Kind != "token" || updated.EncryptedSecretJSON != encrypted {
 		t.Fatalf("unexpected updated profile: %#v", updated)
+	}
+}
+
+func TestStoreCredentialSecretRevisionRejectsLostUpdate(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	target, profile := createPostgresTargetProfile(t, t.Context(), store)
+	firstCiphertext := "first-encrypted-secret"
+	first, err := store.UpdateCredentialProfile(t.Context(), UpdateCredentialProfileInput{
+		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: profile.ConnectorKind,
+		Kind: profile.Kind, Label: profile.Label, Public: profile.Public,
+		EncryptedSecretJSON: &firstCiphertext, ExpectedSecretRevision: &profile.SecretRevision,
+	})
+	if err != nil {
+		t.Fatalf("first credential update: %v", err)
+	}
+	if first.SecretRevision != profile.SecretRevision+1 {
+		t.Fatalf("secret revision=%d, want %d", first.SecretRevision, profile.SecretRevision+1)
+	}
+	secondCiphertext := "stale-encrypted-secret"
+	if _, err := store.UpdateCredentialProfile(t.Context(), UpdateCredentialProfileInput{
+		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: profile.ConnectorKind,
+		Kind: profile.Kind, Label: profile.Label, Public: profile.Public,
+		EncryptedSecretJSON: &secondCiphertext, ExpectedSecretRevision: &profile.SecretRevision,
+	}); !errors.Is(err, ErrCredentialProfileUpdateConflict) {
+		t.Fatalf("stale credential update error=%v", err)
+	}
+	stored, err := store.GetCredentialProfile(t.Context(), target.ID, profile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.EncryptedSecretJSON != firstCiphertext || stored.SecretRevision != first.SecretRevision {
+		t.Fatalf("stale update overwrote credential: %#v", stored)
 	}
 }
 

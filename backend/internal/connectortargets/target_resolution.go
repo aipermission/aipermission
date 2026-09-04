@@ -75,7 +75,7 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 		SELECT
 			t.id, t.project_id, t.connector_kind, t.name, t.config_json, t.updated_at,
 			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json,
-			p.encrypted_secret_json, p.risk_label, p.updated_at
+			p.encrypted_secret_json, p.risk_label, p.secret_revision, p.updated_at
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
 		WHERE
@@ -103,6 +103,7 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 		&profilePublicJSON,
 		&profile.EncryptedSecretJSON,
 		&profile.RiskLabel,
+		&profile.SecretRevision,
 		&profile.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
