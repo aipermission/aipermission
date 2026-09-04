@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -11,6 +12,18 @@ import (
 
 func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
 	return s.connectorAdapterRegistry().For(kind)
+}
+
+func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime *databaseRuntime, dependencies []actions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+	resolver := connectorRuntimeCapabilitiesFor(kind, server, runtime)
+	capabilities, _ := resolver.(connectorRuntimeCapabilities)
+	if capabilities == nil {
+		capabilities = connectorRuntimeCapabilities{}
+	}
+	approved := newApprovedConnectorTransports(dependencies)
+	capabilities[connectors.NetworkTransportCapabilityName] = connectorNetworkTransport{server: server, runtime: runtime, approved: approved}
+	capabilities[connectors.CommandTransportCapabilityName] = connectorCommandTransport{server: server, runtime: runtime, approved: approved}
+	return capabilities
 }
 
 func (runtime *databaseRuntime) connectorAPIAdapterFor(kind string) connectorapi.Adapter {

@@ -17,8 +17,9 @@ const (
 )
 
 type connectorCommandTransport struct {
-	server  *Server
-	runtime *databaseRuntime
+	server   *Server
+	runtime  *databaseRuntime
+	approved approvedConnectorTransports
 }
 
 func (connectorCommandTransport) ConnectorRuntimeCapability() string {
@@ -58,6 +59,11 @@ func (transport connectorCommandTransport) RunConnectorCommand(ctx context.Conte
 		if transport.runtime == nil || transport.runtime.database == nil {
 			return connectors.CommandRunResult{}, fmt.Errorf("database runtime is not available")
 		}
+		release, err := transport.approved.acquire(ctx, transport.runtime, connectors.CommandTransportCapabilityName, targetRef)
+		if err != nil {
+			return connectors.CommandRunResult{}, err
+		}
+		defer release()
 		if err := connectortargets.NewStore(transport.runtime.database).ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef); err != nil {
 			return connectors.CommandRunResult{}, err
 		}

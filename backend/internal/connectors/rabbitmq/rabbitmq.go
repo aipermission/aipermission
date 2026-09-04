@@ -392,6 +392,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		TargetRef:     req.Target.Ref,
 		ProfileID:     req.Profile.ID,
 		ActionName:    req.ActionName,
+		Dependencies:  connectors.NetworkTransportDependencies(req.Target),
 		Risk:          risk,
 		Title:         title,
 		Summary:       summary,
@@ -577,6 +578,14 @@ func executePeekMessages(ctx context.Context, client *rabbitClient, input map[st
 	var rows []map[string]any
 	if err := client.Post(ctx, "/api/queues/"+pathPart(vhost)+"/"+pathPart(queue)+"/get", body, &rows); err != nil {
 		return connectors.ActionResult{}, classifyRabbitMutationError("peek messages", err)
+	}
+	if rows == nil {
+		return connectors.ActionResult{}, connectors.ClassifyActionError(
+			"outcome_unknown",
+			connectors.ResultOutcomeUnknown,
+			map[string]any{"dispatch_stage": "response_validation", "retry_safe": false},
+			fmt.Errorf("peek messages returned an invalid null response after dispatch"),
+		)
 	}
 	for _, row := range rows {
 		if payload, ok := row["payload"].(string); ok && len(payload) > maxBytes {

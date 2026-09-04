@@ -385,6 +385,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		TargetRef:     req.Target.Ref,
 		ProfileID:     req.Profile.ID,
 		ActionName:    req.ActionName,
+		Dependencies:  connectors.CommandTransportDependencies(req.Target),
 		Risk:          risk,
 		Title:         title,
 		Summary:       summary,

@@ -18,8 +18,9 @@ const connectorNetworkDialTimeout = 12 * time.Second
 const dockerHostInternalName = "host.docker.internal"
 
 type connectorNetworkTransport struct {
-	server  *Server
-	runtime *databaseRuntime
+	server   *Server
+	runtime  *databaseRuntime
+	approved approvedConnectorTransports
 }
 
 func (connectorNetworkTransport) ConnectorRuntimeCapability() string {
@@ -55,6 +56,11 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 		if transport.runtime == nil || transport.runtime.database == nil {
 			return nil, fmt.Errorf("database runtime is not available")
 		}
+		release, err := transport.approved.acquire(ctx, transport.runtime, connectors.NetworkTransportCapabilityName, targetRef)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
 		store := connectortargets.NewStore(transport.runtime.database)
 		var projectErr error
 		if strings.TrimSpace(request.SourceTargetRef) != "" {

@@ -300,6 +300,13 @@ Do not import the SSH connector package from another connector. Ask for a
 generic capability such as `NetworkTransport` or `CommandTransport`; the
 gateway resolves the selected transport profile.
 
+Every Over SSH prepared action must declare that selected transport through
+`NetworkTransportDependencies` or `CommandTransportDependencies`. The gateway
+then binds approval to that exact target/profile snapshot, rejects attempts to
+use an undeclared transport, and revalidates configuration plus credential
+revision under the Vault delivery gate before a socket or command is opened.
+Connector code must not construct a different transport ref during execution.
+
 For a protocol that supports both plaintext and verified TLS, make new remote
 Direct targets fail-safe by default. Reuse `UseVerifiedTLSByDefault` for an
 `auto` mode instead of copying hostname heuristics into a connector. The shared
