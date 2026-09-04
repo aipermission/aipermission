@@ -56,6 +56,10 @@ func (status unlockStatusResponse) withoutLocalPaths() unlockStatusResponse {
 }
 
 func writeDatabaseUnlockError(w http.ResponseWriter, err error) {
+	if errors.Is(err, db.ErrDatabaseInUse) {
+		writeError(w, http.StatusConflict, db.ErrDatabaseInUse.Error())
+		return
+	}
 	if errors.Is(err, errDatabaseAuthentication) {
 		writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
 		return

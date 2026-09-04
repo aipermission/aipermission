@@ -33,6 +33,8 @@ func reserveDatabaseTempPath(databasePath, pattern string) (string, error) {
 
 func scavengeDatabaseTempPaths(defaultPath string, now time.Time) {
 	directories := []string{
+		filepath.Dir(defaultPath),
+		filepath.Join(filepath.Dir(defaultPath), "databases"),
 		filepath.Join(filepath.Dir(defaultPath), databaseTempDirectoryName),
 		filepath.Join(filepath.Dir(defaultPath), "databases", databaseTempDirectoryName),
 	}
@@ -63,5 +65,8 @@ func isDatabaseTemporaryFile(name string) bool {
 	return strings.HasPrefix(name, "snapshot-") ||
 		strings.HasPrefix(name, "import-") ||
 		strings.HasPrefix(name, "remote-backup-") ||
-		strings.HasPrefix(name, "first-run-restore-")
+		strings.HasPrefix(name, "first-run-restore-") ||
+		strings.HasPrefix(name, ".remote-backup-") ||
+		strings.HasPrefix(name, ".first-run-restore-") ||
+		(strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".backup.aipdb"))
 }

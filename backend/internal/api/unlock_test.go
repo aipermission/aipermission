@@ -44,6 +44,12 @@ func TestDatabaseUnlockErrorsSeparateAuthenticationFromInitialization(t *testing
 		wantBody   string
 	}{
 		{
+			name:       "database already owned",
+			err:        dbpkg.ErrDatabaseInUse,
+			wantStatus: http.StatusConflict,
+			wantBody:   "database is in use by another AIPermission process",
+		},
+		{
 			name:       "authentication",
 			err:        fmt.Errorf("%w: encrypted database validation failed", errDatabaseAuthentication),
 			wantStatus: http.StatusUnauthorized,
@@ -64,6 +70,29 @@ func TestDatabaseUnlockErrorsSeparateAuthenticationFromInitialization(t *testing
 				t.Fatalf("response = %d %s", response.Code, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestOpenRuntimeRejectsConcurrentDatabaseOwner(t *testing.T) {
+	cfg := fixtureConfigForLockedTest(t)
+	firstServer := NewLockedServer(cfg)
+	first, err := firstServer.openRuntime(cfg.DataPath, dbpkg.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
+	if err != nil {
+		t.Fatalf("open first runtime: %v", err)
+	}
+	secondServer := NewLockedServer(cfg)
+	if _, err := secondServer.openRuntime(cfg.DataPath, dbpkg.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123"); !errors.Is(err, dbpkg.ErrDatabaseInUse) {
+		t.Fatalf("second runtime error = %v, want ErrDatabaseInUse", err)
+	}
+	if err := firstServer.closeRuntime(first); err != nil {
+		t.Fatalf("close first runtime: %v", err)
+	}
+	second, err := secondServer.openRuntime(cfg.DataPath, dbpkg.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
+	if err != nil {
+		t.Fatalf("reopen after ownership release: %v", err)
+	}
+	if err := secondServer.closeRuntime(second); err != nil {
+		t.Fatalf("close second runtime: %v", err)
 	}
 }
 

@@ -1,6 +1,9 @@
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"fmt"
+)
 
 var connectorActionExecutionClaimMigration = migration{
 	version:     24,
@@ -13,6 +16,10 @@ var connectorActionExecutionClaimMigration = migration{
 }
 
 func ensureConnectorActionExecutionClaimColumns(tx *sql.Tx) error {
+	var dispatchColumnCount int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('connector_action_requests') WHERE name = 'dispatch_started_at'`).Scan(&dispatchColumnCount); err != nil {
+		return fmt.Errorf("inspect connector action dispatch marker: %w", err)
+	}
 	for _, item := range []struct {
 		column    string
 		statement string
@@ -23,6 +30,16 @@ func ensureConnectorActionExecutionClaimColumns(tx *sql.Tx) error {
 	} {
 		if err := ensureColumn(tx, "connector_action_requests", item.column, item.statement); err != nil {
 			return err
+		}
+	}
+	if dispatchColumnCount == 0 {
+		// A pre-v24 running row may already have crossed the external dispatch
+		// boundary. Mark it conservatively so recovery never invites a retry.
+		if _, err := tx.Exec(`
+			UPDATE connector_action_requests
+			SET dispatch_started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+			WHERE status = 'running' AND dispatch_started_at = ''`); err != nil {
+			return fmt.Errorf("backfill legacy connector action dispatch markers: %w", err)
 		}
 	}
 	return nil

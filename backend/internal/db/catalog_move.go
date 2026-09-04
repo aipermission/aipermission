@@ -31,6 +31,7 @@ type databaseMoveOps struct {
 	glob      func(string) ([]string, error)
 	mkdir     func(string, os.FileMode) error
 	rename    func(string, string) error
+	publish   func(string, string) error
 	write     func(string, []byte, os.FileMode) error
 	syncFile  func(string) error
 	syncDir   func(string) error
@@ -40,7 +41,7 @@ type databaseMoveOps struct {
 
 func defaultDatabaseMoveOps() databaseMoveOps {
 	return databaseMoveOps{
-		lstat: os.Lstat, glob: filepath.Glob, mkdir: os.Mkdir, rename: os.Rename,
+		lstat: os.Lstat, glob: filepath.Glob, mkdir: os.Mkdir, rename: PublishFileNoReplace, publish: PublishFileNoReplace,
 		write: os.WriteFile, syncFile: syncDatabaseDeletePath,
 		syncDir: syncDatabaseDeletePath, remove: os.Remove, removeAll: os.RemoveAll,
 	}
@@ -81,13 +82,18 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 		return fmt.Errorf("encode database move journal: %w", err)
 	}
 	manifestPath := filepath.Join(journalDir, databaseMoveManifestFile)
-	if err := ops.write(manifestPath, manifestJSON, 0o600); err != nil {
+	pendingManifestPath := manifestPath + ".pending"
+	if err := ops.write(pendingManifestPath, manifestJSON, 0o600); err != nil {
 		cleanupJournal()
 		return fmt.Errorf("write database move journal: %w", err)
 	}
-	if err := ops.syncFile(manifestPath); err != nil {
+	if err := ops.syncFile(pendingManifestPath); err != nil {
 		cleanupJournal()
 		return fmt.Errorf("sync database move manifest: %w", err)
+	}
+	if err := ops.publish(pendingManifestPath, manifestPath); err != nil {
+		cleanupJournal()
+		return fmt.Errorf("publish database move manifest: %w", err)
 	}
 	if err := ops.syncDir(journalDir); err != nil {
 		cleanupJournal()
@@ -168,7 +174,7 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 }
 
 func collectDatabaseMoves(currentPath, targetPath string, ops databaseMoveOps) ([]databaseMove, error) {
-	candidates := []string{currentPath, currentPath + "-wal", currentPath + "-shm"}
+	candidates := []string{currentPath, currentPath + "-wal", currentPath + "-shm", currentPath + "-journal"}
 	for _, pattern := range []string{currentPath + ".pre-migration-v*.aipdb", currentPath + ".pre-migration-v*.aipdb.pending"} {
 		matches, err := ops.glob(pattern)
 		if err != nil {
@@ -211,8 +217,25 @@ func recoverDatabaseMoveJournals(root string) error {
 			continue
 		}
 		journalDir := filepath.Join(root, entry.Name())
-		manifestJSON, err := os.ReadFile(filepath.Join(journalDir, databaseMoveManifestFile))
+		complete, err := databaseMoveJournalComplete(journalDir)
 		if err != nil {
+			return err
+		}
+		if complete {
+			if err := removeCompletedMoveJournal(root, journalDir); err != nil {
+				return err
+			}
+			continue
+		}
+		manifestPath := filepath.Join(journalDir, databaseMoveManifestFile)
+		manifestJSON, err := os.ReadFile(manifestPath)
+		if err != nil {
+			if os.IsNotExist(err) && moveJournalIsUnpublished(journalDir) {
+				if cleanupErr := removeIncompleteMoveJournal(root, journalDir); cleanupErr != nil {
+					return cleanupErr
+				}
+				continue
+			}
 			return fmt.Errorf("read database move journal: %w", err)
 		}
 		var manifest databaseMoveManifest
@@ -222,52 +245,109 @@ func recoverDatabaseMoveJournals(root string) error {
 		if err := validateDatabaseMoveManifest(root, manifest); err != nil {
 			return err
 		}
-		complete := Exists(filepath.Join(journalDir, databaseMoveCompleteFile))
-		if err := recoverDatabaseMoveJournal(manifest, complete); err != nil {
+		ownerships, err := acquireDatabaseOwnershipSet(manifest.SourceBase, manifest.TargetBase)
+		if errors.Is(err, ErrDatabaseInUse) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("claim incomplete database move journal: %w", err)
+		}
+		if err := recoverDatabaseMoveJournal(manifest); err != nil {
+			closeDatabaseOwnershipSet(ownerships)
 			return err
 		}
 		if err := os.RemoveAll(journalDir); err != nil {
+			closeDatabaseOwnershipSet(ownerships)
 			return fmt.Errorf("remove recovered database move journal: %w", err)
 		}
 		if err := syncDatabaseDeletePath(root); err != nil {
+			closeDatabaseOwnershipSet(ownerships)
 			return fmt.Errorf("sync recovered database move root: %w", err)
 		}
+		closeDatabaseOwnershipSet(ownerships)
 	}
 	return nil
 }
 
-func recoverDatabaseMoveJournal(manifest databaseMoveManifest, complete bool) error {
+func databaseMoveJournalComplete(journalDir string) (bool, error) {
+	marker, err := os.ReadFile(filepath.Join(journalDir, databaseMoveCompleteFile))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read database move completion marker: %w", err)
+	}
+	if string(marker) != "complete\n" {
+		return false, errors.New("database move journal has an invalid completion marker")
+	}
+	return true, nil
+}
+
+func removeCompletedMoveJournal(root, journalDir string) error {
+	if err := os.RemoveAll(journalDir); err != nil {
+		return fmt.Errorf("remove completed database move journal: %w", err)
+	}
+	if err := syncDatabaseDeletePath(root); err != nil {
+		return fmt.Errorf("sync completed database move journal removal: %w", err)
+	}
+	return nil
+}
+
+func moveJournalIsUnpublished(journalDir string) bool {
+	if _, err := os.Lstat(filepath.Join(journalDir, databaseMoveManifestFile+".pending")); err == nil {
+		return true
+	}
+	entries, err := os.ReadDir(journalDir)
+	return err == nil && len(entries) == 0
+}
+
+func removeIncompleteMoveJournal(root, journalDir string) error {
+	if err := os.RemoveAll(journalDir); err != nil {
+		return fmt.Errorf("remove incomplete database move journal: %w", err)
+	}
+	if err := syncDatabaseDeletePath(root); err != nil {
+		return fmt.Errorf("sync incomplete database move journal removal: %w", err)
+	}
+	return nil
+}
+
+func recoverDatabaseMoveJournal(manifest databaseMoveManifest) error {
+	return recoverDatabaseMoveJournalWithPublish(manifest, PublishFileNoReplace)
+}
+
+func recoverDatabaseMoveJournalWithPublish(manifest databaseMoveManifest, publish func(string, string) error) error {
+	restore := make([]databaseMove, 0, len(manifest.Moves))
 	for index := len(manifest.Moves) - 1; index >= 0; index-- {
 		item := manifest.Moves[index]
 		sourceExists, targetExists := Exists(item.Source), Exists(item.Target)
-		if complete {
-			if sourceExists || !targetExists {
-				return fmt.Errorf("completed database move journal has inconsistent artifact state")
-			}
-			continue
-		}
 		switch {
 		case sourceExists && !targetExists:
 			continue
 		case !sourceExists && targetExists:
-			if err := os.Rename(item.Target, item.Source); err != nil {
-				return fmt.Errorf("recover database move source %q: %w", item.Source, err)
-			}
+			restore = append(restore, item)
 		case sourceExists && targetExists:
 			return fmt.Errorf("incomplete database move journal has duplicate artifact state")
 		default:
 			return fmt.Errorf("incomplete database move journal is missing an artifact")
 		}
 	}
+	restored := make([]databaseMove, 0, len(restore))
+	for _, item := range restore {
+		if err := publish(item.Target, item.Source); err != nil {
+			recoveryErrors := []error{fmt.Errorf("recover database move source %q: %w", item.Source, err)}
+			for index := len(restored) - 1; index >= 0; index-- {
+				restoredItem := restored[index]
+				if rollbackErr := publish(restoredItem.Source, restoredItem.Target); rollbackErr != nil {
+					recoveryErrors = append(recoveryErrors, fmt.Errorf("roll back recovered database move source %q: %w", restoredItem.Source, rollbackErr))
+				}
+			}
+			return errors.Join(recoveryErrors...)
+		}
+		restored = append(restored, item)
+	}
 	paths := make([]string, 0, len(manifest.Moves))
-	if complete {
-		for _, item := range manifest.Moves {
-			paths = append(paths, item.Target)
-		}
-	} else {
-		for _, item := range manifest.Moves {
-			paths = append(paths, item.Source)
-		}
+	for _, item := range manifest.Moves {
+		paths = append(paths, item.Source)
 	}
 	for _, path := range paths {
 		if err := syncDatabaseDeletePath(path); err != nil {
@@ -309,7 +389,7 @@ func databaseMovePathWithin(root, path string) bool {
 }
 
 func validDatabaseMoveSuffix(suffix string) bool {
-	if suffix == "" || suffix == "-wal" || suffix == "-shm" {
+	if suffix == "" || suffix == "-wal" || suffix == "-shm" || suffix == "-journal" {
 		return true
 	}
 	return strings.HasPrefix(suffix, ".pre-migration-v") &&

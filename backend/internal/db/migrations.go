@@ -1351,6 +1351,7 @@ var migrations = []migration{
 	actionApprovalIntegrityMigration,
 	credentialSecretRevisionMigration,
 	connectorActionExecutionClaimMigration,
+	connectorActionKeyedIdentityMigration,
 	connectorActionIdempotencyTombstoneMigration,
 }
 

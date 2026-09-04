@@ -244,6 +244,56 @@ func TestDatabaseCatalogRecoversInterruptedMoveJournal(t *testing.T) {
 	}
 }
 
+func TestMoveRecoveryDoesNotPartiallyRestoreConflictingArtifactSet(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.db")
+	target := filepath.Join(root, "target.db")
+	for _, path := range []string{source, target, target + "-wal"} {
+		if err := os.WriteFile(path, []byte(filepath.Base(path)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest := databaseMoveManifest{
+		SourceBase: source, TargetBase: target,
+		Moves: []databaseMove{{Source: source, Target: target}, {Source: source + "-wal", Target: target + "-wal"}},
+	}
+	if err := recoverDatabaseMoveJournal(manifest); err == nil || !strings.Contains(err.Error(), "duplicate artifact state") {
+		t.Fatalf("recovery error = %v", err)
+	}
+	if Exists(source+"-wal") || !Exists(target+"-wal") {
+		t.Fatal("conflicting move recovery partially restored the WAL")
+	}
+}
+
+func TestMoveRecoveryRollsBackPartialPublishFailure(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.db")
+	target := filepath.Join(root, "target.db")
+	for _, path := range []string{target, target + "-wal"} {
+		if err := os.WriteFile(path, []byte(filepath.Base(path)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest := databaseMoveManifest{
+		SourceBase: source, TargetBase: target,
+		Moves: []databaseMove{{Source: source, Target: target}, {Source: source + "-wal", Target: target + "-wal"}},
+	}
+	publishCount := 0
+	publish := func(currentPath, nextPath string) error {
+		publishCount++
+		if publishCount == 2 {
+			return errors.New("injected recovery publish failure")
+		}
+		return os.Rename(currentPath, nextPath)
+	}
+	if err := recoverDatabaseMoveJournalWithPublish(manifest, publish); err == nil || !strings.Contains(err.Error(), "injected recovery publish failure") {
+		t.Fatalf("recovery error = %v", err)
+	}
+	if Exists(source) || Exists(source+"-wal") || !Exists(target) || !Exists(target+"-wal") {
+		t.Fatal("failed move recovery left a partially restored artifact set")
+	}
+}
+
 func TestDatabaseCatalogRecoversInterruptedNamedDatabaseMoveJournal(t *testing.T) {
 	root := t.TempDir()
 	defaultPath := filepath.Join(root, "aipermission.db")
@@ -310,6 +360,125 @@ func TestDatabaseCatalogFinishesCompletedMoveJournalCleanup(t *testing.T) {
 	}
 	if len(items) != 1 || !items[0].Current || !Exists(targetPath) || Exists(journalDir) {
 		t.Fatalf("completed move cleanup mismatch: items=%#v", items)
+	}
+}
+
+func TestDatabaseCatalogDiscardsUnpublishedMoveJournal(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	if err := os.WriteFile(defaultPath, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journalDir := filepath.Join(root, databaseMoveJournalPrefix+"truncated")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(journalDir, databaseMoveManifestFile+".pending"), []byte(`{"source_base":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	items, err := ListDatabases(defaultPath, defaultPath)
+	if err != nil {
+		t.Fatalf("truncated unpublished journal blocked catalog: %v", err)
+	}
+	if len(items) != 1 || !Exists(defaultPath) || Exists(journalDir) {
+		t.Fatalf("unpublished journal recovery mismatch: items=%#v", items)
+	}
+}
+
+func TestDatabaseCatalogRejectsCorruptPublishedMoveJournal(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	if err := os.WriteFile(defaultPath, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journalDir := filepath.Join(root, databaseMoveJournalPrefix+"corrupt-published")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(journalDir, databaseMoveManifestFile), []byte(`{"source_base":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ListDatabases(defaultPath, defaultPath); err == nil || !strings.Contains(err.Error(), "decode database move journal") {
+		t.Fatalf("expected corrupt published journal to fail closed, got %v", err)
+	}
+	if _, err := os.Stat(journalDir); !Exists(defaultPath) || err != nil {
+		t.Fatal("failed recovery must preserve the database and journal for manual inspection")
+	}
+}
+
+func TestDatabaseCatalogCompletedMoveJournalDoesNotOwnLaterTargetState(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	targetPath := filepath.Join(root, "databases", "renamed.db")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journalDir := filepath.Join(root, databaseMoveJournalPrefix+"completed-cleanup")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeDatabaseMoveManifestFixture(t, journalDir, databaseMoveManifest{
+		SourceBase: defaultPath,
+		TargetBase: targetPath,
+		Moves:      []databaseMove{{Source: defaultPath, Target: targetPath}},
+	})
+	if err := os.WriteFile(filepath.Join(journalDir, databaseMoveCompleteFile), []byte("complete\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ListDatabases(defaultPath, ""); err != nil {
+		t.Fatalf("stale completed journal blocked catalog: %v", err)
+	}
+	if Exists(journalDir) {
+		t.Fatal("stale completed journal was not removed")
+	}
+}
+
+func TestDatabaseCatalogCompletedMoveJournalDoesNotRequireManifest(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	if err := os.WriteFile(defaultPath, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journalDir := filepath.Join(root, databaseMoveJournalPrefix+"completed-corrupt-manifest")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(journalDir, databaseMoveManifestFile), []byte(`{"source_base":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(journalDir, databaseMoveCompleteFile), []byte("complete\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := ListDatabases(defaultPath, defaultPath)
+	if err != nil {
+		t.Fatalf("completed move journal with corrupt manifest blocked catalog: %v", err)
+	}
+	if len(items) != 1 || !Exists(defaultPath) || Exists(journalDir) {
+		t.Fatalf("completed move journal cleanup mismatch: items=%#v", items)
+	}
+}
+
+func TestDatabaseCatalogRejectsInvalidMoveCompletionMarker(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	if err := os.WriteFile(defaultPath, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journalDir := filepath.Join(root, databaseMoveJournalPrefix+"invalid-completion")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(journalDir, databaseMoveCompleteFile), []byte("not-complete\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ListDatabases(defaultPath, defaultPath); err == nil || !strings.Contains(err.Error(), "invalid completion marker") {
+		t.Fatalf("expected invalid completion marker to fail closed, got %v", err)
+	}
+	if _, err := os.Stat(journalDir); !Exists(defaultPath) || err != nil {
+		t.Fatal("failed recovery must preserve the database and journal for manual inspection")
 	}
 }
 
@@ -530,6 +699,36 @@ func TestDeleteDatabasePreservesQuarantineWhenRollbackRenameFails(t *testing.T) 
 	}
 }
 
+func TestDeleteRecoveryRollsBackPartialPublishFailure(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "partial-recovery.db")
+	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"partial")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []string{path, path + "-wal"} {
+		if err := os.WriteFile(filepath.Join(quarantineDir, filepath.Base(candidate)), []byte("preserved"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publishCount := 0
+	publish := func(currentPath, nextPath string) error {
+		publishCount++
+		if publishCount == 2 {
+			return errors.New("injected delete recovery publish failure")
+		}
+		return os.Rename(currentPath, nextPath)
+	}
+	if err := recoverDatabaseDeleteQuarantinesWithPublish(directory, publish); err == nil || !strings.Contains(err.Error(), "injected delete recovery publish failure") {
+		t.Fatalf("recovery error = %v", err)
+	}
+	for _, candidate := range []string{path, path + "-wal"} {
+		if Exists(candidate) || !Exists(filepath.Join(quarantineDir, filepath.Base(candidate))) {
+			t.Fatalf("failed recovery left a partially restored artifact set for %q", candidate)
+		}
+	}
+}
+
 func TestDeleteDatabaseRemovesMarkerBeforeFailedDurabilityRollback(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "marker-rollback.db")
@@ -590,5 +789,28 @@ func TestDatabaseCatalogRecoversInterruptedDeleteQuarantine(t *testing.T) {
 	}
 	if Exists(quarantineDir) {
 		t.Fatalf("recovered quarantine directory should be removed")
+	}
+}
+
+func TestDeleteRecoveryDoesNotPartiallyRestoreConflictingArtifactSet(t *testing.T) {
+	directory := t.TempDir()
+	databasePath := filepath.Join(directory, "workspace.db")
+	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"conflict")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{filepath.Base(databasePath), filepath.Base(databasePath) + "-wal"} {
+		if err := os.WriteFile(filepath.Join(quarantineDir, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(databasePath+"-wal", []byte("conflict"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+		t.Fatalf("recover conflict: %v", err)
+	}
+	if Exists(databasePath) || !Exists(filepath.Join(quarantineDir, filepath.Base(databasePath))) {
+		t.Fatal("conflicting delete recovery partially restored the database")
 	}
 }

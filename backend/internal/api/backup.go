@@ -13,6 +13,7 @@ import (
 	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
 const maxImportBodyBytes = 256 << 20
@@ -202,6 +203,15 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// A restored copy is a new retry domain even though its workspace UUID must
+	// remain stable because encrypted record AAD is bound to that UUID.
+	if _, err := projectvault.RotateUIRetryIdentity(r.Context(), testDB); err != nil {
+		if closeErr := closeImportCandidate(testDB); closeErr != nil {
+			log.Printf("failed closing rejected import candidate path=%q error=%v", tmpPath, closeErr)
+		}
+		writeInternalError(w)
+		return
+	}
 	if mutate != nil {
 		if err := mutate(testDB); err != nil {
 			if closeErr := closeImportCandidate(testDB); closeErr != nil {
@@ -226,10 +236,9 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		return
 	}
 	if err := s.publishDatabase(tmpPath, targetPath); err != nil {
-		if dbpkg.Exists(targetPath) {
-			if cleanupErr := rollbackImportedDatabase(targetPath); cleanupErr != nil {
-				log.Printf("failed partially published database cleanup path=%q error=%v", targetPath, cleanupErr)
-			}
+		if errors.Is(err, dbpkg.ErrPublishTargetExists) {
+			writeError(w, http.StatusConflict, "database name already exists")
+			return
 		}
 		writeInternalError(w)
 		return

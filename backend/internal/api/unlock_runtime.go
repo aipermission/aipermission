@@ -128,6 +128,16 @@ func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
 }
 
 func (s *Server) openRuntime(path string, id string, password string) (*databaseRuntime, error) {
+	ownership, err := db.AcquireDatabaseOwnership(path)
+	if err != nil {
+		return nil, err
+	}
+	owned := true
+	defer func() {
+		if owned {
+			_ = ownership.Close()
+		}
+	}()
 	existingDatabase := db.Exists(path)
 	snapshotsBeforeOpen := preMigrationSnapshotSet(path)
 	if existingDatabase {
@@ -136,6 +146,10 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		}
 	}
 	runtime, err := s.openValidatedRuntime(path, id, password)
+	if runtime != nil {
+		runtime.databaseOwnership = ownership
+		owned = false
+	}
 	if err == nil || !existingDatabase {
 		return runtime, err
 	}
@@ -427,12 +441,19 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 	if runtime.auditDispatcher != nil {
 		runtime.auditDispatcher.Stop()
 	}
+	var closeErrors []error
 	if runtime.database != nil {
 		if err := runtime.database.Close(); err != nil {
-			return fmt.Errorf("close encrypted database runtime %q: %w", runtime.id, err)
+			closeErrors = append(closeErrors, fmt.Errorf("close encrypted database runtime %q: %w", runtime.id, err))
 		}
 	}
-	return nil
+	if runtime.databaseOwnership != nil {
+		if err := runtime.databaseOwnership.Close(); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("release encrypted database runtime %q ownership: %w", runtime.id, err))
+		}
+		runtime.databaseOwnership = nil
+	}
+	return errors.Join(closeErrors...)
 }
 
 func (s *Server) markRunningConnectorActionsOutcomeUnknown(runtime *databaseRuntime) error {
