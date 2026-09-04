@@ -60,6 +60,14 @@ func (client *redisClient) Close() error {
 }
 
 func (client *redisClient) Do(args ...string) (respValue, error) {
+	return client.do(false, args...)
+}
+
+func (client *redisClient) DoMutation(args ...string) (respValue, error) {
+	return client.do(true, args...)
+}
+
+func (client *redisClient) do(mutation bool, args ...string) (respValue, error) {
 	if client == nil || client.conn == nil {
 		return respValue{}, fmt.Errorf("redis connection is not open")
 	}
@@ -80,11 +88,21 @@ func (client *redisClient) Do(args ...string) (respValue, error) {
 		payload.WriteString(arg)
 		payload.WriteString("\r\n")
 	}
-	if _, err := client.conn.Write(payload.Bytes()); err != nil {
+	written, err := client.conn.Write(payload.Bytes())
+	if err != nil || written != payload.Len() {
+		if err == nil {
+			err = io.ErrShortWrite
+		}
+		if mutation && written > 0 {
+			return respValue{}, &redisPostDispatchError{err: err}
+		}
 		return respValue{}, err
 	}
 	value, err := readRESPValue(client.reader)
 	if err != nil {
+		if mutation {
+			return respValue{}, &redisPostDispatchError{err: err}
+		}
 		return respValue{}, err
 	}
 	if value.kind == respError {
@@ -92,6 +110,11 @@ func (client *redisClient) Do(args ...string) (respValue, error) {
 	}
 	return value, nil
 }
+
+type redisPostDispatchError struct{ err error }
+
+func (err *redisPostDispatchError) Error() string { return err.err.Error() }
+func (err *redisPostDispatchError) Unwrap() error { return err.err }
 
 func readRESPValue(reader *bufio.Reader) (respValue, error) {
 	return readRESPValueAtDepth(reader, 0, &respReadBudget{})

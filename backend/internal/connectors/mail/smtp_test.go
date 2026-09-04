@@ -244,7 +244,7 @@ func TestSubmitSMTPMessageResetsBeforeDataWhenAnyRecipientIsRejected(t *testing.
 func TestSubmitSMTPMessageClassifiesUnknownFinalResponseWithoutRetryHint(t *testing.T) {
 	client := &fakeSMTPClient{data: &fakeSMTPData{closeErr: io.ErrUnexpectedEOF}}
 	result := submitSMTPMessage(client, "support@example.com", outboundMessage{To: []*stdmail.Address{{Address: "one@example.com"}}}, []byte("message"), "<id@example.com>")
-	if result.Status != connectors.ResultError || !strings.Contains(result.Error, "Do not automatically retry") {
+	if result.Status != connectors.ResultOutcomeUnknown || !strings.Contains(result.Error, "Do not automatically retry") {
 		t.Fatalf("result = %#v", result)
 	}
 	output := result.Output.(map[string]any)

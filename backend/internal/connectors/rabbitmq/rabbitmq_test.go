@@ -421,6 +421,28 @@ func TestRabbitMutationPostDispatchFailureIsOutcomeUnknown(t *testing.T) {
 	}
 }
 
+func TestRabbitPublishRequiresRoutedBooleanAfterDispatch(t *testing.T) {
+	for name, responseBody := range map[string]string{
+		"empty":   "",
+		"missing": `{}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(responseBody))
+			}))
+			defer server.Close()
+			client := &rabbitClient{baseURL: server.URL, httpClient: server.Client()}
+			_, err := executePublishMessage(t.Context(), client, map[string]any{
+				"vhost": "/", "exchange": "events", "routing_key": "jobs", "payload": "{}",
+			}, "/")
+			if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+				t.Fatalf("publish response was not classified as outcome_unknown: %v", err)
+			}
+		})
+	}
+}
+
 func TestRabbitPostTracksMutationDispatchAndAmbiguousStatuses(t *testing.T) {
 	preDispatch := &rabbitClient{
 		baseURL: "http://rabbit.invalid",

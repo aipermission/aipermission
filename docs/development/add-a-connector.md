@@ -176,6 +176,14 @@ surviving this boundary. If output cannot cross it after a remote action has
 already executed, the request finishes as `outcome_unknown`; callers must
 inspect state before retrying because the side effect may have completed.
 
+Mutation transports must make the same distinction. A rejection received
+before dispatch, or a definitive provider response after dispatch, may finish
+as `failed`. Once any mutation bytes may have reached the remote service,
+connection loss, timeout, malformed or incomplete success responses, and
+failed post-write verification must finish as `outcome_unknown` with
+`retry_safe: false`. Never automatically retry that result. Add transport-level
+tests for both definite rejection and ambiguous post-dispatch failure.
+
 Target schemas must be non-secret. Use target schemas for endpoint metadata
 such as host, port, database name, or API base URL. Use credential schemas for
 passwords, tokens, private keys, tenant secrets, and anything that should be

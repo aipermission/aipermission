@@ -672,9 +672,9 @@ func executeSetString(client *redisClient, input map[string]any) (connectors.Act
 	if ttl := normalizeInt(input, "ttl_seconds", 0, 0, 31_536_000); ttl > 0 {
 		args = append(args, "EX", strconv.Itoa(ttl))
 	}
-	response, err := client.Do(args...)
+	response, err := client.DoMutation(args...)
 	if err != nil {
-		return connectors.ActionResult{}, err
+		return connectors.ActionResult{}, classifyRedisMutationError("set string", err)
 	}
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
@@ -692,12 +692,12 @@ func executeExpireKey(client *redisClient, input map[string]any) (connectors.Act
 	var value respValue
 	var err error
 	if ttl < 0 {
-		value, err = client.Do("PERSIST", key)
+		value, err = client.DoMutation("PERSIST", key)
 	} else {
-		value, err = client.Do("EXPIRE", key, strconv.Itoa(ttl))
+		value, err = client.DoMutation("EXPIRE", key, strconv.Itoa(ttl))
 	}
 	if err != nil {
-		return connectors.ActionResult{}, err
+		return connectors.ActionResult{}, classifyRedisMutationError("update key expiry", err)
 	}
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,
@@ -712,9 +712,9 @@ func executeDeleteKeys(client *redisClient, input map[string]any) (connectors.Ac
 		return connectors.ActionResult{}, err
 	}
 	args := append([]string{"DEL"}, keys...)
-	value, err := client.Do(args...)
+	value, err := client.DoMutation(args...)
 	if err != nil {
-		return connectors.ActionResult{}, err
+		return connectors.ActionResult{}, classifyRedisMutationError("delete keys", err)
 	}
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
@@ -724,6 +724,19 @@ func executeDeleteKeys(client *redisClient, input map[string]any) (connectors.Ac
 		},
 		DisplayText: fmt.Sprintf("Deleted %d key(s).", value.number),
 	}, nil
+}
+
+func classifyRedisMutationError(operation string, err error) error {
+	var dispatchErr *redisPostDispatchError
+	if !errors.As(err, &dispatchErr) {
+		return err
+	}
+	return connectors.ClassifyActionError(
+		"outcome_unknown",
+		connectors.ResultOutcomeUnknown,
+		map[string]any{"dispatch_stage": "resp_command", "retry_safe": false},
+		fmt.Errorf("Redis %s outcome is unknown after dispatch; inspect key state before retrying: %w", operation, err),
+	)
 }
 
 type redisServerIdentity struct {

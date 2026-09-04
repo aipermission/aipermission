@@ -32,6 +32,43 @@ func TestTargetSchemaExposesRedisAndValkeyProducts(t *testing.T) {
 	}
 }
 
+func TestRedisMutationResponseLossIsOutcomeUnknown(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	client := newRedisClient(clientConn)
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer serverConn.Close()
+		_, _ = readRESPValue(bufio.NewReader(serverConn))
+	}()
+
+	_, err := executeSetString(client, map[string]any{"key": "job", "value": "running"})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+		t.Fatalf("response loss was not classified as outcome_unknown: %v", err)
+	}
+	<-done
+}
+
+func TestRedisDefiniteErrorResponseRemainsFailed(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	client := newRedisClient(clientConn)
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer serverConn.Close()
+		_, _ = readRESPValue(bufio.NewReader(serverConn))
+		_, _ = serverConn.Write([]byte("-ERR permission denied\r\n"))
+	}()
+
+	_, err := executeDeleteKeys(client, map[string]any{"keys": []any{"job"}})
+	if err == nil || connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
+		t.Fatalf("definite Redis error was misclassified: %v", err)
+	}
+	<-done
+}
+
 func TestRedisTLSConfigPreservesSavedValuesAndSecuresNewRemoteTargets(t *testing.T) {
 	plaintextTargets := []connectors.TargetView{
 		{Config: map[string]any{"host": "cache.internal"}},

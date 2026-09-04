@@ -286,7 +286,7 @@ func submitSMTPMessage(client smtpSubmissionClient, from string, outbound outbou
 			return smtpFailed("submission_rejected", messageID, true, true, "SMTP rejected the complete message")
 		}
 		return connectors.ActionResult{
-			Status:      connectors.ResultError,
+			Status:      connectors.ResultOutcomeUnknown,
 			Output:      map[string]any{"submission_status": "submission_unknown", "message_id": messageID, "message_content_transmitted": true, "retry_safe": false},
 			DisplayText: "SMTP submission result is unknown. Inspect Sent/server state before any manual retry.",
 			Error:       "SMTP connection ended after final submission; the server may have accepted the message. Do not automatically retry.",

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -40,6 +41,17 @@ func TestTargetAndCredentialSchemasExposeKafkaRedpandaAndSASL(t *testing.T) {
 	}
 	if !connectors.SchemaContainsSecret(credentials[0].Schema) {
 		t.Fatal("SASL password must be a secret field")
+	}
+}
+
+func TestKafkaPostDispatchFailureIsOutcomeUnknown(t *testing.T) {
+	result := outcomeUnknownResult("produce_request", errors.New("connection reset"))
+	if result.Status != connectors.ResultOutcomeUnknown || !strings.Contains(result.Error, "inspect broker state") {
+		t.Fatalf("result = %#v", result)
+	}
+	output, _ := result.Output.(map[string]any)
+	if output["dispatch_stage"] != "produce_request" || output["retry_safe"] != false {
+		t.Fatalf("output = %#v", output)
 	}
 }
 
