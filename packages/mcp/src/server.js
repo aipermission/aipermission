@@ -12,6 +12,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { callVaultActionSchema, listVaultItemsSchema, vaultActionRequestSchema } from "./vault-tools.js";
 import { MCP_SERVER_INSTRUCTIONS } from "./instructions.js";
+import { gatewayAPIError } from "./api-error.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { jsonToolResult } from "./results.js";
 
@@ -176,9 +177,7 @@ async function apiRequest(path, options) {
   const text = await response.text();
   const data = parseResponseBody(text);
   if (!response.ok) {
-    const error = new Error(data?.error || `AIPermission API request failed with ${response.status}`);
-    if (data?.code) error.code = data.code;
-    throw error;
+    throw gatewayAPIError(data, response.status);
   }
   return data;
 }
