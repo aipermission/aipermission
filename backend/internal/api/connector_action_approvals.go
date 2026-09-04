@@ -389,6 +389,29 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 			runtime.clearConnectorCredentialBoundary(item.ID)
 		}
 	}()
+	release, err := runtime.vaultDelivery.acquire(ctx)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	claimHeld := true
+	defer func() {
+		if claimHeld {
+			release()
+		}
+	}()
+	prepared, err = s.revalidatePreparedConnectorAction(ctx, runtime, item, prepared, connectortargets.ActionPermissionApprovalRequired)
+	if errors.Is(err, errConnectorAuthorizationChanged) {
+		return s.finishStaleConnectorApproval(ctx, runtime, item.ID, err.Error(), "authorization")
+	}
+	if err != nil {
+		return s.finishConnectorActionRequest(ctx, runtime, item.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
+	}
+	snapshot, err := s.snapshotPreparedConnectorAction(ctx, runtime, prepared)
+	if err != nil {
+		return s.finishStaleConnectorApproval(ctx, runtime, item.ID, err.Error(), "profile")
+	}
+	execution.snapshot = snapshot
+	runtime.setConnectorCredentialBoundary(item.ID, snapshot.credentialBoundary)
 	claimed, dispatched, err := s.beginConnectorActionDispatch(ctx, runtime, item.ID)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
@@ -396,6 +419,8 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 	if !dispatched {
 		return claimed, nil
 	}
+	release()
+	claimHeld = false
 	result, err := s.executePreparedConnectorAction(ctx, runtime, execution.principal, prepared, execution.snapshot)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)
