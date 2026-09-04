@@ -89,10 +89,9 @@ func (Connector) ProvisionCredentialProfile(ctx context.Context, runtime connect
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		committed, verifyErr := verifyProvisionedRole(ctx, runtime, roleName, marker)
 		if !committed {
-			return connectors.ProvisionedCredentialProfile{}, connectors.ClassifyActionError(
-				"outcome_unknown",
-				connectors.ResultOutcomeUnknown,
-				map[string]any{"dispatch_stage": "transaction_commit", "reconciliation_required": true, "retry_safe": false},
+			return connectors.ProvisionedCredentialProfile{}, connectors.ClassifyOutcomeUnknown(
+				"transaction_commit",
+				map[string]any{"reconciliation_required": true},
 				errors.Join(fmt.Errorf("commit postgres role provisioning: %w", commitErr), verifyErr),
 			)
 		}
@@ -255,10 +254,9 @@ func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtim
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		absent, verifyErr := verifyPostgresRoleAbsent(ctx, runtime, roleName)
 		if !absent {
-			return connectors.ActionResult{}, connectors.ClassifyActionError(
-				"outcome_unknown",
-				connectors.ResultOutcomeUnknown,
-				map[string]any{"dispatch_stage": "transaction_commit", "reconciliation_required": true, "retry_safe": false},
+			return connectors.ActionResult{}, connectors.ClassifyOutcomeUnknown(
+				"transaction_commit",
+				map[string]any{"reconciliation_required": true},
 				errors.Join(fmt.Errorf("commit postgres role cleanup: %w", commitErr), verifyErr),
 			)
 		}

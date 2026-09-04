@@ -142,10 +142,9 @@ func classifyIMAPMutationError(operation string, err error) error {
 	if !isAmbiguousIMAPTransportError(err) {
 		return classifyProtocolError("IMAP "+operation, err)
 	}
-	return connectors.ClassifyActionError(
-		"outcome_unknown",
-		connectors.ResultOutcomeUnknown,
-		map[string]any{"dispatch_stage": "imap_command", "retry_safe": false},
+	return connectors.ClassifyOutcomeUnknown(
+		"imap_command",
+		nil,
 		fmt.Errorf("IMAP %s outcome is unknown after dispatch; inspect message state before retrying: %w", operation, err),
 	)
 }

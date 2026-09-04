@@ -157,7 +157,7 @@ func TestRestoreObjectVersionRejectsEmbeddedCopyError(t *testing.T) {
 		ActionName: ActionRestoreVersion,
 		Payload:    map[string]any{"key": "daily/report.csv", "version_id": "version-1", "expected_current_etag": "etag-current"},
 	})
-	if err == nil || !strings.Contains(err.Error(), "copy failed after acceptance") {
+	if err == nil || connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || !strings.Contains(err.Error(), "embedded error") {
 		t.Fatalf("expected embedded copy error, got %v", err)
 	}
 }

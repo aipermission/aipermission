@@ -209,13 +209,17 @@ func validateCopyObjectResponse(data []byte) error {
 		ETag    string `xml:"ETag"`
 	}
 	if err := xml.Unmarshal(data, &response); err != nil {
-		return connectors.ClassifyActionError("outcome_unknown", connectors.ResultOutcomeUnknown, map[string]any{"dispatch_stage": "response_validation"}, fmt.Errorf("decode s3 copy response: %w", err))
+		return connectors.ClassifyOutcomeUnknown("response_validation", nil, fmt.Errorf("decode s3 copy response: %w", err))
 	}
 	if response.XMLName.Local == "Error" || strings.TrimSpace(response.Code) != "" {
-		return classifyS3ServiceError(http.StatusOK, response.Code, response.Message)
+		return connectors.ClassifyOutcomeUnknown(
+			"response_validation",
+			map[string]any{"provider_code": strings.TrimSpace(response.Code)},
+			fmt.Errorf("s3 copy response reported an embedded error after dispatch"),
+		)
 	}
 	if response.XMLName.Local != "CopyObjectResult" || strings.TrimSpace(response.ETag) == "" {
-		return connectors.ClassifyActionError("outcome_unknown", connectors.ResultOutcomeUnknown, map[string]any{"dispatch_stage": "response_validation"}, fmt.Errorf("s3 copy response did not confirm completion"))
+		return connectors.ClassifyOutcomeUnknown("response_validation", nil, fmt.Errorf("s3 copy response did not confirm completion"))
 	}
 	return nil
 }

@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -490,6 +492,28 @@ func TestRestoreRejectsInvalidStreamsBeforeConnecting(t *testing.T) {
 				t.Fatalf("Restore() error = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestRestoreTreatsTransactionalPSQLFailureAsDefinite(t *testing.T) {
+	directory := t.TempDir()
+	psql := filepath.Join(directory, "psql")
+	if err := os.WriteFile(psql, []byte("#!/bin/sh\necho 'ERROR: relation missing' >&2\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
+	_, err := New().Restore(context.Background(), connectors.RuntimeContext{
+		Target: connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{
+			"connection_mode": "direct", "host": "127.0.0.1", "port": 5432, "database": "app",
+		}},
+		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
+		Secrets: fakeSecrets{"password": "secret"},
+	}, connectors.RestoreRequest{Filename: "restore.sql", Content: strings.NewReader("select 1;"), Size: 9})
+	if err == nil || !strings.Contains(err.Error(), "relation missing") {
+		t.Fatalf("restore error = %v", err)
+	}
+	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
+		t.Fatalf("single-transaction psql failure was marked uncertain: %v", err)
 	}
 }
 

@@ -45,3 +45,21 @@ func TestClassifiedActionErrorCopiesStatusAndDetails(t *testing.T) {
 		t.Fatal("returned error details mutated classified state")
 	}
 }
+
+func TestOutcomeUnknownHelpersEnforceSharedRetryContract(t *testing.T) {
+	cause := errors.New("connection reset")
+	err := ClassifyOutcomeUnknown("request_body", map[string]any{"cleanup_required": true}, cause)
+	if ErrorCode(err) != "outcome_unknown" || ErrorStatus(err) != ResultOutcomeUnknown || !errors.Is(err, cause) {
+		t.Fatalf("classified outcome = code %q status %q error %v", ErrorCode(err), ErrorStatus(err), err)
+	}
+	details := ErrorDetails(err)
+	if details["dispatch_stage"] != "request_body" || details["retry_safe"] != false || details["cleanup_required"] != true {
+		t.Fatalf("classified outcome details = %#v", details)
+	}
+
+	result := OutcomeUnknownResult("response_body", nil, cause)
+	output, ok := result.Output.(map[string]any)
+	if !ok || result.Status != ResultOutcomeUnknown || output["dispatch_stage"] != "response_body" || output["retry_safe"] != false {
+		t.Fatalf("outcome result = %#v", result)
+	}
+}

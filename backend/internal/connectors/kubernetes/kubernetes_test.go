@@ -280,6 +280,22 @@ func TestRolloutRestartClassifiesKubectlTransportExitAsOutcomeUnknown(t *testing
 	}
 }
 
+func TestRolloutRestartDoesNotTreatIncidentalConflictTextAsDefiniteResponse(t *testing.T) {
+	transport := &fakeCommandTransport{fallback: connectors.CommandRunResult{
+		Stderr:          "transport conflict while reading response: unexpected EOF",
+		ExitCode:        1,
+		DispatchStarted: true,
+	}}
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionRolloutRestart, Payload: map[string]any{
+		"namespace": "production", "deployment": "api", "expected_resource_version": "12345",
+	}})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+		t.Fatalf("incidental conflict text was treated as definite: %v", err)
+	}
+}
+
 func TestDescribeReturnsResourceSummary(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{

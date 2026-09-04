@@ -40,6 +40,38 @@ func ClassifyActionError(code string, status ResultStatus, details map[string]an
 	return &ClassifiedError{Code: code, Status: status, Details: cloneErrorDetails(details), Err: err}
 }
 
+// ClassifyOutcomeUnknown applies the shared fail-closed contract used after a
+// mutation may have crossed an external dispatch boundary.
+func ClassifyOutcomeUnknown(stage string, details map[string]any, err error) error {
+	if err == nil {
+		return nil
+	}
+	details = cloneErrorDetails(details)
+	if details == nil {
+		details = map[string]any{}
+	}
+	details["dispatch_stage"] = stage
+	details["retry_safe"] = false
+	return ClassifyActionError("outcome_unknown", ResultOutcomeUnknown, details, err)
+}
+
+// OutcomeUnknownResult is the result-form equivalent of
+// ClassifyOutcomeUnknown for connectors whose execution API returns failures
+// as ActionResult values.
+func OutcomeUnknownResult(stage string, details map[string]any, err error) ActionResult {
+	details = cloneErrorDetails(details)
+	if details == nil {
+		details = map[string]any{}
+	}
+	details["dispatch_stage"] = stage
+	details["retry_safe"] = false
+	message := "mutation outcome is unknown after dispatch"
+	if err != nil {
+		message = err.Error()
+	}
+	return ActionResult{Status: ResultOutcomeUnknown, Output: details, Error: message, DisplayText: message}
+}
+
 // ErrorCode returns the stable code attached by a connector, when present.
 func ErrorCode(err error) string {
 	var classified *ClassifiedError

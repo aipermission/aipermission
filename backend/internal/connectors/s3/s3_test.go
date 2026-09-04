@@ -364,6 +364,22 @@ func TestPrepareUploadRequiresOverwriteForExpectedETag(t *testing.T) {
 	}
 }
 
+func TestNormalizeOptionalETagRejectsHeaderListAndWildcardValues(t *testing.T) {
+	for _, value := range []string{`a", "b`, "*", "", "etag\nother"} {
+		input := map[string]any{"expected_etag": value}
+		etag, err := normalizeOptionalETag(input)
+		if value == "" {
+			if err != nil || etag != "" {
+				t.Fatalf("empty ETag = %q, %v", etag, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatalf("unsafe ETag accepted: %q -> %q", value, etag)
+		}
+	}
+}
+
 func TestPrepareS3MutationRetryPolicyReflectsActualPrecondition(t *testing.T) {
 	connector := New()
 	tests := []struct {

@@ -450,12 +450,7 @@ func outcomeUnknownResult(stage string, err error) connectors.ActionResult {
 	if err != nil {
 		message += ": " + err.Error()
 	}
-	return connectors.ActionResult{
-		Status:      connectors.ResultOutcomeUnknown,
-		Output:      map[string]any{"dispatch_stage": stage, "retry_safe": false},
-		Error:       message,
-		DisplayText: message,
-	}
+	return connectors.OutcomeUnknownResult(stage, nil, fmt.Errorf("%s", message))
 }
 
 func completedResult(output any, display string) connectors.ActionResult {

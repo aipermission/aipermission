@@ -89,12 +89,10 @@ func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext,
 		return connectors.ActionResult{}, postgresCommandError("start psql", err, stderr.String())
 	}
 	if err := cmd.Wait(); err != nil {
-		return connectors.ActionResult{}, connectors.ClassifyActionError(
-			"outcome_unknown",
-			connectors.ResultOutcomeUnknown,
-			map[string]any{"dispatch_stage": "psql_started", "retry_safe": false},
-			postgresCommandError("psql", err, stderr.String()),
-		)
+		// psql runs the complete restore inside one transaction and stops on the
+		// first SQL error. A non-zero exit or disconnected client rolls that
+		// transaction back, so this is a definite failed attempt.
+		return connectors.ActionResult{}, postgresCommandError("psql", err, stderr.String())
 	}
 	output := map[string]any{
 		"filename": strings.TrimSpace(request.Filename),
