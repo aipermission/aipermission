@@ -19,6 +19,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/klauspost/compress/s2"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
@@ -52,6 +53,20 @@ func TestKafkaPostDispatchFailureIsOutcomeUnknown(t *testing.T) {
 	output, _ := result.Output.(map[string]any)
 	if output["dispatch_stage"] != "produce_request" || output["retry_safe"] != false {
 		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestKafkaPublishFailureSeparatesBrokerRejectionFromAmbiguity(t *testing.T) {
+	for _, rejection := range []error{kerr.TopicAuthorizationFailed, kerr.InvalidTopicException, kerr.MessageTooLarge} {
+		result := classifyKafkaPublishFailure(fmt.Errorf("produce: %w", rejection))
+		if result.Status != connectors.ResultFailed || !strings.Contains(result.Error, "rejected by broker") {
+			t.Fatalf("broker rejection %v = %#v, want failed", rejection, result)
+		}
+	}
+
+	result := classifyKafkaPublishFailure(errors.New("connection reset"))
+	if result.Status != connectors.ResultOutcomeUnknown || !strings.Contains(result.Error, "inspect broker state") {
+		t.Fatalf("transport ambiguity = %#v, want outcome_unknown", result)
 	}
 }
 
