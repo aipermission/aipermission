@@ -12,7 +12,8 @@
           "items": [
             "Connector action discovery now publishes an effective retry policy that distinguishes read-only, idempotent, conditional, and non-idempotent operations.",
             "MCP guidance now requires callers to preserve one idempotency key only for the same logical request and avoid automatic retries when a mutation outcome is uncertain.",
-            "Connector action responses and history now preserve retry guidance, and the history detail view visibly warns when the remote outcome is unknown."
+            "Connector action responses and history now preserve retry guidance, and the history detail view visibly warns when the remote outcome is unknown.",
+            "Independent credential deliveries can now proceed concurrently while credential, permission, trust, and token mutations retain an exclusive delivery fence."
           ]
         },
         {
@@ -20,10 +21,13 @@
           "items": [
             "Persistent connector credentials, SSH keys, reusable token values, prepared actions, MCP execution command bodies, and backup-provider secrets now use versioned AES-256-GCM envelopes bound to their workspace, domain, record, and field. Manual-console history remains redacted-only inside the encrypted SQLCipher database.",
             "Supported legacy encrypted fields are verified and rewritten atomically during unlock, with fail-closed rollback for malformed, unknown, or unauthenticated records.",
-            "Connector credential provisioning and cleanup now apply an unconditional credential-output boundary to responses, failures, and compensation audits.",
+            "Connector request identities now use workspace-bound keyed tags, while browser retries use bounded transactional IndexedDB reservations, exact key-and-revision reconciliation, and non-extractable origin-local signing keys without persisting raw action input.",
+            "MCP connector output authorization is revalidated at the response delivery boundary, withholding request and result content when token, Vault, or runtime authorization has changed.",
+            "Connector credential provisioning and cleanup now apply an unconditional credential-output boundary to responses, failures, and compensation audits, including encoded credential forms and dynamically generated S3 authorization headers.",
             "Condition-dependent S3 object mutations fail closed when provider conditional semantics are unverified, enforce available preconditions, classify uncertain transport or completion outcomes, and advertise conditional retries only after explicit operator verification. Explicitly unguarded mutations remain non-idempotent.",
             "RabbitMQ and S3 mutations distinguish failures before request dispatch from uncertain transport or service failures after dispatch.",
-            "Approved connector actions register their active execution boundary before entering the running state, preventing recovery from treating live work as orphaned.",
+            "Approved connector actions register their dispatch boundary before external execution, distinguish pre-dispatch invalidation from uncertain remote outcomes, and preserve pending approvals across transient storage errors.",
+            "Encrypted database runtimes, catalog recovery, and legacy migration now use cross-process ownership locks so a second gateway cannot rewrite or recover a database owned by a live process.",
             "Kubernetes rollout restart failures distinguish errors before remote dispatch from uncertain outcomes after command execution begins."
           ]
         },
@@ -31,6 +35,11 @@
           "title": "Fixed",
           "items": [
             "Database deletion now durably quarantines the encrypted database and sidecars before catalog removal, allowing interrupted, partially failed, or power-loss-affected deletion to recover safely.",
+            "Database imports and catalog moves now use atomic no-clobber publication and whole-artifact fail-closed recovery so concurrent names, stale journals, and rollback conflicts cannot overwrite or mix sidecars with a newer database.",
+            "Backup downloads and connector file listings now reject credential reflection across streamed bodies and structured provider responses before local publication.",
+            "Database snapshots now honor request cancellation, enforce a gateway-wide concurrency and size bound, and remove oversized temporary snapshots before delivery.",
+            "Connector execution now rejects missing or gateway-owned result statuses instead of silently recording them as completed, and the MCP package preserves safe outcome-unknown request and retry metadata.",
+            "Browser mutation retries now fail closed when durable IndexedDB state is unavailable and retain carried idempotency keys across pre-handler authorization or lock responses.",
             "Manual console command records and their normalized history projections now commit atomically."
           ]
         },

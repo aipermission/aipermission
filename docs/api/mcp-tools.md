@@ -81,7 +81,9 @@ If connector execution returns but terminal database/audit persistence cannot
 be confirmed, the gateway responds with HTTP `503`, status `outcome_unknown`,
 code `connector_action_persistence_unknown`, and the existing `request_id`.
 Keep the same idempotency key, inspect that request and external state, and do
-not submit a new logical mutation automatically.
+not submit a new logical mutation automatically. The npm MCP bridge preserves
+that status, request id, bounded assistant hint, and retry delay in its tool
+error envelope instead of collapsing the response to a generic error.
 
 Blocked and missing-permission results are idempotent too. If the operator
 changes the permission after a blocked result, create a new logical request

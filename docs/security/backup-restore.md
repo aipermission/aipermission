@@ -37,9 +37,15 @@ The unlock/setup screen Import Database flow:
 5. The backend streams the file to a temporary path.
 6. The password is verified against the encrypted database.
 7. Plain SQLite files are rejected instead of converted.
-8. The backend stores valid encrypted imports as a named local database and unlocks it.
+8. The backend rotates the imported copy's browser retry identity while
+   preserving its encrypted-record workspace identity.
+9. The backend stores valid encrypted imports as a named local database and unlocks it.
 
-Import never overwrites an existing database file. If a requested name collides with an existing database, the backend creates a unique database id or rejects the write rather than replacing data.
+Import never overwrites an existing database file. Publication uses an atomic
+same-filesystem no-clobber boundary, so another process or tab winning the same
+name race produces a conflict instead of replacing data. If a requested name
+collides with an existing database, the backend creates a unique database id
+or rejects the write rather than replacing data.
 
 Import is available while the backend is locked.
 
