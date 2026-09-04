@@ -169,6 +169,29 @@ func TestDeleteDatabaseDefersFailedQuarantineCleanup(t *testing.T) {
 	}
 }
 
+func TestDeleteDatabaseRemovesMigrationRecoveryArtifacts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cleanup.db")
+	candidates := []string{
+		path,
+		path + ".pre-migration-v18.aipdb",
+		path + ".pre-migration-v19.aipdb",
+		path + ".pre-migration-v20.aipdb.pending",
+	}
+	for _, candidate := range candidates {
+		if err := os.WriteFile(candidate, []byte("encrypted"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := DeleteDatabase(path); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range candidates {
+		if Exists(candidate) {
+			t.Fatalf("database delete retained recovery artifact %q", candidate)
+		}
+	}
+}
+
 func TestDeleteDatabaseRollsBackWhenCompletionMarkerFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "marker.db")
 	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
