@@ -723,6 +723,49 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 	}
 }
 
+func TestImportedDatabasePublishFailureRemovesPartiallyPublishedCopy(t *testing.T) {
+	server := newLockedAPITestServer(t)
+	defer server.Close()
+
+	sourcePath := filepath.Join(t.TempDir(), "source.aipdb")
+	sourceDB, err := dbpkg.OpenEncrypted(sourcePath, "ImportPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourceDB.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('gateway_secret', 'source-secret', datetime('now'))`); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sourceBytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.databasePublish = func(source string, target string) error {
+		if err := os.Rename(source, target); err != nil {
+			return err
+		}
+		return errors.New("injected directory sync failure")
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/backup/import", nil)
+	backupHandlers{server}.installImportedDatabase(response, request, "Partial Import", "ImportPassword123", func(path string) error {
+		return os.WriteFile(path, sourceBytes, 0o600)
+	})
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("publish failure status=%d body=%s", response.Code, response.Body.String())
+	}
+	targetPath, err := dbpkg.DatabasePath(server.config.DataPath, "partial-import")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dbpkg.Exists(targetPath) {
+		t.Fatalf("publish failure retained partially published database %q", targetPath)
+	}
+}
+
 func TestPlaintextDatabaseImportIsRejected(t *testing.T) {
 	sourcePath := filepath.Join(t.TempDir(), "source.sqlite")
 	sourceDB, err := sql.Open("sqlite3", sourcePath)
