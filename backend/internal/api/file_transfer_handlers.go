@@ -240,13 +240,19 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 	if parent == "." || parent == remotePath {
 		parent = "/"
 	}
-	writeJSON(w, http.StatusOK, browseRemoteFilesResponse{
+	response := browseRemoteFilesResponse{
 		Path:       remotePath,
 		Parent:     parent,
 		Entries:    page.Entries,
 		NextCursor: page.NextCursor,
 		HasMore:    page.HasMore,
-	})
+	}
+	boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(ctx, runtime, request.RuntimeID)
+	if boundaryErr != nil || connectorValueContainsCredential(boundary, response) {
+		writeError(w, http.StatusBadGateway, "remote file browse violated the credential boundary")
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.Request) {
@@ -282,11 +288,11 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 	entries, err := adapter.ListRecursiveFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath, maxFileTransferBatchItems, maxFileTransferObjectBytes, maxFileTransferBatchBytes)
 	if err != nil {
 		if errors.Is(err, connectorapi.ErrRemotePathNotFound) {
-			writeError(w, http.StatusNotFound, err.Error())
+			s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, baseAdapter, http.StatusNotFound, "remote path was not found", err)
 			return
 		}
 		if errors.Is(err, connectorapi.ErrTransferLimit) {
-			writeError(w, http.StatusRequestEntityTooLarge, err.Error())
+			s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, baseAdapter, http.StatusRequestEntityTooLarge, "recursive file selection exceeded its limit", err)
 			return
 		}
 		s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, baseAdapter, http.StatusBadGateway, "recursive file selection failed", err)
@@ -296,7 +302,13 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 	for _, entry := range entries {
 		totalBytes += entry.Size
 	}
-	writeJSON(w, http.StatusOK, expandRemoteFilesResponse{Path: remotePath, Entries: entries, TotalBytes: totalBytes})
+	response := expandRemoteFilesResponse{Path: remotePath, Entries: entries, TotalBytes: totalBytes}
+	boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(ctx, runtime, request.RuntimeID)
+	if boundaryErr != nil || connectorValueContainsCredential(boundary, response) {
+		writeError(w, http.StatusBadGateway, "recursive file selection violated the credential boundary")
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.Request) {

@@ -25,6 +25,10 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		}
 		switch r.Method {
 		case http.MethodGet:
+			if r.URL.Query().Get("prefix") == "reflect/" || r.URL.Query().Get("prefix") == "reflect-recursive/" {
+				_, _ = w.Write([]byte(`<ListBucketResult><NextContinuationToken>test-secret</NextContinuationToken><Contents><Key>test-secret</Key><Size>12</Size></Contents></ListBucketResult>`))
+				return
+			}
 			if r.URL.Query().Get("prefix") == "large/" {
 				_, _ = w.Write([]byte(`<ListBucketResult><Contents><Key>large/object.bin</Key><Size>536870913</Size></Contents></ListBucketResult>`))
 				return
@@ -127,6 +131,20 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	})
 	if nextBrowse.Code != http.StatusOK || !bytes.Contains(nextBrowse.Body.Bytes(), []byte(`"path":"/daily/report-2.txt"`)) || !bytes.Contains(nextBrowse.Body.Bytes(), []byte(`"has_more":false`)) {
 		t.Fatalf("browse S3 transfer runtime next page: %d %s", nextBrowse.Code, nextBrowse.Body.String())
+	}
+	reflectedBrowse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
+		RuntimeID: payload.Items[0].TransferRuntimeID,
+		Path:      "/reflect",
+	})
+	if reflectedBrowse.Code != http.StatusBadGateway || bytes.Contains(reflectedBrowse.Body.Bytes(), []byte("test-secret")) {
+		t.Fatalf("browse exposed reflected S3 credential: %d %s", reflectedBrowse.Code, reflectedBrowse.Body.String())
+	}
+	reflectedExpand := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/expand", "", expandRemoteFilesRequest{
+		RuntimeID: payload.Items[0].TransferRuntimeID,
+		Path:      "/reflect-recursive",
+	})
+	if reflectedExpand.Code != http.StatusBadGateway || bytes.Contains(reflectedExpand.Body.Bytes(), []byte("test-secret")) {
+		t.Fatalf("recursive selection exposed reflected S3 credential: %d %s", reflectedExpand.Code, reflectedExpand.Body.String())
 	}
 	oversizedExpand := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/expand", "", expandRemoteFilesRequest{
 		RuntimeID: payload.Items[0].TransferRuntimeID,

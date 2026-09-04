@@ -182,6 +182,14 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 		t.Fatalf("list approvals: %d %s", approvalList.Code, approvalList.Body.String())
 	}
 	assertRedacted("approval list preview", approvalList.Body.String())
+	approvalDetail := performJSON(
+		fixture.server.Handler(), http.MethodGet,
+		"/api/connector-action-approvals/"+strconv.FormatInt(pending.RequestID, 10), "", nil,
+	)
+	if approvalDetail.Code != http.StatusOK {
+		t.Fatalf("read approval detail: %d %s", approvalDetail.Code, approvalDetail.Body.String())
+	}
+	assertRedacted("approval detail preview", approvalDetail.Body.String())
 
 	runResponse := performJSON(
 		fixture.server.Handler(), http.MethodPost,
