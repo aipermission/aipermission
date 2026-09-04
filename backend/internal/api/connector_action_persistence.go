@@ -57,6 +57,14 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
+	redactText := func(value string) string {
+		value = s.redactForPersistence(ctx, runtime, value)
+		return redactConnectorActionSensitiveText(value, connectorActionSensitiveValues(
+			prepared.Requested.Input,
+			prepared.Action.Payload,
+			prepared.ActionDefinition.SensitiveInputFields,
+		))
+	}
 	executionEnvelope := connectorActionExecutionEnvelope{
 		Input:           prepared.Requested.Input,
 		Payload:         prepared.Action.Payload,
@@ -73,13 +81,13 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		ProfileID:               prepared.Profile.ID,
 		ConnectorKind:           prepared.Target.ConnectorKind,
 		ActionName:              prepared.Action.ActionName,
-		Title:                   s.redactForPersistence(ctx, runtime, prepared.Action.Title),
-		Summary:                 s.redactForPersistence(ctx, runtime, prepared.Action.Summary),
+		Title:                   redactText(prepared.Action.Title),
+		Summary:                 redactText(prepared.Action.Summary),
 		Preview:                 redactedPreview,
 		Source:                  prepared.Requested.Source,
 		Input:                   redactedInput,
 		EncryptedPayloadJSON:    "",
-		Reason:                  s.redactForPersistence(ctx, runtime, prepared.Requested.Reason),
+		Reason:                  redactText(prepared.Requested.Reason),
 		Status:                  status,
 		ApprovalContext:         approvalContext,
 		ApprovalContextHash:     approvalHash,

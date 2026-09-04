@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -77,6 +78,7 @@ func (c *prepareConnector) PrepareAction(_ context.Context, req connectors.Actio
 		TargetRef:     req.Target.Ref,
 		ProfileID:     req.Profile.ID,
 		ActionName:    req.ActionName,
+		Dependencies:  connectors.NetworkTransportDependencies(req.Target),
 		Risk:          connectors.RiskRead,
 		Title:         "Prepared",
 	}, nil
@@ -181,6 +183,47 @@ func TestServicePrepareResolvesOverSSHApprovalDependency(t *testing.T) {
 	}
 }
 
+func TestServicePrepareResolvesCommandTransportApprovalDependency(t *testing.T) {
+	registry := connectors.NewRegistry()
+	connector := &prepareConnector{
+		kind: "memory",
+		prepared: &connectors.PreparedAction{
+			ConnectorKind: "memory",
+			TargetRef:     "memory:21:34",
+			ProfileID:     34,
+			ActionName:    "query_readonly",
+			Risk:          connectors.RiskRead,
+			Dependencies: []connectors.ApprovalDependency{{
+				TargetRef: "ssh:7:11",
+				Purpose:   connectors.CommandTransportCapabilityName,
+			}},
+		},
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	resolver := &fakeResolver{refs: map[string]ResolvedTarget{
+		"memory:21:34": {
+			Target:  connectors.TargetView{ID: 21, ProjectID: 8, Ref: "memory:21:34", ConnectorKind: "memory"},
+			Profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory", Kind: "local"},
+		},
+		"ssh:7:11": {
+			Target:  connectors.TargetView{ID: 7, ProjectID: 8, Ref: "ssh:7:11", ConnectorKind: "ssh"},
+			Profile: connectors.CredentialProfileView{ID: 11, TargetID: 7, ConnectorKind: "ssh", Kind: "private_key"},
+		},
+	}}
+
+	prepared, err := NewService(registry, resolver).Prepare(t.Context(), PrepareRequest{
+		TargetRef: "memory:21:34", ActionName: "query_readonly", Input: map[string]any{"sql": "select 1"},
+	})
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if len(prepared.Dependencies) != 1 || prepared.Dependencies[0].Purpose != connectors.CommandTransportCapabilityName {
+		t.Fatalf("command transport dependencies = %#v", prepared.Dependencies)
+	}
+}
+
 func TestServicePrepareRejectsCrossProjectApprovalDependency(t *testing.T) {
 	registry := connectors.NewRegistry()
 	connector := &prepareConnector{kind: "memory"}
@@ -260,6 +303,136 @@ func TestServicePrepareUsesRegisteredThirdConnector(t *testing.T) {
 	}
 	if connector.seen.Target.ConnectorKind != "memory" || connector.seen.Profile.Label != "readonly" {
 		t.Fatalf("connector did not receive resolved target/profile: %#v", connector.seen)
+	}
+}
+
+func TestServicePrepareRedactsSensitiveInputFromConnectorErrors(t *testing.T) {
+	registry := connectors.NewRegistry()
+	connector := &prepareConnector{
+		kind: "memory",
+		err:  errors.New("rejected payload=x"),
+		actions: []connectors.ActionDefinition{{
+			Name: "query_readonly", Label: "Query", Description: "Query.", Risk: connectors.RiskRead,
+			InputSchema:          connectors.Schema{Fields: []connectors.Field{{Name: "payload", Label: "Payload", Type: connectors.FieldString, Required: true}}},
+			SensitiveInputFields: []string{"payload"},
+		}},
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target:  connectors.TargetView{ID: 21, Ref: "memory:21:34", ConnectorKind: "memory"},
+		profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory"},
+	})
+	_, err := service.Prepare(t.Context(), PrepareRequest{
+		TargetRef: "memory:21:34", ActionName: "query_readonly", Input: map[string]any{"payload": "x"},
+	})
+	if err == nil || strings.Contains(err.Error(), "payload=x") {
+		t.Fatalf("sensitive preparation error was not redacted: %v", err)
+	}
+}
+
+func TestServicePreparePreservesClassifiedSensitiveInputError(t *testing.T) {
+	registry := connectors.NewRegistry()
+	connector := &prepareConnector{
+		kind: "memory",
+		err: connectors.ClassifyActionError(
+			"payload_rejected", connectors.ResultFailed, map[string]any{
+				"retry_safe": false,
+				"diagnostic": map[string]any{"rejected_value": "secret-value", "context": []any{"prefix-secret-value-suffix"}},
+			}, errors.New("rejected payload=secret-value"),
+		),
+		actions: []connectors.ActionDefinition{{
+			Name: "query_readonly", Label: "Query", Description: "Query.", Risk: connectors.RiskRead,
+			InputSchema:          connectors.Schema{Fields: []connectors.Field{{Name: "payload", Label: "Payload", Type: connectors.FieldString, Required: true}}},
+			SensitiveInputFields: []string{"payload"},
+		}},
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target:  connectors.TargetView{ID: 21, Ref: "memory:21:34", ConnectorKind: "memory"},
+		profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory"},
+	})
+	_, err := service.Prepare(t.Context(), PrepareRequest{
+		TargetRef: "memory:21:34", ActionName: "query_readonly", Input: map[string]any{"payload": "secret-value"},
+	})
+	if err == nil || connectors.ErrorCode(err) != "payload_rejected" || connectors.ErrorStatus(err) != connectors.ResultFailed {
+		t.Fatalf("classification was not preserved: %v", err)
+	}
+	if strings.Contains(err.Error(), "secret-value") || !strings.Contains(err.Error(), "[REDACTED SENSITIVE INPUT]") {
+		t.Fatalf("classified error was not redacted: %v", err)
+	}
+	detailsJSON, marshalErr := json.Marshal(connectors.ErrorDetails(err))
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if strings.Contains(string(detailsJSON), "secret-value") || !strings.Contains(string(detailsJSON), "[REDACTED SENSITIVE INPUT]") {
+		t.Fatalf("classified error details were not redacted: %s", detailsJSON)
+	}
+}
+
+func TestServicePrepareRedactsShortSensitiveValuesFromClassifiedErrorDetails(t *testing.T) {
+	registry := connectors.NewRegistry()
+	connector := &prepareConnector{
+		kind: "memory",
+		err: connectors.ClassifyActionError(
+			"payload_rejected", connectors.ResultFailed, map[string]any{"diagnostic": "value x was rejected"}, errors.New("rejected payload=x"),
+		),
+		actions: []connectors.ActionDefinition{{
+			Name: "query_readonly", Label: "Query", Description: "Query.", Risk: connectors.RiskRead,
+			InputSchema:          connectors.Schema{Fields: []connectors.Field{{Name: "payload", Label: "Payload", Type: connectors.FieldString, Required: true}}},
+			SensitiveInputFields: []string{"payload"},
+		}},
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target:  connectors.TargetView{ID: 21, Ref: "memory:21:34", ConnectorKind: "memory"},
+		profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory"},
+	})
+	_, err := service.Prepare(t.Context(), PrepareRequest{
+		TargetRef: "memory:21:34", ActionName: "query_readonly", Input: map[string]any{"payload": "x"},
+	})
+	if err == nil || strings.Contains(err.Error(), "payload=x") {
+		t.Fatalf("short sensitive preparation error was not redacted: %v", err)
+	}
+	detailsJSON, marshalErr := json.Marshal(connectors.ErrorDetails(err))
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if strings.Contains(string(detailsJSON), "value x") || !strings.Contains(string(detailsJSON), "[REDACTED SENSITIVE INPUT]") {
+		t.Fatalf("short sensitive error details were not redacted: %s", detailsJSON)
+	}
+}
+
+func TestServicePrepareRedactsSensitiveSchemaNormalizationErrors(t *testing.T) {
+	registry := connectors.NewRegistry()
+	connector := &prepareConnector{
+		kind: "memory",
+		actions: []connectors.ActionDefinition{{
+			Name: "query_readonly", Label: "Query", Description: "Query.", Risk: connectors.RiskRead,
+			InputSchema: connectors.Schema{Fields: []connectors.Field{{
+				Name: "payload", Label: "Payload", Type: connectors.FieldSelect, Required: true,
+				Options: []connectors.FieldOption{{Value: "allowed", Label: "Allowed"}},
+			}}},
+			SensitiveInputFields: []string{"payload"},
+		}},
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target:  connectors.TargetView{ID: 21, Ref: "memory:21:34", ConnectorKind: "memory"},
+		profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory"},
+	})
+	_, err := service.Prepare(t.Context(), PrepareRequest{
+		TargetRef: "memory:21:34", ActionName: "query_readonly", Input: map[string]any{"payload": "secret-option"},
+	})
+	if err == nil || strings.Contains(err.Error(), "secret-option") || !strings.Contains(err.Error(), "[REDACTED SENSITIVE INPUT]") {
+		t.Fatalf("sensitive normalization error was not redacted: %v", err)
 	}
 }
 

@@ -167,6 +167,17 @@ func TestConnectorInputRedactionRemovesLargeSensitivePayloadBeforeProjectionLimi
 	}
 }
 
+func TestConnectorCredentialBoundaryRedactsLabeledShortSecret(t *testing.T) {
+	boundary := newConnectorCredentialBoundary(map[string]any{"password": "x"})
+	redacted := boundary.Redact(`remote rejected password=x and "password":"x"`)
+	if strings.Contains(redacted, "password=x") || strings.Contains(redacted, `"password":"x"`) {
+		t.Fatalf("short labeled credential was not redacted: %s", redacted)
+	}
+	if !strings.Contains(redacted, connectorCredentialRedactionMarker) {
+		t.Fatalf("short credential marker missing: %s", redacted)
+	}
+}
+
 func TestRedactionRuleCacheInvalidatesOnUpdate(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()
