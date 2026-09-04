@@ -170,3 +170,20 @@ func TestConnectorCredentialBoundaryRedactsEncodedVariants(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectorCredentialBoundaryDoesNotCorruptTextForShortSecrets(t *testing.T) {
+	boundary := newConnectorCredentialBoundary(map[string]any{"password": "a"})
+	if got := boundary.Redact("database action completed"); got != "database action completed" {
+		t.Fatalf("short credential corrupted unrelated output: %q", got)
+	}
+	if got := boundary.Redact("a"); got != connectorCredentialRedactionMarker {
+		t.Fatalf("exact short credential scalar = %q, want redacted", got)
+	}
+	boundary = newConnectorCredentialBoundary(map[string]any{"password": "secret"})
+	if got := boundary.Redact("credential secret rejected"); strings.Contains(got, "secret") {
+		t.Fatalf("delimited short credential remained visible: %q", got)
+	}
+	if got := boundary.RedactKey("customer_secret"); got != "customer_secret" {
+		t.Fatalf("short credential corrupted an unrelated field name: %q", got)
+	}
+}
