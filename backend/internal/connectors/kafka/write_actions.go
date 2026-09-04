@@ -117,7 +117,7 @@ func executePublishMessage(ctx context.Context, runtime connectors.RuntimeContex
 	defer cancel()
 	result := client.ProduceSync(publishCtx, record)
 	if err := result.FirstErr(); err != nil {
-		return outcomeUnknownResult("produce_request", fmt.Errorf("publish Kafka message: %w; delivery may be unknown, inspect the topic before retrying", err)), nil
+		return classifyKafkaPublishFailure(err), nil
 	}
 	output := map[string]any{
 		"topic":         record.Topic,
@@ -129,6 +129,31 @@ func executePublishMessage(ctx context.Context, runtime connectors.RuntimeContex
 		"headers_count": len(headers),
 	}
 	return completedResult(output, fmt.Sprintf("Published one message to %s partition %d at offset %d.", record.Topic, record.Partition, record.Offset)), nil
+}
+
+func classifyKafkaPublishFailure(err error) connectors.ActionResult {
+	if isDefiniteKafkaPublishRejection(err) {
+		return failedResult(fmt.Errorf("publish Kafka message rejected by broker: %w", err))
+	}
+	return outcomeUnknownResult("produce_request", fmt.Errorf("publish Kafka message: %w; delivery may be unknown, inspect the topic before retrying", err))
+}
+
+func isDefiniteKafkaPublishRejection(err error) bool {
+	for _, definite := range []error{
+		kerr.TopicAuthorizationFailed,
+		kerr.ClusterAuthorizationFailed,
+		kerr.InvalidTopicException,
+		kerr.MessageTooLarge,
+		kerr.RecordListTooLarge,
+		kerr.InvalidRequiredAcks,
+		kerr.UnsupportedForMessageFormat,
+		kerr.PolicyViolation,
+	} {
+		if errors.Is(err, definite) {
+			return true
+		}
+	}
+	return false
 }
 
 func executeSetConsumerGroupOffset(ctx context.Context, client *kgo.Client, payload map[string]any) (connectors.ActionResult, error) {
