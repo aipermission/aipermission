@@ -18,6 +18,7 @@ import (
 )
 
 var errMCPExecutionStopped = errors.New("MCP execution is stopped")
+var errConnectorAuthorizationChanged = errors.New("connector authorization changed before dispatch")
 
 const (
 	connectorActionToolName          = "connector.call_action"
@@ -50,6 +51,7 @@ type connectorActionCallResult struct {
 
 type connectorActionExecutionOptions struct {
 	Permission              connectortargets.ActionPermission
+	RequiredPermissionRule  connectortargets.ActionPermissionRule
 	UnsupportedRunningError string
 	ApprovalPendingError    string
 	FollowupTool            string
@@ -214,6 +216,7 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 	}
 	return s.executeInsertedConnectorAction(ctx, runtime, prepared, request, principal, connectorActionExecutionOptions{
 		Permission:              permission,
+		RequiredPermissionRule:  connectortargets.ActionPermissionAlwaysRun,
 		UnsupportedRunningError: "connector returned running for an action that does not support asynchronous execution",
 		ApprovalPendingError:    "connector returned approval_pending after execution was already allowed",
 		FollowupTool:            "get_connector_action_request",
@@ -269,6 +272,24 @@ func (s *Server) executeInsertedConnectorAction(
 	principal executionprincipal.Principal,
 	options connectorActionExecutionOptions,
 ) (connectorActionCallResult, error) {
+	release, err := runtime.vaultDelivery.acquire(ctx)
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	claimHeld := true
+	defer func() {
+		if claimHeld {
+			release()
+		}
+	}()
+	prepared, err = s.revalidatePreparedConnectorAction(ctx, runtime, request, prepared, options.RequiredPermissionRule)
+	if err != nil {
+		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		if finishErr != nil {
+			return connectorActionCallResult{}, finishErr
+		}
+		return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Error: finished.Error}}, nil
+	}
 	snapshot, err := s.snapshotPreparedConnectorAction(ctx, runtime, prepared)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)
@@ -295,6 +316,8 @@ func (s *Server) executeInsertedConnectorAction(
 			Result: connectors.ActionResult{Status: claimed.Status, Output: claimed.Output, DisplayText: claimed.DisplayText, Error: claimed.Error},
 		}, nil
 	}
+	release()
+	claimHeld = false
 	request = claimed
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared, snapshot)
 	if err != nil {
@@ -359,6 +382,47 @@ func (s *Server) executeInsertedConnectorAction(
 	result.Error = finished.Error
 	result.Status = finished.Status
 	return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: result}, nil
+}
+
+func (s *Server) revalidatePreparedConnectorAction(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	request connectortargets.ActionRequest,
+	prepared actions.PreparedRequest,
+	requiredRule connectortargets.ActionPermissionRule,
+) (actions.PreparedRequest, error) {
+	fresh, err := runtime.prepareConnectorAction(ctx, actions.PrepareRequest{
+		Source: prepared.Requested.Source, TargetRef: prepared.Requested.TargetRef,
+		ActionName: prepared.Requested.ActionName, Input: prepared.Requested.Input,
+		Reason: prepared.Requested.Reason, CreatedAt: prepared.Requested.CreatedAt,
+	})
+	if err != nil {
+		return prepared, fmt.Errorf("%w: target, profile, or action is no longer available", errConnectorAuthorizationChanged)
+	}
+	if request.TokenID == nil {
+		return fresh, nil
+	}
+	token, err := runtime.tokens.Get(ctx, *request.TokenID)
+	if err != nil || token.RevokedAt != "" || expired(token.ExpiresAt, time.Now().UTC()) {
+		return prepared, fmt.Errorf("%w: token is no longer active", errConnectorAuthorizationChanged)
+	}
+	permission, err := connectortargets.NewStore(runtime.database).GetActionPermission(
+		ctx, token.ID, fresh.Target.ID, fresh.Profile.ID, fresh.Action.ActionName, time.Now().UTC(),
+	)
+	if errors.Is(err, connectortargets.ErrActionPermissionNotFound) || (err == nil && permission.ExecutionRule != requiredRule) {
+		return prepared, fmt.Errorf("%w: permission rule changed", errConnectorAuthorizationChanged)
+	}
+	if err != nil {
+		return prepared, err
+	}
+	_, currentHash, err := connectorApprovalContext(fresh, token, permission, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return prepared, err
+	}
+	if request.ApprovalContextHash == "" || request.ApprovalContextHash != currentHash {
+		return prepared, fmt.Errorf("%w: approval context changed", errConnectorAuthorizationChanged)
+	}
+	return fresh, nil
 }
 
 func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, prepared actions.PreparedRequest) (connectorActionExecutionSnapshot, error) {

@@ -436,6 +436,85 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 	}
 }
 
+func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispatch(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	executions := 0
+	registry := connectors.NewRegistry()
+	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &databaseRuntime{
+		database: database, vault: secretVault, tokens: tokens.NewStore(database),
+		registry: registry, workspaceUUID: connectorActionTestWorkspaceID,
+	}
+	if err := ensureRuntimeIdentity(runtime); err != nil {
+		t.Fatal(err)
+	}
+	runtime.setMCPStarted(true)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
+		ConnectorKind: localActionTestConnectorKind, Name: "authorization-race", Config: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
+		TargetID: target.ID, ConnectorKind: localActionTestConnectorKind, Kind: "default", Label: "main", Public: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permissionInput := connectortargets.SetActionPermissionInput{
+		TokenID: tokenID, TargetID: target.ID, ProfileID: profile.ID, ActionName: "echo",
+		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+	}
+	if err := store.SetActionPermission(t.Context(), permissionInput); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
+		Source: commandRequestSourceMCP, TargetRef: connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo", Input: map[string]any{"value": "must-not-run"}, Reason: "authorization race", CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permission, err := store.GetActionPermission(t.Context(), tokenID, target.ID, profile.ID, "echo", time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, created, err := server.insertConnectorActionRequest(
+		t.Context(), runtime, tokenID, prepared, permission, connectors.ResultRunning, "", "authorization-race-1",
+	)
+	if err != nil || !created {
+		t.Fatalf("insert running request: created=%v err=%v", created, err)
+	}
+	permissionInput.ExecutionRule = connectortargets.ActionPermissionBlocked
+	if err := store.SetActionPermission(t.Context(), permissionInput); err != nil {
+		t.Fatal(err)
+	}
+	principal, err := tokenExecutionPrincipal(runtime, tokenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := server.executeInsertedConnectorAction(
+		t.Context(), runtime, prepared, request, principal,
+		connectorActionExecutionOptions{Permission: permission, RequiredPermissionRule: connectortargets.ActionPermissionAlwaysRun},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executions != 0 {
+		t.Fatalf("connector executions=%d, want 0", executions)
+	}
+	if result.Request.Status != connectors.ResultFailed || !strings.Contains(result.Request.Error, "authorization changed") {
+		t.Fatalf("request did not fail closed: %#v", result.Request)
+	}
+}
+
 type countingLocalActionTestConnector struct {
 	localActionTestConnector
 	executions    *int
