@@ -51,7 +51,18 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 func createDatabaseSnapshot(runtime *databaseRuntime) (databaseSnapshot, error) {
 	createdAt := time.Now().UTC()
 	databaseID := runtime.id
-	snapshotPath := filepath.Join(filepath.Dir(runtime.path), "."+databaseID+"-"+createdAt.Format("20060102150405")+".backup.aipdb")
+	temporary, err := os.CreateTemp(filepath.Dir(runtime.path), "."+databaseID+"-*.backup.aipdb")
+	if err != nil {
+		return databaseSnapshot{}, fmt.Errorf("reserve database snapshot path: %w", err)
+	}
+	snapshotPath := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(snapshotPath)
+		return databaseSnapshot{}, fmt.Errorf("close reserved database snapshot path: %w", err)
+	}
+	if err := os.Remove(snapshotPath); err != nil {
+		return databaseSnapshot{}, fmt.Errorf("prepare database snapshot path: %w", err)
+	}
 	if err := dbpkg.Snapshot(runtime.database, snapshotPath); err != nil {
 		return databaseSnapshot{}, err
 	}
@@ -201,7 +212,7 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeError(w, http.StatusConflict, "database name already exists")
 		return
 	}
-	if err := os.Rename(tmpPath, targetPath); err != nil {
+	if err := dbpkg.PublishFile(tmpPath, targetPath); err != nil {
 		writeInternalError(w)
 		return
 	}
