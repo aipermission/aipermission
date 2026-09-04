@@ -9,6 +9,7 @@ type RedactionOptions struct {
 	SensitiveField           func(string) bool
 	TemporaryCapabilityField func(string) bool
 	RedactText               func(string) string
+	RedactKey                func(string) string
 	RedactCapability         func(string) string
 }
 
@@ -59,8 +60,12 @@ func redactValue(value any, options RedactionOptions, allowCapabilities bool) (a
 	case map[string]any:
 		out := make(map[string]any, len(typed))
 		for key, item := range typed {
+			redactedKey := redactText(options.RedactKey, key)
+			if _, exists := out[redactedKey]; exists {
+				return nil, fmt.Errorf("%w: redaction produced duplicate object key", ErrInvalidValue)
+			}
 			if options.SensitiveField != nil && options.SensitiveField(key) {
-				out[key] = "[REDACTED]"
+				out[redactedKey] = "[REDACTED]"
 				continue
 			}
 			if allowCapabilities && options.TemporaryCapabilityField != nil && options.TemporaryCapabilityField(key) {
@@ -68,14 +73,14 @@ func redactValue(value any, options RedactionOptions, allowCapabilities bool) (a
 				if err != nil {
 					return nil, err
 				}
-				out[key] = redacted
+				out[redactedKey] = redacted
 				continue
 			}
 			redacted, err := redactValue(item, options, allowCapabilities)
 			if err != nil {
 				return nil, err
 			}
-			out[key] = redacted
+			out[redactedKey] = redacted
 		}
 		return out, nil
 	default:

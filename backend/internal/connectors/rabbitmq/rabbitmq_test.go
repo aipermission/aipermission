@@ -2,6 +2,7 @@ package rabbitmqconnector
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,6 +90,30 @@ func TestExecuteActionListsQueuesThroughNetworkTransport(t *testing.T) {
 	}
 	if result.DisplayText == "" || !strings.Contains(result.DisplayText, "jobs") {
 		t.Fatalf("display = %q", result.DisplayText)
+	}
+}
+
+func TestNewRabbitClientRegistersDerivedBasicCredential(t *testing.T) {
+	secrets := &recordingRabbitSecrets{password: " secret-with-space "}
+	_, err := newRabbitClient(context.Background(), connectors.RuntimeContext{
+		Target: connectors.TargetView{
+			Ref:           "rabbitmq:1:2",
+			ConnectorKind: Kind,
+			Config:        map[string]any{"host": "127.0.0.1", "port": 15672},
+		},
+		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "guest"}},
+		Secrets: secrets,
+		Capabilities: rabbitTestCapabilities{transport: rabbitHTTPTransport{
+			targetAddr: "127.0.0.1:15672",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create RabbitMQ client: %v", err)
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte("guest: secret-with-space "))
+	want := []string{encoded, "Basic " + encoded}
+	if !reflect.DeepEqual(secrets.registered, want) {
+		t.Fatalf("registered sensitive values = %#v, want %#v", secrets.registered, want)
 	}
 }
 
@@ -287,6 +312,19 @@ type rabbitFailingSecrets struct{ err error }
 
 func (secrets rabbitFailingSecrets) GetSecret(context.Context, string) (string, error) {
 	return "", secrets.err
+}
+
+type recordingRabbitSecrets struct {
+	password   string
+	registered []string
+}
+
+func (secrets *recordingRabbitSecrets) GetSecret(context.Context, string) (string, error) {
+	return secrets.password, nil
+}
+
+func (secrets *recordingRabbitSecrets) RegisterSensitiveValue(value string) {
+	secrets.registered = append(secrets.registered, value)
 }
 
 type rabbitTestCapabilities struct {

@@ -23,7 +23,7 @@ func (s connectorTargetHandlers) downloadConnectorProfileBackup(w http.ResponseW
 	}
 	artifact, err := backupRestorer.Backup(r.Context(), resolved.runtimeContext, connectors.BackupRequest{Format: "sql"})
 	if err != nil {
-		handleConnectorProvisionError(w, err)
+		handleConnectorProvisionError(w, errors.New(resolved.credentialBoundary.Redact(s.redactForPersistence(r.Context(), resolved.runtime, err.Error()))))
 		return
 	}
 	if len(artifact.Data) == 0 {
@@ -89,7 +89,12 @@ func (s connectorTargetHandlers) restoreConnectorProfileBackup(w http.ResponseWr
 		Size:     header.Size,
 	})
 	if err != nil {
-		handleConnectorProvisionError(w, err)
+		handleConnectorProvisionError(w, errors.New(resolved.credentialBoundary.Redact(s.redactForPersistence(r.Context(), resolved.runtime, err.Error()))))
+		return
+	}
+	result, err = s.redactConnectorActionResultWithCredentialBoundary(r.Context(), resolved.runtime, result, resolved.credentialBoundary)
+	if err != nil {
+		writeInternalError(w)
 		return
 	}
 	s.writeObservationAudit(r.Context(), resolved.runtime, "user", nil, 0, "connector.profile.backup.restored", map[string]any{
@@ -102,11 +107,12 @@ func (s connectorTargetHandlers) restoreConnectorProfileBackup(w http.ResponseWr
 }
 
 type resolvedConnectorProfileRuntime struct {
-	runtime        *databaseRuntime
-	target         connectortargets.Target
-	profile        connectortargets.CredentialProfile
-	connector      connectors.Connector
-	runtimeContext connectors.RuntimeContext
+	runtime            *databaseRuntime
+	target             connectortargets.Target
+	profile            connectortargets.CredentialProfile
+	connector          connectors.Connector
+	runtimeContext     connectors.RuntimeContext
+	credentialBoundary connectorCredentialBoundary
 }
 
 func (s connectorTargetHandlers) resolveConnectorProfileRuntime(w http.ResponseWriter, r *http.Request) (resolvedConnectorProfileRuntime, bool) {
@@ -142,6 +148,7 @@ func (s connectorTargetHandlers) resolveConnectorProfileRuntime(w http.ResponseW
 	if !ok {
 		return resolvedConnectorProfileRuntime{}, false
 	}
+	credentialBoundary := newConnectorCredentialBoundary(secrets)
 	return resolvedConnectorProfileRuntime{
 		runtime:   runtime,
 		target:    target,
@@ -150,10 +157,11 @@ func (s connectorTargetHandlers) resolveConnectorProfileRuntime(w http.ResponseW
 		runtimeContext: connectors.RuntimeContext{
 			Target:       connectorTargetViewForProfile(target, profile.ID),
 			Profile:      connectortargets.CredentialProfileView(profile),
-			Secrets:      connectorSecretAccessor{values: secrets},
+			Secrets:      connectorSecretAccessor{values: secrets, boundary: credentialBoundary},
 			Events:       noopConnectorEventSink{},
 			Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 		},
+		credentialBoundary: credentialBoundary,
 	}, true
 }
 

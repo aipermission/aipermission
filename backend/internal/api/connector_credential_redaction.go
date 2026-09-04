@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -19,6 +22,11 @@ const connectorCredentialRedactionMarker = "[REDACTED CREDENTIAL]"
 // redaction may be disabled; delivered credentials must never be returned or
 // persisted regardless of that setting.
 type connectorCredentialBoundary struct {
+	state *connectorCredentialBoundaryState
+}
+
+type connectorCredentialBoundaryState struct {
+	mu     sync.RWMutex
 	values []string
 }
 
@@ -39,7 +47,7 @@ func newConnectorCredentialBoundary(secrets map[string]any) connectorCredentialB
 		}
 		return len(values[i]) > len(values[j])
 	})
-	return connectorCredentialBoundary{values: deduplicateSortedStrings(values)}
+	return connectorCredentialBoundary{state: &connectorCredentialBoundaryState{values: deduplicateSortedStrings(values)}}
 }
 
 func combinedConnectorCredentialBoundary(secretSets ...map[string]any) connectorCredentialBoundary {
@@ -67,6 +75,66 @@ func collectConnectorCredentialStrings(value any, values map[string]struct{}) {
 	}
 }
 
+func connectorActionSensitiveValues(input map[string]any, payload map[string]any, sensitiveFields []string) []string {
+	fields := make(map[string]bool, len(sensitiveFields))
+	for _, field := range sensitiveFields {
+		if normalized := normalizeConnectorOutputField(field); normalized != "" {
+			fields[normalized] = true
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	values := map[string]struct{}{}
+	collectDeclaredSensitiveValues(input, fields, false, values)
+	collectDeclaredSensitiveValues(payload, fields, false, values)
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	return result
+}
+
+func collectDeclaredSensitiveValues(value any, fields map[string]bool, sensitive bool, values map[string]struct{}) {
+	if sensitive {
+		collectSensitiveValueStrings(value, values)
+		return
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			collectDeclaredSensitiveValues(item, fields, fields[normalizeConnectorOutputField(key)], values)
+		}
+	case []any:
+		for _, item := range typed {
+			collectDeclaredSensitiveValues(item, fields, false, values)
+		}
+	}
+}
+
+func collectSensitiveValueStrings(value any, values map[string]struct{}) {
+	if encoded, err := json.Marshal(value); err == nil && len(encoded) > 0 && string(encoded) != "null" {
+		values[string(encoded)] = struct{}{}
+	}
+	switch typed := value.(type) {
+	case string:
+		if typed != "" {
+			values[typed] = struct{}{}
+		}
+	case map[string]any:
+		for _, item := range typed {
+			collectSensitiveValueStrings(item, values)
+		}
+	case []any:
+		for _, item := range typed {
+			collectSensitiveValueStrings(item, values)
+		}
+	case nil:
+	default:
+		values[fmt.Sprint(typed)] = struct{}{}
+	}
+}
+
 func connectorCredentialVariants(secret string) []string {
 	if secret == "" {
 		return nil
@@ -77,6 +145,7 @@ func connectorCredentialVariants(secret string) []string {
 	}
 	encoded := []string{
 		secret,
+		strings.TrimSpace(secret),
 		quoted,
 		url.QueryEscape(secret),
 		url.PathEscape(secret),
@@ -102,14 +171,72 @@ func deduplicateSortedStrings(values []string) []string {
 }
 
 func (r connectorCredentialBoundary) Redact(value string) string {
-	for _, secret := range r.values {
+	if r.state == nil {
+		return value
+	}
+	r.state.mu.RLock()
+	values := append([]string(nil), r.state.values...)
+	r.state.mu.RUnlock()
+	for _, secret := range values {
 		value = strings.ReplaceAll(value, secret, connectorCredentialRedactionMarker)
 	}
 	return value
 }
 
+func (r connectorCredentialBoundary) RedactKey(value string) string {
+	if r.state == nil {
+		return value
+	}
+	r.state.mu.RLock()
+	values := append([]string(nil), r.state.values...)
+	r.state.mu.RUnlock()
+	for _, secret := range values {
+		if value == secret {
+			return connectorCredentialRedactionMarker
+		}
+		if len(secret) >= 8 {
+			value = strings.ReplaceAll(value, secret, connectorCredentialRedactionMarker)
+		}
+	}
+	return value
+}
+
 func (r connectorCredentialBoundary) Empty() bool {
-	return len(r.values) == 0
+	if r.state == nil {
+		return true
+	}
+	r.state.mu.RLock()
+	defer r.state.mu.RUnlock()
+	return len(r.state.values) == 0
+}
+
+func (r connectorCredentialBoundary) Add(values ...string) {
+	if r.state == nil {
+		return
+	}
+	r.state.mu.Lock()
+	defer r.state.mu.Unlock()
+	combined := append([]string(nil), r.state.values...)
+	for _, value := range values {
+		combined = append(combined, connectorCredentialVariants(value)...)
+	}
+	sort.Slice(combined, func(i, j int) bool {
+		if len(combined[i]) == len(combined[j]) {
+			return combined[i] < combined[j]
+		}
+		return len(combined[i]) > len(combined[j])
+	})
+	r.state.values = deduplicateSortedStrings(combined)
+}
+
+func (r connectorCredentialBoundary) AddStructured(value any) {
+	unique := map[string]struct{}{}
+	collectConnectorCredentialStrings(value, unique)
+	values := make([]string, 0, len(unique))
+	for value := range unique {
+		values = append(values, value)
+	}
+	r.Add(values...)
 }
 
 func connectorCredentialBoundaryForRuntimeID(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (connectorCredentialBoundary, error) {

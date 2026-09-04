@@ -62,7 +62,8 @@ type connectorActionExecutionEnvelope struct {
 }
 
 type connectorSecretAccessor struct {
-	values map[string]any
+	values   map[string]any
+	boundary connectorCredentialBoundary
 }
 
 type connectorActionExecutionSnapshot struct {
@@ -77,10 +78,17 @@ func (a connectorSecretAccessor) GetSecret(_ context.Context, name string) (stri
 	}
 	switch typed := value.(type) {
 	case string:
+		a.boundary.Add(typed)
 		return typed, nil
 	default:
-		return fmt.Sprint(typed), nil
+		text := fmt.Sprint(typed)
+		a.boundary.Add(text)
+		return text, nil
 	}
+}
+
+func (a connectorSecretAccessor) RegisterSensitiveValue(value string) {
+	a.boundary.Add(value)
 }
 
 type noopConnectorEventSink struct{}
@@ -335,10 +343,13 @@ func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *d
 			return connectorActionExecutionSnapshot{}, err
 		}
 	}
-	return connectorActionExecutionSnapshot{
-		secrets:            secrets,
-		credentialBoundary: newConnectorCredentialBoundary(secrets),
-	}, nil
+	boundary := newConnectorCredentialBoundary(secrets)
+	boundary.Add(connectorActionSensitiveValues(
+		prepared.Requested.Input,
+		prepared.Action.Payload,
+		prepared.ActionDefinition.SensitiveInputFields,
+	)...)
+	return connectorActionExecutionSnapshot{secrets: secrets, credentialBoundary: boundary}, nil
 }
 
 func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, prepared actions.PreparedRequest, snapshot connectorActionExecutionSnapshot) (connectors.ActionResult, error) {
@@ -352,7 +363,7 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 	result, err := connector.ExecuteAction(ctx, connectors.RuntimeContext{
 		Target:       prepared.Target,
 		Profile:      prepared.Profile,
-		Secrets:      connectorSecretAccessor{values: snapshot.secrets},
+		Secrets:      connectorSecretAccessor{values: snapshot.secrets, boundary: snapshot.credentialBoundary},
 		Events:       noopConnectorEventSink{},
 		Principal:    principal,
 		Capabilities: connectorRuntimeCapabilitiesFor(prepared.Target.ConnectorKind, s, runtime),

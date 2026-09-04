@@ -4,6 +4,7 @@ package rabbitmqconnector
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -674,6 +675,8 @@ func newRabbitClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 	if strings.TrimSpace(password) == "" {
 		return nil, fmt.Errorf("%w: password is required", ErrMissingSecret)
 	}
+	basicCredential := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	connectors.RegisterSensitiveValue(runtime.Secrets, basicCredential, "Basic "+basicCredential)
 	scheme := rabbitScheme(runtime.Target)
 	host := rabbitHost(runtime.Target)
 	port := rabbitPort(runtime.Target)

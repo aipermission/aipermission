@@ -138,6 +138,23 @@ type SecretAccessor interface {
 	GetSecret(ctx context.Context, name string) (string, error)
 }
 
+// SensitiveValueRegistrar is implemented by the gateway's execution-scoped
+// secret accessor. A connector must register reusable wire credentials that it
+// derives from stored secrets so reflected remote responses can be scrubbed.
+type SensitiveValueRegistrar interface {
+	RegisterSensitiveValue(value string)
+}
+
+func RegisterSensitiveValue(accessor SecretAccessor, values ...string) {
+	registrar, ok := accessor.(SensitiveValueRegistrar)
+	if !ok {
+		return
+	}
+	for _, value := range values {
+		registrar.RegisterSensitiveValue(value)
+	}
+}
+
 // EventSink is reserved for future connector progress events.
 //
 // In the 0.2 connector baseline, the gateway provides a no-op sink. Connectors
