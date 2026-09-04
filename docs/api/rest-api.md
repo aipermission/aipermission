@@ -1027,7 +1027,7 @@ GET  /api/backup/providers/{id}/records/{record_id}/download
 POST /api/backup/providers/{id}/records/{record_id}/restore
 ```
 
-`GET /api/backup/download` returns the active SQLCipher database as a binary `.aipdb` file. The backend creates a temporary SQLCipher snapshot and serves that snapshot instead of streaming the live database file directly.
+`GET /api/backup/download` returns the active SQLCipher database as a binary `.aipdb` file. The backend creates a temporary SQLCipher snapshot and serves that snapshot instead of streaming the live database file directly. Snapshot creation and provider download/restore operations share a gateway-wide two-operation limit, honor request cancellation while queued or snapshotting, and reject snapshots larger than the 256 MiB gateway import/snapshot boundary.
 
 `POST /api/backup/import` should use `multipart/form-data`:
 
@@ -1264,12 +1264,22 @@ permission, a client must use a new key for the new logical attempt rather than
 retrying the previously blocked request.
 
 The browser keeps unresolved local retry identities in an origin-local bounded
-ledger. Transport failures reuse the same identity on the next identical
-submission. An `outcome_unknown` identity is never discarded automatically:
+IndexedDB ledger. Cross-tab reservations are transactional, and request
+signatures use a non-extractable origin-local HMAC key rather than persisting
+raw request input. The ledger is scoped by an opaque per-installation database
+identity that remains stable across rename but rotates when a database copy is
+imported or restored. Transport failures reuse the same identity on the next
+identical submission. An `outcome_unknown` identity is never discarded automatically:
 the operator must inspect History and external state, then explicitly mark it
 reconciled in Settings or confirm that the next identical submission is a new
 external attempt. Browser storage corruption also fails closed and requires an
-explicit ledger reset from Settings.
+explicit ledger reset from Settings. Reconciliation uses an exact idempotency-key
+and revision CAS, and a carried identity survives pre-handler authentication,
+CSRF, or locked-database errors. Missing or corrupt IndexedDB/signing-key state
+fails closed. Storage is bounded to 128 entries per workspace, 512 entries per
+origin, and 64 signing scopes. A legacy localStorage retry ledger is not
+silently migrated because its signatures were not keyed; Settings requires an
+explicit reconciliation/reset first.
 
 `GET /api/history/targets` returns target/profile facets derived from
 `history_entries`, not only currently active connector targets. Use it for

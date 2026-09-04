@@ -202,7 +202,9 @@ Connector responses can include `approval_pending` or `running`. Poll
 `get_connector_action_request(request_id)` until the request reaches a terminal
 status. `outcome_unknown` is terminal and means the gateway could not prove the
 remote outcome after interruption; inspect target state or ask the operator
-before retrying. MCP tool responses never include file contents, gateway
+before retrying. Gateway API errors with that status retain their request id,
+assistant hint, and bounded retry delay in the MCP error envelope. MCP tool
+responses never include file contents, gateway
 temporary paths, archive staging paths, or local upload contents.
 
 ## Operator Skill

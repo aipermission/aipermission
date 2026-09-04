@@ -31,6 +31,21 @@ the largest supported record rather than total encrypted history size. Current
 execution paths accept only the versioned record format; legacy decoding is
 restricted to this explicit migration boundary.
 
+The completion marker is paired with an authenticated storage-binding
+sentinel. Unlock verifies that sentinel even when no rewrite is needed, so a
+copied marker cannot bypass workspace/domain/record binding checks. Databases
+that already carry the envelope marker must also carry their embedded
+workspace UUID and gateway secret; the runtime does not silently replace
+either identity from process configuration.
+
+Connector action request identities are HMAC tags derived from the embedded
+gateway secret and workspace UUID. The stored tag cannot be used as a plain
+SHA-256 oracle for guessing request input. It remains stable when the operator
+changes the SQLCipher database password, while a different workspace derives a
+different key. The schema migration invalidates legacy unkeyed request digests
+and removes legacy replay tombstones instead of treating them as authenticated
+identities.
+
 ## Current Model
 
 The SQLite file is encrypted with SQLCipher 4.16.0 through a pinned Go wrapper
@@ -98,9 +113,28 @@ Until unlock succeeds, server, token, key, console, history, and MCP endpoints a
 
 Unlock is process-level state. Closing the browser tab does not lock the backend. This allows MCP/AI work to continue while the browser is closed.
 
+The browser's local connector-action retry ledger is separate from secret
+storage. It uses IndexedDB transactions so concurrent tabs reserve one retry
+identity for the same logical request. Request signatures are HMACed with a
+non-extractable origin-local WebCrypto key; raw action input is never written to
+the ledger. The scope is an opaque per-database-installation identity stored
+inside the encrypted database. Import and remote restore rotate that identity,
+preventing an unresolved browser retry from one installation from being reused
+against a restored copy. A legacy localStorage retry ledger fails closed until
+the operator explicitly reconciles or resets it in Settings. Browser runtimes
+also fail closed when IndexedDB or its non-extractable signing key is missing or
+corrupt. Reconciliation compares the complete idempotency key and record
+revision so a stale tab cannot remove a newer in-flight identity. The ledger is
+bounded across both one workspace and the browser origin.
+
 Web REST calls use a local HttpOnly browser session cookie after unlock. If that cookie is missing or expired while the backend process still has the database open, the UI returns to the unlock form and asks for the same database password to issue a new cookie. The database password is not used as an API bearer token.
 
 The backend can keep multiple named databases unlocked as live workspaces in the same process. The UI `Switch` action does not ask for a password when the target database is already unlocked, and it does not close the previous workspace. MCP commands, console sessions, and request polling in other unlocked workspaces continue running.
+
+One encrypted database file can be owned by only one live AIPermission process.
+Unlock returns a conflict while another process owns that file. Rename, delete,
+catalog recovery, and legacy migration use the same cross-process ownership
+boundary rather than modifying files opened by another gateway.
 
 If the target database is not unlocked yet, the Switch dialog asks for that database password, opens the workspace, and makes it the active UI context.
 
