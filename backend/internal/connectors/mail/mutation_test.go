@@ -2,6 +2,7 @@ package mailconnector
 
 import (
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -17,6 +18,7 @@ type fakeMutationClient struct {
 	storeValue     interface{}
 	moveSupport    bool
 	movedTo        string
+	storeErr       error
 	moveErr        error
 	destinationErr error
 	missing        bool
@@ -38,7 +40,7 @@ func (client *fakeMutationClient) Status(string, []imap.StatusItem) (*imap.Mailb
 func (client *fakeMutationClient) UidStore(_ *imap.SeqSet, item imap.StoreItem, value interface{}, _ chan *imap.Message) error {
 	client.storeItem = item
 	client.storeValue = value
-	return nil
+	return client.storeErr
 }
 
 func (client *fakeMutationClient) UidSearch(_ *imap.SearchCriteria) ([]uint32, error) {
@@ -127,6 +129,29 @@ func TestMutateMessageDoesNotHideMoveFailure(t *testing.T) {
 	_, err = mutateMessage(client, profile, connectors.PreparedAction{ActionName: ActionMoveMessage, Payload: map[string]any{"destination_folder": "Archive"}}, messageRef{Folder: "INBOX", UIDValidity: 7, UID: 42})
 	if err == nil || client.movedTo != "Archive" {
 		t.Fatalf("expected classified move failure, moved=%q err=%v", client.movedTo, err)
+	}
+}
+
+func TestIMAPMutationTransportFailuresAreOutcomeUnknown(t *testing.T) {
+	profile, err := profileConfigFrom(connectors.CredentialProfileView{Public: validProfilePublic()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := messageRef{Folder: "INBOX", UIDValidity: 7, UID: 42}
+	for _, test := range []struct {
+		name   string
+		action connectors.PreparedAction
+		client *fakeMutationClient
+	}{
+		{name: "store", action: connectors.PreparedAction{ActionName: ActionMarkRead}, client: &fakeMutationClient{status: &imap.MailboxStatus{UidValidity: 7}, storeErr: io.ErrUnexpectedEOF}},
+		{name: "move", action: connectors.PreparedAction{ActionName: ActionMoveMessage, Payload: map[string]any{"destination_folder": "Archive"}}, client: &fakeMutationClient{status: &imap.MailboxStatus{UidValidity: 7}, moveSupport: true, moveErr: errors.New("imap: connection closed during command execution")}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := mutateMessage(test.client, profile, test.action, ref)
+			if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+				t.Fatalf("transport failure = %v, want outcome_unknown", err)
+			}
+		})
 	}
 }
 
