@@ -1,6 +1,10 @@
 package api
 
 import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -74,8 +78,18 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	attempt.success()
-	_, _ = s.database.ExecContext(r.Context(), `PRAGMA wal_checkpoint(FULL)`)
-	s.closeUnlockedResources()
+	if err := checkpointDatabaseForMove(r.Context(), s.database); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := s.closeUnlockedResources(); err != nil {
+		s.activeDataPath = oldPath
+		if reopenErr := s.openUnlockedLocked(request.CurrentPassword); reopenErr != nil {
+			s.clearUISessions(w)
+		}
+		writeInternalError(w)
+		return
+	}
 
 	if err := s.moveDatabase(oldPath, path); err != nil {
 		s.activeDataPath = oldPath
@@ -138,8 +152,14 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 	attempt.success()
 
 	path := s.activeDataPath
-	_, _ = s.database.ExecContext(r.Context(), `PRAGMA wal_checkpoint(FULL)`)
-	s.closeActiveRuntimeLocked(true)
+	if err := checkpointDatabaseForMove(r.Context(), s.database); err != nil {
+		writeInternalError(w)
+		return
+	}
+	if err := s.closeActiveRuntimeLocked(true); err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := dbpkg.DeleteDatabase(path); err != nil {
 		writeInternalError(w)
 		return
@@ -165,6 +185,20 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		"database_id": s.activeDatabase,
 		"deleted_at":  time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func checkpointDatabaseForMove(ctx context.Context, database *sql.DB) error {
+	if database == nil {
+		return errors.New("database is not open")
+	}
+	var busy, logFrames, checkpointedFrames int
+	if err := database.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logFrames, &checkpointedFrames); err != nil {
+		return fmt.Errorf("checkpoint database before filesystem mutation: %w", err)
+	}
+	if busy != 0 || checkpointedFrames < logFrames {
+		return fmt.Errorf("checkpoint database before filesystem mutation: database remained busy")
+	}
+	return nil
 }
 
 func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Request) {

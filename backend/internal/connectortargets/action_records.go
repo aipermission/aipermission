@@ -16,6 +16,8 @@ import (
 
 type ActionPermissionRule string
 
+const expiredIdempotencyResultText = "Original connector action output expired under retention; the idempotency key remains reserved."
+
 const (
 	ActionPermissionAlwaysRun        ActionPermissionRule = "always_run"
 	ActionPermissionApprovalRequired ActionPermissionRule = "approval_required"
@@ -443,6 +445,21 @@ func (s *Store) insertActionRequestIdempotent(ctx context.Context, input InsertA
 		return ActionRequest{}, false, err
 	}
 	defer rollback()
+	if strings.TrimSpace(input.IdempotencyKey) != "" {
+		existing, findErr := getActionRequestByIdempotencyWithExecutor(ctx, executor, idempotencyScope, input.IdempotencyKey)
+		if findErr == nil {
+			if existing.IdempotencyIdentityHash != strings.TrimSpace(input.IdempotencyIdentityHash) {
+				return ActionRequest{}, false, ErrActionRequestIdempotency
+			}
+			if commitErr := commit(); commitErr != nil {
+				return ActionRequest{}, false, commitErr
+			}
+			return existing, false, nil
+		}
+		if !errors.Is(findErr, ErrActionRequestNotFound) {
+			return ActionRequest{}, false, findErr
+		}
+	}
 	result, err := executor.ExecContext(ctx, `
 		INSERT INTO connector_action_requests (
 			token_id, target_id, profile_id, connector_kind, action_name, title, summary,
@@ -583,9 +600,46 @@ func getActionRequestByIdempotencyWithExecutor(ctx context.Context, executor sto
 		scope, strings.TrimSpace(key),
 	))
 	if errors.Is(err, sql.ErrNoRows) {
-		return ActionRequest{}, ErrActionRequestNotFound
+		return getActionRequestIdempotencyTombstone(ctx, executor, scope, key)
 	}
 	return request, err
+}
+
+func getActionRequestIdempotencyTombstone(ctx context.Context, executor storeDB, scope, key string) (ActionRequest, error) {
+	var request ActionRequest
+	var status string
+	var completedAt string
+	var retryPolicyJSON string
+	err := executor.QueryRowContext(ctx, `
+		SELECT
+			request_id, token_id, target_id, target_name, profile_id, profile_label,
+			connector_kind, action_name, source, retry_policy_json,
+			status, idempotency_identity_hash, completed_at
+		FROM connector_action_idempotency_tombstones
+		WHERE idempotency_scope = ? AND idempotency_key = ?
+			AND julianday(expires_at) > julianday('now')`,
+		scope, strings.TrimSpace(key),
+	).Scan(
+		&request.ID, &request.TokenID, &request.TargetID, &request.TargetName,
+		&request.ProfileID, &request.ProfileLabel, &request.ConnectorKind,
+		&request.ActionName, &request.Source, &retryPolicyJSON,
+		&status, &request.IdempotencyIdentityHash, &completedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ActionRequest{}, ErrActionRequestNotFound
+	}
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	request.Status = connectors.ResultStatus(status)
+	request.DisplayText = expiredIdempotencyResultText
+	request.IdempotencyKey = strings.TrimSpace(key)
+	request.CompletedAt = &completedAt
+	request.CreatedAt = completedAt
+	if err := json.Unmarshal([]byte(retryPolicyJSON), &request.RetryPolicy); err != nil {
+		return ActionRequest{}, fmt.Errorf("decode retained connector action retry policy: %w", err)
+	}
+	return request, nil
 }
 
 func actionRequestIdempotencyScope(tokenID *int64, source string) string {
@@ -851,7 +905,7 @@ func (s *Store) BeginActionRequestDispatch(ctx context.Context, id int64, owner 
 // RecoverExpiredActionRequest terminalizes a running request only while its
 // durable execution lease is still missing or expired. The lease predicate is
 // part of the update so a concurrent dispatch renewal cannot be overwritten.
-func (s *Store) RecoverExpiredActionRequest(ctx context.Context, id int64, now time.Time, errorText string) (ActionRequest, bool, error) {
+func (s *Store) RecoverExpiredActionRequest(ctx context.Context, id int64, now time.Time, beforeDispatchError string, outcomeUnknownError string) (ActionRequest, bool, error) {
 	if s == nil || s.db == nil {
 		return ActionRequest{}, false, fmt.Errorf("connector target store is not configured")
 	}
@@ -861,11 +915,15 @@ func (s *Store) RecoverExpiredActionRequest(ctx context.Context, id int64, now t
 	request, affected, err := s.mutateActionRequestAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
 		return executor.ExecContext(ctx, `
 			UPDATE connector_action_requests
-			SET status = ?, error = ?, completed_at = ?
+			SET status = CASE WHEN trim(dispatch_started_at) = '' THEN ? ELSE ? END,
+			    error = CASE WHEN trim(dispatch_started_at) = '' THEN ? ELSE ? END,
+			    completed_at = ?
 			WHERE id = ? AND status = ?
 			  AND (execution_lease_expires_at = '' OR julianday(execution_lease_expires_at) <= julianday(?))`,
+			string(connectors.ResultFailed),
 			string(connectors.ResultOutcomeUnknown),
-			strings.TrimSpace(errorText),
+			strings.TrimSpace(beforeDispatchError),
+			strings.TrimSpace(outcomeUnknownError),
 			now.UTC().Format(time.RFC3339Nano),
 			id,
 			string(connectors.ResultRunning),

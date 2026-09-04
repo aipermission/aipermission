@@ -233,9 +233,13 @@ func downloadServiceRecordToTemp(ctx context.Context, runtime *databaseRuntime, 
 	if record.SizeBytes < 1 || record.SizeBytes > maxImportBodyBytes {
 		return "", backups.ValidationError("backup is too large to download through the gateway")
 	}
-	tmpPath := filepath.Join(filepath.Dir(runtime.path), fmt.Sprintf(".remote-backup-%d-%d.aipdb", provider.ID, time.Now().UnixNano()))
+	tmpPath, err := reserveDatabaseTempPath(runtime.path, fmt.Sprintf("remote-backup-%d-*.aipdb", provider.ID))
+	if err != nil {
+		return "", err
+	}
 	downloaded, err := client.Download(ctx, stringFromMap(provider.Public, "stream_id"), record.ProviderFileID, tmpPath, maxImportBodyBytes)
 	if err != nil {
+		_ = os.Remove(tmpPath)
 		return "", err
 	}
 	if downloaded.SizeBytes != record.SizeBytes || !strings.EqualFold(downloaded.SHA256, record.ChecksumSHA256) {

@@ -263,10 +263,16 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if request.Scope == "all" {
-		s.closeAllUnlockedResources()
+		if err := s.closeAllUnlockedResources(); err != nil {
+			writeInternalError(w)
+			return
+		}
 		s.clearUISessions(w)
 	} else {
-		s.closeActiveRuntimeLocked(true)
+		if err := s.closeActiveRuntimeLocked(true); err != nil {
+			writeInternalError(w)
+			return
+		}
 		if s.database == nil {
 			s.clearUISessions(w)
 		} else if err := s.issueUISession(w); err != nil {

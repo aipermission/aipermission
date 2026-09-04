@@ -51,17 +51,9 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 func createDatabaseSnapshot(runtime *databaseRuntime) (databaseSnapshot, error) {
 	createdAt := time.Now().UTC()
 	databaseID := runtime.id
-	temporary, err := os.CreateTemp(filepath.Dir(runtime.path), "."+databaseID+"-*.backup.aipdb")
+	snapshotPath, err := reserveDatabaseTempPath(runtime.path, "snapshot-"+databaseID+"-*.aipdb")
 	if err != nil {
 		return databaseSnapshot{}, fmt.Errorf("reserve database snapshot path: %w", err)
-	}
-	snapshotPath := temporary.Name()
-	if err := temporary.Close(); err != nil {
-		_ = os.Remove(snapshotPath)
-		return databaseSnapshot{}, fmt.Errorf("close reserved database snapshot path: %w", err)
-	}
-	if err := os.Remove(snapshotPath); err != nil {
-		return databaseSnapshot{}, fmt.Errorf("prepare database snapshot path: %w", err)
 	}
 	if err := dbpkg.Snapshot(runtime.database, snapshotPath); err != nil {
 		return databaseSnapshot{}, err
@@ -155,7 +147,16 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	tmpPath := targetPath + ".import"
+	// Remove staging files left by builds that used the former fixed import path.
+	if err := dbpkg.DeleteDatabase(targetPath + ".import"); err != nil {
+		writeInternalError(w)
+		return
+	}
+	tmpPath, err := reserveDatabaseTempPath(targetPath, "import-*.aipdb")
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
 		writeInternalError(w)
 		return
@@ -212,6 +213,11 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeError(w, http.StatusConflict, "database name already exists")
 		return
 	}
+	preparedSession, err := prepareUISession()
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
 	if err := s.publishDatabase(tmpPath, targetPath); err != nil {
 		if dbpkg.Exists(targetPath) {
 			if cleanupErr := rollbackImportedDatabase(targetPath); cleanupErr != nil {
@@ -238,10 +244,7 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeInternalError(w)
 		return
 	}
-	if err := s.issueUISession(w); err != nil {
-		writeInternalError(w)
-		return
-	}
+	s.issuePreparedUISession(w, preparedSession)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "imported",
@@ -269,14 +272,5 @@ func cleanupImportCandidate(path string) {
 }
 
 func rollbackImportedDatabase(targetPath string) error {
-	if err := dbpkg.DeleteDatabase(targetPath); err == nil {
-		return nil
-	}
-	quarantinePath := targetPath + ".failed-import-" + time.Now().UTC().Format("20060102T150405.000000000")
-	if err := os.Rename(targetPath, quarantinePath); err != nil {
-		return err
-	}
-	_ = os.Remove(targetPath + "-wal")
-	_ = os.Remove(targetPath + "-shm")
-	return nil
+	return dbpkg.DeleteDatabase(targetPath)
 }
