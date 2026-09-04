@@ -81,6 +81,9 @@ func (client *s3Client) presignObject(method string, key string, expiresSeconds 
 	if expiresSeconds < minPresignedExpirySeconds || expiresSeconds > maxPresignedExpirySeconds {
 		return "", time.Time{}, fmt.Errorf("presigned URL expiry must be between %d and %d seconds", minPresignedExpirySeconds, maxPresignedExpirySeconds)
 	}
+	if client.sessionToken != "" {
+		return "", time.Time{}, fmt.Errorf("presigned URLs are unavailable for temporary-session credentials because returning the signed URL would disclose the session token")
+	}
 	return client.buildPresignedObjectUnchecked(method, key, expiresSeconds, requiredHeaders, now)
 }
 
