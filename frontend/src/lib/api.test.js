@@ -161,46 +161,62 @@ test("local connector action retains idempotency after malformed or incomplete s
   }
 });
 
-test("local connector action retry keys expire after a bounded window", async () => {
+test("local connector action retry keys survive browser reload until acknowledged", async () => {
   const originalFetch = globalThis.fetch;
-  const originalNow = Date.now;
+  const originalWindow = globalThis.window;
   const keys = [];
-  let now = 1000;
-  Date.now = () => now;
+  const storage = memoryStorage();
+  globalThis.window = { localStorage: storage };
+  let calls = 0;
   globalThis.fetch = async (_url, options) => {
     keys.push(JSON.parse(options.body).idempotency_key);
-    throw new TypeError("network disconnected");
+    calls += 1;
+    if (calls === 1) throw new TypeError("network disconnected");
+    return response(localActionResponse());
   };
-  const body = { target_ref: "fixture:expiry", action_name: "inspect", input: {}, reason: "test" };
+  const body = { target_ref: "fixture:reload", action_name: "inspect", input: { secret: "not-persisted" }, reason: "test" };
   try {
-    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
-    now += 6 * 60 * 1000;
-    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
-    assert.notEqual(keys[0], keys[1]);
+    const firstModule = await import(`./api.js?retry-first=${Date.now()}`);
+    await assert.rejects(() => firstModule.apiPost("/api/connector-actions/local-run", body));
+    assert.equal(
+      [...storage.values()].some((value) => value.includes("not-persisted")),
+      false,
+    );
+
+    const reloadedModule = await import(`./api.js?retry-reload=${Date.now()}`);
+    await reloadedModule.apiPost("/api/connector-actions/local-run", body);
+    await reloadedModule.apiPost("/api/connector-actions/local-run", body);
+    assert.equal(keys[0], keys[1]);
+    assert.notEqual(keys[1], keys[2]);
   } finally {
-    Date.now = originalNow;
     globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
   }
 });
 
-test("local connector action retry keys evict the oldest uncertain request", async () => {
+test("local connector action fails closed when browser retry storage is unavailable", async () => {
   const originalFetch = globalThis.fetch;
-  const firstKeys = [];
-  globalThis.fetch = async (_url, options) => {
-    firstKeys.push(JSON.parse(options.body).idempotency_key);
-    throw new TypeError("network disconnected");
+  const originalWindow = globalThis.window;
+  let fetched = false;
+  globalThis.window = {
+    get localStorage() {
+      throw new Error("denied");
+    },
   };
-  const first = { target_ref: "fixture:lru:0", action_name: "inspect", input: {}, reason: "test" };
+  globalThis.fetch = async () => {
+    fetched = true;
+    return response(localActionResponse());
+  };
   try {
-    await assert.rejects(() => apiPost("/api/connector-actions/local-run", first));
-    for (let index = 1; index <= 128; index += 1) {
-      const body = { ...first, target_ref: `fixture:lru:${index}` };
-      await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
-    }
-    await assert.rejects(() => apiPost("/api/connector-actions/local-run", first));
-    assert.notEqual(firstKeys[0], firstKeys.at(-1));
+    const browserModule = await import(`./api.js?retry-storage-denied=${Date.now()}`);
+    await assert.rejects(
+      () => browserModule.apiPost("/api/connector-actions/local-run", { target_ref: "fixture:denied", action_name: "inspect" }),
+      /retry storage is unavailable/,
+    );
+    assert.equal(fetched, false);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
   }
 });
 
@@ -231,4 +247,22 @@ function localActionResponse() {
 function restoreWindow(value) {
   if (value === undefined) delete globalThis.window;
   else globalThis.window = value;
+}
+
+function memoryStorage() {
+  const values = new Map();
+  return {
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    values() {
+      return values.values();
+    },
+  };
 }

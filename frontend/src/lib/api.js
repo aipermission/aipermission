@@ -6,8 +6,7 @@ export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:808
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 const localActionRetryKeys = new Map();
-const localActionRetryKeyTTL = 5 * 60 * 1000;
-const maxLocalActionRetryKeys = 128;
+const localActionRetryStoragePrefix = "aipermission.local-action-retry.v1.";
 
 export async function apiGet(path) {
   const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
@@ -15,7 +14,7 @@ export async function apiGet(path) {
 }
 
 export async function apiPost(path, body, options = {}) {
-  const prepared = preparePostBody(path, body);
+  const prepared = await preparePostBody(path, body);
   const response = await fetch(`${apiUrl}${path}`, {
     method: "POST",
     headers: csrfHeaders({ "Content-Type": "application/json" }),
@@ -25,7 +24,7 @@ export async function apiPost(path, body, options = {}) {
   });
   const data = await readResponse(response, { requireJSON: Boolean(prepared.retrySignature) });
   if (prepared.retrySignature && response.ok && isAcknowledgedLocalActionResponse(data)) {
-    localActionRetryKeys.delete(prepared.retrySignature);
+    clearLocalActionRetryKey(prepared.retrySignature, prepared.idempotencyKey);
   }
   if (prepared.retrySignature && response.ok && !isAcknowledgedLocalActionResponse(data)) {
     throw new Error("Invalid connector action response from gateway.");
@@ -56,33 +55,50 @@ function isAcknowledgedLocalActionResponse(data) {
   );
 }
 
-function preparePostBody(path, body) {
+async function preparePostBody(path, body) {
   if (path !== "/api/connector-actions/local-run" || body?.idempotency_key) return { body, retrySignature: "" };
-  const retrySignature = stableRequestSignature(body || {});
-  const now = Date.now();
-  pruneLocalActionRetryKeys(now);
-  let entry = localActionRetryKeys.get(retrySignature);
-  if (!entry) {
-    entry = {
-      key: globalThis.crypto?.randomUUID?.() || `ui-${now}-${Math.random().toString(16).slice(2)}`,
-      expiresAt: now + localActionRetryKeyTTL,
-    };
-    localActionRetryKeys.set(retrySignature, entry);
-    trimLocalActionRetryKeys();
+  const signature = stableRequestSignature(body || {});
+  const storage = browserLocalStorage();
+  const retrySignature = storage ? `${localActionRetryStoragePrefix}${await sha256Hex(signature)}` : signature;
+  let idempotencyKey = storage ? readPersistedRetryKey(storage, retrySignature) : localActionRetryKeys.get(retrySignature);
+  if (!idempotencyKey) {
+    idempotencyKey = globalThis.crypto?.randomUUID?.() || `ui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    if (storage) storage.setItem(retrySignature, idempotencyKey);
+    else localActionRetryKeys.set(retrySignature, idempotencyKey);
   }
-  return { body: { ...body, idempotency_key: entry.key }, retrySignature };
+  return { body: { ...body, idempotency_key: idempotencyKey }, retrySignature, idempotencyKey };
 }
 
-function pruneLocalActionRetryKeys(now) {
-  for (const [signature, entry] of localActionRetryKeys) {
-    if (entry.expiresAt <= now) localActionRetryKeys.delete(signature);
+function clearLocalActionRetryKey(retrySignature, idempotencyKey) {
+  const storage = browserLocalStorage();
+  if (storage) {
+    if (storage.getItem(retrySignature) === idempotencyKey) storage.removeItem(retrySignature);
+    return;
+  }
+  if (localActionRetryKeys.get(retrySignature) === idempotencyKey) localActionRetryKeys.delete(retrySignature);
+}
+
+function browserLocalStorage() {
+  if (typeof window === "undefined") return null;
+  try {
+    if (!window.localStorage) throw new Error("storage unavailable");
+    return window.localStorage;
+  } catch {
+    throw new Error("Secure retry storage is unavailable; the connector action was not sent.");
   }
 }
 
-function trimLocalActionRetryKeys() {
-  while (localActionRetryKeys.size > maxLocalActionRetryKeys) {
-    localActionRetryKeys.delete(localActionRetryKeys.keys().next().value);
+function readPersistedRetryKey(storage, key) {
+  const value = storage.getItem(key);
+  return typeof value === "string" && value.length > 0 ? value : "";
+}
+
+async function sha256Hex(value) {
+  if (!globalThis.crypto?.subtle || typeof TextEncoder === "undefined") {
+    throw new Error("Secure request hashing is unavailable; the connector action was not sent.");
   }
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function stableRequestSignature(value) {
