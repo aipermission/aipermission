@@ -95,6 +95,75 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	}
 }
 
+func TestRunPendingConnectorActionRejectsMissingApprovalIntegrity(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	executions := 0
+	registry := connectors.NewRegistry()
+	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	runtime := &databaseRuntime{
+		database: database, vault: secretVault, tokens: tokens.NewStore(database),
+		registry: registry, workspaceUUID: connectorActionTestWorkspaceID,
+	}
+	runtime.setMCPStarted(true)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
+		ConnectorKind: localActionTestConnectorKind, Name: "integrity-target", Config: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
+		TargetID: target.ID, ConnectorKind: localActionTestConnectorKind, Kind: "default", Label: "main", Public: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetActionPermission(t.Context(), connectortargets.SetActionPermissionInput{
+		TokenID: tokenID, TargetID: target.ID, ProfileID: profile.ID, ActionName: "echo",
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := server.callConnectorAction(t.Context(), runtime, connectorActionCall{
+		Source: commandRequestSourceMCP, TokenID: tokenID,
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo", Input: map[string]any{"value": "safe-preview"}, Reason: "verify integrity",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, trigger := range []string{
+		"protect_connector_action_envelope_nonempty_update",
+		"protect_connector_action_approval_hash_nonempty_update",
+	} {
+		if _, err := database.Exec(`DROP TRIGGER ` + trigger); err != nil {
+			t.Fatalf("drop integrity trigger %s: %v", trigger, err)
+		}
+	}
+	if _, err := database.Exec(`
+		UPDATE connector_action_requests
+		SET encrypted_payload_json = '', approval_context_hash = '', input_json = '{"value":"tampered"}'
+		WHERE id = ?`, pending.Request.ID); err != nil {
+		t.Fatalf("corrupt pending request fixture: %v", err)
+	}
+
+	if _, err := server.runPendingConnectorAction(t.Context(), runtime, pending.Request.ID, ""); err == nil || !strings.Contains(err.Error(), "integrity data is missing") {
+		t.Fatalf("run malformed pending request error = %v", err)
+	}
+	stale, err := store.GetActionRequest(t.Context(), pending.Request.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stale.Status != connectors.ResultStale || stale.ApprovalContextDrift != "request_integrity" || executions != 0 {
+		t.Fatalf("malformed request was not rejected before dispatch: request=%#v executions=%d", stale, executions)
+	}
+}
+
 func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)

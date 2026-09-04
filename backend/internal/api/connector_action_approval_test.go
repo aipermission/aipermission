@@ -14,7 +14,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	historypkg "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -262,7 +261,7 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
 	}
-	request, err := store.InsertActionRequest(context.Background(), connectortargets.InsertActionRequestInput{
+	request, _, err := store.InsertSealedActionRequestIdempotent(context.Background(), connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
 		ProfileID:            profile.ID,
@@ -272,23 +271,16 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 		Input:                map[string]any{},
 		EncryptedPayloadJSON: "",
 		Status:               connectors.ResultApprovalPending,
+		ApprovalContext:      `{}`,
 		ApprovalContextHash:  "old-context",
+	}, func(requestID int64) (string, error) {
+		return recordcrypto.EncryptJSON(fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID, recordcrypto.ConnectorActionRequest, requestID, connectorActionExecutionEnvelope{
+			Input:   map[string]any{},
+			Payload: map[string]any{},
+		})
 	})
 	if err != nil {
 		t.Fatalf("insert pending connector request: %v", err)
-	}
-	encryptedPayload, err := recordcrypto.EncryptJSON(fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{
-		Input:   map[string]any{},
-		Payload: map[string]any{},
-	})
-	if err != nil {
-		t.Fatalf("encrypt pending payload: %v", err)
-	}
-	if err := store.SetActionRequestEncryptedPayload(context.Background(), request.ID, encryptedPayload); err != nil {
-		t.Fatalf("store pending payload: %v", err)
-	}
-	if err := historypkg.NewStore(fixture.db).SyncConnectorActionRequest(context.Background(), request.ID); err != nil {
-		t.Fatalf("sync pending connector request: %v", err)
 	}
 
 	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
@@ -397,6 +389,8 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 		Input:                map[string]any{"sql": "select 1"},
 		EncryptedPayloadJSON: "encrypted-payload",
 		Status:               connectors.ResultApprovalPending,
+		ApprovalContext:      `{}`,
+		ApprovalContextHash:  "approval-hash",
 	})
 	if err != nil {
 		t.Fatalf("insert pending target request: %v", err)
@@ -451,6 +445,8 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 		Input:                map[string]any{},
 		EncryptedPayloadJSON: "encrypted-payload",
 		Status:               connectors.ResultApprovalPending,
+		ApprovalContext:      `{}`,
+		ApprovalContextHash:  "approval-hash",
 	})
 	if err != nil {
 		t.Fatalf("insert pending profile request: %v", err)
