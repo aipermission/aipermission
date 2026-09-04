@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it, vi } from "vitest";
 import { scopedUICookieName } from "../lib/ui-cookie";
 import { LocalActionReconciliationDialog } from "./local-action-reconciliation-dialog";
@@ -19,7 +20,9 @@ describe("local connector action reconciliation", () => {
     expect(onClose).toHaveBeenLastCalledWith(true);
   });
 
-  it("requires confirmation before removing a retained retry identity from Settings", async () => {
+  it("requires explicit reset confirmation before removing a legacy retry ledger", async () => {
+    const originalIndexedDB = globalThis.indexedDB;
+    globalThis.indexedDB = new IDBFactory();
     const user = userEvent.setup();
     document.cookie = `${scopedUICookieName("aipermission_workspace")}=test-workspace; Path=/`;
     window.localStorage.setItem(
@@ -39,13 +42,15 @@ describe("local connector action reconciliation", () => {
     );
     render(<LocalActionRetryPanel />);
 
-    expect(screen.getByText("Outcome unknown")).toBeVisible();
+    expect(await screen.findByText("Outcome unknown")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Mark retry identity reconciled" }));
-    expect(screen.getByText(/next identical action will be a new external attempt/i)).toBeVisible();
+    expect(screen.getByText(/protected local retry identities will be lost/i)).toBeVisible();
     expect(window.localStorage.getItem("aipermission.local-action-retry.v2.test-workspace")).not.toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Mark reconciled" }));
+    await user.click(screen.getByRole("button", { name: "Reset ledger" }));
     expect(await screen.findByText("No unresolved local connector attempts.")).toBeVisible();
     expect(window.localStorage.getItem("aipermission.local-action-retry.v2.test-workspace")).toBeNull();
+    if (originalIndexedDB === undefined) delete globalThis.indexedDB;
+    else globalThis.indexedDB = originalIndexedDB;
   });
 });

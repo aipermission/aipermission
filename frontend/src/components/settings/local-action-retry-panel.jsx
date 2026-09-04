@@ -14,27 +14,46 @@ import { Notice } from "../ui/notice";
 export function LocalActionRetryPanel() {
   const [entries, setEntries] = useState([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
-    const refresh = () => {
+    let active = true;
+    let generation = 0;
+    const refresh = async () => {
+      const currentGeneration = ++generation;
       try {
-        setEntries(listLocalActionRetryEntries());
+        const next = await listLocalActionRetryEntries();
+        if (!active || currentGeneration !== generation) return;
+        setEntries(next);
         setError("");
       } catch (loadError) {
+        if (!active || currentGeneration !== generation) return;
         setEntries([]);
         setError(loadError.message);
+      } finally {
+        if (active && currentGeneration === generation) setLoading(false);
       }
     };
     refresh();
     window.addEventListener(localActionRetryLedgerChangedEvent, refresh);
-    return () => window.removeEventListener(localActionRetryLedgerChangedEvent, refresh);
+    return () => {
+      active = false;
+      window.removeEventListener(localActionRetryLedgerChangedEvent, refresh);
+    };
   }, []);
 
-  function resolveSelected() {
-    if (selected?.invalid) resetLocalActionRetryLedger();
-    else if (selected) resolveLocalActionRetryEntry(selected.signature);
-    setSelected(null);
+  async function resolveSelected() {
+    try {
+      if (selected?.invalid) await resetLocalActionRetryLedger();
+      else if (selected) {
+        const resolved = await resolveLocalActionRetryEntry(selected);
+        if (!resolved) throw new Error("The retry identity changed in another tab. The list has been refreshed.");
+      }
+      setSelected(null);
+    } catch (resolveError) {
+      setError(resolveError.message);
+    }
   }
 
   return (
@@ -45,7 +64,9 @@ export function LocalActionRetryPanel() {
           <CardDescription>Retry identities retained after interrupted or uncertain connector requests.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
-          {error ? (
+          {loading ? (
+            <Notice>Loading unresolved local actions...</Notice>
+          ) : error ? (
             <div className="flex items-center justify-between gap-3">
               <Notice tone="danger">{error}</Notice>
               <Button type="button" variant="danger" onClick={() => setSelected({ invalid: true })}>
