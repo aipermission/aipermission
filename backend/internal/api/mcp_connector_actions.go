@@ -301,6 +301,9 @@ func connectorActionVaultPollAuthorized(ctx context.Context, runtime *databaseRu
 		return false
 	}
 	defer release()
+	if !runtime.isMCPStarted() {
+		return false
+	}
 	token, err := runtime.tokens.Get(ctx, tokenID)
 	if err != nil || token.RevokedAt != "" || expired(token.ExpiresAt, time.Now().UTC()) {
 		return false

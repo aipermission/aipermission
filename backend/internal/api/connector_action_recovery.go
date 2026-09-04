@@ -119,7 +119,7 @@ func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runt
 		var changed bool
 		var err error
 		recovered, changed, err = connectortargets.NewTxStore(tx).RecoverExpiredActionRequest(
-			ctx, requestID, now, connectorActionPersistenceUnknownMessage,
+			ctx, requestID, now, connectorActionLeaseExpiredBeforeDispatchMessage, connectorActionPersistenceUnknownMessage,
 		)
 		if err != nil {
 			return err
@@ -129,7 +129,7 @@ func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runt
 		}
 		return appendAudit(
 			tx, "gateway", recovered.TokenID, 0,
-			"connector_action.request."+string(connectors.ResultOutcomeUnknown),
+			"connector_action.request."+string(recovered.Status),
 			connectorActionRequestAuditPayload(recovered),
 		)
 	})

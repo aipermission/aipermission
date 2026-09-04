@@ -314,6 +314,48 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 	}
 }
 
+func TestRunLocalConnectorMutationRequiresIdempotencyKey(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	registry := connectors.NewRegistry()
+	if err := registry.Register(mutatingLocalActionTestConnector{}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &databaseRuntime{database: database, vault: secretVault, tokens: tokens.NewStore(database), registry: registry, workspaceUUID: connectorActionTestWorkspaceID}
+	store := connectortargets.NewStore(database)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "mutation", Config: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{TargetID: target.ID, ConnectorKind: localActionTestConnectorKind, Kind: "default", Label: "main", Public: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = (&Server{}).runLocalConnectorAction(t.Context(), runtime, connectorActionCall{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "mutate", Input: map[string]any{"value": "write"}, Reason: "mutation without retry identity",
+	})
+	if err == nil || !strings.Contains(err.Error(), "idempotency_key is required") {
+		t.Fatalf("mutation without idempotency key error = %v", err)
+	}
+}
+
+type mutatingLocalActionTestConnector struct{ localActionTestConnector }
+
+func (mutatingLocalActionTestConnector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
+	return []connectors.ActionDefinition{{
+		Name: "mutate", Label: "Mutate", Description: "Mutate one value.", Risk: connectors.RiskWrite,
+		InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "value", Label: "Value", Type: connectors.FieldString, Required: true}}},
+	}}, nil
+}
+
+func (mutatingLocalActionTestConnector) PrepareAction(_ context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
+	return connectors.PreparedAction{
+		ConnectorKind: localActionTestConnectorKind, TargetRef: req.Target.Ref, ProfileID: req.Profile.ID,
+		ActionName: req.ActionName, Risk: connectors.RiskWrite, Title: "Mutate value", Payload: req.Input,
+	}, nil
+}
+
 func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
@@ -381,7 +423,7 @@ func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testi
 	if executions != 0 {
 		t.Fatalf("connector executions=%d, want 0", executions)
 	}
-	if result.Request.Status != connectors.ResultOutcomeUnknown || result.Result.Status != connectors.ResultOutcomeUnknown {
+	if result.Request.Status != connectors.ResultFailed || result.Result.Status != connectors.ResultFailed {
 		t.Fatalf("recovered request was not preserved: %#v", result)
 	}
 }
@@ -511,6 +553,82 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 		t.Fatalf("connector executions=%d, want 0", executions)
 	}
 	if result.Request.Status != connectors.ResultFailed || !strings.Contains(result.Request.Error, "authorization changed") {
+		t.Fatalf("request did not fail closed: %#v", result.Request)
+	}
+}
+
+func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	executions := 0
+	registry := connectors.NewRegistry()
+	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &databaseRuntime{
+		database: database, vault: secretVault, tokens: tokens.NewStore(database),
+		registry: registry, workspaceUUID: connectorActionTestWorkspaceID,
+	}
+	if err := ensureRuntimeIdentity(runtime); err != nil {
+		t.Fatal(err)
+	}
+	runtime.setMCPStarted(true)
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
+		ConnectorKind: localActionTestConnectorKind, Name: "mcp-stop-race", Config: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
+		TargetID: target.ID, ConnectorKind: localActionTestConnectorKind, Kind: "default", Label: "main", Public: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permissionInput := connectortargets.SetActionPermissionInput{
+		TokenID: tokenID, TargetID: target.ID, ProfileID: profile.ID, ActionName: "echo",
+		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+	}
+	if err := store.SetActionPermission(t.Context(), permissionInput); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
+		Source: commandRequestSourceMCP, TargetRef: connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo", Input: map[string]any{"value": "must-not-run"}, Reason: "MCP stop race", CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permission, err := store.GetActionPermission(t.Context(), tokenID, target.ID, profile.ID, "echo", time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, created, err := server.insertConnectorActionRequest(
+		t.Context(), runtime, tokenID, prepared, permission, connectors.ResultRunning, "", "mcp-stop-race-1",
+	)
+	if err != nil || !created {
+		t.Fatalf("insert running request: created=%v err=%v", created, err)
+	}
+	runtime.setMCPStarted(false)
+	principal, err := tokenExecutionPrincipal(runtime, tokenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := server.executeInsertedConnectorAction(
+		t.Context(), runtime, prepared, request, principal,
+		connectorActionExecutionOptions{Permission: permission, RequiredPermissionRule: connectortargets.ActionPermissionAlwaysRun},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executions != 0 {
+		t.Fatalf("connector executions=%d, want 0", executions)
+	}
+	if result.Request.Status != connectors.ResultFailed || !strings.Contains(result.Request.Error, "MCP execution is stopped") {
 		t.Fatalf("request did not fail closed: %#v", result.Request)
 	}
 }
@@ -1166,6 +1284,7 @@ func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) 
 		}
 		return request
 	}
+	undispatched := createRunning()
 	orphaned := createRunning()
 	active := createRunning()
 	leased := createRunning()
@@ -1176,6 +1295,9 @@ func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) 
 		t.Fatal(err)
 	}
 	runtime.setConnectorCredentialBoundary(active.ID, connectorCredentialBoundary{})
+	if _, err := database.Exec(`UPDATE connector_action_requests SET dispatch_started_at = ? WHERE id = ?`, time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), orphaned.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	server.recoverOrphanedConnectorActions(t.Context(), runtime, time.Now().UTC())
 
@@ -1185,6 +1307,13 @@ func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) 
 	}
 	if gotOrphaned.Status != connectors.ResultOutcomeUnknown || gotOrphaned.Error != connectorActionPersistenceUnknownMessage {
 		t.Fatalf("orphaned request was not recovered: %#v", gotOrphaned)
+	}
+	gotUndispatched, err := store.GetActionRequest(t.Context(), undispatched.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotUndispatched.Status != connectors.ResultFailed || gotUndispatched.Error != connectorActionLeaseExpiredBeforeDispatchMessage {
+		t.Fatalf("undispatched request was not recovered definitively: %#v", gotUndispatched)
 	}
 	gotActive, err := store.GetActionRequest(t.Context(), active.ID)
 	if err != nil {
