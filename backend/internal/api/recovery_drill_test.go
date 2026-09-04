@@ -104,6 +104,36 @@ func TestRecoveryDrillEncryptedBackupWrongPasswordAndGatewaySecret(t *testing.T)
 	}
 }
 
+func TestDatabaseSnapshotsUseUniqueTemporaryPaths(t *testing.T) {
+	server := newLockedAPITestServer(t)
+	defer server.Close()
+	setup := performJSON(server.Handler(), http.MethodPost, "/api/unlock/setup", "", setupUnlockRequest{
+		Password:        "UniqueSnapshotPassword123",
+		ConfirmPassword: "UniqueSnapshotPassword123",
+		DatabaseName:    "Snapshot Source",
+	})
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup snapshot source: %d %s", setup.Code, setup.Body.String())
+	}
+
+	first, err := createDatabaseSnapshot(server.activeRuntime())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(first.Path)
+	second, err := createDatabaseSnapshot(server.activeRuntime())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(second.Path)
+	if first.Path == second.Path {
+		t.Fatalf("concurrent-safe snapshot paths must be unique: %q", first.Path)
+	}
+	if !dbpkg.Exists(first.Path) || !dbpkg.Exists(second.Path) {
+		t.Fatalf("both snapshots must remain available: first=%v second=%v", dbpkg.Exists(first.Path), dbpkg.Exists(second.Path))
+	}
+}
+
 func TestRecoveryDrillSelfHostedBackupDownloadAndRestart(t *testing.T) {
 	const (
 		databasePassword      = "RemoteRecoveryPassword123"
