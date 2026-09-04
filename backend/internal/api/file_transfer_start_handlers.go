@@ -280,9 +280,7 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 	}
 	remoteStatus, err := adapter.StatRemotePath(r.Context(), s.Server, runtime, request.RuntimeID, remotePath)
 	if err != nil {
-		if !writeConnectorError(w, adapter, err) {
-			writeError(w, http.StatusBadGateway, connectorErrorMessage(adapter, "remote path check failed", err))
-		}
+		s.writeCredentialSafeConnectorError(w, r.Context(), runtime, request.RuntimeID, adapter, http.StatusBadGateway, "remote path check failed", err)
 		return
 	}
 	if !remoteStatus.Exists || remoteStatus.Type != "file" {
@@ -335,7 +333,7 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 	defer cancel()
 	batch, err := s.createDownloadBatch(ctx, runtime, request.RuntimeID, request.RemotePaths, request.ArchiveName, filetransfer.SourceUI, filetransfer.StatusPending)
 	if err != nil {
-		if s.writeFileTransferStartError(w, err) {
+		if s.writeFileTransferStartError(w, r.Context(), runtime, request.RuntimeID, err) {
 			return
 		}
 		writeInternalError(w)
@@ -442,17 +440,14 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 	return batch, nil
 }
 
-func (s fileTransferHandlers) writeFileTransferStartError(w http.ResponseWriter, err error) bool {
+func (s fileTransferHandlers) writeFileTransferStartError(w http.ResponseWriter, ctx context.Context, runtime *databaseRuntime, runtimeID int64, err error) bool {
 	if errors.Is(err, connectortargets.ErrTargetProfileNotFound) || errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 		handleConnectorTargetRuntimeError(w, err)
 		return true
 	}
 	var connectorErr *fileTransferConnectorError
 	if errors.As(err, &connectorErr) {
-		if writeConnectorError(w, connectorErr.Adapter, connectorErr.Err) {
-			return true
-		}
-		writeError(w, http.StatusBadGateway, connectorErrorMessage(connectorErr.Adapter, "remote path check failed", connectorErr.Err))
+		s.writeCredentialSafeConnectorError(w, ctx, runtime, runtimeID, connectorErr.Adapter, http.StatusBadGateway, "remote path check failed", connectorErr.Err)
 		return true
 	}
 	var startErr *fileTransferStartError

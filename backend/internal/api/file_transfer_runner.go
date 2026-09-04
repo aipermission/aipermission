@@ -135,8 +135,8 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 				s.cleanupBatchTemps(runtime, batchID)
 				return
 			}
-			message := fileTransferFailureMessage(err)
-			log.Printf("reject file transfer batch before run batch=%d error=%v", batchID, err)
+			message := credentialSafeFileTransferErrorMessage(ctx, runtime, batch.RuntimeID, "file transfer batch guardrail rejected", nil, err)
+			log.Printf("reject file transfer batch before run batch=%d error=%s", batchID, message)
 			_, _ = runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, message, filetransfer.FailureKindValidation)
 			s.cleanupBatchTemps(runtime, batchID)
 			s.writeObservationAudit(context.Background(), runtime, "gateway", nil, batch.RuntimeID, "file_transfer.batch.guardrail_rejected", map[string]any{

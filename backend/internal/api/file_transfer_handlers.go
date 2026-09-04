@@ -233,10 +233,7 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		page.Entries, err = adapter.BrowseRemoteFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath)
 	}
 	if err != nil {
-		if writeConnectorError(w, adapter, err) {
-			return
-		}
-		writeError(w, http.StatusBadGateway, connectorErrorMessage(adapter, "remote file browse failed", err))
+		s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, adapter, http.StatusBadGateway, "remote file browse failed", err)
 		return
 	}
 	parent := path.Dir(remotePath)
@@ -292,10 +289,7 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 			writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 			return
 		}
-		if writeConnectorError(w, baseAdapter, err) {
-			return
-		}
-		writeError(w, http.StatusBadGateway, connectorErrorMessage(baseAdapter, "recursive file selection failed", err))
+		s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, baseAdapter, http.StatusBadGateway, "recursive file selection failed", err)
 		return
 	}
 	var totalBytes int64
