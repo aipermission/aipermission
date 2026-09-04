@@ -45,6 +45,7 @@
     "@vitest/coverage-v8": "3.2.7",
     "eslint": "^10.9.1",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.5",
     "globals": "^17.11.0",
     "jsdom": "^26.1.0",
     "prettier": "^3.9.6",

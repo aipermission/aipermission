@@ -24,14 +24,22 @@ export async function apiPost(path, body, options = {}) {
   try {
     data = await readResponse(response, { requireJSON: Boolean(prepared.retry) });
   } catch (error) {
-    if (prepared.retry && error?.data?.status === "outcome_unknown") markLocalActionRetryOutcome(prepared.retry, error.data);
+    if (prepared.retry && error?.data?.status === "outcome_unknown") {
+      await markLocalActionRetryOutcome(prepared.retry, error.data);
+    } else if (prepared.retry && !prepared.retry.reused && response.status >= 400 && response.status < 500) {
+      // A gateway 4xx is a definitive pre-dispatch rejection unless the
+      // key predates this attempt. A carried key may represent an external
+      // side effect whose response was lost, so pre-handler auth/lock errors
+      // cannot retire it.
+      await completeLocalActionRetry(prepared.retry);
+    }
     throw error;
   }
   if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status !== "outcome_unknown") {
-    completeLocalActionRetry(prepared.retry);
+    await completeLocalActionRetry(prepared.retry);
   }
   if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status === "outcome_unknown") {
-    markLocalActionRetryOutcome(prepared.retry, data);
+    await markLocalActionRetryOutcome(prepared.retry, data);
   }
   if (prepared.retry && response.ok && !isAcknowledgedLocalActionResponse(data)) {
     throw new Error("Invalid connector action response from gateway.");
