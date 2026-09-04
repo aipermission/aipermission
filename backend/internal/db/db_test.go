@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -336,6 +337,30 @@ func TestReplacePreMigrationSnapshotPreservesExistingOnFailure(t *testing.T) {
 	}
 	if string(got) != string(previous) {
 		t.Fatalf("existing recovery copy changed after failure: %q", got)
+	}
+}
+
+func TestPreMigrationSnapshotDetectsMigrationLedgerGapAtCurrentVersion(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "migration-gap.aipdb")
+	database, err := OpenEncrypted(path, "MigrationGapPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = ?`, currentSchemaVersion-1); err != nil {
+		t.Fatal(err)
+	}
+	snapshotPath, err := createPreMigrationSnapshot(database, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshotPath != path+".pre-migration-v"+strconv.Itoa(currentSchemaVersion)+".aipdb" {
+		t.Fatalf("snapshot path = %q, want current-version recovery slot", snapshotPath)
+	}
+	if err := ValidateEncrypted(snapshotPath, "MigrationGapPassword123"); err != nil {
+		t.Fatalf("validate migration-gap snapshot: %v", err)
 	}
 }
 

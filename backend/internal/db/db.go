@@ -120,7 +120,21 @@ func createPreMigrationSnapshot(database *sql.DB, databasePath string) (string, 
 	if err := database.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 		return "", fmt.Errorf("read schema version before migration: %w", err)
 	}
-	if version < 1 || version >= currentSchemaVersion {
+	if version < 1 || version > currentSchemaVersion {
+		return "", nil
+	}
+	needsMigration := false
+	for _, migration := range migrations {
+		applied, err := migrationApplied(database, migration.version)
+		if err != nil {
+			return "", fmt.Errorf("inspect migrations before snapshot: %w", err)
+		}
+		if !applied {
+			needsMigration = true
+			break
+		}
+	}
+	if !needsMigration {
 		return "", nil
 	}
 	targetPath := databasePath + ".pre-migration-v" + strconv.Itoa(version) + ".aipdb"
@@ -135,9 +149,38 @@ func replacePreMigrationSnapshot(database *sql.DB, targetPath string) error {
 	if err := Snapshot(database, pendingPath); err != nil {
 		return err
 	}
-	if err := os.Rename(pendingPath, targetPath); err != nil {
+	if err := PublishFile(pendingPath, targetPath); err != nil {
 		_ = os.Remove(pendingPath)
 		return fmt.Errorf("publish pre-migration snapshot: %w", err)
+	}
+	return nil
+}
+
+// PublishFile durably replaces targetPath with sourcePath on the same
+// filesystem. The source contents and containing directory are synchronized
+// so a successful return survives a power loss at the publication boundary.
+func PublishFile(sourcePath string, targetPath string) error {
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open file for durable publish: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync file for durable publish: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close file for durable publish: %w", err)
+	}
+	if err := os.Rename(sourcePath, targetPath); err != nil {
+		return fmt.Errorf("rename published file: %w", err)
+	}
+	directory, err := os.Open(filepath.Dir(targetPath))
+	if err != nil {
+		return fmt.Errorf("open published file directory: %w", err)
+	}
+	defer directory.Close()
+	if err := directory.Sync(); err != nil {
+		return fmt.Errorf("sync published file directory: %w", err)
 	}
 	return nil
 }
