@@ -103,16 +103,20 @@ SQLite cannot atomically commit an SSH command, database query, mail send,
 object upload, or other remote side effect. Those operations use a durable
 state machine rather than claiming end-to-end exactly-once execution:
 
-1. persist a pending/running request and its `requested` or `started` event in
-   one transaction;
-2. perform the bounded remote operation;
-3. persist the terminal request state and `completed`, `failed`, `declined`,
+1. persist a pending request, or a running request with a durable runtime owner
+   and execution lease, together with its `requested` or `started` event;
+2. immediately before connector dispatch, atomically claim dispatch for that
+   owner while the lease and running state are still valid;
+3. perform the bounded remote operation;
+4. persist the terminal request state and `completed`, `failed`, `declined`,
    `canceled`, or `stale` event in a second transaction;
-4. use connector-specific idempotency or compensation where it is available.
+5. use connector-specific idempotency or compensation where it is available.
 
-If the process stops between steps 2 and 3, recovery may know that the outcome
-is uncertain. It must preserve that uncertainty instead of inventing success or
-failure. Exactly-once remote execution is a non-goal.
+If the process stops after the dispatch claim and before terminal persistence,
+recovery may know only that the outcome is uncertain. It must preserve that
+uncertainty instead of inventing success or failure. A running request whose
+lease expires before dispatch cannot later reach the connector; the dispatch
+claim fails closed. Exactly-once remote execution is a non-goal.
 
 ## Dispatcher
 

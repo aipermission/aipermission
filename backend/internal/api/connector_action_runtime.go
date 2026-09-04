@@ -285,6 +285,17 @@ func (s *Server) executeInsertedConnectorAction(
 			runtime.clearConnectorCredentialBoundary(request.ID)
 		}
 	}()
+	claimed, dispatched, err := s.beginConnectorActionDispatch(ctx, runtime, request.ID)
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	if !dispatched {
+		return connectorActionCallResult{
+			Request: claimed, Permission: options.Permission,
+			Result: connectors.ActionResult{Status: claimed.Status, Output: claimed.Output, DisplayText: claimed.DisplayText, Error: claimed.Error},
+		}, nil
+	}
+	request = claimed
 	result, err := s.executePreparedConnectorAction(ctx, runtime, principal, prepared, snapshot)
 	if err != nil {
 		failureOutput := connectorActionFailureOutput(err)

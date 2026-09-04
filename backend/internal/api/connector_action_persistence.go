@@ -87,6 +87,13 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		IdempotencyKey:          strings.TrimSpace(idempotencyKey),
 		IdempotencyIdentityHash: identityHash,
 	}
+	if status == connectors.ResultRunning {
+		if err := ensureRuntimeIdentity(runtime); err != nil {
+			return connectortargets.ActionRequest{}, false, err
+		}
+		insertInput.ExecutionOwner = runtime.runtimeInstanceID
+		insertInput.ExecutionLeaseExpiresAt = connectorActionLeaseExpiry(time.Now().UTC()).Format(time.RFC3339Nano)
+	}
 	var request connectortargets.ActionRequest
 	created := false
 	err = s.withAuditedMutation(

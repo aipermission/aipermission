@@ -314,6 +314,128 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 	}
 }
 
+func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	executions := 0
+	registry := connectors.NewRegistry()
+	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	runtime := &databaseRuntime{
+		database: database, vault: secretVault, tokens: tokens.NewStore(database),
+		registry: registry, workspaceUUID: connectorActionTestWorkspaceID,
+	}
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
+		ConnectorKind: localActionTestConnectorKind, Name: "dispatch-race", Config: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
+		TargetID: target.ID, ConnectorKind: localActionTestConnectorKind, Kind: "default", Label: "main", Public: map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo",
+		Input:      map[string]any{"value": "must-not-run"},
+		Reason:     "dispatch ownership race",
+		Source:     commandRequestSourceManual,
+		CreatedAt:  time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal, err := localExecutionPrincipal(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, created, err := server.insertPreparedConnectorActionRequest(
+		t.Context(), runtime, nil, prepared, connectors.ResultRunning, "", "", "", "dispatch-race-1",
+	)
+	if err != nil || !created {
+		t.Fatalf("insert running request: created=%v err=%v", created, err)
+	}
+
+	// This is the controlled barrier between durable insertion and dispatch:
+	// execution is paused while recovery observes an expired ownership lease.
+	if _, err := database.Exec(`
+		UPDATE connector_action_requests
+		SET execution_lease_expires_at = ?
+		WHERE id = ?`, time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), request.ID); err != nil {
+		t.Fatal(err)
+	}
+	server.recoverOrphanedConnectorActions(t.Context(), runtime, time.Now().UTC())
+
+	result, err := server.executeInsertedConnectorAction(
+		t.Context(), runtime, prepared, request, principal, connectorActionExecutionOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executions != 0 {
+		t.Fatalf("connector executions=%d, want 0", executions)
+	}
+	if result.Request.Status != connectors.ResultOutcomeUnknown || result.Result.Status != connectors.ResultOutcomeUnknown {
+		t.Fatalf("recovered request was not preserved: %#v", result)
+	}
+}
+
+func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	if err := ensureRuntimeIdentity(runtime); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{}
+	store := connectortargets.NewStore(database)
+	tokenID := insertAPITestToken(t, database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+
+	for _, test := range []struct {
+		name              string
+		owner             string
+		dispatchStartedAt string
+	}{
+		{name: "another runtime owns the lease", owner: "another-runtime"},
+		{name: "dispatch already started", owner: runtime.runtimeInstanceID, dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+				TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+				ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+				Status: connectors.ResultRunning, ExecutionOwner: test.owner,
+				ExecutionLeaseExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.dispatchStartedAt != "" {
+				if _, err := database.Exec(`UPDATE connector_action_requests SET dispatch_started_at = ? WHERE id = ?`, test.dispatchStartedAt, request.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if _, _, err := server.beginConnectorActionDispatch(t.Context(), runtime, request.ID); !errors.Is(err, connectortargets.ErrActionRequestExecutionClaim) {
+				t.Fatalf("begin dispatch error = %v", err)
+			}
+			current, err := store.GetActionRequest(t.Context(), request.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if current.Status != connectors.ResultRunning || current.CompletedAt != nil {
+				t.Fatalf("active claim was terminalized: %#v", current)
+			}
+		})
+	}
+}
+
 type countingLocalActionTestConnector struct {
 	localActionTestConnector
 	executions    *int
@@ -967,6 +1089,13 @@ func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) 
 	}
 	orphaned := createRunning()
 	active := createRunning()
+	leased := createRunning()
+	if _, err := database.Exec(`
+		UPDATE connector_action_requests
+		SET execution_owner = ?, execution_lease_expires_at = ?
+		WHERE id = ?`, "live-runtime", time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano), leased.ID); err != nil {
+		t.Fatal(err)
+	}
 	runtime.setConnectorCredentialBoundary(active.ID, connectorCredentialBoundary{})
 
 	server.recoverOrphanedConnectorActions(t.Context(), runtime, time.Now().UTC())
@@ -984,5 +1113,38 @@ func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) 
 	}
 	if gotActive.Status != connectors.ResultRunning {
 		t.Fatalf("active request was recovered prematurely: %#v", gotActive)
+	}
+	gotLeased, err := store.GetActionRequest(t.Context(), leased.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotLeased.Status != connectors.ResultRunning {
+		t.Fatalf("leased request was recovered prematurely: %#v", gotLeased)
+	}
+
+	staleSelection := createRunning()
+	if _, err := database.Exec(`
+		UPDATE connector_action_requests
+		SET execution_owner = ?, execution_lease_expires_at = ?
+		WHERE id = ?`, "live-runtime", time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), staleSelection.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a recovery worker that selected the request before dispatch
+	// renewed its lease. The terminal CAS must observe the renewed lease.
+	if _, err := database.Exec(`
+		UPDATE connector_action_requests
+		SET execution_lease_expires_at = ?
+		WHERE id = ?`, time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano), staleSelection.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.persistExpiredConnectorActionRecovery(t.Context(), runtime, staleSelection.ID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	gotRenewed, err := store.GetActionRequest(t.Context(), staleSelection.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRenewed.Status != connectors.ResultRunning {
+		t.Fatalf("renewed request was terminalized by stale recovery selection: %#v", gotRenewed)
 	}
 }

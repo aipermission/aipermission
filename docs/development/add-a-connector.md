@@ -184,6 +184,15 @@ failed post-write verification must finish as `outcome_unknown` with
 `retry_safe: false`. Never automatically retry that result. Add transport-level
 tests for both definite rejection and ambiguous post-dispatch failure.
 
+The gateway owns request execution claims. It persists a runtime owner and
+lease before execution, then atomically claims dispatch immediately before it
+calls `ExecuteAction`. Connector implementations must not start remote work in
+validation, preparation, schema, help, or action-list methods. If recovery has
+already terminalized an expired request, the gateway does not call the
+connector. Connectors should therefore classify only failures at and after
+their own transport boundary; they must not implement a parallel request lease
+or gateway recovery mechanism.
+
 Target schemas must be non-secret. Use target schemas for endpoint metadata
 such as host, port, database name, or API base URL. Use credential schemas for
 passwords, tokens, private keys, tenant secrets, and anything that should be

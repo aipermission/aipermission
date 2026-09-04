@@ -1350,6 +1350,7 @@ var migrations = []migration{
 	recordEnvelopeWriteGuardMigration,
 	actionApprovalIntegrityMigration,
 	credentialSecretRevisionMigration,
+	connectorActionExecutionClaimMigration,
 }
 
 func sqlStatements(groups ...[]string) []string {

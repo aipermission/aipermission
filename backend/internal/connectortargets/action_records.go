@@ -79,6 +79,9 @@ type ActionRequest struct {
 	IdempotencyIdentityHash string
 	SessionID               *int64
 	SessionGeneration       *int64
+	ExecutionOwner          string
+	ExecutionLeaseExpiresAt string
+	DispatchStartedAt       string
 	CreatedAt               string
 	CompletedAt             *string
 }
@@ -102,6 +105,8 @@ type InsertActionRequestInput struct {
 	RetryPolicy             connectors.RetryPolicy
 	IdempotencyKey          string
 	IdempotencyIdentityHash string
+	ExecutionOwner          string
+	ExecutionLeaseExpiresAt string
 }
 
 type FinishActionRequestInput struct {
@@ -443,9 +448,10 @@ func (s *Store) insertActionRequestIdempotent(ctx context.Context, input InsertA
 			token_id, target_id, profile_id, connector_kind, action_name, title, summary,
 			preview_json, source, input_json,
 			encrypted_payload_json, reason, status, approval_context,
-			approval_context_hash, retry_policy_json, idempotency_key, idempotency_identity_hash, idempotency_scope, created_at
+			approval_context_hash, retry_policy_json, idempotency_key, idempotency_identity_hash, idempotency_scope,
+			execution_owner, execution_lease_expires_at, created_at
 		)
-		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		SELECT ?, t.id, p.id, t.connector_kind, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		FROM connector_targets t
 		JOIN connector_credential_profiles p ON p.target_id = t.id
 		WHERE
@@ -472,6 +478,8 @@ func (s *Store) insertActionRequestIdempotent(ctx context.Context, input InsertA
 		strings.TrimSpace(input.IdempotencyKey),
 		strings.TrimSpace(input.IdempotencyIdentityHash),
 		idempotencyScope,
+		strings.TrimSpace(input.ExecutionOwner),
+		strings.TrimSpace(input.ExecutionLeaseExpiresAt),
 		now,
 		input.TargetID,
 		input.ProfileID,
@@ -776,22 +784,25 @@ func (s *Store) InvalidateActionRequestsForTarget(ctx context.Context, input Inv
 	return result, nil
 }
 
-func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64) (ActionRequest, error) {
+func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64, owner string, leaseExpiresAt time.Time) (ActionRequest, error) {
 	if s == nil || s.db == nil {
 		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
 	}
-	if id < 1 {
+	owner = strings.TrimSpace(owner)
+	if id < 1 || owner == "" || leaseExpiresAt.IsZero() {
 		return ActionRequest{}, ErrActionRequestNotFound
 	}
 	request, affected, err := s.mutateActionRequestAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
 		return executor.ExecContext(ctx, `
 			UPDATE connector_action_requests
-			SET status = ?, error = ''
+			SET status = ?, error = '', execution_owner = ?, execution_lease_expires_at = ?, dispatch_started_at = ''
 			WHERE id = ? AND status = ?
 				AND trim(encrypted_payload_json) <> ''
 				AND trim(approval_context) <> ''
 				AND trim(approval_context_hash) <> ''`,
 			string(connectors.ResultRunning),
+			owner,
+			leaseExpiresAt.UTC().Format(time.RFC3339Nano),
 			id,
 			string(connectors.ResultApprovalPending),
 		)
@@ -803,6 +814,72 @@ func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64) (ActionR
 		return ActionRequest{}, ErrActionRequestNotPending
 	}
 	return request, nil
+}
+
+func (s *Store) BeginActionRequestDispatch(ctx context.Context, id int64, owner string, now time.Time, leaseExpiresAt time.Time) (ActionRequest, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, fmt.Errorf("connector target store is not configured")
+	}
+	owner = strings.TrimSpace(owner)
+	if id < 1 || owner == "" || now.IsZero() || !leaseExpiresAt.After(now) {
+		return ActionRequest{}, ErrActionRequestExecutionClaim
+	}
+	request, affected, err := s.mutateActionRequestAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
+		return executor.ExecContext(ctx, `
+			UPDATE connector_action_requests
+			SET dispatch_started_at = ?, execution_lease_expires_at = ?
+			WHERE id = ? AND status = ? AND execution_owner = ? AND dispatch_started_at = ''
+				AND execution_lease_expires_at <> ''
+				AND julianday(execution_lease_expires_at) >= julianday(?)`,
+			now.UTC().Format(time.RFC3339Nano),
+			leaseExpiresAt.UTC().Format(time.RFC3339Nano),
+			id,
+			string(connectors.ResultRunning),
+			owner,
+			now.UTC().Format(time.RFC3339Nano),
+		)
+	})
+	if err != nil {
+		return ActionRequest{}, err
+	}
+	if affected != 1 {
+		return ActionRequest{}, ErrActionRequestExecutionClaim
+	}
+	return request, nil
+}
+
+// RecoverExpiredActionRequest terminalizes a running request only while its
+// durable execution lease is still missing or expired. The lease predicate is
+// part of the update so a concurrent dispatch renewal cannot be overwritten.
+func (s *Store) RecoverExpiredActionRequest(ctx context.Context, id int64, now time.Time, errorText string) (ActionRequest, bool, error) {
+	if s == nil || s.db == nil {
+		return ActionRequest{}, false, fmt.Errorf("connector target store is not configured")
+	}
+	if id < 1 || now.IsZero() {
+		return ActionRequest{}, false, ErrActionRequestNotFound
+	}
+	request, affected, err := s.mutateActionRequestAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
+		return executor.ExecContext(ctx, `
+			UPDATE connector_action_requests
+			SET status = ?, error = ?, completed_at = ?
+			WHERE id = ? AND status = ?
+			  AND (execution_lease_expires_at = '' OR julianday(execution_lease_expires_at) <= julianday(?))`,
+			string(connectors.ResultOutcomeUnknown),
+			strings.TrimSpace(errorText),
+			now.UTC().Format(time.RFC3339Nano),
+			id,
+			string(connectors.ResultRunning),
+			now.UTC().Format(time.RFC3339Nano),
+		)
+	})
+	if err != nil {
+		return ActionRequest{}, false, err
+	}
+	if affected == 0 {
+		request, err := s.GetActionRequest(ctx, id)
+		return request, false, err
+	}
+	return request, true, nil
 }
 
 func (s *Store) DeclineActionRequest(ctx context.Context, id int64, message string) (ActionRequest, error) {
