@@ -23,7 +23,7 @@ func (s connectorTargetHandlers) downloadConnectorProfileBackup(w http.ResponseW
 	}
 	artifact, err := backupRestorer.Backup(r.Context(), resolved.runtimeContext, connectors.BackupRequest{Format: "sql"})
 	if err != nil {
-		handleConnectorProvisionError(w, errors.New(resolved.credentialBoundary.Redact(s.redactForPersistence(r.Context(), resolved.runtime, err.Error()))))
+		handleConnectorProvisionError(w, err, resolved.credentialBoundary.Redact(s.redactForPersistence(r.Context(), resolved.runtime, err.Error())))
 		return
 	}
 	if len(artifact.Data) == 0 {
@@ -89,7 +89,7 @@ func (s connectorTargetHandlers) restoreConnectorProfileBackup(w http.ResponseWr
 		Size:     header.Size,
 	})
 	if err != nil {
-		handleConnectorProvisionError(w, errors.New(resolved.credentialBoundary.Redact(s.redactForPersistence(r.Context(), resolved.runtime, err.Error()))))
+		handleConnectorProvisionError(w, err, resolved.credentialBoundary.Redact(s.redactForPersistence(r.Context(), resolved.runtime, err.Error())))
 		return
 	}
 	result, err = s.redactConnectorActionResultWithCredentialBoundary(r.Context(), resolved.runtime, result, resolved.credentialBoundary)

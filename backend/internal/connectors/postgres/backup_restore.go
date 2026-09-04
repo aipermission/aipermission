@@ -85,8 +85,16 @@ func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext,
 	cmd.Stdin = io.LimitReader(request.Content, maxBackupBytes+1)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return connectors.ActionResult{}, postgresCommandError("psql", err, stderr.String())
+	if err := cmd.Start(); err != nil {
+		return connectors.ActionResult{}, postgresCommandError("start psql", err, stderr.String())
+	}
+	if err := cmd.Wait(); err != nil {
+		return connectors.ActionResult{}, connectors.ClassifyActionError(
+			"outcome_unknown",
+			connectors.ResultOutcomeUnknown,
+			map[string]any{"dispatch_stage": "psql_started", "retry_safe": false},
+			postgresCommandError("psql", err, stderr.String()),
+		)
 	}
 	output := map[string]any{
 		"filename": strings.TrimSpace(request.Filename),

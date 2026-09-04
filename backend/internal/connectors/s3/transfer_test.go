@@ -299,6 +299,13 @@ func TestMultipartUploadReportsAbortFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "abort incomplete multipart upload") {
 		t.Fatalf("upload error = %v, want abort failure", err)
 	}
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("abort failure status = %q, want outcome_unknown", connectors.ErrorStatus(err))
+	}
+	details := connectors.ErrorDetails(err)
+	if details["cleanup_required"] != true || details["retry_safe"] != false {
+		t.Fatalf("abort failure details = %#v", details)
+	}
 }
 
 func TestMultipartUploadRetriesServerFailure(t *testing.T) {

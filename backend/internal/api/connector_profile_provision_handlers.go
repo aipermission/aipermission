@@ -86,7 +86,7 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 		Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s.Server, runtime),
 	}, request.Input)
 	if err != nil {
-		handleConnectorProvisionError(w, errors.New(credentialBoundary.Redact(s.redactForPersistence(r.Context(), runtime, err.Error()))))
+		handleConnectorProvisionError(w, err, credentialBoundary.Redact(s.redactForPersistence(r.Context(), runtime, err.Error())))
 		return
 	}
 	credentialBoundary.AddStructured(provisioned.Secret)
@@ -392,9 +392,13 @@ func provisionErrorMessage(boundary connectorCredentialBoundary, err error) stri
 	return boundary.Redact(redactBasic(err.Error()))
 }
 
-func handleConnectorProvisionError(w http.ResponseWriter, err error) {
+func handleConnectorProvisionError(w http.ResponseWriter, err error, safeMessage string) {
 	if err == nil {
 		return
 	}
-	writeError(w, http.StatusBadRequest, err.Error())
+	status := http.StatusBadRequest
+	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
+		status = http.StatusConflict
+	}
+	writeErrorWithCode(w, status, safeMessage, connectors.ErrorCode(err))
 }

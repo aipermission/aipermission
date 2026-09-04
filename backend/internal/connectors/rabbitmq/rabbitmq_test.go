@@ -443,18 +443,23 @@ func TestRabbitPublishRequiresRoutedBooleanAfterDispatch(t *testing.T) {
 	}
 }
 
-func TestRabbitPeekRejectsEmptySuccessResponseAsOutcomeUnknown(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-	client := &rabbitClient{baseURL: server.URL, httpClient: server.Client()}
+func TestRabbitPeekRejectsUnconfirmedSuccessResponseAsOutcomeUnknown(t *testing.T) {
+	for _, body := range []string{"", "null"} {
+		t.Run(fmt.Sprintf("body_%q", body), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+			client := &rabbitClient{baseURL: server.URL, httpClient: server.Client()}
 
-	_, err := executePeekMessages(t.Context(), client, map[string]any{
-		"vhost": "/", "queue": "jobs", "count": 1,
-	}, "/")
-	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
-		t.Fatalf("empty peek response = %v, want outcome_unknown", err)
+			_, err := executePeekMessages(t.Context(), client, map[string]any{
+				"vhost": "/", "queue": "jobs", "count": 1,
+			}, "/")
+			if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown || connectors.ErrorCode(err) != "outcome_unknown" {
+				t.Fatalf("peek response = %v, want outcome_unknown", err)
+			}
+		})
 	}
 }
 

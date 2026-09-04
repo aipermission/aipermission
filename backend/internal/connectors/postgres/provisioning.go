@@ -5,10 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/jackc/pgx/v5"
 )
 
 type provisionScope struct {
@@ -60,6 +63,11 @@ func (Connector) ProvisionCredentialProfile(ctx context.Context, runtime connect
 	if err != nil {
 		return connectors.ProvisionedCredentialProfile{}, err
 	}
+	marker, err := randomProvisionMarker()
+	if err != nil {
+		return connectors.ProvisionedCredentialProfile{}, err
+	}
+	statements = append(statements, fmt.Sprintf("COMMENT ON ROLE %s IS %s", quoteIdentifier(roleName), quoteLiteral(marker)))
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -78,8 +86,16 @@ func (Connector) ProvisionCredentialProfile(ctx context.Context, runtime connect
 			return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("provision postgres role: %w", err)
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return connectors.ProvisionedCredentialProfile{}, fmt.Errorf("commit postgres role provisioning: %w", err)
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		committed, verifyErr := verifyProvisionedRole(ctx, runtime, roleName, marker)
+		if !committed {
+			return connectors.ProvisionedCredentialProfile{}, connectors.ClassifyActionError(
+				"outcome_unknown",
+				connectors.ResultOutcomeUnknown,
+				map[string]any{"dispatch_stage": "transaction_commit", "reconciliation_required": true, "retry_safe": false},
+				errors.Join(fmt.Errorf("commit postgres role provisioning: %w", commitErr), verifyErr),
+			)
+		}
 	}
 
 	public := map[string]any{
@@ -103,6 +119,38 @@ func (Connector) ProvisionCredentialProfile(ctx context.Context, runtime connect
 			DisplayText: "Created Postgres role and saved credential profile",
 		},
 	}, nil
+}
+
+func randomProvisionMarker() (string, error) {
+	buffer := make([]byte, 18)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", fmt.Errorf("generate provisioning marker: %w", err)
+	}
+	return "aipermission-provision:" + base64.RawURLEncoding.EncodeToString(buffer), nil
+}
+
+func verifyProvisionedRole(ctx context.Context, runtime connectors.RuntimeContext, roleName, marker string) (bool, error) {
+	verifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	conn, err := connect(verifyCtx, runtime)
+	if err != nil {
+		return false, fmt.Errorf("reconnect to verify postgres role provisioning: %w", err)
+	}
+	defer conn.Close(context.Background())
+	var comment string
+	err = conn.QueryRow(verifyCtx, `
+		SELECT COALESCE(shobj_description(oid, 'pg_authid'), '')
+		FROM pg_catalog.pg_roles WHERE rolname = $1`, roleName).Scan(&comment)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, errors.New("postgres role was not found after an ambiguous commit")
+	}
+	if err != nil {
+		return false, fmt.Errorf("verify postgres role provisioning marker: %w", err)
+	}
+	if comment != marker {
+		return false, errors.New("postgres role provisioning marker did not match after an ambiguous commit")
+	}
+	return true, nil
 }
 
 func (Connector) PreserveProvisionedCredentialPublic(existing connectors.CredentialProfileView, requested map[string]any) (map[string]any, error) {
@@ -204,8 +252,16 @@ func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtim
 			return connectors.ActionResult{}, fmt.Errorf("cleanup postgres role: %w", err)
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return connectors.ActionResult{}, fmt.Errorf("commit postgres role cleanup: %w", err)
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		absent, verifyErr := verifyPostgresRoleAbsent(ctx, runtime, roleName)
+		if !absent {
+			return connectors.ActionResult{}, connectors.ClassifyActionError(
+				"outcome_unknown",
+				connectors.ResultOutcomeUnknown,
+				map[string]any{"dispatch_stage": "transaction_commit", "reconciliation_required": true, "retry_safe": false},
+				errors.Join(fmt.Errorf("commit postgres role cleanup: %w", commitErr), verifyErr),
+			)
+		}
 	}
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
@@ -218,6 +274,24 @@ func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtim
 		},
 		DisplayText: "Reassigned owned objects and dropped managed Postgres role",
 	}, nil
+}
+
+func verifyPostgresRoleAbsent(ctx context.Context, runtime connectors.RuntimeContext, roleName string) (bool, error) {
+	verifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	conn, err := connect(verifyCtx, runtime)
+	if err != nil {
+		return false, fmt.Errorf("reconnect to verify postgres role cleanup: %w", err)
+	}
+	defer conn.Close(context.Background())
+	var exists bool
+	if err := conn.QueryRow(verifyCtx, `SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)`, roleName).Scan(&exists); err != nil {
+		return false, fmt.Errorf("verify postgres role cleanup: %w", err)
+	}
+	if exists {
+		return false, errors.New("postgres role still exists after an ambiguous cleanup commit")
+	}
+	return true, nil
 }
 
 func provisionScopeInput(input map[string]any) (provisionScope, error) {
