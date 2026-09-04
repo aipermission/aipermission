@@ -243,6 +243,12 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 	if item.Status != connectors.ResultApprovalPending {
 		return pendingConnectorActionExecution{}, connectortargets.ErrActionRequestNotPending
 	}
+	if strings.TrimSpace(item.EncryptedPayloadJSON) == "" ||
+		strings.TrimSpace(item.ApprovalContext) == "" ||
+		strings.TrimSpace(item.ApprovalContextHash) == "" {
+		reason := "connector approval integrity data is missing; ask the AI to send a fresh request"
+		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "request_integrity")
+	}
 	token, err := s.currentConnectorApprovalToken(ctx, runtime, item)
 	if err != nil {
 		return pendingConnectorActionExecution{}, err
@@ -250,7 +256,8 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 	tokenID := token.ID
 	rawInput, rawPayload, rawReason, err := connectorActionExecutionPayload(runtime, item)
 	if err != nil {
-		return pendingConnectorActionExecution{}, err
+		reason := "connector approval integrity data is invalid; ask the AI to send a fresh request"
+		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "request_integrity")
 	}
 	targetRef := connectortargets.ConnectorTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID)
 	prepared, err := runtime.prepareConnectorAction(ctx, actions.PrepareRequest{
@@ -280,7 +287,7 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 	if err != nil {
 		return pendingConnectorActionExecution{}, err
 	}
-	if item.ApprovalContextHash != "" && item.ApprovalContextHash != currentHash {
+	if item.ApprovalContextHash != currentHash {
 		drift := connectorApprovalDriftReason(item.ApprovalContext, currentContext)
 		reason := "connector approval context changed; ask the AI to send a fresh request"
 		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, drift)
@@ -479,22 +486,17 @@ func connectorApprovalFinishStatuses() []connectors.ResultStatus {
 }
 
 func connectorActionExecutionPayload(runtime *databaseRuntime, item connectortargets.ActionRequest) (map[string]any, map[string]any, string, error) {
-	if item.EncryptedPayloadJSON == "" {
-		return cloneMapAny(item.Input), nil, item.Reason, nil
+	if strings.TrimSpace(item.EncryptedPayloadJSON) == "" {
+		return nil, nil, "", errors.New("connector action encrypted execution payload is missing")
 	}
 	var envelope connectorActionExecutionEnvelope
-	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, item.ID, item.EncryptedPayloadJSON, &envelope); err == nil && (envelope.Input != nil || envelope.Payload != nil) {
-		reason := envelope.Reason
-		if reason == "" {
-			reason = item.Reason
-		}
-		return cloneMapAny(envelope.Input), cloneMapAny(envelope.Payload), reason, nil
+	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, item.ID, item.EncryptedPayloadJSON, &envelope); err != nil {
+		return nil, nil, "", fmt.Errorf("decrypt connector action execution payload: %w", err)
 	}
-	var payload map[string]any
-	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, item.ID, item.EncryptedPayloadJSON, &payload); err != nil {
-		return nil, nil, "", err
+	if envelope.Input == nil || envelope.Payload == nil {
+		return nil, nil, "", errors.New("connector action encrypted execution payload is incomplete")
 	}
-	return cloneMapAny(payload), cloneMapAny(payload), item.Reason, nil
+	return cloneMapAny(envelope.Input), cloneMapAny(envelope.Payload), envelope.Reason, nil
 }
 
 func cloneMapAny(input map[string]any) map[string]any {

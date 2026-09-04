@@ -378,11 +378,46 @@ func (s *Store) InsertActionRequest(ctx context.Context, input InsertActionReque
 }
 
 func (s *Store) InsertActionRequestIdempotent(ctx context.Context, input InsertActionRequestInput) (ActionRequest, bool, error) {
+	if input.Status == connectors.ResultApprovalPending && !hasActionRequestApprovalIntegrity(input) {
+		return ActionRequest{}, false, ValidationError("pending connector action approval integrity data is required")
+	}
+	return s.insertActionRequestIdempotent(ctx, input, nil)
+}
+
+// InsertSealedActionRequestIdempotent reserves the record ID, seals the
+// execution payload against that ID, and publishes the final lifecycle state
+// in one transaction. The temporary state is never externally observable.
+func (s *Store) InsertSealedActionRequestIdempotent(
+	ctx context.Context,
+	input InsertActionRequestInput,
+	seal func(int64) (string, error),
+) (ActionRequest, bool, error) {
+	if seal == nil {
+		return ActionRequest{}, false, ValidationError("action payload sealer is required")
+	}
+	if input.Status == connectors.ResultApprovalPending &&
+		(strings.TrimSpace(input.ApprovalContext) == "" || strings.TrimSpace(input.ApprovalContextHash) == "") {
+		return ActionRequest{}, false, ValidationError("pending connector action approval context is required")
+	}
+	return s.insertActionRequestIdempotent(ctx, input, seal)
+}
+
+func hasActionRequestApprovalIntegrity(input InsertActionRequestInput) bool {
+	return strings.TrimSpace(input.EncryptedPayloadJSON) != "" &&
+		strings.TrimSpace(input.ApprovalContext) != "" &&
+		strings.TrimSpace(input.ApprovalContextHash) != ""
+}
+
+func (s *Store) insertActionRequestIdempotent(ctx context.Context, input InsertActionRequestInput, seal func(int64) (string, error)) (ActionRequest, bool, error) {
 	if s == nil || s.db == nil {
 		return ActionRequest{}, false, fmt.Errorf("connector target store is not configured")
 	}
 	if err := validateActionRequestInput(input); err != nil {
 		return ActionRequest{}, false, err
+	}
+	finalStatus := input.Status
+	if seal != nil {
+		input.Status = actionRequestPreparingStatus
 	}
 	inputJSON, err := jsonObjectString(input.Input)
 	if err != nil {
@@ -486,6 +521,31 @@ func (s *Store) InsertActionRequestIdempotent(ctx context.Context, input InsertA
 	if err != nil {
 		return ActionRequest{}, false, err
 	}
+	if seal != nil {
+		encryptedPayload, sealErr := seal(id)
+		if sealErr != nil {
+			return ActionRequest{}, false, sealErr
+		}
+		if strings.TrimSpace(encryptedPayload) == "" {
+			return ActionRequest{}, false, ValidationError("sealed action payload is required")
+		}
+		finalized, finalizeErr := executor.ExecContext(ctx, `
+			UPDATE connector_action_requests
+			SET encrypted_payload_json = ?, status = ?
+			WHERE id = ? AND status = ?`,
+			encryptedPayload, string(finalStatus), id, string(actionRequestPreparingStatus),
+		)
+		if finalizeErr != nil {
+			return ActionRequest{}, false, fmt.Errorf("finalize sealed connector action request: %w", finalizeErr)
+		}
+		finalizedCount, finalizeErr := finalized.RowsAffected()
+		if finalizeErr != nil {
+			return ActionRequest{}, false, fmt.Errorf("read finalized connector action request rows affected: %w", finalizeErr)
+		}
+		if finalizedCount != 1 {
+			return ActionRequest{}, false, ErrActionRequestInsertConflict
+		}
+	}
 	request, err := getActionRequestWithExecutor(ctx, executor, id)
 	if err != nil {
 		return ActionRequest{}, false, err
@@ -507,27 +567,6 @@ func (s *Store) GetActionRequestByIdempotency(ctx context.Context, tokenID *int6
 		return ActionRequest{}, ErrActionRequestNotFound
 	}
 	return getActionRequestByIdempotencyWithExecutor(ctx, s.db, actionRequestIdempotencyScope(tokenID, source), key)
-}
-
-func (s *Store) SetActionRequestEncryptedPayload(ctx context.Context, id int64, encrypted string) error {
-	if s == nil || s.db == nil || id < 1 || strings.TrimSpace(encrypted) == "" {
-		return ErrActionRequestNotFound
-	}
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE connector_action_requests
-		SET encrypted_payload_json = ?
-		WHERE id = ? AND encrypted_payload_json = ''`, encrypted, id)
-	if err != nil {
-		return fmt.Errorf("set connector action encrypted payload: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read connector action encrypted payload rows affected: %w", err)
-	}
-	if affected != 1 {
-		return ErrActionRequestNotFound
-	}
-	return nil
 }
 
 func getActionRequestByIdempotencyWithExecutor(ctx context.Context, executor storeDB, scope, key string) (ActionRequest, error) {
@@ -748,7 +787,10 @@ func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64) (ActionR
 		return executor.ExecContext(ctx, `
 			UPDATE connector_action_requests
 			SET status = ?, error = ''
-			WHERE id = ? AND status = ?`,
+			WHERE id = ? AND status = ?
+				AND trim(encrypted_payload_json) <> ''
+				AND trim(approval_context) <> ''
+				AND trim(approval_context_hash) <> ''`,
 			string(connectors.ResultRunning),
 			id,
 			string(connectors.ResultApprovalPending),

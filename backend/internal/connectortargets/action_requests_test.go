@@ -103,6 +103,7 @@ func TestStoreActionRequestIdempotency(t *testing.T) {
 		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
 		ConnectorKind: "postgres", ActionName: "query_readonly",
 		Input: map[string]any{"sql": "select 1"}, Status: connectors.ResultApprovalPending,
+		EncryptedPayloadJSON: "encrypted", ApprovalContext: `{}`, ApprovalContextHash: "approval-hash",
 		IdempotencyKey: "stable-request", IdempotencyIdentityHash: "identity-one",
 	}
 	first, created, err := store.InsertActionRequestIdempotent(ctx, input)
@@ -153,6 +154,32 @@ func TestStoreActionRequestIdempotency(t *testing.T) {
 	}
 }
 
+func TestStoreSealedActionRequestRollsBackWhenSealingFails(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	target, profile := createPostgresTargetProfile(t, t.Context(), store)
+	_, _, err := store.InsertSealedActionRequestIdempotent(t.Context(), InsertActionRequestInput{
+		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+		ActionName: "query_readonly", Status: connectors.ResultApprovalPending,
+		ApprovalContext: `{}`, ApprovalContextHash: "approval-hash",
+	}, func(int64) (string, error) {
+		return "", errors.New("injected seal failure")
+	})
+	if err == nil || !strings.Contains(err.Error(), "injected seal failure") {
+		t.Fatalf("seal failure = %v", err)
+	}
+	var requests, historyRows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM connector_action_requests`).Scan(&requests); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM history_entries WHERE source_ref_type = 'connector_action_request'`).Scan(&historyRows); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 || historyRows != 0 {
+		t.Fatalf("failed sealed insert left requests=%d history=%d", requests, historyRows)
+	}
+}
+
 func TestStoreActionRequestHistoryProjectionIsAtomic(t *testing.T) {
 	t.Run("insert", func(t *testing.T) {
 		database := openTargetTestDB(t)
@@ -187,6 +214,7 @@ func TestStoreActionRequestHistoryProjectionIsAtomic(t *testing.T) {
 		request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
 			TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
 			ActionName: "query_readonly", Status: connectors.ResultApprovalPending,
+			EncryptedPayloadJSON: "encrypted", ApprovalContext: `{}`, ApprovalContextHash: "approval-hash",
 		})
 		if err != nil {
 			t.Fatalf("insert pending request: %v", err)
@@ -430,6 +458,8 @@ func TestStoreActionRequestApprovalHelpers(t *testing.T) {
 		Input:                map[string]any{"sql": "select 1"},
 		EncryptedPayloadJSON: "encrypted",
 		Status:               connectors.ResultApprovalPending,
+		ApprovalContext:      `{}`,
+		ApprovalContextHash:  "approval-hash",
 	})
 	if err != nil {
 		t.Fatalf("insert pending action request: %v", err)
@@ -461,6 +491,8 @@ func TestStoreActionRequestApprovalHelpers(t *testing.T) {
 		Input:                map[string]any{},
 		EncryptedPayloadJSON: "encrypted",
 		Status:               connectors.ResultApprovalPending,
+		ApprovalContext:      `{}`,
+		ApprovalContextHash:  "approval-hash",
 	})
 	if err != nil {
 		t.Fatalf("insert second pending action request: %v", err)
@@ -482,13 +514,14 @@ func TestStoreInvalidateActionRequestsForTargetSeparatesRunningOutcome(t *testin
 	target, profile := createPostgresTargetProfile(t, ctx, store)
 
 	pending, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
-		TokenID:       &tokenID,
-		TargetID:      target.ID,
-		ProfileID:     profile.ID,
-		ConnectorKind: "postgres",
-		ActionName:    "get_tables",
-		Input:         map[string]any{},
-		Status:        connectors.ResultApprovalPending,
+		TokenID:              &tokenID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        "postgres",
+		ActionName:           "get_tables",
+		Input:                map[string]any{},
+		Status:               connectors.ResultApprovalPending,
+		EncryptedPayloadJSON: "encrypted", ApprovalContext: `{}`, ApprovalContextHash: "approval-hash",
 	})
 	if err != nil {
 		t.Fatalf("insert pending action request: %v", err)
@@ -563,13 +596,14 @@ func TestStoreInvalidateActionRequestsForTargetLeavesRunningByDefault(t *testing
 	target, profile := createPostgresTargetProfile(t, ctx, store)
 
 	pending, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
-		TokenID:       &tokenID,
-		TargetID:      target.ID,
-		ProfileID:     profile.ID,
-		ConnectorKind: "postgres",
-		ActionName:    "get_tables",
-		Input:         map[string]any{},
-		Status:        connectors.ResultApprovalPending,
+		TokenID:              &tokenID,
+		TargetID:             target.ID,
+		ProfileID:            profile.ID,
+		ConnectorKind:        "postgres",
+		ActionName:           "get_tables",
+		Input:                map[string]any{},
+		Status:               connectors.ResultApprovalPending,
+		EncryptedPayloadJSON: "encrypted", ApprovalContext: `{}`, ApprovalContextHash: "approval-hash",
 	})
 	if err != nil {
 		t.Fatalf("insert pending action request: %v", err)

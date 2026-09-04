@@ -401,6 +401,83 @@ func TestRecordEnvelopeWriteGuardMigrationRejectsExistingInvalidShape(t *testing
 	}
 }
 
+func TestActionApprovalIntegrityMigrationStalesIncompletePendingRequests(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "approval-integrity.aipdb")
+	password := "ApprovalIntegrityPassword123"
+	database, err := OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatalf("open encrypted database: %v", err)
+	}
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	result, err := database.Exec(`
+		INSERT INTO connector_action_requests (
+			target_id, profile_id, connector_kind, action_name, input_json, preview_json,
+			encrypted_payload_json, approval_context, approval_context_hash, status, created_at
+		) VALUES (?, ?, 'test', 'mutate', '{"value":"tampered"}', '{"value":"safe"}', '', '{}', '', 'approval_pending', datetime('now'))`,
+		targetID, profileID,
+	)
+	if err != nil {
+		t.Fatalf("insert incomplete pending request: %v", err)
+	}
+	requestID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 22`); err != nil {
+		t.Fatalf("downgrade fixture metadata: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatalf("reopen and migrate database: %v", err)
+	}
+	defer reopened.Close()
+	var status, drift string
+	if err := reopened.QueryRow(`SELECT status, approval_context_drift FROM connector_action_requests WHERE id = ?`, requestID).Scan(&status, &drift); err != nil {
+		t.Fatal(err)
+	}
+	if status != "stale" || drift != "request_integrity" {
+		t.Fatalf("incomplete pending request status=%q drift=%q", status, drift)
+	}
+}
+
+func TestActionApprovalIntegrityGuardsRejectClearingCommittedData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "approval-integrity-guards.aipdb")
+	database, err := OpenEncrypted(path, "ApprovalIntegrityGuards123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	envelope := `{"version":1,"algorithm":"AES-256-GCM","nonce":"AA==","ciphertext":"AA=="}`
+	result, err := database.Exec(`
+		INSERT INTO connector_action_requests (
+			target_id, profile_id, connector_kind, action_name, encrypted_payload_json,
+			approval_context, approval_context_hash, status, created_at
+		) VALUES (?, ?, 'test', 'read', ?, '{}', 'approval-hash', 'completed', datetime('now'))`,
+		targetID, profileID, envelope,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for column := range map[string]struct{}{
+		"encrypted_payload_json": {},
+		"approval_context":       {},
+		"approval_context_hash":  {},
+	} {
+		if _, err := database.Exec(`UPDATE connector_action_requests SET `+column+` = '' WHERE id = ?`, requestID); err == nil {
+			t.Fatalf("clearing %s should be rejected", column)
+		}
+	}
+}
+
 func TestRecordEnvelopeBoundaryRejectsExistingPartialSessionHandle(t *testing.T) {
 	for name, open := range map[string]func(string, string) (*sql.DB, error){
 		"normal migration": OpenEncrypted,

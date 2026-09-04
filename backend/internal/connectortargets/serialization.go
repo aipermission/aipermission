@@ -340,6 +340,8 @@ func validActionRequestStatus(status connectors.ResultStatus) bool {
 	}
 }
 
+const actionRequestPreparingStatus connectors.ResultStatus = "preparing"
+
 func validActionRequestTerminalStatus(status connectors.ResultStatus) bool {
 	switch status {
 	case connectors.ResultCompleted,

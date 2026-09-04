@@ -95,21 +95,19 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		func(tx *sql.Tx) error {
 			var err error
 			store := connectortargets.NewTxStore(tx)
-			request, created, err = store.InsertActionRequestIdempotent(ctx, insertInput)
+			request, created, err = store.InsertSealedActionRequestIdempotent(ctx, insertInput, func(requestID int64) (string, error) {
+				payload, encryptErr := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, requestID, executionEnvelope)
+				if encryptErr != nil {
+					return "", fmt.Errorf("encrypt connector action payload: %w", encryptErr)
+				}
+				return payload, nil
+			})
 			if err == nil && !created {
 				return errAuditedMutationUnchanged
 			}
 			if err != nil {
 				return err
 			}
-			payload, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, executionEnvelope)
-			if err != nil {
-				return fmt.Errorf("encrypt connector action payload: %w", err)
-			}
-			if err := store.SetActionRequestEncryptedPayload(ctx, request.ID, payload); err != nil {
-				return err
-			}
-			request.EncryptedPayloadJSON = payload
 			return nil
 		},
 	)

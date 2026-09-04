@@ -129,6 +129,12 @@ clicks Run, the gateway recomputes that context before execution. If it
 changed, the request becomes `stale` and the AI must submit a fresh connector
 action request.
 
+The exact execution input and prepared payload are stored only in a
+record-bound encrypted envelope. A pending request with a missing, malformed,
+or unauthenticated envelope or approval-context hash becomes `stale` before
+connector dispatch; the gateway never falls back to its redacted display
+projection.
+
 When the user runs a non-stale request, the backend executes the connector
 action through the same connector runtime used by `always_run`. The AI follows
 progress with `get_connector_action_request(request_id)`.
