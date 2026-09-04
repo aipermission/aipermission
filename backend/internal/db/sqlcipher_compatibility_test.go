@@ -55,7 +55,7 @@ func TestRecoveryDrillSQLCipher442ApplicationFixtureMigratesViaProductionPath(t 
 		t.Fatalf("open SQLCipher 4.4.2 application fixture: %v", err)
 	}
 	defer database.Close()
-	snapshots, err := filepath.Glob(path + ".pre-migration-v13-*.aipdb")
+	snapshots, err := filepath.Glob(path + ".pre-migration-v13*.aipdb")
 	if err != nil {
 		t.Fatal(err)
 	}
