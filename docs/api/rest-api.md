@@ -1238,10 +1238,16 @@ mutations. Gateway 0.2.43 temporarily permits older MCP clients to omit it for
 read-only actions; current MCP packages require it for every action. The local
 UI endpoint accepts one and generates it in the browser when omitted.
 The browser generates one per deliberate local submission and retains it after
-an uncertain network failure. A replay with the same caller scope and request
-identity returns the original request with `replayed: true`; it does not execute
-again or reset approval age. Reusing the key with different target/profile,
-action, input, or reason returns `409 Conflict`.
+an uncertain network failure, unreadable response body, malformed success JSON,
+or `5xx` response. It releases the key only after reading a valid response with
+a positive `request_id` and recognized connector lifecycle `status`. If remote
+execution finishes but terminal database/audit persistence cannot be confirmed,
+the gateway returns `503` with `status: outcome_unknown`, code
+`connector_action_persistence_unknown`, and the existing request id. A replay
+with the same caller scope and request identity returns the original request
+with `replayed: true`; it does not execute again or reset approval age. Reusing
+the key with different target/profile, action, input, or reason returns `409
+Conflict`.
 Blocked and missing-permission outcomes are also replayed. After changing a
 permission, a client must use a new key for the new logical attempt rather than
 retrying the previously blocked request.

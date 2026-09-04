@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -245,12 +247,75 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 
 type countingLocalActionTestConnector struct {
 	localActionTestConnector
-	executions *int
+	executions    *int
+	afterDispatch func()
 }
 
 func (c countingLocalActionTestConnector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	*c.executions++
+	if c.afterDispatch != nil {
+		c.afterDispatch()
+	}
 	return c.localActionTestConnector.ExecuteAction(ctx, runtime, action)
+}
+
+func TestRunLocalConnectorActionPreservesIdempotencyAfterTerminalPersistenceFailure(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	executions := 0
+	registry := connectors.NewRegistry()
+	connector := countingLocalActionTestConnector{
+		executions: &executions,
+		afterDispatch: func() {
+			if _, err := database.Exec(`
+				CREATE TRIGGER reject_connector_action_terminal_audit
+				BEFORE INSERT ON audit_outbox
+				WHEN NEW.action = 'connector_action.request.completed'
+				BEGIN
+					SELECT RAISE(FAIL, 'injected terminal audit failure');
+				END`); err != nil {
+				t.Fatalf("install terminal audit failure: %v", err)
+			}
+		},
+	}
+	if err := registry.Register(connector); err != nil {
+		t.Fatalf("register connector: %v", err)
+	}
+	runtime := &databaseRuntime{database: database, vault: secretVault, tokens: tokens.NewStore(database), registry: registry, workspaceUUID: connectorActionTestWorkspaceID}
+	store := connectortargets.NewStore(database)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "persistence-local", Config: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{TargetID: target.ID, ConnectorKind: localActionTestConnectorKind, Kind: "default", Label: "main", Public: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := connectorActionCall{
+		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		ActionName: "echo", Input: map[string]any{"value": "once"}, Reason: "persistence retry smoke",
+		IdempotencyKey: "local-persistence-request-1",
+	}
+	_, err = (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
+	var persistenceErr *connectorActionTerminalPersistenceError
+	if !errors.As(err, &persistenceErr) || persistenceErr.RequestID < 1 {
+		t.Fatalf("expected typed terminal persistence error, got %v", err)
+	}
+	response := httptest.NewRecorder()
+	if !writeConnectorActionTerminalPersistenceError(response, err) || response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unexpected persistence response: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"status":"outcome_unknown"`) || !strings.Contains(response.Body.String(), fmt.Sprintf(`"request_id":%d`, persistenceErr.RequestID)) {
+		t.Fatalf("persistence response lacks request identity: %s", response.Body.String())
+	}
+
+	replayed, err := (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
+	if err != nil {
+		t.Fatalf("replay uncertain request: %v", err)
+	}
+	if executions != 1 || !replayed.Replayed || replayed.Request.ID != persistenceErr.RequestID {
+		t.Fatalf("executions=%d replayed=%v request=%d want=%d", executions, replayed.Replayed, replayed.Request.ID, persistenceErr.RequestID)
+	}
 }
 
 func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {

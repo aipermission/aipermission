@@ -28,6 +28,7 @@ const (
 	connectorActionFinishTimeout     = 10 * time.Second
 	connectorActionFinishAttempts    = 3
 	connectorActionFinishRetryDelay  = 50 * time.Millisecond
+	connectorActionPersistenceError  = "connector action may have been dispatched, but its final state could not be persisted; inspect request history before retrying"
 )
 
 type connectorActionCall struct {
@@ -52,6 +53,26 @@ type connectorActionExecutionOptions struct {
 	UnsupportedRunningError string
 	ApprovalPendingError    string
 	FollowupTool            string
+}
+
+type connectorActionTerminalPersistenceError struct {
+	RequestID int64
+	Err       error
+}
+
+func (err *connectorActionTerminalPersistenceError) Error() string {
+	return connectorActionPersistenceError
+}
+
+func (err *connectorActionTerminalPersistenceError) Unwrap() error {
+	return err.Err
+}
+
+func newConnectorActionTerminalPersistenceError(requestID int64, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &connectorActionTerminalPersistenceError{RequestID: requestID, Err: err}
 }
 
 type connectorActionExecutionEnvelope struct {
@@ -269,7 +290,7 @@ func (s *Server) executeInsertedConnectorAction(
 		failureOutput := connectorActionFailureOutput(err)
 		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectorActionExecutionFailureStatus(err), failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
-			return connectorActionCallResult{}, finishErr
+			return connectorActionCallResult{}, newConnectorActionTerminalPersistenceError(request.ID, finishErr)
 		}
 		return connectorActionCallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Output: finished.Output, Error: finished.Error}}, nil
 	}
@@ -281,7 +302,7 @@ func (s *Server) executeInsertedConnectorAction(
 	if err != nil {
 		finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultOutcomeUnknown, nil, "", connectorActionHandleError, prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
-			return connectorActionCallResult{}, errors.Join(err, finishErr)
+			return connectorActionCallResult{}, newConnectorActionTerminalPersistenceError(request.ID, errors.Join(err, finishErr))
 		}
 		return connectorActionCallResult{
 			Request: finished, Permission: options.Permission,
@@ -292,7 +313,7 @@ func (s *Server) executeInsertedConnectorAction(
 		if !s.connectorActionSupportsRunning(prepared) {
 			finished, finishErr := s.finishConnectorActionRequest(ctx, runtime, request.ID, connectors.ResultError, nil, "", options.UnsupportedRunningError, prepared.ActionDefinition.OutputHint)
 			if finishErr != nil {
-				return connectorActionCallResult{}, finishErr
+				return connectorActionCallResult{}, newConnectorActionTerminalPersistenceError(request.ID, finishErr)
 			}
 			return connectorActionCallResult{
 				Request:    finished,
@@ -320,7 +341,7 @@ func (s *Server) executeInsertedConnectorAction(
 		result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint,
 	)
 	if err != nil {
-		return connectorActionCallResult{}, err
+		return connectorActionCallResult{}, newConnectorActionTerminalPersistenceError(request.ID, err)
 	}
 	result.Output = finished.Output
 	result.DisplayText = finished.DisplayText

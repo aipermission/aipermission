@@ -138,6 +138,9 @@ func (s connectorActionApprovalHandlers) runConnectorActionApproval(w http.Respo
 		return
 	}
 	if err != nil {
+		if writeConnectorActionTerminalPersistenceError(w, err) {
+			return
+		}
 		writeError(w, http.StatusConflict, s.redactForPersistence(r.Context(), runtime, err.Error()))
 		return
 	}
@@ -382,7 +385,7 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 		failureOutput := connectorActionFailureOutput(err)
 		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectorActionExecutionFailureStatus(err), failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
-			return connectortargets.ActionRequest{}, finishErr
+			return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, finishErr)
 		}
 		return finished, nil
 	}
@@ -394,7 +397,7 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 	if err != nil {
 		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultOutcomeUnknown, nil, "", connectorActionHandleError, prepared.ActionDefinition.OutputHint)
 		if finishErr != nil {
-			return connectortargets.ActionRequest{}, errors.Join(err, finishErr)
+			return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, errors.Join(err, finishErr))
 		}
 		return finished, nil
 	}
@@ -402,7 +405,7 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 		if !s.connectorActionSupportsRunning(prepared) {
 			finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
 			if finishErr != nil {
-				return connectortargets.ActionRequest{}, finishErr
+				return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, finishErr)
 			}
 			s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run.error", map[string]any{
 				"request_id":     item.ID,
@@ -420,7 +423,7 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 		clearCredentialBoundary = false
 		running, err := connectortargets.NewStore(runtime.database).GetActionRequest(context.Background(), item.ID)
 		if err != nil {
-			return connectortargets.ActionRequest{}, err
+			return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, err)
 		}
 		s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run.running", map[string]any{
 			"request_id":     item.ID,
@@ -439,7 +442,7 @@ func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *dat
 		result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint,
 	)
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
+		return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, err)
 	}
 	s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run."+string(finished.Status), map[string]any{
 		"request_id":     item.ID,

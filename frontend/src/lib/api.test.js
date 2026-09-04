@@ -75,7 +75,7 @@ test("local connector action retries retain idempotency after uncertain transpor
     bodies.push(JSON.parse(options.body));
     calls += 1;
     if (calls === 1) throw new TypeError("network disconnected");
-    return response({ ok: true });
+    return response(localActionResponse());
   };
   try {
     const first = { target_ref: "fixture:1:1", action_name: "inspect", input: { b: 2, a: 1 }, reason: "test" };
@@ -98,13 +98,64 @@ test("local connector action retries retain idempotency after server failures", 
   globalThis.fetch = async (_url, options) => {
     keys.push(JSON.parse(options.body).idempotency_key);
     calls += 1;
-    return calls === 1 ? response({ error: "gateway failed" }, 502) : response({ ok: true });
+    return calls === 1 ? response({ error: "gateway failed" }, 502) : response(localActionResponse());
   };
   try {
     const body = { target_ref: "fixture:1:1", action_name: "inspect", input: {}, reason: "test" };
     await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /gateway failed/);
     await apiPost("/api/connector-actions/local-run", body);
     assert.equal(keys[0], keys[1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("local connector action retains idempotency when a successful body cannot be read", async () => {
+  const originalFetch = globalThis.fetch;
+  const keys = [];
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    keys.push(JSON.parse(options.body).idempotency_key);
+    calls += 1;
+    if (calls === 1) {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          throw new TypeError("response stream disconnected");
+        },
+      };
+    }
+    return response(localActionResponse());
+  };
+  try {
+    const body = { target_ref: "fixture:body-read", action_name: "inspect", input: {}, reason: "test" };
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /response stream disconnected/);
+    await apiPost("/api/connector-actions/local-run", body);
+    assert.equal(keys[0], keys[1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("local connector action retains idempotency after malformed or incomplete success JSON", async () => {
+  const originalFetch = globalThis.fetch;
+  const keys = [];
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    keys.push(JSON.parse(options.body).idempotency_key);
+    calls += 1;
+    if (calls === 1) return rawResponse('{"status":"completed"');
+    if (calls === 2) return response({ status: "completed" });
+    return response(localActionResponse());
+  };
+  try {
+    const body = { target_ref: "fixture:body-contract", action_name: "inspect", input: {}, reason: "test" };
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /Invalid JSON response/);
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /Invalid connector action response/);
+    await apiPost("/api/connector-actions/local-run", body);
+    assert.equal(keys[0], keys[1]);
+    assert.equal(keys[1], keys[2]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -161,6 +212,20 @@ function response(body, status = 200) {
       return JSON.stringify(body);
     },
   };
+}
+
+function rawResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async text() {
+      return body;
+    },
+  };
+}
+
+function localActionResponse() {
+  return { request_id: 41, status: "completed" };
 }
 
 function restoreWindow(value) {
