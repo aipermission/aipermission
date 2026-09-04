@@ -47,7 +47,7 @@ func TestNewServerReturnsRuntimeIdentityError(t *testing.T) {
 	failingGenerator := withRuntimeInstanceIDGenerator(func() (string, error) { return "", wantErr })
 
 	server, err := NewServer(
-		config.Config{DataPath: t.TempDir() + "/test.db"},
+		config.Config{DataPath: t.TempDir() + "/test.db", GatewaySecret: "test-password"},
 		database,
 		secretVault,
 		tokens.NewStore(database),

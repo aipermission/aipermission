@@ -18,6 +18,7 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -197,6 +198,10 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 		t.Fatalf("server should be unlocked after setup")
 	}
 	runtime := server.activeRuntime()
+	identityBeforePasswordChange, err := connectorActionIdentityTag(runtime.actionIdentityKey, []byte("stable-retry-identity"))
+	if err != nil {
+		t.Fatalf("derive action identity before password change: %v", err)
+	}
 	connectorStore := connectortargets.NewStore(runtime.database)
 	target, profile := createAPITestPostgresTargetProfile(t, connectorStore, runtime.vault, runtime.workspaceUUID)
 	if _, err := connectorStore.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
@@ -287,6 +292,13 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/unlock", "", unlockRequest{DatabaseID: "renamed-database", Password: "ChangedPassword123"}); response.Code != http.StatusOK {
 		t.Fatalf("unlock renamed database failed: %d %s", response.Code, response.Body.String())
+	}
+	identityAfterPasswordChange, err := connectorActionIdentityTag(server.activeRuntime().actionIdentityKey, []byte("stable-retry-identity"))
+	if err != nil {
+		t.Fatalf("derive action identity after password change: %v", err)
+	}
+	if identityAfterPasswordChange != identityBeforePasswordChange {
+		t.Fatal("database password change rotated the durable connector action identity")
 	}
 
 	if response := performJSON(handler, http.MethodPost, "/api/lock", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"locked"`) {
@@ -614,6 +626,10 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	if _, err := sourceDB.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('gateway_secret', 'source-secret', datetime('now'))`); err != nil {
 		t.Fatalf("insert source gateway secret: %v", err)
 	}
+	sourceRetryIdentity, err := projectvault.EnsureUIRetryIdentity(t.Context(), sourceDB)
+	if err != nil {
+		t.Fatalf("read source retry identity: %v", err)
+	}
 	// Current-schema triggers may reference columns introduced after schema 18.
 	if _, err := sourceDB.Exec(`DROP TRIGGER IF EXISTS retain_connector_action_idempotency_tombstone`); err != nil {
 		t.Fatalf("remove current tombstone trigger from import fixture: %v", err)
@@ -677,6 +693,9 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	}
 	if !server.isUnlocked() {
 		t.Fatalf("server should be unlocked after multipart import")
+	}
+	if importedRetryIdentity := server.activeRuntime().uiRetryIdentity; importedRetryIdentity == "" || importedRetryIdentity == sourceRetryIdentity {
+		t.Fatalf("import did not rotate retry identity: source=%q imported=%q", sourceRetryIdentity, importedRetryIdentity)
 	}
 	importedPath, err := dbpkg.DatabasePath(server.config.DataPath, "imported-project")
 	if err != nil {
@@ -756,7 +775,7 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 	}
 }
 
-func TestImportedDatabasePublishFailureRemovesPartiallyPublishedCopy(t *testing.T) {
+func TestImportedDatabasePublishConflictPreservesForeignTarget(t *testing.T) {
 	server := newLockedAPITestServer(t)
 	defer server.Close()
 
@@ -776,10 +795,10 @@ func TestImportedDatabasePublishFailureRemovesPartiallyPublishedCopy(t *testing.
 		t.Fatal(err)
 	}
 	server.databasePublish = func(source string, target string) error {
-		if err := os.Rename(source, target); err != nil {
+		if err := os.WriteFile(target, []byte("foreign-database"), 0o600); err != nil {
 			return err
 		}
-		return errors.New("injected directory sync failure")
+		return dbpkg.ErrPublishTargetExists
 	}
 
 	response := httptest.NewRecorder()
@@ -787,15 +806,16 @@ func TestImportedDatabasePublishFailureRemovesPartiallyPublishedCopy(t *testing.
 	backupHandlers{server}.installImportedDatabase(response, request, "Partial Import", "ImportPassword123", func(path string) error {
 		return os.WriteFile(path, sourceBytes, 0o600)
 	})
-	if response.Code != http.StatusInternalServerError {
+	if response.Code != http.StatusConflict {
 		t.Fatalf("publish failure status=%d body=%s", response.Code, response.Body.String())
 	}
 	targetPath, err := dbpkg.DatabasePath(server.config.DataPath, "partial-import")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dbpkg.Exists(targetPath) {
-		t.Fatalf("publish failure retained partially published database %q", targetPath)
+	content, err := os.ReadFile(targetPath)
+	if err != nil || string(content) != "foreign-database" {
+		t.Fatalf("publish conflict changed foreign target: content=%q err=%v", content, err)
 	}
 }
 

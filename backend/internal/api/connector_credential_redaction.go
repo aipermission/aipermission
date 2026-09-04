@@ -300,6 +300,27 @@ func (r connectorCredentialBoundary) AddStructured(value any) {
 	r.Add(values...)
 }
 
+func (r connectorCredentialBoundary) RedactStructured(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		for key, item := range typed {
+			result[r.RedactKey(key)] = r.RedactStructured(item)
+		}
+		return result
+	case []any:
+		result := make([]any, len(typed))
+		for index, item := range typed {
+			result[index] = r.RedactStructured(item)
+		}
+		return result
+	case string:
+		return r.Redact(typed)
+	default:
+		return value
+	}
+}
+
 func connectorCredentialBoundaryForRuntimeID(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (connectorCredentialBoundary, error) {
 	if runtime == nil || runtime.database == nil || runtime.vault == nil {
 		return connectorCredentialBoundary{}, nil

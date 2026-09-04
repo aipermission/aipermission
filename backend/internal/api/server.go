@@ -81,7 +81,9 @@ type databaseRuntime struct {
 	mcpMu              sync.RWMutex
 	mcpStarted         bool
 	workspaceUUID      string
+	uiRetryIdentity    string
 	runtimeInstanceID  string
+	actionIdentityKey  []byte
 	vaultLeases        *vaultsessions.Store
 	vaultDelivery      vaultDeliveryCoordinator
 	vaultPreviewMu     sync.Mutex
@@ -191,6 +193,14 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 	runtime.workspaceUUID, err = projectvault.EnsureWorkspaceUUID(context.Background(), database)
 	if err != nil {
 		return nil, fmt.Errorf("initialize workspace identity: %w", err)
+	}
+	runtime.uiRetryIdentity, err = projectvault.EnsureUIRetryIdentity(context.Background(), database)
+	if err != nil {
+		return nil, fmt.Errorf("initialize UI retry identity: %w", err)
+	}
+	runtime.actionIdentityKey, err = deriveConnectorActionIdentityKey(cfg.GatewaySecret, runtime.workspaceUUID)
+	if err != nil {
+		return nil, fmt.Errorf("initialize connector action identity: %w", err)
 	}
 	runtime.connectorResources = connectorRuntimeResources(registry, resolved.adapterRegistry, database, secretVault, runtime.workspaceUUID)
 	runtime.runtimeInstanceID, err = resolved.runtimeInstanceIDGenerator()

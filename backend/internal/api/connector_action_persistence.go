@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -66,12 +65,13 @@ func (s *Server) insertPreparedConnectorActionRequest(
 		))
 	}
 	executionEnvelope := connectorActionExecutionEnvelope{
-		Input:           prepared.Requested.Input,
-		Payload:         prepared.Action.Payload,
-		ApprovalPreview: prepared.Action.Preview,
-		Reason:          prepared.Requested.Reason,
+		Input:                prepared.Requested.Input,
+		Payload:              prepared.Action.Payload,
+		ApprovalPreview:      prepared.Action.Preview,
+		SensitiveInputFields: append([]string(nil), prepared.ActionDefinition.SensitiveInputFields...),
+		Reason:               prepared.Requested.Reason,
 	}
-	identityHash, err := connectorActionIdempotencyIdentityHash(tokenID, prepared, idempotencyKey)
+	identityHash, err := connectorActionIdempotencyIdentityHash(runtime, tokenID, prepared, idempotencyKey)
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
@@ -146,12 +146,13 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	return request, true, nil
 }
 
-func connectorActionIdempotencyIdentityHash(tokenID *int64, prepared actions.PreparedRequest, key string) (string, error) {
+func connectorActionIdempotencyIdentityHash(runtime *databaseRuntime, tokenID *int64, prepared actions.PreparedRequest, key string) (string, error) {
 	input := prepared.IdempotencyInput
 	if input == nil {
 		input = prepared.Requested.Input
 	}
 	return connectorActionCallIdentityHash(
+		runtime,
 		tokenID,
 		prepared.Requested.Source,
 		connectortargets.ConnectorTargetRef(prepared.Target.ConnectorKind, prepared.Target.ID, prepared.Profile.ID),
@@ -162,7 +163,7 @@ func connectorActionIdempotencyIdentityHash(tokenID *int64, prepared actions.Pre
 	)
 }
 
-func connectorActionCallIdentityHash(tokenID *int64, source, targetRef, actionName string, input map[string]any, reason, key string) (string, error) {
+func connectorActionCallIdentityHash(runtime *databaseRuntime, tokenID *int64, source, targetRef, actionName string, input map[string]any, reason, key string) (string, error) {
 	if strings.TrimSpace(key) == "" {
 		return "", nil
 	}
@@ -190,8 +191,10 @@ func connectorActionCallIdentityHash(tokenID *int64, source, targetRef, actionNa
 	if err != nil {
 		return "", fmt.Errorf("encode connector action idempotency identity: %w", err)
 	}
-	sum := sha256.Sum256(encoded)
-	return fmt.Sprintf("%x", sum[:]), nil
+	if runtime == nil {
+		return "", fmt.Errorf("connector action runtime is unavailable")
+	}
+	return connectorActionIdentityTag(runtime.actionIdentityKey, encoded)
 }
 
 func replayConnectorActionCall(ctx context.Context, runtime *databaseRuntime, tokenID *int64, call connectorActionCall) (connectorActionCallResult, bool, error) {
@@ -206,7 +209,7 @@ func replayConnectorActionCall(ctx context.Context, runtime *databaseRuntime, to
 	if err != nil {
 		return connectorActionCallResult{}, false, err
 	}
-	identityHash, err := connectorActionCallIdentityHash(tokenID, call.Source, call.TargetRef, call.ActionName, call.Input, call.Reason, key)
+	identityHash, err := connectorActionCallIdentityHash(runtime, tokenID, call.Source, call.TargetRef, call.ActionName, call.Input, call.Reason, key)
 	if err != nil {
 		return connectorActionCallResult{}, false, err
 	}

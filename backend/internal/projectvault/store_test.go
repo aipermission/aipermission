@@ -398,6 +398,32 @@ func TestGeneratorsUseExpectedShapes(t *testing.T) {
 	}
 }
 
+func TestUIRetryIdentityPersistsUntilExplicitRotation(t *testing.T) {
+	database, _ := openTestStore(t)
+	first, err := EnsureUIRetryIdentity(t.Context(), database)
+	if err != nil {
+		t.Fatalf("ensure retry identity: %v", err)
+	}
+	second, err := EnsureUIRetryIdentity(t.Context(), database)
+	if err != nil {
+		t.Fatalf("read retry identity: %v", err)
+	}
+	if first == "" || second != first {
+		t.Fatalf("retry identity was not stable: first=%q second=%q", first, second)
+	}
+	rotated, err := RotateUIRetryIdentity(t.Context(), database)
+	if err != nil {
+		t.Fatalf("rotate retry identity: %v", err)
+	}
+	if rotated == "" || rotated == first {
+		t.Fatalf("retry identity did not rotate: first=%q rotated=%q", first, rotated)
+	}
+	current, err := EnsureUIRetryIdentity(t.Context(), database)
+	if err != nil || current != rotated {
+		t.Fatalf("rotated retry identity was not durable: current=%q err=%v", current, err)
+	}
+}
+
 func openTestStore(t *testing.T) (*sql.DB, *Store) {
 	t.Helper()
 	database, err := appdb.OpenEncrypted(filepath.Join(t.TempDir(), "project-vault.db"), "test-password")

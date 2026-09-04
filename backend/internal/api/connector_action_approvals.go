@@ -96,7 +96,7 @@ func (s connectorActionApprovalHandlers) getConnectorActionApproval(w http.Respo
 		writeInternalError(w)
 		return
 	}
-	approval, err := connectorActionApprovalItemForResponse(runtime, item)
+	approval, err := connectorActionApprovalItemForResponse(r.Context(), runtime, item)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -225,7 +225,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 		return connectortargets.ActionRequest{}, err
 	}
 	runtime.setConnectorCredentialBoundary(execution.request.ID, execution.snapshot.credentialBoundary)
-	if _, err := s.markPendingConnectorActionRunning(ctx, runtime, execution.request); err != nil {
+	if _, err := s.markPendingConnectorActionRunning(ctx, runtime, execution.request, execution.userNote); err != nil {
 		runtime.clearConnectorCredentialBoundary(execution.request.ID)
 		return connectortargets.ActionRequest{}, err
 	}
@@ -300,11 +300,8 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 		if err != nil {
 			return pendingConnectorActionExecution{}, err
 		}
-		if _, err := s.insertMessage(ctx, runtime, createMessageRequest{
-			TokenID:   tokenID,
-			Direction: "user_to_ai",
-			Message:   "Operator approved the connector action with note: " + userNote,
-		}); err != nil {
+		userNote = strings.TrimSpace(userNote)
+		if err := validateTextLimit("message", "Operator approved the connector action with note: "+userNote, maxMessageBytes); err != nil {
 			return pendingConnectorActionExecution{}, err
 		}
 	}
@@ -362,7 +359,7 @@ func (s *Server) staleConnectorApproval(ctx context.Context, runtime *databaseRu
 	return errors.New(responseReason)
 }
 
-func (s *Server) markPendingConnectorActionRunning(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest) (connectortargets.ActionRequest, error) {
+func (s *Server) markPendingConnectorActionRunning(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest, userNote string) (connectortargets.ActionRequest, error) {
 	var running connectortargets.ActionRequest
 	if err := s.withAuditedMutation(
 		ctx, runtime, "user", item.TokenID, 0, "connector_action.request.running",
@@ -371,6 +368,19 @@ func (s *Server) markPendingConnectorActionRunning(ctx context.Context, runtime 
 			var err error
 			running, err = connectortargets.NewTxStore(tx).MarkActionRequestRunning(
 				ctx, item.ID, runtime.runtimeInstanceID, connectorActionLeaseExpiry(time.Now().UTC()),
+			)
+			if err != nil || userNote == "" {
+				return err
+			}
+			if item.TokenID == nil {
+				return errors.New("connector approval token is missing")
+			}
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO message_queue (token_id, direction, message, created_at)
+				VALUES (?, 'user_to_ai', ?, ?)`,
+				*item.TokenID,
+				"Operator approved the connector action with note: "+userNote,
+				time.Now().UTC().Format(time.RFC3339),
 			)
 			return err
 		},
@@ -577,7 +587,7 @@ func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest)
 	return response
 }
 
-func connectorActionApprovalItemForResponse(runtime *databaseRuntime, item connectortargets.ActionRequest) (connectorActionApprovalItem, error) {
+func connectorActionApprovalItemForResponse(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest) (connectorActionApprovalItem, error) {
 	response := connectorActionApprovalItemFromRequest(item)
 	if item.Status != connectors.ResultApprovalPending || item.EncryptedPayloadJSON == "" {
 		return response, nil
@@ -587,7 +597,15 @@ func connectorActionApprovalItemForResponse(runtime *databaseRuntime, item conne
 		return connectorActionApprovalItem{}, fmt.Errorf("decrypt connector approval preview: %w", err)
 	}
 	if envelope.ApprovalPreview != nil {
-		response.Preview = cloneMapAny(envelope.ApprovalPreview)
+		boundary, err := connectorCredentialBoundaryForActionRequest(ctx, runtime, item.ID)
+		if err != nil {
+			return connectorActionApprovalItem{}, fmt.Errorf("load connector approval credential boundary: %w", err)
+		}
+		redacted, ok := boundary.RedactStructured(envelope.ApprovalPreview).(map[string]any)
+		if !ok {
+			return connectorActionApprovalItem{}, errors.New("redact connector approval preview")
+		}
+		response.Preview = redacted
 	}
 	return response, nil
 }
