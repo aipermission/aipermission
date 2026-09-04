@@ -40,13 +40,13 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 	first := &Server{
 		config:         config.Config{FrontendPort: "3210"},
 		activeDatabase: "default",
-		workspaces:     map[string]*databaseRuntime{"default": {workspaceUUID: "workspace-one"}},
+		workspaces:     map[string]*databaseRuntime{"default": {uiRetryIdentity: "retry-one"}},
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 	second := &Server{
 		config:         config.Config{FrontendPort: "3212"},
 		activeDatabase: "default",
-		workspaces:     map[string]*databaseRuntime{"default": {workspaceUUID: "workspace-two"}},
+		workspaces:     map[string]*databaseRuntime{"default": {uiRetryIdentity: "retry-two"}},
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 
@@ -75,7 +75,7 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 	if firstCookies["aipermission_csrf_3210"] == nil || secondCookies["aipermission_csrf_3212"] == nil {
 		t.Fatalf("expected port-scoped csrf cookies, got first=%v second=%v", firstCookies, secondCookies)
 	}
-	if firstCookies["aipermission_workspace_3210"].Value != uiRetryIdentity("default", "workspace-one") || secondCookies["aipermission_workspace_3212"].Value != uiRetryIdentity("default", "workspace-two") {
+	if firstCookies["aipermission_workspace_3210"].Value != uiRetryIdentity("retry-one") || secondCookies["aipermission_workspace_3212"].Value != uiRetryIdentity("retry-two") {
 		t.Fatalf("expected workspace-bound cookies, got first=%v second=%v", firstCookies, secondCookies)
 	}
 
@@ -115,23 +115,31 @@ func TestEnsureUIWorkspaceCookieReplacesStaleDatabaseIdentity(t *testing.T) {
 	srv := &Server{
 		config:         config.Config{FrontendPort: "3212"},
 		activeDatabase: "second",
-		workspaces:     map[string]*databaseRuntime{"second": {workspaceUUID: "current-workspace"}},
+		workspaces:     map[string]*databaseRuntime{"second": {uiRetryIdentity: "current-retry"}},
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	request.AddCookie(&http.Cookie{Name: "aipermission_workspace_3212", Value: "old-workspace"})
 	recorder := httptest.NewRecorder()
 	srv.ensureUIWorkspaceCookie(recorder, request)
 	cookie := cookiesByName(recorder.Result().Cookies())["aipermission_workspace_3212"]
-	if cookie == nil || cookie.Value != uiRetryIdentity("second", "current-workspace") {
+	if cookie == nil || cookie.Value != uiRetryIdentity("current-retry") {
 		t.Fatalf("workspace cookie=%v, want current workspace", cookie)
 	}
 }
 
 func TestUIRetryIdentitySeparatesRestoredDatabaseCopies(t *testing.T) {
-	original := uiRetryIdentity("primary", "restored-workspace")
-	copy := uiRetryIdentity("restored-copy", "restored-workspace")
+	original := uiRetryIdentity("retry-instance-one")
+	copy := uiRetryIdentity("retry-instance-two")
 	if original == "" || copy == "" || original == copy {
 		t.Fatalf("retry identities must differ across database instances: original=%q copy=%q", original, copy)
+	}
+}
+
+func TestUIRetryIdentitySurvivesDatabaseRename(t *testing.T) {
+	before := uiRetryIdentity("stable-retry-instance")
+	after := uiRetryIdentity("stable-retry-instance")
+	if before == "" || before != after {
+		t.Fatalf("database rename changed retry identity: before=%q after=%q", before, after)
 	}
 }
 

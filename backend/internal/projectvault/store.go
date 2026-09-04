@@ -13,17 +13,18 @@ import (
 )
 
 const (
-	maxValueBytes         = 16 * 1024
-	maxItemsPerDatabase   = 5000
-	maxItemsPerOwner      = 1000
-	maxProjectsPerItem    = 16
-	maxTagsPerItem        = 32
-	maxUsageNotesPerItem  = 64
-	maxNameRunes          = 128
-	maxMetadataRunes      = 1000
-	maxMetadataListPage   = 100
-	defaultExpiryWarnDays = 14
-	workspaceUUIDSetting  = "workspace_uuid"
+	maxValueBytes          = 16 * 1024
+	maxItemsPerDatabase    = 5000
+	maxItemsPerOwner       = 1000
+	maxProjectsPerItem     = 16
+	maxTagsPerItem         = 32
+	maxUsageNotesPerItem   = 64
+	maxNameRunes           = 128
+	maxMetadataRunes       = 1000
+	maxMetadataListPage    = 100
+	defaultExpiryWarnDays  = 14
+	workspaceUUIDSetting   = "workspace_uuid"
+	uiRetryIdentitySetting = "ui_retry_instance_id"
 )
 
 var validSecretTypes = map[string]bool{
@@ -178,4 +179,46 @@ func EnsureWorkspaceUUID(ctx context.Context, db *sql.DB) (string, error) {
 		return "", fmt.Errorf("read stored workspace UUID: %w", err)
 	}
 	return strings.TrimSpace(value), nil
+}
+
+func ReadWorkspaceUUID(ctx context.Context, db *sql.DB) (string, error) {
+	var value string
+	if err := db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, workspaceUUIDSetting).Scan(&value); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("workspace UUID is missing")
+		}
+		return "", fmt.Errorf("read workspace UUID: %w", err)
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("workspace UUID is missing")
+	}
+	return value, nil
+}
+
+func EnsureUIRetryIdentity(ctx context.Context, db *sql.DB) (string, error) {
+	var value string
+	err := db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, uiRetryIdentitySetting).Scan(&value)
+	if err == nil && strings.TrimSpace(value) != "" {
+		return strings.TrimSpace(value), nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("read UI retry identity: %w", err)
+	}
+	return RotateUIRetryIdentity(ctx, db)
+}
+
+func RotateUIRetryIdentity(ctx context.Context, db *sql.DB) (string, error) {
+	value, err := randomUUID()
+	if err != nil {
+		return "", err
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO settings (key, value, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		uiRetryIdentitySetting, value, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return "", fmt.Errorf("store UI retry identity: %w", err)
+	}
+	return value, nil
 }

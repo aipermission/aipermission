@@ -62,11 +62,10 @@ func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
 // issuePreparedUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issuePreparedUISessionLocked(w http.ResponseWriter, prepared preparedUISession) {
 	databaseID := s.activeDatabase
-	workspaceID := ""
+	retryIdentity := ""
 	if runtime := s.workspaces[databaseID]; runtime != nil {
-		workspaceID = runtime.workspaceUUID
+		retryIdentity = uiRetryIdentity(runtime.uiRetryIdentity)
 	}
-	retryIdentity := uiRetryIdentity(databaseID, workspaceID)
 
 	s.uiSessionMu.Lock()
 	if s.uiSessions == nil {
@@ -187,10 +186,10 @@ func (s *Server) ensureUIWorkspaceCookie(w http.ResponseWriter, r *http.Request)
 	databaseID := s.activeDatabase
 	runtime := s.workspaces[databaseID]
 	s.mu.RUnlock()
-	if runtime == nil || strings.TrimSpace(runtime.workspaceUUID) == "" {
+	if runtime == nil || strings.TrimSpace(runtime.uiRetryIdentity) == "" {
 		return
 	}
-	retryIdentity := uiRetryIdentity(databaseID, runtime.workspaceUUID)
+	retryIdentity := uiRetryIdentity(runtime.uiRetryIdentity)
 	if cookie, err := r.Cookie(s.uiWorkspaceCookieName()); err == nil && strings.TrimSpace(cookie.Value) == retryIdentity {
 		return
 	}
@@ -205,11 +204,11 @@ func (s *Server) ensureUIWorkspaceCookie(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func uiRetryIdentity(databaseID, workspaceID string) string {
-	if strings.TrimSpace(databaseID) == "" || strings.TrimSpace(workspaceID) == "" {
+func uiRetryIdentity(instanceID string) string {
+	if strings.TrimSpace(instanceID) == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(databaseID + "\x00" + workspaceID))
+	sum := sha256.Sum256([]byte(instanceID))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 

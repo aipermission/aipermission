@@ -124,7 +124,7 @@ func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
 	if s.databasePublish != nil {
 		return s.databasePublish(sourcePath, targetPath)
 	}
-	return db.PublishFile(sourcePath, targetPath)
+	return db.PublishFileNoReplace(sourcePath, targetPath)
 }
 
 func (s *Server) openRuntime(path string, id string, password string) (*databaseRuntime, error) {
@@ -171,7 +171,17 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		_ = database.Close()
 		return nil, err
 	}
-	workspaceUUID, err := projectvault.EnsureWorkspaceUUID(context.Background(), database)
+	bindingRequired, err := recordcrypto.EnvelopeMarkerPresent(context.Background(), database)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	workspaceUUID, err := workspaceUUIDFromDatabase(context.Background(), database, bindingRequired)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	uiRetryIdentity, err := projectvault.EnsureUIRetryIdentity(context.Background(), database)
 	if err != nil {
 		_ = database.Close()
 		return nil, err
@@ -180,8 +190,14 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		_ = database.Close()
 		return nil, fmt.Errorf("migrate encrypted records: %w", err)
 	}
+	actionIdentityKey, err := deriveConnectorActionIdentityKey(gatewaySecret, workspaceUUID)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	runtimeInstanceID, err := executionprincipal.NewRuntimeInstanceID()
 	if err != nil {
+		clearBytes(actionIdentityKey)
 		_ = database.Close()
 		return nil, err
 	}
@@ -202,7 +218,9 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		transferControls:   map[int64]*transferControl{},
 		batchControls:      map[int64]*transferControl{},
 		workspaceUUID:      workspaceUUID,
+		uiRetryIdentity:    uiRetryIdentity,
 		runtimeInstanceID:  runtimeInstanceID,
+		actionIdentityKey:  actionIdentityKey,
 		vaultLeases:        vaultsessions.NewStore(),
 	}
 	if err := s.reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
@@ -260,6 +278,13 @@ func gatewaySecretFromDatabase(database *sql.DB, fallback string) (string, error
 	if err != nil && err != sql.ErrNoRows {
 		return "", fmt.Errorf("read gateway secret setting: %w", err)
 	}
+	bindingRequired, markerErr := recordcrypto.EnvelopeMarkerPresent(context.Background(), database)
+	if markerErr != nil {
+		return "", markerErr
+	}
+	if bindingRequired {
+		return "", fmt.Errorf("gateway secret is missing from an envelope-bound database")
+	}
 	if strings.TrimSpace(fallback) == "" {
 		return "", fmt.Errorf("gateway secret is missing")
 	}
@@ -273,6 +298,13 @@ func gatewaySecretFromDatabase(database *sql.DB, fallback string) (string, error
 		return "", fmt.Errorf("write gateway secret setting: %w", err)
 	}
 	return strings.TrimSpace(fallback), nil
+}
+
+func workspaceUUIDFromDatabase(ctx context.Context, database *sql.DB, bindingRequired bool) (string, error) {
+	if bindingRequired {
+		return projectvault.ReadWorkspaceUUID(ctx, database)
+	}
+	return projectvault.EnsureWorkspaceUUID(ctx, database)
 }
 
 func (s *Server) currentDataPath() string {
@@ -441,6 +473,8 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 	if runtime.auditDispatcher != nil {
 		runtime.auditDispatcher.Stop()
 	}
+	clearBytes(runtime.actionIdentityKey)
+	runtime.actionIdentityKey = nil
 	var closeErrors []error
 	if runtime.database != nil {
 		if err := runtime.database.Close(); err != nil {

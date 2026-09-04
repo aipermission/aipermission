@@ -39,15 +39,29 @@ func openAPITestDB(t *testing.T) *sql.DB {
 
 func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vault.Vault) *databaseRuntime {
 	t.Helper()
+	identityKey, err := deriveConnectorActionIdentityKey("test-password", connectorActionTestWorkspaceID)
+	if err != nil {
+		t.Fatalf("derive connector action identity key: %v", err)
+	}
 	runtime := &databaseRuntime{
-		database:      database,
-		vault:         secretVault,
-		tokens:        tokens.NewStore(database),
-		registry:      testConnectorRegistry(t),
-		workspaceUUID: connectorActionTestWorkspaceID,
+		database:          database,
+		vault:             secretVault,
+		tokens:            tokens.NewStore(database),
+		registry:          testConnectorRegistry(t),
+		workspaceUUID:     connectorActionTestWorkspaceID,
+		actionIdentityKey: identityKey,
 	}
 	runtime.setMCPStarted(true)
 	return runtime
+}
+
+func connectorActionTestIdentityKey(t *testing.T) []byte {
+	t.Helper()
+	key, err := deriveConnectorActionIdentityKey("test-password", connectorActionTestWorkspaceID)
+	if err != nil {
+		t.Fatalf("derive connector action identity key: %v", err)
+	}
+	return key
 }
 
 func openAPITestVault(t *testing.T) *vault.Vault {

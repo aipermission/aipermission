@@ -227,7 +227,7 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 		t.Fatalf("block connector permission: %v", err)
 	}
 
-	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{UserNote: "must not persist after drift"})
 	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
 		t.Fatalf("expected stale conflict, got %d %s", runResponse.Code, runResponse.Body.String())
 	}
@@ -240,6 +240,15 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 	}
 	if stale.ApprovalContextDrift != "permission" {
 		t.Fatalf("approval drift = %q", stale.ApprovalContextDrift)
+	}
+	var noteCount int
+	if err := fixture.db.QueryRow(`
+		SELECT COUNT(*) FROM message_queue
+		WHERE token_id = ? AND direction = 'user_to_ai'`, token.ID).Scan(&noteCount); err != nil {
+		t.Fatalf("count approval notes: %v", err)
+	}
+	if noteCount != 0 {
+		t.Fatalf("stale approval persisted %d user note(s) before the running CAS", noteCount)
 	}
 }
 

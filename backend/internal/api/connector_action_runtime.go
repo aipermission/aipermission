@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
@@ -78,10 +79,11 @@ func newConnectorActionTerminalPersistenceError(requestID int64, err error) erro
 }
 
 type connectorActionExecutionEnvelope struct {
-	Input           map[string]any `json:"input"`
-	Payload         map[string]any `json:"payload"`
-	ApprovalPreview map[string]any `json:"approval_preview,omitempty"`
-	Reason          string         `json:"reason,omitempty"`
+	Input                map[string]any `json:"input"`
+	Payload              map[string]any `json:"payload"`
+	ApprovalPreview      map[string]any `json:"approval_preview,omitempty"`
+	SensitiveInputFields []string       `json:"sensitive_input_fields,omitempty"`
+	Reason               string         `json:"reason,omitempty"`
 }
 
 type connectorSecretAccessor struct {
@@ -653,14 +655,23 @@ func connectorCredentialBoundaryForActionRequest(ctx context.Context, runtime *d
 	if err != nil {
 		return connectorCredentialBoundary{}, err
 	}
-	if profile.EncryptedSecretJSON == "" {
-		return connectorCredentialBoundary{}, nil
-	}
 	secrets := map[string]any{}
-	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
-		return connectorCredentialBoundary{}, err
+	if profile.EncryptedSecretJSON != "" {
+		if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+			return connectorCredentialBoundary{}, err
+		}
 	}
-	return newConnectorCredentialBoundary(secrets), nil
+	boundary := newConnectorCredentialBoundary(secrets)
+	if strings.TrimSpace(request.EncryptedPayloadJSON) == "" {
+		return boundary, nil
+	}
+	var envelope connectorActionExecutionEnvelope
+	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, request.EncryptedPayloadJSON, &envelope); err != nil {
+		return connectorCredentialBoundary{}, fmt.Errorf("decrypt connector action redaction boundary: %w", err)
+	}
+	boundary.Add(connectorActionSensitiveValues(envelope.Input, envelope.Payload, envelope.SensitiveInputFields)...)
+	boundary.Add(connectorActionSensitiveValues(envelope.ApprovalPreview, nil, envelope.SensitiveInputFields)...)
+	return boundary, nil
 }
 
 func (rt *databaseRuntime) setConnectorCredentialBoundary(requestID int64, boundary connectorCredentialBoundary) {
