@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -356,8 +357,12 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 	}
 	fixture.server.activeRuntime().setMCPStarted(false)
 	stoppedReplay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
-	if stoppedReplay.Code != http.StatusOK || !strings.Contains(stoppedReplay.Body.String(), `"replayed":true`) {
+	if stoppedReplay.Code != http.StatusOK || !strings.Contains(stoppedReplay.Body.String(), `"status":"stopped"`) {
 		t.Fatalf("stopped MCP replay: %d %s", stoppedReplay.Code, stoppedReplay.Body.String())
+	}
+	stoppedPoll := performJSON(fixture.server.Handler(), http.MethodGet, fmt.Sprintf("/api/mcp/connector-action-requests/%d", firstResponse.RequestID), token.TokenValue, nil)
+	if stoppedPoll.Code != http.StatusOK || !strings.Contains(stoppedPoll.Body.String(), `"output_withheld":true`) {
+		t.Fatalf("stopped MCP poll: %d %s", stoppedPoll.Code, stoppedPoll.Body.String())
 	}
 	newRequest := request
 	newRequest.IdempotencyKey = "connector-request-while-stopped"

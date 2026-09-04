@@ -129,13 +129,28 @@ func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRunti
 		call.Source = commandRequestSourceMCP
 	}
 	tokenID := call.TokenID
-	if replay, ok, err := replayConnectorActionCall(ctx, runtime, &tokenID, call); err != nil {
-		return connectorActionCallResult{}, err
-	} else if ok {
-		return replay, nil
+	var replay connectorActionCallResult
+	var replayed bool
+	var err error
+	if call.Source == commandRequestSourceMCP {
+		release, acquireErr := runtime.vaultDelivery.acquire(ctx)
+		if acquireErr != nil {
+			return connectorActionCallResult{}, acquireErr
+		}
+		if !runtime.isMCPStarted() {
+			release()
+			return connectorActionCallResult{}, errMCPExecutionStopped
+		}
+		replay, replayed, err = replayConnectorActionCall(ctx, runtime, &tokenID, call)
+		release()
+	} else {
+		replay, replayed, err = replayConnectorActionCall(ctx, runtime, &tokenID, call)
 	}
-	if call.Source == commandRequestSourceMCP && !runtime.isMCPStarted() {
-		return connectorActionCallResult{}, errMCPExecutionStopped
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	if replayed {
+		return replay, nil
 	}
 	prepared, err := runtime.prepareConnectorAction(ctx, actions.PrepareRequest{
 		Source:     call.Source,
@@ -245,6 +260,9 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseR
 	})
 	if err != nil {
 		return connectorActionCallResult{}, err
+	}
+	if call.IdempotencyKey == "" && prepared.Action.Risk != connectors.RiskRead {
+		return connectorActionCallResult{}, errors.New("idempotency_key is required for local connector mutations")
 	}
 
 	principal, err := localExecutionPrincipal(runtime)
@@ -391,6 +409,9 @@ func (s *Server) revalidatePreparedConnectorAction(
 	prepared actions.PreparedRequest,
 	requiredRule connectortargets.ActionPermissionRule,
 ) (actions.PreparedRequest, error) {
+	if request.TokenID != nil && request.Source == commandRequestSourceMCP && !runtime.isMCPStarted() {
+		return prepared, fmt.Errorf("%w: MCP execution is stopped", errConnectorAuthorizationChanged)
+	}
 	fresh, err := runtime.prepareConnectorAction(ctx, actions.PrepareRequest{
 		Source: prepared.Requested.Source, TargetRef: prepared.Requested.TargetRef,
 		ActionName: prepared.Requested.ActionName, Input: prepared.Requested.Input,
@@ -462,7 +483,7 @@ func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *da
 		Secrets:      connectorSecretAccessor{values: snapshot.secrets, boundary: snapshot.credentialBoundary},
 		Events:       noopConnectorEventSink{},
 		Principal:    principal,
-		Capabilities: connectorRuntimeCapabilitiesFor(prepared.Target.ConnectorKind, s, runtime),
+		Capabilities: connectorRuntimeCapabilitiesForAction(prepared.Target.ConnectorKind, s, runtime, prepared.Dependencies),
 	}, prepared.Action)
 	if err != nil {
 		return connectors.ActionResult{}, err
