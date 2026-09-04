@@ -199,7 +199,8 @@ func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID
 			archivePath, err := s.createDownloadArchive(batch)
 			if err != nil {
 				log.Printf("create file transfer archive failed batch=%d error=%v", batchID, err)
-				_, _ = runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, fileTransferFailureMessage(err), filetransfer.FailureKindUnknown)
+				message := credentialSafeFileTransferErrorMessage(context.Background(), runtime, batch.RuntimeID, "create file transfer archive failed", nil, err)
+				_, _ = runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, message, filetransfer.FailureKindUnknown)
 				s.cleanupBatchTemps(runtime, batchID)
 				return
 			}

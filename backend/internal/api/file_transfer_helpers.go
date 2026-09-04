@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -109,6 +110,14 @@ func connectorResponseContainsCredential(boundary connectorCredentialBoundary, r
 	}
 	response.Body = io.NopCloser(bytes.NewReader(body))
 	return boundary.Redact(string(body)) != string(body)
+}
+
+func connectorValueContainsCredential(boundary connectorCredentialBoundary, value any) bool {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return true
+	}
+	return boundary.Redact(string(encoded)) != string(encoded)
 }
 
 func credentialSafeFileTransferErrorMessage(ctx context.Context, runtime *databaseRuntime, runtimeID int64, prefix string, adapter any, err error) string {
