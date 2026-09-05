@@ -3,11 +3,9 @@ package api
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -23,8 +21,4 @@ func connectorActionApprovalSnapshots(token tokens.Token, permission connectorta
 			Rule: string(permission.ExecutionRule), ExpiresAt: permission.ExpiresAt,
 			ProjectID: permission.ProjectID, ProjectName: permission.ProjectName, ProjectSlug: permission.ProjectSlug,
 		}
-}
-
-func expired(value string, now time.Time) bool {
-	return !expirypolicy.Active(value, now)
 }

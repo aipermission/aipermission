@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -40,6 +41,10 @@ type CreateOptions struct {
 
 type CreateResponse struct {
 	Token
+}
+
+func Active(revokedAt string, expiresAt string, now time.Time) bool {
+	return revokedAt == "" && expirypolicy.Active(expiresAt, now)
 }
 
 type Store struct {

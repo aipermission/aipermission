@@ -344,7 +344,7 @@ func (s *Server) currentConnectorApprovalToken(ctx context.Context, runtime *dat
 		reason := "connector approval token no longer exists; ask the AI to send a fresh request"
 		return tokens.Token{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "token")
 	}
-	if token.RevokedAt == "" && !expired(token.ExpiresAt, time.Now().UTC()) {
+	if tokens.Active(token.RevokedAt, token.ExpiresAt, time.Now().UTC()) {
 		return token, nil
 	}
 	reason := "connector approval token is no longer valid; ask the AI to send a fresh request"

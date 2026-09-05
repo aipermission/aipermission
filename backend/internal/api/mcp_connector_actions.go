@@ -12,6 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
 type mcpConnectorTargetItem struct {
@@ -322,7 +323,7 @@ func connectorActionVaultPollAuthorizedLocked(ctx context.Context, runtime *data
 		return false
 	}
 	token, err := runtime.tokens.Get(ctx, tokenID)
-	if err != nil || token.RevokedAt != "" || expired(token.ExpiresAt, time.Now().UTC()) {
+	if err != nil || !tokens.Active(token.RevokedAt, token.ExpiresAt, time.Now().UTC()) {
 		return false
 	}
 	permission, err := connectortargets.NewStore(runtime.database).GetActionPermission(

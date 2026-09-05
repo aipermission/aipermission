@@ -13,6 +13,22 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
+func TestActiveFailsClosedForRevokedExpiredAndMalformedTokens(t *testing.T) {
+	now := time.Date(2026, time.September, 5, 12, 0, 0, 0, time.UTC)
+	if !Active("", "", now) || !Active("", now.Add(time.Minute).Format(time.RFC3339), now) {
+		t.Fatal("permanent and future tokens should remain active")
+	}
+	for _, token := range []Token{
+		{RevokedAt: now.Add(-time.Minute).Format(time.RFC3339)},
+		{ExpiresAt: now.Format(time.RFC3339)},
+		{ExpiresAt: "invalid"},
+	} {
+		if Active(token.RevokedAt, token.ExpiresAt, now) {
+			t.Fatalf("inactive token accepted: %#v", token)
+		}
+	}
+}
+
 func openTokenTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "test-password")

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -57,7 +56,7 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 			writeInternalError(w)
 			return mcpAuthContext{}, false
 		}
-		if !expirypolicy.Active(expiresAt, now) {
+		if !tokens.Active("", expiresAt, now) {
 			continue
 		}
 		auth.runtime = runtime
