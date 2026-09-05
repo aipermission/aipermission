@@ -89,6 +89,15 @@ does this automatically.
 60000 milliseconds). It covers both response headers and the complete response
 body, including streamed bodies. A timeout does not prove that a submitted
 operation failed; do not retry mutations with a new idempotency key blindly.
+If a POST response is lost or incomplete, the bridge returns
+`status: outcome_unknown` and `code: gateway_transport_outcome_unknown`.
+Action calls also return the original `idempotency_key`; no request ID is
+invented. Reconcile using that same key and unchanged input, not a new logical
+operation. Known gateway errors retain their original status and request ID.
+Local input-validation failures do not imply that execution occurred.
+Malformed or incomplete JSON responses are not treated as success. Invalid
+local headers are rejected before dispatch without echoing the API token;
+transport errors never echo raw response fragments or header values.
 
 - `list_connector_targets`
 - `get_connector_help`
