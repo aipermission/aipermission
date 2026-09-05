@@ -4,6 +4,7 @@ package redisconnector
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -183,6 +184,8 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 		Warnings: []string{
 			"Redis and Valkey values may contain secrets. Redaction is best-effort; avoid intentionally reading secrets unless the operator approved that access.",
 			"scan_keys uses SCAN, not KEYS, and returns bounded batches.",
+			"scan_keys limit is a target count, not a hard cap: the last page is kept whole, up to 5095 keys. Continue with next_cursor until complete; an empty page need not be complete.",
+			"A scan stops after 100 pages and returns its continuation. Actions have a 10-second total deadline. SCAN is not a snapshot and may repeat keys while data changes.",
 			"Credential profiles decide what the Redis-compatible server itself allows.",
 			"Cluster-aware MOVED/ASK routing and Sentinel discovery are not supported in this connector version.",
 		},
@@ -220,9 +223,9 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "pattern", Label: "Pattern", Type: connectors.FieldString, Default: "*", Description: "MATCH pattern for SCAN."},
 				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional cursor returned by a previous scan."},
-				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultScanLimit, Description: "Maximum keys to return."},
+				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultScanLimit, Description: "Target key count. The final SCAN page is returned in full to avoid losing keys."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxScanLimit},
+			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxScanResultKeys},
 		},
 		{
 			Name:        ActionGetKey,
@@ -376,6 +379,8 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 }
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, redisCommandTimeout)
+	defer cancel()
 	client, err := openRedisClient(ctx, runtime)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -471,6 +476,7 @@ func openRedisClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 		conn = tlsConn
 	}
 	client := newRedisClient(conn)
+	client.bindContext(ctx)
 	if err := authenticateRedis(ctx, runtime, client); err != nil {
 		_ = client.Close()
 		return nil, err
@@ -549,36 +555,45 @@ func executeScanKeys(client *redisClient, input map[string]any) (connectors.Acti
 	limit := normalizeInt(input, "limit", defaultScanLimit, 1, maxScanLimit)
 	keys := []string{}
 	nextCursor := cursor
-	for len(keys) < limit {
+	pages := 0
+	bytes := 0
+	for len(keys) < limit && pages < maxScanPages {
 		args := []string{"SCAN", nextCursor, "MATCH", pattern, "COUNT", strconv.Itoa(min(limit-len(keys), 100))}
 		value, err := client.Do(args...)
 		if err != nil {
 			return connectors.ActionResult{}, err
 		}
-		nextCursor, page, err := redisScanPage(value, "SCAN")
+		pageCursor, page, err := redisScanPage(value, "SCAN")
 		if err != nil {
 			return connectors.ActionResult{}, err
+		}
+		nextCursor = pageCursor
+		pages++
+		for _, key := range page {
+			if len(key) > maxScanKeyBytes-bytes {
+				return connectors.ActionResult{}, fmt.Errorf("redis scan keys exceed %d bytes; use a narrower MATCH pattern", maxScanKeyBytes)
+			}
+			bytes += len(key)
 		}
 		keys = append(keys, page...)
 		if nextCursor == "0" {
 			break
 		}
 	}
-	if len(keys) > limit {
-		keys = keys[:limit]
-	}
 	sort.Strings(keys)
+	output := map[string]any{
+		"pattern": pattern, "cursor": cursor, "next_cursor": nextCursor,
+		"keys": keys, "count": len(keys), "complete": nextCursor == "0",
+		"scan_limit_reached": pages == maxScanPages && nextCursor != "0",
+	}
+	encoded, err := json.Marshal(output)
+	if err != nil || len(encoded) > maxScanEncodedBytes {
+		return connectors.ActionResult{}, fmt.Errorf("redis scan output exceeds encoded byte limit; use a narrower MATCH pattern")
+	}
 	return connectors.ActionResult{
-		Status: connectors.ResultCompleted,
-		Output: map[string]any{
-			"pattern":     pattern,
-			"cursor":      cursor,
-			"next_cursor": nextCursor,
-			"keys":        keys,
-			"count":       len(keys),
-			"complete":    nextCursor == "0",
-		},
-		DisplayText: strings.Join(keys, "\n"),
+		Status:      connectors.ResultCompleted,
+		Output:      output,
+		DisplayText: truncateString(strings.Join(keys, "\n"), maxValueBytes),
 	}, nil
 }
 
@@ -866,7 +881,10 @@ func redisKeyType(client *redisClient, key string) (string, error) {
 func redisScanCollection(client *redisClient, command string, key string, limit int, maxBytes int) ([]string, error) {
 	cursor := "0"
 	items := []string{}
-	for len(items) < limit {
+	for pages := 0; len(items) < limit; pages++ {
+		if pages == maxScanPages {
+			return nil, fmt.Errorf("redis collection scan exceeded %d pages", maxScanPages)
+		}
 		value, err := client.Do(command, key, cursor, "COUNT", strconv.Itoa(min(limit-len(items), 100)))
 		if err != nil {
 			return nil, err
@@ -896,7 +914,11 @@ func redisScanPage(value respValue, command string) (string, []string, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	return respString(cursorValue), items, nil
+	cursor := respString(cursorValue)
+	if _, err := strconv.ParseUint(cursor, 10, 64); err != nil || cursorValue.null || cursor == "" {
+		return "", nil, fmt.Errorf("unexpected %s cursor response", command)
+	}
+	return cursor, items, nil
 }
 
 func redisKeyDisplay(output map[string]any) string {
