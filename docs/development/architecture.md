@@ -98,6 +98,17 @@ capabilities must be expressed through the typed `internal/connectorapi`
 interfaces so runtime-integrated connectors do not invent parallel server,
 runtime, lifecycle, or credential-resource contracts.
 
+Those contracts are consumer-owned capability ports, not a single gateway or
+runtime facade. Connector adapters receive connector-kind-scoped target/profile
+operations, encrypted-resource stores, resolved runtime secrets, live-session,
+peer-identity, action-completion, transfer, or lifecycle capabilities only when
+that operation needs them. Raw database handles, Vault handles, untyped resource
+maps, the concrete runtime, and the concrete gateway must never cross this
+boundary. Keep read-only peer identity access separate from trust-store mutation.
+The connector API and API composition layer have regression tests for both the
+declared interfaces and the concrete facade method sets; expanding one is an
+architecture change that requires review.
+
 Built-in runtime adapters are constructed explicitly. Each connector-owned
 adapter package exposes a constructor, `internal/connectors/builtin` registers
 those constructors beside the structured connector catalog, and the gateway
@@ -115,6 +126,10 @@ place.
   permissions, audit, or history.
 - `internal/connectortargets`: connector target/profile/action storage plus the
   shared action request model.
+- `internal/connectorruntime` and `internal/connectorresources`: gateway-owned,
+  connector-kind-scoped runtime ports and encrypted resource stores. These
+  packages retain raw core dependencies while adapters receive only distinct
+  least-authority interface implementations.
 - `internal/actions`: shared action execution service used by structured
   connectors after permission checks.
 - `internal/api/connector_api_adapters.go`: generic gateway resolution for

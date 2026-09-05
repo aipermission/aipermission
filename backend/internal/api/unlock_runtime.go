@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -213,7 +214,7 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		tokens:             tokens.NewEncryptedStore(database, secretVault, workspaceUUID),
 		registry:           s.connectorRegistry(),
 		adapterRegistry:    s.connectorAdapterRegistry(),
-		connectorResources: connectorRuntimeResources(s.connectorRegistry(), s.connectorAdapterRegistry(), database, secretVault, workspaceUUID),
+		connectorResources: connectorruntime.NewResourceScopes(database, secretVault, workspaceUUID),
 		fileTransfers:      filetransfer.NewStore(database),
 		credBoundaries:     map[int64]connectorCredentialBoundary{},
 		workspaceUUID:      workspaceUUID,

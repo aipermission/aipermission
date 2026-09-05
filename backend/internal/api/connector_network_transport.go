@@ -77,7 +77,7 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 		if adapter == nil {
 			return nil, fmt.Errorf("%s connector does not expose TCP transport", kind)
 		}
-		return adapter.DialConnectorTCP(ctx, transport.server, transport.runtime, targetRef, "tcp", address)
+		return adapter.DialConnectorTCP(ctx, connectorPeerGatewayPort{server: transport.server}, connectorLiveRuntime(transport.runtime, kind), targetRef, "tcp", address)
 	default:
 		return nil, fmt.Errorf("unsupported connection mode %q", mode)
 	}

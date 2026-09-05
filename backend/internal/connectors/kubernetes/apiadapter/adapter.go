@@ -3,7 +3,6 @@ package apiadapter
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"regexp"
@@ -12,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
-	sshapiadapter "github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 )
@@ -29,7 +27,7 @@ func (adapter) LiveConsoleCapabilityKind() string {
 	return connectortargets.RuntimeCapabilityLiveConsole
 }
 
-func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (string, error) {
+func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (string, error) {
 	target, profile, surface, err := kubernetesTargetProfileByRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return "", err
@@ -38,14 +36,6 @@ func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.Ga
 		return "", connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	return connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID), nil
-}
-
-func (adapter) ResolveLiveConsoleMaterial(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (any, any, error) {
-	target, profile, _, err := kubernetesTargetProfileByRuntimeID(ctx, runtime, runtimeID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return target, profile, nil
 }
 
 func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
@@ -63,7 +53,7 @@ func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile c
 	}
 }
 
-func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveConsoleGateway, runtime connectorapi.LiveConsoleRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
 	target, profile, surface, err := kubernetesTargetProfileByRuntimeID(ctx, runtime, request.RuntimeID)
 	if err != nil {
 		return nil, err
@@ -93,24 +83,11 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.GatewayS
 	if err != nil {
 		return nil, err
 	}
-	return sshapiadapter.OpenLiveConsoleForTargetRef(ctx, server, runtime, transportRef, request.Rows, request.Cols, sshapiadapter.LiveConsoleOptions{
-		ForceShellCommand: command,
-	})
+	return server.ConnectorOpenLiveConsole(ctx, transportRef, request.Rows, request.Cols, map[string]any{"force_shell_command": command})
 }
 
-func kubernetesTargetProfileByRuntimeID(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error) {
-	database, err := databaseFrom(runtime)
-	if err != nil {
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, connectortargets.RuntimeSurface{}, err
-	}
-	return connectortargets.NewStore(database).TargetProfileByRuntimeID(ctx, runtimeID)
-}
-
-func databaseFrom(runtime connectorapi.GatewayRuntime) (*sql.DB, error) {
-	if runtime == nil || runtime.ConnectorDatabase() == nil {
-		return nil, fmt.Errorf("database runtime is not available")
-	}
-	return runtime.ConnectorDatabase(), nil
+func kubernetesTargetProfileByRuntimeID(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error) {
+	return runtime.TargetProfileByRuntimeID(ctx, runtimeID)
 }
 
 func kubectlExecShellCommand(target connectors.TargetView, namespace string, pod string, container string) (string, error) {

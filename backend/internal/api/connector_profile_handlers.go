@@ -66,7 +66,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 		txStore := connectortargets.NewTxStore(tx)
 		if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-			if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, txStore, target); err != nil {
+			if err := adapter.BeforeCreateCredentialProfile(r.Context(), connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target); err != nil {
 				return err
 			}
 		}
@@ -224,7 +224,8 @@ func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.Respons
 		return
 	}
 	if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-		if err := adapter.BeforeDeleteCredentialProfile(r.Context(), s, runtime, store, target, profile); err != nil {
+		gateway := connectorRuntimeActionGatewayPort{connectorPeerGatewayPort: connectorPeerGatewayPort{server: s.Server}, runtime: runtime, kind: target.ConnectorKind}
+		if err := adapter.BeforeDeleteCredentialProfile(r.Context(), gateway, connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target, profile); err != nil {
 			handleConnectorTargetError(w, err)
 			return
 		}
@@ -283,7 +284,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		return
 	}
 	if adapter := s.connectorCredentialProfileTesterFor(target.ConnectorKind); adapter != nil {
-		adapter.TestCredentialProfile(s, w, r, runtime, target, profile)
+		adapter.TestCredentialProfile(connectorPeerGatewayPort{server: s.Server}, w, r, connectorDataRuntimePort(runtime, target.ConnectorKind), target, profile)
 		return
 	}
 	registry := runtime.connectorRegistry()

@@ -15,7 +15,7 @@ func (s credentialHandlers) listCredentials(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	adapter.ListCredentialResources(s, w, r, runtime)
+	adapter.ListCredentialResources(w, r, connectorCredentialResourceRuntime(runtime, r.PathValue("kind")))
 }
 
 func (s credentialHandlers) createCredential(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +27,7 @@ func (s credentialHandlers) createCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	adapter.CreateCredentialResource(s, w, r, runtime)
+	adapter.CreateCredentialResource(w, r, connectorCredentialResourceRuntime(runtime, r.PathValue("kind")))
 }
 
 func (s credentialHandlers) importCredential(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +39,7 @@ func (s credentialHandlers) importCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	adapter.ImportCredentialResource(s, w, r, runtime)
+	adapter.ImportCredentialResource(w, r, connectorCredentialResourceRuntime(runtime, r.PathValue("kind")))
 }
 
 func (s credentialHandlers) getCredential(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +51,7 @@ func (s credentialHandlers) getCredential(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	adapter.GetCredentialResource(s, w, r, runtime)
+	adapter.GetCredentialResource(w, r, connectorCredentialResourceRuntime(runtime, r.PathValue("kind")))
 }
 
 func (s credentialHandlers) updateCredential(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +63,7 @@ func (s credentialHandlers) updateCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	adapter.UpdateCredentialResource(s, w, r, runtime)
+	adapter.UpdateCredentialResource(w, r, connectorCredentialResourceRuntime(runtime, r.PathValue("kind")))
 }
 
 func (s credentialHandlers) deleteCredential(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +75,7 @@ func (s credentialHandlers) deleteCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	adapter.DeleteCredentialResource(s, w, r, runtime)
+	adapter.DeleteCredentialResource(w, r, connectorCredentialResourceRuntime(runtime, r.PathValue("kind")))
 }
 
 func (s credentialHandlers) credentialResourceAdapter(w http.ResponseWriter, r *http.Request) (connectorapi.CredentialResourceAdapter, bool) {

@@ -93,11 +93,10 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 
 func testSSHKeyStore(t *testing.T, runtime *databaseRuntime) *sshkeys.Store {
 	t.Helper()
-	store, ok := runtime.ConnectorResource("ssh", "keys").(*sshkeys.Store)
-	if !ok || store == nil {
+	if runtime == nil || runtime.connectorResources == nil {
 		t.Fatalf("ssh key resource store is not available")
 	}
-	return store
+	return sshkeys.NewResourceStore(runtime.connectorResources.Scope("ssh", "private_key"))
 }
 
 func (f apiTestFixture) createKeyAndServer(t *testing.T, name string) testSSHConnectorProfile {

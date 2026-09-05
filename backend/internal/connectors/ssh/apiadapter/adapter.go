@@ -5,7 +5,6 @@
 package apiadapter
 
 import (
-	"database/sql"
 	"net/http"
 	"strings"
 	"time"
@@ -13,8 +12,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
-	vaultpkg "github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 const (
@@ -39,22 +36,10 @@ func (a adapter) Routes() []connectorapi.RouteDefinition {
 	}
 }
 
-func (adapter) RuntimeCapabilities(server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime) map[string]connectors.RuntimeCapability {
+func (adapter) RuntimeCapabilities(server connectorapi.RuntimeActionGateway, runtime connectorapi.ActionRuntime) map[string]connectors.RuntimeCapability {
 	return map[string]connectors.RuntimeCapability{
 		sshconnector.RuntimeServiceName:             runtimeExecutor{server: server, runtime: runtime},
 		connectors.SessionEnvironmentCapabilityName: sessionEnvironmentCapability{},
-	}
-}
-
-func (adapter) RuntimeResources(database *sql.DB, secretVault *vaultpkg.Vault, workspaceID string) map[string]any {
-	if database == nil {
-		return nil
-	}
-	if secretVault == nil {
-		return nil
-	}
-	return map[string]any{
-		"keys": sshkeys.NewStore(database, secretVault, workspaceID),
 	}
 }
 

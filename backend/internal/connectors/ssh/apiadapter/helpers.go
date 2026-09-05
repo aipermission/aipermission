@@ -1,7 +1,6 @@
 package apiadapter
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -31,13 +31,9 @@ func decodeDraftRequest(value any) (draftTargetRequest, error) {
 	return request, nil
 }
 
-func operationProfileID(ctx context.Context, store *connectortargets.Store, targetID int64, requestedProfileID int64) (int64, error) {
+func operationProfileID(profiles []connectors.CredentialProfileView, requestedProfileID int64) (int64, error) {
 	if requestedProfileID > 0 {
 		return requestedProfileID, nil
-	}
-	profiles, err := store.ListCredentialProfiles(ctx, targetID)
-	if err != nil {
-		return 0, err
 	}
 	if len(profiles) == 0 {
 		return 0, connectortargets.ErrTargetProfileNotFound

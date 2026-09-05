@@ -11,6 +11,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
@@ -63,7 +64,7 @@ type databaseRuntime struct {
 	tokens             *tokens.Store
 	registry           *connectors.Registry
 	adapterRegistry    *connectorapi.Registry
-	connectorResources map[string]any
+	connectorResources connectorruntime.ResourceScopes
 	fileTransfers      *filetransfer.Store
 	consoleSessions    *console.Manager
 	transferJobs       transferjobs.Registry
@@ -195,7 +196,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 	if err != nil {
 		return nil, fmt.Errorf("initialize connector action identity: %w", err)
 	}
-	runtime.connectorResources = connectorRuntimeResources(registry, resolved.adapterRegistry, database, secretVault, runtime.workspaceUUID)
+	runtime.connectorResources = connectorruntime.NewResourceScopes(database, secretVault, runtime.workspaceUUID)
 	runtime.runtimeInstanceID, err = resolved.runtimeInstanceIDGenerator()
 	if err != nil {
 		return nil, fmt.Errorf("initialize runtime identity: %w", err)

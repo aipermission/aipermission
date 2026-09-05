@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
@@ -73,13 +74,29 @@ type Store struct {
 	db          *sql.DB
 	vault       *vault.Vault
 	workspaceID string
+	resources   connectorapi.CredentialResourceStore
 }
 
 func NewStore(db *sql.DB, secretVault *vault.Vault, workspaceID string) *Store {
 	return &Store{db: db, vault: secretVault, workspaceID: strings.TrimSpace(workspaceID)}
 }
 
+func NewResourceStore(resources connectorapi.CredentialResourceStore) *Store {
+	return &Store{resources: resources}
+}
+
 func (s *Store) List(ctx context.Context) ([]SSHKey, error) {
+	if s.resources != nil {
+		records, err := s.resources.List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list ssh keys: %w", err)
+		}
+		items := make([]SSHKey, 0, len(records))
+		for _, record := range records {
+			items = append(items, sshKeyFromResource(record))
+		}
+		return items, nil
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id, name, resource_type, public_data, fingerprint, created_at, updated_at FROM connector_credential_resources WHERE connector_kind = ? AND resource_kind = ? ORDER BY name`, connectorKind, resourceKind)
 	if err != nil {
 		return nil, fmt.Errorf("list ssh keys: %w", err)
@@ -102,6 +119,16 @@ func (s *Store) List(ctx context.Context) ([]SSHKey, error) {
 }
 
 func (s *Store) Get(ctx context.Context, id int64) (SSHKey, error) {
+	if s.resources != nil {
+		record, err := s.resources.Get(ctx, id)
+		if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+			return SSHKey{}, ErrNotFound
+		}
+		if err != nil {
+			return SSHKey{}, fmt.Errorf("get ssh key: %w", err)
+		}
+		return sshKeyFromResource(record), nil
+	}
 	var item SSHKey
 	err := s.db.QueryRowContext(ctx, `SELECT id, name, resource_type, public_data, fingerprint, created_at, updated_at FROM connector_credential_resources WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, id, connectorKind, resourceKind).
 		Scan(&item.ID, &item.Name, &item.KeyType, &item.PublicKey, &item.Fingerprint, &item.CreatedAt, &item.UpdatedAt)
@@ -116,6 +143,23 @@ func (s *Store) Get(ctx context.Context, id int64) (SSHKey, error) {
 }
 
 func (s *Store) GetPrivateKey(ctx context.Context, id int64) (PrivateKey, error) {
+	if s.resources != nil {
+		record, err := s.resources.Get(ctx, id)
+		if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+			return PrivateKey{}, ErrNotFound
+		}
+		if err != nil {
+			return PrivateKey{}, fmt.Errorf("get private ssh key: %w", err)
+		}
+		var secret privateKeySecret
+		if err := s.resources.GetSecret(ctx, id, &secret); err != nil {
+			if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+				return PrivateKey{}, ErrNotFound
+			}
+			return PrivateKey{}, err
+		}
+		return PrivateKey{ID: record.ID, Name: record.Name, KeyType: record.ResourceType, PrivateKey: secret.PrivateKey}, nil
+	}
 	var encrypted string
 	var item PrivateKey
 	err := s.db.QueryRowContext(ctx, `SELECT id, name, resource_type, encrypted_secret FROM connector_credential_resources WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, id, connectorKind, resourceKind).
@@ -184,6 +228,19 @@ func (s *Store) Import(ctx context.Context, request ImportRequest) (SSHKey, erro
 }
 
 func (s *Store) persistPrivateKey(ctx context.Context, name, keyType, privateKey, publicKey, fingerprint, operation string) (SSHKey, error) {
+	if s.resources != nil {
+		record, err := s.resources.Create(ctx, connectorapi.CreateCredentialResourceInput{
+			Name: name, ResourceType: keyType, PublicData: publicKey, Fingerprint: fingerprint,
+			Secret: privateKeySecret{PrivateKey: privateKey},
+		})
+		if errors.Is(err, connectorapi.ErrCredentialResourceNameExists) {
+			return SSHKey{}, ValidationError("ssh key name already exists")
+		}
+		if err != nil {
+			return SSHKey{}, fmt.Errorf("%s ssh key: %w", operation, err)
+		}
+		return sshKeyFromResource(record), nil
+	}
 	if s.workspaceID == "" {
 		return SSHKey{}, fmt.Errorf("workspace ID is required to %s an ssh key", operation)
 	}
@@ -249,6 +306,20 @@ func (s *Store) Update(ctx context.Context, id int64, request UpdateRequest) (SS
 		return SSHKey{}, err
 	}
 
+	if s.resources != nil {
+		record, err := s.resources.Update(ctx, id, connectorapi.UpdateCredentialResourceInput{Name: request.Name, PublicData: publicKey})
+		if errors.Is(err, connectorapi.ErrCredentialResourceNameExists) {
+			return SSHKey{}, ValidationError("ssh key name already exists")
+		}
+		if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+			return SSHKey{}, ErrNotFound
+		}
+		if err != nil {
+			return SSHKey{}, fmt.Errorf("update ssh key: %w", err)
+		}
+		return sshKeyFromResource(record), nil
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.ExecContext(ctx, `UPDATE connector_credential_resources SET name = ?, public_data = ?, updated_at = ? WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, request.Name, publicKey, now, id, connectorKind, resourceKind)
 	if err != nil {
@@ -295,6 +366,16 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	if usageCount > 0 {
 		return ValidationError("ssh key is used by one or more SSH connector profiles")
 	}
+	if s.resources != nil {
+		err := s.resources.Delete(ctx, id)
+		if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("delete ssh key: %w", err)
+		}
+		return nil
+	}
 
 	result, err := s.db.ExecContext(ctx, `DELETE FROM connector_credential_resources WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, id, connectorKind, resourceKind)
 	if err != nil {
@@ -311,6 +392,9 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 }
 
 func (s *Store) connectorProfileUsageCount(ctx context.Context, id int64) (int, error) {
+	if s.resources != nil {
+		return s.resources.CountProfileReferences(ctx, "ssh_key_id", id)
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.public_json
 		FROM connector_credential_profiles p
@@ -342,6 +426,14 @@ func (s *Store) connectorProfileUsageCount(ctx context.Context, id int64) (int, 
 		return 0, err
 	}
 	return count, nil
+}
+
+func sshKeyFromResource(record connectorapi.CredentialResource) SSHKey {
+	return SSHKey{
+		ID: record.ID, Name: record.Name, KeyType: record.ResourceType,
+		PublicKey: record.PublicData, Fingerprint: record.Fingerprint,
+		InstallCommand: InstallCommand(record.PublicData), CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+	}
 }
 
 func int64MetadataValue(metadata map[string]any, key string) int64 {

@@ -13,16 +13,12 @@ func (adapter) LiveConsoleCapabilityKind() string {
 	return connectortargets.RuntimeCapabilityLiveConsole
 }
 
-func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (string, error) {
+func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (string, error) {
 	contextValue, _ := ctx.(context.Context)
 	if contextValue == nil {
 		contextValue = context.Background()
 	}
-	database, err := databaseFrom(runtime)
-	if err != nil {
-		return "", err
-	}
-	target, profile, surface, err := connectortargets.NewStore(database).TargetProfileByRuntimeID(contextValue, runtimeID)
+	target, profile, surface, err := runtime.TargetProfileByRuntimeID(contextValue, runtimeID)
 	if err != nil {
 		return "", err
 	}
@@ -30,18 +26,6 @@ func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.Ga
 		return "", connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	return connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID), nil
-}
-
-func (adapter) ResolveLiveConsoleMaterial(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (any, any, error) {
-	contextValue, _ := ctx.(context.Context)
-	if contextValue == nil {
-		contextValue = context.Background()
-	}
-	target, privateKey, err := targetMaterial(contextValue, runtime, runtimeID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return target, privateKey, nil
 }
 
 func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {

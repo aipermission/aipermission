@@ -42,7 +42,8 @@ func (s fileTransferHandlers) runUpload(ctx context.Context, runtime *databaseRu
 		s.finishFileTransferError(runtime, transferID, ctx, err)
 		return
 	}
-	result, err := adapter.UploadFile(ctx, s.Server, runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, connectorapi.TransferOptions{
+	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, item.RuntimeID)
+	result, err := adapter.UploadFile(ctx, ports.gateway, ports.runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, connectorapi.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID),
 	})
 	if err != nil {
@@ -93,7 +94,8 @@ func (s fileTransferHandlers) runDownload(ctx context.Context, runtime *database
 		s.finishFileTransferError(runtime, transferID, ctx, err)
 		return
 	}
-	result, err := adapter.DownloadFile(ctx, s.Server, runtime, item.RuntimeID, item.RemotePath, item.TempPath, connectorapi.TransferOptions{
+	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, item.RuntimeID)
+	result, err := adapter.DownloadFile(ctx, ports.gateway, ports.runtime, item.RuntimeID, item.RemotePath, item.TempPath, connectorapi.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID),
 		MaxBytes: maxFileTransferObjectBytes,
 	})
@@ -232,12 +234,13 @@ func (s fileTransferHandlers) validateDownloadBatchBeforeRun(ctx context.Context
 		return err
 	}
 	sizes := make(map[int64]int64, len(batch.Items))
+	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, batch.RuntimeID)
 	var totalSize int64
 	for _, item := range batch.Items {
 		if item.Status != filetransfer.StatusPending {
 			continue
 		}
-		status, err := adapter.StatRemotePath(ctx, s.Server, runtime, batch.RuntimeID, item.RemotePath)
+		status, err := adapter.StatRemotePath(ctx, ports.gateway, ports.runtime, batch.RuntimeID, item.RemotePath)
 		if err != nil {
 			return fmt.Errorf("stat %s before download: %w", item.RemotePath, err)
 		}
@@ -293,11 +296,12 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 		MaxBytes: maxFileTransferObjectBytes,
 	}
 	var result connectorapi.TransferResult
+	ports := connectorFileTransferPortsForID(itemCtx, s.Server, runtime, item.RuntimeID)
 	if item.Direction == filetransfer.DirectionUpload {
 		defer s.removeTransferTemp(runtime, transferID)
-		result, err = adapter.UploadFile(itemCtx, s.Server, runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, options)
+		result, err = adapter.UploadFile(itemCtx, ports.gateway, ports.runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, options)
 	} else {
-		result, err = adapter.DownloadFile(itemCtx, s.Server, runtime, item.RuntimeID, item.RemotePath, item.TempPath, options)
+		result, err = adapter.DownloadFile(itemCtx, ports.gateway, ports.runtime, item.RuntimeID, item.RemotePath, item.TempPath, options)
 	}
 	if err != nil {
 		if item.Direction == filetransfer.DirectionDownload {

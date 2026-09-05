@@ -286,7 +286,8 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 		handleConnectorTargetRuntimeError(w, err)
 		return
 	}
-	remoteStatus, err := adapter.StatRemotePath(r.Context(), s.Server, runtime, request.RuntimeID, remotePath)
+	ports := connectorFileTransferPortsForID(r.Context(), s.Server, runtime, request.RuntimeID)
+	remoteStatus, err := adapter.StatRemotePath(r.Context(), ports.gateway, ports.runtime, request.RuntimeID, remotePath)
 	if err != nil {
 		s.writeCredentialSafeConnectorError(w, r.Context(), runtime, request.RuntimeID, adapter, http.StatusBadGateway, "remote path check failed", err)
 		return
@@ -379,6 +380,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 	items := make([]filetransfer.CreateRequest, 0, len(remotePaths))
 	tempPaths := []string{}
 	seenRemotePaths := map[string]bool{}
+	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, runtimeID)
 	var totalSize int64
 	for _, raw := range remotePaths {
 		remotePath, err := s.normalizeTransferPath(ctx, runtime, runtimeID, raw, false)
@@ -393,7 +395,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 		seenRemotePaths[remotePath] = true
 		var size int64
 		if validateRemoteBeforeApproval {
-			status, err := adapter.StatRemotePath(ctx, s.Server, runtime, runtimeID, remotePath)
+			status, err := adapter.StatRemotePath(ctx, ports.gateway, ports.runtime, runtimeID, remotePath)
 			if err != nil {
 				cleanupTempPaths(tempPaths)
 				return filetransfer.BatchRecord{}, newFileTransferConnectorError(adapter, err)
