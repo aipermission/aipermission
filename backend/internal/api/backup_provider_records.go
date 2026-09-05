@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 )
 
 func (s backupHandlers) listProviderRecords(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +251,7 @@ func (s backupHandlers) downloadProviderRecord(w http.ResponseWriter, r *http.Re
 		"provider_id": provider.ID, "record_id": record.ID, "filename": record.Filename,
 	})
 	filename := safeBackupDownloadFilename(record.Filename, record.DatabaseName)
-	setAttachmentHeaders(w, filename, "application/octet-stream")
+	httpattachment.SetHeaders(w, filename, "application/octet-stream")
 	http.ServeFile(w, r, tmpPath)
 }
 

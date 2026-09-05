@@ -7,6 +7,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/buildinfo"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/diagnostics"
+	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 )
 
 func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +35,6 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "settings.diagnostics.downloaded", map[string]any{
 		"report_format_version": diagnostics.ReportFormatVersion,
 	})
-	setAttachmentHeaders(w, "aipermission-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json", "application/json")
+	httpattachment.SetHeaders(w, "aipermission-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json", "application/json")
 	writeJSON(w, http.StatusOK, report)
 }
