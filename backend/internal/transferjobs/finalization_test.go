@@ -1,4 +1,4 @@
-package api
+package transferjobs
 
 import (
 	"context"
@@ -75,7 +75,7 @@ func TestFinalizeSuccessfulFileTransferAcceptsCanonicalCompletionAfterProjection
 		record:         filetransfer.Record{Status: filetransfer.StatusCompleted},
 	}
 
-	completed, err := finalizeSuccessfulFileTransfer(context.Background(), store, 7, 42, "checksum")
+	completed, err := FinalizeSuccessfulFileTransfer(context.Background(), store, 7, 42, "checksum")
 	if err != nil || !completed {
 		t.Fatalf("completed=%v err=%v", completed, err)
 	}
@@ -90,7 +90,7 @@ func TestFinalizeSuccessfulFileTransferClassifiesUnconfirmedOutcome(t *testing.T
 		record:         filetransfer.Record{Status: filetransfer.StatusRunning},
 	}
 
-	completed, err := finalizeSuccessfulFileTransfer(context.Background(), store, 8, 42, "checksum")
+	completed, err := FinalizeSuccessfulFileTransfer(context.Background(), store, 8, 42, "checksum")
 	if err == nil || completed {
 		t.Fatalf("completed=%v err=%v", completed, err)
 	}
@@ -112,7 +112,7 @@ func TestFinalizeSuccessfulFileTransferDoesNotUndoCompletedCanonicalState(t *tes
 		syncError:      errors.New("projection still unavailable"),
 	}
 
-	completed, err := finalizeSuccessfulFileTransfer(context.Background(), store, 9, 42, "checksum")
+	completed, err := FinalizeSuccessfulFileTransfer(context.Background(), store, 9, 42, "checksum")
 	if err == nil || !completed {
 		t.Fatalf("completed=%v err=%v", completed, err)
 	}
@@ -126,7 +126,7 @@ func TestFinalizeFileTransferBatchRetriesTransientPersistenceFailure(t *testing.
 		completeErrors: []error{errors.New("database busy")},
 		record:         filetransfer.BatchRecord{Status: filetransfer.StatusRunning},
 	}
-	if err := finalizeFileTransferBatch(context.Background(), store, 10); err != nil {
+	if err := FinalizeFileTransferBatch(context.Background(), store, 10); err != nil {
 		t.Fatalf("finalize batch: %v", err)
 	}
 	if store.completeCalls != 2 || store.failureKind != "" {
@@ -139,7 +139,7 @@ func TestFinalizeFileTransferBatchClassifiesLocalPersistenceFailure(t *testing.T
 		completeErrors: []error{errors.New("database busy"), errors.New("database busy"), errors.New("database busy")},
 		record:         filetransfer.BatchRecord{Status: filetransfer.StatusRunning},
 	}
-	if err := finalizeFileTransferBatch(context.Background(), store, 11); err == nil {
+	if err := FinalizeFileTransferBatch(context.Background(), store, 11); err == nil {
 		t.Fatal("expected batch finalization error")
 	}
 	if store.failureKind != filetransfer.FailureKindLocalPersistence {

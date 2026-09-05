@@ -1,4 +1,4 @@
-package api
+package transferjobs
 
 import (
 	"context"
@@ -14,20 +14,24 @@ const fileTransferFinalizationAttemptTimeout = 2 * time.Second
 
 const fileTransferOutcomeUnknownMessage = "the remote transfer may have completed, but AIPermission could not persist the final outcome; inspect the destination before retrying"
 
-type fileTransferFinalizationStore interface {
+// FinalizationStore is the persistence port for one transfer outcome.
+type FinalizationStore interface {
 	Complete(context.Context, int64, int64, string) (bool, error)
 	Get(context.Context, int64) (filetransfer.Record, error)
 	SyncHistory(context.Context, int64) error
 	FailWithKind(context.Context, int64, string, string) (bool, error)
 }
 
-type fileTransferBatchFinalizationStore interface {
+// BatchFinalizationStore is the persistence port for one transfer batch.
+type BatchFinalizationStore interface {
 	CompleteBatch(context.Context, int64) (bool, error)
 	GetBatch(context.Context, int64) (filetransfer.BatchRecord, error)
 	FailBatchWithKind(context.Context, int64, string, string) (bool, error)
 }
 
-func finalizeSuccessfulFileTransfer(ctx context.Context, store fileTransferFinalizationStore, transferID int64, transferred int64, checksum string) (bool, error) {
+// FinalizeSuccessfulFileTransfer persists a successful remote effect without
+// converting uncertain local persistence into a retry-safe failure.
+func FinalizeSuccessfulFileTransfer(ctx context.Context, store FinalizationStore, transferID int64, transferred int64, checksum string) (bool, error) {
 	var finalizationErrors []error
 	canonicalCompleted := false
 
@@ -93,7 +97,8 @@ func finalizeSuccessfulFileTransfer(ctx context.Context, store fileTransferFinal
 	return false, fmt.Errorf("file transfer finalization outcome is unknown: %w", errors.Join(finalizationErrors...))
 }
 
-func finalizeFileTransferBatch(ctx context.Context, store fileTransferBatchFinalizationStore, batchID int64) error {
+// FinalizeFileTransferBatch closes a batch after all item runners finish.
+func FinalizeFileTransferBatch(ctx context.Context, store BatchFinalizationStore, batchID int64) error {
 	var finalizationErrors []error
 	for attempt := 0; attempt < fileTransferFinalizationAttempts; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, fileTransferFinalizationAttemptTimeout)
