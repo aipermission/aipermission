@@ -232,7 +232,7 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		_ = database.Close()
 		return nil, err
 	}
-	runtime.mcpStarted = settings.MCPStartEnabled
+	runtime.runtimeState.SetMCPStarted(settings.MCPStartEnabled)
 	runtime.securitySettings = settings
 	runtime.securityLoaded = true
 	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
