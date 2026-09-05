@@ -469,48 +469,26 @@ func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *d
 }
 
 func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, prepared actions.PreparedRequest, snapshot connectorActionExecutionSnapshot) (connectors.ActionResult, error) {
-	if err := principal.Validate(); err != nil {
-		return connectors.ActionResult{}, err
-	}
-	connector, ok := runtime.connectorRegistry().Get(prepared.Target.ConnectorKind)
-	if !ok {
-		return connectors.ActionResult{}, fmt.Errorf("connector not found: %s", prepared.Target.ConnectorKind)
-	}
-	result, err := connector.ExecuteAction(ctx, connectors.RuntimeContext{
-		Target:       prepared.Target,
-		Profile:      prepared.Profile,
-		Secrets:      connectorSecretAccessor{values: snapshot.secrets, boundary: snapshot.credentialBoundary},
-		Events:       noopConnectorEventSink{},
-		Principal:    principal,
-		Capabilities: connectorRuntimeCapabilitiesForAction(prepared.Target.ConnectorKind, s, runtime, prepared.Dependencies),
-	}, prepared.Action)
+	service := actions.NewService(runtime.connectorRegistry(), connectortargets.NewResolver(runtime.database))
+	result, err := service.Execute(ctx, actions.ExecutionRequest{
+		Prepared: prepared,
+		Runtime: connectors.RuntimeContext{
+			Target:       prepared.Target,
+			Profile:      prepared.Profile,
+			Secrets:      connectorSecretAccessor{values: snapshot.secrets, boundary: snapshot.credentialBoundary},
+			Events:       noopConnectorEventSink{},
+			Principal:    principal,
+			Capabilities: connectorRuntimeCapabilitiesForAction(prepared.Target.ConnectorKind, s, runtime, prepared.Dependencies),
+		},
+	})
 	if err != nil {
 		return connectors.ActionResult{}, err
-	}
-	if err := validateConnectorActionResult(result); err != nil {
-		return connectors.ActionResult{}, connectors.ClassifyOutcomeUnknown("response_validation", nil, err)
 	}
 	redacted, err := s.redactConnectorActionResultWithCredentialBoundary(ctx, runtime, result, snapshot.credentialBoundary, prepared.ActionDefinition.OutputHint)
 	if err != nil {
 		return connectors.ActionResult{}, fmt.Errorf("process connector action result: %w", err)
 	}
 	return redacted, nil
-}
-
-func validateConnectorActionResult(result connectors.ActionResult) error {
-	switch result.Status {
-	case connectors.ResultCompleted, connectors.ResultFailed, connectors.ResultError,
-		connectors.ResultOutcomeUnknown, connectors.ResultRunning:
-		// Connector-owned execution states.
-	default:
-		return fmt.Errorf("connector returned invalid action status %q", result.Status)
-	}
-	hasSessionID := result.Handles.SessionID > 0
-	hasGeneration := result.Handles.SessionGeneration > 0
-	if hasSessionID != hasGeneration {
-		return errors.New("connector returned an incomplete session handle")
-	}
-	return nil
 }
 
 func connectorActionExecutionFailureStatus(err error) connectors.ResultStatus {
