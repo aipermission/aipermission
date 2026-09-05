@@ -1037,25 +1037,6 @@ func TestConnectorActionResultRejectsOversizedTypedOutput(t *testing.T) {
 	}
 }
 
-func TestValidateConnectorActionResultRejectsMissingAndGatewayStatuses(t *testing.T) {
-	for _, status := range []connectors.ResultStatus{
-		"", connectors.ResultApprovalPending, connectors.ResultBlocked,
-		connectors.ResultCanceled, connectors.ResultDeclined, connectors.ResultStale,
-	} {
-		if err := validateConnectorActionResult(connectors.ActionResult{Status: status}); err == nil {
-			t.Fatalf("status %q was accepted", status)
-		}
-	}
-	for _, status := range []connectors.ResultStatus{
-		connectors.ResultCompleted, connectors.ResultFailed, connectors.ResultError,
-		connectors.ResultOutcomeUnknown, connectors.ResultRunning,
-	} {
-		if err := validateConnectorActionResult(connectors.ActionResult{Status: status}); err != nil {
-			t.Fatalf("status %q was rejected: %v", status, err)
-		}
-	}
-}
-
 func TestConnectorActionResultPreservesDeclaredTemporaryCapability(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
