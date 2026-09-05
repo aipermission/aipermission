@@ -9,9 +9,7 @@ import (
 )
 
 func normalizeObjectKey(input map[string]any, name string) string {
-	key := strings.TrimSpace(stringValue(input, name))
-	key = strings.TrimLeft(key, "/")
-	return key
+	return stringValue(input, name)
 }
 
 func objectFilename(key string) string {

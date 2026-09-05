@@ -469,6 +469,21 @@ Schema defaults are declarative UI hints and validation aids. Connector code
 must still normalize defaults in `PrepareAction` or `ExecuteAction` before
 building payloads, opening sockets, or running transport-specific logic.
 
+Use `Field.PreserveWhitespace` (`preserve_whitespace: true`) only for opaque
+`string` identities such as S3 object keys and prefixes. It distinguishes a
+whitespace-only string from an absent value; the empty string still follows
+required/default rules. Other fields retain their existing empty-value
+semantics. Credential validation honors the same flag for string fields.
+Changing it changes the action catalog and approval-context hash. Test the
+generic action/API path, not only connector preparation, when adding it.
+
+Remote transfer identities need not be filesystem paths. An adapter can implement
+`connectorapi.FileTransferPathPolicy` to own locator validation, upload joining,
+parent navigation, and ZIP preflight. Shared handlers and transfer storage must
+not normalize those locators again. Local staging paths and safe download names
+remain separate. Frontend transfer options accept matching path callbacks; do
+not add connector-kind branches to shared transfer components.
+
 Operator-only connector operations should use reviewed optional contracts
 instead of adding connector-specific routes. For example, a connector that can
 create external credentials implements `CredentialProvisioner`, and a connector

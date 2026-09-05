@@ -195,6 +195,13 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 		t.Fatalf("approval context: %v", err)
 	}
 	versionChanged := prepared
+	identityChanged := prepared
+	identityChanged.ActionDefinition.InputSchema.Fields = append([]connectors.Field{}, prepared.ActionDefinition.InputSchema.Fields...)
+	identityChanged.ActionDefinition.InputSchema.Fields[0].PreserveWhitespace = true
+	_, identityHash, err := connectorApprovalContext(identityChanged, token, permission, "2026-06-12T12:00:00Z")
+	if err != nil || identityHash == baseHash {
+		t.Fatalf("opaque field semantics must invalidate approval: %v", err)
+	}
 	versionChanged.ConnectorVersion = "0.2"
 	_, versionHash, err := connectorApprovalContext(versionChanged, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {

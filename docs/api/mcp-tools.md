@@ -301,6 +301,10 @@ bounded object download/upload, explicit delete, short-lived
 presigned URLs, object versions, and bucket lifecycle policy controls. Object
 content may contain secrets or customer data; prefer approval-required access
 for downloads, uploads, and deletes until the workflow is trusted.
+S3 keys and prefixes are exact strings, including whitespace-only values. Do not
+trim them, collapse slashes, or resolve dot segments. The Files transfer surface
+has explicit locator and ZIP mapping restrictions; see
+[S3 object identity and transfers](../setup/s3.md#object-browser-and-transfers).
 `rename_object` is intentionally unavailable because S3-compatible APIs do not
 provide an atomic cross-key move. Create or upload the destination while keeping
 the source intact. Source deletion must remain a separate destructive operator

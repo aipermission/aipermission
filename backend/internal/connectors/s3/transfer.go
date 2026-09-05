@@ -74,6 +74,9 @@ func BrowseRemoteFiles(ctx context.Context, runtime connectors.RuntimeContext, r
 }
 
 func BrowseRemoteFilesPage(ctx context.Context, runtime connectors.RuntimeContext, remotePath string, cursor string) (RemoteFilePage, error) {
+	if _, err := NormalizeTransferPath(remotePath, true); err != nil {
+		return RemoteFilePage{}, err
+	}
 	client, err := newS3Client(ctx, runtime)
 	if err != nil {
 		return RemoteFilePage{}, err
@@ -87,16 +90,17 @@ func BrowseRemoteFilesPage(ctx context.Context, runtime connectors.RuntimeContex
 	for _, item := range result.CommonPrefixes {
 		name := strings.TrimSuffix(strings.TrimPrefix(item.Prefix, prefix), "/")
 		if name == "" {
-			continue
+			name = "/"
 		}
 		entries = append(entries, RemoteFileEntry{Name: name, Path: virtualObjectPath(item.Prefix), Type: "directory"})
 	}
 	for _, item := range result.Contents {
-		if item.Key == prefix || strings.HasSuffix(item.Key, "/") {
-			continue
+		name := path.Base(item.Key)
+		if strings.HasSuffix(item.Key, "/") {
+			name = strings.TrimSuffix(name, "/") + "/"
 		}
 		entries = append(entries, RemoteFileEntry{
-			Name:       path.Base(item.Key),
+			Name:       name,
 			Path:       virtualObjectPath(item.Key),
 			Type:       "file",
 			Size:       item.Size,
@@ -113,6 +117,9 @@ func BrowseRemoteFilesPage(ctx context.Context, runtime connectors.RuntimeContex
 }
 
 func StatRemotePath(ctx context.Context, runtime connectors.RuntimeContext, remotePath string) (RemotePathStatus, error) {
+	if _, err := NormalizeTransferPath(remotePath, true); err != nil {
+		return RemotePathStatus{}, err
+	}
 	client, err := newS3Client(ctx, runtime)
 	if err != nil {
 		return RemotePathStatus{}, err
@@ -134,7 +141,7 @@ func statRemotePath(ctx context.Context, client *s3Client, remotePath string) (R
 			return RemotePathStatus{}, headErr
 		}
 	}
-	prefix := strings.TrimSuffix(key, "/") + "/"
+	prefix := directoryPrefix(remotePath)
 	result, err := client.ListObjects(ctx, prefix, "", 1, false)
 	if err != nil {
 		return RemotePathStatus{}, err
@@ -143,6 +150,9 @@ func statRemotePath(ctx context.Context, client *s3Client, remotePath string) (R
 }
 
 func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]RemoteFileEntry, error) {
+	if _, err := NormalizeTransferPath(remotePath, true); err != nil {
+		return nil, err
+	}
 	if maxItems < 1 || maxObjectBytes < 1 || maxBatchBytes < 1 {
 		return nil, fmt.Errorf("recursive transfer limits are required")
 	}
@@ -174,7 +184,10 @@ func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, 
 		}
 		for _, item := range result.Contents {
 			if strings.HasSuffix(item.Key, "/") {
-				continue
+				return nil, fmt.Errorf("S3 recursive transfer cannot include trailing-slash objects, including folder markers; select individual files instead")
+			}
+			if _, err := NormalizeTransferPath(virtualObjectPath(item.Key), false); err != nil {
+				return nil, err
 			}
 			if len(entries) >= maxItems {
 				return nil, fmt.Errorf("%w: selected prefix exceeds the %d object limit", ErrTransferLimit, maxItems)
@@ -197,6 +210,9 @@ func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, 
 }
 
 func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error) {
+	if _, err := NormalizeTransferPath(remotePath, false); err != nil {
+		return TransferResult{}, err
+	}
 	started := time.Now()
 	if !overwrite && !s3TrustConditionalRequests(runtime.Target) {
 		return TransferResult{}, fmt.Errorf("S3 no-overwrite upload requires verified conditional requests for this provider")
@@ -260,6 +276,9 @@ func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPat
 }
 
 func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remotePath string, localPath string, options TransferOptions) (TransferResult, error) {
+	if _, err := NormalizeTransferPath(remotePath, false); err != nil {
+		return TransferResult{}, err
+	}
 	started := time.Now()
 	client, err := newS3ClientWithTimeout(ctx, runtime, 0)
 	if err != nil {
@@ -505,15 +524,14 @@ func progressTransfer(options TransferOptions, transferred int64, total int64) {
 }
 
 func cleanVirtualPath(value string) string {
-	value = strings.TrimSpace(value)
 	if value == "" {
 		return "/"
 	}
-	return path.Clean("/" + strings.TrimLeft(value, "/"))
+	return value
 }
 
 func objectKey(remotePath string) string {
-	return strings.TrimLeft(cleanVirtualPath(remotePath), "/")
+	return strings.TrimPrefix(cleanVirtualPath(remotePath), "/")
 }
 
 func directoryPrefix(remotePath string) string {
@@ -521,12 +539,15 @@ func directoryPrefix(remotePath string) string {
 	if key == "" {
 		return ""
 	}
-	return strings.TrimSuffix(key, "/") + "/"
+	if strings.HasSuffix(key, "/") {
+		return key
+	}
+	return key + "/"
 }
 
 func virtualObjectPath(key string) string {
-	if strings.TrimSpace(key) == "" {
+	if key == "" {
 		return "/"
 	}
-	return "/" + strings.TrimLeft(key, "/")
+	return "/" + key
 }

@@ -8,6 +8,7 @@ import { Notice } from "../../../components/ui/notice";
 import { saveBlob } from "../../../lib/api";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { S3PresignDialog } from "./presign-dialog";
+import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths";
 import { S3VersionsDialog, VersionsIcon } from "./versions-dialog";
 import { LifecycleIcon, S3LifecycleDialog } from "./lifecycle-dialog";
 import { defaultS3ConfirmDialog, defaultUploadDialog, S3ConfirmDialog, S3UploadDialog } from "./dialogs";
@@ -323,7 +324,7 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
     openConfirmDialog({
       title: "Delete S3 object",
       description: "This permanently deletes the selected object from the bucket.",
-      details: [{ label: "Object", value: selectedKey }],
+      details: [{ label: "Object", value: JSON.stringify(selectedKey) }],
       danger: true,
       action: async () => {
         const deleted = await runS3Action({
@@ -657,6 +658,8 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
         options={{
           transportLabel: "S3 object storage",
           defaultDirectory: "/",
+          joinRemotePath: joinTransferPath,
+          normalizeRemoteDirectoryInput: normalizeTransferDirectory,
           recursive: true,
           notice:
             "S3 transfers use bounded queues with multipart uploads, progress, pause, cancel, and short-lived local staging. A paused transfer resumes only while this gateway process remains running.",

@@ -22,21 +22,28 @@ export function defaultRemoteDirectory() {
   return "/home";
 }
 
+export function fileTransferPathPolicy({
+  joinRemotePath: join = joinRemotePath,
+  normalizeRemoteDirectoryInput: normalize = normalizeRemoteDirectoryInput,
+}) {
+  return { joinRemotePath: join, normalizeRemoteDirectoryInput: normalize };
+}
+
 export function pendingBatchItemIDs(batch) {
   return (batch?.items || []).filter((item) => item.status === "pending").map((item) => Number(item.id));
 }
 
-export function rememberedDownloadPath(server, fallback) {
-  const defaultPath = normalizeRemoteDirectoryInput(fallback || "/home");
+export function rememberedDownloadPath(server, fallback, normalize = normalizeRemoteDirectoryInput) {
+  const defaultPath = normalize(fallback || "/home");
   if (typeof window === "undefined" || !server?.id) return defaultPath;
   const value = window.localStorage.getItem(downloadPathStorageKey(server.id));
   if (!value) return defaultPath;
-  return normalizeRemoteDirectoryInput(value);
+  return normalize(value);
 }
 
-export function rememberDownloadPath(server, path) {
+export function rememberDownloadPath(server, path, normalize = normalizeRemoteDirectoryInput) {
   if (typeof window === "undefined" || !server?.id) return;
-  window.localStorage.setItem(downloadPathStorageKey(server.id), normalizeRemoteDirectoryInput(path || "/home"));
+  window.localStorage.setItem(downloadPathStorageKey(server.id), normalize(path || "/home"));
 }
 
 export function forgetDownloadPath(server) {
@@ -51,6 +58,10 @@ export function joinRemotePath(remoteDir, remoteName) {
     .replace(/^\/+/, "");
   if (dir === "/") return `/${name}`;
   return `${dir.replace(/\/+$/, "")}/${name}`;
+}
+
+export function relocateUploadQueue(queue, directory, join = joinRemotePath) {
+  return queue.map((item) => ({ ...item, remote_path: join(directory, item.relative_path || item.name) }));
 }
 
 export function normalizeRemoteDirectoryInput(value) {

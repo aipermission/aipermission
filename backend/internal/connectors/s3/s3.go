@@ -262,7 +262,7 @@ func objectActions() []connectors.ActionDefinition {
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "prefix", Label: "Prefix", Type: connectors.FieldString, Description: "Optional object key prefix. Use a folder prefix ending in / to browse inside that folder."},
+				{Name: "prefix", Label: "Prefix", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional object key prefix. Use a folder prefix ending in / to browse inside that folder."},
 				{Name: "search", Label: "Search", Type: connectors.FieldString, Description: "Optional case-insensitive key search applied across bounded list pages. Folder grouping is disabled while searching."},
 				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional pagination cursor returned as next_cursor by a previous list_objects response."},
 				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultS3ListLimit, Description: "Maximum objects to return, capped by the connector."},
@@ -276,7 +276,7 @@ func objectActions() []connectors.ActionDefinition {
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key returned by list_objects."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact object key returned by list_objects."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 32 << 10},
 		},
@@ -287,7 +287,7 @@ func objectActions() []connectors.ActionDefinition {
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key returned by list_objects."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact object key returned by list_objects."},
 				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldInteger, Default: defaultDownloadMax, Description: "Maximum bytes to read, capped by the connector."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDownloadBytes},
@@ -299,7 +299,7 @@ func objectActions() []connectors.ActionDefinition {
 			Category:    "write",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Destination object key."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Destination object key."},
 				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline, Description: "Text payload for small text objects. Use this or content_base64, not both."},
 				{Name: "content_base64", Label: "Base64 content", Type: connectors.FieldMultiline, Description: "Base64 payload for binary objects. Use this or content_text, not both."},
 				{Name: "content_type", Label: "Content type", Type: connectors.FieldString, Default: "application/octet-stream", Description: "Object content type to send with the upload."},
@@ -316,7 +316,7 @@ func objectActions() []connectors.ActionDefinition {
 			Category:    "destructive",
 			Risk:        connectors.RiskDestructive,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key to delete."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact object key to delete."},
 				{Name: "expected_etag", Label: "Expected ETag", Type: connectors.FieldString, Description: "Optional current ETag. When set, deletion succeeds only if the object still has this ETag."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
@@ -333,7 +333,7 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			Category:    "sharing",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact existing object key."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact existing object key."},
 				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldInteger, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 8000, TemporaryCapabilityFields: []string{"url"}},
@@ -345,7 +345,7 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			Category:    "sharing",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact destination object key."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact destination object key."},
 				{Name: "expires_seconds", Label: "Expires in seconds", Type: connectors.FieldInteger, Default: defaultPresignedExpirySeconds, Description: "URL lifetime from 60 to 3600 seconds."},
 				{Name: "overwrite", Label: "Allow overwrite", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless replacing an existing object is intentional."},
 			}},
@@ -358,7 +358,7 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			Category:    "versioning",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact object key."},
 				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional cursor returned by the previous page."},
 				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultVersionListLimit, Description: "Maximum version records requested from S3."},
 			}},
@@ -371,8 +371,8 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			Category:    "versioning",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
-				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact stored version ID returned by list_object_versions."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact object key."},
+				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact stored version ID returned by list_object_versions."},
 				{Name: "expected_current_etag", Label: "Expected current ETag", Type: connectors.FieldString, Description: "Current destination ETag read immediately before approval. Mutually exclusive with expected_current_absent."},
 				{Name: "expected_current_absent", Label: "Expect current object to be absent", Type: connectors.FieldBoolean, Default: false, Description: "Use only after a metadata read confirms the destination key is absent. Mutually exclusive with expected_current_etag."},
 			}},
@@ -385,8 +385,8 @@ func signedURLAndVersionActions() []connectors.ActionDefinition {
 			Category:    "destructive",
 			Risk:        connectors.RiskDestructive,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true, Description: "Exact object key."},
-				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, Required: true, Description: "Exact version ID returned by list_object_versions."},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact object key."},
+				{Name: "version_id", Label: "Version ID", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact version ID returned by list_object_versions."},
 			}},
 			RetryPolicy: connectors.RetryPolicy{Class: connectors.RetryIdempotent},
 			OutputHint:  connectors.OutputHint{Format: "json", MaxBytes: 4000},
@@ -412,7 +412,7 @@ func lifecycleActions() []connectors.ActionDefinition {
 			Risk:        connectors.RiskDestructive,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "rule_id", Label: "Rule ID", Type: connectors.FieldString, Required: true, Default: defaultLifecycleRuleID, Description: "Stable identifier for the replacement rule."},
-				{Name: "prefix", Label: "Object prefix", Type: connectors.FieldString, Description: "Optional key prefix. Empty applies to the whole bucket."},
+				{Name: "prefix", Label: "Object prefix", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional key prefix. Empty applies to the whole bucket."},
 				{Name: "expire_current_after_days", Label: "Expire current after days", Type: connectors.FieldInteger, Default: 0, Description: "0 disables current-version expiration."},
 				{Name: "expire_noncurrent_after_days", Label: "Expire noncurrent after days", Type: connectors.FieldInteger, Default: 0, Description: "0 disables noncurrent-version expiration."},
 				{Name: "abort_incomplete_multipart_days", Label: "Abort multipart after days", Type: connectors.FieldInteger, Default: 7, Description: "0 disables incomplete multipart cleanup."},
@@ -441,9 +441,14 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		title = "Read S3 bucket info"
 		summary = fmt.Sprintf("Check bucket %q access.", s3Bucket(req.Target))
 	case ActionListObjects:
-		prefix := strings.TrimSpace(stringValue(input, "prefix"))
+		prefix := stringValue(input, "prefix")
 		search := strings.TrimSpace(stringValue(input, "search"))
 		cursor := strings.TrimSpace(stringValue(input, "cursor"))
+		if search != "" {
+			if _, err := decodeS3SearchCursor(cursor, prefix, strings.ToLower(search)); err != nil {
+				return connectors.PreparedAction{}, err
+			}
+		}
 		limit := clampedInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
 		input["prefix"] = prefix
 		input["search"] = search
@@ -781,54 +786,27 @@ func executeBucketInfo(ctx context.Context, client *s3Client) (connectors.Action
 }
 
 func executeListObjects(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
-	prefix := strings.TrimSpace(stringValue(input, "prefix"))
+	prefix := stringValue(input, "prefix")
 	search := strings.ToLower(strings.TrimSpace(stringValue(input, "search")))
 	cursor := strings.TrimSpace(stringValue(input, "cursor"))
 	limit := clampedInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
-
-	objects := make([]map[string]any, 0, limit)
-	directories := make([]map[string]any, 0)
-	nextCursor := cursor
-	isTruncated := false
-	scanned := 0
-	scanLimited := false
-	pageLimit := limit
-	delimiter := search == ""
 	if search != "" {
-		pageLimit = maxS3ListLimit
+		return executeSearchObjects(ctx, client, prefix, search, cursor, limit)
 	}
 
-	for page := 0; page < maxS3SearchPages; page++ {
-		result, err := client.ListObjects(ctx, prefix, nextCursor, pageLimit, delimiter)
-		if err != nil {
-			return connectors.ActionResult{}, err
-		}
-		scanned += len(result.Contents)
-		isTruncated = result.IsTruncated
-		if search == "" {
-			for _, directory := range result.CommonPrefixes {
-				directories = append(directories, s3DirectorySummary(directory))
-			}
-		}
-		for _, object := range result.Contents {
-			if search != "" && !strings.Contains(strings.ToLower(object.Key), search) {
-				continue
-			}
-			objects = append(objects, s3ObjectSummary(object))
-		}
-		nextCursor = result.NextContinuationToken
-		if search == "" || len(objects) >= limit || !result.IsTruncated || nextCursor == "" {
-			break
-		}
-		if page == maxS3SearchPages-1 {
-			scanLimited = true
-		}
+	result, err := client.ListObjects(ctx, prefix, cursor, limit, true)
+	if err != nil {
+		return connectors.ActionResult{}, err
 	}
-
-	if search != "" && len(objects) >= limit {
-		isTruncated = nextCursor != ""
+	directories := make([]map[string]any, 0, len(result.CommonPrefixes))
+	for _, directory := range result.CommonPrefixes {
+		directories = append(directories, s3DirectorySummary(directory))
 	}
-	return s3ListResult(client.bucket, prefix, search, directories, objects, isTruncated, nextCursor, scanned, scanLimited), nil
+	objects := make([]map[string]any, 0, len(result.Contents))
+	for _, object := range result.Contents {
+		objects = append(objects, s3ObjectSummary(object))
+	}
+	return s3ListResult(client.bucket, prefix, search, directories, objects, result.IsTruncated, result.NextContinuationToken, len(result.Contents), false, limit), nil
 }
 
 func s3ObjectSummary(object s3Object) map[string]any {
@@ -849,7 +827,13 @@ func s3DirectorySummary(directory s3CommonPrefix) map[string]any {
 	}
 }
 
-func s3ListResult(bucket string, prefix string, search string, directories []map[string]any, objects []map[string]any, isTruncated bool, nextCursor string, scanned int, scanLimited bool) connectors.ActionResult {
+func s3ListResult(bucket string, prefix string, search string, directories []map[string]any, objects []map[string]any, isTruncated bool, nextCursor string, scanned int, scanLimited bool, limit int) connectors.ActionResult {
+	if directories == nil {
+		directories = []map[string]any{}
+	}
+	if objects == nil {
+		objects = []map[string]any{}
+	}
 	hints := s3ListAssistantHints(prefix, search, len(directories), len(objects), isTruncated, nextCursor, scanLimited)
 	output := map[string]any{
 		"bucket":          bucket,
@@ -870,7 +854,7 @@ func s3ListResult(bucket string, prefix string, search string, directories []map
 			"prefix": prefix,
 			"search": search,
 			"cursor": nextCursor,
-			"limit":  defaultS3ListLimit,
+			"limit":  limit,
 		}
 	}
 	return connectors.ActionResult{

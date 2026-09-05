@@ -210,6 +210,7 @@ func equalFields(left Field, right Field) bool {
 		left.Label != right.Label ||
 		left.Type != right.Type ||
 		left.Required != right.Required ||
+		left.PreserveWhitespace != right.PreserveWhitespace ||
 		left.Secret != right.Secret ||
 		left.Description != right.Description ||
 		!reflect.DeepEqual(left.Default, right.Default) ||

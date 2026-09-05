@@ -244,7 +244,7 @@ func objectVersionOutput(version s3ObjectVersion, deleteMarker bool) map[string]
 }
 
 func normalizeVersionID(input map[string]any) (string, error) {
-	versionID := strings.TrimSpace(stringValue(input, "version_id"))
+	versionID := stringValue(input, "version_id")
 	if versionID == "" {
 		return "", fmt.Errorf("version_id is required")
 	}

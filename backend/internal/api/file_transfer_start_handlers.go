@@ -33,9 +33,9 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	remotePath, err := normalizeRemoteFilePath(r.FormValue("remote_path"))
+	remotePath, err := s.normalizeTransferPath(r.Context(), runtime, runtimeID, r.FormValue("remote_path"), false)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeTransferPathError(w, err)
 		return
 	}
 	file, header, err := r.FormFile("file")
@@ -125,9 +125,9 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 	if status != nil && strings.TrimSpace(*status) != "" {
 		initialStatus = strings.TrimSpace(*status)
 	}
-	remoteDir, err := normalizeRemoteDirectoryPath(r.FormValue("remote_dir"))
+	remoteDir, err := s.normalizeTransferPath(r.Context(), runtime, runtimeID, r.FormValue("remote_dir"), true)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeTransferPathError(w, err)
 		return filetransfer.BatchRecord{}, 0, false, false
 	}
 	overwrite := parseFormBool(r, "overwrite")
@@ -151,20 +151,28 @@ func (s fileTransferHandlers) createUploadBatchFromMultipart(w http.ResponseWrit
 		}
 	}
 	fileNames := make([]string, 0, len(headers))
+	adapter, err := s.fileTransferAdapter(r.Context(), runtime, runtimeID)
+	if err != nil {
+		handleConnectorTargetRuntimeError(w, err)
+		return filetransfer.BatchRecord{}, 0, false, false
+	}
 	remotePaths := make([]string, 0, len(headers))
 	seenRemotePaths := map[string]bool{}
 	for index, header := range headers {
 		fileName := safeFileName(header.Filename)
-		relativePath := fileName
-		if len(relativePaths) > 0 {
-			var err error
-			relativePath, err = normalizeRelativeTransferPath(relativePaths[index])
-			if err != nil {
-				writeError(w, http.StatusBadRequest, err.Error())
-				return filetransfer.BatchRecord{}, 0, false, false
-			}
+		relativePath, err := transferUploadFilename(adapter, header)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid upload filename")
+			return filetransfer.BatchRecord{}, 0, false, false
 		}
-		remotePath := joinRemoteRelativePath(remoteDir, relativePath)
+		if len(relativePaths) > 0 {
+			relativePath = relativePaths[index]
+		}
+		remotePath, err := transferUploadPath(adapter, remoteDir, relativePath)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return filetransfer.BatchRecord{}, 0, false, false
+		}
 		if seenRemotePaths[remotePath] {
 			writeError(w, http.StatusBadRequest, "upload queue contains duplicate remote paths")
 			return filetransfer.BatchRecord{}, 0, false, false
@@ -264,9 +272,9 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	remotePath, err := normalizeRemoteFilePath(request.RemotePath)
+	remotePath, err := s.normalizeTransferPath(r.Context(), runtime, request.RuntimeID, request.RemotePath, false)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeTransferPathError(w, err)
 		return
 	}
 	if request.RuntimeID < 1 {
@@ -358,21 +366,22 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 	if len(remotePaths) > maxFileTransferBatchItems {
 		return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, fmt.Sprintf("cannot download more than %d files at once", maxFileTransferBatchItems))
 	}
-	var adapter connectorapi.FileTransferAdapter
-	validateRemoteBeforeApproval := status != filetransfer.StatusPendingApproval
-	if validateRemoteBeforeApproval {
-		var err error
-		adapter, err = s.fileTransferAdapter(ctx, runtime, runtimeID)
-		if err != nil {
-			return filetransfer.BatchRecord{}, err
+	adapter, err := s.fileTransferAdapter(ctx, runtime, runtimeID)
+	if err != nil {
+		return filetransfer.BatchRecord{}, err
+	}
+	if policy, ok := adapter.(connectorapi.FileTransferPathPolicy); ok && (len(remotePaths) > 1 || archiveName != "") {
+		if err := policy.ValidateDownloadPaths(remotePaths); err != nil {
+			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, err.Error())
 		}
 	}
+	validateRemoteBeforeApproval := status != filetransfer.StatusPendingApproval
 	items := make([]filetransfer.CreateRequest, 0, len(remotePaths))
 	tempPaths := []string{}
 	seenRemotePaths := map[string]bool{}
 	var totalSize int64
 	for _, raw := range remotePaths {
-		remotePath, err := normalizeRemoteFilePath(raw)
+		remotePath, err := s.normalizeTransferPath(ctx, runtime, runtimeID, raw, false)
 		if err != nil {
 			cleanupTempPaths(tempPaths)
 			return filetransfer.BatchRecord{}, newFileTransferStartError(http.StatusBadRequest, err.Error())

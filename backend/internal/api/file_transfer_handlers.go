@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 	"time"
 
@@ -211,9 +210,9 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
-	remotePath, err := normalizeRemoteDirectoryPath(request.Path)
+	remotePath, err := s.normalizeTransferPath(r.Context(), runtime, request.RuntimeID, request.Path, true)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeTransferPathError(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -236,10 +235,7 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, adapter, http.StatusBadGateway, "remote file browse failed", err)
 		return
 	}
-	parent := path.Dir(remotePath)
-	if parent == "." || parent == remotePath {
-		parent = "/"
-	}
+	parent := transferParent(adapter, remotePath)
 	response := browseRemoteFilesResponse{
 		Path:       remotePath,
 		Parent:     parent,
@@ -268,9 +264,9 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
-	remotePath, err := normalizeRemoteDirectoryPath(request.Path)
+	remotePath, err := s.normalizeTransferPath(r.Context(), runtime, request.RuntimeID, request.Path, true)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeTransferPathError(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)

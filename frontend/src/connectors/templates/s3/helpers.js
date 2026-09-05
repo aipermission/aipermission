@@ -39,22 +39,20 @@ export function visibleObjectBytes(objects) {
 }
 
 export function normalizeObjectKey(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^\/+/, "");
+  return String(value ?? "");
 }
 
 export function joinObjectKey(prefix, name) {
   const cleanPrefix = normalizeObjectKey(prefix);
   const cleanName = normalizeObjectKey(name);
   if (!cleanPrefix) return cleanName;
-  return `${cleanPrefix.replace(/\/+$/, "")}/${cleanName}`;
+  return `${cleanPrefix}${cleanPrefix.endsWith("/") ? "" : "/"}${cleanName}`;
 }
 
 export function parentPrefix(value) {
-  const clean = normalizeObjectKey(value).replace(/\/+$/, "");
+  const clean = normalizeObjectKey(value).replace(/\/$/, "");
   const index = clean.lastIndexOf("/");
-  if (index <= 0) return "";
+  if (index < 0) return "";
   return `${clean.slice(0, index)}/`;
 }
 
