@@ -108,15 +108,13 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 }
 
 func (runtime *databaseRuntime) isMCPStarted() bool {
-	runtime.mcpMu.RLock()
-	defer runtime.mcpMu.RUnlock()
-	return runtime.mcpStarted
+	return runtime != nil && runtime.runtimeState.MCPStarted()
 }
 
 func (runtime *databaseRuntime) setMCPStarted(enabled bool) {
-	runtime.mcpMu.Lock()
-	runtime.mcpStarted = enabled
-	runtime.mcpMu.Unlock()
+	if runtime != nil {
+		runtime.runtimeState.SetMCPStarted(enabled)
+	}
 }
 
 func (s *Server) rejectStoppedMCP(w http.ResponseWriter, runtime *databaseRuntime) bool {

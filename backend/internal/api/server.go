@@ -18,6 +18,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -76,8 +77,7 @@ type databaseRuntime struct {
 	redactionLoaded    bool
 	credBoundaryMu     sync.RWMutex
 	credBoundaries     map[int64]connectorCredentialBoundary
-	mcpMu              sync.RWMutex
-	mcpStarted         bool
+	runtimeState       runtimecontrol.State
 	workspaceUUID      string
 	uiRetryIdentity    string
 	runtimeInstanceID  string
