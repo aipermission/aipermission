@@ -343,6 +343,99 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 	}
 }
 
+func TestPauseResumeBatchRollBackCanonicalAndHistoryStateTogether(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	runtimeID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
+		RuntimeID: runtimeID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
+		Items: []CreateRequest{{
+			LocalPath: "a.txt", RemotePath: "/tmp/a.txt", FileName: "a.txt", SizeBytes: 100, TempPath: "/tmp/a",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := store.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
+		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
+	}
+	if ok, err := store.MarkRunning(ctx, batch.Items[0].ID); err != nil || !ok {
+		t.Fatalf("mark item running: ok=%v err=%v", ok, err)
+	}
+
+	assertStates := func(batchStatus, itemStatus, historyStatus string) {
+		t.Helper()
+		current, err := store.GetBatch(ctx, batch.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.Status != batchStatus || current.Items[0].Status != itemStatus {
+			t.Fatalf("batch/item status = %q/%q, want %q/%q", current.Status, current.Items[0].Status, batchStatus, itemStatus)
+		}
+		var projected string
+		if err := database.QueryRowContext(ctx, `
+			SELECT status FROM history_entries
+			WHERE source_ref_type = 'file_transfer' AND source_ref_id = ?`, batch.Items[0].ID).Scan(&projected); err != nil {
+			t.Fatal(err)
+		}
+		if projected != historyStatus {
+			t.Fatalf("history status = %q, want %q", projected, historyStatus)
+		}
+	}
+
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_batch_item_pause
+		BEFORE UPDATE OF status ON file_transfers
+		WHEN NEW.status = 'paused'
+		BEGIN SELECT RAISE(ABORT, 'injected pause failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := store.PauseBatch(ctx, batch.ID); err == nil || changed {
+		t.Fatalf("pause with injected failure: changed=%v err=%v", changed, err)
+	}
+	assertStates(StatusRunning, StatusRunning, StatusRunning)
+	if _, err := database.Exec(`DROP TRIGGER reject_batch_item_pause`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_batch_history_pause
+		BEFORE UPDATE OF status ON history_entries
+		WHEN NEW.status = 'paused'
+		BEGIN SELECT RAISE(ABORT, 'injected history failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := store.PauseBatch(ctx, batch.ID); err == nil || changed {
+		t.Fatalf("pause with injected history failure: changed=%v err=%v", changed, err)
+	}
+	assertStates(StatusRunning, StatusRunning, StatusRunning)
+	if _, err := database.Exec(`DROP TRIGGER reject_batch_history_pause`); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := store.PauseBatch(ctx, batch.ID); err != nil || !changed {
+		t.Fatalf("pause batch: changed=%v err=%v", changed, err)
+	}
+	assertStates(StatusPaused, StatusPaused, StatusPaused)
+
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_batch_item_resume
+		BEFORE UPDATE OF status ON file_transfers
+		WHEN OLD.status = 'paused' AND NEW.status = 'running'
+		BEGIN SELECT RAISE(ABORT, 'injected resume failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := store.ResumeBatch(ctx, batch.ID); err == nil || changed {
+		t.Fatalf("resume with injected failure: changed=%v err=%v", changed, err)
+	}
+	assertStates(StatusPaused, StatusPaused, StatusPaused)
+}
+
 func TestStoreFailsBatchWithoutReclassifyingCompletedItems(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {
@@ -635,6 +728,19 @@ func TestStoreFailsActiveTransfers(t *testing.T) {
 	if ok, err := store.MarkRunning(ctx, standalone.ID); err != nil || !ok {
 		t.Fatalf("mark standalone running: ok=%v err=%v", ok, err)
 	}
+	pending, err := store.Create(ctx, CreateRequest{
+		RuntimeID:  runtimeID,
+		Direction:  DirectionUpload,
+		Source:     SourceUI,
+		LocalPath:  "pending.txt",
+		RemotePath: "/tmp/pending.txt",
+		FileName:   "pending.txt",
+		SizeBytes:  50,
+		TempPath:   "/tmp/pending",
+	})
+	if err != nil {
+		t.Fatalf("create pending transfer: %v", err)
+	}
 	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
 		RuntimeID: runtimeID,
 		Direction: DirectionUpload,
@@ -660,14 +766,21 @@ func TestStoreFailsActiveTransfers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get standalone: %v", err)
 	}
-	if updated.Status != StatusFailed || updated.Error != "transfer stopped" || updated.CompletedAt == "" {
+	if updated.Status != StatusFailed || updated.Error != "transfer stopped" || updated.FailureKind != FailureKindOutcomeUnknown || updated.CompletedAt == "" {
 		t.Fatalf("unexpected failed standalone transfer: %#v", updated)
+	}
+	pending, err = store.Get(ctx, pending.ID)
+	if err != nil {
+		t.Fatalf("get pending transfer: %v", err)
+	}
+	if pending.Status != StatusFailed || pending.FailureKind != FailureKindInterrupted {
+		t.Fatalf("unexpected interrupted pending transfer: %#v", pending)
 	}
 	updatedBatch, err := store.GetBatch(ctx, batch.ID)
 	if err != nil {
 		t.Fatalf("get batch: %v", err)
 	}
-	if updatedBatch.Status != StatusFailed || updatedBatch.Error != "batch stopped" || updatedBatch.Items[0].Status != StatusFailed {
+	if updatedBatch.Status != StatusFailed || updatedBatch.Error != "batch stopped" || updatedBatch.FailureKind != FailureKindOutcomeUnknown || updatedBatch.Items[0].Status != StatusFailed || updatedBatch.Items[0].FailureKind != FailureKindOutcomeUnknown {
 		t.Fatalf("unexpected failed batch: %#v", updatedBatch)
 	}
 }

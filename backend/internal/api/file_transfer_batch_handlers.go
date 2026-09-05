@@ -89,7 +89,7 @@ func (s fileTransferHandlers) pauseFileTransferBatch(w http.ResponseWriter, r *h
 	if !ok {
 		return
 	}
-	control := runtime.batchControl(id)
+	control := runtime.transferJobs.Batches.Control(id)
 	if control == nil {
 		writeError(w, http.StatusConflict, "file transfer batch is not active")
 		return
@@ -126,7 +126,7 @@ func (s fileTransferHandlers) resumeFileTransferBatch(w http.ResponseWriter, r *
 	if !ok {
 		return
 	}
-	control := runtime.batchControl(id)
+	control := runtime.transferJobs.Batches.Control(id)
 	if control == nil {
 		writeError(w, http.StatusConflict, "file transfer batch is not active")
 		return
@@ -159,8 +159,8 @@ func (s fileTransferHandlers) cancelFileTransferBatch(w http.ResponseWriter, r *
 	if !ok {
 		return
 	}
-	runtime.cancelBatch(id)
-	if control := runtime.batchControl(id); control != nil {
+	runtime.transferJobs.Batches.Cancel(id)
+	if control := runtime.transferJobs.Batches.Control(id); control != nil {
 		control.Resume()
 	}
 	changed, err := runtime.fileTransfers.CancelBatch(context.Background(), id, "canceled by local user")
@@ -267,7 +267,7 @@ func (s fileTransferHandlers) approveFileTransferBatch(w http.ResponseWriter, r 
 		"note":           strings.TrimSpace(request.Note),
 	})
 	if len(request.ItemIDs) > 0 {
-		go s.runTransferBatch(runtime, batch.ID, batch.Overwrite)
+		s.launchTransferBatch(runtime, batch.ID, batch.Overwrite)
 	}
 	writeJSON(w, http.StatusOK, batch)
 }

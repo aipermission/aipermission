@@ -10,13 +10,17 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 )
 
-func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int64, overwrite bool) {
+func (s fileTransferHandlers) launchUpload(runtime *databaseRuntime, transferID int64, overwrite bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), fileTransferTimeout)
-	runtime.registerTransferCancel(transferID, cancel)
-	defer runtime.unregisterTransferCancel(transferID)
-	defer cancel()
+	runtime.transferJobs.Files.Launch(transferID, cancel, func() {
+		s.runUpload(ctx, runtime, transferID, overwrite)
+	})
+}
+
+func (s fileTransferHandlers) runUpload(ctx context.Context, runtime *databaseRuntime, transferID int64, overwrite bool) {
 	defer s.removeTransferTemp(runtime, transferID)
 	ok, err := runtime.fileTransfers.MarkRunning(ctx, transferID)
 	if err != nil {
@@ -61,11 +65,14 @@ func (s fileTransferHandlers) runUpload(runtime *databaseRuntime, transferID int
 	})
 }
 
-func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID int64) {
+func (s fileTransferHandlers) launchDownload(runtime *databaseRuntime, transferID int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), fileTransferTimeout)
-	runtime.registerTransferCancel(transferID, cancel)
-	defer runtime.unregisterTransferCancel(transferID)
-	defer cancel()
+	runtime.transferJobs.Files.Launch(transferID, cancel, func() {
+		s.runDownload(ctx, runtime, transferID)
+	})
+}
+
+func (s fileTransferHandlers) runDownload(ctx context.Context, runtime *databaseRuntime, transferID int64) {
 	ok, err := runtime.fileTransfers.MarkRunning(ctx, transferID)
 	if err != nil {
 		s.finishFileTransferError(runtime, transferID, ctx, err)
@@ -112,14 +119,17 @@ func (s fileTransferHandlers) runDownload(runtime *databaseRuntime, transferID i
 	})
 }
 
-func (s fileTransferHandlers) runTransferBatch(runtime *databaseRuntime, batchID int64, overwrite bool) {
+func (s fileTransferHandlers) launchTransferBatch(runtime *databaseRuntime, batchID int64, overwrite bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), fileTransferBatchTimeout)
-	control := newTransferControl()
-	runtime.registerBatchCancel(batchID, cancel)
-	runtime.registerBatchControl(batchID, control)
-	defer runtime.unregisterBatchCancel(batchID)
-	defer runtime.unregisterBatchControl(batchID)
-	defer cancel()
+	runtime.transferJobs.Batches.Launch(batchID, cancel, func() {
+		s.runTransferBatch(ctx, runtime, batchID, overwrite)
+	})
+}
+
+func (s fileTransferHandlers) runTransferBatch(ctx context.Context, runtime *databaseRuntime, batchID int64, overwrite bool) {
+	control := &transferjobs.Control{}
+	runtime.transferJobs.Batches.RegisterControl(batchID, control)
+	defer runtime.transferJobs.Batches.UnregisterControl(batchID)
 
 	batch, err := runtime.fileTransfers.GetBatch(ctx, batchID)
 	if err != nil {
@@ -249,12 +259,12 @@ func (s fileTransferHandlers) validateDownloadBatchBeforeRun(ctx context.Context
 	return runtime.fileTransfers.UpdatePendingBatchItemSizes(ctx, batch.ID, sizes)
 }
 
-func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime *databaseRuntime, transferID int64, overwrite bool, control *transferControl) {
+func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime *databaseRuntime, transferID int64, overwrite bool, control *transferjobs.Control) {
 	itemCtx, itemCancel := context.WithCancel(ctx)
-	runtime.registerTransferCancel(transferID, itemCancel)
-	runtime.registerTransferControl(transferID, control)
-	defer runtime.unregisterTransferCancel(transferID)
-	defer runtime.unregisterTransferControl(transferID)
+	runtime.transferJobs.Files.RegisterCancel(transferID, itemCancel)
+	runtime.transferJobs.Files.RegisterControl(transferID, control)
+	defer runtime.transferJobs.Files.UnregisterCancel(transferID)
+	defer runtime.transferJobs.Files.UnregisterControl(transferID)
 	defer itemCancel()
 
 	ok, err := runtime.fileTransfers.MarkRunning(itemCtx, transferID)

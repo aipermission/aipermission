@@ -258,5 +258,5 @@ func (s *Server) ConnectorRunTransferBatch(runtime connectorapi.GatewayRuntime, 
 	if !ok || dbRuntime == nil {
 		return
 	}
-	fileTransferHandlers{s}.runTransferBatch(dbRuntime, batchID, overwrite)
+	fileTransferHandlers{s}.launchTransferBatch(dbRuntime, batchID, overwrite)
 }

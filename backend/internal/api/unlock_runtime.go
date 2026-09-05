@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -29,6 +30,8 @@ var (
 	errDatabaseAuthentication = errors.New("database authentication failed")
 	errDatabaseInitialization = errors.New("database initialization failed")
 )
+
+const fileTransferShutdownWait = 10 * time.Second
 
 func (s *Server) isUnlocked() bool {
 	s.mu.RLock()
@@ -212,11 +215,7 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		adapterRegistry:    s.connectorAdapterRegistry(),
 		connectorResources: connectorRuntimeResources(s.connectorRegistry(), s.connectorAdapterRegistry(), database, secretVault, workspaceUUID),
 		fileTransfers:      filetransfer.NewStore(database),
-		transferCancels:    map[int64]context.CancelFunc{},
 		credBoundaries:     map[int64]connectorCredentialBoundary{},
-		batchCancels:       map[int64]context.CancelFunc{},
-		transferControls:   map[int64]*transferControl{},
-		batchControls:      map[int64]*transferControl{},
 		workspaceUUID:      workspaceUUID,
 		uiRetryIdentity:    uiRetryIdentity,
 		runtimeInstanceID:  runtimeInstanceID,
@@ -465,11 +464,26 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.id, err)
 	}
 	if runtime.fileTransfers != nil {
-		runtime.cancelAllFileTransfers()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), fileTransferShutdownWait)
+		drained := runtime.transferJobs.Shutdown(shutdownCtx)
+		cancel()
 		if err := runtime.fileTransfers.FailActive(context.Background(), "workspace locked while file transfer was running", "workspace locked while file transfer queue was running"); err != nil {
 			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.id, err)
 		}
+		if !drained {
+			go func() {
+				runtime.transferJobs.Wait(context.Background())
+				if err := closeRuntimeStorage(runtime); err != nil {
+					log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.id, err)
+				}
+			}()
+			return fmt.Errorf("file transfer shutdown exceeded %s; runtime storage close deferred until workers exit", fileTransferShutdownWait)
+		}
 	}
+	return closeRuntimeStorage(runtime)
+}
+
+func closeRuntimeStorage(runtime *databaseRuntime) error {
 	if runtime.auditDispatcher != nil {
 		runtime.auditDispatcher.Stop()
 	}

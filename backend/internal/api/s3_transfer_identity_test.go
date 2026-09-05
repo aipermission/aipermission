@@ -90,7 +90,7 @@ func TestS3TransferAPIExactIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			handlers.runTransferBatch(runtime, batch.ID, false)
+			handlers.runTransferBatch(context.Background(), runtime, batch.ID, false)
 			item, err := runtime.fileTransfers.Get(context.Background(), batch.Items[0].ID)
 			if err != nil || item.Status != filetransfer.StatusCompleted {
 				t.Fatalf("transfer = %#v, %v", item, err)
