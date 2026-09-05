@@ -120,6 +120,7 @@ func executeScanKeys(client *redisClient, input map[string]any) (connectors.Acti
 	cursor := normalizeStringDefault(input, "cursor", "0")
 	limit := normalizeInt(input, "limit", defaultScanLimit, 1, maxScanLimit)
 	keys := []string{}
+	seen := make(map[string]struct{}, limit)
 	nextCursor := cursor
 	pages := 0
 	bytes := 0
@@ -136,12 +137,16 @@ func executeScanKeys(client *redisClient, input map[string]any) (connectors.Acti
 		nextCursor = pageCursor
 		pages++
 		for _, key := range page {
+			if _, exists := seen[key]; exists {
+				continue
+			}
 			if len(key) > maxScanKeyBytes-bytes {
 				return connectors.ActionResult{}, fmt.Errorf("redis scan keys exceed %d bytes; use a narrower MATCH pattern", maxScanKeyBytes)
 			}
+			seen[key] = struct{}{}
 			bytes += len(key)
+			keys = append(keys, key)
 		}
-		keys = append(keys, page...)
 		if nextCursor == "0" {
 			break
 		}
