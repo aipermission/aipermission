@@ -435,7 +435,8 @@ func (s *Server) revalidatePreparedConnectorAction(
 	if err != nil {
 		return prepared, err
 	}
-	_, currentHash, err := connectorApprovalContext(fresh, token, permission, time.Now().UTC().Format(time.RFC3339))
+	tokenSnapshot, permissionSnapshot := connectorActionApprovalSnapshots(token, permission)
+	_, currentHash, err := actions.BuildApprovalContext(fresh, tokenSnapshot, permissionSnapshot, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		return prepared, err
 	}

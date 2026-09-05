@@ -30,7 +30,8 @@ func (s *Server) insertConnectorActionRequest(
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
-	approvalContext, approvalHash, err := connectorApprovalContext(prepared, token, permission, capturedAt)
+	tokenSnapshot, permissionSnapshot := connectorActionApprovalSnapshots(token, permission)
+	approvalContext, approvalHash, err := actions.BuildApprovalContext(prepared, tokenSnapshot, permissionSnapshot, capturedAt)
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}

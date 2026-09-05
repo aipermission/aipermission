@@ -51,7 +51,7 @@ run_fuzz() {
   (cd backend && go test "$package" -run '^$' -fuzz "^${target}$" -fuzztime "$budget" -parallel 1)
 }
 
-run_fuzz ./internal/api FuzzApprovalContextHash
+run_fuzz ./internal/actions FuzzApprovalContextHash
 run_fuzz ./internal/api FuzzBasicRedaction
 run_fuzz ./internal/api FuzzTransferPathNormalization
 run_fuzz ./internal/connectors/sqlsafe FuzzValidateReadOnly

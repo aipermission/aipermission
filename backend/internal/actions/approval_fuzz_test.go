@@ -1,4 +1,4 @@
-package api
+package actions
 
 import (
 	"encoding/hex"
@@ -20,7 +20,7 @@ func FuzzApprovalContextHash(f *testing.F) {
 		if err := json.Unmarshal(payload, &snapshot); err != nil || snapshot == nil {
 			return
 		}
-		hash, err := hashGenericApprovalContext(snapshot)
+		hash, err := hashApprovalContext(snapshot)
 		if err != nil {
 			t.Fatalf("hash approval context: %v", err)
 		}
@@ -30,7 +30,7 @@ func FuzzApprovalContextHash(f *testing.F) {
 		if _, err := hex.DecodeString(hash); err != nil {
 			t.Fatalf("approval hash is not hexadecimal: %q", hash)
 		}
-		repeated, err := hashGenericApprovalContext(snapshot)
+		repeated, err := hashApprovalContext(snapshot)
 		if err != nil || repeated != hash {
 			t.Fatalf("approval hash is not deterministic: first=%q second=%q err=%v", hash, repeated, err)
 		}
@@ -40,7 +40,7 @@ func FuzzApprovalContextHash(f *testing.F) {
 			clone[key] = value
 		}
 		clone["captured_at"] = "changed-without-changing-approval"
-		withDifferentCaptureTime, err := hashGenericApprovalContext(clone)
+		withDifferentCaptureTime, err := hashApprovalContext(clone)
 		if err != nil || withDifferentCaptureTime != hash {
 			t.Fatalf("captured_at changed approval identity: first=%q second=%q err=%v", hash, withDifferentCaptureTime, err)
 		}
@@ -49,6 +49,6 @@ func FuzzApprovalContextHash(f *testing.F) {
 		if err != nil {
 			t.Fatalf("marshal approval context: %v", err)
 		}
-		_ = connectorApprovalDriftReason(string(encoded), string(encoded))
+		_ = ApprovalDriftReason(string(encoded), string(encoded))
 	})
 }
