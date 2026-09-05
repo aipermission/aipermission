@@ -18,7 +18,7 @@ import {
 } from "./remote-restore-helpers";
 
 function unlockTabsGridClass(tabCount) {
-  return tabCount === 4 ? "grid-cols-4" : "grid-cols-3";
+  return tabCount === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3";
 }
 
 export function UnlockPage({ status, onUnlocked }) {
@@ -196,13 +196,13 @@ export function UnlockPage({ status, onUnlocked }) {
         </Notice>
       ) : null}
       <div className={`grid rounded-md border border-stone-200 bg-stone-100 p-1 ${unlockTabsGridClass(tabs.length)}`}>
-        {tabs.map(([value, label]) => (
+        {tabs.map(([value, label], index) => (
           <button
             key={value}
             type="button"
-            className={`h-10 whitespace-nowrap rounded px-2 text-xs font-semibold transition sm:text-sm ${
-              activeTab === value ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"
-            }`}
+            className={`min-h-10 whitespace-normal rounded px-2 py-2 text-xs font-semibold leading-tight transition sm:text-sm ${
+              tabs.length % 2 === 1 && index === tabs.length - 1 ? "col-span-2 sm:col-span-1" : ""
+            } ${activeTab === value ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"}`}
             onClick={() => setActiveTab(value)}
           >
             {label}
