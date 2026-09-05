@@ -42,6 +42,8 @@ and this project uses semantic versioning for public releases.
   changing the generic connector pipeline.
 - Architecture checks now ratchet production-file size, package size, dependency
   fan-out, cycles, connector isolation, and gateway-state access.
+- The frontend runtime image upgrades to the patched Alpine libuuid package required by
+  the container vulnerability gate.
 - Contributor, connector, REST, MCP, S3, and architecture documentation now describes
   the final registration, identity, retry, and runtime ownership contracts.
 
