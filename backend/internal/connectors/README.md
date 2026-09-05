@@ -193,10 +193,14 @@ The generic HTTP handlers should ask the adapter what the connector supports;
 they should not branch on `kind == "ssh"` or `kind == "postgres"`.
 
 Adapter contracts are typed in `internal/connectorapi`. Runtime-backed
-connectors receive `GatewayRuntime` and `GatewayServer`; lifecycle adapters
-receive `TargetLifecycleGateway` or `CredentialResourceGateway`. Do not create
-connector-local copies of those interfaces. Extending the adapter surface should
-mean extending `connectorapi` once and updating every affected adapter.
+connectors receive operation-specific runtime and gateway ports such as
+`ConnectorDataRuntime`, `ActionRuntime`, `TransferRuntime`,
+`RuntimeActionGateway`, and `FileTransferGateway`. Lifecycle operations use
+separate `TargetDeletionGateway`, `TargetOperationGateway`, peer-identity, or
+console-restart ports so connection tests and credential canonicalization do
+not inherit mutation authority. Do not create connector-local copies of those
+interfaces. Extending the adapter surface should mean extending `connectorapi`
+once and updating every affected adapter and exact-method-set test.
 
 New connectors such as HTTP API connectors should follow the
 target/profile/action path by default. If they need a capability beyond the
