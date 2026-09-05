@@ -173,25 +173,14 @@ async function apiPost(path, body) {
 }
 
 async function apiRequest(path, options) {
-  const response = await apiFetch(path, options);
-  const text = await response.text();
-  const data = parseResponseBody(text);
-  if (!response.ok) {
-    throw gatewayAPIError(data, response.status);
-  }
-  return data;
-}
-
-async function apiFetch(path, options) {
   if (!apiToken) {
     throw new Error("AIPERMISSION_API_TOKEN is required.");
   }
   const timeout = Number.isFinite(apiTimeoutMs) && apiTimeoutMs > 0 ? apiTimeoutMs : 60000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
-  let response;
   try {
-    response = await fetch(`${apiUrl}${path}`, {
+    const response = await fetch(`${apiUrl}${path}`, {
       ...options,
       signal: controller.signal,
       headers: {
@@ -199,15 +188,20 @@ async function apiFetch(path, options) {
         ...(options.headers || {}),
       },
     });
+    const text = await response.text();
+    const data = parseResponseBody(text);
+    if (!response.ok) {
+      throw gatewayAPIError(data, response.status);
+    }
+    return data;
   } catch (error) {
-    if (error?.name === "AbortError") {
+    if (controller.signal.aborted) {
       throw new Error(`AIPermission API request timed out after ${timeout}ms`, { cause: error });
     }
     throw error;
   } finally {
     clearTimeout(timer);
   }
-  return response;
 }
 
 function parseResponseBody(text) {
