@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log"
 
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
@@ -14,11 +13,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
-
-type vaultActionRunResult struct {
-	Request        vaultrequests.Request
-	ExecutionError error
-}
 
 func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
 	redact := s.prepareAuditRedactor(ctx, runtime)
@@ -43,69 +37,38 @@ func (s *Server) runVaultActionRequest(
 	userNote string,
 	startedAction string,
 	finishedActionPrefix string,
-) (vaultActionRunResult, error) {
-	item, err := s.claimVaultActionRequest(ctx, runtime, requestID, actor, startedAction, userNote)
-	if err != nil {
-		return vaultActionRunResult{}, err
-	}
-	return s.executeClaimedVaultActionRequest(
-		ctx,
-		runtime,
-		item,
-		actor,
-		userNote,
-		finishedActionPrefix,
-	)
+) (vaultrequests.WorkflowResult, error) {
+	return vaultrequests.RunWorkflow(ctx, requestID, s.vaultActionWorkflowPorts(runtime, actor, userNote, startedAction, finishedActionPrefix))
 }
 
-func (s *Server) executeClaimedVaultActionRequest(
-	ctx context.Context,
-	runtime *databaseRuntime,
-	item vaultrequests.Request,
-	actor string,
-	userNote string,
-	finishedActionPrefix string,
-) (vaultActionRunResult, error) {
-	store := s.vaultRequestStore(ctx, runtime)
-
-	output, executeErr := executeVaultAction(ctx, s, runtime, item)
-	status := vaultrequests.StatusCompleted
-	errorText := ""
-	if executeErr != nil {
-		status = vaultrequests.StatusFailed
-		errorText = s.redactForPersistence(ctx, runtime, executeErr.Error())
-		if isVaultContextDrift(executeErr) {
-			status = vaultrequests.StatusStale
-		}
+func (s *Server) vaultActionWorkflowPorts(runtime *databaseRuntime, actor, userNote, startedAction, finishedActionPrefix string) vaultrequests.WorkflowPorts {
+	return vaultrequests.WorkflowPorts{
+		Claim: func(ctx context.Context, id int64) (vaultrequests.Request, error) {
+			return s.claimVaultActionRequest(ctx, runtime, id, actor, startedAction, userNote)
+		},
+		Execute: func(ctx context.Context, item vaultrequests.Request) (any, error) {
+			return executeVaultAction(ctx, s, runtime, item)
+		},
+		Complete: func(ctx context.Context, id int64, status string, output any, errorText string) (vaultrequests.Request, error) {
+			return s.completeVaultActionRequest(ctx, runtime, id, status, output, errorText, userNote, actor, finishedActionPrefix+"."+status)
+		},
+		Get: func(ctx context.Context, id int64) (vaultrequests.Request, error) {
+			return s.vaultRequestStore(ctx, runtime).Get(ctx, id)
+		},
+		Repair: func(ctx context.Context, id int64) error {
+			if err := history.NewStore(runtime.database).SyncVaultActionRequest(ctx, id); err != nil {
+				log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
+			}
+			return nil
+		},
+		Compensate: func(ctx context.Context, item vaultrequests.Request, output any) error {
+			return compensateVaultActionEffect(ctx, runtime, item, output)
+		},
+		RedactError: func(ctx context.Context, err error) string {
+			return s.redactForPersistence(ctx, runtime, err.Error())
+		},
+		IsStale: isVaultContextDrift,
 	}
-	completed, err := s.completeVaultActionRequest(
-		ctx, runtime, item.ID, status, output, errorText, userNote,
-		actor, finishedActionPrefix+"."+status,
-	)
-	if err != nil {
-		current, getErr := store.Get(ctx, item.ID)
-		if getErr == nil && current.Status == status {
-			if repairErr := history.NewStore(runtime.database).SyncVaultActionRequest(ctx, item.ID); repairErr != nil {
-				log.Printf("Vault request history projection repair failed request=%d error=%v", item.ID, repairErr)
-			}
-			completed = current
-		} else {
-			if compensateErr := compensateVaultActionEffect(ctx, runtime, item, output); compensateErr != nil {
-				return vaultActionRunResult{}, fmt.Errorf("finalize Vault action: %w; compensate effect: %v", err, compensateErr)
-			}
-			failure := "Vault action effect was rolled back because request finalization failed"
-			failed, failErr := s.completeVaultActionRequest(
-				ctx, runtime, item.ID, vaultrequests.StatusFailed, nil, failure, userNote,
-				actor, finishedActionPrefix+"."+vaultrequests.StatusFailed,
-			)
-			if failErr != nil {
-				return vaultActionRunResult{}, fmt.Errorf("finalize Vault action: %w; record compensation: %v", err, failErr)
-			}
-			return vaultActionRunResult{Request: failed, ExecutionError: fmt.Errorf("%s", failure)}, nil
-		}
-	}
-	item = completed
-	return vaultActionRunResult{Request: item, ExecutionError: executeErr}, nil
 }
 
 func (s *Server) claimVaultActionRequest(
