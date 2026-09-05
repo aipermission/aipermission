@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
@@ -23,7 +24,7 @@ func validateVaultApprovalAuthorization(
 		return projectcapabilities.Capability{}, staleVaultContext("MCP execution stopped; send a fresh request after it starts")
 	}
 	token, err := runtime.tokens.Get(ctx, request.TokenID)
-	if err != nil || token.RevokedAt != "" || expired(token.ExpiresAt, time.Now().UTC()) ||
+	if err != nil || !tokens.Active(token.RevokedAt, token.ExpiresAt, time.Now().UTC()) ||
 		token.ExpiresAt != approval.TokenExpiresAt || token.UpdatedAt != approval.TokenUpdatedAt {
 		return projectcapabilities.Capability{}, staleVaultContext("Vault approval token changed; send a fresh request")
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
 var errMCPExecutionStopped = errors.New("MCP execution is stopped")
@@ -423,7 +424,7 @@ func (s *Server) revalidatePreparedConnectorAction(
 		return fresh, nil
 	}
 	token, err := runtime.tokens.Get(ctx, *request.TokenID)
-	if err != nil || token.RevokedAt != "" || expired(token.ExpiresAt, time.Now().UTC()) {
+	if err != nil || !tokens.Active(token.RevokedAt, token.ExpiresAt, time.Now().UTC()) {
 		return prepared, fmt.Errorf("%w: token is no longer active", errConnectorAuthorizationChanged)
 	}
 	permission, err := connectortargets.NewStore(runtime.database).GetActionPermission(
