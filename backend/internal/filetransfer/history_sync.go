@@ -21,10 +21,14 @@ func (s *Store) SyncHistory(ctx context.Context, id int64) error {
 }
 
 func (s *Store) syncBatchTransferHistory(ctx context.Context, batchID int64) error {
+	return syncBatchTransferHistoryWithExecutor(ctx, s.db, batchID)
+}
+
+func syncBatchTransferHistoryWithExecutor(ctx context.Context, executor history.CommandProjectionExecutor, batchID int64) error {
 	if batchID < 1 {
 		return nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM file_transfers WHERE batch_id = ?`, batchID)
+	rows, err := executor.QueryContext(ctx, `SELECT id FROM file_transfers WHERE batch_id = ?`, batchID)
 	if err != nil {
 		return fmt.Errorf("read batch transfer ids for history sync: %w", err)
 	}
@@ -40,7 +44,12 @@ func (s *Store) syncBatchTransferHistory(ctx context.Context, batchID int64) err
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate batch transfer ids for history sync: %w", err)
 	}
-	return s.syncTransferHistoryIDs(ctx, ids)
+	for _, id := range ids {
+		if err := history.SyncFileTransferWithExecutor(ctx, executor, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (s *Store) syncTransferHistoryIDs(ctx context.Context, ids []int64) error {
 	for _, id := range ids {

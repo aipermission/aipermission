@@ -42,7 +42,7 @@ func TestS3MultipartOriginalFilenameIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			handlers.runTransferBatch(runtime, batch.ID, true)
+			handlers.runTransferBatch(context.Background(), runtime, batch.ID, true)
 			item, err := runtime.fileTransfers.Get(context.Background(), batch.Items[0].ID)
 			if err != nil || item.Status != filetransfer.StatusCompleted {
 				t.Fatalf("upload: %#v %v", item, err)

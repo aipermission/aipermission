@@ -82,7 +82,7 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 		"size_bytes":  size,
 		"overwrite":   overwrite,
 	})
-	go s.runUpload(runtime, record.ID, overwrite)
+	s.launchUpload(runtime, record.ID, overwrite)
 	writeJSON(w, http.StatusAccepted, record)
 }
 
@@ -101,7 +101,7 @@ func (s fileTransferHandlers) startUploadBatch(w http.ResponseWriter, r *http.Re
 		"size_bytes": batch.SizeBytes,
 		"overwrite":  overwrite,
 	})
-	go s.runTransferBatch(runtime, batch.ID, overwrite)
+	s.launchTransferBatch(runtime, batch.ID, overwrite)
 	writeJSON(w, http.StatusAccepted, batch)
 }
 
@@ -324,7 +324,7 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 		"remote_path": remotePath,
 		"file_name":   fileName,
 	})
-	go s.runDownload(runtime, record.ID)
+	s.launchDownload(runtime, record.ID)
 	writeJSON(w, http.StatusAccepted, record)
 }
 
@@ -352,7 +352,7 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 		"items":      len(batch.Items),
 		"size_bytes": batch.SizeBytes,
 	})
-	go s.runTransferBatch(runtime, batch.ID, false)
+	s.launchTransferBatch(runtime, batch.ID, false)
 	writeJSON(w, http.StatusAccepted, batch)
 }
 

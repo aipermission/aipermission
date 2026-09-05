@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -12,12 +13,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -158,6 +161,67 @@ func TestRuntimeCloseMarksRunningConnectorActionsOutcomeUnknown(t *testing.T) {
 	}
 	if auditCount != 1 {
 		t.Fatalf("outcome_unknown audit events=%d, want 1", auditCount)
+	}
+}
+
+func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testing.T) {
+	database := openAPITestDB(t)
+	secretVault := openAPITestVault(t)
+	runtime := connectorActionTestRuntime(t, database, secretVault)
+	runtime.id = "transfer-shutdown"
+	runtime.fileTransfers = filetransfer.NewStore(database)
+	store := connectortargets.NewStore(database)
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
+	surface, err := store.EnsureRuntimeSurface(t.Context(), connectortargets.EnsureRuntimeSurfaceInput{
+		ConnectorKind:  target.ConnectorKind,
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		CapabilityKind: connectortargets.RuntimeCapabilityFileTransfer,
+		Label:          "transfer-shutdown",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := runtime.fileTransfers.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID:  surface.ID,
+		Direction:  filetransfer.DirectionUpload,
+		Source:     filetransfer.SourceUI,
+		LocalPath:  "fixture.txt",
+		RemotePath: "fixture.txt",
+		FileName:   "fixture.txt",
+		SizeBytes:  7,
+		TempPath:   filepath.Join(t.TempDir(), "fixture.txt"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := runtime.fileTransfers.MarkRunning(t.Context(), record.ID); err != nil || !ok {
+		t.Fatalf("mark running: ok=%v err=%v", ok, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	workerDone := make(chan filetransfer.Record, 1)
+	if !runtime.transferJobs.Files.Launch(record.ID, cancel, func() {
+		<-ctx.Done()
+		_, _ = runtime.fileTransfers.FailWithKind(context.Background(), record.ID, "response lost after dispatch", filetransfer.FailureKindOutcomeUnknown)
+		finished, _ := runtime.fileTransfers.Get(context.Background(), record.ID)
+		workerDone <- finished
+	}) {
+		t.Fatal("transfer runner was not accepted")
+	}
+
+	if err := (&Server{}).closeRuntime(runtime); err != nil {
+		t.Fatalf("close runtime: %v", err)
+	}
+	select {
+	case finished := <-workerDone:
+		if finished.FailureKind != filetransfer.FailureKindOutcomeUnknown {
+			t.Fatalf("terminal failure kind = %q", finished.FailureKind)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("runtime close returned before transfer terminal write")
+	}
+	if err := database.PingContext(t.Context()); err == nil {
+		t.Fatal("runtime database remained open after transfer drained")
 	}
 }
 

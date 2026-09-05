@@ -18,6 +18,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -65,11 +66,7 @@ type databaseRuntime struct {
 	connectorResources map[string]any
 	fileTransfers      *filetransfer.Store
 	consoleSessions    *console.Manager
-	transferMu         sync.Mutex
-	transferCancels    map[int64]context.CancelFunc
-	batchCancels       map[int64]context.CancelFunc
-	transferControls   map[int64]*transferControl
-	batchControls      map[int64]*transferControl
+	transferJobs       transferjobs.Registry
 	securityMu         sync.RWMutex
 	securitySettings   securitySettingsResponse
 	securityLoaded     bool
@@ -173,21 +170,17 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		retentionInterval:    defaultRetentionCleanupInterval,
 	}
 	runtime := &databaseRuntime{
-		id:               activeID,
-		path:             cfg.DataPath,
-		gatewaySecret:    cfg.GatewaySecret,
-		database:         database,
-		vault:            secretVault,
-		tokens:           tokenStore,
-		registry:         registry,
-		adapterRegistry:  resolved.adapterRegistry,
-		fileTransfers:    filetransfer.NewStore(database),
-		transferCancels:  map[int64]context.CancelFunc{},
-		batchCancels:     map[int64]context.CancelFunc{},
-		transferControls: map[int64]*transferControl{},
-		batchControls:    map[int64]*transferControl{},
-		credBoundaries:   map[int64]connectorCredentialBoundary{},
-		vaultLeases:      vaultsessions.NewStore(),
+		id:              activeID,
+		path:            cfg.DataPath,
+		gatewaySecret:   cfg.GatewaySecret,
+		database:        database,
+		vault:           secretVault,
+		tokens:          tokenStore,
+		registry:        registry,
+		adapterRegistry: resolved.adapterRegistry,
+		fileTransfers:   filetransfer.NewStore(database),
+		credBoundaries:  map[int64]connectorCredentialBoundary{},
+		vaultLeases:     vaultsessions.NewStore(),
 	}
 	var err error
 	runtime.workspaceUUID, err = projectvault.EnsureWorkspaceUUID(context.Background(), database)

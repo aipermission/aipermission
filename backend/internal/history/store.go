@@ -304,7 +304,16 @@ func (s *Store) SyncFileTransfer(ctx context.Context, id int64) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("history store is not configured")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	return SyncFileTransferWithExecutor(ctx, s.db, id)
+}
+
+// SyncFileTransferWithExecutor lets canonical transfer state and its history
+// projection commit in one caller-owned database transaction.
+func SyncFileTransferWithExecutor(ctx context.Context, executor CommandProjectionExecutor, id int64) error {
+	if executor == nil {
+		return fmt.Errorf("history executor is not configured")
+	}
+	_, err := executor.ExecContext(ctx, `
 		INSERT INTO history_entries (
 			source_ref_type, source_ref_id, connector_kind, activity_type, runtime_id, project_id, target_id,
 			profile_id, target_name, profile_label, source, status, action_name, title, summary, preview_json,

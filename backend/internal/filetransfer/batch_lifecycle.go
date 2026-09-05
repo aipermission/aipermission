@@ -12,7 +12,12 @@ import (
 
 func (s *Store) PauseBatch(ctx context.Context, id int64) (bool, error) {
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin file transfer batch pause: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
 		UPDATE file_transfer_batches
 		SET status = ?, updated_at = ?
 		WHERE id = ? AND status = ?`,
@@ -24,7 +29,14 @@ func (s *Store) PauseBatch(ctx context.Context, id int64) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("pause file transfer batch: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read paused file transfer batch rows: %w", err)
+	}
+	if rows == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, updated_at = ?
 		WHERE batch_id = ? AND status = ?`,
@@ -35,21 +47,23 @@ func (s *Store) PauseBatch(ctx context.Context, id int64) (bool, error) {
 	); err != nil {
 		return false, fmt.Errorf("pause file transfer batch items: %w", err)
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read paused file transfer batch rows: %w", err)
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return false, err
 	}
-	if rows > 0 {
-		if err := s.syncBatchTransferHistory(ctx, id); err != nil {
-			return false, err
-		}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit file transfer batch pause: %w", err)
 	}
 	return rows > 0, nil
 }
 
 func (s *Store) ResumeBatch(ctx context.Context, id int64) (bool, error) {
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin file transfer batch resume: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
 		UPDATE file_transfer_batches
 		SET status = ?, updated_at = ?
 		WHERE id = ? AND status = ?`,
@@ -61,7 +75,14 @@ func (s *Store) ResumeBatch(ctx context.Context, id int64) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("resume file transfer batch: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read resumed file transfer batch rows: %w", err)
+	}
+	if rows == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE file_transfers
 		SET status = ?, updated_at = ?
 		WHERE batch_id = ? AND status = ?`,
@@ -72,14 +93,11 @@ func (s *Store) ResumeBatch(ctx context.Context, id int64) (bool, error) {
 	); err != nil {
 		return false, fmt.Errorf("resume file transfer batch items: %w", err)
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read resumed file transfer batch rows: %w", err)
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return false, err
 	}
-	if rows > 0 {
-		if err := s.syncBatchTransferHistory(ctx, id); err != nil {
-			return false, err
-		}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit file transfer batch resume: %w", err)
 	}
 	return rows > 0, nil
 }
@@ -287,10 +305,15 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 	if err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE file_transfers
-		SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE status IN (?, ?, ?, ?)`,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin active file transfer shutdown: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+			UPDATE file_transfers
+			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+			WHERE status IN (?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(transferError),
 		FailureKindInterrupted,
@@ -298,15 +321,27 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 		now,
 		StatusPendingApproval,
 		StatusPending,
+	); err != nil {
+		return fmt.Errorf("interrupt undispatched file transfers: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+			UPDATE file_transfers
+			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+			WHERE status IN (?, ?)`,
+		StatusFailed,
+		strings.TrimSpace(transferError),
+		FailureKindOutcomeUnknown,
+		now,
+		now,
 		StatusRunning,
 		StatusPaused,
 	); err != nil {
-		return fmt.Errorf("fail active file transfers: %w", err)
+		return fmt.Errorf("mark dispatched file transfers outcome unknown: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE file_transfer_batches
-		SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-		WHERE status IN (?, ?, ?, ?)`,
+	if _, err := tx.ExecContext(ctx, `
+			UPDATE file_transfer_batches
+			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+			WHERE status IN (?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(batchError),
 		FailureKindInterrupted,
@@ -314,10 +349,25 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 		now,
 		StatusPendingApproval,
 		StatusPending,
+	); err != nil {
+		return fmt.Errorf("interrupt undispatched file transfer batches: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+			UPDATE file_transfer_batches
+			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+			WHERE status IN (?, ?)`,
+		StatusFailed,
+		strings.TrimSpace(batchError),
+		FailureKindOutcomeUnknown,
+		now,
+		now,
 		StatusRunning,
 		StatusPaused,
 	); err != nil {
-		return fmt.Errorf("fail active file transfer batches: %w", err)
+		return fmt.Errorf("mark dispatched file transfer batches outcome unknown: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit active file transfer shutdown: %w", err)
 	}
 	return s.syncTransferHistoryIDs(ctx, ids)
 }

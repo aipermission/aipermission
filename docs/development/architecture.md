@@ -133,6 +133,12 @@ place.
   transfer primitives, and host key verification owned by the SSH connector.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
   checksum storage. File contents are not stored in SQLCipher.
+- `internal/transferjobs`: in-memory file/batch cancellation and pause gates,
+  isolated per unlocked runtime. It has no HTTP, database, credential, or
+  connector dependencies. Runtime shutdown closes the registry and immediately
+  cancels late registrations; API routes keep permission, persistence, and audit
+  responsibility. A pause cycle uses one broadcast channel so canceled waiters
+  do not accumulate while a batch remains paused.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.
 - `internal/projectvault`: Project Vault item metadata, encrypted values,
   project sharing, default session bindings, and exact-session item tracking.

@@ -17,9 +17,11 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()
 	transferCtx, cancelTransfer := context.WithCancel(context.Background())
-	runtime.transferMu.Lock()
-	runtime.transferCancels[1] = cancelTransfer
-	runtime.transferMu.Unlock()
+	defer cancelTransfer()
+	batchCtx, cancelBatch := context.WithCancel(context.Background())
+	defer cancelBatch()
+	runtime.transferJobs.Files.RegisterCancel(1, cancelTransfer)
+	runtime.transferJobs.Batches.RegisterCancel(1, cancelBatch)
 
 	fixture.server.Close()
 
@@ -27,6 +29,15 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	case <-transferCtx.Done():
 	case <-time.After(time.Second):
 		t.Fatal("server close did not cancel active runtime work")
+	}
+	if batchCtx.Err() == nil {
+		t.Fatal("server close missed the batch sharing a file ID")
+	}
+	lateCtx, cancelLate := context.WithCancel(context.Background())
+	defer cancelLate()
+	runtime.transferJobs.Files.RegisterCancel(2, cancelLate)
+	if lateCtx.Err() == nil {
+		t.Fatal("closed runtime accepted a late transfer")
 	}
 	fixture.server.mu.RLock()
 	defer fixture.server.mu.RUnlock()
