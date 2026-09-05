@@ -156,6 +156,13 @@ authorization and compensation boundaries.
 
 Large API files should be split by behavior before they become cross-domain modules. Runtime-heavy domains should move out of `internal/api` when possible; `internal/console` is the first example of that boundary. Prefer small handler/service files such as `mcp_auth.go`, `command_requests.go`, `command_request_queries.go`, and connector adapter files. Route handlers should usually hang off small handler groups (`mcpHandlers`, `tokenHandlers`, `consoleHandlers`) instead of adding every endpoint directly to `*Server`.
 
+Credential edits share the transaction-owned `updatePreparedCredentialProfile`
+operation. It encrypts replacement material, checks the expected secret revision,
+updates the profile, and reconciles runtime surfaces in the caller's transaction.
+The caller retains its own audit events and post-commit invalidation; do not move
+either domain writes or audit outbox writes outside that transaction. Metadata-only
+edits must not rewrite ciphertext or advance the secret revision.
+
 ## Frontend Boundaries
 
 - `src/pages`: route-level pages.

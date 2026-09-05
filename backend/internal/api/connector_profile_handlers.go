@@ -163,26 +163,9 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 	}
 	var profile connectortargets.CredentialProfile
 	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-		txStore := connectortargets.NewTxStore(tx)
-		encrypted, err := encryptPreparedCredentialSecret(runtime, profileID, preparedProfile)
+		var err error
+		profile, err = s.updatePreparedCredentialProfile(r.Context(), runtime, tx, target, existingProfile, preparedProfile)
 		if err != nil {
-			return err
-		}
-		profile, err = txStore.UpdateCredentialProfile(r.Context(), connectortargets.UpdateCredentialProfileInput{
-			TargetID:               target.ID,
-			ProfileID:              profileID,
-			ConnectorKind:          target.ConnectorKind,
-			Kind:                   preparedProfile.Kind,
-			Label:                  preparedProfile.Label,
-			Public:                 preparedProfile.Public,
-			EncryptedSecretJSON:    encrypted,
-			ExpectedSecretRevision: &existingProfile.SecretRevision,
-			RiskLabel:              preparedProfile.RiskLabel,
-		})
-		if err != nil {
-			return err
-		}
-		if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
 			return err
 		}
 		return appendAudit(tx, "user", nil, 0, "connector.profile.updated", map[string]any{
