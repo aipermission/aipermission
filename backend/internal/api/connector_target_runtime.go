@@ -106,5 +106,11 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		writeError(w, http.StatusBadRequest, "operation is not supported for this connector")
 		return
 	}
-	adapter.RunTargetOperation(s, w, r, runtime, target, operation)
+	adapter.RunTargetOperation(connectorTargetOperationGatewayPort{
+		connectorPeerGatewayPort: connectorPeerGatewayPort{server: s.Server},
+		handlers:                 s,
+		runtime:                  runtime,
+		kind:                     target.ConnectorKind,
+		targetID:                 target.ID,
+	}, w, r, connectorDataRuntimePort(runtime, target.ConnectorKind), target, operation)
 }

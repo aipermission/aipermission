@@ -70,7 +70,7 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 	firstRequest := createRuntimeScopedVaultRequest(t, first, "first")
 	secondRequest := createRuntimeScopedVaultRequest(t, second, "second")
 	changeCalled := false
-	if err := fixture.server.ConnectorChangeVaultPeerTrust(ctx, func() error {
+	if err := fixture.server.connectorChangeVaultPeerTrust(ctx, func() error {
 		changeCalled = true
 		return nil
 	}); err != nil {

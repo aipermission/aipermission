@@ -17,8 +17,8 @@ import (
 )
 
 type runtimeExecutor struct {
-	server  connectorapi.GatewayServer
-	runtime connectorapi.GatewayRuntime
+	server  connectorapi.RuntimeActionGateway
+	runtime connectorapi.ActionRuntime
 }
 
 type sessionEnvironmentCapability struct{}
@@ -186,11 +186,7 @@ func exactSessionActionHandles(session console.Record) connectors.ActionHandles 
 }
 
 func (e runtimeExecutor) restartConsole(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (connectors.ActionResult, error) {
-	gateway, err := serverFrom(e.server)
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
-	result, err := gateway.ConnectorRestartConsoleSession(ctx, e.runtime, principal, runtimeID, "console session restarted before connector action completed")
+	result, err := e.server.ConnectorRestartConsoleSession(ctx, principal, runtimeID, "console session restarted before connector action completed")
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -215,15 +211,11 @@ func (e runtimeExecutor) browseRemoteFiles(ctx context.Context, runtimeID int64,
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	gateway, err := serverFrom(e.server)
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
 	target, privateKey, err := targetMaterial(ctx, e.runtime, runtimeID)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	entries, err := execution.ListRemoteDirectory(ctx, executionTarget(gateway, target, privateKey), remotePath)
+	entries, err := execution.ListRemoteDirectory(ctx, executionTarget(e.server, target, privateKey), remotePath)
 	if err != nil {
 		return connectors.ActionResult{}, fmt.Errorf("%s", connectionFailureMessage(err))
 	}
@@ -244,17 +236,13 @@ func (e runtimeExecutor) startFileDownload(ctx context.Context, runtimeID int64,
 		return connectors.ActionResult{}, fmt.Errorf("remote_paths is required")
 	}
 	archiveName := stringPayload(action.Payload, "archive_name")
-	gateway, err := serverFrom(e.server)
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	batch, err := gateway.ConnectorCreateDownloadBatch(ctx, e.runtime, runtimeID, remotePaths, archiveName, filetransfer.SourceMCP, filetransfer.StatusPending)
+	batch, err := e.server.ConnectorCreateDownloadBatch(ctx, runtimeID, remotePaths, archiveName, filetransfer.SourceMCP, filetransfer.StatusPending)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	go gateway.ConnectorRunTransferBatch(e.runtime, batch.ID, false)
+	go e.server.ConnectorRunTransferBatch(batch.ID, false)
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{

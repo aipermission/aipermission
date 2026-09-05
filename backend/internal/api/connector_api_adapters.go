@@ -1,13 +1,11 @@
 package api
 
 import (
-	"database/sql"
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
@@ -51,7 +49,8 @@ func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *datab
 	}
 	adapter := server.connectorRuntimeAdapterFor(kind)
 	if adapter != nil {
-		for name, capability := range adapter.RuntimeCapabilities(server, runtime) {
+		gatewayPort, runtimePort := newRuntimeActionPorts(server, runtime, kind)
+		for name, capability := range adapter.RuntimeCapabilities(gatewayPort, runtimePort) {
 			if name == "" || capability == nil {
 				continue
 			}
@@ -77,29 +76,9 @@ func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	for _, route := range routes {
 		handler := route.Handler
 		mux.HandleFunc(route.Pattern(), func(w http.ResponseWriter, r *http.Request) {
-			handler(server, w, r)
+			handler(connectorRouteGatewayPort{connectorPeerGatewayPort{server: server}}, w, r)
 		})
 	}
-}
-
-func connectorRuntimeResources(registrySource *connectors.Registry, adapterRegistry *connectorapi.Registry, database *sql.DB, secretVault *vault.Vault, workspaceID string) map[string]any {
-	resources := map[string]any{}
-	if registrySource == nil {
-		return resources
-	}
-	for _, info := range registrySource.List() {
-		provider, _ := adapterRegistry.For(info.Kind).(connectorapi.RuntimeResourceProvider)
-		if provider == nil {
-			continue
-		}
-		for name, value := range provider.RuntimeResources(database, secretVault, workspaceID) {
-			if name == "" || value == nil {
-				continue
-			}
-			resources[info.Kind+"/"+name] = value
-		}
-	}
-	return resources
 }
 
 func (s *Server) connectorDraftTesterFor(kind string) connectorapi.DraftTester {

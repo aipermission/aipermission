@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
@@ -33,6 +35,43 @@ func openSSHKeyTestStore(t *testing.T) (*sql.DB, *Store) {
 		t.Fatalf("new vault: %v", err)
 	}
 	return database, NewStore(database, secretVault, "ssh-key-test-workspace")
+}
+
+func openScopedSSHKeyTestStore(t *testing.T) (*sql.DB, *Store, *connectorresources.Store) {
+	t.Helper()
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "test-password")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	secretVault, err := vault.New("gateway-secret")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	resources := connectorresources.NewStore(database, secretVault, "ssh-key-test-workspace")
+	return database, NewResourceStore(resources.Scope("ssh", "private_key")), resources
+}
+
+func TestSSHKeyStoreUsesConnectorScopedEncryptedResourcePort(t *testing.T) {
+	ctx := context.Background()
+	_, store, resources := openScopedSSHKeyTestStore(t)
+	created, err := store.Create(ctx, CreateRequest{Name: "scoped", KeyType: TypeED25519})
+	if err != nil {
+		t.Fatalf("create scoped key: %v", err)
+	}
+	if _, err := store.GetPrivateKey(ctx, created.ID); err != nil {
+		t.Fatalf("read scoped private key: %v", err)
+	}
+	if _, err := resources.Scope("other", "private_key").Get(ctx, created.ID); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+		t.Fatalf("cross-connector resource read error = %v", err)
+	}
+	updated, err := store.Update(ctx, created.ID, UpdateRequest{Name: "renamed"})
+	if err != nil || updated.Name != "renamed" {
+		t.Fatalf("update scoped key = %#v, %v", updated, err)
+	}
+	if err := store.Delete(ctx, created.ID); err != nil {
+		t.Fatalf("delete scoped key: %v", err)
+	}
 }
 
 func TestInstallCommandShellQuotesPublicKey(t *testing.T) {

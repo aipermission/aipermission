@@ -223,13 +223,14 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		return
 	}
 	page := connectorapi.RemoteFilePage{}
+	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, request.RuntimeID)
 	if paginated, ok := adapter.(connectorapi.PaginatedFileTransferAdapter); ok {
-		page, err = paginated.BrowseRemoteFilesPage(ctx, s.Server, runtime, request.RuntimeID, remotePath, strings.TrimSpace(request.Cursor))
+		page, err = paginated.BrowseRemoteFilesPage(ctx, ports.gateway, ports.runtime, request.RuntimeID, remotePath, strings.TrimSpace(request.Cursor))
 	} else if strings.TrimSpace(request.Cursor) != "" {
 		writeError(w, http.StatusBadRequest, "this connector does not support paginated file browsing")
 		return
 	} else {
-		page.Entries, err = adapter.BrowseRemoteFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath)
+		page.Entries, err = adapter.BrowseRemoteFiles(ctx, ports.gateway, ports.runtime, request.RuntimeID, remotePath)
 	}
 	if err != nil {
 		s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, adapter, http.StatusBadGateway, "remote file browse failed", err)
@@ -281,7 +282,8 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusConflict, "this connector does not support recursive file selection")
 		return
 	}
-	entries, err := adapter.ListRecursiveFiles(ctx, s.Server, runtime, request.RuntimeID, remotePath, maxFileTransferBatchItems, maxFileTransferObjectBytes, maxFileTransferBatchBytes)
+	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, request.RuntimeID)
+	entries, err := adapter.ListRecursiveFiles(ctx, ports.gateway, ports.runtime, request.RuntimeID, remotePath, maxFileTransferBatchItems, maxFileTransferObjectBytes, maxFileTransferBatchBytes)
 	if err != nil {
 		if errors.Is(err, connectorapi.ErrRemotePathNotFound) {
 			s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, baseAdapter, http.StatusNotFound, "remote path was not found", err)

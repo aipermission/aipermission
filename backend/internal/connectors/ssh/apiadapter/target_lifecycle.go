@@ -16,12 +16,12 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (adapter) BeforeCreateCredentialProfile(context.Context, connectorapi.GatewayRuntime, *connectortargets.Store, connectortargets.Target) error {
+func (adapter) BeforeCreateCredentialProfile(context.Context, connectorapi.TargetLifecycleRuntime, connectortargets.Target) error {
 	return nil
 }
 
-func (adapter) BeforeDeleteCredentialProfile(ctx context.Context, handler connectorapi.TargetLifecycleGateway, runtime connectorapi.GatewayRuntime, _ *connectortargets.Store, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
-	gateway, err := serverFromHandler(handler)
+func (adapter) BeforeDeleteCredentialProfile(ctx context.Context, handler connectorapi.ConsoleRestartGateway, runtime connectorapi.TargetLifecycleRuntime, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
+	gateway, err := consoleRestartGatewayFrom(handler)
 	if err != nil {
 		return err
 	}
@@ -37,29 +37,23 @@ func (adapter) BeforeDeleteCredentialProfile(ctx context.Context, handler connec
 		return err
 	}
 	for _, runtimeID := range runtimeIDs {
-		if _, err := gateway.ConnectorRestartConsoleSession(ctx, runtime, principal, runtimeID, "SSH credential profile was deleted before command completed"); err != nil {
+		if _, err := gateway.ConnectorRestartConsoleSession(ctx, principal, runtimeID, "SSH credential profile was deleted before command completed"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (adapter) DeleteTarget(handler connectorapi.TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime, target connectortargets.Target) {
+func (adapter) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.TargetLifecycleRuntime, target connectortargets.Target) {
 	if w == nil || r == nil {
 		return
 	}
-	gateway, err := serverFromHandler(handler)
+	gateway, err := targetDeletionGatewayFrom(handler)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	database, err := databaseFrom(runtime)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	store := connectortargets.NewStore(database)
-	profiles, err := store.ListCredentialProfiles(r.Context(), target.ID)
+	profiles, err := runtime.ListCredentialProfiles(r.Context(), target.ID)
 	if err != nil {
 		handleTargetError(w, err)
 		return
@@ -132,7 +126,7 @@ func (adapter) DeleteTarget(handler connectorapi.TargetLifecycleGateway, w http.
 			return
 		}
 		for _, runtimeID := range runtimeIDs {
-			result, err := gateway.ConnectorRestartConsoleSession(r.Context(), runtime, principal, runtimeID, "SSH connector target was deleted before command completed")
+			result, err := gateway.ConnectorRestartConsoleSession(r.Context(), principal, runtimeID, "SSH connector target was deleted before command completed")
 			if err != nil {
 				writeInternalError(w)
 				return
@@ -140,7 +134,7 @@ func (adapter) DeleteTarget(handler connectorapi.TargetLifecycleGateway, w http.
 			canceledCommands += result.CanceledRunningRequests
 		}
 	}
-	if err := handler.ConnectorDeleteTargetRecord(r.Context(), runtime, target, map[string]any{
+	if err := handler.ConnectorDeleteTargetRecord(r.Context(), target, map[string]any{
 		"remote_key_removed":  removedKeys > 0,
 		"remote_keys_removed": removedKeys,
 		"canceled_commands":   canceledCommands,
@@ -148,18 +142,18 @@ func (adapter) DeleteTarget(handler connectorapi.TargetLifecycleGateway, w http.
 		handleTargetError(w, err)
 		return
 	}
-	if _, err := handler.ConnectorFinalizeDeletedTarget(r.Context(), runtime, target, "SSH connector target was deleted; ask the AI to send a fresh request", nil); err != nil {
+	if _, err := handler.ConnectorFinalizeDeletedTarget(r.Context(), target, "SSH connector target was deleted; ask the AI to send a fresh request", nil); err != nil {
 		writeInternalError(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKeys > 0, "remote_keys_removed": removedKeys})
 }
 
-func (adapter) TestCredentialProfile(handler connectorapi.TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime, target connectors.TargetView, profile connectors.CredentialProfileView) {
+func (adapter) TestCredentialProfile(handler connectorapi.PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectors.TargetView, profile connectors.CredentialProfileView) {
 	if w == nil || r == nil {
 		return
 	}
-	gateway, err := serverFromHandler(handler)
+	gateway, err := peerIdentityFrom(handler)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -211,11 +205,11 @@ func (adapter) TestCredentialProfile(handler connectorapi.TargetLifecycleGateway
 	})
 }
 
-func (adapter) TestDraft(handler connectorapi.TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime, requestValue any) {
+func (adapter) TestDraft(handler connectorapi.PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, requestValue any) {
 	if w == nil || r == nil {
 		return
 	}
-	gateway, err := serverFromHandler(handler)
+	gateway, err := peerIdentityFrom(handler)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -279,11 +273,11 @@ func (adapter) TestDraft(handler connectorapi.TargetLifecycleGateway, w http.Res
 	})
 }
 
-func (adapter) RunTargetOperation(handler connectorapi.TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime, target connectortargets.Target, operation string) {
+func (adapter) RunTargetOperation(handler connectorapi.TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectortargets.Target, operation string) {
 	if w == nil || r == nil {
 		return
 	}
-	gateway, err := serverFromHandler(handler)
+	gateway, err := targetOperationGatewayFrom(handler)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -293,13 +287,12 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetLifecycleGateway, w
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	database, err := databaseFrom(runtime)
+	profiles, err := runtime.ListCredentialProfiles(r.Context(), target.ID)
 	if err != nil {
-		writeInternalError(w)
+		handleTargetError(w, err)
 		return
 	}
-	store := connectortargets.NewStore(database)
-	profileID, err := operationProfileID(r.Context(), store, target.ID, input.ProfileID)
+	profileID, err := operationProfileID(profiles, input.ProfileID)
 	if err != nil {
 		handleTargetError(w, err)
 		return
@@ -327,7 +320,7 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetLifecycleGateway, w
 			writeError(w, http.StatusBadGateway, commandFailureMessage(err))
 			return
 		}
-		handler.ConnectorWriteAudit(r.Context(), runtime, "user", nil, remoteTarget.ID, "server.docker_check", map[string]any{
+		handler.ConnectorWriteAudit(r.Context(), "user", nil, remoteTarget.ID, "server.docker_check", map[string]any{
 			"available":  response.Available,
 			"exit_code":  response.ExitCode,
 			"containers": len(response.Containers),
@@ -347,7 +340,7 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetLifecycleGateway, w
 			writeError(w, http.StatusBadGateway, commandFailureMessage(err))
 			return
 		}
-		handler.ConnectorWriteAudit(r.Context(), runtime, "user", nil, remoteTarget.ID, "server.docker_logs", map[string]any{
+		handler.ConnectorWriteAudit(r.Context(), "user", nil, remoteTarget.ID, "server.docker_logs", map[string]any{
 			"container_ref": containerRef,
 			"exit_code":     response.ExitCode,
 			"tail":          normalizeDockerLogsTail(input.Tail),
@@ -358,14 +351,14 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetLifecycleGateway, w
 	}
 }
 
-func (adapter) CanonicalCredentialPublic(ctx context.Context, _ connectorapi.TargetLifecycleGateway, runtime connectorapi.GatewayRuntime, credentialKind string, public map[string]any) (map[string]any, error) {
+func (adapter) CanonicalCredentialPublic(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, credentialKind string, public map[string]any) (map[string]any, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return canonicalCredentialPublic(ctx, runtime, credentialKind, public)
 }
 
-func dockerCheckForTarget(ctx context.Context, gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey) (dockerCheckResponse, error) {
+func dockerCheckForTarget(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target sshTargetMaterial, privateKey sshkeys.PrivateKey) (dockerCheckResponse, error) {
 	const command = `if ! command -v docker >/dev/null 2>&1; then
   printf '__AIPERMISSION_DOCKER_UNAVAILABLE__\n'
   exit 0
@@ -391,7 +384,7 @@ docker ps --format '{{json .}}'`
 	}, nil
 }
 
-func dockerLogsForTarget(ctx context.Context, gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey, containerRef string, tailValue int) (dockerLogsResponse, error) {
+func dockerLogsForTarget(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target sshTargetMaterial, privateKey sshkeys.PrivateKey, containerRef string, tailValue int) (dockerLogsResponse, error) {
 	tail := normalizeDockerLogsTail(tailValue)
 	command := fmt.Sprintf(`if ! command -v docker >/dev/null 2>&1; then
   printf 'docker command is not available\n' >&2

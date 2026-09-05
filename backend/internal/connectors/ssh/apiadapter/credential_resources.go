@@ -13,7 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (adapter) ListCredentialResources(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+func (adapter) ListCredentialResources(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -30,7 +30,7 @@ func (adapter) ListCredentialResources(_ connectorapi.CredentialResourceGateway,
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (adapter) CreateCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+func (adapter) CreateCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -52,7 +52,7 @@ func (adapter) CreateCredentialResource(_ connectorapi.CredentialResourceGateway
 	writeJSON(w, http.StatusCreated, item)
 }
 
-func (adapter) ImportCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+func (adapter) ImportCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -74,7 +74,7 @@ func (adapter) ImportCredentialResource(_ connectorapi.CredentialResourceGateway
 	writeJSON(w, http.StatusCreated, item)
 }
 
-func (adapter) GetCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+func (adapter) GetCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -95,7 +95,7 @@ func (adapter) GetCredentialResource(_ connectorapi.CredentialResourceGateway, w
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (adapter) UpdateCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+func (adapter) UpdateCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -121,7 +121,7 @@ func (adapter) UpdateCredentialResource(_ connectorapi.CredentialResourceGateway
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (adapter) DeleteCredentialResource(_ connectorapi.CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.GatewayRuntime) {
+func (adapter) DeleteCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -141,7 +141,7 @@ func (adapter) DeleteCredentialResource(_ connectorapi.CredentialResourceGateway
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func connectorPayload(ctx context.Context, runtime connectorapi.GatewayRuntime, name string, config map[string]any, profile map[string]any) (connectorPayloadValue, error) {
+func connectorPayload(ctx context.Context, runtime connectorapi.CredentialResourceRuntime, name string, config map[string]any, profile map[string]any) (connectorPayloadValue, error) {
 	if config == nil {
 		config = map[string]any{}
 	}
@@ -178,7 +178,7 @@ func connectorPayload(ctx context.Context, runtime connectorapi.GatewayRuntime, 
 	}, nil
 }
 
-func canonicalCredentialPublic(ctx context.Context, runtime connectorapi.GatewayRuntime, credentialKind string, public map[string]any) (map[string]any, error) {
+func canonicalCredentialPublic(ctx context.Context, runtime connectorapi.CredentialResourceRuntime, credentialKind string, public map[string]any) (map[string]any, error) {
 	if strings.TrimSpace(credentialKind) != "private_key" {
 		return nil, connectortargets.ValidationError("unsupported SSH credential kind")
 	}

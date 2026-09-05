@@ -530,7 +530,8 @@ func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, re
 	if adapter == nil || !adapter.SupportsRunning(prepared) {
 		return
 	}
-	if err := adapter.FinishRunning(s, runtime, requestID, prepared, principal, handles); err != nil {
+	gatewayPort, runtimePort := newActionFinishPorts(s, runtime, prepared.Target.ConnectorKind)
+	if err := adapter.FinishRunning(gatewayPort, runtimePort, requestID, prepared, principal, handles); err != nil {
 		log.Printf("finish running connector action failed connector=%q request=%d error=%v", prepared.Target.ConnectorKind, requestID, err)
 	}
 }

@@ -120,7 +120,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 			return err
 		}
 		if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-			if err := adapter.BeforeCreateCredentialProfile(r.Context(), runtime, store, target); err != nil {
+			if err := adapter.BeforeCreateCredentialProfile(r.Context(), connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target); err != nil {
 				return err
 			}
 		}
@@ -393,14 +393,20 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	}
 	defer release()
 	if adapter := s.connectorTargetDeleterFor(target.ConnectorKind); adapter != nil {
-		adapter.DeleteTarget(s, w, r, runtime, target)
+		adapter.DeleteTarget(connectorTargetDeletionGatewayPort{
+			connectorPeerGatewayPort: connectorPeerGatewayPort{server: s.Server},
+			handlers:                 s,
+			runtime:                  runtime,
+			kind:                     target.ConnectorKind,
+			targetID:                 target.ID,
+		}, w, r, connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target)
 		return
 	}
-	if err := s.ConnectorDeleteTargetRecord(r.Context(), runtime, target, nil); err != nil {
+	if err := s.connectorDeleteTargetRecord(r.Context(), runtime, target, nil); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if _, err := s.ConnectorFinalizeDeletedTarget(r.Context(), runtime, target, "connector target was deleted; ask the AI to send a fresh request", nil); err != nil {
+	if _, err := s.connectorFinalizeDeletedTarget(r.Context(), runtime, target, "connector target was deleted; ask the AI to send a fresh request", nil); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -408,7 +414,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 }
 
 func (s connectorTargetHandlers) finalizeDeletedConnectorTarget(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectortargets.Target, staleReason string, payload map[string]any) bool {
-	_, err := s.ConnectorFinalizeDeletedTarget(r.Context(), runtime, target, staleReason, payload)
+	_, err := s.connectorFinalizeDeletedTarget(r.Context(), runtime, target, staleReason, payload)
 	if err != nil {
 		writeInternalError(w)
 		return false

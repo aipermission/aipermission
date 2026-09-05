@@ -5,7 +5,6 @@ package connectorapi
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net"
@@ -20,12 +19,13 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 var (
-	ErrRemotePathNotFound = errors.New("remote path not found")
-	ErrTransferLimit      = errors.New("file transfer limit exceeded")
+	ErrRemotePathNotFound           = errors.New("remote path not found")
+	ErrTransferLimit                = errors.New("file transfer limit exceeded")
+	ErrCredentialResourceNotFound   = errors.New("connector credential resource not found")
+	ErrCredentialResourceNameExists = errors.New("connector credential resource name already exists")
 )
 
 // Adapter is a marker implemented by connector-owned gateway adapters.
@@ -34,12 +34,111 @@ var (
 // connectors can register one from their own connector package.
 type Adapter interface{}
 
+// CredentialResource describes one connector-owned encrypted resource without
+// exposing its secret payload.
+type CredentialResource struct {
+	ID           int64
+	Name         string
+	ResourceType string
+	PublicData   string
+	Fingerprint  string
+	CreatedAt    string
+	UpdatedAt    string
+}
+
+type CreateCredentialResourceInput struct {
+	Name         string
+	ResourceType string
+	PublicData   string
+	Fingerprint  string
+	Secret       any
+}
+
+type UpdateCredentialResourceInput struct {
+	Name       string
+	PublicData string
+}
+
+// CredentialResourceStore is scoped by core to one connector and resource
+// kind. It can never query arbitrary tables or decrypt another resource class.
+type CredentialResourceStore interface {
+	List(ctx context.Context) ([]CredentialResource, error)
+	Get(ctx context.Context, id int64) (CredentialResource, error)
+	GetSecret(ctx context.Context, id int64, destination any) error
+	Create(ctx context.Context, input CreateCredentialResourceInput) (CredentialResource, error)
+	Update(ctx context.Context, id int64, input UpdateCredentialResourceInput) (CredentialResource, error)
+	Delete(ctx context.Context, id int64) error
+	CountProfileReferences(ctx context.Context, publicField string, numericValue int64) (int, error)
+}
+
+// ConnectorDataRuntime exposes only connector target/profile operations. The
+// implementation is scoped to the adapter's connector kind by core.
+type ConnectorDataRuntime interface {
+	ResolveConnectorActionTarget(ctx context.Context, targetRef string) (connectors.TargetView, connectors.CredentialProfileView, error)
+	EnsureRuntimeSurface(ctx context.Context, input connectortargets.EnsureRuntimeSurfaceInput) (connectortargets.RuntimeSurface, error)
+	ListRuntimeSurfacesForProfile(ctx context.Context, targetID int64, profileID int64, capabilityKind string) ([]connectortargets.RuntimeSurface, error)
+	TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error)
+	ListCredentialProfiles(ctx context.Context, targetID int64) ([]connectors.CredentialProfileView, error)
+	CredentialResources(resourceKind string) CredentialResourceStore
+}
+
+// LiveSessionRuntime exposes the generic persistent console manager.
+type ConsoleSessionRuntime interface {
+	EnsureReady(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (console.SessionHandle, error)
+	Exec(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, command string) (console.ExecResult, error)
+	ActiveSnapshot(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (console.Record, error)
+	WaitActive(ctx context.Context, principal executionprincipal.Principal, handle console.SessionHandle) (console.ExecResult, error)
+	InterruptActive(ctx context.Context, principal executionprincipal.Principal, handle console.SessionHandle) error
+}
+
+type LiveSessionRuntime interface {
+	ConnectorDataRuntime
+	ConnectorConsoleSessions() ConsoleSessionRuntime
+}
+
+// PrincipalRuntime resolves the local human execution principal.
+type PrincipalRuntime interface {
+	ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error)
+}
+
+// LiveConsoleRuntime contains the persisted target data and connector-owned
+// resources needed to open a live transport.
+type LiveConsoleRuntime interface {
+	ConnectorDataRuntime
+}
+
+// ActionRuntime is the bounded runtime surface used by connector-owned runtime
+// actions. It intentionally excludes Vault and workspace access.
+type ActionRuntime interface {
+	LiveSessionRuntime
+}
+
+// TransferRuntime is the bounded runtime surface used by connector-owned file
+// transfer adapters.
+type TransferRuntime interface {
+	ConnectorDataRuntime
+	ResolveRuntimeContext(ctx context.Context, runtimeID int64, capabilityKind string) (connectors.RuntimeContext, connectortargets.RuntimeSurface, error)
+}
+
+// TargetLifecycleRuntime contains only resources needed while testing or
+// deleting connector targets and credential profiles.
+type TargetLifecycleRuntime interface {
+	LiveSessionRuntime
+	PrincipalRuntime
+}
+
+// CredentialResourceRuntime contains only resources needed by connector-owned
+// credential resource screens.
+type CredentialResourceRuntime interface {
+	ConnectorDataRuntime
+}
+
 // RouteDefinition is the canonical runtime and documentation contract for a
 // connector-owned HTTP route.
 type RouteDefinition struct {
 	Method  string
 	Path    string
-	Handler func(GatewayServer, http.ResponseWriter, *http.Request)
+	Handler func(RouteGateway, http.ResponseWriter, *http.Request)
 }
 
 // Pattern returns the Go 1.22 ServeMux method/path pattern.
@@ -47,49 +146,86 @@ func (r RouteDefinition) Pattern() string {
 	return strings.TrimSpace(r.Method) + " " + strings.TrimSpace(r.Path)
 }
 
-// GatewayRuntime exposes only connector-safe runtime resources from the
-// unlocked local database. Connector adapters should depend on this interface,
-// not the concrete API runtime.
-type GatewayRuntime interface {
-	ConnectorDatabase() *sql.DB
-	ConnectorVault() *vault.Vault
-	ConnectorWorkspaceID() string
-	ConnectorResource(kind string, name string) any
-	ConnectorConsoleSessions() *console.Manager
-	ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error)
-}
-
-// GatewayServer exposes shared gateway services that connector adapters may
-// call without importing the generic API package.
-type GatewayServer interface {
+// RuntimeAvailabilityGateway lets connector-owned setup routes require an
+// unlocked local runtime without gaining unrelated gateway authority.
+type RuntimeAvailabilityGateway interface {
 	ConnectorActiveRuntimeAvailable(w http.ResponseWriter) bool
+}
+
+// PeerIdentityGateway exposes the local endpoint identity store without
+// granting authority to change it.
+type PeerIdentityGateway interface {
 	ConnectorTrustStorePath() string
+}
+
+// PeerTrustGateway owns endpoint identity changes and their Vault lease
+// invalidation boundary.
+type PeerTrustGateway interface {
+	PeerIdentityGateway
 	ConnectorChangeVaultPeerTrust(ctx context.Context, change func() error) error
-	ConnectorRestartConsoleSession(ctx context.Context, runtime GatewayRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (ConsoleRestartResult, error)
-	ConnectorFinishActionRequest(ctx context.Context, runtime GatewayRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error)
-	ConnectorCreateDownloadBatch(ctx context.Context, runtime GatewayRuntime, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error)
-	ConnectorRunTransferBatch(runtime GatewayRuntime, batchID int64, overwrite bool)
 }
 
-// RuntimeCapabilityServer exposes connector-owned runtime capabilities to
-// adapters that execute outside the connector action pipeline.
-type RuntimeCapabilityServer interface {
-	ConnectorRuntimeCapabilities(kind string, runtime GatewayRuntime) connectors.RuntimeCapabilityResolver
+// LiveConsoleGateway opens a nested live transport by target reference without
+// exposing the provider connector's runtime data or credential resources.
+type LiveConsoleGateway interface {
+	PeerIdentityGateway
+	ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows int, cols int, params map[string]any) (*console.RuntimeSession, error)
 }
 
-// TargetLifecycleGateway is passed to target/profile lifecycle adapters.
-type TargetLifecycleGateway interface {
-	ConnectorServer() GatewayServer
-	ConnectorStaleActionRequestsForTarget(ctx context.Context, runtime GatewayRuntime, targetID int64, profileID int64, reason string) (int64, error)
-	ConnectorWriteAudit(ctx context.Context, runtime GatewayRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any)
-	ConnectorDeleteTargetRecord(ctx context.Context, runtime GatewayRuntime, target connectortargets.Target, payload map[string]any) error
-	ConnectorFinalizeDeletedTarget(ctx context.Context, runtime GatewayRuntime, target connectortargets.Target, staleReason string, payload map[string]any) (int64, error)
+// ConsoleRestartGateway owns cancellation and invalidation for one persistent
+// connector console session.
+type ConsoleRestartGateway interface {
+	ConnectorRestartConsoleSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (ConsoleRestartResult, error)
 }
 
-// CredentialResourceGateway is passed to connector-owned credential resource
-// adapters.
-type CredentialResourceGateway interface {
-	ConnectorServer() GatewayServer
+// ActionFinishGateway owns completion of an asynchronous connector action.
+type ActionFinishGateway interface {
+	ConnectorFinishActionRequest(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error)
+}
+
+// TransferBatchGateway owns creation and execution of connector download jobs.
+type TransferBatchGateway interface {
+	ConnectorCreateDownloadBatch(ctx context.Context, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error)
+	ConnectorRunTransferBatch(batchID int64, overwrite bool)
+}
+
+// RuntimeCapabilityGateway exposes connector-owned runtime capabilities to
+// adapters executing outside the structured action pipeline.
+type RuntimeCapabilityGateway interface {
+	ConnectorRuntimeCapabilities() connectors.RuntimeCapabilityResolver
+}
+
+type RouteGateway interface {
+	RuntimeAvailabilityGateway
+	PeerTrustGateway
+}
+
+type RuntimeActionGateway interface {
+	PeerIdentityGateway
+	ConsoleRestartGateway
+	TransferBatchGateway
+}
+
+type FileTransferGateway interface {
+	PeerIdentityGateway
+	RuntimeCapabilityGateway
+}
+
+// TargetDeletionGateway exposes only the irreversible target-deletion
+// boundary and the services needed for connector-owned remote cleanup.
+type TargetDeletionGateway interface {
+	PeerIdentityGateway
+	ConsoleRestartGateway
+	ConnectorDeleteTargetRecord(ctx context.Context, target connectortargets.Target, payload map[string]any) error
+	ConnectorFinalizeDeletedTarget(ctx context.Context, target connectortargets.Target, staleReason string, payload map[string]any) (int64, error)
+}
+
+// TargetOperationGateway exposes observation audit and peer identity to
+// connector-owned target operations without granting deletion or session
+// lifecycle authority.
+type TargetOperationGateway interface {
+	PeerIdentityGateway
+	ConnectorWriteAudit(ctx context.Context, actorType string, tokenID *int64, runtimeID int64, action string, payload any)
 }
 
 type Registry struct {
@@ -196,9 +332,9 @@ func (r *Registry) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
 
 // RuntimeAdapter lets a connector provide gateway-owned async/runtime services.
 type RuntimeAdapter interface {
-	RuntimeCapabilities(server GatewayServer, runtime GatewayRuntime) map[string]connectors.RuntimeCapability
+	RuntimeCapabilities(server RuntimeActionGateway, runtime ActionRuntime) map[string]connectors.RuntimeCapability
 	SupportsRunning(prepared actions.PreparedRequest) bool
-	FinishRunning(server GatewayServer, runtime GatewayRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) error
+	FinishRunning(server ActionFinishGateway, runtime ActionRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) error
 	RunningHint(request connectortargets.ActionRequest) string
 }
 
@@ -209,13 +345,6 @@ type RouteRegistrar interface {
 	Routes() []RouteDefinition
 }
 
-// RuntimeResourceProvider lets a connector initialize encrypted local resource
-// stores for one unlocked database without making the generic runtime own those
-// resource types.
-type RuntimeResourceProvider interface {
-	RuntimeResources(database *sql.DB, vault *vault.Vault, workspaceID string) map[string]any
-}
-
 // LiveConsoleAdapter marks an adapter with a persistent console action.
 type LiveConsoleAdapter interface {
 	LiveConsoleActionName() string
@@ -223,52 +352,51 @@ type LiveConsoleAdapter interface {
 
 // DraftTester lets a connector test a not-yet-persisted target/profile draft.
 type DraftTester interface {
-	TestDraft(handler TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime, request any)
+	TestDraft(handler PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime ConnectorDataRuntime, request any)
 }
 
 // TargetDeleter lets a connector customize deletion behavior.
 type TargetDeleter interface {
-	DeleteTarget(handler TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime, target connectortargets.Target)
+	DeleteTarget(handler TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime TargetLifecycleRuntime, target connectortargets.Target)
 }
 
 // CredentialProfileLifecycleAdapter lets a connector react to profile lifecycle
 // changes without putting connector-specific branches in the core handlers.
 type CredentialProfileLifecycleAdapter interface {
-	BeforeCreateCredentialProfile(ctx context.Context, runtime GatewayRuntime, store *connectortargets.Store, target connectortargets.Target) error
-	BeforeDeleteCredentialProfile(ctx context.Context, handler TargetLifecycleGateway, runtime GatewayRuntime, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error
+	BeforeCreateCredentialProfile(ctx context.Context, runtime TargetLifecycleRuntime, target connectortargets.Target) error
+	BeforeDeleteCredentialProfile(ctx context.Context, handler ConsoleRestartGateway, runtime TargetLifecycleRuntime, target connectortargets.Target, profile connectortargets.CredentialProfile) error
 }
 
 // CredentialProfileTester lets a connector test an existing profile.
 type CredentialProfileTester interface {
-	TestCredentialProfile(handler TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime, target connectors.TargetView, profile connectors.CredentialProfileView)
+	TestCredentialProfile(handler PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime ConnectorDataRuntime, target connectors.TargetView, profile connectors.CredentialProfileView)
 }
 
 // TargetOperationRunner runs connector-specific target operations.
 type TargetOperationRunner interface {
-	RunTargetOperation(handler TargetLifecycleGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime, target connectortargets.Target, operation string)
+	RunTargetOperation(handler TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime ConnectorDataRuntime, target connectortargets.Target, operation string)
 }
 
 // CredentialCanonicalizer normalizes public credential profile metadata.
 type CredentialCanonicalizer interface {
-	CanonicalCredentialPublic(ctx context.Context, handler TargetLifecycleGateway, runtime GatewayRuntime, credentialKind string, public map[string]any) (map[string]any, error)
+	CanonicalCredentialPublic(ctx context.Context, runtime ConnectorDataRuntime, credentialKind string, public map[string]any) (map[string]any, error)
 }
 
 // LiveConsoleTargetAdapter exposes metadata for live-console targets.
 type LiveConsoleTargetAdapter interface {
 	LiveConsoleCapabilityKind() string
-	LiveConsoleTargetRef(ctx context.Context, runtime GatewayRuntime, runtimeID int64) (string, error)
-	ResolveLiveConsoleMaterial(ctx context.Context, runtime GatewayRuntime, runtimeID int64) (any, any, error)
+	LiveConsoleTargetRef(ctx context.Context, runtime LiveConsoleRuntime, runtimeID int64) (string, error)
 	LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any
 }
 
 // LiveConsoleTransportAdapter opens a connector-owned persistent runtime for
 // the generic live console manager.
 type LiveConsoleTransportAdapter interface {
-	OpenLiveConsole(ctx context.Context, server GatewayServer, runtime GatewayRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error)
+	OpenLiveConsole(ctx context.Context, server LiveConsoleGateway, runtime LiveConsoleRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error)
 }
 
 type LiveConsolePeerIdentityAdapter interface {
-	ExpectedLiveConsolePeerIdentities(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64) ([]string, error)
+	ExpectedLiveConsolePeerIdentities(ctx context.Context, server PeerIdentityGateway, runtime LiveConsoleRuntime, runtimeID int64) ([]string, error)
 }
 
 // TCPTransportAdapter lets one connector provide a reviewed TCP transport for
@@ -276,14 +404,14 @@ type LiveConsolePeerIdentityAdapter interface {
 // the caller. The provider connector owns credential resolution and transport
 // setup; the caller connector owns the protocol spoken over the returned conn.
 type TCPTransportAdapter interface {
-	DialConnectorTCP(ctx context.Context, server GatewayServer, runtime GatewayRuntime, targetRef string, network string, address string) (net.Conn, error)
+	DialConnectorTCP(ctx context.Context, server PeerIdentityGateway, runtime LiveConsoleRuntime, targetRef string, network string, address string) (net.Conn, error)
 }
 
 // CommandTransportAdapter lets one connector run a bounded command template
 // through another connector-owned transport without exposing connector-specific
 // material to core or to the caller.
 type CommandTransportAdapter interface {
-	RunConnectorCommand(ctx context.Context, server GatewayServer, runtime GatewayRuntime, targetRef string, command string) (connectors.CommandRunResult, error)
+	RunConnectorCommand(ctx context.Context, server PeerIdentityGateway, runtime LiveConsoleRuntime, targetRef string, command string) (connectors.CommandRunResult, error)
 }
 
 type TransferProgress func(transferred int64, total int64)
@@ -322,18 +450,18 @@ type RemoteFilePage struct {
 }
 
 type FileTransferAdapter interface {
-	BrowseRemoteFiles(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string) ([]RemoteFileEntry, error)
-	StatRemotePath(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string) (RemotePathStatus, error)
-	UploadFile(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error)
-	DownloadFile(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string, localPath string, options TransferOptions) (TransferResult, error)
+	BrowseRemoteFiles(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string) ([]RemoteFileEntry, error)
+	StatRemotePath(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string) (RemotePathStatus, error)
+	UploadFile(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error)
+	DownloadFile(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string, localPath string, options TransferOptions) (TransferResult, error)
 }
 
 type RecursiveFileTransferAdapter interface {
-	ListRecursiveFiles(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]RemoteFileEntry, error)
+	ListRecursiveFiles(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]RemoteFileEntry, error)
 }
 
 type PaginatedFileTransferAdapter interface {
-	BrowseRemoteFilesPage(ctx context.Context, server GatewayServer, runtime GatewayRuntime, runtimeID int64, remotePath string, cursor string) (RemoteFilePage, error)
+	BrowseRemoteFilesPage(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string, cursor string) (RemoteFilePage, error)
 }
 
 type ErrorPresenter interface {
@@ -343,12 +471,12 @@ type ErrorPresenter interface {
 
 // CredentialResourceAdapter manages connector-owned credential resources.
 type CredentialResourceAdapter interface {
-	ListCredentialResources(handler CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime)
-	CreateCredentialResource(handler CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime)
-	ImportCredentialResource(handler CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime)
-	GetCredentialResource(handler CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime)
-	UpdateCredentialResource(handler CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime)
-	DeleteCredentialResource(handler CredentialResourceGateway, w http.ResponseWriter, r *http.Request, runtime GatewayRuntime)
+	ListCredentialResources(w http.ResponseWriter, r *http.Request, runtime CredentialResourceRuntime)
+	CreateCredentialResource(w http.ResponseWriter, r *http.Request, runtime CredentialResourceRuntime)
+	ImportCredentialResource(w http.ResponseWriter, r *http.Request, runtime CredentialResourceRuntime)
+	GetCredentialResource(w http.ResponseWriter, r *http.Request, runtime CredentialResourceRuntime)
+	UpdateCredentialResource(w http.ResponseWriter, r *http.Request, runtime CredentialResourceRuntime)
+	DeleteCredentialResource(w http.ResponseWriter, r *http.Request, runtime CredentialResourceRuntime)
 }
 
 // ConsoleRestartResult is the connector-neutral shape returned by live runtime

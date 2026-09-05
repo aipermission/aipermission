@@ -7,8 +7,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 )
 
-func (adapter) BrowseRemoteFiles(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, remotePath string) ([]connectorapi.RemoteFileEntry, error) {
-	gateway, err := serverFrom(server)
+func (adapter) BrowseRemoteFiles(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string) ([]connectorapi.RemoteFileEntry, error) {
+	gateway, err := peerIdentityFrom(server)
 	if err != nil {
 		return nil, err
 	}
@@ -23,8 +23,8 @@ func (adapter) BrowseRemoteFiles(ctx context.Context, server connectorapi.Gatewa
 	return remoteFileEntries(entries), nil
 }
 
-func (adapter) StatRemotePath(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, remotePath string) (connectorapi.RemotePathStatus, error) {
-	gateway, err := serverFrom(server)
+func (adapter) StatRemotePath(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string) (connectorapi.RemotePathStatus, error) {
+	gateway, err := peerIdentityFrom(server)
 	if err != nil {
 		return connectorapi.RemotePathStatus{}, err
 	}
@@ -39,8 +39,8 @@ func (adapter) StatRemotePath(ctx context.Context, server connectorapi.GatewaySe
 	return connectorapi.RemotePathStatus{Exists: status.Exists, Type: status.Type, Size: status.Size}, nil
 }
 
-func (adapter) UploadFile(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
-	gateway, err := serverFrom(server)
+func (adapter) UploadFile(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+	gateway, err := peerIdentityFrom(server)
 	if err != nil {
 		return connectorapi.TransferResult{}, err
 	}
@@ -55,8 +55,8 @@ func (adapter) UploadFile(ctx context.Context, server connectorapi.GatewayServer
 	return connectorTransferResult(result), nil
 }
 
-func (adapter) DownloadFile(ctx context.Context, server connectorapi.GatewayServer, runtime connectorapi.GatewayRuntime, runtimeID int64, remotePath string, localPath string, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
-	gateway, err := serverFrom(server)
+func (adapter) DownloadFile(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string, localPath string, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+	gateway, err := peerIdentityFrom(server)
 	if err != nil {
 		return connectorapi.TransferResult{}, err
 	}

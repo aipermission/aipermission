@@ -87,7 +87,7 @@ func expectedLiveConsolePeerIdentities(
 		}
 		return nil, nil
 	}
-	items, err := adapter.ExpectedLiveConsolePeerIdentities(ctx, server, runtime, surface.ID)
+	items, err := adapter.ExpectedLiveConsolePeerIdentities(ctx, connectorPeerGatewayPort{server: server}, connectorLiveRuntime(runtime, surface.ConnectorKind), surface.ID)
 	if err != nil {
 		return nil, err
 	}

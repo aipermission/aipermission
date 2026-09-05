@@ -21,6 +21,6 @@ func (s *Server) runtimeConsoleOpener(runtime *databaseRuntime) console.RuntimeO
 		if adapter == nil {
 			return nil, connectortargets.ErrInvalidTargetRef
 		}
-		return adapter.OpenLiveConsole(ctx, s, runtime, request)
+		return adapter.OpenLiveConsole(ctx, connectorLiveConsoleGatewayPort{connectorPeerGatewayPort: connectorPeerGatewayPort{server: s}, runtime: runtime}, connectorLiveRuntime(runtime, target.ConnectorKind), request)
 	}
 }

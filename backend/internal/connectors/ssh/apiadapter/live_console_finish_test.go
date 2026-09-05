@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
@@ -15,7 +14,7 @@ type failingActionRequestFinisher struct {
 	hadDeadline bool
 }
 
-func (f *failingActionRequestFinisher) ConnectorFinishActionRequest(ctx context.Context, _ connectorapi.GatewayRuntime, _ int64, _ connectors.ResultStatus, _ any, _ string, _ string, _ ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
+func (f *failingActionRequestFinisher) ConnectorFinishActionRequest(ctx context.Context, _ int64, _ connectors.ResultStatus, _ any, _ string, _ string, _ ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
 	_, f.hadDeadline = ctx.Deadline()
 	return connectortargets.ActionRequest{}, f.err
 }

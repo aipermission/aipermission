@@ -2,7 +2,6 @@ package apiadapter
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
 func targetConfigFromConnectorConfig(config map[string]any) (map[string]any, error) {
@@ -37,21 +35,16 @@ func targetConfigFromConnectorConfig(config map[string]any) (map[string]any, err
 	}, nil
 }
 
-func runtimeIDForTargetRef(ctx context.Context, runtime connectorapi.GatewayRuntime, targetRef string) (int64, error) {
-	database, err := databaseFrom(runtime)
-	if err != nil {
-		return 0, err
-	}
+func runtimeIDForTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, targetRef string) (int64, error) {
 	targetID, profileID, ok := connectortargets.ParseTargetProfileRef(sshconnector.Kind, targetRef)
 	if !ok {
 		return 0, connectortargets.ErrInvalidTargetRef
 	}
-	store := connectortargets.NewStore(database)
-	target, profile, err := store.ResolveConnectorActionTarget(ctx, targetRef)
+	target, profile, err := runtime.ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return 0, err
 	}
-	surface, err := store.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+	surface, err := runtime.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
 		ConnectorKind:  sshconnector.Kind,
 		TargetID:       targetID,
 		ProfileID:      profileID,
@@ -67,12 +60,8 @@ func runtimeIDForTargetRef(ctx context.Context, runtime connectorapi.GatewayRunt
 	return surface.ID, nil
 }
 
-func ensureLiveConsoleRuntimeIDForProfile(ctx context.Context, runtime connectorapi.GatewayRuntime, targetID int64, profileID int64, label string) (int64, error) {
-	database, err := databaseFrom(runtime)
-	if err != nil {
-		return 0, err
-	}
-	surface, err := connectortargets.NewStore(database).EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+func ensureLiveConsoleRuntimeIDForProfile(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, targetID int64, profileID int64, label string) (int64, error) {
+	surface, err := runtime.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
 		ConnectorKind:  sshconnector.Kind,
 		TargetID:       targetID,
 		ProfileID:      profileID,
@@ -85,12 +74,8 @@ func ensureLiveConsoleRuntimeIDForProfile(ctx context.Context, runtime connector
 	return surface.ID, nil
 }
 
-func existingLiveConsoleRuntimeIDsForProfile(ctx context.Context, runtime connectorapi.GatewayRuntime, targetID int64, profileID int64) ([]int64, error) {
-	database, err := databaseFrom(runtime)
-	if err != nil {
-		return nil, err
-	}
-	surfaces, err := connectortargets.NewStore(database).ListRuntimeSurfacesForProfile(ctx, targetID, profileID, connectortargets.RuntimeCapabilityLiveConsole)
+func existingLiveConsoleRuntimeIDsForProfile(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, targetID int64, profileID int64) ([]int64, error) {
+	surfaces, err := runtime.ListRuntimeSurfacesForProfile(ctx, targetID, profileID, connectortargets.RuntimeCapabilityLiveConsole)
 	if err != nil {
 		return nil, err
 	}
@@ -103,12 +88,8 @@ func existingLiveConsoleRuntimeIDsForProfile(ctx context.Context, runtime connec
 	return ids, nil
 }
 
-func targetMaterial(ctx context.Context, runtime connectorapi.GatewayRuntime, runtimeID int64) (sshTargetMaterial, sshkeys.PrivateKey, error) {
-	database, err := databaseFrom(runtime)
-	if err != nil {
-		return sshTargetMaterial{}, sshkeys.PrivateKey{}, err
-	}
-	target, profile, surface, err := connectortargets.NewStore(database).TargetProfileByRuntimeID(ctx, runtimeID)
+func targetMaterial(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (sshTargetMaterial, sshkeys.PrivateKey, error) {
+	target, profile, surface, err := runtime.TargetProfileByRuntimeID(ctx, runtimeID)
 	if err != nil {
 		return sshTargetMaterial{}, sshkeys.PrivateKey{}, err
 	}
@@ -142,32 +123,25 @@ func targetMaterial(ctx context.Context, runtime connectorapi.GatewayRuntime, ru
 	}, privateKey, nil
 }
 
-func databaseFrom(runtime connectorapi.GatewayRuntime) (*sql.DB, error) {
-	if runtime == nil || runtime.ConnectorDatabase() == nil {
-		return nil, fmt.Errorf("database runtime is not available")
-	}
-	return runtime.ConnectorDatabase(), nil
-}
-
-func keyStore(runtime connectorapi.GatewayRuntime) (*sshkeys.Store, error) {
+func keyStore(runtime connectorapi.ConnectorDataRuntime) (*sshkeys.Store, error) {
 	if runtime == nil {
 		return nil, fmt.Errorf("ssh key store is not available")
 	}
-	store, ok := runtime.ConnectorResource(sshconnector.Kind, "keys").(*sshkeys.Store)
-	if !ok || store == nil {
+	resources := runtime.CredentialResources("private_key")
+	if resources == nil {
 		return nil, fmt.Errorf("ssh key store is not available")
 	}
-	return store, nil
+	return sshkeys.NewResourceStore(resources), nil
 }
 
-func consoleSessions(runtime connectorapi.GatewayRuntime) (*console.Manager, error) {
+func consoleSessions(runtime connectorapi.LiveSessionRuntime) (connectorapi.ConsoleSessionRuntime, error) {
 	if runtime == nil || runtime.ConnectorConsoleSessions() == nil {
 		return nil, fmt.Errorf("ssh console runtime is not available")
 	}
 	return runtime.ConnectorConsoleSessions(), nil
 }
 
-func executionTarget(gateway connectorapi.GatewayServer, target sshTargetMaterial, privateKey sshkeys.PrivateKey) execution.Target {
+func executionTarget(gateway connectorapi.PeerIdentityGateway, target sshTargetMaterial, privateKey sshkeys.PrivateKey) execution.Target {
 	return execution.Target{
 		Host:           target.Host,
 		Port:           target.Port,
@@ -212,16 +186,37 @@ func remoteFileEntries(entries []execution.RemoteFileEntry) []connectorapi.Remot
 	return items
 }
 
-func serverFrom(value connectorapi.GatewayServer) (connectorapi.GatewayServer, error) {
+func peerIdentityFrom(value connectorapi.PeerIdentityGateway) (connectorapi.PeerIdentityGateway, error) {
 	if value == nil {
-		return nil, fmt.Errorf("gateway services are not available")
+		return nil, fmt.Errorf("peer trust services are not available")
 	}
 	return value, nil
 }
 
-func serverFromHandler(value connectorapi.TargetLifecycleGateway) (connectorapi.GatewayServer, error) {
+func consoleRestartGatewayFrom(value connectorapi.ConsoleRestartGateway) (connectorapi.ConsoleRestartGateway, error) {
 	if value == nil {
-		return nil, fmt.Errorf("gateway handler services are not available")
+		return nil, fmt.Errorf("console restart service is not available")
 	}
-	return serverFrom(value.ConnectorServer())
+	return value, nil
+}
+
+func targetDeletionGatewayFrom(value connectorapi.TargetDeletionGateway) (connectorapi.TargetDeletionGateway, error) {
+	if value == nil {
+		return nil, fmt.Errorf("target deletion services are not available")
+	}
+	return value, nil
+}
+
+func targetOperationGatewayFrom(value connectorapi.TargetOperationGateway) (connectorapi.TargetOperationGateway, error) {
+	if value == nil {
+		return nil, fmt.Errorf("target operation services are not available")
+	}
+	return value, nil
+}
+
+func routeGatewayFrom(value connectorapi.RouteGateway) (connectorapi.RouteGateway, error) {
+	if value == nil {
+		return nil, fmt.Errorf("route gateway services are not available")
+	}
+	return value, nil
 }

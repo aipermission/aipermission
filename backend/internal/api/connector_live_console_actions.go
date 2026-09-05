@@ -37,7 +37,7 @@ func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime *databaseRunt
 		if adapter == nil {
 			continue
 		}
-		ref, err := adapter.LiveConsoleTargetRef(ctx, runtime, runtimeID)
+		ref, err := adapter.LiveConsoleTargetRef(ctx, connectorLiveRuntime(runtime, info.Kind), runtimeID)
 		if errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 			continue
 		}

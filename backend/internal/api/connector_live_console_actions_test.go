@@ -20,12 +20,8 @@ func (liveConsoleLookupTestAdapter) LiveConsoleCapabilityKind() string {
 	return connectortargets.RuntimeCapabilityLiveConsole
 }
 
-func (adapter liveConsoleLookupTestAdapter) LiveConsoleTargetRef(context.Context, connectorapi.GatewayRuntime, int64) (string, error) {
+func (adapter liveConsoleLookupTestAdapter) LiveConsoleTargetRef(context.Context, connectorapi.LiveConsoleRuntime, int64) (string, error) {
 	return adapter.ref, adapter.err
-}
-
-func (liveConsoleLookupTestAdapter) ResolveLiveConsoleMaterial(context.Context, connectorapi.GatewayRuntime, int64) (any, any, error) {
-	return nil, nil, nil
 }
 
 func (liveConsoleLookupTestAdapter) LiveConsoleTargetMetadata(connectors.TargetView, connectors.CredentialProfileView) map[string]any {

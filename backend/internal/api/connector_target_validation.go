@@ -199,7 +199,7 @@ func encryptPreparedCredentialSecret(runtime *databaseRuntime, profileID int64, 
 
 func (s connectorTargetHandlers) canonicalCredentialPublic(ctx context.Context, runtime *databaseRuntime, connectorKind string, credentialKind string, public map[string]any) (map[string]any, error) {
 	if adapter := s.connectorCredentialCanonicalizerFor(connectorKind); adapter != nil {
-		return adapter.CanonicalCredentialPublic(ctx, s, runtime, credentialKind, public)
+		return adapter.CanonicalCredentialPublic(ctx, connectorDataRuntimePort(runtime, connectorKind), credentialKind, public)
 	}
 	if public == nil {
 		return map[string]any{}, nil
