@@ -204,7 +204,7 @@ func validateLifecycleInput(input map[string]any) error {
 }
 
 func normalizeObjectPrefix(value string) string {
-	return strings.TrimLeft(strings.TrimSpace(value), "/")
+	return value
 }
 
 func lifecycleDays(value *s3LifecycleExpiration) int {

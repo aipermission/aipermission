@@ -179,10 +179,10 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
         <div className="grid gap-4">
           <div className={`grid gap-2 rounded-md border p-3 ${detailClass}`}>
             <p className="break-all text-xs">
-              <strong>Object:</strong> {objectKey}
+              <strong>Object:</strong> {JSON.stringify(objectKey)}
             </p>
             <p className="break-all text-xs">
-              <strong>Version:</strong> {confirmation?.version?.version_id}
+              <strong>Version:</strong> {JSON.stringify(confirmation?.version?.version_id)}
             </p>
           </div>
           <Notice tone={confirmation?.action === "delete_object_version" ? "bad" : "warn"}>

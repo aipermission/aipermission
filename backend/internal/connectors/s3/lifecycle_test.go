@@ -100,7 +100,7 @@ func TestPrepareLifecycleReplacementIsDestructiveAndBounded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if prepared.Risk != connectors.RiskDestructive || prepared.Payload["rule_id"] != defaultLifecycleRuleID || prepared.Payload["prefix"] != "tmp/" {
+	if prepared.Risk != connectors.RiskDestructive || prepared.Payload["rule_id"] != defaultLifecycleRuleID || prepared.Payload["prefix"] != "/tmp/" {
 		t.Fatalf("prepared = %#v", prepared)
 	}
 

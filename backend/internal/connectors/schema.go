@@ -33,14 +33,15 @@ type FieldOption struct {
 
 // Field describes one connector target, credential, or action input field.
 type Field struct {
-	Name        string        `json:"name"`
-	Label       string        `json:"label"`
-	Type        FieldType     `json:"type"`
-	Required    bool          `json:"required,omitempty"`
-	Secret      bool          `json:"secret,omitempty"`
-	Description string        `json:"description,omitempty"`
-	Default     any           `json:"default,omitempty"`
-	Options     []FieldOption `json:"options,omitempty"`
+	Name               string        `json:"name"`
+	Label              string        `json:"label"`
+	Type               FieldType     `json:"type"`
+	Required           bool          `json:"required,omitempty"`
+	PreserveWhitespace bool          `json:"preserve_whitespace,omitempty"`
+	Secret             bool          `json:"secret,omitempty"`
+	Description        string        `json:"description,omitempty"`
+	Default            any           `json:"default,omitempty"`
+	Options            []FieldOption `json:"options,omitempty"`
 }
 
 // Schema is a small declarative shape used for target forms, credential forms,
@@ -99,10 +100,10 @@ func NormalizeSchemaValues(schema Schema, values map[string]any) (map[string]any
 	normalized := map[string]any{}
 	for _, field := range schema.Fields {
 		value, ok := values[field.Name]
-		if (!ok || emptySchemaValue(value)) && field.Required && field.Default == nil {
+		if (!ok || emptyFieldValue(field, value)) && field.Required && field.Default == nil {
 			return nil, fmt.Errorf("%s is required", field.Name)
 		}
-		if !ok || emptySchemaValue(value) {
+		if !ok || emptyFieldValue(field, value) {
 			if field.Default == nil {
 				continue
 			}
@@ -274,6 +275,9 @@ func validateSchemaDefinition(schema Schema, usage string, allowSecrets bool) er
 }
 
 func validateFieldDefinition(field Field, usage string) error {
+	if field.PreserveWhitespace && field.Type != FieldString {
+		return fmt.Errorf("%s schema field %q can preserve whitespace only for string fields", usage, field.Name)
+	}
 	switch field.Type {
 	case FieldString, FieldSecret, FieldMultiline, FieldMultilineSecret, FieldNumber, FieldInteger, FieldBoolean, FieldSelect, FieldJSON, FieldFileText, FieldFileBase64:
 	default:
@@ -339,10 +343,10 @@ func ValidateCredentialSchemaValues(schema Schema, public map[string]any, secret
 			required = field.Required && requireSecrets
 		}
 		value, ok := values[field.Name]
-		if (!ok || emptySchemaValue(value)) && required && field.Default == nil {
+		if (!ok || emptyFieldValue(field, value)) && required && field.Default == nil {
 			return fmt.Errorf("%s is required", field.Name)
 		}
-		if !ok || emptySchemaValue(value) {
+		if !ok || emptyFieldValue(field, value) {
 			continue
 		}
 		if err := validateFieldValue(field, value); err != nil {
@@ -413,6 +417,16 @@ func emptySchemaValue(value any) bool {
 	}
 	text, ok := value.(string)
 	return ok && strings.TrimSpace(text) == ""
+}
+
+// Opaque string identities distinguish whitespace from an absent value.
+func emptyFieldValue(field Field, value any) bool {
+	if field.PreserveWhitespace && field.Type == FieldString {
+		if text, ok := value.(string); ok {
+			return text == ""
+		}
+	}
+	return emptySchemaValue(value)
 }
 
 func schemaNumber(value any) bool {

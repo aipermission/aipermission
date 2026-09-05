@@ -265,7 +265,7 @@ func TestPrepareObjectVersionActionsUseExplicitRisks(t *testing.T) {
 			if err != nil {
 				t.Fatalf("prepare: %v", err)
 			}
-			if prepared.Risk != test.risk || prepared.Payload["key"] != "daily/report.csv" {
+			if prepared.Risk != test.risk || prepared.Payload["key"] != "/daily/report.csv" {
 				t.Fatalf("prepared = %#v", prepared)
 			}
 		})

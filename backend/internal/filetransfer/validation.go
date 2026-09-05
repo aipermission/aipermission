@@ -11,7 +11,6 @@ func normalizeCreateRequest(request CreateRequest) (CreateRequest, error) {
 	request.Direction = strings.TrimSpace(request.Direction)
 	request.Source = strings.TrimSpace(request.Source)
 	request.LocalPath = strings.TrimSpace(request.LocalPath)
-	request.RemotePath = strings.TrimSpace(request.RemotePath)
 	request.FileName = strings.TrimSpace(request.FileName)
 	request.TempPath = strings.TrimSpace(request.TempPath)
 	if request.Source == "" {

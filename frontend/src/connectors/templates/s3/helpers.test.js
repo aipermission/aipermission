@@ -3,8 +3,11 @@ import test from "node:test";
 import { filenameFromKey, joinObjectKey, normalizeObjectKey, parentPrefix, restoreDestinationGuard, safeDownloadName } from "./helpers.js";
 
 test("S3 object-key helpers preserve browser navigation boundaries", () => {
-  assert.equal(normalizeObjectKey("  /reports/2026/file.csv  "), "reports/2026/file.csv");
-  assert.equal(joinObjectKey("reports/2026/", "/file.csv"), "reports/2026/file.csv");
+  assert.equal(normalizeObjectKey("  /reports/2026/file.csv  "), "  /reports/2026/file.csv  ");
+  assert.equal(joinObjectKey("reports/2026/", "/file.csv"), "reports/2026//file.csv");
+  assert.equal(joinObjectKey("a//", " b "), "a// b ");
+  assert.equal(parentPrefix("a//"), "a/");
+  assert.equal(parentPrefix("/a/"), "/");
   assert.equal(parentPrefix("reports/2026/file.csv"), "reports/2026/");
   assert.equal(parentPrefix("reports/"), "");
 });

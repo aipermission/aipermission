@@ -46,7 +46,7 @@ func TestPrepareUploadRedactsContentPreview(t *testing.T) {
 	if prepared.Risk != connectors.RiskWrite {
 		t.Fatalf("risk = %q", prepared.Risk)
 	}
-	if prepared.Payload["key"] != "daily/secret.txt" {
+	if prepared.Payload["key"] != "/daily/secret.txt" {
 		t.Fatalf("key = %#v", prepared.Payload["key"])
 	}
 	if strings.Contains(strings.Join(mapValues(prepared.Preview), " "), "super-secret-content") {
@@ -183,6 +183,96 @@ func TestExecuteListObjectsSearchScansSubsequentPages(t *testing.T) {
 	}
 }
 
+func TestExecuteListObjectsSearchCursorResumesInsideProviderPage(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Query().Get("continuation-token") != "" {
+			t.Fatalf("continuation token = %q, want first provider page", r.URL.Query().Get("continuation-token"))
+		}
+		if r.URL.Query().Get("max-keys") != "1000" {
+			t.Fatalf("max-keys = %q", r.URL.Query().Get("max-keys"))
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<ListBucketResult>
+<Name>test-bucket</Name>
+<IsTruncated>false</IsTruncated>
+<Contents><Key>match-1.txt</Key><Size>1</Size></Contents>
+<Contents><Key>match-2.txt</Key><Size>2</Size></Contents>
+<Contents><Key>match-3.txt</Key><Size>3</Size></Contents>
+<Contents><Key>match-4.txt</Key><Size>4</Size></Contents>
+</ListBucketResult>`))
+	}))
+	defer server.Close()
+
+	connector := New()
+	first, err := connector.ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionListObjects,
+		Payload:    map[string]any{"search": "match", "limit": 2},
+	})
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	firstOutput := first.Output.(map[string]any)
+	firstObjects := firstOutput["objects"].([]map[string]any)
+	if len(firstObjects) != 2 || firstObjects[0]["key"] != "match-1.txt" || firstObjects[1]["key"] != "match-2.txt" {
+		t.Fatalf("first objects = %#v", firstObjects)
+	}
+	if firstOutput["is_truncated"] != true || firstOutput["next_cursor"] == "" {
+		t.Fatalf("first pagination = %#v", firstOutput)
+	}
+	if firstOutput["next_page_input"].(map[string]any)["limit"] != 2 {
+		t.Fatalf("next page input = %#v", firstOutput["next_page_input"])
+	}
+
+	second, err := connector.ExecuteAction(context.Background(), s3TestRuntime(t, server.URL), connectors.PreparedAction{
+		ActionName: ActionListObjects,
+		Payload: map[string]any{
+			"search": "match",
+			"limit":  2,
+			"cursor": firstOutput["next_cursor"],
+		},
+	})
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	secondOutput := second.Output.(map[string]any)
+	secondObjects := secondOutput["objects"].([]map[string]any)
+	if len(secondObjects) != 2 || secondObjects[0]["key"] != "match-3.txt" || secondObjects[1]["key"] != "match-4.txt" {
+		t.Fatalf("second objects = %#v", secondObjects)
+	}
+	if secondOutput["is_truncated"] != false || secondOutput["next_cursor"] != "" {
+		t.Fatalf("second pagination = %#v", secondOutput)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d", requests)
+	}
+}
+
+func TestPrepareListObjectsRejectsMalformedOrMismatchedSearchCursor(t *testing.T) {
+	connector := New()
+	if _, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     s3TestTarget(t, "http://127.0.0.1:9000"),
+		Profile:    s3TestProfile(),
+		ActionName: ActionListObjects,
+		Input:      map[string]any{"search": "match", "cursor": "provider-token"},
+	}); err == nil || !strings.Contains(err.Error(), "invalid S3 search cursor") {
+		t.Fatalf("malformed cursor error = %v", err)
+	}
+	cursor, err := encodeS3SearchCursor(s3SearchCursor{Prefix: "one/", Search: "match"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
+		Target:     s3TestTarget(t, "http://127.0.0.1:9000"),
+		Profile:    s3TestProfile(),
+		ActionName: ActionListObjects,
+		Input:      map[string]any{"prefix": "two/", "search": "match", "cursor": cursor},
+	}); err == nil || !strings.Contains(err.Error(), "invalid S3 search cursor scope") {
+		t.Fatalf("mismatched cursor error = %v", err)
+	}
+}
+
 func TestExecuteListObjectsReturnsDirectoryPrefixes(t *testing.T) {
 	var requestedPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +353,10 @@ func TestExecuteListObjectsReturnsNextPageInput(t *testing.T) {
 
 func TestPrepareListObjectsUsesNonSecretCursorPayload(t *testing.T) {
 	connector := New()
+	cursor, err := encodeS3SearchCursor(s3SearchCursor{Prefix: "daily/", Search: "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	prepared, err := connector.PrepareAction(context.Background(), connectors.ActionRequest{
 		Target:     s3TestTarget(t, "http://127.0.0.1:9000"),
 		Profile:    s3TestProfile(),
@@ -270,7 +364,7 @@ func TestPrepareListObjectsUsesNonSecretCursorPayload(t *testing.T) {
 		Input: map[string]any{
 			"prefix": "daily/",
 			"search": "app",
-			"cursor": "opaque-pagination-cursor",
+			"cursor": cursor,
 			"limit":  10,
 		},
 		Reason: "unit test",
@@ -278,7 +372,7 @@ func TestPrepareListObjectsUsesNonSecretCursorPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if prepared.Payload["cursor"] != "opaque-pagination-cursor" {
+	if prepared.Payload["cursor"] != cursor {
 		t.Fatalf("cursor = %#v", prepared.Payload["cursor"])
 	}
 	if _, ok := prepared.Payload["continuation_token"]; ok {

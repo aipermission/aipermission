@@ -300,6 +300,9 @@ schema requirements, and test checklist live in
 
 ## Documentation
 
+S3 operations preserve exact object keys; see the [S3 transfer identity and
+mapping limits](docs/setup/s3.md#object-browser-and-transfers).
+
 [docs/index.md](docs/index.md) is the canonical navigation and ownership index.
 Use it for architecture, setup, security, API, connector, operator, and
 maintainer documentation.

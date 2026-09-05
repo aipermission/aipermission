@@ -32,7 +32,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
 
   async function submit(event) {
     event.preventDefault();
-    const normalizedKey = key.trim().replace(/^\/+/, "");
+    const normalizedKey = key;
     const normalizedExpiry = Number(expiresSeconds);
     if (!normalizedKey) {
       setError("Object key is required.");
@@ -153,7 +153,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
           <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
             Close
           </Button>
-          <Button type="submit" disabled={pending || !key.trim()}>
+          <Button type="submit" disabled={pending || !key}>
             <Link2 className="h-4 w-4" />
             {pending ? "Creating..." : "Create URL"}
           </Button>
