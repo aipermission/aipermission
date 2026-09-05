@@ -2,7 +2,7 @@ name: aipermission
 
 services:
   backend:
-    image: ghcr.io/aipermission/aipermission-backend:${AIPERMISSION_VERSION:-0.2.43}
+    image: ghcr.io/aipermission/aipermission-backend:${AIPERMISSION_VERSION:-0.2.44}
     container_name: aipermission-backend
     restart: unless-stopped
     environment:
@@ -19,7 +19,7 @@ services:
   migration:
     profiles:
       - migrate
-    image: ghcr.io/aipermission/aipermission-backend:${AIPERMISSION_VERSION:-0.2.43}
+    image: ghcr.io/aipermission/aipermission-backend:${AIPERMISSION_VERSION:-0.2.44}
     container_name: aipermission-migration
     command: ["aipermission"]
     environment:
@@ -34,7 +34,7 @@ services:
       - aipermission_data:/app/data
 
   frontend:
-    image: ghcr.io/aipermission/aipermission-frontend:${AIPERMISSION_VERSION:-0.2.43}
+    image: ghcr.io/aipermission/aipermission-frontend:${AIPERMISSION_VERSION:-0.2.44}
     container_name: aipermission-frontend
     restart: unless-stopped
     ports:

@@ -1,6 +1,38 @@
 {
-  "version": "0.2.43",
+  "version": "0.2.44",
   "entries": [
+    {
+      "version": "0.2.44",
+      "label": "Protocol correctness and backend boundaries",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "History now uses stable created-at and record-ID cursors instead of offset pagination, preserving deterministic navigation as new activity arrives.",
+            "Connector runtime integrations now receive consumer-owned capability ports, while token activity, attachment responses, diagnostics metadata, Vault workflows, transfer finalization, and connector action projections live with their behavior owners."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Redis and Valkey scans now preserve real cursor progress, bound total work, honor cancellation, retain continuation state, and remove duplicate keys across pages.",
+            "S3 object keys remain opaque remote identities across search, actions, presigned URLs, versions, uploads, downloads, and transfers without filesystem-style normalization.",
+            "The MCP bridge keeps one deadline through response-body consumption and distinguishes local pre-dispatch failures from uncertain mutation outcomes after a gateway reply is lost.",
+            "History polling and filter changes no longer allow older responses or cursors to overwrite newer interactive results.",
+            "Transfer pause, resume, cancellation, shutdown, and terminal finalization now share one atomic lifecycle owner.",
+            "Unlock tabs remain usable without horizontal overflow on 320 to 360 pixel browser widths."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Large Docker, Kubernetes, RabbitMQ, Redis, and S3 connector implementations are split into behavior-owned catalog, client, resource, action, and value modules without changing the generic connector pipeline.",
+            "Architecture checks now ratchet production-file size, package size, dependency fan-out, cycles, connector isolation, and gateway-state access.",
+            "Contributor, connector, REST, MCP, S3, and architecture documentation now describes the final registration, identity, retry, and runtime ownership contracts."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.43",
       "label": "Encrypted record and retry contracts",
@@ -225,41 +257,6 @@
             "Backup service requests ignore ambient process proxies and refuse redirects so encrypted snapshots and provider tokens stay on the operator-selected route.",
             "Database mutation paths now preserve affected-row driver failures instead of treating them as successful zero-row updates.",
             "The backend now uses the patched Go cryptography module release that closes CVE-2026-56854 in SSH source-address restriction enforcement."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.36",
-      "label": "Failure reconciliation and maintainability",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Connector target and credential profile lifecycle code now shares one frontend implementation across built-in connector templates.",
-            "Dense generic connector action, connector target, and file transfer modules now use smaller behavior-owned boundaries without changing connector contracts.",
-            "The product overview is shorter and canonical connector documentation is generated from connector metadata to reduce semantic drift."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Managed credential deletion now requires confirmed external cleanup before removing the local profile, and Postgres cleanup ownership reassignment is explained before deletion.",
-            "File transfers now classify timeout, interruption, validation, local persistence, and uncertain remote outcomes while warning users to inspect the destination before retrying.",
-            "Connector permission, lifetime, and action failures now remain visible and retryable in the interface, including non-standard JavaScript rejection values."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Uncertain external side effects no longer encourage blind retries, and managed credential cleanup results are redacted before entering audit records."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Critical backend and frontend lifecycle coverage expanded with higher enforced floors and focused permission, cleanup, transfer, and connector architecture tests.",
-            "Maintainer recovery guidance now records the current single-maintainer risk, emergency release procedure, and explicit backup ownership criteria without overstating project capacity."
           ]
         }
       ]
