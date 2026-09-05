@@ -15,6 +15,7 @@ import (
 	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
@@ -63,7 +64,7 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 	s.lifecycleMu.RUnlock()
 	defer os.Remove(snapshot.Path)
 
-	setAttachmentHeaders(w, snapshot.Filename, "application/octet-stream")
+	httpattachment.SetHeaders(w, snapshot.Filename, "application/octet-stream")
 	http.ServeFile(w, r, snapshot.Path)
 }
 

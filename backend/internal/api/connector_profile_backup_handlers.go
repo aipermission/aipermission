@@ -7,6 +7,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 )
 
 const maxConnectorRestoreBodyBytes = 256 << 20
@@ -35,7 +36,7 @@ func (s connectorTargetHandlers) downloadConnectorProfileBackup(w http.ResponseW
 	if contentType == "" {
 		contentType = "application/sql"
 	}
-	setAttachmentHeaders(w, filename, contentType)
+	httpattachment.SetHeaders(w, filename, contentType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(artifact.Data)
 	s.writeObservationAudit(r.Context(), resolved.runtime, "user", nil, 0, "connector.profile.backup.downloaded", map[string]any{
@@ -166,5 +167,5 @@ func (s connectorTargetHandlers) resolveConnectorProfileRuntime(w http.ResponseW
 }
 
 func safeDownloadFilename(value string, fallback string) string {
-	return safeAttachmentFilename(value, fallback)
+	return httpattachment.SafeFilename(value, fallback)
 }

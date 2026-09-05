@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 )
 
 func (s fileTransferHandlers) stageUploadFile(reader io.Reader) (string, int64, error) {
@@ -244,7 +245,7 @@ func shouldStoreArchiveEntry(name string) bool {
 
 func setDownloadHeaders(w http.ResponseWriter, fileName string) {
 	contentType := mime.TypeByExtension(filepath.Ext(fileName))
-	setAttachmentHeaders(w, fileName, contentType)
+	httpattachment.SetHeaders(w, fileName, contentType)
 }
 
 func (s fileTransferHandlers) ensureFileTransferTempRoot() (string, error) {
