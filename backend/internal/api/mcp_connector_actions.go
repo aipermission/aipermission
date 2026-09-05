@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresponse"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -43,24 +44,7 @@ type mcpConnectorActionCallRequest struct {
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
 }
 
-type mcpConnectorActionResponse struct {
-	Status            string                 `json:"status"`
-	RequestID         int64                  `json:"request_id,omitempty"`
-	TargetRef         string                 `json:"target_ref"`
-	TargetName        string                 `json:"target_name,omitempty"`
-	ConnectorKind     string                 `json:"connector_kind"`
-	ProfileLabel      string                 `json:"profile_label,omitempty"`
-	ActionName        string                 `json:"action_name"`
-	Input             map[string]any         `json:"input,omitempty"`
-	Output            any                    `json:"output,omitempty"`
-	DisplayText       string                 `json:"display_text,omitempty"`
-	Error             string                 `json:"error,omitempty"`
-	RetryPolicy       connectors.RetryPolicy `json:"retry_policy"`
-	RetryAfterSeconds int                    `json:"retry_after_seconds,omitempty"`
-	AssistantHint     string                 `json:"assistant_hint,omitempty"`
-	OutputWithheld    bool                   `json:"output_withheld,omitempty"`
-	Replayed          bool                   `json:"replayed,omitempty"`
-}
+type mcpConnectorActionResponse = actionresponse.Response
 
 func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Request) {
 	auth, ok := s.authenticateMCP(w, r)
@@ -280,7 +264,7 @@ func (s mcpHandlers) mcpGetConnectorActionRequest(w http.ResponseWriter, r *http
 func connectorActionResponseForToken(ctx context.Context, adapterRegistry *connectorapi.Registry, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
 	response := connectorActionToMCPResponse(adapterRegistry, request, result)
 	if !connectorActionVaultPollAuthorized(ctx, runtime, tokenID, request) {
-		withholdMCPConnectorActionResponse(&response)
+		actionresponse.Withhold(&response)
 	}
 	return response
 }
@@ -304,7 +288,7 @@ func (s mcpHandlers) writeMCPConnectorActionResponse(
 	}
 	defer release()
 	if !connectorActionVaultPollAuthorizedLocked(r.Context(), runtime, tokenID, request) {
-		withholdMCPConnectorActionResponse(&response)
+		actionresponse.Withhold(&response)
 		encoded, err = json.Marshal(response)
 		if err != nil {
 			writeInternalError(w)
@@ -318,20 +302,6 @@ func (s mcpHandlers) writeMCPConnectorActionResponse(
 	w.Header().Set("Pragma", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(append(encoded, '\n'))
-}
-
-func withholdMCPConnectorActionResponse(response *mcpConnectorActionResponse) {
-	response.Input = nil
-	response.Output = nil
-	response.DisplayText = ""
-	response.Error = ""
-	response.OutputWithheld = true
-	const authorizationHint = "Current Vault session authorization no longer permits returning this connector output."
-	if response.AssistantHint == "" {
-		response.AssistantHint = authorizationHint
-	} else if !strings.Contains(response.AssistantHint, authorizationHint) {
-		response.AssistantHint += " " + authorizationHint
-	}
 }
 
 func connectorActionVaultPollAuthorized(ctx context.Context, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest) bool {
@@ -437,44 +407,18 @@ func permittedConnectorActions(ctx context.Context, runtime *databaseRuntime, to
 }
 
 func connectorActionToMCPResponse(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
-	response := connectorActionRequestToMCPResponse(adapterRegistry, request)
-	response.Output = result.Output
-	if result.DisplayText != "" {
-		response.DisplayText = result.DisplayText
-	}
-	if result.Error != "" {
-		response.Error = result.Error
-	}
-	return response
+	return actionresponse.FromResult(request, result, connectorActionResponseRunningHint(adapterRegistry, request))
 }
 
 func connectorActionRequestToMCPResponse(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) mcpConnectorActionResponse {
-	response := mcpConnectorActionResponse{
-		Status:        string(request.Status),
-		RequestID:     request.ID,
-		TargetRef:     connectortargets.ConnectorTargetRef(request.ConnectorKind, request.TargetID, request.ProfileID),
-		TargetName:    request.TargetName,
-		ConnectorKind: request.ConnectorKind,
-		ProfileLabel:  request.ProfileLabel,
-		ActionName:    request.ActionName,
-		Input:         request.Input,
-		Output:        request.Output,
-		DisplayText:   request.DisplayText,
-		Error:         request.Error,
-		RetryPolicy:   request.RetryPolicy,
+	return actionresponse.FromRequest(request, connectorActionResponseRunningHint(adapterRegistry, request))
+}
+
+func connectorActionResponseRunningHint(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) string {
+	if request.Status != connectors.ResultRunning {
+		return ""
 	}
-	if request.Status == connectors.ResultApprovalPending {
-		response.RetryAfterSeconds = 3
-		response.AssistantHint = connectorActionApprovalHint
-	}
-	if request.Status == connectors.ResultRunning {
-		response.RetryAfterSeconds = 3
-		response.AssistantHint = connectorActionRunningHintForRequest(adapterRegistry, request)
-	}
-	if request.Status == connectors.ResultOutcomeUnknown {
-		response.AssistantHint = "Do not retry this action automatically. The operation may have been dispatched; inspect external state with a connector-specific read-only action first."
-	}
-	return response
+	return connectorActionRunningHintForRequest(adapterRegistry, request)
 }
 
 func connectorActionRunningHintForRequest(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) string {
