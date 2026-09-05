@@ -69,6 +69,35 @@ func TestScanPageBudgetReturnsContinuation(t *testing.T) {
 	}
 }
 
+func TestScanDeduplicatesKeysAcrossPagesWithoutStoppingEarly(t *testing.T) {
+	var cursors []string
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		cursors = append(cursors, command[1])
+		switch command[1] {
+		case "0":
+			return scanResponse("7", "a")
+		case "7":
+			return scanResponse("8", "a")
+		default:
+			return scanResponse("0", "b")
+		}
+	})
+	result, err := (Connector{}).ExecuteAction(t.Context(), runtime, connectors.PreparedAction{
+		ActionName: ActionScanKeys,
+		Payload:    map[string]any{"limit": 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := result.Output.(map[string]any)
+	if !reflect.DeepEqual(cursors, []string{"0", "7", "8"}) {
+		t.Fatalf("cursors = %v", cursors)
+	}
+	if !reflect.DeepEqual(output["keys"], []string{"a", "b"}) || output["count"] != 2 || output["complete"] != true {
+		t.Fatalf("output = %#v", output)
+	}
+}
+
 func TestScanCancellationInterruptsBlockedRead(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -183,8 +212,15 @@ func TestScanMaximumWholePageFitsOutputBoundary(t *testing.T) {
 }
 
 func TestScanBoundsAccumulatedKeyBytes(t *testing.T) {
-	key := strings.Repeat("k", maxRESPBulkBytes)
-	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string { return scanResponse("7", key) })
+	calls := 0
+	key := strings.Repeat("k", maxRESPBulkBytes-1)
+	runtime := testRuntimeWithScript(t, func(t *testing.T, command []string) string {
+		calls++
+		if calls == 1 {
+			return scanResponse("7", key)
+		}
+		return scanResponse("7", "zz")
+	})
 	_, err := (Connector{}).ExecuteAction(t.Context(), runtime, connectors.PreparedAction{ActionName: ActionScanKeys})
 	if err == nil || !strings.Contains(err.Error(), "scan keys exceed") {
 		t.Fatalf("error = %v", err)
