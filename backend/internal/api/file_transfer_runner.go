@@ -50,7 +50,7 @@ func (s fileTransferHandlers) runUpload(ctx context.Context, runtime *databaseRu
 		s.finishFileTransferError(runtime, transferID, ctx, err)
 		return
 	}
-	completed, err := finalizeSuccessfulFileTransfer(context.Background(), runtime.fileTransfers, transferID, result.Bytes, result.ChecksumSHA256)
+	completed, err := transferjobs.FinalizeSuccessfulFileTransfer(context.Background(), runtime.fileTransfers, transferID, result.Bytes, result.ChecksumSHA256)
 	if err != nil {
 		log.Printf("complete file upload failed transfer=%d error=%v", transferID, err)
 	}
@@ -104,7 +104,7 @@ func (s fileTransferHandlers) runDownload(ctx context.Context, runtime *database
 		s.finishFileTransferError(runtime, transferID, ctx, err)
 		return
 	}
-	completed, err := finalizeSuccessfulFileTransfer(context.Background(), runtime.fileTransfers, transferID, result.Bytes, result.ChecksumSHA256)
+	completed, err := transferjobs.FinalizeSuccessfulFileTransfer(context.Background(), runtime.fileTransfers, transferID, result.Bytes, result.ChecksumSHA256)
 	if err != nil {
 		log.Printf("complete file download failed transfer=%d error=%v", transferID, err)
 	}
@@ -223,7 +223,7 @@ func (s fileTransferHandlers) runTransferBatch(ctx context.Context, runtime *dat
 		}
 		s.scheduleBatchItemTempCleanup(batch)
 	}
-	if err := finalizeFileTransferBatch(context.Background(), runtime.fileTransfers, batchID); err != nil {
+	if err := transferjobs.FinalizeFileTransferBatch(context.Background(), runtime.fileTransfers, batchID); err != nil {
 		log.Printf("complete file transfer batch failed batch=%d error=%v", batchID, err)
 	}
 }
@@ -310,7 +310,7 @@ func (s fileTransferHandlers) runTransferBatchItem(ctx context.Context, runtime 
 		s.finishFileTransferError(runtime, transferID, itemCtx, err)
 		return
 	}
-	completed, err := finalizeSuccessfulFileTransfer(context.Background(), runtime.fileTransfers, transferID, result.Bytes, result.ChecksumSHA256)
+	completed, err := transferjobs.FinalizeSuccessfulFileTransfer(context.Background(), runtime.fileTransfers, transferID, result.Bytes, result.ChecksumSHA256)
 	if err != nil {
 		log.Printf("complete file transfer failed transfer=%d error=%v", transferID, err)
 	}
