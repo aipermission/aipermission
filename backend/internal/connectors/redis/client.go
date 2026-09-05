@@ -3,6 +3,7 @@ package redisconnector
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -18,6 +19,10 @@ const (
 	maxRESPArrayItems    = 4096
 	maxRESPValues        = 8192
 	maxRESPNestingDepth  = 16
+	maxScanPages         = 100
+	maxScanResultKeys    = maxScanLimit + maxRESPArrayItems - 1
+	maxScanKeyBytes      = 1 << 20
+	maxScanEncodedBytes  = 2 << 20
 )
 
 type respKind byte
@@ -44,17 +49,28 @@ type respReadBudget struct {
 }
 
 type redisClient struct {
-	conn   net.Conn
-	reader *bufio.Reader
+	conn             net.Conn
+	reader           *bufio.Reader
+	ctx              context.Context
+	stopCancellation func() bool
 }
 
 func newRedisClient(conn net.Conn) *redisClient {
-	return &redisClient{conn: conn, reader: bufio.NewReader(conn)}
+	return &redisClient{conn: conn, reader: bufio.NewReader(conn), ctx: context.Background()}
+}
+
+// A client owns one connection; cancellation must also interrupt a blocked read.
+func (client *redisClient) bindContext(ctx context.Context) {
+	client.ctx = ctx
+	client.stopCancellation = context.AfterFunc(ctx, func() { _ = client.conn.Close() })
 }
 
 func (client *redisClient) Close() error {
 	if client == nil || client.conn == nil {
 		return nil
+	}
+	if client.stopCancellation != nil {
+		client.stopCancellation()
 	}
 	return client.conn.Close()
 }
@@ -74,7 +90,14 @@ func (client *redisClient) do(mutation bool, args ...string) (respValue, error) 
 	if len(args) == 0 {
 		return respValue{}, fmt.Errorf("redis command is required")
 	}
-	if err := client.conn.SetDeadline(time.Now().Add(redisCommandTimeout)); err != nil {
+	if err := client.ctx.Err(); err != nil {
+		return respValue{}, err
+	}
+	deadline := time.Now().Add(redisCommandTimeout)
+	if limit, ok := client.ctx.Deadline(); ok && limit.Before(deadline) {
+		deadline = limit
+	}
+	if err := client.conn.SetDeadline(deadline); err != nil {
 		return respValue{}, fmt.Errorf("set redis command deadline: %w", err)
 	}
 	var payload bytes.Buffer
@@ -90,6 +113,9 @@ func (client *redisClient) do(mutation bool, args ...string) (respValue, error) 
 	}
 	written, err := client.conn.Write(payload.Bytes())
 	if err != nil || written != payload.Len() {
+		if canceled := client.ctx.Err(); canceled != nil {
+			err = canceled
+		}
 		if err == nil {
 			err = io.ErrShortWrite
 		}
@@ -100,6 +126,9 @@ func (client *redisClient) do(mutation bool, args ...string) (respValue, error) 
 	}
 	value, err := readRESPValue(client.reader)
 	if err != nil {
+		if canceled := client.ctx.Err(); canceled != nil {
+			err = canceled
+		}
 		if mutation {
 			return respValue{}, &redisPostDispatchError{err: err}
 		}

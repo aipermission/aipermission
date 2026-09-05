@@ -263,6 +263,17 @@ second MCP mode. The current implementation uses RESP2 against one configured
 endpoint and does not implement Cluster `MOVED`/`ASK` routing, Sentinel
 discovery, or RESP3.
 
+`scan_keys.limit` is a target count, not a strict row cap: Redis COUNT is a
+hint, so the final page is returned whole to avoid dropping keys. The parser
+and scan bounds allow at most 5095 keys in a result. Follow `next_cursor` until
+`complete` is true, including after empty batches; `scan_limit_reached` means
+the 100-page work budget was reached, not that the database was exhausted.
+Redis actions have a 10-second total deadline and honor caller cancellation.
+Scan key bytes are capped at 1 MiB and encoded output at 2 MiB. Oversized
+results fail explicitly; narrow MATCH rather than assuming a partial result
+is complete. The display preview may be shortened; use the structured keys.
+SCAN is not a snapshot and may repeat keys during concurrent changes.
+
 RabbitMQ actions include overview metadata, visible vhost listing, bounded
 queue listing, queue detail reads, binding listing, and bounded message peeking
 with `ack_requeue_true`, plus explicit `publish_message` writes. Message

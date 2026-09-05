@@ -1,7 +1,9 @@
 package conformance_test
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
@@ -37,4 +39,39 @@ func TestValkeyRealService(t *testing.T) {
 	result := executeAction(t, connector, runtime, redisconnector.ActionGetKey, map[string]any{"key": key})
 	assertResultContains(t, result, "valkey-conformance")
 	executeAction(t, connector, runtime, redisconnector.ActionDeleteKeys, map[string]any{"keys": []any{key}})
+
+	// A small COUNT must traverse the service's real cursor rather than repeat
+	// the first page. TTLs bound fixture lifetime if the test is interrupted.
+	prefix := fmt.Sprintf("aipermission:conformance:scan:%d:", time.Now().UnixNano())
+	want := map[string]bool{}
+	for index := 0; index < 32; index++ {
+		key := fmt.Sprintf("%s%d", prefix, index)
+		want[key] = true
+		executeAction(t, connector, runtime, redisconnector.ActionSetString, map[string]any{"key": key, "value": "scan", "ttl_seconds": 60})
+	}
+	cursor := "0"
+	seen := map[string]bool{}
+	for page := 0; ; page++ {
+		if page == 100 {
+			t.Fatal("scan failed to complete")
+		}
+		result := executeAction(t, connector, runtime, redisconnector.ActionScanKeys, map[string]any{"pattern": prefix + "*", "cursor": cursor, "limit": 1})
+		output := result.Output.(map[string]any)
+		for _, key := range output["keys"].([]string) {
+			seen[key] = true
+		}
+		cursor = output["next_cursor"].(string)
+		if cursor == "0" {
+			break
+		}
+	}
+	if len(seen) != len(want) {
+		t.Fatalf("scan returned %d of %d fixture keys", len(seen), len(want))
+	}
+	for key := range want {
+		if !seen[key] {
+			t.Fatalf("scan lost %q", key)
+		}
+		executeAction(t, connector, runtime, redisconnector.ActionDeleteKeys, map[string]any{"keys": []any{key}})
+	}
 }
