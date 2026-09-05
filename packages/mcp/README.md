@@ -85,6 +85,11 @@ does this automatically.
 
 ## Tools
 
+`AIPERMISSION_HTTP_TIMEOUT_MS` sets the gateway request deadline (default:
+60000 milliseconds). It covers both response headers and the complete response
+body, including streamed bodies. A timeout does not prove that a submitted
+operation failed; do not retry mutations with a new idempotency key blindly.
+
 - `list_connector_targets`
 - `get_connector_help`
 - `get_connector_actions`
