@@ -88,8 +88,9 @@ families.
 New connector PR checklist:
 
 - add `backend/internal/connectors/<kind>/` and register it in the built-in
-  connector registry; runtime-backed built-ins also add their adapter
-  side-effect import in that same registry file
+  connector catalog; runtime-backed built-ins also register an explicit adapter
+  constructor, following [Add A Connector](docs/development/add-a-connector.md).
+  Do not use side-effect imports, package `init()`, or global adapter maps
 - add frontend templates under `frontend/src/connectors/templates/<kind>/`;
   `metadata.json` and `index.jsx` are auto-discovered by the template registry
   and catalog

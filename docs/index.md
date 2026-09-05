@@ -77,6 +77,8 @@ not published for those two decisions; numbering is intentionally preserved.
 
 ## Open Questions
 
-- How should manual terminal command event parsing be added to structured history?
+- How can manual terminal history capture improve for interactive programs and
+  shells without reliable command boundaries? Manual command history already
+  exists; a terminal transcript does not prove every command's exit status.
 - How strict should each connector be about read-only defaults, schema masking, and credential profile boundaries?
 - How should advanced command risk analysis connect to the approval flow?
