@@ -40,6 +40,13 @@ describe("UnlockPage", () => {
     expect(apiPost).toHaveBeenLastCalledWith("/api/unlock", { database_id: "db-1", password: "CorrectPassword123" });
   });
 
+  it("keeps unlock navigation within narrow viewports", () => {
+    render(<UnlockPage status={status} onUnlocked={vi.fn()} />);
+
+    const tabs = screen.getByRole("button", { name: "Unlock Database" }).parentElement;
+    expect(tabs).toHaveClass("grid-cols-2", "sm:grid-cols-4");
+  });
+
   it("turns a migration conflict into guidance and requires password plus name before deletion", async () => {
     const user = userEvent.setup();
     const migrationError = Object.assign(new Error("database uses a pre-0.2 schema; use migration helper"), { status: 409 });
@@ -63,6 +70,10 @@ describe("UnlockPage", () => {
   it("validates creation locally and reports an import without a selected file", async () => {
     const user = userEvent.setup();
     render(<UnlockPage status={{ databases: [] }} onUnlocked={vi.fn()} />);
+
+    const restoreTab = screen.getByRole("button", { name: "Restore Remote" });
+    expect(restoreTab.parentElement).toHaveClass("grid-cols-2", "sm:grid-cols-3");
+    expect(restoreTab).toHaveClass("col-span-2", "sm:col-span-1");
 
     const create = screen.getByRole("button", { name: "Create encrypted database" });
     expect(create).toBeDisabled();
