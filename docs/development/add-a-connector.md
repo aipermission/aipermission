@@ -89,12 +89,16 @@ generation/import, reviewed TCP transport, reviewed command transport, and
 remote authorized_keys cleanup. Generic route handlers must ask the adapter
 what the connector supports instead of branching on a connector kind.
 
-Adapter methods use the typed `connectorapi.GatewayRuntime`,
-`connectorapi.GatewayServer`, `connectorapi.TargetLifecycleGateway`, and
-`connectorapi.CredentialResourceGateway` interfaces. Do not introduce
-connector-local copies of those gateway contracts; if a new capability needs a
-new gateway service, extend `internal/connectorapi` and update all adapters
-through that shared contract.
+Adapter methods use the smallest applicable consumer-owned ports in
+`internal/connectorapi`, such as `ConnectorDataRuntime`, `ActionRuntime`,
+`TransferRuntime`, `TargetLifecycleRuntime`, `RuntimeActionGateway`,
+`FileTransferGateway`, `TargetDeletionGateway`, or `TargetOperationGateway`.
+Connection tests receive read-only peer identity rather than lifecycle
+authority, and credential canonicalization receives no gateway service. Do not
+introduce a concrete gateway escape hatch or connector-local copies of these
+contracts. If a reusable capability needs a new service, add a narrow port,
+compose it only where required, and update the exact-method-set architecture
+tests.
 
 Runtime-backed capabilities expose `runtime_id` as the shared identifier for a
 connector-profile capability surface. The adapter must resolve that id and

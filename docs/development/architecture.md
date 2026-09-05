@@ -119,7 +119,10 @@ place.
 
 ## Backend Boundaries
 
-- `internal/api`: HTTP routes, MCP handlers, UI session/CSRF, approval/message flows, and workspace lifecycle orchestration.
+- `internal/api`: HTTP routes, MCP authentication and delivery fencing, UI
+  session/CSRF, audit adapters, and workspace lifecycle composition. Domain
+  services own action, Vault-request, transfer-job, and runtime-state rules;
+  handlers adapt those services to the unlocked database runtime.
 - `internal/connectors`: connector contracts and built-in connector
   implementations. Connector packages describe target schemas, credential
   schemas, help/actions, validation, and execution. They do not own
@@ -130,8 +133,14 @@ place.
   connector-kind-scoped runtime ports and encrypted resource stores. These
   packages retain raw core dependencies while adapters receive only distinct
   least-authority interface implementations.
-- `internal/actions`: shared action execution service used by structured
-  connectors after permission checks.
+- `internal/actions`: shared connector action preparation, approval-context
+  snapshots and drift comparison, connector dispatch, and execution-result
+  contract enforcement. Permission persistence and audit transaction ownership
+  remain in the gateway application layer.
+- `internal/actionresponse`: transport-neutral connector action response
+  projection and output-withholding representation. The API decides whether a
+  token/session may receive output and fences the response write; the facade
+  decides how the already-safe request/result is represented.
 - `internal/api/connector_api_adapters.go`: generic gateway resolution for
   connector-owned capability adapters. API handlers ask the resolved adapter
   whether a connector supports live-console runtime ids, draft tests, target
@@ -148,22 +157,30 @@ place.
   transfer primitives, and host key verification owned by the SSH connector.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
   checksum storage. File contents are not stored in SQLCipher.
-- `internal/transferjobs`: in-memory file/batch cancellation and pause gates,
-  isolated per unlocked runtime. It has no HTTP, database, credential, or
-  connector dependencies. Runtime shutdown closes the registry and immediately
-  cancels late registrations; API routes keep permission, persistence, and audit
-  responsibility. A pause cycle uses one broadcast channel so canceled waiters
-  do not accumulate while a batch remains paused.
+- `internal/transferjobs`: file/batch cancellation and pause gates isolated per
+  unlocked runtime, plus terminal persistence recovery through narrow storage
+  ports. Runtime shutdown closes the registry and immediately cancels late
+  registrations. API routes keep permission, adapter dispatch, and audit
+  responsibility; `transferjobs` owns cancellation concurrency and the rule
+  that an uncertain local finalization must never turn a possibly completed
+  remote transfer into a retry-safe failure. A pause cycle uses one broadcast
+  channel so canceled waiters do not accumulate while a batch remains paused.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.
 - `internal/projectvault`: Project Vault item metadata, encrypted values,
   project sharing, default session bindings, and exact-session item tracking.
 - `internal/sessionenv`: framed one-time session environment envelopes and
   acknowledgement parsing. It never persists plaintext values.
 - `internal/vaultrequests`: tracked Prompt/Always Project Vault action request
-  lifecycle, idempotency, expiry, cancellation, and stale transitions.
+  lifecycle, idempotency, expiry, cancellation, stale transitions, and the
+  claim/effect/finalize/repair/compensation workflow. API ports add transactional
+  audit and encrypted Vault effects without merging this flow with connector
+  action persistence.
 - `internal/vaultsessions`: in-memory exact-session authorization leases for
   Project Vault application. SQL rows persist lease lifecycle/revocation
   metadata only; authorization is never restored after gateway restart.
+- `internal/runtimecontrol`: concurrency-safe per-workspace MCP availability
+  state. Saved token permissions and the live Started/Stopped switch remain
+  separate concepts.
 
 `internal/vault` is the low-level encryption primitive used by credentials and
 other encrypted payloads. Project Vault is the user-facing project secret
@@ -183,6 +200,13 @@ updates the profile, and reconciles runtime surfaces in the caller's transaction
 The caller retains its own audit events and post-commit invalidation; do not move
 either domain writes or audit outbox writes outside that transaction. Metadata-only
 edits must not rewrite ciphertext or advance the secret revision.
+
+Production-size and dependency budgets are release gates, not aspirational
+documentation. Connector source files have a tighter ceiling than general Go
+files, backend package totals are bounded, and the architecture suite rejects
+new internal import fan-out or dependency cycles. Composition-root exceptions
+must be explicit and should move downward when responsibilities leave the API
+package; do not raise a ceiling merely to land a feature.
 
 ## Frontend Boundaries
 
