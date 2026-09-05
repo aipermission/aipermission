@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/buildinfo"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/diagnostics"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
@@ -19,7 +18,6 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 	report, err := diagnostics.Collect(r.Context(), diagnostics.CollectInput{
 		Database:               runtime.database,
 		Registry:               runtime.connectorRegistry(),
-		ApplicationVersion:     buildinfo.Version,
 		SupportedSchemaVersion: dbpkg.CurrentSchemaVersion(),
 		MCPEnabled:             runtime.isMCPStarted(),
 		Audit: diagnostics.AuditHealth{

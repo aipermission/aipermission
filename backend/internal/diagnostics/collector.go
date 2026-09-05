@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/buildinfo"
+
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
@@ -26,6 +28,9 @@ type CollectInput struct {
 }
 
 func Collect(ctx context.Context, input CollectInput) (Report, error) {
+	if input.ApplicationVersion == "" {
+		input.ApplicationVersion = buildinfo.Version
+	}
 	if input.Database == nil {
 		return Report{}, fmt.Errorf("diagnostics database is unavailable")
 	}
