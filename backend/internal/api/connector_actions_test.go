@@ -16,6 +16,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
+func testConnectorApprovalContext(prepared actions.PreparedRequest, token tokens.Token, permission connectortargets.ActionPermission, capturedAt string) (string, string, error) {
+	tokenSnapshot, permissionSnapshot := connectorActionApprovalSnapshots(token, permission)
+	return actions.BuildApprovalContext(prepared, tokenSnapshot, permissionSnapshot, capturedAt)
+}
+
 func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
 	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, openAPITestVault(t), "connector-actions-test-workspace"), "core-1")
@@ -190,7 +195,7 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}
 
-	_, baseHash, err := connectorApprovalContext(prepared, token, permission, "2026-06-12T12:00:00Z")
+	_, baseHash, err := testConnectorApprovalContext(prepared, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context: %v", err)
 	}
@@ -198,12 +203,12 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	identityChanged := prepared
 	identityChanged.ActionDefinition.InputSchema.Fields = append([]connectors.Field{}, prepared.ActionDefinition.InputSchema.Fields...)
 	identityChanged.ActionDefinition.InputSchema.Fields[0].PreserveWhitespace = true
-	_, identityHash, err := connectorApprovalContext(identityChanged, token, permission, "2026-06-12T12:00:00Z")
+	_, identityHash, err := testConnectorApprovalContext(identityChanged, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil || identityHash == baseHash {
 		t.Fatalf("opaque field semantics must invalidate approval: %v", err)
 	}
 	versionChanged.ConnectorVersion = "0.2"
-	_, versionHash, err := connectorApprovalContext(versionChanged, token, permission, "2026-06-12T12:00:00Z")
+	_, versionHash, err := testConnectorApprovalContext(versionChanged, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context with version change: %v", err)
 	}
@@ -212,7 +217,7 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	}
 	actionChanged := prepared
 	actionChanged.ActionDefinition.Description = "Run read-only SQL with a different contract."
-	_, actionHash, err := connectorApprovalContext(actionChanged, token, permission, "2026-06-12T12:00:00Z")
+	_, actionHash, err := testConnectorApprovalContext(actionChanged, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context with action definition change: %v", err)
 	}
@@ -221,7 +226,7 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	}
 	retryChanged := prepared
 	retryChanged.ActionDefinition.RetryPolicy = connectors.RetryPolicy{Class: connectors.RetryIdempotent}
-	_, retryHash, err := connectorApprovalContext(retryChanged, token, permission, "2026-06-12T12:00:00Z")
+	_, retryHash, err := testConnectorApprovalContext(retryChanged, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context with retry policy change: %v", err)
 	}
@@ -230,7 +235,7 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	}
 	sensitiveFieldsChanged := prepared
 	sensitiveFieldsChanged.ActionDefinition.SensitiveInputFields = []string{"sql"}
-	_, sensitiveFieldsHash, err := connectorApprovalContext(sensitiveFieldsChanged, token, permission, "2026-06-12T12:00:00Z")
+	_, sensitiveFieldsHash, err := testConnectorApprovalContext(sensitiveFieldsChanged, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context with sensitive input field change: %v", err)
 	}
@@ -239,7 +244,7 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 	}
 	profileChanged := prepared
 	profileChanged.Profile.SecretRevision = "secret-revision-b"
-	_, profileHash, err := connectorApprovalContext(profileChanged, token, permission, "2026-06-12T12:00:00Z")
+	_, profileHash, err := testConnectorApprovalContext(profileChanged, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context with profile revision change: %v", err)
 	}
@@ -256,26 +261,26 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 			ID: 11, TargetID: 7, ConnectorKind: "ssh", Kind: "private_key", Label: "root", UpdatedAt: "2026-06-12T11:58:00Z", SecretRevision: "ssh-secret-a",
 		},
 	}}
-	dependencyContext, dependencyHash, err := connectorApprovalContext(withDependency, token, permission, "2026-06-12T12:00:00Z")
+	dependencyContext, dependencyHash, err := testConnectorApprovalContext(withDependency, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context with dependency: %v", err)
 	}
 	dependencyChanged := withDependency
 	dependencyChanged.Dependencies = append([]actions.ResolvedDependency(nil), withDependency.Dependencies...)
 	dependencyChanged.Dependencies[0].Profile.SecretRevision = "ssh-secret-b"
-	dependencyChangedContext, dependencyChangedHash, err := connectorApprovalContext(dependencyChanged, token, permission, "2026-06-12T12:00:00Z")
+	dependencyChangedContext, dependencyChangedHash, err := testConnectorApprovalContext(dependencyChanged, token, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context with dependency revision change: %v", err)
 	}
 	if dependencyChangedHash == dependencyHash {
 		t.Fatalf("approval dependency revision drift should change approval hash")
 	}
-	if drift := connectorApprovalDriftReason(dependencyContext, dependencyChangedContext); drift != "dependencies" {
+	if drift := actions.ApprovalDriftReason(dependencyContext, dependencyChangedContext); drift != "dependencies" {
 		t.Fatalf("approval dependency drift reason = %q", drift)
 	}
 	tokenRenamed := token
 	tokenRenamed.Name = "renamed-token-label"
-	_, renamedTokenHash, err := connectorApprovalContext(prepared, tokenRenamed, permission, "2026-06-12T12:00:00Z")
+	_, renamedTokenHash, err := testConnectorApprovalContext(prepared, tokenRenamed, permission, "2026-06-12T12:00:00Z")
 	if err != nil {
 		t.Fatalf("approval context with token rename: %v", err)
 	}

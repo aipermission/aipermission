@@ -283,12 +283,13 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 		}
 		return pendingConnectorActionExecution{}, errors.New(reason)
 	}
-	currentContext, currentHash, err := connectorApprovalContext(prepared, token, permission, time.Now().UTC().Format(time.RFC3339))
+	tokenSnapshot, permissionSnapshot := connectorActionApprovalSnapshots(token, permission)
+	currentContext, currentHash, err := actions.BuildApprovalContext(prepared, tokenSnapshot, permissionSnapshot, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		return pendingConnectorActionExecution{}, err
 	}
 	if item.ApprovalContextHash != currentHash {
-		drift := connectorApprovalDriftReason(item.ApprovalContext, currentContext)
+		drift := actions.ApprovalDriftReason(item.ApprovalContext, currentContext)
 		reason := "connector approval context changed; ask the AI to send a fresh request"
 		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, drift)
 	}
