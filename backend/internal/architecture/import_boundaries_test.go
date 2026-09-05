@@ -68,22 +68,149 @@ func TestBuiltInConnectorCorePackagesStayIndependentFromGatewayState(t *testing.
 	}
 }
 
+func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
+	packages := []string{
+		modulePath + "/internal/actionresponse",
+		modulePath + "/internal/actions",
+		modulePath + "/internal/runtimecontrol",
+		modulePath + "/internal/transferjobs",
+		modulePath + "/internal/vaultrequests",
+	}
+	for _, pkg := range packages {
+		if importsPackageOrSubpackage(packageDependencies(t, pkg), modulePath+"/internal/api") {
+			t.Errorf("%s must not depend on the HTTP/API composition root", pkg)
+		}
+	}
+}
+
 func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T) {
-	connectorRoot := modulePath + "/internal/connectors/"
 	allowedRegistry := modulePath + "/internal/connectors/builtin"
 	builtInPackages := builtInConnectorPackages(t)
 	importsByPackage := allPackageImports(t)
+	reviewedTransportEdges := map[string]bool{
+		modulePath + "/internal/connectors/docker/apiadapter->" + modulePath + "/internal/connectors/ssh/apiadapter":     true,
+		modulePath + "/internal/connectors/kubernetes/apiadapter->" + modulePath + "/internal/connectors/ssh/apiadapter": true,
+	}
 
 	for importer, imports := range importsByPackage {
-		if importer == allowedRegistry || strings.HasPrefix(importer, allowedRegistry+"/") || strings.HasPrefix(importer, connectorRoot) {
+		if importer == allowedRegistry || strings.HasPrefix(importer, allowedRegistry+"/") {
 			continue
 		}
 		for _, imported := range imports {
-			for _, connectorPackage := range builtInPackages {
-				if imported == connectorPackage || strings.HasPrefix(imported, connectorPackage+"/") {
-					t.Fatalf("%s imports connector implementation %s; shared runtime must use the generic connector boundary", importer, imported)
+			importedOwner := builtInConnectorOwner(imported, builtInPackages)
+			if importedOwner == "" {
+				continue
+			}
+			importerOwner := builtInConnectorOwner(importer, builtInPackages)
+			if importerOwner == importedOwner {
+				continue
+			}
+			if reviewedTransportEdges[importer+"->"+imported] {
+				continue
+			}
+			t.Fatalf("%s imports connector implementation %s; shared runtime and sibling connectors must use the generic connector boundary", importer, imported)
+		}
+	}
+}
+
+func TestConnectorPackagesDoNotImportGatewayState(t *testing.T) {
+	connectorRoot := modulePath + "/internal/connectors/"
+	allowedVaultOwner := modulePath + "/internal/connectors/ssh/sshkeys"
+	forbidden := []string{
+		modulePath + "/internal/api",
+		modulePath + "/internal/config",
+		modulePath + "/internal/db",
+		modulePath + "/internal/history",
+		modulePath + "/internal/tokens",
+	}
+	for importer, imports := range allPackageImports(t) {
+		if !strings.HasPrefix(importer, connectorRoot) {
+			continue
+		}
+		for _, imported := range imports {
+			for _, forbiddenImport := range forbidden {
+				if imported == forbiddenImport || strings.HasPrefix(imported, forbiddenImport+"/") {
+					t.Fatalf("%s directly imports gateway state %s", importer, imported)
 				}
 			}
+			if (imported == modulePath+"/internal/vault" || strings.HasPrefix(imported, modulePath+"/internal/vault/")) && importer != allowedVaultOwner {
+				t.Fatalf("%s directly imports Vault state %s; encrypted resource ownership belongs in %s", importer, imported, allowedVaultOwner)
+			}
+		}
+	}
+}
+
+func builtInConnectorOwner(pkg string, builtInPackages []string) string {
+	for _, connectorPackage := range builtInPackages {
+		if pkg == connectorPackage || strings.HasPrefix(pkg, connectorPackage+"/") {
+			return connectorPackage
+		}
+	}
+	return ""
+}
+
+func TestInternalPackageFanOutBudgets(t *testing.T) {
+	importsByPackage := allPackageImports(t)
+	const defaultBudget = 8
+	overrides := map[string]int{
+		// Composition roots are explicit exceptions. These ceilings match the
+		// post-decomposition graph and must ratchet down after dependencies move.
+		modulePath + "/internal/api":                       28,
+		modulePath + "/internal/connectors/builtin":        16,
+		modulePath + "/internal/connectors/ssh/apiadapter": 14,
+	}
+	for importer, imports := range importsByPackage {
+		if !strings.HasPrefix(importer, modulePath+"/internal/") {
+			continue
+		}
+		count := 0
+		for _, imported := range imports {
+			if strings.HasPrefix(imported, modulePath+"/internal/") {
+				count++
+			}
+		}
+		budget := defaultBudget
+		if override, ok := overrides[importer]; ok {
+			budget = override
+		}
+		if count > budget {
+			t.Errorf("%s has %d direct internal dependencies; fan-out budget is %d", importer, count, budget)
+		}
+	}
+}
+
+func TestInternalDependencyGraphIsAcyclic(t *testing.T) {
+	importsByPackage := allPackageImports(t)
+	state := map[string]uint8{}
+	stack := []string{}
+	var visit func(string)
+	visit = func(pkg string) {
+		switch state[pkg] {
+		case 1:
+			cycleStart := 0
+			for index, item := range stack {
+				if item == pkg {
+					cycleStart = index
+					break
+				}
+			}
+			t.Fatalf("internal dependency cycle: %s", strings.Join(append(stack[cycleStart:], pkg), " -> "))
+		case 2:
+			return
+		}
+		state[pkg] = 1
+		stack = append(stack, pkg)
+		for _, imported := range importsByPackage[pkg] {
+			if strings.HasPrefix(imported, modulePath+"/internal/") {
+				visit(imported)
+			}
+		}
+		stack = stack[:len(stack)-1]
+		state[pkg] = 2
+	}
+	for pkg := range importsByPackage {
+		if strings.HasPrefix(pkg, modulePath+"/internal/") {
+			visit(pkg)
 		}
 	}
 }
