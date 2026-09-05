@@ -163,54 +163,104 @@ async function apiGet(path) {
 }
 
 async function apiPost(path, body) {
-  return apiRequest(path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  return apiRequest(
+    path,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    body?.idempotency_key,
+  );
 }
 
-async function apiRequest(path, options) {
+async function apiRequest(path, options, idempotencyKey) {
   if (!apiToken) {
     throw new Error("AIPERMISSION_API_TOKEN is required.");
+  }
+  let request;
+  try {
+    request = new Request(`${apiUrl}${path}`, {
+      ...options,
+      headers: new Headers({ Authorization: `Bearer ${apiToken}`, ...(options.headers || {}) }),
+    });
+  } catch {
+    throw new Error("Invalid local gateway request configuration; check the API URL and token.");
   }
   const timeout = Number.isFinite(apiTimeoutMs) && apiTimeoutMs > 0 ? apiTimeoutMs : 60000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
+  let bodyReceived = false;
   try {
-    const response = await fetch(`${apiUrl}${path}`, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        ...(options.headers || {}),
-      },
-    });
+    const response = await fetch(request, { signal: controller.signal });
     const text = await response.text();
-    const data = parseResponseBody(text);
+    const data = response.status === 204 ? null : parseResponseBody(text);
+    bodyReceived = true;
     if (!response.ok) {
       throw gatewayAPIError(data, response.status);
     }
     return data;
   } catch (error) {
+    let failure = bodyReceived ? error : new Error("Gateway response unavailable or invalid.", { cause: error });
     if (controller.signal.aborted) {
-      throw new Error(`AIPermission API request timed out after ${timeout}ms`, { cause: error });
+      failure = new Error(`AIPermission API request timed out after ${timeout}ms`, { cause: error });
     }
-    throw error;
+    const definitelyNotDispatched = !bodyReceived && isDefinitePredispatchTransportError(error);
+    if (definitelyNotDispatched) {
+      throw new Error("AIPermission gateway connection failed before request dispatch.", { cause: error });
+    }
+    if (options.method === "POST" && !bodyReceived) {
+      const uncertain = new Error(failure.message || "Gateway response unavailable", { cause: failure });
+      uncertain.resultStatus = "outcome_unknown";
+      uncertain.code = "gateway_transport_outcome_unknown";
+      uncertain.idempotencyKey = idempotencyKey;
+      uncertain.assistantHint = idempotencyKey
+        ? "The gateway response was lost; execution may have occurred. Reconcile the original request using the same idempotency key and unchanged input. Never retry with a new key blindly."
+        : "The gateway response was lost; execution may have occurred. Inspect the original request status before repeating the operation.";
+      throw uncertain;
+    }
+    throw failure;
   } finally {
     clearTimeout(timer);
   }
 }
 
-function parseResponseBody(text) {
-  if (!text) {
-    return null;
+const definitePredispatchErrorCodes = new Set([
+  "ECONNREFUSED",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "CERT_HAS_EXPIRED",
+]);
+
+function isDefinitePredispatchTransportError(error) {
+  const pending = [error];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current || (typeof current !== "object" && typeof current !== "function") || visited.has(current)) continue;
+    visited.add(current);
+    if (definitePredispatchErrorCodes.has(current.code)) return true;
+    if (current.cause) pending.push(current.cause);
+    if (Array.isArray(current.errors)) pending.push(...current.errors);
   }
+  return false;
+}
+
+function parseResponseBody(text) {
   try {
-    return JSON.parse(text);
+    const data = JSON.parse(text);
+    if (!data || typeof data !== "object") throw new Error("Invalid response shape");
+    return data;
   } catch {
-    return { error: text };
+    throw new Error("Gateway returned an invalid JSON response.");
   }
 }

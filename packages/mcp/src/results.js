@@ -16,6 +16,8 @@ export function errorResult(error) {
   const status = error instanceof Error && typeof error.resultStatus === "string" ? error.resultStatus : "error";
   const requestID = error instanceof Error && Number.isSafeInteger(error.requestID) && error.requestID > 0 ? error.requestID : null;
   const assistantHint = error instanceof Error && typeof error.assistantHint === "string" ? error.assistantHint : "";
+  const idempotencyKey =
+    error instanceof Error && typeof error.idempotencyKey === "string" && error.idempotencyKey.length <= 128 ? error.idempotencyKey : "";
   const retryAfterSeconds =
     error instanceof Error && Number.isSafeInteger(error.retryAfterSeconds) && error.retryAfterSeconds >= 0
       ? error.retryAfterSeconds
@@ -31,6 +33,7 @@ export function errorResult(error) {
             ...(code ? { code } : {}),
             ...(requestID ? { request_id: requestID } : {}),
             ...(assistantHint ? { assistant_hint: assistantHint } : {}),
+            ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
             ...(retryAfterSeconds !== null ? { retry_after_seconds: retryAfterSeconds } : {}),
             error: message,
           },

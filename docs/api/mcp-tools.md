@@ -504,7 +504,16 @@ request becomes `stale` and the AI must submit a fresh action request.
 
 ## outcome_unknown
 
-`outcome_unknown` is terminal. It means the gateway restarted or lost its
+The MCP bridge also uses `outcome_unknown` with code
+`gateway_transport_outcome_unknown` when a POST response is lost, times out,
+or ends before its body can be read. This does not establish a terminal gateway
+request state: the request may still be pending or running. Action-call errors
+retain the supplied `idempotency_key`, but never invent a request ID. Reconcile
+with the same key and unchanged input; do not create a new logical mutation
+blindly. Local schema-validation failures remain ordinary errors, and complete
+gateway error responses keep their own status and metadata.
+
+A gateway request recorded as `outcome_unknown` is terminal. It means the gateway restarted or lost its
 definitive lifecycle state after remote execution may have started. Do not retry
 the action automatically: inspect the target with a safe read action when
 possible, or ask the operator whether retrying is safe.
