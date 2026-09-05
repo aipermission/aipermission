@@ -9,6 +9,42 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.44] - 2026-09-05
+
+### Changed
+
+- History now uses stable created-at and record-ID cursors instead of offset pagination,
+  preserving deterministic navigation as new activity arrives.
+- Connector runtime integrations now receive consumer-owned capability ports, while
+  token activity, attachment responses, diagnostics metadata, Vault workflows, transfer
+  finalization, and connector action projections live with their behavior owners.
+
+### Fixed
+
+- Redis and Valkey scans now preserve real cursor progress, bound total work, honor
+  cancellation, retain continuation state, and remove duplicate keys across pages.
+- S3 object keys remain opaque remote identities across search, actions, presigned URLs,
+  versions, uploads, downloads, and transfers without filesystem-style normalization.
+- The MCP bridge keeps one deadline through response-body consumption and distinguishes
+  local pre-dispatch failures from uncertain mutation outcomes after a gateway reply is
+  lost.
+- History polling and filter changes no longer allow older responses or cursors to
+  overwrite newer interactive results.
+- Transfer pause, resume, cancellation, shutdown, and terminal finalization now share
+  one atomic lifecycle owner.
+- Unlock tabs remain usable without horizontal overflow on 320 to 360 pixel browser
+  widths.
+
+### Maintenance
+
+- Large Docker, Kubernetes, RabbitMQ, Redis, and S3 connector implementations are split
+  into behavior-owned catalog, client, resource, action, and value modules without
+  changing the generic connector pipeline.
+- Architecture checks now ratchet production-file size, package size, dependency
+  fan-out, cycles, connector isolation, and gateway-state access.
+- Contributor, connector, REST, MCP, S3, and architecture documentation now describes
+  the final registration, identity, retry, and runtime ownership contracts.
+
 ## [0.2.43] - 2026-09-04
 
 ### Changed
