@@ -251,13 +251,9 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 	if created && approval.ExecutionRule == projectcapabilities.RuleAlwaysRun {
 		executionContext, cancelExecution := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
 		defer cancelExecution()
-		result, runErr := s.executeClaimedVaultActionRequest(
-			executionContext,
-			auth.runtime,
-			request,
-			"mcp",
-			"",
-			"mcp.vault_action",
+		result, runErr := vaultrequests.RunClaimedWorkflow(
+			executionContext, request,
+			s.vaultActionWorkflowPorts(auth.runtime, "mcp", "", "", "mcp.vault_action"),
 		)
 		if runErr != nil {
 			writeInternalError(w)
