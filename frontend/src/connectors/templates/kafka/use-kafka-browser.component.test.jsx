@@ -46,6 +46,52 @@ it("loads Kafka topics and ignores detail from a superseded selection", async ()
   await waitFor(() => expect(result.current.browser.activeDetail?.name).toBe("events"));
 });
 
+it("does not commit messages after the selected topic changes", async () => {
+  let resolveMessages;
+  apiPost.mockImplementation((_path, payload) => {
+    if (payload.action_name === "read_messages") {
+      return new Promise((resolve) => {
+        resolveMessages = resolve;
+      });
+    }
+    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  });
+  const { result } = renderHook(useHarness);
+  await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
+  await act(async () => result.current.browser.selectItem(topics[0]));
+  act(() => void result.current.browser.readMessages());
+  await waitFor(() => expect(resolveMessages).toBeTypeOf("function"));
+
+  await act(async () => result.current.browser.selectItem(topics[1]));
+  await act(async () => resolveMessages(completed("read_messages", { messages: [{ offset: 42 }] })));
+
+  expect(result.current.browser.selectedName).toBe("events");
+  expect(result.current.browser.messages).toBeNull();
+});
+
+it("does not commit messages after the selected topic is cleared", async () => {
+  let resolveMessages;
+  apiPost.mockImplementation((_path, payload) => {
+    if (payload.action_name === "read_messages") {
+      return new Promise((resolve) => {
+        resolveMessages = resolve;
+      });
+    }
+    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  });
+  const { result } = renderHook(useHarness);
+  await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
+  await act(async () => result.current.browser.selectItem(topics[0]));
+  act(() => void result.current.browser.readMessages());
+  await waitFor(() => expect(resolveMessages).toBeTypeOf("function"));
+
+  await act(async () => result.current.browser.selectItem(topics[0]));
+  await act(async () => resolveMessages(completed("read_messages", { messages: [{ offset: 42 }] })));
+
+  expect(result.current.browser.selectedName).toBe("");
+  expect(result.current.browser.messages).toBeNull();
+});
+
 it("rejects malformed Kafka publish headers before the mutation is dispatched", async () => {
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));

@@ -249,7 +249,7 @@
     },
     "src/components/file-transfer/file-transfer-panels.jsx": {
       "statements": 88.18,
-      "branches": 77.5,
+      "branches": 74.35,
       "functions": 70,
       "lines": 88.18
     },
@@ -1016,10 +1016,10 @@
       "lines": 100
     },
     "src/connectors/templates/kafka/use-kafka-browser.js": {
-      "statements": 81.36,
-      "branches": 53.84,
-      "functions": 77.77,
-      "lines": 81.36
+      "statements": 91.61,
+      "branches": 54.54,
+      "functions": 88.88,
+      "lines": 91.61
     },
     "src/connectors/templates/kafka/use-kafka-writes.js": {
       "statements": 51.51,

@@ -34,10 +34,14 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
     setQuery("");
     setTopics([]);
     setGroups([]);
-    clearSelection();
+    requestGuard.invalidate("messages");
+    setSelectedName("");
+    setDetail(null);
+    setDetailIdentity("");
+    setMessages(null);
     setReadForm(defaultRead);
     setState({ state: "idle", error: "", message: "" });
-  }, [scopeKey]);
+  }, [requestGuard, scopeKey]);
 
   useEffect(() => {
     if (activeSession.active) void refreshForEffect("topics");
@@ -90,6 +94,7 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
       clearSelection();
       return;
     }
+    requestGuard.invalidate("messages");
     setSelectedName(item.name);
     setDetail(null);
     setDetailIdentity("");
@@ -132,6 +137,7 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
   }
 
   function clearSelection() {
+    requestGuard.invalidate("messages");
     setSelectedName("");
     setDetail(null);
     setDetailIdentity("");
