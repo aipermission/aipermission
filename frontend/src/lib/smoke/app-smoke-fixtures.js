@@ -131,7 +131,6 @@ export const vaultPermissionDialogSource = readFileSync(
 );
 export const connectorTemplateCommonSource = readFileSync(join(currentDir, "..", "connectors", "templates", "common.jsx"), "utf8");
 export const kafkaConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "kafka", "console.jsx"), "utf8");
-export const mailConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "mail", "console.jsx"), "utf8");
 export const kafkaWriteDialogsSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "kafka", "write-dialogs.jsx"),
   "utf8",

@@ -17,7 +17,6 @@ import {
   tokenPermissionPanelSource,
   connectorTokenPermissionPanelSource,
   connectorPermissionDialogSource,
-  mailConsoleSource,
   sshConnectorConsoleTemplateSource,
   postgresSQLConsoleSource,
   vaultSessionDialogSource,
@@ -39,13 +38,6 @@ test("Console exposes connector action approvals", () => {
   assert.match(consolePageSource, /useConsoleConnectorView/);
   assert.match(consolePageSource, /Console: selectedTemplate\?\.Console/);
   assert.match(consolePageSource, /useConnectorPermissions/);
-  assert.match(mailConsoleSource, /pendingActions/);
-  assert.match(mailConsoleSource, /outboundPending/);
-  assert.match(mailConsoleSource, /generation !== requestGeneration\.current/);
-  assert.match(mailConsoleSource, /submission_status === "submission_unknown"/);
-  assert.match(mailConsoleSource, /reconcilePendingAction/);
-  assert.match(mailConsoleSource, /case "get_message"/);
-  assert.match(mailConsoleSource, /case "move_message"/);
   assert.match(postgresSQLConsoleSource, /PostgresConnectorToolbarActionsTemplate/);
   assert.match(postgresSQLConsoleSource, /browserLabel: "Schema"/);
   assert.match(postgresSQLConsoleSource, /Search \$\{namespaceLabel\.toLowerCase\(\)\}s or tables/);

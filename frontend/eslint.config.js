@@ -32,14 +32,6 @@ export default [
       "react-hooks/exhaustive-deps": "error",
     },
   },
-  // Existing large functions are pinned to their current ceiling. New source
-  // uses the stricter defaults above, and each override must only move down.
-  {
-    files: ["src/connectors/templates/mail/console.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 550, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
   {
     ...eslint.configs.recommended,
     files: nodeFiles,
