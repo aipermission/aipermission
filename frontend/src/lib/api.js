@@ -1,4 +1,9 @@
-import { completeLocalActionRetry, markLocalActionRetryOutcome, prepareLocalActionRetry } from "./local-action-retry.js";
+import {
+  completeLocalActionRetry,
+  markLocalActionRetryOutcome,
+  prepareLocalActionRetry,
+  releaseLocalActionRetryAttempt,
+} from "./local-action-retry.js";
 import { APIError } from "./errors.js";
 import { scopedUICookieName } from "./ui-cookie.js";
 
@@ -14,38 +19,46 @@ export async function apiGet(path, options = {}) {
 
 export async function apiPost(path, body, options = {}) {
   const prepared = await preparePostBody(path, body);
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: "POST",
-    headers: csrfHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(prepared.body),
-    signal: options.signal,
-    credentials: "include",
-  });
-  let data;
+  let finalized = false;
   try {
-    data = await readResponse(response, { requireJSON: Boolean(prepared.retry) });
-  } catch (error) {
-    if (prepared.retry && error?.data?.status === "outcome_unknown") {
-      await markLocalActionRetryOutcome(prepared.retry, error.data);
-    } else if (prepared.retry && !prepared.retry.reused && response.status >= 400 && response.status < 500) {
-      // A gateway 4xx is a definitive pre-dispatch rejection unless the
-      // key predates this attempt. A carried key may represent an external
-      // side effect whose response was lost, so pre-handler auth/lock errors
-      // cannot retire it.
-      await completeLocalActionRetry(prepared.retry);
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: "POST",
+      headers: csrfHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(prepared.body),
+      signal: options.signal,
+      credentials: "include",
+    });
+    let data;
+    try {
+      data = await readResponse(response, { requireJSON: Boolean(prepared.retry) });
+    } catch (error) {
+      if (prepared.retry && error?.data?.status === "outcome_unknown") {
+        await markLocalActionRetryOutcome(prepared.retry, error.data);
+        finalized = true;
+      } else if (prepared.retry && !prepared.retry.reused && response.status >= 400 && response.status < 500) {
+        // A gateway 4xx is a definitive pre-dispatch rejection unless the
+        // key predates this attempt. Another active attempt still keeps the
+        // shared identity protected.
+        await completeLocalActionRetry(prepared.retry);
+        finalized = true;
+      }
+      throw error;
     }
-    throw error;
+    if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status !== "outcome_unknown") {
+      await completeLocalActionRetry(prepared.retry);
+      finalized = true;
+    }
+    if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status === "outcome_unknown") {
+      await markLocalActionRetryOutcome(prepared.retry, data);
+      finalized = true;
+    }
+    if (prepared.retry && response.ok && !isAcknowledgedLocalActionResponse(data)) {
+      throw new Error("Invalid connector action response from gateway.");
+    }
+    return data;
+  } finally {
+    if (prepared.retry && !finalized) await releaseLocalActionRetryAttempt(prepared.retry);
   }
-  if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status !== "outcome_unknown") {
-    await completeLocalActionRetry(prepared.retry);
-  }
-  if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status === "outcome_unknown") {
-    await markLocalActionRetryOutcome(prepared.retry, data);
-  }
-  if (prepared.retry && response.ok && !isAcknowledgedLocalActionResponse(data)) {
-    throw new Error("Invalid connector action response from gateway.");
-  }
-  return data;
 }
 
 const acknowledgedLocalActionStatuses = new Set([

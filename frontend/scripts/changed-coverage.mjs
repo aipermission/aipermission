@@ -5,12 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { isBehaviorOwner, listBehaviorOwners } from "./coverage-owner-policy.mjs";
 import { createCoverageReportDirectory } from "./coverage-report-directory.mjs";
-import {
-  coverageFloors as floors,
-  mergeChangedCoverageBaseline,
-  ratchetedMetrics,
-  validateCoverageBaseline,
-} from "./coverage-ratchet.mjs";
+import { coverageFloors as floors, mergeChangedCoverageBaseline, ratchetedMetrics, validateCoverageBaseline } from "./coverage-ratchet.mjs";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(frontendRoot, "..");
