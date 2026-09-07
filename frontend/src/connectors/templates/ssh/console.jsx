@@ -24,6 +24,9 @@ export function SSHConnectorToolbarActionsTemplate({
 }) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
+  const sshTargets = liveConsoleTargets.filter((target) => target.connector_kind === "ssh");
+  const transferRuntimeID = selectedRuntimeTarget?.target?.transfer_runtime_id;
+
   const buttonClass = `h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`;
 
   return (
@@ -52,7 +55,7 @@ export function SSHConnectorToolbarActionsTemplate({
         variant="ghost"
         className={buttonClass}
         onClick={() => setBulkOpen(true)}
-        disabled={liveConsoleTargets.length === 0}
+        disabled={sshTargets.length === 0}
         title="Run one SSH command across selected SSH connectors"
       >
         <ListChecks className="h-3.5 w-3.5" />
@@ -63,7 +66,7 @@ export function SSHConnectorToolbarActionsTemplate({
         variant="ghost"
         className={buttonClass}
         onClick={() => setFilesOpen(true)}
-        disabled={!selectedRuntimeTarget}
+        disabled={!transferRuntimeID}
         title="Upload or download files over SSH"
       >
         <Files className="h-3.5 w-3.5" />
@@ -96,12 +99,12 @@ export function SSHConnectorToolbarActionsTemplate({
         Interrupt
       </Button>
       <FileTransferDialog
-        open={filesOpen}
+        open={filesOpen && Boolean(transferRuntimeID)}
         runtimeTarget={
-          selectedRuntimeTarget
+          selectedRuntimeTarget && transferRuntimeID
             ? {
                 ...selectedRuntimeTarget,
-                id: selectedRuntimeTarget.target?.transfer_runtime_id || selectedRuntimeTarget.id,
+                id: transferRuntimeID,
                 subtitle: `${selectedRuntimeTarget.username}@${selectedRuntimeTarget.host}:${selectedRuntimeTarget.port}`,
               }
             : null
@@ -116,7 +119,7 @@ export function SSHConnectorToolbarActionsTemplate({
       />
       <BulkCommandDialog
         open={bulkOpen}
-        targets={liveConsoleTargets}
+        targets={sshTargets}
         selectedTarget={selectedRuntimeTarget}
         onClose={() => setBulkOpen(false)}
         onRefresh={onRefreshSessions}

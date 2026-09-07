@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Copy, RefreshCcw, TerminalSquare } from "lucide-react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
@@ -6,6 +6,7 @@ import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { useRequestGuard } from "../../../lib/request-guard";
 
 const terminalStatuses = new Set(["completed", "failed", "error", "declined", "stale", "untracked"]);
 
@@ -17,6 +18,8 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   const [targetQuery, setTargetQuery] = useState("");
   const [runState, setRunState] = useState({ state: "idle", error: null, items: [], parallelism: 3 });
   const [selectedResultID, setSelectedResultID] = useState(null);
+  const delayedRefreshRef = useRef(null);
+  const requests = useRequestGuard(`ssh-bulk:${open ? "open" : "closed"}:${selectedTarget?.id || "none"}`);
 
   const visibleTargets = useMemo(() => {
     const query = targetQuery.trim().toLowerCase();
@@ -34,7 +37,8 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   const refreshRequestsForEffect = useEffectEvent(() => refreshRequests());
 
   useEffect(() => {
-    if (!open) return;
+    invalidateBulkRequests(requests, delayedRefreshRef);
+    if (!open) return undefined;
     const initial = {};
     if (selectedTarget?.id) {
       initial[selectedTarget.id] = true;
@@ -46,7 +50,10 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     setTargetQuery("");
     setRunState({ state: "idle", error: null, items: [], parallelism: 3 });
     setSelectedResultID(null);
-  }, [open, selectedTarget?.id]);
+    return () => {
+      invalidateBulkRequests(requests, delayedRefreshRef);
+    };
+  }, [open, requests, selectedTarget?.id]);
 
   useEffect(() => {
     if (!open || !hasActiveItems) return undefined;
@@ -80,41 +87,56 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   async function startBulkCommand(event) {
     event.preventDefault();
     if (!canRun) return;
+    const request = requests.begin("run");
+    requests.invalidate("refresh");
+    window.clearTimeout(delayedRefreshRef.current);
     setRunState((current) => ({ ...current, state: "starting", error: null }));
     setSelectedResultID(null);
     try {
-      const data = await apiPost("/api/console/bulk-exec", {
-        target_ids: selectedIDs,
-        command: command.trim(),
-        reason: reason.trim(),
-        confirmation,
-      });
+      const data = await apiPost(
+        "/api/console/bulk-exec",
+        {
+          target_ids: selectedIDs,
+          command: command.trim(),
+          reason: reason.trim(),
+          confirmation,
+        },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent()) return;
+      const items = (data.items || []).map((item) => ({ ...item, status: item.status || "running" }));
       setRunState({
         state: "running",
         error: null,
-        items: (data.items || []).map((item) => ({ ...item, status: item.status || "running" })),
+        items,
         parallelism: data.parallelism || 3,
       });
       await onRefresh?.();
-      window.setTimeout(() => void refreshRequests(), 1000);
+      if (!request.isCurrent()) return;
+      delayedRefreshRef.current = window.setTimeout(() => void refreshRequests(items), 1000);
     } catch (error) {
+      if (!request.isCurrent()) return;
       setRunState((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 
-  async function refreshRequests() {
-    if (runState.items.length === 0) return;
+  async function refreshRequests(items = runState.items) {
+    if (items.length === 0) return;
+    const request = requests.begin("refresh");
     try {
       const details = await Promise.all(
-        runState.items.map(async (item) => {
+        items.map(async (item) => {
           try {
-            const detail = await apiGet(`/api/console/command-requests/${item.request_id}`);
+            const detail = await apiGet(`/api/console/command-requests/${item.request_id}`, { signal: request.signal });
             return { ...item, ...detail, request_id: item.request_id };
           } catch (error) {
             return { ...item, status: "error", error: error.message };
           }
         }),
       );
+      if (!request.isCurrent()) return;
       setRunState((current) => ({
         ...current,
         state: details.some((item) => !terminalStatuses.has(item.status)) ? "running" : "done",
@@ -123,7 +145,10 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
       }));
       await onRefresh?.();
     } catch (error) {
+      if (!request.isCurrent()) return;
       setRunState((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 
@@ -242,6 +267,13 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
       </form>
     </Dialog>
   );
+}
+
+function invalidateBulkRequests(requests, delayedRefreshRef) {
+  requests.invalidate("run");
+  requests.invalidate("refresh");
+  window.clearTimeout(delayedRefreshRef.current);
+  delayedRefreshRef.current = null;
 }
 
 function BulkTargetPicker({ visibleTargets, selected, selectedCount, targetQuery, setTargetQuery, setAllTargets, toggleTarget }) {
