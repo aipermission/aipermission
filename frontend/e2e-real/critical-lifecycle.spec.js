@@ -17,6 +17,30 @@ test("runs approval, stale rejection, lock, and restart against the real backend
   await page.goto(`/console?target=${encodeURIComponent(fixture.targetRef)}`);
   await expect(page.getByText("e2e-target", { exact: true }).first()).toBeVisible();
 
+  await test.step("persist a connector permission through the real UI", async () => {
+    await page.locator('aside a[href="/tokens"]').click();
+    await page.getByRole("button", { name: "Connectors" }).click();
+    const dialog = page.getByRole("dialog", { name: "real-browser-agent connector permissions" });
+    await dialog.getByRole("button", { name: /e2e-target/ }).click();
+    await dialog.getByRole("button", { name: "Prompt", exact: true }).click();
+    await dialog.getByRole("button", { name: "Save connector permissions" }).click();
+    await expect(dialog.getByText("Connector permissions saved.")).toBeVisible();
+
+    const permissions = await uiRequest(page, `/api/tokens/${fixture.token.id}/connector-permissions`, "GET");
+    expect(permissions.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target_id: fixture.targetID,
+          profile_id: fixture.profileID,
+          action_name: "echo",
+          execution_rule: "approval_required",
+        }),
+      ]),
+    );
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await page.locator('aside a[href="/console"]').click();
+  });
+
   await test.step("approve a Prompt connector action and persist its completion", async () => {
     const request = await callConnectorAction(page, fixture.token, fixture.targetRef, "approved message");
     expect(request.status).toBe("approval_pending");
@@ -110,7 +134,7 @@ async function uiRequest(page, path, method, body) {
         method: requestMethod,
         credentials: "include",
         headers: { "Content-Type": "application/json", "X-AIPermission-CSRF": csrf },
-        body: JSON.stringify(requestBody),
+        body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `UI request failed: ${response.status}`);

@@ -28,6 +28,14 @@ test.beforeEach(async ({ page }) => {
     });
   });
   await page.route("http://localhost:8080/api/backup/import", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    const form = await requestFormData(route.request());
+    expect(form.get("database_name")).toBe("Imported project");
+    expect(form.get("database_password")).toBe("ImportedPassword123");
+    const databaseFile = form.get("sqlite");
+    expect(databaseFile).toBeInstanceOf(File);
+    expect(databaseFile.name).toBe("imported.aipdb");
+    expect(await databaseFile.text()).toBe("encrypted-test-fixture");
     unlocked = true;
     await route.fulfill({ json: { state: "unlocked", database_id: "imported", database_name: "Imported project" } });
   });
@@ -109,21 +117,39 @@ test.beforeEach(async ({ page }) => {
   await page.route("http://localhost:8080/api/tokens/1/connector-permissions", async (route) => {
     if (route.request().method() === "PUT") {
       const body = route.request().postDataJSON();
+      expect(body).toEqual({
+        permissions: [{ target_id: 1, profile_id: 1, action_name: "exec", execution_rule: "approval_required" }],
+      });
       connectorPermissions = body.permissions || [];
       await route.fulfill({ json: { items: connectorPermissions } });
       return;
     }
+    expect(route.request().method()).toBe("GET");
     await route.fulfill({ json: { items: connectorPermissions } });
   });
   await page.route("http://localhost:8080/api/tokens/1/project-scopes", async (route) => {
     if (route.request().method() === "PUT") {
-      enabledProjectIDs = route.request().postDataJSON().enabled_project_ids || [];
+      const body = route.request().postDataJSON();
+      expect(Object.keys(body)).toEqual(["enabled_project_ids"]);
+      expect(Array.isArray(body.enabled_project_ids)).toBe(true);
+      expect(body.enabled_project_ids.every(Number.isInteger)).toBe(true);
+      expect(body.enabled_project_ids.every((id) => id === 1 || id === 2)).toBe(true);
+      enabledProjectIDs = body.enabled_project_ids;
+    } else {
+      expect(route.request().method()).toBe("GET");
     }
     await route.fulfill({ json: { items: [projectScope(enabledProjectIDs.includes(1))] } });
   });
   await page.route("http://localhost:8080/api/tokens/1/project-capabilities", async (route) => {
     if (route.request().method() === "PUT") {
-      projectCapabilities = (route.request().postDataJSON().capabilities || []).map((capability) => ({
+      const body = route.request().postDataJSON();
+      expect(body).toEqual({
+        capabilities: [
+          { project_id: 1, capability_name: "vault.metadata.read", execution_rule: "always_run" },
+          { project_id: 1, capability_name: "vault.item.generate", execution_rule: "always_run" },
+        ],
+      });
+      projectCapabilities = body.capabilities.map((capability) => ({
         ...capability,
         token_id: 1,
         project_name: "Ungrouped",
@@ -131,6 +157,8 @@ test.beforeEach(async ({ page }) => {
         project_enabled: enabledProjectIDs.includes(capability.project_id),
         revision: 1,
       }));
+    } else {
+      expect(route.request().method()).toBe("GET");
     }
     await route.fulfill({ json: { definitions: projectCapabilityDefinitions(), items: projectCapabilities } });
   });
@@ -410,6 +438,13 @@ async function expectNoSeriousAccessibilityViolations(page, include) {
   const results = await new AxeBuilder({ page }).include(include).analyze();
   const violations = results.violations.filter(({ impact }) => impact === "serious" || impact === "critical");
   expect(violations, violations.map(({ id, help }) => `${id}: ${help}`).join("\n")).toEqual([]);
+}
+
+async function requestFormData(request) {
+  const contentType = request.headers()["content-type"];
+  expect(contentType).toContain("multipart/form-data");
+  const response = new Response(request.postDataBuffer(), { headers: { "content-type": contentType } });
+  return response.formData();
 }
 
 function pendingApproval() {
