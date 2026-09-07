@@ -4,6 +4,13 @@ import { consoleSessionAttachUrl, limitTranscript, parseConsoleSocketMessage } f
 
 export function useConsoleConnections({ setConsoleSessions }) {
   const connectionsRef = useRef({});
+  const expectedClosuresRef = useRef(new WeakSet());
+
+  const closeExpected = useCallback((connection) => {
+    if (!connection) return;
+    expectedClosuresRef.current.add(connection);
+    connection.close();
+  }, []);
 
   const patchSession = useCallback(
     (sessionID, updater) => {
@@ -19,25 +26,28 @@ export function useConsoleConnections({ setConsoleSessions }) {
   );
 
   const disconnectAll = useCallback(() => {
-    Object.values(connectionsRef.current).forEach((connection) => connection?.close());
+    Object.values(connectionsRef.current).forEach(closeExpected);
     connectionsRef.current = {};
-  }, []);
+  }, [closeExpected]);
 
-  const disconnectSessions = useCallback((sessionIDs) => {
-    for (const sessionID of sessionIDs) {
-      const connection = connectionsRef.current[sessionID];
-      if (!connection) continue;
-      connection.close();
-      delete connectionsRef.current[sessionID];
-    }
-  }, []);
+  const disconnectSessions = useCallback(
+    (sessionIDs) => {
+      for (const sessionID of sessionIDs) {
+        const connection = connectionsRef.current[sessionID];
+        if (!connection) continue;
+        closeExpected(connection);
+        delete connectionsRef.current[sessionID];
+      }
+    },
+    [closeExpected],
+  );
 
   const attachSession = useCallback(
     (sessionID, options = {}) => {
       const existing = connectionsRef.current[sessionID];
       if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
         if (!options.force) return;
-        existing.close();
+        closeExpected(existing);
       }
       if (existing && (existing.readyState === WebSocket.CLOSING || existing.readyState === WebSocket.CLOSED)) {
         delete connectionsRef.current[sessionID];
@@ -86,11 +96,14 @@ export function useConsoleConnections({ setConsoleSessions }) {
           }));
         }
         if (message.type === "exit") {
+          expectedClosuresRef.current.add(socket);
           patchSession(sessionID, (session) => ({
             transcript: limitTranscript(`${session.transcript || ""}\r\n[session closed]\r\n`),
             status: message.status || "closed",
             error: message.data || "",
           }));
+          closeExpected(socket);
+          if (connectionsRef.current[sessionID] === socket) delete connectionsRef.current[sessionID];
         }
       };
       socket.onerror = () => {
@@ -100,9 +113,14 @@ export function useConsoleConnections({ setConsoleSessions }) {
       socket.onclose = () => {
         if (connectionsRef.current[sessionID] !== socket) return;
         delete connectionsRef.current[sessionID];
+        if (expectedClosuresRef.current.has(socket)) return;
+        patchSession(sessionID, (session) => ({
+          status: "error",
+          error: session.error || "Console connection closed unexpectedly. Reconnect to continue.",
+        }));
       };
     },
-    [patchSession],
+    [closeExpected, patchSession],
   );
 
   const sendInput = useCallback(
@@ -129,10 +147,21 @@ export function useConsoleConnections({ setConsoleSessions }) {
 
   const closeSession = useCallback(
     async (sessionID) => {
-      await apiPost(`/api/console/sessions/${sessionID}/close`, {});
+      const connection = connectionsRef.current[sessionID];
+      if (connection) expectedClosuresRef.current.add(connection);
+      try {
+        await apiPost(`/api/console/sessions/${sessionID}/close`, {});
+      } catch (error) {
+        if (connection && connectionsRef.current[sessionID] === connection) expectedClosuresRef.current.delete(connection);
+        throw error;
+      }
+      if (connectionsRef.current[sessionID] === connection) {
+        closeExpected(connection);
+        delete connectionsRef.current[sessionID];
+      }
       patchSession(sessionID, () => ({ status: "closed" }));
     },
-    [patchSession],
+    [closeExpected, patchSession],
   );
 
   useEffect(() => disconnectAll, [disconnectAll]);
