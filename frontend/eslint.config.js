@@ -35,12 +35,6 @@ export default [
   // Existing large functions are pinned to their current ceiling. New source
   // uses the stricter defaults above, and each override must only move down.
   {
-    files: ["src/components/app-shell.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 608, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
     files: ["src/connectors/templates/docker/console.jsx"],
     rules: {
       "max-lines-per-function": ["error", { max: 566, skipBlankLines: true, skipComments: true, IIFEs: true }],
@@ -56,13 +50,6 @@ export default [
     files: ["src/connectors/templates/mail/console.jsx"],
     rules: {
       "max-lines-per-function": ["error", { max: 550, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
-    files: ["src/pages/console.jsx"],
-    rules: {
-      complexity: ["error", { max: 80 }],
-      "max-lines-per-function": ["error", { max: 702, skipBlankLines: true, skipComments: true, IIFEs: true }],
     },
   },
   {
