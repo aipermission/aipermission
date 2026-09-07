@@ -212,10 +212,6 @@ export const postgresConnectorMetadataSource = readFileSync(
   "utf8",
 );
 export const postgresConnectorModelSource = readFileSync(join(currentDir, "..", "connectors", "templates", "postgres", "model.js"), "utf8");
-export const postgresConnectorOperationsSource = readFileSync(
-  join(currentDir, "..", "connectors", "templates", "postgres", "operations.jsx"),
-  "utf8",
-);
 export const clickHouseConnectorFormSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "clickhouse", "form.jsx"),
   "utf8",

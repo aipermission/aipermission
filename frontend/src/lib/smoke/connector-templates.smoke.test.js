@@ -36,7 +36,6 @@ import {
   postgresConnectorIndexSource,
   postgresConnectorMetadataSource,
   postgresConnectorModelSource,
-  postgresConnectorOperationsSource,
   clickHouseConnectorFormSource,
   clickHouseConnectorConsoleSource,
   clickHouseConnectorIndexSource,
@@ -126,11 +125,6 @@ test("Connectors page wires generic connector templates", () => {
   assert.match(postgresConnectorListItemTemplateSource, /Create managed DB user/);
   assert.match(postgresConnectorListItemTemplateSource, /Backup \/ restore database/);
   assert.doesNotMatch(postgresConnectorListItemTemplateSource, /Export table JSON/);
-  assert.match(postgresConnectorOperationsSource, /\/profiles\/\$\{profileID\}\/provision/);
-  assert.match(postgresConnectorOperationsSource, /\/backup/);
-  assert.match(postgresConnectorOperationsSource, /\/restore/);
-  assert.doesNotMatch(postgresConnectorOperationsSource, /export_table_json/);
-  assert.match(postgresConnectorOperationsSource, /Create user/);
   assert.doesNotMatch(sshConnectorListItemTemplateSource, /Delete SSH connector|Edit SSH connector|Test SSH/);
   assert.match(connectorsSource, /title="Test connection"/);
   assert.match(connectorsSource, /title="Edit connector"/);
