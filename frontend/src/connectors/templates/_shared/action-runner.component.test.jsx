@@ -23,11 +23,16 @@ function runnerOptions(overrides = {}) {
 describe("runGuardedConnectorAction", () => {
   it("ignores a response after the target scope changes", async () => {
     let resolveResponse;
-    const post = () => new Promise((resolve) => (resolveResponse = resolve));
+    let requestSignal;
+    const post = (_path, _body, options) => {
+      requestSignal = options.signal;
+      return new Promise((resolve) => (resolveResponse = resolve));
+    };
     const { setState, options } = runnerOptions({ post });
     const result = runGuardedConnectorAction(options);
 
     options.requestGuard.setScope("target:2");
+    expect(requestSignal.aborted).toBe(true);
     resolveResponse({ status: "completed", output: { ok: true } });
 
     await expect(result).resolves.toBeNull();

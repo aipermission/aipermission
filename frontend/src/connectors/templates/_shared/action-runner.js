@@ -21,12 +21,16 @@ export async function runGuardedConnectorAction({
   const request = requestGuard.begin(channel || actionName);
   setState({ state: busy, error: "", message: "" });
   try {
-    const response = await post("/api/connector-actions/local-run", {
-      target_ref: targetRef,
-      action_name: actionName,
-      input,
-      reason,
-    });
+    const response = await post(
+      "/api/connector-actions/local-run",
+      {
+        target_ref: targetRef,
+        action_name: actionName,
+        input,
+        reason,
+      },
+      { signal: request.signal },
+    );
     if (!request.isCurrent()) return null;
     const item = requireCompletedConnectorAction(response, `${product} action failed.`);
     if (!item) {
@@ -82,5 +86,7 @@ export async function runGuardedConnectorAction({
         : { state: "error", error: errorMessage(error, `${product} action failed.`), message: "" },
     );
     throw error;
+  } finally {
+    request.complete();
   }
 }

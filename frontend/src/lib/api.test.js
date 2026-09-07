@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
-import { apiDownload, apiPost } from "./api.js";
+import { APIError } from "./errors.js";
+import { apiDelete, apiDownload, apiGet, apiPost, apiPostForm, apiPut } from "./api.js";
 import {
   completeLocalActionRetry,
   listLocalActionRetryEntries,
@@ -12,6 +13,57 @@ import {
 } from "./local-action-retry.js";
 
 const fakeRetryIndexedDB = new IDBFactory();
+
+test("all API helpers forward the caller AbortSignal", async () => {
+  const originalFetch = globalThis.fetch;
+  const controller = new AbortController();
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push(options);
+    if (options.method === "DELETE") return response(null, 204);
+    if (url.endsWith("/api/download")) return response({ error: "download unavailable" }, 503);
+    return response({ ok: true });
+  };
+  try {
+    await apiGet("/api/test", { signal: controller.signal });
+    await apiPost("/api/test", {}, { signal: controller.signal });
+    await apiPostForm("/api/test", new FormData(), { signal: controller.signal });
+    await apiPut("/api/test", {}, { signal: controller.signal });
+    await apiDelete("/api/test", { signal: controller.signal });
+    await assert.rejects(() => apiDownload("/api/download", "test.txt", { signal: controller.signal }), /download unavailable/);
+
+    assert.equal(calls.length, 6);
+    assert.equal(
+      calls.every((options) => options.signal === controller.signal),
+      true,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("API failures retain structured status and classification", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => response({ error: "invalid input", code: "invalid_scope", details: { field: "scope" } }, 422);
+  try {
+    await assert.rejects(
+      () => apiGet("/api/test"),
+      (error) => {
+        assert.equal(error instanceof APIError, true);
+        assert.equal(error.name, "APIError");
+        assert.equal(error.message, "invalid input");
+        assert.equal(error.status, 422);
+        assert.equal(error.code, "invalid_scope");
+        assert.equal(error.kind, "validation");
+        assert.deepEqual(error.details, { field: "scope" });
+        assert.deepEqual(error.data, { error: "invalid input", code: "invalid_scope", details: { field: "scope" } });
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("picker downloads stream the response directly to the selected file", async () => {
   const originalFetch = globalThis.fetch;

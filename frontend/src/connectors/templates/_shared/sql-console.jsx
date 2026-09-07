@@ -97,15 +97,19 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
     metadataSessionRef.current = sessionKey;
     const request = requestGuard.begin("metadata");
     setMetadata({ state: "loading", tables: [], error: "", truncated: false });
-    apiPost("/api/connector-actions/local-run", {
-      target_ref: target.ref,
-      action_name: connector.queryAction,
-      input: {
-        sql: connector.metadataSQL,
-        max_rows: connector.metadataMaxRows,
+    apiPost(
+      "/api/connector-actions/local-run",
+      {
+        target_ref: target.ref,
+        action_name: connector.queryAction,
+        input: {
+          sql: connector.metadataSQL,
+          max_rows: connector.metadataMaxRows,
+        },
+        reason: connector.metadataReason,
       },
-      reason: connector.metadataReason,
-    })
+      { signal: request.signal },
+    )
       .then(async (response) => {
         if (!request.isCurrent()) return;
         const item = requireCompletedConnectorAction(response, "Could not load metadata suggestions.");
@@ -121,7 +125,8 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
       .catch((error) => {
         if (!request.isCurrent()) return;
         setMetadata({ state: "error", tables: [], error: error.message || "Could not load metadata suggestions.", truncated: false });
-      });
+      })
+      .finally(() => request.complete());
     return () => {
       requestGuard.invalidate("metadata");
     };
@@ -147,12 +152,16 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
         if (requestKeys.has(requestKey)) continue;
         requestKeys.add(requestKey);
         const request = requestGuard.begin(`metadata:${requestKey}`);
-        apiPost("/api/connector-actions/local-run", {
-          target_ref: target.ref,
-          action_name: connector.describeAction,
-          input: connector.describeInput(reference),
-          reason: connector.metadataReason,
-        })
+        apiPost(
+          "/api/connector-actions/local-run",
+          {
+            target_ref: target.ref,
+            action_name: connector.describeAction,
+            input: connector.describeInput(reference),
+            reason: connector.metadataReason,
+          },
+          { signal: request.signal },
+        )
           .then(async (response) => {
             if (columnMetadataRequestsRef.current !== requestKeys || !request.isCurrent()) return;
             const item = requireCompletedConnectorAction(response, "Could not load column metadata.");
@@ -168,7 +177,8 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
           })
           .catch(() => {
             if (request.isCurrent()) requestKeys.delete(requestKey);
-          });
+          })
+          .finally(() => request.complete());
       }
     }, 250);
     return () => {
@@ -182,15 +192,19 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
     const request = requestGuard.begin("query");
     setRunState({ state: "running", error: "" });
     try {
-      const response = await apiPost("/api/connector-actions/local-run", {
-        target_ref: target.ref,
-        action_name: connector.queryAction,
-        input: {
-          sql,
-          max_rows: Number(maxRows) || 100,
+      const response = await apiPost(
+        "/api/connector-actions/local-run",
+        {
+          target_ref: target.ref,
+          action_name: connector.queryAction,
+          input: {
+            sql,
+            max_rows: Number(maxRows) || 100,
+          },
+          reason: connector.manualReason,
         },
-        reason: connector.manualReason,
-      });
+        { signal: request.signal },
+      );
       if (!request.isCurrent()) return;
       const item = requireCompletedConnectorAction(response, "Query failed.");
       if (!item) {
@@ -206,6 +220,7 @@ export function SQLConnectorConsole({ config, target, approvals, theme, session,
       setRunState({ state: "error", error: error.message || "Query failed." });
     } finally {
       if (request.isCurrent()) setEditorFocusTick((current) => current + 1);
+      request.complete();
     }
   }
 

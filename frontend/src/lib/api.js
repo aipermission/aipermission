@@ -1,4 +1,5 @@
 import { completeLocalActionRetry, markLocalActionRetryOutcome, prepareLocalActionRetry } from "./local-action-retry.js";
+import { APIError } from "./errors.js";
 import { scopedUICookieName } from "./ui-cookie.js";
 
 const viteEnv = import.meta.env || {};
@@ -6,8 +7,8 @@ const viteEnv = import.meta.env || {};
 export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
-export async function apiGet(path) {
-  const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
+export async function apiGet(path, options = {}) {
+  const response = await fetch(`${apiUrl}${path}`, { signal: options.signal, credentials: "include" });
   return readResponse(response);
 }
 
@@ -87,18 +88,24 @@ export async function apiPostForm(path, formData, options = {}) {
   return readResponse(response);
 }
 
-export async function apiPut(path, body) {
+export async function apiPut(path, body, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
     method: "PUT",
     headers: csrfHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
+    signal: options.signal,
     credentials: "include",
   });
   return readResponse(response);
 }
 
-export async function apiDelete(path) {
-  const response = await fetch(`${apiUrl}${path}`, { method: "DELETE", headers: csrfHeaders(), credentials: "include" });
+export async function apiDelete(path, options = {}) {
+  const response = await fetch(`${apiUrl}${path}`, {
+    method: "DELETE",
+    headers: csrfHeaders(),
+    signal: options.signal,
+    credentials: "include",
+  });
   if (response.status === 204) {
     return null;
   }
@@ -118,13 +125,13 @@ export async function apiDownload(path, filename, options = {}) {
       throw error;
     }
   }
-  const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
+  const response = await fetch(`${apiUrl}${path}`, { signal: options.signal, credentials: "include" });
   if (!response.ok) {
     return readResponse(response);
   }
   if (saveHandle && response.body && typeof response.body.pipeTo === "function") {
     const writable = await saveHandle.createWritable();
-    await response.body.pipeTo(writable);
+    await response.body.pipeTo(writable, { signal: options.signal });
     return { saved: true, method: "picker" };
   }
   const blob = await response.blob();
@@ -144,10 +151,12 @@ async function readResponse(response, options = {}) {
     if (response.status === 401 && data?.error === "ui session required" && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("aipermission:ui-session-required"));
     }
-    const error = new Error(data?.error || `Request failed with ${response.status}`);
-    error.status = response.status;
-    error.data = data;
-    throw error;
+    throw new APIError(data?.error || `Request failed with ${response.status}`, {
+      status: response.status,
+      code: data?.code || data?.status || "",
+      details: data?.details || null,
+      data,
+    });
   }
   return data;
 }

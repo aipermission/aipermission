@@ -236,7 +236,7 @@ export function HistoryPage() {
     }
     if (filters.labelID) params.set("label_id", filters.labelID);
     try {
-      const data = await apiGet(`/api/history?${params.toString()}`);
+      const data = await apiGet(`/api/history?${params.toString()}`, { signal: request.signal });
       if (!request.isCurrent()) return;
       setState((current) => ({
         state: "ready",
@@ -254,6 +254,7 @@ export function HistoryPage() {
       setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
     } finally {
       if (!options.poll && request.isCurrent()) interactiveRequestPendingRef.current = false;
+      request.complete();
     }
   }
 
@@ -270,10 +271,12 @@ export function HistoryPage() {
     const request = requestGuard.begin("detail");
     setSelected(item);
     try {
-      const detail = await apiGet(`/api/history/${item.id}`);
+      const detail = await apiGet(`/api/history/${item.id}`, { signal: request.signal });
       if (request.isCurrent()) setSelected(detail);
     } catch {
       if (request.isCurrent()) setSelected(item);
+    } finally {
+      request.complete();
     }
   }
 
