@@ -61,6 +61,22 @@ describe("useConsolePermissionView", () => {
     expect(result.current.showAlwaysRunWarning).toBe(true);
   });
 
+  it("ignores project-disabled Always actions when another action keeps the token visible", () => {
+    const connectorPermissions = {
+      1: [
+        permission(1, { action_name: "write", project_enabled: false }),
+        permission(1, { action_name: "read", execution_rule: "approval_required" }),
+      ],
+    };
+    const { result } = renderHook(() =>
+      useConsolePermissionView({ connectorPermissions, mcpEnabled: true, now, profiles, target, tokens: [tokens[0]] }),
+    );
+
+    expect(result.current.selectedTokenOptions).toHaveLength(1);
+    expect(result.current.alwaysRunTokenPermissions).toEqual([]);
+    expect(result.current.showAlwaysRunWarning).toBe(false);
+  });
+
   it("returns a stable empty view when no target is selected", () => {
     const { result, rerender } = renderHook(
       ({ nextTokens }) =>

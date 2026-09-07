@@ -27,7 +27,7 @@ export function deriveConsolePermissionView({ connectorPermissions, mcpEnabled, 
     .map((token) => {
       const profileID = selectedConnectorProfileID(token.id, target, profiles);
       const permission = currentConnectorTargetProfilePermissions(connectorPermissions[token.id] || [], target, profileID).find(
-        (item) => effectiveRule(item, now) === "always_run",
+        (item) => item.project_enabled !== false && effectiveRule(item, now) === "always_run",
       );
       return permission ? { token, permission } : null;
     })
