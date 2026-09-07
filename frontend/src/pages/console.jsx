@@ -189,7 +189,7 @@ export function ConsolePage() {
           temporaryAlwaysRunLabels,
         }}
         actions={{
-          endLiveSession: () => selectedSession.id && void closeConsoleSession(selectedSession.id),
+          endLiveSession: () => selectedSession.id && void closeConsoleSession(selectedSession.id).catch(() => {}),
           endStructuredSession: workspaceSession.endStructured,
           interruptSession: () => selectedSession.id && cancelConsoleCommand(selectedSession.id),
           openActivity: connectorView.openActivity,

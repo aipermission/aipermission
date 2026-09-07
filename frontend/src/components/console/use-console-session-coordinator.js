@@ -53,23 +53,31 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
   }, []);
 
   const activateSession = useCallback(
-    (session) => {
+    (session, request) => {
+      if (request && !request.isCurrent()) return;
       upsertSession(session);
-      window.setTimeout(() => attachSession(session.id), 0);
+      window.setTimeout(() => {
+        if (!request || request.isCurrent()) attachSession(session.id);
+      }, 0);
     },
     [attachSession, upsertSession],
   );
 
   const createSession = useCallback(
-    async (runtime, options = {}) => {
-      const session = await apiPost("/api/console/sessions", {
-        runtime_id: runtime.id,
-        name: options.name || `${runtime.name} shell`,
-        close_existing: options.closeExisting !== false,
-        params: options.params || undefined,
-        vault_items: options.vaultItems || undefined,
-      });
-      if (!options.deferActivation) activateSession(session);
+    async (runtime, options = {}, request) => {
+      const session = await apiPost(
+        "/api/console/sessions",
+        {
+          runtime_id: runtime.id,
+          name: options.name || `${runtime.name} shell`,
+          close_existing: options.closeExisting !== false,
+          params: options.params || undefined,
+          vault_items: options.vaultItems || undefined,
+        },
+        request ? { signal: request.signal } : undefined,
+      );
+      if (request && !request.isCurrent()) return null;
+      if (!options.deferActivation) activateSession(session, request);
       return session;
     },
     [activateSession],
@@ -77,23 +85,28 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
 
   const newSession = useCallback(
     async (runtime, options = {}) => {
-      if (options.vaultItems !== undefined) return createSession(runtime, options);
-      const channel = `vault-options:${runtime.id}`;
-      const request = requests.begin(channel);
+      const request = requests.begin("new-session");
+      requests.invalidate("vault-start");
+      const previous = vaultResolverRef.current;
+      previous?.resolve(null);
+      vaultResolverRef.current = null;
+      setVaultDialog(initialVaultDialog);
       try {
-        const vaultOptions = await apiGet(`/api/vault-session-options?runtime_id=${encodeURIComponent(runtime.id)}`, {
-          signal: request.signal,
-        });
+        if (options.vaultItems !== undefined) return await createSession(runtime, options, request);
+        let vaultOptions;
+        try {
+          vaultOptions = await apiGet(`/api/vault-session-options?runtime_id=${encodeURIComponent(runtime.id)}`, {
+            signal: request.signal,
+          });
+        } catch {
+          if (!request.isCurrent()) return null;
+          // Vault selection is optional; a failed probe must not block a normal local console.
+          return await createSession(runtime, options, request);
+        }
         if (!request.isCurrent()) return null;
         if (vaultOptions.supported && ((vaultOptions.items || []).length > 0 || (vaultOptions.defaults || []).length > 0)) {
-          requests.invalidate("vault-start");
-          const previous = vaultResolverRef.current;
-          if (previous) {
-            requests.invalidate(previous.channel);
-            previous.resolve(null);
-          }
-          return new Promise((resolve) => {
-            vaultResolverRef.current = { channel, resolve };
+          return await new Promise((resolve) => {
+            vaultResolverRef.current = { resolve };
             setVaultDialog({
               open: true,
               status: "idle",
@@ -104,13 +117,10 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
             });
           });
         }
-      } catch {
-        if (!request.isCurrent()) return null;
-        // Vault selection is optional; a failed probe must not block a normal local console.
+        return await createSession(runtime, options, request);
       } finally {
         request.complete();
       }
-      return createSession(runtime, options);
     },
     [createSession, requests],
   );
@@ -133,14 +143,18 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
       const request = requests.begin("vault-start");
       setVaultDialog((value) => ({ ...value, status: "starting", error: null }));
       try {
-        const session = await createSession(current.runtime, {
-          ...current.sessionOptions,
-          vaultItems,
-          deferActivation: true,
-        });
-        if (!request.isCurrent()) return;
+        const session = await createSession(
+          current.runtime,
+          {
+            ...current.sessionOptions,
+            vaultItems,
+            deferActivation: true,
+          },
+          request,
+        );
+        if (!request.isCurrent() || !session) return;
         setVaultDialog(initialVaultDialog);
-        window.setTimeout(() => activateSession(session), 0);
+        activateSession(session, request);
         if (vaultResolverRef.current === resolver) {
           resolver?.resolve(session);
           vaultResolverRef.current = null;
@@ -156,9 +170,9 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
   );
 
   const closeVaultDialog = useCallback(() => {
+    requests.invalidate("new-session");
     requests.invalidate("vault-start");
     const pending = vaultResolverRef.current;
-    if (pending) requests.invalidate(pending.channel);
     pending?.resolve(null);
     vaultResolverRef.current = null;
     setVaultDialog(initialVaultDialog);

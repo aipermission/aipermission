@@ -56,14 +56,30 @@ describe("useConsoleSessionCoordinator", () => {
     await act(async () => result.current.newSession(runtime, { params: { container: "api" } }));
     await act(async () => vi.runAllTimersAsync());
 
-    expect(apiPost).toHaveBeenCalledWith("/api/console/sessions", {
-      runtime_id: 7,
-      name: "My Server shell",
-      close_existing: true,
-      params: { container: "api" },
-      vault_items: undefined,
-    });
+    expect(apiPost).toHaveBeenCalledWith(
+      "/api/console/sessions",
+      {
+        runtime_id: 7,
+        name: "My Server shell",
+        close_existing: true,
+        params: { container: "api" },
+        vault_items: undefined,
+      },
+      { signal: expect.any(AbortSignal) },
+    );
     expect(connections.attachSession).toHaveBeenCalledWith(10);
+  });
+
+  it("does not retry a failed session creation as though the Vault probe failed", async () => {
+    apiGet.mockResolvedValue({ supported: false });
+    apiPost.mockRejectedValue(new Error("session creation failed"));
+    const { result } = renderCoordinator();
+
+    await act(async () => {
+      await expect(result.current.newSession(runtime)).rejects.toThrow("session creation failed");
+    });
+
+    expect(apiPost).toHaveBeenCalledOnce();
   });
 
   it("does not open Vault selection from a superseded probe for the same runtime", async () => {
@@ -82,6 +98,29 @@ describe("useConsoleSessionCoordinator", () => {
 
     expect(result.current.vaultDialog.open).toBe(false);
     expect(apiPost).toHaveBeenCalledOnce();
+  });
+
+  it("does not let an older runtime probe replace the current Vault selection", async () => {
+    const older = deferred();
+    apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce(vaultOptions);
+    const { result } = renderCoordinator();
+    const secondRuntime = { id: 8, name: "Second Server" };
+
+    let firstSelection;
+    let secondSelection;
+    act(() => {
+      firstSelection = result.current.newSession(runtime);
+      secondSelection = result.current.newSession(secondRuntime);
+    });
+    await act(async () => Promise.resolve());
+    expect(result.current.vaultDialog.runtime).toEqual(secondRuntime);
+
+    await act(async () => older.resolve(vaultOptions));
+    await expect(firstSelection).resolves.toBeNull();
+    expect(result.current.vaultDialog.runtime).toEqual(secondRuntime);
+
+    act(() => result.current.closeVaultDialog());
+    await expect(secondSelection).resolves.toBeNull();
   });
 
   it("resolves a pending Vault selection when the dialog is dismissed", async () => {
@@ -167,6 +206,25 @@ describe("useConsoleSessionCoordinator", () => {
     unmount();
 
     await expect(pending).resolves.toBeNull();
+  });
+
+  it("does not activate a plain session that completes after unmount", async () => {
+    const created = deferred();
+    apiGet.mockResolvedValue({ supported: false });
+    apiPost.mockReturnValue(created.promise);
+    const { result, unmount, connections } = renderCoordinator();
+
+    let pending;
+    act(() => {
+      pending = result.current.newSession(runtime);
+    });
+    await act(async () => Promise.resolve());
+    unmount();
+    await act(async () => created.resolve({ id: 13, runtime_id: 7, status: "connecting" }));
+    await expect(pending).resolves.toBeNull();
+    await act(async () => vi.runAllTimersAsync());
+
+    expect(connections.attachSession).not.toHaveBeenCalled();
   });
 
   it("disconnects only affected sessions before restarting a runtime", async () => {

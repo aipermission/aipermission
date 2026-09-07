@@ -155,6 +155,24 @@ describe("useConsoleConnections", () => {
     });
   });
 
+  it("reports a failed close while the current socket remains open", async () => {
+    apiPost.mockRejectedValue(new Error("close endpoint unavailable"));
+    const { result } = renderHook(() => useHarness());
+    act(() => result.current.connections.attachSession(7));
+    const socket = FakeWebSocket.instances[0];
+    socket.readyState = FakeWebSocket.OPEN;
+
+    await act(async () => {
+      await expect(result.current.connections.closeSession(7)).rejects.toThrow("close endpoint unavailable");
+    });
+
+    expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+    expect(result.current.sessions.data[0]).toMatchObject({
+      status: "error",
+      error: "Failed to end console session: close endpoint unavailable",
+    });
+  });
+
   it("commits a close when the socket disappears before the API succeeds", async () => {
     let resolveClose;
     apiPost.mockImplementation(

@@ -155,15 +155,17 @@ export function useConsoleConnections({ setConsoleSessions }) {
       try {
         await apiPost(`/api/console/sessions/${sessionID}/close`, {});
       } catch (error) {
-        if (connection) {
-          pendingClosuresRef.current.delete(connection);
-          if (connectionsRef.current[sessionID] !== connection) {
-            patchSession(sessionID, () => ({
-              status: "error",
-              error: `Console connection closed before the session could be ended: ${errorMessage(error)}`,
-            }));
-          }
-        }
+        if (connection) pendingClosuresRef.current.delete(connection);
+        const currentConnection = connectionsRef.current[sessionID];
+        if (connection && currentConnection && currentConnection !== connection) throw error;
+        const failure = errorMessage(error);
+        patchSession(sessionID, () => ({
+          status: "error",
+          error:
+            connection && !currentConnection
+              ? `Console connection closed before the session could be ended: ${failure}`
+              : `Failed to end console session: ${failure}`,
+        }));
         throw error;
       }
       if (connection) pendingClosuresRef.current.delete(connection);
