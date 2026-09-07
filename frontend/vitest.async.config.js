@@ -1,0 +1,35 @@
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: "jsdom",
+    include: [
+      "src/lib/use-async-action.component.test.jsx",
+      "src/lib/use-connector-permissions.component.test.jsx",
+      "src/pages/history.component.test.jsx",
+      "src/pages/remote-restore-panel.component.test.jsx",
+      "src/components/use-database-lifecycle.component.test.jsx",
+      "src/components/use-gateway-resources.component.test.jsx",
+      "src/components/local-action-reconciliation.component.test.jsx",
+      "src/components/console/use-connector-approval-dialog.component.test.jsx",
+      "src/components/console/use-console-connections.component.test.jsx",
+      "src/components/console/use-console-messages.component.test.jsx",
+      "src/components/console/use-console-session-coordinator.component.test.jsx",
+      "src/components/console/use-console-workspace-session.component.test.jsx",
+      "src/components/file-transfer/file-transfer-list-state.component.test.jsx",
+      "src/components/file-transfer/use-transfer-batch.component.test.jsx",
+      "src/components/file-transfer/use-transfer-browser.component.test.jsx",
+      "src/components/file-transfer/use-transfer-download.component.test.jsx",
+      "src/components/file-transfer/use-transfer-queues.component.test.jsx",
+      "src/components/settings/use-backup-provider-state.component.test.jsx",
+      "src/components/vault/use-vault-action-approvals.component.test.jsx",
+      "src/connectors/templates/_shared/action-runner.component.test.jsx",
+      "src/connectors/templates/kubernetes/use-kubernetes-browser.component.test.jsx",
+    ],
+    setupFiles: ["./src/test/setup.js"],
+    restoreMocks: true,
+    unstubGlobals: true,
+  },
+});

@@ -119,6 +119,9 @@ jobs:
       - name: Test
         working-directory: frontend
         run: npm test
+      - name: Async state ownership
+        working-directory: frontend
+        run: npm run test:async-race
       - name: Critical coverage floors
         working-directory: frontend
         run: npm run test:coverage

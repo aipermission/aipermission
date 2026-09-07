@@ -55,6 +55,9 @@ This runs:
 - frontend Playwright browser smoke for unlock, security settings, database import, settings retention, and token permission flows
 - frontend Playwright lifecycle coverage against a real encrypted backend for
   Prompt approval, completion, stale-context rejection, lock/unlock, and restart
+- explicit frontend async-state ownership coverage for stale completion,
+  scoped cancellation, target/profile changes, WebSocket closure,
+  reconciliation, and transfer ownership
 - frontend production npm audit
 - MCP package tests
 - MCP package build

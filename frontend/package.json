@@ -16,6 +16,7 @@
     "test": "npm run test:unit && npm run test:component",
     "test:unit": "node scripts/run-tests.mjs",
     "test:component": "vitest run --config vitest.config.js",
+    "test:async-race": "node --test src/lib/request-guard.test.js src/components/app-shell-runtime.test.js && vitest run --config vitest.async.config.js",
     "test:coverage": "npm run test:coverage:focused && npm run test:coverage:risk",
     "test:coverage:focused": "vitest run --config vitest.config.js --coverage",
     "test:coverage:risk": "vitest run --config vitest.risk.config.js --coverage",
