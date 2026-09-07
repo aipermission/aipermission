@@ -8,12 +8,12 @@ import { ConsoleWorkspacePanel } from "../components/console/console-workspace-p
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 import { useConsoleMessages } from "../components/console/use-console-messages";
+import { useConsoleConnectorView } from "../components/console/use-console-connector-view";
 import { useConsolePermissionView } from "../components/console/use-console-permission-view";
 import { useConsoleRecoveryState } from "../components/console/use-console-recovery-state";
 import { useConsoleTargetSelection } from "../components/console/use-console-target-selection";
 import { useConsoleWorkspaceSession } from "../components/console/use-console-workspace-session";
 import { useConnectorApprovalDialog } from "../components/console/use-connector-approval-dialog";
-import { getConnectorTemplate } from "../connectors/templates/registry";
 
 export function ConsolePage() {
   const {
@@ -46,8 +46,6 @@ export function ConsolePage() {
     useConnectorPermissions(tokens.data);
   const [targetsCompact, setTargetsCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
-  const [connectorActivityOpen, setConnectorActivityOpen] = useState(false);
-  const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
 
   const selectedTargetRef = searchParams.get("target");
   const sessions = consoleSessions.data || [];
@@ -66,13 +64,8 @@ export function ConsolePage() {
     targets,
   });
   const { selectedRuntimeID, selectedTarget, targetItems, unreadMessages } = targetSelection;
-  const selectedConnectorTemplate = selectedTarget ? getConnectorTemplate(selectedTarget.connector_kind) : null;
+  const connectorView = useConsoleConnectorView({ selectedTarget });
   const selectedTargetUsesLiveConsole = targetUsesLiveConsole(selectedTarget);
-  const SelectedConnectorConsoleTemplate = selectedConnectorTemplate?.Console || null;
-  const SelectedConnectorToolbarActions = selectedConnectorTemplate?.ToolbarActions || null;
-  const ConnectorOperationTemplate = connectorOperation?.connector_kind
-    ? getConnectorTemplate(connectorOperation.connector_kind)?.Operations || null
-    : null;
   const {
     selectedRuntimeTarget,
     selectedSession: runtimeSelectedSession,
@@ -101,7 +94,7 @@ export function ConsolePage() {
   const workspaceSession = useConsoleWorkspaceSession({
     attachConsoleSession,
     newConsoleSession,
-    onOpenConnectorOperation: openConnectorOperation,
+    onOpenConnectorOperation: connectorView.openOperation,
     restartConsoleSession,
     runtimeSelectedSession,
     selectedRunningRequestID: selectedRunningRequest?.id,
@@ -131,12 +124,6 @@ export function ConsolePage() {
     if (!selectedTarget?.ref) return;
     loadConnectorActions(selectedTarget);
   }, [selectedTarget, loadConnectorActions]);
-
-  function openConnectorOperation(operation) {
-    if (!operation?.open || !operation?.connector_kind) return false;
-    setConnectorOperation(operation);
-    return true;
-  }
 
   async function completeConnectorOperation(result, operation) {
     if (result?.startConsoleSession && operation?.runtimeTarget) {
@@ -172,7 +159,7 @@ export function ConsolePage() {
         theme={theme}
         approvals={connectorActionApprovals}
         liveConsoleTargets={liveConsoleTargets.data}
-        connectorView={{ Console: SelectedConnectorConsoleTemplate, ToolbarActions: SelectedConnectorToolbarActions }}
+        connectorView={connectorView}
         targetView={{
           runningApprovalCount: connectorActionApprovals.data.filter(
             (approval) => approval.status === "running" && selectedTarget && approval.target_ref === selectedTarget.ref,
@@ -204,7 +191,7 @@ export function ConsolePage() {
           endLiveSession: () => selectedSession.id && void closeConsoleSession(selectedSession.id),
           endStructuredSession: workspaceSession.endStructured,
           interruptSession: () => selectedSession.id && cancelConsoleCommand(selectedSession.id),
-          openActivity: () => setConnectorActivityOpen(true),
+          openActivity: connectorView.openActivity,
           openApproval: approvalDialog.open,
           openMessages: () => messageDialog.open(),
           refreshActivity: loadConnectorActionApprovals,
@@ -245,17 +232,17 @@ export function ConsolePage() {
       <ConsolePageDialogs
         activityDialog={{
           approvals: connectorActionApprovals,
-          close: () => setConnectorActivityOpen(false),
-          open: connectorActivityOpen,
+          close: connectorView.closeActivity,
+          open: connectorView.activityOpen,
           refresh: loadConnectorActionApprovals,
         }}
         approvalDialog={approvalDialog}
         messageDialog={{ ...messageDialog, target: selectedRuntimeTarget, tokens: selectedTokenOptions }}
         operationDialog={{
-          onChange: setConnectorOperation,
+          onChange: connectorView.setOperation,
           onComplete: completeConnectorOperation,
-          Template: ConnectorOperationTemplate,
-          value: connectorOperation,
+          Template: connectorView.OperationTemplate,
+          value: connectorView.operation,
         }}
       />
     </section>

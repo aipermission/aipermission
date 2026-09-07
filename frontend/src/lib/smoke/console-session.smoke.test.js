@@ -36,8 +36,8 @@ test("Console exposes connector action approvals", () => {
   assert.match(bulkCommandDialogSource, /\/api\/console\/command-requests\/\$\{item\.request_id\}/);
   assert.match(consolePageSource, /ConnectorActionApprovalDialog/);
   assert.match(consolePageSource, /ConnectorActivityDialog/);
-  assert.match(consolePageSource, /SelectedConnectorConsoleTemplate/);
-  assert.match(consolePageSource, /selectedConnectorTemplate\?\.Console/);
+  assert.match(consolePageSource, /useConsoleConnectorView/);
+  assert.match(consolePageSource, /Console: selectedTemplate\?\.Console/);
   assert.match(consolePageSource, /useConnectorPermissions/);
   assert.match(mailConsoleSource, /pendingActions/);
   assert.match(mailConsoleSource, /outboundPending/);

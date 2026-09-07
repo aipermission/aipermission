@@ -61,6 +61,7 @@ export const consolePageSource = [
   readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "console", "console-page-dialogs.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "console", "console-workspace-panel.jsx"), "utf8"),
+  readFileSync(join(currentDir, "..", "components", "console", "use-console-connector-view.js"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "console", "console-target-sidebar.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "console", "console-recovery-panel.jsx"), "utf8"),
 ].join("\n");
