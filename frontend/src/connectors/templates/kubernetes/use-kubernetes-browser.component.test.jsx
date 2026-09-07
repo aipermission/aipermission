@@ -94,6 +94,55 @@ it("discards resource lists that arrive after the connector target changes", asy
   expect(result.current.activeResources).toEqual([]);
 });
 
+it("does not let an older tab list clear the current pod selection", async () => {
+  let resolveWorkloads;
+  apiPost.mockImplementation((_path, payload) => {
+    if (payload.action_name === "list_workloads") {
+      return new Promise((resolve) => {
+        resolveWorkloads = resolve;
+      });
+    }
+    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  });
+  const { result } = renderBrowser();
+  await waitFor(() => expect(resolveWorkloads).toBeTypeOf("function"));
+  act(() => result.current.switchTab("pods"));
+  await waitFor(() => expect(result.current.activeResources).toEqual(pods));
+  await act(async () => result.current.selectResource(pods[0]));
+
+  await act(async () => resolveWorkloads(completed("list_workloads", { workloads: [] })));
+
+  expect(result.current.tab).toBe("pods");
+  expect(result.current.selectedResource).toEqual(pods[0]);
+});
+
+it("does not let old pod detail replace a synchronously selected event", async () => {
+  let resolvePodDetail;
+  const event = { namespace: "default", object: "pod/api-b", reason: "Scheduled", last_timestamp: "now", message: "placed" };
+  apiPost.mockImplementation((_path, payload) => {
+    if (payload.action_name === "describe_resource" && payload.input.resource_type === "pod") {
+      return new Promise((resolve) => {
+        resolvePodDetail = resolve;
+      });
+    }
+    if (payload.action_name === "list_events") return Promise.resolve(completed("list_events", { events: [event] }));
+    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  });
+  const { result } = renderBrowser();
+  act(() => result.current.switchTab("pods"));
+  await waitFor(() => expect(result.current.activeResources).toEqual(pods));
+  act(() => void result.current.selectResource(pods[0]));
+  await waitFor(() => expect(resolvePodDetail).toBeTypeOf("function"));
+  act(() => result.current.switchTab("events"));
+  await waitFor(() => expect(result.current.activeResources).toEqual([event]));
+  await act(async () => result.current.selectResource(event));
+
+  await act(async () => resolvePodDetail(completed("describe_resource", { resource: pods[0] })));
+
+  expect(result.current.tab).toBe("events");
+  expect(result.current.detail?.output?.resource).toEqual(event);
+});
+
 it("restarts the workload captured by the confirmation dialog", async () => {
   const first = { kind: "Deployment", namespace: "default", name: "api-a" };
   const second = { kind: "Deployment", namespace: "default", name: "api-b" };

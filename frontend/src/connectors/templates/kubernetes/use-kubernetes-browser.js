@@ -103,7 +103,7 @@ export function useKubernetesBrowser(props) {
       input,
       reason: `manual Kubernetes browser ${config.key} list`,
       busy: "loading",
-      channel: `list:${config.key}`,
+      channel: "resource-list",
     });
     if (!item) return;
     const next = Array.isArray(item.output?.[config.output]) ? item.output[config.output] : [];
@@ -203,6 +203,7 @@ export function useKubernetesBrowser(props) {
   }
 
   function clearDetail() {
+    requestGuard.invalidate("detail");
     setDetail(null);
     setLogs("");
     setResultSearch("");
