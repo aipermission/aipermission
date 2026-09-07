@@ -1,15 +1,12 @@
-import { FileJson, LoaderCircle, Play, Power, RefreshCcw, RotateCcw, Square, TerminalSquare } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
-import { Button } from "../../../components/ui/button";
-import { Dialog } from "../../../components/ui/dialog";
-import { Input } from "../../../components/ui/form";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
 import { useRequestGuard } from "../../../lib/request-guard";
-import { DockerContainerConsolePanel, dockerConsoleSessionName } from "./container-console-panel";
-import { resourceKey, resourcePlaceholder, resourcePrimary, resourceSearchValues, resourceSecondary, resourceSingular } from "./helpers";
+import { dockerConsoleSessionName } from "./container-console-panel";
+import { resourceKey, resourceSearchValues } from "./helpers";
+import { DockerLifecycleDialog, emptyDockerLifecycleDialog } from "./lifecycle-dialog";
 import { DockerResourceBrowser } from "./resource-browser";
-import { DockerResourceDetail, DockerResultView } from "./result-view";
+import { DockerResourcePane } from "./resource-pane";
 
 export function DockerConnectorConsoleTemplate({
   children,
@@ -37,14 +34,7 @@ export function DockerConnectorConsoleTemplate({
   const [pendingConsoleName, setPendingConsoleName] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const requestGuard = useRequestGuard(target.ref);
-  const [confirmDialog, setConfirmDialog] = useState({
-    open: false,
-    title: "",
-    description: "",
-    details: [],
-    actionName: "",
-    pending: false,
-  });
+  const [confirmDialog, setConfirmDialog] = useState(emptyDockerLifecycleDialog);
   const {
     panel: panelClass,
     muted: mutedClass,
@@ -71,7 +61,6 @@ export function DockerConnectorConsoleTemplate({
     resourceView === "containers"
       ? selectedContainer
       : activeResourceList.find((item) => resourceKey(resourceView, item) === selectedResourceID) || null;
-  const showingInspect = viewMode === "inspect";
   const filteredItems = useMemo(() => {
     const query = filter.trim().toLowerCase();
     if (!query) return activeResourceList;
@@ -306,7 +295,7 @@ export function DockerConnectorConsoleTemplate({
         setConfirmDialog((current) => ({ ...current, pending: false }));
         return;
       }
-      setConfirmDialog({ open: false, title: "", description: "", details: [], actionName: "", pending: false });
+      setConfirmDialog(emptyDockerLifecycleDialog());
       await refreshContainers();
     } catch {
       setConfirmDialog((current) => ({ ...current, pending: false }));
@@ -340,203 +329,41 @@ export function DockerConnectorConsoleTemplate({
           onSelect={(item) => selectResource(resourceView, item)}
         />
 
-        <section
-          className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
+        <DockerResourcePane
+          resourceView={resourceView}
+          selectedResource={selectedResource}
+          selectedContainer={selectedContainer}
+          containerRef={selectedContainerRef}
+          viewMode={viewMode}
+          result={result}
+          resultSearch={resultSearch}
+          tail={tail}
+          state={state}
+          target={target}
+          selectedRuntimeTarget={selectedRuntimeTarget}
+          session={session}
+          sessionLive={selectedContainerConsoleLive}
+          consolePending={pendingConsoleName === expectedConsoleSessionName}
+          theme={theme}
+          classes={{ border: borderClass, muted: mutedClass, subtlePanel: subtlePanelClass, input: inputClass }}
+          onTailChange={setTail}
+          onResultSearch={setResultSearch}
+          onReadLogs={() => void readLogs()}
+          onInspect={() => void inspectContainer()}
+          onOpenConsole={() => openContainerConsole()}
+          onStartConsole={startContainerConsole}
+          onEndConsole={onEndLiveSession}
+          onLifecycle={openLifecycle}
         >
-          <div>
-            <div className={`border-b p-3 ${borderClass}`}>
-              <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-sm font-semibold">
-                      {selectedResource ? resourcePrimary(resourceView, selectedResource) : `Select ${resourceSingular(resourceView)}`}
-                    </p>
-                    {state.state !== "idle" ? (
-                      <span className={`inline-flex shrink-0 items-center gap-1 text-xs ${mutedClass}`}>
-                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                        Loading
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className={`truncate text-xs ${mutedClass}`}>
-                    {selectedResource ? resourceSecondary(resourceView, selectedResource) : resourcePlaceholder(resourceView)}
-                  </p>
-                </div>
-                {resourceView === "containers" && selectedContainer ? (
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 px-2 text-xs"
-                      onClick={showingInspect ? () => readLogs() : () => inspectContainer()}
-                      disabled={state.state !== "idle"}
-                      title={showingInspect ? "Show container logs" : "Inspect container"}
-                    >
-                      {showingInspect ? <RefreshCcw className="h-3.5 w-3.5" /> : <FileJson className="h-3.5 w-3.5" />}
-                      {showingInspect ? "Logs" : "Inspect"}
-                    </Button>
-                    {!showingInspect && viewMode !== "console" ? (
-                      <>
-                        <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
-                          Tail
-                          <Input
-                            className={`h-8 w-24 ${inputClass}`}
-                            type="number"
-                            min="1"
-                            max="2000"
-                            value={tail}
-                            onChange={(event) => setTail(event.target.value)}
-                          />
-                        </label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-8 w-8 px-0"
-                          onClick={() => readLogs()}
-                          disabled={state.state !== "idle"}
-                          title="Refresh logs"
-                        >
-                          <RefreshCcw className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 w-8 px-0"
-                      onClick={() => openContainerConsole()}
-                      disabled={state.state !== "idle"}
-                      title="Open live console inside this container"
-                    >
-                      <TerminalSquare className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 w-8 px-0"
-                      onClick={() => openLifecycle("start_container")}
-                      disabled={state.state !== "idle"}
-                      title="Start container"
-                    >
-                      <Play className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 w-8 px-0"
-                      onClick={() => openLifecycle("stop_container")}
-                      disabled={state.state !== "idle"}
-                      title="Stop container"
-                    >
-                      <Square className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 w-8 px-0"
-                      onClick={() => openLifecycle("restart_container")}
-                      disabled={state.state !== "idle"}
-                      title="Restart container"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            {state.error ? (
-              <div className={`border-b px-3 py-2 text-right text-xs text-red-500 ${borderClass}`}>
-                <span className="break-words">{state.error}</span>
-              </div>
-            ) : null}
-          </div>
-          <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-3">
-            {!selectedResource ? (
-              <div
-                className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}
-              >
-                {resourcePlaceholder(resourceView)}
-              </div>
-            ) : resourceView !== "containers" ? (
-              <DockerResourceDetail
-                resourceView={resourceView}
-                item={selectedResource}
-                search={resultSearch}
-                onSearch={setResultSearch}
-                inputClass={inputClass}
-              />
-            ) : viewMode === "console" ? (
-              <DockerContainerConsolePanel
-                target={target}
-                container={selectedContainer}
-                containerRef={selectedContainerRef}
-                selectedRuntimeTarget={selectedRuntimeTarget}
-                session={session}
-                sessionLive={selectedContainerConsoleLive}
-                pending={pendingConsoleName === expectedConsoleSessionName}
-                theme={theme}
-                mutedClass={mutedClass}
-                borderClass={borderClass}
-                onStart={startContainerConsole}
-                onEnd={onEndLiveSession}
-              >
-                {children}
-              </DockerContainerConsolePanel>
-            ) : state.state !== "idle" && !result ? (
-              <div
-                className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}
-              >
-                <span className="inline-flex items-center gap-2">
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                  Loading {showingInspect ? "inspect metadata" : "logs"} for {selectedContainer.name || selectedContainer.id}...
-                </span>
-              </div>
-            ) : result ? (
-              <DockerResultView item={result} search={resultSearch} onSearch={setResultSearch} inputClass={inputClass} />
-            ) : (
-              <div
-                className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${borderClass} ${mutedClass}`}
-              >
-                Logs will appear here after the container is loaded.
-              </div>
-            )}
-          </div>
-        </section>
+          {children}
+        </DockerResourcePane>
       </div>
       <DockerEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      <Dialog
-        open={confirmDialog.open}
-        title={confirmDialog.title}
-        description={confirmDialog.description}
-        size="md"
-        onClose={() => setConfirmDialog({ open: false, title: "", description: "", details: [], actionName: "", pending: false })}
-        closeDisabled={confirmDialog.pending}
-      >
-        <div className="grid gap-4">
-          <div className="grid gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-            {confirmDialog.details.map((detail) => (
-              <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3" key={detail.label}>
-                <span className="font-semibold">{detail.label}</span>
-                <span className="min-w-0 break-words font-mono text-xs">{detail.value || "-"}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmDialog({ open: false, title: "", description: "", details: [], actionName: "", pending: false })}
-              disabled={confirmDialog.pending}
-            >
-              Cancel
-            </Button>
-            <Button type="button" onClick={confirmLifecycle} disabled={confirmDialog.pending}>
-              <Power className="h-4 w-4" />
-              {confirmDialog.pending ? "Running..." : "Run action"}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
+      <DockerLifecycleDialog
+        dialog={confirmDialog}
+        onClose={() => setConfirmDialog(emptyDockerLifecycleDialog())}
+        onConfirm={confirmLifecycle}
+      />
     </div>
   );
 }
