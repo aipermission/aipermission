@@ -115,6 +115,8 @@ jobs:
         run: npm run test:architecture
       - name: Duplication budget
         working-directory: frontend
+        env:
+          FRONTEND_DUPLICATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: npm run test:duplication
       - name: Test
         working-directory: frontend

@@ -48,6 +48,7 @@ This runs:
 - backend vet
 - backend govulncheck
 - frontend tests
+- frontend duplicate-block comparison against the base Git revision
 - frontend per-file coverage floors for connector permission editing, shared
   connector action and target/profile lifecycles, approval dialogs, and console
   page-state boundaries

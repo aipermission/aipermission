@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "lint:suppressions": "eslint . --prune-suppressions",
     "test:architecture": "node --test src/lib/smoke/connector-templates.smoke.test.js && node scripts/architecture-budget.mjs",
-    "test:duplication": "jscpd --config .jscpd.json --baseline .jscpd-baseline.json --fail-on-new-clones 0 --no-tips",
+    "test:duplication": "node scripts/duplication-budget.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run test:unit && npm run test:component",

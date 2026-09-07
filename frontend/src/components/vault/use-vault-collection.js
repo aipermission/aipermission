@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { toLocalDateTime, toRFC3339 } from "../../lib/date-time";
+import { loadProjectOptions } from "../../lib/load-project-options";
 import { useRequestGuard } from "../../lib/request-guard";
 
 export const emptyVaultEditor = {
@@ -47,16 +48,7 @@ export function useVaultCollection() {
     }
   }, [filters.project_id, filters.query, guard]);
   const loadProjects = useCallback(async () => {
-    const request = guard.begin("projects");
-    setProjects((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet("/api/projects", { signal: request.signal });
-      if (request.isCurrent()) setProjects({ state: "ready", data: data.items || [], error: null });
-    } catch (error) {
-      if (request.isCurrent()) setProjects({ state: "error", data: [], error: error.message });
-    } finally {
-      request.complete();
-    }
+    await loadProjectOptions(guard, setProjects);
   }, [guard]);
   const visibleItems = useMemo(() => filterVaultItemsByExpiry(items.data, filters.expiry), [items.data, filters.expiry]);
 

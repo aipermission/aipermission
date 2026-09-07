@@ -542,10 +542,10 @@
       "lines": 85.71
     },
     "src/components/vault/use-vault-collection.js": {
-      "statements": 85.31,
-      "branches": 65.95,
+      "statements": 85.2,
+      "branches": 68.18,
       "functions": 87.5,
-      "lines": 85.31
+      "lines": 85.2
     },
     "src/components/vault/use-vault-value-actions.js": {
       "statements": 69.63,
@@ -620,10 +620,10 @@
       "lines": 80.88
     },
     "src/connectors/editor/use-connector-inventory.js": {
-      "statements": 97.7,
-      "branches": 73.43,
+      "statements": 98.37,
+      "branches": 75.4,
       "functions": 100,
-      "lines": 97.7
+      "lines": 98.37
     },
     "src/connectors/editor/use-credential-profile-editor.js": {
       "statements": 93.02,
@@ -1704,6 +1704,12 @@
       "branches": 50,
       "functions": 80,
       "lines": 74.41
+    },
+    "src/lib/load-project-options.js": {
+      "statements": 92.3,
+      "branches": 50,
+      "functions": 100,
+      "lines": 92.3
     },
     "src/lib/local-action-retry.js": {
       "statements": 24.19,

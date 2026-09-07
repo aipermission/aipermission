@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { apiGet } from "../../lib/api";
+import { loadProjectOptions } from "../../lib/load-project-options";
 import { useRequestGuard } from "../../lib/request-guard";
 import { supportedConnectorKinds } from "../templates/catalog";
 
@@ -60,16 +61,7 @@ export function useConnectorInventory({ loadUnifiedTargets }) {
   }
 
   async function loadProjects() {
-    const request = guard.begin("projects");
-    setProjects((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet("/api/projects", { signal: request.signal });
-      if (request.isCurrent()) setProjects({ state: "ready", data: data.items || [], error: null });
-    } catch (error) {
-      if (request.isCurrent()) setProjects({ state: "error", data: [], error: error.message });
-    } finally {
-      request.complete();
-    }
+    await loadProjectOptions(guard, setProjects);
   }
 
   async function loadCatalog() {
