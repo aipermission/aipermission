@@ -128,68 +128,18 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
       closeOnOverlay={false}
     >
       <div className="grid max-h-[calc(100vh-160px)] min-h-0 gap-4 overflow-auto lg:grid-cols-2">
-        <section className="grid content-start gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">Current policy</p>
-              <p className={`text-xs ${mutedClass}`}>
-                {policy?.configured ? `${rules.length} lifecycle rule(s)` : "No lifecycle policy configured"}
-              </p>
-            </div>
-            <Button type="button" variant="outline" className="h-8" onClick={loadPolicy} disabled={pending}>
-              Refresh
-            </Button>
-          </div>
-          <div className={`grid min-h-48 gap-2 rounded-lg border p-3 ${borderClass} ${panelClass}`}>
-            {rules.length === 0 ? (
-              <div className="grid min-h-40 place-items-center text-center">
-                <p className={`text-sm ${mutedClass}`}>{pending ? "Reading policy..." : "No rules to display."}</p>
-              </div>
-            ) : (
-              rules.map((rule) => (
-                <div className={`grid gap-2 rounded-md border p-3 ${borderClass}`} key={rule.id}>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-mono text-xs font-semibold">{rule.id || "unnamed rule"}</p>
-                    <Badge tone={rule.status === "Enabled" ? "good" : "neutral"}>{String(rule.status || "unknown").toLowerCase()}</Badge>
-                  </div>
-                  <p className={`text-xs ${mutedClass}`}>Prefix: {rule.prefix || "whole bucket"}</p>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <span>Current: {dayLabel(rule.expire_current_after_days)}</span>
-                    <span>Noncurrent: {dayLabel(rule.expire_noncurrent_after_days)}</span>
-                    <span>Multipart: {dayLabel(rule.abort_incomplete_multipart_days)}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-          {policy?.raw_xml ? (
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase text-stone-400">Raw lifecycle XML</p>
-                <CopyButton value={policy.raw_xml} variant="outline" className="h-8 px-2 text-xs" />
-              </div>
-              <TerminalBlock className="max-h-44 overflow-auto whitespace-pre-wrap text-xs" surface="log">
-                {policy.raw_xml}
-              </TerminalBlock>
-            </div>
-          ) : null}
-          {policy?.configured ? (
-            <div className="grid gap-2">
-              <label className={`flex items-start gap-2 rounded-md border p-3 text-sm ${borderClass}`}>
-                <input
-                  type="checkbox"
-                  checked={confirmDelete}
-                  onChange={(event) => setConfirmDelete(event.target.checked)}
-                  disabled={pending}
-                />
-                remove the complete lifecycle policy from this bucket
-              </label>
-              <Button type="button" variant="danger" onClick={deletePolicy} disabled={pending || !confirmDelete}>
-                <Trash2 className="h-4 w-4" /> Delete lifecycle policy
-              </Button>
-            </div>
-          ) : null}
-        </section>
+        <CurrentLifecyclePolicy
+          policy={policy}
+          rules={rules}
+          pending={pending}
+          confirmDelete={confirmDelete}
+          setConfirmDelete={setConfirmDelete}
+          loadPolicy={loadPolicy}
+          deletePolicy={deletePolicy}
+          borderClass={borderClass}
+          mutedClass={mutedClass}
+          panelClass={panelClass}
+        />
         <form className="grid content-start gap-3" onSubmit={replacePolicy}>
           <div>
             <p className="text-sm font-semibold">Replace policy</p>
@@ -280,6 +230,92 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
         </form>
       </div>
     </Dialog>
+  );
+}
+
+function CurrentLifecyclePolicy({
+  policy,
+  rules,
+  pending,
+  confirmDelete,
+  setConfirmDelete,
+  loadPolicy,
+  deletePolicy,
+  borderClass,
+  mutedClass,
+  panelClass,
+}) {
+  return (
+    <section className="grid content-start gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">Current policy</p>
+          <p className={`text-xs ${mutedClass}`}>
+            {policy?.configured ? `${rules.length} lifecycle rule(s)` : "No lifecycle policy configured"}
+          </p>
+        </div>
+        <Button type="button" variant="outline" className="h-8" onClick={loadPolicy} disabled={pending}>
+          Refresh
+        </Button>
+      </div>
+      <div className={`grid min-h-48 gap-2 rounded-lg border p-3 ${borderClass} ${panelClass}`}>
+        {rules.length === 0 ? (
+          <div className="grid min-h-40 place-items-center text-center">
+            <p className={`text-sm ${mutedClass}`}>{pending ? "Reading policy..." : "No rules to display."}</p>
+          </div>
+        ) : (
+          rules.map((rule) => <LifecycleRule key={rule.id} rule={rule} borderClass={borderClass} mutedClass={mutedClass} />)
+        )}
+      </div>
+      {policy?.raw_xml ? <LifecycleRawXML value={policy.raw_xml} /> : null}
+      {policy?.configured ? (
+        <div className="grid gap-2">
+          <label className={`flex items-start gap-2 rounded-md border p-3 text-sm ${borderClass}`}>
+            <input
+              type="checkbox"
+              checked={confirmDelete}
+              onChange={(event) => setConfirmDelete(event.target.checked)}
+              disabled={pending}
+            />
+            remove the complete lifecycle policy from this bucket
+          </label>
+          <Button type="button" variant="danger" onClick={deletePolicy} disabled={pending || !confirmDelete}>
+            <Trash2 className="h-4 w-4" /> Delete lifecycle policy
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function LifecycleRule({ rule, borderClass, mutedClass }) {
+  return (
+    <div className={`grid gap-2 rounded-md border p-3 ${borderClass}`}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-mono text-xs font-semibold">{rule.id || "unnamed rule"}</p>
+        <Badge tone={rule.status === "Enabled" ? "good" : "neutral"}>{String(rule.status || "unknown").toLowerCase()}</Badge>
+      </div>
+      <p className={`text-xs ${mutedClass}`}>Prefix: {rule.prefix || "whole bucket"}</p>
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <span>Current: {dayLabel(rule.expire_current_after_days)}</span>
+        <span>Noncurrent: {dayLabel(rule.expire_noncurrent_after_days)}</span>
+        <span>Multipart: {dayLabel(rule.abort_incomplete_multipart_days)}</span>
+      </div>
+    </div>
+  );
+}
+
+function LifecycleRawXML({ value }) {
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase text-stone-400">Raw lifecycle XML</p>
+        <CopyButton value={value} variant="outline" className="h-8 px-2 text-xs" />
+      </div>
+      <TerminalBlock className="max-h-44 overflow-auto whitespace-pre-wrap text-xs" surface="log">
+        {value}
+      </TerminalBlock>
+    </div>
   );
 }
 

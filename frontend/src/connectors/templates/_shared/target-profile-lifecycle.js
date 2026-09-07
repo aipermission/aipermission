@@ -1,6 +1,11 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api.js";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.js";
 
+export function defaultTargetProfile(target, profile, fallback = {}) {
+  if (profile) return profile;
+  return target?.profiles?.length === 1 ? target.profiles[0] : fallback;
+}
+
 export function createTargetProfileLifecycle({
   connectorKind,
   connectorLabel,

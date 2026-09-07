@@ -140,52 +140,15 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
       bodyClassName="grid min-h-0 gap-4 overflow-hidden"
     >
       <form className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]" onSubmit={startBulkCommand}>
-        <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold text-stone-950">Targets</p>
-                <p className="text-xs text-stone-500">{selectedIDs.length} selected</p>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(true)}>
-                  All
-                </Button>
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(false)}>
-                  None
-                </Button>
-              </div>
-            </div>
-            <input
-              className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-emerald-700"
-              value={targetQuery}
-              onChange={(event) => setTargetQuery(event.target.value)}
-              placeholder="Search targets"
-            />
-          </div>
-          <div className="min-h-0 overflow-auto rounded-md border border-stone-200">
-            {visibleTargets.map((server) => (
-              <label
-                key={server.id}
-                className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50"
-              >
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 accent-emerald-800"
-                  checked={Boolean(selected[server.id])}
-                  onChange={() => toggleTarget(server.id)}
-                />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-stone-900">{server.name}</span>
-                  <span className="block truncate text-xs text-stone-500">
-                    {server.username}@{server.host}:{server.port}
-                  </span>
-                </span>
-              </label>
-            ))}
-            {visibleTargets.length === 0 ? <p className="px-3 py-6 text-center text-sm text-stone-500">No matching targets.</p> : null}
-          </div>
-        </section>
+        <BulkTargetPicker
+          visibleTargets={visibleTargets}
+          selected={selected}
+          selectedCount={selectedIDs.length}
+          targetQuery={targetQuery}
+          setTargetQuery={setTargetQuery}
+          setAllTargets={setAllTargets}
+          toggleTarget={toggleTarget}
+        />
 
         <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
           <div className="grid gap-3">
@@ -278,6 +241,55 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
         </section>
       </form>
     </Dialog>
+  );
+}
+
+function BulkTargetPicker({ visibleTargets, selected, selectedCount, targetQuery, setTargetQuery, setAllTargets, toggleTarget }) {
+  return (
+    <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-stone-950">Targets</p>
+            <p className="text-xs text-stone-500">{selectedCount} selected</p>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(true)}>
+              All
+            </Button>
+            <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(false)}>
+              None
+            </Button>
+          </div>
+        </div>
+        <input
+          className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-emerald-700"
+          value={targetQuery}
+          onChange={(event) => setTargetQuery(event.target.value)}
+          placeholder="Search targets"
+        />
+      </div>
+      <div className="min-h-0 overflow-auto rounded-md border border-stone-200">
+        {visibleTargets.map((target) => (
+          <BulkTargetRow key={target.id} target={target} selected={Boolean(selected[target.id])} onToggle={toggleTarget} />
+        ))}
+        {visibleTargets.length === 0 ? <p className="px-3 py-6 text-center text-sm text-stone-500">No matching targets.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function BulkTargetRow({ target, selected, onToggle }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50">
+      <input type="checkbox" className="mt-1 h-4 w-4 accent-emerald-800" checked={selected} onChange={() => onToggle(target.id)} />
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-stone-900">{target.name}</span>
+        <span className="block truncate text-xs text-stone-500">
+          {target.username}@{target.host}:{target.port}
+        </span>
+      </span>
+    </label>
   );
 }
 
