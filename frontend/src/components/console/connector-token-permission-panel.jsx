@@ -444,7 +444,11 @@ function PermissionModeTabs({ value, onChange }) {
 
 function PermissionRuleGroup({ title, description, rule, saving, disabled = false, onSetRule }) {
   return (
-    <div className="dark-panel-subtle grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2">
+    <div
+      role="group"
+      aria-label={`${title} permission`}
+      className="dark-panel-subtle grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2"
+    >
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold text-stone-900">{title}</p>
@@ -476,7 +480,11 @@ function PermissionRuleGroup({ title, description, rule, saving, disabled = fals
 
 function ActionPermissionCard({ action, rule, saving, compactPopover, onSetRule }) {
   return (
-    <div className={`grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2 ${compactPopover ? "" : "dark-panel-subtle"}`}>
+    <div
+      role="group"
+      aria-label={`${action.name} permission`}
+      className={`grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2 ${compactPopover ? "" : "dark-panel-subtle"}`}
+    >
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate font-mono text-xs font-semibold text-stone-900">{action.name}</p>

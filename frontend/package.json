@@ -19,6 +19,8 @@
     "test:coverage": "npm run test:coverage:focused && npm run test:coverage:risk",
     "test:coverage:focused": "vitest run --config vitest.config.js --coverage",
     "test:coverage:risk": "vitest run --config vitest.risk.config.js --coverage",
+    "test:coverage:changed": "node --test scripts/coverage-owner-policy.test.mjs && node scripts/changed-coverage.mjs",
+    "test:coverage:changed:update": "node scripts/changed-coverage.mjs --update-baseline",
     "test:e2e": "playwright test",
     "test:e2e:real": "playwright test --config playwright.real.config.js",
     "preview": "vite preview --host 127.0.0.1"

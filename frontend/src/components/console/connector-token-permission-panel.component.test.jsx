@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
@@ -20,7 +20,7 @@ const actions = [
   { name: "create_user", description: "Create a user", risk: "write", category: "users" },
 ];
 
-function renderPanel({ permissions = [], replacePermissions } = {}) {
+function renderPanel({ compact = false, onToggleCompact = () => {}, permissions = [], replacePermissions } = {}) {
   const replaceTokenConnectorPermissions = vi.fn(replacePermissions || (async () => []));
   const loadConnectorActions = vi.fn(async () => actions);
   const loadAllConnectorPermissions = vi.fn(async () => ({}));
@@ -29,6 +29,7 @@ function renderPanel({ permissions = [], replacePermissions } = {}) {
       tokens={{ state: "ready", data: [{ id: 5, name: "codex", token: "aip_example" }] }}
       selectedTarget={selectedTarget}
       targets={{ state: "ready", data: profiles }}
+      compact={compact}
       connectorPermissionState={{
         state: "ready",
         data: { 5: permissions },
@@ -41,7 +42,7 @@ function renderPanel({ permissions = [], replacePermissions } = {}) {
       loadAllConnectorPermissions={loadAllConnectorPermissions}
       loadConnectorActions={loadConnectorActions}
       replaceTokenConnectorPermissions={replaceTokenConnectorPermissions}
-      onToggleCompact={() => {}}
+      onToggleCompact={onToggleCompact}
       onRefresh={async () => {}}
     />,
   );
@@ -111,6 +112,55 @@ describe("ConnectorTokenPermissionPanel", () => {
         execution_rule: "always_run",
         expires_at: "",
       })),
+    );
+  });
+
+  it("applies grouped and advanced rules only to their selected actions", async () => {
+    const user = userEvent.setup();
+    const { replaceTokenConnectorPermissions } = renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "Grouped" }));
+    await user.click(within(screen.getByRole("group", { name: "Read operations permission" })).getByRole("button", { name: "Prompt" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions.mock.calls[0][1].map((permission) => permission.action_name)).toEqual([
+      "get_tables",
+      "query_readonly",
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+    await user.click(within(screen.getByRole("group", { name: "create_user permission" })).getByRole("button", { name: "Blocked" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledTimes(2));
+    expect(replaceTokenConnectorPermissions.mock.calls[1][1]).toEqual([
+      expect.objectContaining({ action_name: "create_user", execution_rule: "blocked" }),
+    ]);
+  });
+
+  it("keeps compact token controls interactive", async () => {
+    const user = userEvent.setup();
+    const onToggleCompact = vi.fn();
+    const { loadConnectorActions } = renderPanel({ compact: true, onToggleCompact });
+
+    await user.click(screen.getByTitle("Expand tokens"));
+    expect(onToggleCompact).toHaveBeenCalledOnce();
+
+    await user.click(await screen.findByTitle("codex: 0 connector grants"));
+    await user.selectOptions(screen.getByLabelText("Profile"), "12");
+    await waitFor(() => expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ profile_id: 12 })));
+  });
+
+  it("updates the token project visibility from the permission panel", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "Hide" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/tokens\/5\/project-scopes$/),
+        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [] }) }),
+      ),
     );
   });
 
