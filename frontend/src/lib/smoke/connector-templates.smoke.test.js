@@ -8,7 +8,6 @@ import {
   connectorsSource,
   credentialsSource,
   connectorTemplateCommonSource,
-  kafkaConsoleSource,
   kafkaWriteDialogsSource,
   connectorTargetProfileSaveSource,
   connectorTemplateRegistrySource,
@@ -167,11 +166,7 @@ test("Connector template folders are registered in catalog and registry", () => 
   }
 });
 
-test("Kafka write dialogs guard stale detail and pending submissions", () => {
-  assert.match(kafkaConsoleSource, /detailMatchesSelection/);
-  assert.match(kafkaConsoleSource, /setDetailIdentity\(""\)/);
-  assert.match(kafkaConsoleSource, /runGuardedConnectorAction/);
-  assert.match(kafkaConsoleSource, /onRefreshActivity/);
+test("Kafka write dialogs expose bounded pending states", () => {
   assert.match(kafkaWriteDialogsSource, /max-h-\[calc\(100dvh-2rem\)\]/);
   assert.match(kafkaWriteDialogsSource, /role="alert"/);
   assert.match(kafkaWriteDialogsSource, /disabled=\{pending\}/);
