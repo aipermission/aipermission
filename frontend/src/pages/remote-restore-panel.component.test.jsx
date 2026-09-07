@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost } from "../lib/api";
-import { RemoteRestorePanel } from "./unlock";
+import { RemoteRestorePanel } from "./remote-restore-panel";
 
 vi.mock("../lib/api", () => ({ apiPost: vi.fn(), apiPostForm: vi.fn() }));
 
