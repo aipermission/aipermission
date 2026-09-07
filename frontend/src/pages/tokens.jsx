@@ -109,56 +109,8 @@ export function TokensPage() {
 
   return (
     <section className="mx-auto grid w-full max-w-7xl gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold">API tokens</h3>
-          <p className="text-sm text-stone-500">Create revokable gateway tokens for MCP clients and AI tools.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={refreshTokensAndPermissions}>
-            <RefreshCcw className="h-4 w-4" />
-            Refresh
-          </Button>
-          <Button type="button" onClick={() => setDrawerOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add token
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-4">
-        <TokenStat
-          icon={TicketCheck}
-          label="Total tokens"
-          value={stats.total}
-          selected={tokenFilter === "all"}
-          onClick={() => setTokenFilter("all")}
-        />
-        <TokenStat
-          icon={KeyRound}
-          label="Active"
-          value={stats.active}
-          tone="good"
-          selected={tokenFilter === "active"}
-          onClick={() => setTokenFilter("active")}
-        />
-        <TokenStat
-          icon={Ban}
-          label="Expired"
-          value={stats.expired}
-          tone="warn"
-          selected={tokenFilter === "expired"}
-          onClick={() => setTokenFilter("expired")}
-        />
-        <TokenStat
-          icon={Ban}
-          label="Revoked"
-          value={stats.revoked}
-          tone="bad"
-          selected={tokenFilter === "revoked"}
-          onClick={() => setTokenFilter("revoked")}
-        />
-      </div>
+      <TokenPageHeader onRefresh={refreshTokensAndPermissions} onAdd={() => setDrawerOpen(true)} />
+      <TokenStats stats={stats} filter={tokenFilter} onFilter={setTokenFilter} />
 
       <CreatedTokenNotice token={createdToken} onDismiss={() => setCreatedToken(null)} />
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
@@ -300,35 +252,14 @@ export function TokensPage() {
         ) : null}
       </div>
 
-      <Drawer
+      <TokenCreateDrawer
         open={drawerOpen}
-        title="Add API token"
-        description="Use one token per AI client, laptop, or temporary maintenance session."
+        form={form}
+        setForm={setForm}
+        state={state}
         onClose={() => setDrawerOpen(false)}
-      >
-        <form className="grid gap-4" onSubmit={createToken}>
-          <Field>
-            Name
-            <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-          </Field>
-          <Field>
-            Expiration
-            <Select value={form.expires_in} onChange={(event) => setForm({ ...form, expires_in: event.target.value })}>
-              {tokenExpiryOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-          <Button type="submit" disabled={state.state === "saving"}>
-            <Plus className="h-4 w-4" />
-            {state.state === "saving" ? "Creating..." : "Create token"}
-          </Button>
-          <Notice>Use short-lived tokens for temporary maintenance. By default the token is shown once after creation.</Notice>
-        </form>
-      </Drawer>
+        onSubmit={createToken}
+      />
 
       <ConnectorPermissionDialog
         token={connectorPermissionDialog}
@@ -353,6 +284,93 @@ export function TokensPage() {
         onConfirm={() => revokeToken(revokeDialog)}
       />
     </section>
+  );
+}
+
+function TokenPageHeader({ onRefresh, onAdd }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h3 className="text-lg font-semibold">API tokens</h3>
+        <p className="text-sm text-stone-500">Create revokable gateway tokens for MCP clients and AI tools.</p>
+      </div>
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" onClick={onRefresh}>
+          <RefreshCcw className="h-4 w-4" />
+          Refresh
+        </Button>
+        <Button type="button" onClick={onAdd}>
+          <Plus className="h-4 w-4" />
+          Add token
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function TokenStats({ stats, filter, onFilter }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-4">
+      <TokenStat icon={TicketCheck} label="Total tokens" value={stats.total} selected={filter === "all"} onClick={() => onFilter("all")} />
+      <TokenStat
+        icon={KeyRound}
+        label="Active"
+        value={stats.active}
+        tone="good"
+        selected={filter === "active"}
+        onClick={() => onFilter("active")}
+      />
+      <TokenStat
+        icon={Ban}
+        label="Expired"
+        value={stats.expired}
+        tone="warn"
+        selected={filter === "expired"}
+        onClick={() => onFilter("expired")}
+      />
+      <TokenStat
+        icon={Ban}
+        label="Revoked"
+        value={stats.revoked}
+        tone="bad"
+        selected={filter === "revoked"}
+        onClick={() => onFilter("revoked")}
+      />
+    </div>
+  );
+}
+
+function TokenCreateDrawer({ open, form, setForm, state, onClose, onSubmit }) {
+  return (
+    <Drawer
+      open={open}
+      title="Add API token"
+      description="Use one token per AI client, laptop, or temporary maintenance session."
+      onClose={onClose}
+    >
+      <form className="grid gap-4" onSubmit={onSubmit}>
+        <Field>
+          Name
+          <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+        </Field>
+        <Field>
+          Expiration
+          <Select value={form.expires_in} onChange={(event) => setForm({ ...form, expires_in: event.target.value })}>
+            {tokenExpiryOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+        <Button type="submit" disabled={state.state === "saving"}>
+          <Plus className="h-4 w-4" />
+          {state.state === "saving" ? "Creating..." : "Create token"}
+        </Button>
+        <Notice>Use short-lived tokens for temporary maintenance. By default the token is shown once after creation.</Notice>
+      </form>
+    </Drawer>
   );
 }
 
