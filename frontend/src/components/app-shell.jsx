@@ -10,13 +10,11 @@ import {
   normalizeCredentialResources,
 } from "./app-shell-runtime";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
+import { DatabaseLockDialog } from "./database-lock-dialog";
 import { LocalActionReconciliationDialog } from "./local-action-reconciliation-dialog";
 import { useLocalActionReconciliation } from "./use-local-action-reconciliation";
 import { useTransferCenterState } from "./file-transfer/use-transfer-center-state";
 import { TransferCenter } from "./transfer-center";
-import { Button } from "./ui/button";
-import { Dialog } from "./ui/dialog";
-import { Notice } from "./ui/notice";
 import { VaultSessionDialog } from "./console/vault-session-dialog";
 import { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
@@ -24,6 +22,7 @@ import { getConnectorModel } from "../connectors/templates/registry";
 import { reconcileVaultApprovalDialog } from "../lib/vault-approval-poll";
 import { isLiveConsoleSession, isUnreadMessage, latestSessionForRuntime } from "./console/helpers";
 import { useConsoleConnections } from "./console/use-console-connections";
+import { useDatabaseLifecycle } from "./use-database-lifecycle";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
   function toggleTheme() {
@@ -37,11 +36,8 @@ export function Shell({ theme, setTheme }) {
   const [connectorActionApprovals, setConnectorActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [vaultActionApprovals, setVaultActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [messages, setMessages] = useState({ state: "loading", data: [], error: null });
-  const [databaseStatus, setDatabaseStatus] = useState({ state: "loading", data: null, error: null });
   const [mcpRuntime, setMCPRuntime] = useState({ state: "loading", data: { enabled: false, start_enabled: false }, error: null });
   const [backupFreshness, setBackupFreshness] = useState({ state: "loading", data: [], checkErrors: [], error: null });
-  const [switchDialog, setSwitchDialog] = useState({ open: false, database_id: "", password: "", state: "idle", error: null });
-  const [lockDialog, setLockDialog] = useState({ open: false, state: "idle", error: null });
   const [actionRetryDialog, closeActionRetryDialog] = useLocalActionReconciliation();
   const [vaultSessionDialog, setVaultSessionDialog] = useState({
     open: false,
@@ -65,6 +61,7 @@ export function Shell({ theme, setTheme }) {
     resizeSession: resizeConsoleSession,
     sendInput: sendConsoleInput,
   } = useConsoleConnections({ setConsoleSessions });
+  const database = useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurrent });
 
   async function loadStatus(generation) {
     try {
@@ -74,17 +71,6 @@ export function Shell({ theme, setTheme }) {
     } catch (error) {
       if (!pollIsCurrent(generation)) return;
       setStatus({ state: "error", data: null, error: error.message });
-    }
-  }
-
-  async function loadDatabaseStatus(generation) {
-    try {
-      const data = await apiGet("/api/unlock/status");
-      if (!pollIsCurrent(generation)) return;
-      setDatabaseStatus({ state: "ready", data, error: null });
-    } catch (error) {
-      if (!pollIsCurrent(generation)) return;
-      setDatabaseStatus({ state: "error", data: null, error: error.message });
     }
   }
 
@@ -208,7 +194,7 @@ export function Shell({ theme, setTheme }) {
   async function refreshAll(generation) {
     await Promise.all([
       loadStatus(generation),
-      loadDatabaseStatus(generation),
+      database.loadStatus(generation),
       loadMCPRuntime(generation),
       loadTargets(generation),
       loadCredentials(generation),
@@ -228,7 +214,7 @@ export function Shell({ theme, setTheme }) {
     }
     await Promise.all([
       loadStatus(generation),
-      loadDatabaseStatus(generation),
+      database.loadStatus(generation),
       loadTargets(generation),
       loadConsoleSessions(generation),
       loadConnectorActionApprovals(generation),
@@ -263,20 +249,20 @@ export function Shell({ theme, setTheme }) {
   }, []);
 
   useEffect(() => {
-    const unlocked = databaseStatus.data?.unlocked === true || databaseStatus.data?.state === "unlocked";
-    if (databaseStatus.state !== "ready" || !unlocked) {
+    const unlocked = database.status.data?.unlocked === true || database.status.data?.state === "unlocked";
+    if (database.status.state !== "ready" || !unlocked) {
       document.title = "AIPermission";
       return;
     }
     const runtimeLabel = mcpRuntime.data?.enabled ? "Started" : "Stopped";
-    const databaseName = databaseStatus.data?.database_name || databaseStatus.data?.database_id || "Database";
+    const databaseName = database.status.data?.database_name || database.status.data?.database_id || "Database";
     document.title = `${runtimeLabel} - ${databaseName}`;
   }, [
-    databaseStatus.state,
-    databaseStatus.data?.unlocked,
-    databaseStatus.data?.state,
-    databaseStatus.data?.database_name,
-    databaseStatus.data?.database_id,
+    database.status.state,
+    database.status.data?.unlocked,
+    database.status.data?.state,
+    database.status.data?.database_name,
+    database.status.data?.database_id,
     mcpRuntime.data?.enabled,
   ]);
 
@@ -460,56 +446,6 @@ export function Shell({ theme, setTheme }) {
     return data;
   }
 
-  function requestLockDatabase() {
-    const unlockedCount = (databaseStatus.data?.databases || []).filter((item) => item.unlocked).length;
-    if (unlockedCount > 1) {
-      setLockDialog({ open: true, state: "idle", error: null });
-      return;
-    }
-    void lockDatabase("current");
-  }
-
-  async function lockDatabase(scope) {
-    setLockDialog((current) => ({ ...current, state: "locking", error: null }));
-    disconnectAllConsoleSessions();
-    try {
-      await apiPost("/api/lock", { scope });
-      window.location.reload();
-    } catch (error) {
-      setLockDialog((current) => ({ ...current, state: "error", error: error.message }));
-    }
-  }
-
-  function openSwitchDialog() {
-    setSwitchDialog({
-      open: true,
-      database_id: databaseStatus.data?.database_id || databaseStatus.data?.databases?.[0]?.id || "",
-      password: "",
-      state: "idle",
-      error: null,
-    });
-  }
-
-  async function switchDatabase(event) {
-    event?.preventDefault();
-    const currentID = databaseStatus.data?.database_id;
-    if (switchDialog.database_id === currentID) {
-      setSwitchDialog((current) => ({ ...current, open: false }));
-      return;
-    }
-    setSwitchDialog((current) => ({ ...current, state: "switching", error: null }));
-    try {
-      disconnectAllConsoleSessions();
-      await apiPost("/api/databases/switch", {
-        database_id: switchDialog.database_id,
-        password: switchDialog.password,
-      });
-      window.location.reload();
-    } catch (error) {
-      setSwitchDialog((current) => ({ ...current, state: "error", error: error.message }));
-    }
-  }
-
   const pendingConnectorActionApprovalCount = connectorActionApprovals.data.filter(
     (approval) => approval.status === "approval_pending",
   ).length;
@@ -529,8 +465,8 @@ export function Shell({ theme, setTheme }) {
         onSetTheme={setTheme}
         onSetMCPRuntimeEnabled={setMCPRuntimeEnabled}
         onOpenTransferCenter={transferCenter.show}
-        onSwitchDatabase={openSwitchDialog}
-        onLockDatabase={requestLockDatabase}
+        onSwitchDatabase={database.openSwitch}
+        onLockDatabase={database.requestLock}
       />
 
       <TransferCenter
@@ -558,36 +494,14 @@ export function Shell({ theme, setTheme }) {
       />
 
       <DatabaseSwitchDialog
-        state={switchDialog}
-        databaseStatus={databaseStatus.data}
-        onChange={setSwitchDialog}
-        onClose={() => setSwitchDialog((current) => ({ ...current, open: false }))}
-        onSubmit={switchDatabase}
+        state={database.switchDialog}
+        databaseStatus={database.status.data}
+        onChange={database.setSwitchDialog}
+        onClose={database.closeSwitch}
+        onSubmit={database.switchDatabase}
       />
 
-      <Dialog
-        open={lockDialog.open}
-        title="Lock database"
-        description="More than one database is currently unlocked. Choose what should be locked."
-        onClose={() => setLockDialog({ open: false, state: "idle", error: null })}
-        size="md"
-      >
-        <div className="grid gap-4">
-          <Notice>
-            Lock current closes only the active database and switches to another unlocked database if one is available. Lock all closes
-            every unlocked database and stops MCP access until a database is unlocked again.
-          </Notice>
-          {lockDialog.error ? <Notice tone="bad">{lockDialog.error}</Notice> : null}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" disabled={lockDialog.state === "locking"} onClick={() => lockDatabase("current")}>
-              Lock current
-            </Button>
-            <Button type="button" variant="danger" disabled={lockDialog.state === "locking"} onClick={() => lockDatabase("all")}>
-              Lock all
-            </Button>
-          </div>
-        </div>
-      </Dialog>
+      <DatabaseLockDialog state={database.lockDialog} onClose={database.closeLock} onLock={database.lock} />
 
       <LocalActionReconciliationDialog value={actionRetryDialog} onClose={closeActionRetryDialog} />
 
