@@ -10,7 +10,15 @@ export const appSource = readFileSync(join(currentDir, "..", "App.jsx"), "utf8")
 export const apiSource = readFileSync(join(currentDir, "api.js"), "utf8");
 export const nginxSource = readFileSync(join(currentDir, "..", "..", "nginx.conf"), "utf8");
 export const sidebarSource = readFileSync(join(currentDir, "..", "components", "app-sidebar.jsx"), "utf8");
-export const unlockSource = readFileSync(join(currentDir, "..", "pages", "unlock.jsx"), "utf8");
+export const unlockSource = [
+  "unlock.jsx",
+  "unlock-create-panel.jsx",
+  "unlock-database-panel.jsx",
+  "unlock-import-panel.jsx",
+  "remote-restore-panel.jsx",
+]
+  .map((filename) => readFileSync(join(currentDir, "..", "pages", filename), "utf8"))
+  .join("\n");
 export const releaseSource = readFileSync(join(currentDir, "release.js"), "utf8");
 export const releaseData = JSON.parse(readFileSync(join(currentDir, "release.generated.json"), "utf8"));
 export const releaseManifest = JSON.parse(readFileSync(join(currentDir, "..", "..", "..", "release-manifest.json"), "utf8"));

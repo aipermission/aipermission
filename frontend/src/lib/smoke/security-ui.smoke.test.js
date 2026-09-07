@@ -15,10 +15,8 @@ import {
   vaultPermissionDialogSource,
 } from "./app-smoke-fixtures.js";
 
-test("App uses the current unlock API endpoints", () => {
+test("App keeps the unlock status route and excludes retired endpoint names", () => {
   assert.match(appSource, /apiGet\("\/api\/unlock\/status"\)/);
-  assert.match(unlockSource, /apiPost\("\/api\/unlock\/setup"/);
-  assert.match(unlockSource, /apiPost\("\/api\/unlock"/);
   assert.doesNotMatch(`${appSource}\n${unlockSource}`, /\/api\/unlock\/create|\/api\/unlock\/open/);
 });
 

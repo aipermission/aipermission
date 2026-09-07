@@ -73,12 +73,6 @@ export default [
     },
   },
   {
-    files: ["src/pages/unlock.jsx"],
-    rules: {
-      complexity: ["error", { max: 64 }],
-    },
-  },
-  {
     files: ["src/pages/vault.jsx"],
     rules: {
       "max-lines-per-function": ["error", { max: 644, skipBlankLines: true, skipComments: true, IIFEs: true }],
