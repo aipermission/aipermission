@@ -14,6 +14,7 @@ import { errorMessage } from "../../lib/errors";
 import { effectiveRule } from "../../lib/permissions";
 import { updateTokenProjectVisibility } from "../../lib/project-scopes";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
+import { useRequestGuard } from "../../lib/request-guard";
 import { inferPermissionMode, tokenProfileModeKey } from "./connector-token-permission-model";
 
 export function useConnectorTokenPermissionState({
@@ -32,6 +33,7 @@ export function useConnectorTokenPermissionState({
   const [profileByToken, setProfileByToken] = useState({});
   const [permissionModeByKey, setPermissionModeByKey] = useState({});
   const [projectScopesByToken, setProjectScopesByToken] = useState({});
+  const [projectScopeStateByToken, setProjectScopeStateByToken] = useState({});
   const [projectScopeError, setProjectScopeError] = useState("");
   const [permissionMutationError, setPermissionMutationError] = useState(null);
   const compactPanelRef = useRef(null);
@@ -44,8 +46,10 @@ export function useConnectorTokenPermissionState({
   const tokenIDsKey = activeTokens.map((token) => token.id).join(",");
   const targetProfileSignature = targetProfiles.map((profile) => profile.profile_id).join(",");
   const loadForEffect = useEffectEvent(loadConnectorPermissions);
+  const projectScopeRequests = useRequestGuard(`project-scopes:${selectedTargetKey}:${tokenIDsKey}`);
 
   useEffect(() => {
+    setSavingKey("");
     setPermissionMutationError(null);
     permissionMutationRetryRef.current = null;
   }, [selectedTargetKey]);
@@ -53,6 +57,8 @@ export function useConnectorTokenPermissionState({
   useEffect(() => {
     if (!selectedTarget) {
       setProfileByToken({});
+      setProjectScopesByToken({});
+      setProjectScopeStateByToken({});
       setPermissionMutationError(null);
       permissionMutationRetryRef.current = null;
       return;
@@ -94,11 +100,19 @@ export function useConnectorTokenPermissionState({
       ...profilesToLoad.map((profile) => loadConnectorActions?.({ ...selectedTarget, profile_id: profile.profile_id || profile.id })),
       loadAllConnectorPermissions?.(activeTokens),
       ...activeTokens.map(async (token) => {
+        const request = projectScopeRequests.begin(`token:${token.id}`);
+        setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "loading" }));
         try {
-          const result = await apiGet(`/api/tokens/${token.id}/project-scopes`);
+          const result = await apiGet(`/api/tokens/${token.id}/project-scopes`, { signal: request.signal });
+          if (!request.isCurrent()) return;
           setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
+          setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "ready" }));
         } catch (error) {
+          if (!request.isCurrent()) return;
+          setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "error" }));
           setProjectScopeError(error.message || "Failed to load token project scopes.");
+        } finally {
+          request.complete();
         }
       }),
     ]);
@@ -109,23 +123,35 @@ export function useConnectorTokenPermissionState({
     return scope ? Boolean(scope.enabled) : false;
   }
 
+  function projectScopeReadyForToken(tokenID) {
+    return projectScopeStateByToken[tokenID] === "ready";
+  }
+
   async function setProjectVisibility(token, enabled) {
-    if (!selectedTarget?.project_id) return;
+    if (!selectedTarget?.project_id || !projectScopeReadyForToken(token.id)) return;
+    const request = projectScopeRequests.begin(`token:${token.id}`);
     setSavingKey(`${token.id}:project:${selectedTarget.project_id}`);
+    setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "saving" }));
     setProjectScopeError("");
     try {
       const scopes = projectScopesByToken[token.id] || [];
-      const result = await updateTokenProjectVisibility(token.id, scopes, selectedTarget.project_id, enabled);
+      const result = await updateTokenProjectVisibility(token.id, scopes, selectedTarget.project_id, enabled, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
+      setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "ready" }));
       await loadAllConnectorPermissions?.(activeTokens);
     } catch (error) {
+      if (!request.isCurrent()) return;
+      setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "ready" }));
       setProjectScopeError(error.message || "Failed to update token project scope.");
     } finally {
-      setSavingKey("");
+      if (request.isCurrent()) setSavingKey("");
+      request.complete();
     }
   }
 
   async function refreshPanel() {
+    if (savingKey) return;
     await onRefresh?.();
     await loadConnectorPermissions();
   }
@@ -230,6 +256,7 @@ export function useConnectorTokenPermissionState({
     permissionsByToken,
     profileByToken,
     projectEnabledForToken,
+    projectScopeReadyForToken,
     projectScopeError,
     refreshPanel,
     retryPermissionMutation: () => permissionMutationRetryRef.current?.(),

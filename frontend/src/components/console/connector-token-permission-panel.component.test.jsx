@@ -164,6 +164,82 @@ describe("ConnectorTokenPermissionPanel", () => {
     );
   });
 
+  it("does not replace project scopes before the initial snapshot is loaded", async () => {
+    const user = userEvent.setup();
+    const projectScopes = deferred();
+    fetch.mockImplementation(async (_url, options = {}) => {
+      if (options.method === "PUT") throw new Error("project scope mutation must remain disabled while loading");
+      return projectScopes.promise;
+    });
+    renderPanel();
+
+    const loading = await screen.findByRole("button", { name: "Loading..." });
+    expect(loading).toBeDisabled();
+    await user.click(loading);
+    expect(fetch.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
+
+    projectScopes.resolve(new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 }));
+    expect(await screen.findByRole("button", { name: "Hide" })).toBeEnabled();
+  });
+
+  it("uses a complete refreshed project snapshot for visibility replacement", async () => {
+    const user = userEvent.setup();
+    const refreshedScopes = deferred();
+    let getCalls = 0;
+    fetch.mockImplementation(async (_url, options = {}) => {
+      if (options.method === "PUT") {
+        return new Response(
+          JSON.stringify({
+            items: [
+              { project_id: 3, enabled: false },
+              { project_id: 4, enabled: true },
+            ],
+          }),
+          {
+            status: 200,
+          },
+        );
+      }
+      getCalls += 1;
+      if (getCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              { project_id: 3, enabled: true },
+              { project_id: 4, enabled: true },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return refreshedScopes.promise;
+    });
+    renderPanel();
+    await screen.findByRole("button", { name: "Hide" });
+
+    await user.click(screen.getByTitle("Refresh connector permissions"));
+    expect(await screen.findByRole("button", { name: "Loading..." })).toBeDisabled();
+    refreshedScopes.resolve(
+      new Response(
+        JSON.stringify({
+          items: [
+            { project_id: 3, enabled: true },
+            { project_id: 4, enabled: true },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    await user.click(await screen.findByRole("button", { name: "Hide" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/tokens\/5\/project-scopes$/),
+        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [4] }) }),
+      ),
+    );
+  });
+
   it("applies one temporary lifetime to every enabled action in the profile", async () => {
     const now = new Date("2026-08-11T10:00:00Z").getTime();
     vi.spyOn(Date, "now").mockReturnValue(now);
@@ -207,4 +283,28 @@ describe("ConnectorTokenPermissionPanel", () => {
     await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
+
+  it("locks profile, mode, and refresh controls while a permission mutation is pending", async () => {
+    const user = userEvent.setup();
+    const mutation = deferred();
+    renderPanel({ replacePermissions: () => mutation.promise });
+    await screen.findByRole("button", { name: "Hide" });
+
+    await user.click(screen.getByRole("button", { name: "Always" }));
+
+    expect(screen.getByLabelText("Profile")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Basic" })).toBeDisabled();
+    expect(screen.getByTitle("Refresh connector permissions")).toBeDisabled();
+
+    mutation.resolve([]);
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toBeEnabled());
+  });
 });
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}

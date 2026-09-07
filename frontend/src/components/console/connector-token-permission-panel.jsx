@@ -56,6 +56,7 @@ export function ConnectorTokenPermissionPanel({
     profileByToken,
     projectScopeError,
     refreshPanel,
+    savingKey,
     selectProfile,
     selectedCountByToken,
     setOpenTokenID,
@@ -72,7 +73,14 @@ export function ConnectorTokenPermissionPanel({
           <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Expand tokens" onClick={onToggleCompact}>
             <PanelRightOpen className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Refresh connector permissions" onClick={refreshPanel}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 w-9 px-0"
+            title="Refresh connector permissions"
+            onClick={refreshPanel}
+            disabled={Boolean(savingKey)}
+          >
             <RefreshCcw className="h-4 w-4" />
           </Button>
         </header>
@@ -102,6 +110,7 @@ export function ConnectorTokenPermissionPanel({
                       profiles={targetProfiles}
                       value={profile?.profile_id}
                       onChange={(profileID) => selectProfile(token, profileID)}
+                      disabled={Boolean(panel.savingKey)}
                     />
                     {profile ? (
                       <TokenPermissionActions
@@ -144,7 +153,7 @@ export function ConnectorTokenPermissionPanel({
             className="h-9 w-9 px-0"
             title="Refresh connector permissions"
             onClick={refreshPanel}
-            disabled={load.state === "loading"}
+            disabled={load.state === "loading" || Boolean(savingKey)}
           >
             <RefreshCcw className="h-4 w-4" />
           </Button>
@@ -198,6 +207,7 @@ export function ConnectorTokenPermissionPanel({
                   profiles={targetProfiles}
                   value={profile?.profile_id}
                   onChange={(profileID) => selectProfile(token, profileID)}
+                  disabled={Boolean(panel.savingKey)}
                 />
                 {profile ? (
                   <TokenPermissionActions panel={panel} selectedTarget={selectedTarget} token={token} profile={profile} />
@@ -220,6 +230,7 @@ function TokenPermissionActions({ panel, selectedTarget, token, profile, compact
     permissionMutationError,
     permissionsByToken,
     projectEnabledForToken,
+    projectScopeReadyForToken,
     retryPermissionMutation,
     savingKey,
     selectedTargetKey,
@@ -248,6 +259,7 @@ function TokenPermissionActions({ panel, selectedTarget, token, profile, compact
       <ProjectVisibilityControl
         projectName={selectedTarget.project_name || "Ungrouped"}
         enabled={projectEnabledForToken(token.id)}
+        ready={projectScopeReadyForToken(token.id)}
         saving={saving}
         onChange={(enabled) => setProjectVisibility(token, enabled)}
       />
@@ -261,6 +273,7 @@ function TokenPermissionActions({ panel, selectedTarget, token, profile, compact
       {actions.length > 0 ? (
         <PermissionModeTabs
           value={permissionMode}
+          disabled={saving}
           onChange={(mode) => setPermissionModeByKey((current) => ({ ...current, [modeKey]: mode }))}
         />
       ) : null}
@@ -356,7 +369,7 @@ function PermissionMutationError({ value, onRetry }) {
   );
 }
 
-function ProjectVisibilityControl({ projectName, enabled, saving, onChange }) {
+function ProjectVisibilityControl({ projectName, enabled, ready, saving, onChange }) {
   return (
     <div
       className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs ${enabled ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}
@@ -367,19 +380,25 @@ function ProjectVisibilityControl({ projectName, enabled, saving, onChange }) {
           {enabled ? "Visible to this token through MCP" : "Hidden from this token's MCP target list"}
         </p>
       </div>
-      <Button type="button" variant="outline" className="h-8 shrink-0 px-2 text-xs" disabled={saving} onClick={() => onChange(!enabled)}>
-        {saving ? "Saving..." : enabled ? "Hide" : "Enable"}
+      <Button
+        type="button"
+        variant="outline"
+        className="h-8 shrink-0 px-2 text-xs"
+        disabled={saving || !ready}
+        onClick={() => onChange(!enabled)}
+      >
+        {!ready ? "Loading..." : saving ? "Saving..." : enabled ? "Hide" : "Enable"}
       </Button>
     </div>
   );
 }
 
-function ProfileSelect({ profiles, value, onChange }) {
+function ProfileSelect({ profiles, value, onChange, disabled = false }) {
   if (profiles.length === 0) return null;
   return (
     <label className="grid gap-1 text-xs font-semibold text-stone-600">
       Profile
-      <Select value={value ? String(value) : ""} onChange={(event) => onChange(event.target.value)}>
+      <Select value={value ? String(value) : ""} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
         <option value="">Select profile</option>
         {profiles.map((profile) => (
           <option key={profile.profile_id} value={profile.profile_id}>
@@ -417,7 +436,7 @@ function ProfileLifetimeControls({ value, saving, disabled, onSetPermanent, onSe
   );
 }
 
-function PermissionModeTabs({ value, onChange }) {
+function PermissionModeTabs({ value, onChange, disabled = false }) {
   const modes = [
     { id: "basic", label: "Basic", title: "Apply one rule to every connector action." },
     { id: "grouped", label: "Grouped", title: "Apply separate rules to read and write actions." },
@@ -429,6 +448,7 @@ function PermissionModeTabs({ value, onChange }) {
         <button
           key={mode.id}
           type="button"
+          disabled={disabled}
           title={mode.title}
           className={`h-8 rounded px-2 text-xs font-semibold transition ${
             value === mode.id ? "permission-button-active bg-emerald-950 text-white" : "text-stone-600 hover:bg-stone-100"
