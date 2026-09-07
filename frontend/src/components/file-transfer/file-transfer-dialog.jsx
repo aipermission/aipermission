@@ -1,6 +1,5 @@
 import { Download, FolderOpen, Pause, Play, RefreshCcw, Upload } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
-import { apiDownload } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Field, Input } from "../ui/form";
@@ -10,16 +9,13 @@ import { ClearDownloadDialog, OverwriteConfirmDialog, UnsavedDownloadCloseDialog
 import { QueueList, QueueSummary } from "./file-transfer-queue";
 import { useTransferBrowser } from "./use-transfer-browser";
 import { useTransferBatch } from "./use-transfer-batch";
+import { useTransferDownload } from "./use-transfer-download";
 import { useTransferQueues } from "./use-transfer-queues";
 import { defaultRemoteDirectory, fileTransferFailureText, fileTransferPathPolicy } from "../../lib/file-transfer-utils";
 
 export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose }) {
   const defaultRemoteDir = options.defaultDirectory || defaultRemoteDirectory();
   const { joinRemotePath, normalizeRemoteDirectoryInput } = fileTransferPathPolicy(options);
-  const [downloadPrompted, setDownloadPrompted] = useState(false);
-  const [downloadSaved, setDownloadSaved] = useState(false);
-  const [clearDownloadPrompt, setClearDownloadPrompt] = useState(false);
-  const [closeDownloadPrompt, setCloseDownloadPrompt] = useState(false);
   const [notice, setNotice] = useState(null);
   const {
     mode,
@@ -81,15 +77,20 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     onNotice: setNotice,
     onUploadCompleted: options.onUploadCompleted,
   });
-  const unsavedCompletedDownload = batch.item?.direction === "download" && batch.item.status === "completed" && !downloadSaved;
+  const download = useTransferDownload({
+    batch,
+    setBatch,
+    mode,
+    clearBatch: () => {
+      clearBatch();
+      setOverwritePrompt(null);
+    },
+    clearQueue,
+    onNotice: setNotice,
+    onClose,
+  });
   const closeDisabled = Boolean(activeBatch) || ["starting", "pausing", "resuming", "canceling", "downloading"].includes(batch.state);
   const resetDialogForEffect = useEffectEvent((nextRemoteDir) => resetDialog(nextRemoteDir));
-  const updateCompletedBatchNotice = useEffectEvent(() => {
-    if (!batch.item || batch.item.status !== "completed") return;
-    if (batch.item.direction === "download" && !downloadPrompted && !downloadSaved) {
-      setNotice({ tone: "good", message: "Download queue completed. Click Save download to choose where to save it." });
-    }
-  });
 
   useEffect(() => {
     if (!open) {
@@ -99,48 +100,13 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     setRemoteDir((current) => current || defaultRemoteDir);
   }, [open, defaultRemoteDir, setRemoteDir]);
 
-  useEffect(() => {
-    updateCompletedBatchNotice();
-  }, [batch.item?.id, batch.item?.status, batch.item?.direction, downloadPrompted, downloadSaved]);
-
   function resetDialog(nextRemoteDir = defaultRemoteDir) {
     resetQueues(nextRemoteDir);
     resetBatch();
     resetBrowser();
-    setDownloadPrompted(false);
-    setDownloadSaved(false);
+    download.resetDownloadState();
     setOverwritePrompt(null);
-    setClearDownloadPrompt(false);
-    setCloseDownloadPrompt(false);
     setNotice(null);
-  }
-
-  function clearBatchPanel() {
-    clearBatch();
-    setDownloadPrompted(false);
-    setDownloadSaved(false);
-    setOverwritePrompt(null);
-    setClearDownloadPrompt(false);
-    setCloseDownloadPrompt(false);
-  }
-
-  function requestClose() {
-    if (unsavedCompletedDownload) {
-      setCloseDownloadPrompt(true);
-      return;
-    }
-    onClose();
-  }
-
-  function clearFinishedQueue(options = {}) {
-    if (batch.item?.direction === "download" && batch.item.status === "completed" && !downloadSaved && !options.force) {
-      setClearDownloadPrompt(true);
-      return;
-    }
-    const direction = batch.item?.direction || mode;
-    clearQueue(direction);
-    setNotice(null);
-    clearBatchPanel();
   }
 
   function removeQueueItem(id) {
@@ -162,43 +128,8 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   }
 
   async function startQueue(options = {}) {
-    setDownloadPrompted(false);
-    setDownloadSaved(false);
+    download.prepareStart();
     await startBatchQueue(options);
-  }
-
-  async function saveDownloadBatch(options = {}) {
-    if (!batch.item) return false;
-    setBatch((current) => ({ ...current, state: "downloading", error: null }));
-    try {
-      const filename = batch.item.archive_name || batch.item.items?.[0]?.file_name || "aipermission-download";
-      const result = await apiDownload(`/api/file-transfer-batches/${batch.item.id}/download`, filename, { picker: true });
-      setDownloadPrompted(true);
-      if (result?.canceled) {
-        setNotice({ tone: "warn", message: "Download was not saved. You can try Save download again." });
-        setBatch((current) => ({ ...current, state: "ready", error: null }));
-        return false;
-      }
-      setDownloadSaved(true);
-      if (options.clearAfterSave) {
-        clearQueue("download");
-        setNotice(null);
-        clearBatchPanel();
-        return true;
-      }
-      if (options.closeAfterSave) {
-        setCloseDownloadPrompt(false);
-        onClose();
-        return true;
-      }
-      setNotice({ tone: "good", message: "Download saved. Review the summary, then clear when ready." });
-      setBatch((current) => ({ ...current, state: "ready", error: null }));
-      return true;
-    } catch (error) {
-      setDownloadPrompted(true);
-      setBatch((current) => ({ ...current, state: "error", error: error.message }));
-      return false;
-    }
   }
 
   function switchMode(nextMode) {
@@ -213,7 +144,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
         open={open}
         title={runtimeTarget ? `${runtimeTarget.name} file transfers` : "File transfers"}
         description={`Queue uploads and downloads over ${options.transportLabel || "the selected connector"}.`}
-        onClose={requestClose}
+        onClose={download.requestClose}
         size="wide"
         className="xl:max-w-[70vw]"
         bodyClassName="grid max-h-[calc(100vh-130px)] min-h-0 overflow-hidden"
@@ -391,13 +322,13 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
                   </Button>
                 ) : null}
                 {batch.item?.direction === "download" && batch.item.status === "completed" ? (
-                  <Button type="button" className="h-10" onClick={saveDownloadBatch} disabled={batch.state === "downloading"}>
+                  <Button type="button" className="h-10" onClick={download.saveDownloadBatch} disabled={batch.state === "downloading"}>
                     <Download className="h-4 w-4" />
                     {batch.state === "downloading" ? "Saving..." : "Save download"}
                   </Button>
                 ) : null}
                 {batch.item && !activeBatch ? (
-                  <Button type="button" variant="outline" className="h-10" onClick={() => clearFinishedQueue()}>
+                  <Button type="button" variant="outline" className="h-10" onClick={() => download.clearFinishedQueue()}>
                     Clear
                   </Button>
                 ) : null}
@@ -424,26 +355,17 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
       />
 
       <ClearDownloadDialog
-        open={clearDownloadPrompt}
-        onCancel={() => setClearDownloadPrompt(false)}
-        onContinue={() => clearFinishedQueue({ force: true })}
-        onSave={() => {
-          setClearDownloadPrompt(false);
-          void saveDownloadBatch({ clearAfterSave: true });
-        }}
+        open={download.clearDownloadPrompt}
+        onCancel={download.dismissClearPrompt}
+        onContinue={() => download.clearFinishedQueue({ force: true })}
+        onSave={() => void download.saveThenClear()}
       />
 
       <UnsavedDownloadCloseDialog
-        open={closeDownloadPrompt}
-        onCancel={() => setCloseDownloadPrompt(false)}
-        onCloseAnyway={() => {
-          setCloseDownloadPrompt(false);
-          onClose();
-        }}
-        onSave={() => {
-          setCloseDownloadPrompt(false);
-          void saveDownloadBatch({ closeAfterSave: true });
-        }}
+        open={download.closeDownloadPrompt}
+        onCancel={download.dismissClosePrompt}
+        onCloseAnyway={download.closeWithoutSaving}
+        onSave={() => void download.saveThenClose()}
       />
 
       <OverwriteConfirmDialog

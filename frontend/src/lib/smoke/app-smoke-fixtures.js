@@ -89,6 +89,7 @@ export const fileTransferDialogSource = [
   "use-transfer-queues.js",
   "use-transfer-browser.js",
   "use-transfer-batch.js",
+  "use-transfer-download.js",
 ]
   .map((filename) => readFileSync(join(currentDir, "..", "components", "file-transfer", filename), "utf8"))
   .join("\n");
