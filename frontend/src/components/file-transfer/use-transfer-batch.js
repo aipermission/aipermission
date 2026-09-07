@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, apiPostForm } from "../../lib/api";
 import { pendingBatchItemIDs, suggestedArchiveName, transferProgress } from "../../lib/file-transfer-utils";
+import { useRequestGuard } from "../../lib/request-guard";
 
 export const emptyBatchState = { state: "idle", item: null, error: null };
 
@@ -8,13 +9,14 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
   const [batch, setBatch] = useState(emptyBatchState);
   const [overwritePrompt, setOverwritePrompt] = useState(null);
   const completedUploadRef = useRef(0);
-  const refreshRequestRef = useRef(0);
+  const requests = useRequestGuard(`transfer-batch:${open ? "open" : "closed"}:${runtimeTarget?.id || "none"}`);
   const progress = useMemo(() => transferProgress(batch.item), [batch.item]);
   const activeBatch = batch.item && ["pending", "running", "paused"].includes(batch.item.status);
   const canStart = runtimeTarget && queue.length > 0 && !batch.item && batch.state !== "starting";
   const batchID = batch.item?.id;
   const batchStatus = batch.item?.status;
   const refreshBatchForEffect = useEffectEvent((id, options) => refreshBatch(id, options));
+  const resetBatchForEffect = useEffectEvent(() => resetBatch());
   const publishUploadCompletion = useEffectEvent(() => {
     if (batch.item?.status !== "completed" || batch.item.direction !== "upload") return;
     onNotice({ tone: "good", message: "Upload queue completed. Review the summary, then clear when ready." });
@@ -39,19 +41,17 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
     };
   }, [open, batchID, batchStatus, batch.state]);
 
-  useEffect(
-    () => () => {
-      refreshRequestRef.current += 1;
-    },
-    [],
-  );
+  useEffect(() => {
+    resetBatchForEffect();
+  }, [open, runtimeTarget?.id]);
 
   useEffect(() => {
     publishUploadCompletion();
   }, [batch.item?.id, batch.item?.status, batch.item?.direction]);
 
   function resetBatch() {
-    refreshRequestRef.current += 1;
+    requests.invalidate("refresh");
+    requests.invalidate("mutation");
     setBatch(emptyBatchState);
     setOverwritePrompt(null);
     completedUploadRef.current = 0;
@@ -64,32 +64,41 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
 
   async function refreshBatch(id = batch.item?.id, options = {}) {
     if (!id) return;
-    const requestID = ++refreshRequestRef.current;
+    const request = requests.begin("refresh");
     if (!options.silent) setBatch((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const item = await apiGet(`/api/file-transfer-batches/${id}`);
-      if (requestID !== refreshRequestRef.current) return;
+      const item = await apiGet(`/api/file-transfer-batches/${id}`, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setBatch((current) => {
         if (options.silent && !["idle", "loading", "ready"].includes(current.state)) return current;
         return { state: "ready", item, error: null };
       });
     } catch (error) {
-      if (requestID !== refreshRequestRef.current) return;
+      if (!request.isCurrent()) return;
       setBatch((current) => {
         if (options.silent && !["idle", "loading", "ready"].includes(current.state)) return current;
         return { ...current, state: "error", error: error.message };
       });
+    } finally {
+      request.complete();
     }
   }
 
   async function updatePausedBatchQueue(itemIDs) {
     if (!batch.item) return;
+    const request = requests.begin("mutation");
+    requests.invalidate("refresh");
+    const batchID = batch.item.id;
     setBatch((current) => ({ ...current, state: "updating", error: null }));
     try {
-      const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/queue`, { item_ids: itemIDs });
+      const item = await apiPost(`/api/file-transfer-batches/${batchID}/queue`, { item_ids: itemIDs }, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setBatch({ state: "ready", item, error: null });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setBatch((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 
@@ -117,6 +126,8 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
   }
 
   async function startUploadBatch(options = {}) {
+    const request = requests.begin("mutation");
+    requests.invalidate("refresh");
     const formData = new FormData();
     formData.append("runtime_id", String(runtimeTarget.id));
     formData.append("remote_dir", remoteDir);
@@ -127,43 +138,63 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
     setOverwritePrompt(null);
     setBatch({ state: "starting", item: null, error: null });
     try {
-      const item = await apiPostForm("/api/file-transfers/upload-batch", formData);
+      const item = await apiPostForm("/api/file-transfers/upload-batch", formData, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setBatch({ state: "ready", item, error: null });
     } catch (error) {
+      if (!request.isCurrent()) return;
       if (error.status === 409 && error.data?.code === "remote_files_exist") {
         setBatch(emptyBatchState);
         setOverwritePrompt(error.data.conflicts || []);
         return;
       }
       setBatch({ state: "error", item: null, error: error.message });
+    } finally {
+      request.complete();
     }
   }
 
   async function startDownloadBatch() {
+    const request = requests.begin("mutation");
+    requests.invalidate("refresh");
     onNotice(null);
     setBatch({ state: "starting", item: null, error: null });
     try {
-      const item = await apiPost("/api/file-transfers/download-batch", {
-        runtime_id: Number(runtimeTarget.id),
-        remote_paths: downloadQueue.map((item) => item.path),
-        archive_name: downloadQueue.length > 1 ? suggestedArchiveName() : "",
-      });
+      const item = await apiPost(
+        "/api/file-transfers/download-batch",
+        {
+          runtime_id: Number(runtimeTarget.id),
+          remote_paths: downloadQueue.map((item) => item.path),
+          archive_name: downloadQueue.length > 1 ? suggestedArchiveName() : "",
+        },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent()) return;
       setBatch({ state: "ready", item, error: null });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setBatch({ state: "error", item: null, error: error.message });
+    } finally {
+      request.complete();
     }
   }
 
   async function transitionBatch(nextState, action, successNotice = null) {
     if (!batch.item) return;
-    refreshRequestRef.current += 1;
+    const request = requests.begin("mutation");
+    requests.invalidate("refresh");
+    const batchID = batch.item.id;
     setBatch((current) => ({ ...current, state: nextState, error: null }));
     try {
-      const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/${action}`, {});
+      const item = await apiPost(`/api/file-transfer-batches/${batchID}/${action}`, {}, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setBatch({ state: "ready", item, error: null });
       if (successNotice) onNotice(successNotice);
     } catch (error) {
+      if (!request.isCurrent()) return;
       setBatch((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 

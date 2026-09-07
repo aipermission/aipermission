@@ -1,11 +1,24 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
 import { apiPost, apiPostForm } from "../../../lib/api";
 import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths";
 
 vi.mock("../../../lib/api", () => ({ apiPost: vi.fn(), apiPostForm: vi.fn(), apiGet: vi.fn(), apiDownload: vi.fn() }));
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+beforeEach(() => {
+  apiPost.mockReset();
+  apiPostForm.mockReset();
+});
 
 it("retains folder-relative identity in preview and multipart after prefix navigation", async () => {
   const user = userEvent.setup();
@@ -43,4 +56,30 @@ it("retains folder-relative identity in preview and multipart after prefix navig
   const form = apiPostForm.mock.calls[0][1];
   expect(form.get("remote_dir")).toBe("/next// ");
   expect(JSON.parse(form.get("relative_paths"))).toEqual(["folder// invoice "]);
+});
+
+it("waits for the canonical browse path before using an upload folder", async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  apiPost.mockReturnValue(pending.promise);
+  render(
+    <FileTransferDialog
+      open
+      runtimeTarget={{ id: 7, name: "objects" }}
+      onClose={() => {}}
+      options={{
+        defaultDirectory: "/",
+        recursive: true,
+        folderUpload: true,
+        joinRemotePath: joinTransferPath,
+        normalizeRemoteDirectoryInput: normalizeTransferDirectory,
+      }}
+    />,
+  );
+
+  await user.click(screen.getByRole("button", { name: "Browse" }));
+  expect(screen.getByRole("button", { name: "Use this folder" })).toBeDisabled();
+  pending.resolve({ path: "/canonical/", parent: "/", entries: [] });
+
+  expect(await screen.findByRole("button", { name: "Use this folder" })).toBeEnabled();
 });

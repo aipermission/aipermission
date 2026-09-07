@@ -6,6 +6,14 @@ import { useTransferBatch } from "./use-transfer-batch";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPostForm: vi.fn() }));
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function BatchHarness({ onNotice = vi.fn(), onUploadCompleted = vi.fn() }) {
   const file = new File(["payload"], "a.txt", { type: "text/plain" });
   const transfer = useTransferBatch({
@@ -32,6 +40,9 @@ function BatchHarness({ onNotice = vi.fn(), onUploadCompleted = vi.fn() }) {
       </button>
       <button type="button" onClick={() => void transfer.cancelBatch()}>
         Cancel
+      </button>
+      <button type="button" onClick={() => transfer.resetBatch()}>
+        Reset
       </button>
       <p data-testid="status">{transfer.batch.item?.status || transfer.batch.state}</p>
       <p data-testid="conflicts">{transfer.overwritePrompt?.length || 0}</p>
@@ -67,13 +78,13 @@ it("owns upload creation and ordered pause, resume, and cancel transitions", asy
   expect(JSON.parse(form.get("relative_paths"))).toEqual(["a.txt"]);
 
   await user.click(screen.getByRole("button", { name: "Pause" }));
-  expect(apiPost).toHaveBeenLastCalledWith("/api/file-transfer-batches/12/pause", {});
+  expect(apiPost).toHaveBeenLastCalledWith("/api/file-transfer-batches/12/pause", {}, { signal: expect.any(AbortSignal) });
   expect(screen.getByTestId("status")).toHaveTextContent("paused");
   await user.click(screen.getByRole("button", { name: "Resume" }));
-  expect(apiPost).toHaveBeenLastCalledWith("/api/file-transfer-batches/12/resume", {});
+  expect(apiPost).toHaveBeenLastCalledWith("/api/file-transfer-batches/12/resume", {}, { signal: expect.any(AbortSignal) });
   expect(screen.getByTestId("status")).toHaveTextContent("running");
   await user.click(screen.getByRole("button", { name: "Cancel" }));
-  expect(apiPost).toHaveBeenCalledWith("/api/file-transfer-batches/12/cancel", {});
+  expect(apiPost).toHaveBeenCalledWith("/api/file-transfer-batches/12/cancel", {}, { signal: expect.any(AbortSignal) });
   expect(screen.getByTestId("status")).toHaveTextContent("canceled");
   expect(onNotice).toHaveBeenLastCalledWith({ tone: "warn", message: "Transfer queue canceled." });
 });
@@ -98,4 +109,34 @@ it("owns upload overwrite conflicts without creating a batch", async () => {
   await user.click(screen.getByRole("button", { name: "Start" }));
   expect(await screen.findByTestId("conflicts")).toHaveTextContent("1");
   expect(screen.getByTestId("status")).toHaveTextContent("idle");
+});
+
+it("ignores upload completion after the dialog batch is reset", async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  apiPostForm.mockReturnValue(pending.promise);
+  render(<BatchHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Start" }));
+  expect(screen.getByTestId("status")).toHaveTextContent("starting");
+  await user.click(screen.getByRole("button", { name: "Reset" }));
+  pending.resolve({ id: 12, status: "running", direction: "upload", items: [] });
+
+  await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("idle"));
+});
+
+it("keeps the latest transition when an older transition completes last", async () => {
+  const user = userEvent.setup();
+  const paused = deferred();
+  apiPostForm.mockResolvedValue({ id: 12, status: "running", direction: "upload", items: [] });
+  apiPost.mockReturnValueOnce(paused.promise).mockResolvedValueOnce({ id: 12, status: "canceled", direction: "upload", items: [] });
+  render(<BatchHarness />);
+  await user.click(screen.getByRole("button", { name: "Start" }));
+
+  await user.click(screen.getByRole("button", { name: "Pause" }));
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(await screen.findByTestId("status")).toHaveTextContent("canceled");
+  paused.resolve({ id: 12, status: "paused", direction: "upload", items: [] });
+
+  await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("canceled"));
 });
