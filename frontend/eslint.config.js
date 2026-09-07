@@ -41,13 +41,6 @@ export default [
     },
   },
   {
-    files: ["src/components/file-transfer/file-transfer-dialog.jsx"],
-    rules: {
-      complexity: ["error", { max: 52 }],
-      "max-lines-per-function": ["error", { max: 660, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
     files: ["src/connectors/templates/docker/console.jsx"],
     rules: {
       "max-lines-per-function": ["error", { max: 566, skipBlankLines: true, skipComments: true, IIFEs: true }],
