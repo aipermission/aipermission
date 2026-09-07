@@ -1,9 +1,13 @@
 import { apiPut } from "./api.js";
 
-export async function updateTokenProjectVisibility(tokenID, projects, projectID, enabled) {
-  return apiPut(`/api/tokens/${tokenID}/project-scopes`, {
-    enabled_project_ids: enabledProjectIDsForVisibility(projects, projectID, enabled),
-  });
+export async function updateTokenProjectVisibility(tokenID, projects, projectID, enabled, options = {}) {
+  return apiPut(
+    `/api/tokens/${tokenID}/project-scopes`,
+    {
+      enabled_project_ids: enabledProjectIDsForVisibility(projects, projectID, enabled),
+    },
+    options,
+  );
 }
 
 export function enabledProjectIDsForVisibility(projects, projectID, enabled) {

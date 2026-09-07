@@ -262,11 +262,13 @@ export function TokensPage() {
       />
 
       <ConnectorPermissionDialog
+        key={connectorPermissionDialog?.id || "closed-connector-permissions"}
         token={connectorPermissionDialog}
         onClose={() => setConnectorPermissionDialog(null)}
         onSaved={() => loadAllConnectorPermissions(tokens.data)}
       />
       <VaultPermissionDialog
+        key={vaultPermissionDialog?.id || "closed-vault-permissions"}
         token={vaultPermissionDialog}
         onClose={() => setVaultPermissionDialog(null)}
         onSaved={() => loadAllConnectorPermissions(tokens.data)}
