@@ -2,19 +2,14 @@ import { readdirSync } from "node:fs";
 import { basename, extname, join, relative, sep } from "node:path";
 
 const excludedNames = new Set(["mcp-client-catalog.js", "release.generated.json"]);
+const excludedDirectories = new Set(["src/test"]);
 
 export function isBehaviorOwner(file) {
   const normalized = file.split(sep).join("/");
   if (!normalized.startsWith("src/") || ![".js", ".jsx"].includes(extname(normalized))) return false;
   if (normalized.includes(".test.") || excludedNames.has(basename(normalized))) return false;
-
-  const name = basename(normalized);
-  return (
-    /^src\/pages\/[^/]+\.(?:js|jsx)$/.test(normalized) ||
-    /^use-/.test(name) ||
-    /(?:approval|permission|reconciliation|reducer|session|transfer)/.test(name) ||
-    /src\/connectors\/templates\/[^/]+\/console\.jsx$/.test(normalized)
-  );
+  if ([...excludedDirectories].some((directory) => normalized === directory || normalized.startsWith(`${directory}/`))) return false;
+  return true;
 }
 
 export function listBehaviorOwners(root) {

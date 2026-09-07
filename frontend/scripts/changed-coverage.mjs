@@ -4,16 +4,17 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isBehaviorOwner, listBehaviorOwners } from "./coverage-owner-policy.mjs";
+import { coverageFloors as floors, ratchetedMetrics, validateCoverageBaseline } from "./coverage-ratchet.mjs";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(frontendRoot, "..");
 const baselinePath = join(frontendRoot, ".changed-coverage-baseline.json");
 const summaryPath = join(frontendRoot, "coverage", "changed", "coverage-summary.json");
 const updateBaseline = process.argv.includes("--update-baseline");
-const floors = { statements: 75, branches: 60, functions: 70, lines: 75 };
+const base = updateBaseline ? null : coverageBase();
 
 const changedOwners = updateBaseline ? listBehaviorOwners(frontendRoot) : findChangedOwners();
-if (!updateBaseline && changedOwners.length === 0) {
+if (!updateBaseline && changedOwners.length === 0 && !baselineChanged()) {
   console.log("Changed frontend coverage passed: no behavior owners changed.");
   process.exit(0);
 }
@@ -22,21 +23,38 @@ runCoverage();
 const coverage = readCoverageSummary();
 
 if (updateBaseline) {
+  if (process.env.CI) throw new Error("Refusing to update the changed coverage baseline in CI");
   const files = Object.fromEntries(changedOwners.map((file) => [file, metricsFor(file, coverage)]));
-  writeFileSync(baselinePath, `${JSON.stringify({ version: 1, floors, files }, null, 2)}\n`);
+  writeFileSync(baselinePath, `${JSON.stringify({ version: 2, floors, files }, null, 2)}\n`);
   console.log(`Changed frontend coverage baseline updated for ${changedOwners.length} behavior owners.`);
   process.exit(0);
 }
 
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+const allOwners = listBehaviorOwners(frontendRoot);
+validateCoverageBaseline(baseline, allOwners);
+const baseBaseline = readBaseBaseline(base);
 const failures = [];
-for (const file of changedOwners) {
+for (const file of allOwners) {
   const actual = metricsFor(file, coverage);
-  const required = baseline.files[file] ?? floors;
+  const accepted = baseline.files[file];
+  const previous = baseBaseline?.files?.[file];
   for (const metric of Object.keys(floors)) {
-    if (actual[metric] + 0.001 < required[metric]) {
-      const source = baseline.files[file] ? "accepted baseline" : "new-file floor";
-      failures.push(`${file} ${metric} ${actual[metric]}% is below ${source} ${required[metric]}%`);
+    if (actual[metric] + 0.001 < accepted[metric]) {
+      failures.push(`${file} ${metric} ${actual[metric]}% is below checked baseline ${accepted[metric]}%`);
+    }
+    if (previous && accepted[metric] + 0.001 < previous[metric]) {
+      failures.push(`${file} ${metric} baseline ${accepted[metric]}% weakens base ${previous[metric]}%`);
+    }
+  }
+}
+for (const file of changedOwners) {
+  const previous = baseBaseline?.files?.[file];
+  const required = baseBaseline ? ratchetedMetrics(previous) : baseline.files[file];
+  for (const metric of Object.keys(floors)) {
+    if (baseline.files[file][metric] + 0.001 < required[metric]) {
+      const source = previous ? "ratcheted base" : "new-file floor";
+      failures.push(`${file} ${metric} baseline ${baseline.files[file][metric]}% is below ${source} ${required[metric]}%`);
     }
   }
 }
@@ -50,7 +68,6 @@ if (failures.length > 0) {
 console.log(`Changed frontend coverage passed for ${changedOwners.length} behavior owners.`);
 
 function findChangedOwners() {
-  const base = coverageBase();
   const output = execFileSync("git", ["diff", "--name-only", "--diff-filter=ACMR", `${base}...HEAD`, "--", "frontend/src"], {
     cwd: repositoryRoot,
     encoding: "utf8",
@@ -62,6 +79,26 @@ function findChangedOwners() {
     .map((file) => file.replace(/^frontend\//, ""))
     .filter(isBehaviorOwner)
     .sort();
+}
+
+function readBaseBaseline(ref) {
+  const result = spawnSync("git", ["show", `${ref}:frontend/.changed-coverage-baseline.json`], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) return null;
+  const baseline = JSON.parse(result.stdout);
+  if (baseline?.version !== 2) throw new Error("Base changed coverage baseline must use version 2");
+  return baseline;
+}
+
+function baselineChanged() {
+  const result = spawnSync("git", ["diff", "--quiet", `${base}...HEAD`, "--", "frontend/.changed-coverage-baseline.json"], {
+    cwd: repositoryRoot,
+  });
+  if (result.status === 0) return false;
+  if (result.status === 1) return true;
+  throw result.error || new Error("Cannot compare the changed coverage baseline with its base revision");
 }
 
 function coverageBase() {

@@ -83,7 +83,12 @@ coverage.
 
 The frontend coverage gate uses per-file V8 thresholds rather than one broad
 aggregate percentage. This keeps a well-covered utility from masking a weak
-authorization or session surface.
+authorization or session surface. Every production JavaScript module is a
+coverage owner unless it is an explicitly listed generated or test-support
+file. The checked baseline is compared with the base Git revision, so a change
+cannot weaken its baseline in the same pull request. New modules must meet the
+full floor; an existing module below the floor must improve by at least one
+percentage point whenever it changes, until it reaches the floor.
 
 The real-backend browser test runs the production API, SQLCipher database,
 UI-session authentication, CSRF, connector permission, approval, and history
