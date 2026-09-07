@@ -8,24 +8,8 @@ import { Drawer } from "../components/ui/drawer";
 import { Checkbox, Field, Input, Select, Textarea } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { formatRelativeAge } from "../lib/date-time";
-
-const secretTypes = [
-  ["generic_secret", "Generic secret"],
-  ["api_key", "API key"],
-  ["access_token", "Access token"],
-  ["password", "Password"],
-  ["client_secret", "Client secret"],
-  ["webhook_hmac", "Webhook / HMAC secret"],
-  ["connection", "Connection string"],
-];
-
-export const generatorKinds = [
-  ["random_token", "Random token (32 bytes)"],
-  ["hex_secret", "Hex secret (32 bytes)"],
-  ["password", "Password (32 characters)"],
-  ["long_hmac_secret", "Long HMAC secret (64 bytes)"],
-  ["uuid_v4", "UUID v4 (identifier)"],
-];
+import { selectedBinding } from "../components/vault/vault-binding-utils";
+import { vaultGeneratorKinds, vaultSecretTypes } from "../components/vault/vault-options";
 
 export function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindings, onDelete }) {
   const projectNames = [
@@ -213,17 +197,6 @@ export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave
   );
 }
 
-export function selectedBinding(state) {
-  return (
-    state.data.find(
-      (item) =>
-        Number(item.source_project_id) === Number(state.source_project_id) &&
-        Number(item.target_id) === Number(state.target_id) &&
-        Number(item.profile_id) === Number(state.profile_id),
-    ) || null
-  );
-}
-
 function IconButton({ title, icon: Icon, onClick }) {
   return (
     <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} onClick={onClick}>
@@ -310,7 +283,7 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
           <Field>
             Generator
             <Select value={editor.generator_kind} onChange={(event) => update("generator_kind", event.target.value)}>
-              {generatorKinds.map(([value, label]) => (
+              {vaultGeneratorKinds.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -323,7 +296,7 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
           <Field>
             Secret type
             <Select value={editor.secret_type} onChange={(event) => update("secret_type", event.target.value)}>
-              {secretTypes.map(([value, label]) => (
+              {vaultSecretTypes.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -481,7 +454,7 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
 }
 
 function secretTypeLabel(value) {
-  return secretTypes.find(([type]) => type === value)?.[1] || value;
+  return vaultSecretTypes.find(([type]) => type === value)?.[1] || value;
 }
 
 function expiryState(item) {

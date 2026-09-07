@@ -66,12 +66,6 @@ export default [
     },
   },
   {
-    files: ["src/pages/vault.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 644, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
     ...eslint.configs.recommended,
     files: nodeFiles,
     languageOptions: {

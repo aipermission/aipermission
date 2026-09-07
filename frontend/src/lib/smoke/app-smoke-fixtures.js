@@ -255,7 +255,20 @@ export const rabbitMQConnectorFormTemplateSource = readFileSync(
 );
 export const vaultPageSource = readFileSync(join(currentDir, "..", "pages", "vault.jsx"), "utf8");
 export const vaultComponentsSource = readFileSync(join(currentDir, "..", "pages", "vault-components.jsx"), "utf8");
-export const vaultFeatureSource = `${vaultPageSource}\n${vaultComponentsSource}`;
+export const vaultCollectionSource = readFileSync(join(currentDir, "..", "components", "vault", "use-vault-collection.js"), "utf8");
+export const vaultValueActionsSource = readFileSync(join(currentDir, "..", "components", "vault", "use-vault-value-actions.js"), "utf8");
+export const vaultBindingsSource = readFileSync(join(currentDir, "..", "components", "vault", "use-vault-bindings.js"), "utf8");
+export const vaultPageContentSource = readFileSync(join(currentDir, "..", "components", "vault", "vault-page-content.jsx"), "utf8");
+export const vaultValueDialogsSource = readFileSync(join(currentDir, "..", "components", "vault", "vault-value-dialogs.jsx"), "utf8");
+export const vaultFeatureSource = [
+  vaultPageSource,
+  vaultComponentsSource,
+  vaultCollectionSource,
+  vaultValueActionsSource,
+  vaultBindingsSource,
+  vaultPageContentSource,
+  vaultValueDialogsSource,
+].join("\n");
 export const vaultSessionDialogSource = readFileSync(join(currentDir, "..", "components", "console", "vault-session-dialog.jsx"), "utf8");
 export const ptyConsoleSource = readFileSync(join(currentDir, "..", "components", "console", "pty-console.jsx"), "utf8");
 export const vaultActionApprovalDialogSource = readFileSync(
