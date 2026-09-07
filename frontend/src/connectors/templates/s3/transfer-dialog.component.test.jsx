@@ -39,6 +39,7 @@ it("retains folder-relative identity in preview and multipart after prefix navig
   await user.click(await screen.findByRole("button", { name: "Use this folder" }));
   expect(screen.getByText("/next// /folder// invoice ", { normalizer: (value) => value })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /Start upload/ }));
+  await screen.findByRole("button", { name: "Clear" });
   const form = apiPostForm.mock.calls[0][1];
   expect(form.get("remote_dir")).toBe("/next// ");
   expect(JSON.parse(form.get("relative_paths"))).toEqual(["folder// invoice "]);
