@@ -47,7 +47,7 @@ export function ConsoleWorkspacePanel({ actions, approvals, connectorView, liveC
           </div>
           {selectedTargetProfiles.length > 1 ? (
             <label
-              className={`ml-2 hidden min-w-36 max-w-48 shrink-0 items-center gap-2 text-xs font-semibold lg:flex ${theme === "light" ? "text-stone-600" : "text-stone-300"}`}
+              className={`ml-2 hidden min-w-36 max-w-48 shrink-0 items-center gap-2 text-xs font-semibold 2xl:flex ${theme === "light" ? "text-stone-600" : "text-stone-300"}`}
             >
               Profile
               <Select
