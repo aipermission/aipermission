@@ -99,7 +99,7 @@ export function HistoryRetentionPanel() {
           {saveState.state === "error" ? <Notice tone="bad">{saveState.error}</Notice> : null}
           <div className="grid gap-3 rounded-md border border-stone-200 p-3">
             <div>
-              <h4 className="text-sm font-semibold text-stone-900">Manual cleanup</h4>
+              <h3 className="text-sm font-semibold text-stone-900">Manual cleanup</h3>
               <p className="text-xs text-stone-500">Run a one-time purge without changing automatic retention settings.</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">

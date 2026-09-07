@@ -291,7 +291,7 @@ function TokenPageHeader({ onRefresh, onAdd }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h3 className="text-lg font-semibold">API tokens</h3>
+        <h1 className="text-lg font-semibold">API tokens</h1>
         <p className="text-sm text-stone-500">Create revokable gateway tokens for MCP clients and AI tools.</p>
       </div>
       <div className="flex gap-2">

@@ -35,7 +35,7 @@ export function SettingsPage() {
     <section className="mx-auto grid w-full max-w-2xl gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold">Settings</h3>
+          <h1 className="text-lg font-semibold">Settings</h1>
           <p className="text-sm text-stone-500">Manage the current encrypted database backup, password, rename, and delete lifecycle.</p>
         </div>
       </div>

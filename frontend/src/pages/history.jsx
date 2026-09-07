@@ -74,7 +74,7 @@ function HistoryHeader({ state, onRefresh }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h3 className="text-lg font-semibold">History</h3>
+        <h1 className="text-lg font-semibold">History</h1>
         <p className="text-sm text-stone-500">Review every gateway activity through one connector-aware stream.</p>
       </div>
       <Button type="button" variant="outline" onClick={onRefresh} disabled={state.state === "loading"}>
@@ -103,6 +103,7 @@ function HistoryFilters({ view }) {
     <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[1fr_.8fr_.8fr_.8fr_1.2fr_.9fr]">
         <Select
+          aria-label="Filter by project"
           value={filters.projectID}
           onChange={(event) => updateFilters((current) => ({ ...current, projectID: event.target.value, targetRef: "" }))}
         >
@@ -113,10 +114,25 @@ function HistoryFilters({ view }) {
             </option>
           ))}
         </Select>
-        <FilterSelect value={filters.connectorKind} options={connectorKindOptions} onChange={(value) => update("connectorKind", value)} />
-        <FilterSelect value={filters.status} options={statusOptions} onChange={(value) => update("status", value)} />
-        <FilterSelect value={filters.source} options={sourceOptions} onChange={(value) => update("source", value)} />
-        <Select value={filters.targetRef} onChange={(event) => update("targetRef", event.target.value)}>
+        <FilterSelect
+          label="Filter by connector type"
+          value={filters.connectorKind}
+          options={connectorKindOptions}
+          onChange={(value) => update("connectorKind", value)}
+        />
+        <FilterSelect
+          label="Filter by status"
+          value={filters.status}
+          options={statusOptions}
+          onChange={(value) => update("status", value)}
+        />
+        <FilterSelect
+          label="Filter by source"
+          value={filters.source}
+          options={sourceOptions}
+          onChange={(value) => update("source", value)}
+        />
+        <Select aria-label="Filter by connector" value={filters.targetRef} onChange={(event) => update("targetRef", event.target.value)}>
           <option value="">All connectors</option>
           {targetItems
             .filter((target) => !filters.projectID || String(target.project_id) === String(filters.projectID))
@@ -126,7 +142,7 @@ function HistoryFilters({ view }) {
               </option>
             ))}
         </Select>
-        <Select value={filters.labelID} onChange={(event) => update("labelID", event.target.value)}>
+        <Select aria-label="Filter by label" value={filters.labelID} onChange={(event) => update("labelID", event.target.value)}>
           <option value="">All labels</option>
           {labels.data.map((label) => (
             <option key={label.id} value={label.id}>
@@ -139,6 +155,7 @@ function HistoryFilters({ view }) {
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <Input
+            aria-label="Search history"
             value={filters.query}
             onChange={(event) => update("query", event.target.value)}
             placeholder="Search targets, actions, output, paths, or tokens"
@@ -157,9 +174,9 @@ function HistoryFilters({ view }) {
   );
 }
 
-function FilterSelect({ value, options, onChange }) {
+function FilterSelect({ label, value, options, onChange }) {
   return (
-    <Select value={value} onChange={(event) => onChange(event.target.value)}>
+    <Select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => (
         <option key={option.value || "all"} value={option.value}>
           {option.label}
@@ -216,7 +233,7 @@ function EmptyHistoryRow({ children }) {
 
 function HistoryRow({ item, onOpen }) {
   return (
-    <tr className="cursor-pointer transition hover:bg-stone-50" onClick={() => onOpen(item)}>
+    <tr className="transition hover:bg-stone-50">
       <td className="px-4 py-3">
         <StatusBadge status={item.status} />
       </td>
@@ -224,8 +241,15 @@ function HistoryRow({ item, onOpen }) {
         <ConnectorBadge kind={item.connector_kind} />
       </td>
       <td className="truncate px-4 py-3">
-        <div className="truncate font-medium text-stone-900">{item.target_name || "-"}</div>
-        <div className="truncate text-xs text-stone-500">{[item.project_name, item.profile_label].filter(Boolean).join(" / ")}</div>
+        <button
+          type="button"
+          className="grid max-w-full text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+          aria-label={`Open history details for ${item.target_name || "unknown target"}`}
+          onClick={() => onOpen(item)}
+        >
+          <span className="truncate font-medium text-stone-900 underline-offset-2 hover:underline">{item.target_name || "-"}</span>
+          <span className="truncate text-xs text-stone-500">{[item.project_name, item.profile_label].filter(Boolean).join(" / ")}</span>
+        </button>
       </td>
       <td className="px-4 py-3">
         <ActionBadge item={item} />

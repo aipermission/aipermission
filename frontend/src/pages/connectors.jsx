@@ -84,7 +84,7 @@ export function ConnectorsPage() {
     <section className="mx-auto grid w-full max-w-7xl gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold">Connectors</h3>
+          <h1 className="text-lg font-semibold">Connectors</h1>
           <p className="text-sm text-stone-500">
             Create connector targets, attach credential profiles, then grant token permissions per action.
           </p>

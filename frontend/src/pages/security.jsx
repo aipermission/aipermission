@@ -10,7 +10,7 @@ export function SecurityPage() {
   return (
     <section className="mx-auto grid w-full max-w-2xl gap-5">
       <div>
-        <h3 className="text-lg font-semibold">Security</h3>
+        <h1 className="text-lg font-semibold">Security</h1>
         <p className="text-sm text-stone-500">Control token copy behavior, MCP metadata exposure, and redaction rules.</p>
       </div>
       <SecurityNotices state={state} />

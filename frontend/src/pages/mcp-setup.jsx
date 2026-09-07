@@ -41,7 +41,7 @@ export function MCPSetupPage() {
     <section className="mx-auto grid w-full max-w-5xl gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold">MCP setup</h3>
+          <h1 className="text-lg font-semibold">MCP setup</h1>
           <p className="text-sm text-stone-500">
             Install the npm MCP bridge, bind it to a token, then tell your AI which MCP server name to use.
           </p>

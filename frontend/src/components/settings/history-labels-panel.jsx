@@ -60,6 +60,7 @@ export function HistoryLabelsPanel() {
           {labels.state === "error" ? <Notice tone="bad">{labels.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             <Select
+              aria-label="History label"
               value={selectedID}
               onChange={(event) => setSelectedID(event.target.value)}
               disabled={labels.state === "loading" || labels.data.length === 0}

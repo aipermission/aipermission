@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet } from "../lib/api";
 import { HistoryPage } from "./history";
@@ -142,6 +143,25 @@ describe("HistoryPage request ownership", () => {
     await act(async () => detail.resolve({ ...historyResponse("detail").items[0], id: "initial" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens history details from the keyboard", async () => {
+    const user = userEvent.setup();
+    installHistoryMock();
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
+      if (path === "/api/history/initial") return Promise.resolve(historyResponse("initial").items[0]);
+      if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
+      return Promise.resolve({});
+    });
+    render(<HistoryPage />);
+
+    const details = await screen.findByRole("button", { name: "Open history details for initial" });
+    details.focus();
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByRole("dialog")).toBeVisible();
   });
 
   it("serializes slow polling and eventually commits its response", { timeout: 10000 }, async () => {

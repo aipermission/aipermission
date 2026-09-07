@@ -38,7 +38,7 @@ export function BackupProviderPanel({ state }) {
         <div className="grid gap-3 border-t border-stone-200 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h4 className="text-sm font-semibold text-stone-900">Remote backup providers</h4>
+              <h3 className="text-sm font-semibold text-stone-900">Remote backup providers</h3>
               <p className="text-xs text-stone-500">Provider metadata is local. Remote backup/restore actions will use these records.</p>
             </div>
             <Button type="button" variant="outline" onClick={() => openBackupProviderDialog()}>

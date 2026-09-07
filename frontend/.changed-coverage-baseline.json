@@ -1850,10 +1850,10 @@
       "lines": 0
     },
     "src/pages/history.jsx": {
-      "statements": 95.67,
-      "branches": 86.66,
+      "statements": 96.1,
+      "branches": 83.87,
       "functions": 60,
-      "lines": 95.67
+      "lines": 96.1
     },
     "src/pages/mcp-setup.jsx": {
       "statements": 0,
@@ -1923,7 +1923,7 @@
     },
     "src/pages/use-history-page-state.js": {
       "statements": 93.39,
-      "branches": 77.46,
+      "branches": 78.87,
       "functions": 78.94,
       "lines": 93.39
     },

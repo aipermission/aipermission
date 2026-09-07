@@ -19,6 +19,8 @@ test.beforeEach(async ({ page }) => {
     });
   });
   await page.route("http://localhost:8080/api/unlock", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({ database_id: "default", password: "local-password" });
     unlocked = true;
     await route.fulfill({
       headers: {
@@ -113,6 +115,12 @@ test.beforeEach(async ({ page }) => {
   });
   await page.route("http://localhost:8080/api/history-labels", async (route) => {
     await route.fulfill({ json: [] });
+  });
+  await page.route("http://localhost:8080/api/history/targets", async (route) => {
+    await route.fulfill({ json: { items: [] } });
+  });
+  await page.route(/http:\/\/localhost:8080\/api\/history\?.*/, async (route) => {
+    await route.fulfill({ json: { items: [], total: 0, limit: 50, has_more: false, next_cursor: null } });
   });
   await page.route("http://localhost:8080/api/tokens/1/connector-permissions", async (route) => {
     if (route.request().method() === "PUT") {
@@ -234,7 +242,7 @@ test("@accessibility keeps modal focus contained and returns it to the opener", 
   await opener.click();
   const dialog = page.getByRole("dialog", { name: "Add backup provider" });
   await expect(dialog).toBeVisible();
-  await expectNoSeriousAccessibilityViolations(page, "[role=dialog]");
+  await expectNoModerateAccessibilityViolations(page, "[role=dialog]");
   await expect(dialog.getByRole("button", { name: "Close dialog" })).toBeFocused();
   for (let index = 0; index < 12; index += 1) {
     await page.keyboard.press(index % 2 === 0 ? "Tab" : "Shift+Tab");
@@ -244,6 +252,15 @@ test("@accessibility keeps modal focus contained and returns it to the opener", 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();
+});
+
+test("@accessibility keeps primary unlocked pages accessible", async ({ page }) => {
+  await unlock(page);
+  for (const path of ["/console", "/tokens", "/history", "/settings"]) {
+    await page.locator(`aside a[href="${path}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`${path.replace("/", "\\/")}$`));
+    await expectNoModerateAccessibilityViolations(page, "main");
+  }
 });
 
 test("@high-risk updates token connector permission from the Tokens page", async ({ page }) => {
@@ -316,6 +333,8 @@ test("@high-risk reviews and runs a Prompt connector action in the selected targ
     await route.fulfill({ json: approval });
   });
   await page.route("http://localhost:8080/api/connector-action-approvals/42/run", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({ user_note: "" });
     runCount += 1;
     pending = false;
     await route.fulfill({ json: { ...approval, status: "completed" } });
@@ -411,6 +430,8 @@ test("@high-risk cancels an active transfer from the transfer center", async ({ 
     await route.fulfill({ json: { items: [transferBatch(canceled ? "canceled" : "running")] } });
   });
   await page.route("http://localhost:8080/api/file-transfer-batches/77/cancel", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({});
     cancelCount += 1;
     canceled = true;
     await route.fulfill({ json: transferBatch("canceled") });
@@ -434,9 +455,9 @@ async function unlock(page) {
   await expect(page.locator('aside a[href="/console"]')).toBeVisible();
 }
 
-async function expectNoSeriousAccessibilityViolations(page, include) {
+async function expectNoModerateAccessibilityViolations(page, include) {
   const results = await new AxeBuilder({ page }).include(include).analyze();
-  const violations = results.violations.filter(({ impact }) => impact === "serious" || impact === "critical");
+  const violations = results.violations.filter(({ impact }) => ["moderate", "serious", "critical"].includes(impact));
   expect(violations, violations.map(({ id, help }) => `${id}: ${help}`).join("\n")).toEqual([]);
 }
 

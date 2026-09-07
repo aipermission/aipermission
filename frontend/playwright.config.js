@@ -3,14 +3,15 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
-  retries: process.env.CI ? 1 : 0,
+  forbidOnly: Boolean(process.env.CI),
+  retries: 0,
   expect: {
     timeout: 5_000,
   },
   use: {
     baseURL: "http://127.0.0.1:4173",
     screenshot: "only-on-failure",
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
   },
   projects: [
     {

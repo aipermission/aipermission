@@ -134,7 +134,7 @@ export function AuditLogsPage() {
     <section className="mx-auto grid w-full max-w-7xl gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold">Audit Logs</h3>
+          <h1 className="text-lg font-semibold">Audit Logs</h1>
           <p className="text-sm text-stone-500">Security, token, permission, console, and MCP execution events.</p>
         </div>
         <Button type="button" variant="outline" onClick={() => loadAuditLogs(state.offset)} disabled={state.state === "loading"}>
