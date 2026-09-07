@@ -1,16 +1,11 @@
-import { CornerUpLeft, Database, Download, Folder, Link2, Plus, RefreshCcw, Search, Trash2, Upload } from "lucide-react";
+import { Database } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
-import { Badge } from "../../../components/ui/badge";
-import { Button } from "../../../components/ui/button";
-import { Input } from "../../../components/ui/form";
-import { Notice } from "../../../components/ui/notice";
 import { saveBlob } from "../../../lib/api";
-import { formatBytes } from "../../../lib/file-transfer-utils";
 import { S3PresignDialog } from "./presign-dialog";
 import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths";
-import { S3VersionsDialog, VersionsIcon } from "./versions-dialog";
-import { LifecycleIcon, S3LifecycleDialog } from "./lifecycle-dialog";
+import { S3VersionsDialog } from "./versions-dialog";
+import { S3LifecycleDialog } from "./lifecycle-dialog";
 import { defaultS3ConfirmDialog, defaultUploadDialog, S3ConfirmDialog, S3UploadDialog } from "./dialogs";
 import {
   base64Blob,
@@ -21,11 +16,11 @@ import {
   normalizeObjectKey,
   parentPrefix,
   safeDownloadName,
-  shortDate,
   visibleObjectBytes,
 } from "./helpers";
 import { S3EndpointFooter } from "./endpoint-footer";
-import { S3MetadataPanel } from "./metadata-panel";
+import { S3ObjectBrowser } from "./object-browser";
+import { S3ObjectDetailPane } from "./object-detail-pane";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
 import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
@@ -394,248 +389,57 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   return (
     <div className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
       <div className="grid min-h-0 gap-4 overflow-hidden p-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <section
-          className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
-        >
-          <div className={`border-b p-3 ${borderClass}`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold">Objects</p>
-                <p className={`text-xs ${mutedClass}`}>
-                  {directories.length + objects.length} loaded · {target.config?.bucket || "bucket"}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {latestAction ? (
-                  <Badge tone={latestAction.status === "failed" ? "bad" : latestAction.status === "completed" ? "good" : "warn"}>
-                    {latestAction.action_name}
-                  </Badge>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 w-8 px-0"
-                  title="Bucket info"
-                  onClick={readBucketInfo}
-                  disabled={state.state !== "idle"}
-                >
-                  <Database className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 w-8 px-0"
-                  title="Transfer files and folders"
-                  onClick={() => setTransferOpen(true)}
-                  disabled={state.state !== "idle" || !target.transfer_runtime_id}
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 w-8 px-0"
-                  title="Create a small object"
-                  onClick={openUploadDialog}
-                  disabled={state.state !== "idle"}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 w-8 px-0"
-                  title="Refresh objects"
-                  onClick={() => refreshObjects({ reset: true })}
-                  disabled={state.state !== "idle"}
-                >
-                  <RefreshCcw className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          <form
-            className={`grid gap-2 border-b p-3 ${borderClass}`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void refreshObjects({ reset: true });
-            }}
-          >
-            <Input
-              className={inputClass}
-              value={prefix}
-              onChange={(event) => setPrefix(event.target.value)}
-              placeholder="Prefix, e.g. backups/2026/"
-            />
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-              <div className="relative">
-                <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${mutedClass}`} />
-                <Input
-                  className={`pl-9 ${inputClass}`}
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search object keys"
-                />
-              </div>
-              <Button type="submit" variant="outline" className="h-10" disabled={state.state !== "idle"}>
-                {state.state === "loading" ? "Loading" : "Search"}
-              </Button>
-            </div>
-          </form>
-          <div className="min-h-0 overflow-auto p-2">
-            {prefix && !search ? (
-              <button
-                type="button"
-                className={`mb-1 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition ${borderClass} ${rowHoverClass}`}
-                onClick={openParentDirectory}
-              >
-                <CornerUpLeft className={`h-4 w-4 shrink-0 ${mutedClass}`} />
-                <span className="min-w-0">
-                  <span className="block truncate font-semibold">..</span>
-                  <span className={`block truncate text-xs ${mutedClass}`}>{parentPrefix(prefix) || "bucket root"}</span>
-                </span>
-              </button>
-            ) : null}
-            {!search
-              ? directories.map((directory) => (
-                  <button
-                    key={directory.prefix}
-                    type="button"
-                    className={`mb-1 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition ${borderClass} ${rowHoverClass}`}
-                    onClick={() => openDirectory(directory.prefix)}
-                  >
-                    <Folder className="h-4 w-4 shrink-0 text-amber-400" />
-                    <span className="min-w-0">
-                      <span className="block truncate font-mono text-xs font-semibold" title={directory.prefix}>
-                        {directory.name || directory.prefix}
-                      </span>
-                      <span className={`block truncate text-xs ${mutedClass}`}>{directory.prefix}</span>
-                    </span>
-                  </button>
-                ))
-              : null}
-            {objects.map((object) => (
-              <button
-                key={object.key}
-                type="button"
-                className={`mb-1 grid w-full gap-1 rounded-md border px-3 py-2 text-left text-sm transition ${selectedKey === object.key ? activeRowClass : `${borderClass} ${rowHoverClass}`}`}
-                onClick={() => selectObject(object.key)}
-              >
-                <span className="truncate font-mono text-xs font-semibold" title={object.key}>
-                  {object.key}
-                </span>
-                <span className={`text-xs ${selectedKey === object.key ? "" : mutedClass}`}>
-                  {formatBytes(object.size)} · {shortDate(object.last_modified)}
-                </span>
-              </button>
-            ))}
-            {directories.length === 0 && objects.length === 0 ? (
-              <Notice>{state.state === "loading" ? "Loading S3 objects..." : "No objects found for this prefix/search."}</Notice>
-            ) : null}
-          </div>
-          <div className={`flex items-center justify-between gap-2 border-t p-3 ${borderClass}`}>
-            <span className={`text-xs ${mutedClass}`}>{nextToken ? "More objects available" : "End of current listing"}</span>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-8"
-              disabled={!nextToken || state.state !== "idle"}
-              onClick={() => refreshObjects({ reset: false, token: nextToken })}
-            >
-              Load more
-            </Button>
-          </div>
-        </section>
+        <S3ObjectBrowser
+          target={target}
+          directories={directories}
+          objects={objects}
+          prefix={prefix}
+          search={search}
+          selectedKey={selectedKey}
+          nextToken={nextToken}
+          latestAction={latestAction}
+          state={state}
+          classes={{
+            border: borderClass,
+            muted: mutedClass,
+            subtlePanel: subtlePanelClass,
+            input: inputClass,
+            rowHover: rowHoverClass,
+            activeRow: activeRowClass,
+          }}
+          onPrefixChange={setPrefix}
+          onSearchChange={setSearch}
+          onSearch={() => void refreshObjects({ reset: true })}
+          onBucketInfo={() => void readBucketInfo()}
+          onOpenTransfer={() => setTransferOpen(true)}
+          onOpenUpload={openUploadDialog}
+          onRefresh={() => void refreshObjects({ reset: true })}
+          onOpenParent={() => void openParentDirectory()}
+          onOpenDirectory={(directoryPrefix) => void openDirectory(directoryPrefix)}
+          onSelectObject={(key) => void selectObject(key)}
+          onLoadMore={() => void refreshObjects({ reset: false, token: nextToken })}
+        />
 
-        <section
-          className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${borderClass} ${subtlePanelClass}`}
-        >
-          <div>
-            <div className={`border-b p-3 ${borderClass}`}>
-              <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{selectedKey || "S3 object detail"}</p>
-                  <p className={`truncate text-xs ${mutedClass}`}>
-                    {selectedObject
-                      ? `${formatBytes(selectedObject.size)} · ${shortDate(selectedObject.last_modified)}`
-                      : "Select an object or upload a new one."}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-8 w-8 px-0"
-                    title="Bucket lifecycle"
-                    disabled={!activeSession.active || state.state !== "idle"}
-                    onClick={() => setLifecycleOpen(true)}
-                  >
-                    <LifecycleIcon />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-8 w-8 px-0"
-                    title="Create temporary S3 URL"
-                    disabled={!activeSession.active || state.state !== "idle"}
-                    onClick={() => setPresignOpen(true)}
-                  >
-                    <Link2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-8 w-8 px-0"
-                    title="Object versions"
-                    disabled={!selectedKey || state.state !== "idle"}
-                    onClick={() => setVersionsOpen(true)}
-                  >
-                    <VersionsIcon />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-8 w-8 px-0"
-                    title="Download object"
-                    disabled={!selectedKey || state.state !== "idle"}
-                    onClick={downloadSelected}
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="danger"
-                    className="h-8 w-8 px-0"
-                    title="Delete object"
-                    disabled={!selectedKey || state.state !== "idle"}
-                    onClick={requestDelete}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-            {state.error ? (
-              <div className={`border-b px-3 py-2 text-right text-xs text-red-500 ${borderClass}`}>
-                <span className="break-words">{state.error}</span>
-              </div>
-            ) : null}
-          </div>
-          <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-3">
-            <S3MetadataPanel
-              metadata={metadata}
-              selectedKey={selectedKey}
-              directories={directories}
-              objects={objects}
-              visibleBytes={visibleBytes}
-              prefix={prefix}
-              search={search}
-              metadataSearch={metadataSearch}
-              onMetadataSearch={setMetadataSearch}
-              inputClass={inputClass}
-            />
-          </div>
-        </section>
+        <S3ObjectDetailPane
+          active={activeSession.active}
+          selectedKey={selectedKey}
+          selectedObject={selectedObject}
+          metadata={metadata}
+          directories={directories}
+          objects={objects}
+          visibleBytes={visibleBytes}
+          prefix={prefix}
+          search={search}
+          metadataSearch={metadataSearch}
+          state={state}
+          classes={{ border: borderClass, muted: mutedClass, subtlePanel: subtlePanelClass, input: inputClass }}
+          onMetadataSearch={setMetadataSearch}
+          onOpenLifecycle={() => setLifecycleOpen(true)}
+          onOpenPresign={() => setPresignOpen(true)}
+          onOpenVersions={() => setVersionsOpen(true)}
+          onDownload={() => void downloadSelected()}
+          onDelete={requestDelete}
+        />
       </div>
       <S3EndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
       <FileTransferDialog
