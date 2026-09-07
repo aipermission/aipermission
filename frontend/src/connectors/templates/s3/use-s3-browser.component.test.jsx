@@ -27,6 +27,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete window.showSaveFilePicker;
+  vi.unstubAllGlobals();
 });
 
 function renderBrowser() {
@@ -101,6 +102,88 @@ it("validates S3 uploads before dispatch and refreshes successful text objects",
   expect(refreshObjects).toHaveBeenCalledWith({ reset: true });
   expect(readObjectMetadata).toHaveBeenCalledWith("notes/readme.txt");
   expect(result.current.uploadDialog.open).toBe(false);
+});
+
+it("aborts file preparation before an old S3 target can dispatch an upload", async () => {
+  class PendingFileReader {
+    static EMPTY = 0;
+    static LOADING = 1;
+    static instances = [];
+
+    constructor() {
+      this.readyState = PendingFileReader.EMPTY;
+      PendingFileReader.instances.push(this);
+    }
+
+    readAsDataURL() {
+      this.readyState = PendingFileReader.LOADING;
+    }
+
+    abort() {
+      this.readyState = PendingFileReader.EMPTY;
+      this.onabort?.();
+    }
+  }
+  vi.stubGlobal("FileReader", PendingFileReader);
+  const runAction = vi.fn();
+  const props = {
+    active: true,
+    prefix: "",
+    runAction,
+    refreshObjects: vi.fn(),
+    readObjectMetadata: vi.fn(),
+    setState: vi.fn(),
+  };
+  const { result, rerender } = renderHook(({ scopeKey }) => useS3Upload({ ...props, scopeKey }), {
+    initialProps: { scopeKey: "s3:1:1:now" },
+  });
+  const file = new File(["old"], "old.txt", { type: "text/plain" });
+  act(() => {
+    result.current.setUploadDialog({
+      ...defaultUploadDialog,
+      open: true,
+      files: [{ id: "old", file, key: "old.txt", contentType: "text/plain" }],
+    });
+  });
+
+  let upload;
+  act(() => {
+    upload = result.current.uploadObjects({ preventDefault: vi.fn() });
+  });
+  expect(PendingFileReader.instances).toHaveLength(1);
+  rerender({ scopeKey: "s3:2:2:now" });
+  await act(async () => upload);
+
+  expect(runAction).not.toHaveBeenCalled();
+  expect(result.current.uploadDialog).toEqual(defaultUploadDialog);
+});
+
+it("keeps metadata empty when selection is cleared before detail completes", async () => {
+  let resolveMetadata;
+  const metadata = new Promise((resolve) => {
+    resolveMetadata = resolve;
+  });
+  runGuardedConnectorAction.mockImplementation(async ({ actionName, input, requestGuard, channel }) => {
+    if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
+    const request = requestGuard.begin(channel);
+    const item = await metadata;
+    const result = request.isCurrent() ? { action_name: actionName, output: { key: input.key, ...item } } : null;
+    request.complete();
+    return result;
+  });
+  const { result } = renderBrowser();
+  await waitFor(() => expect(result.current.objects).toHaveLength(2));
+
+  let selection;
+  act(() => {
+    selection = result.current.selectObject(objects[0].key);
+  });
+  act(() => result.current.clearSelection());
+  await act(async () => resolveMetadata({ content_type: "text/plain" }));
+  await selection;
+
+  expect(result.current.selectedKey).toBe("");
+  expect(result.current.metadata).toBeNull();
 });
 
 it("binds destructive S3 confirmation to the requested object", async () => {

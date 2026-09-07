@@ -24,9 +24,12 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
     setDirectories([]);
     setObjects([]);
     setNextToken("");
-    clearSelection();
+    requestGuard.invalidate("metadata");
+    setSelectedKey("");
+    setMetadata(null);
+    setMetadataSearch("");
     setState({ state: "idle", error: "", message: "" });
-  }, [target.ref, activeSession.active, activeSession.startedAt]);
+  }, [requestGuard, target.ref, activeSession.active, activeSession.startedAt]);
 
   useEffect(() => {
     if (!activeSession.active) return;
@@ -152,6 +155,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
   }
 
   function clearSelection() {
+    requestGuard.invalidate("metadata");
     setSelectedKey("");
     setMetadata(null);
     setMetadataSearch("");

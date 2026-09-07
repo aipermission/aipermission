@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { useRequestGuard } from "../../../lib/request-guard";
 import { defaultUploadDialog } from "./dialogs";
 import { fileToBase64, joinObjectKey, normalizeObjectKey } from "./helpers";
 
 export function useS3Upload({ scopeKey, active, prefix, runAction, refreshObjects, readObjectMetadata, setState }) {
   const [uploadDialog, setUploadDialog] = useState(defaultUploadDialog);
+  const requests = useRequestGuard(`s3-upload:${scopeKey}`);
 
   useEffect(() => setUploadDialog(defaultUploadDialog), [scopeKey]);
 
@@ -56,43 +58,53 @@ export function useS3Upload({ scopeKey, active, prefix, runAction, refreshObject
       setUploadDialog((current) => ({ ...current, error: validationError }));
       return;
     }
+    const request = requests.begin("upload");
     setUploadDialog((current) => ({ ...current, pending: true, error: "", message: "" }));
     try {
-      const lastKey = fileMode ? await uploadFiles(preparedFiles) : await uploadText(textKey);
+      const lastKey = fileMode ? await uploadFiles(preparedFiles, request) : await uploadText(textKey, request);
+      if (!request.isCurrent()) return;
       if (!lastKey) {
         setUploadDialog((current) => ({ ...current, pending: false }));
         return;
       }
       setUploadDialog(defaultUploadDialog);
       await refreshObjects({ reset: true });
+      if (!request.isCurrent()) return;
       await readObjectMetadata(lastKey);
+      if (!request.isCurrent()) return;
       setState({ state: "idle", error: "", message: `Uploaded ${fileMode ? preparedFiles.length : 1} object(s).` });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setUploadDialog((current) => ({ ...current, pending: false, error: error.message || "Upload failed." }));
+    } finally {
+      request.complete();
     }
   }
 
-  async function uploadFiles(preparedFiles) {
+  async function uploadFiles(preparedFiles, request) {
     let lastKey = "";
     for (const item of preparedFiles) {
+      const contentBase64 = await fileToBase64(item.file, { signal: request.signal });
+      if (!request.isCurrent()) return "";
       const uploaded = await runAction({
         actionName: "upload_object",
         input: {
           key: item.key,
-          content_base64: await fileToBase64(item.file),
+          content_base64: contentBase64,
           content_type: item.contentType || item.file.type || "application/octet-stream",
           overwrite: uploadDialog.overwrite,
         },
         reason: "manual S3 browser object upload",
         busy: "uploading",
       });
-      if (!uploaded) return "";
+      if (!request.isCurrent() || !uploaded) return "";
       lastKey = item.key;
     }
     return lastKey;
   }
 
-  async function uploadText(textKey) {
+  async function uploadText(textKey, request) {
+    if (!request.isCurrent()) return "";
     const uploaded = await runAction({
       actionName: "upload_object",
       input: {
@@ -104,7 +116,7 @@ export function useS3Upload({ scopeKey, active, prefix, runAction, refreshObject
       reason: "manual S3 browser object upload",
       busy: "uploading",
     });
-    return uploaded ? textKey : "";
+    return request.isCurrent() && uploaded ? textKey : "";
   }
 
   return {
