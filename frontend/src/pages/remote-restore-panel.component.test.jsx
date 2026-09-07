@@ -41,12 +41,14 @@ it("ignores stale service responses and restores only with the current credentia
   await user.type(screen.getByLabelText("Backup service URL"), "https://backup-a.example.com");
   await user.type(screen.getByLabelText("Service token"), "token-a");
   await user.click(screen.getByRole("button", { name: "Connect and list backups" }));
+  const staleSignal = apiPost.mock.calls[0][2].signal;
   await user.clear(screen.getByLabelText("Backup service URL"));
   await user.type(screen.getByLabelText("Backup service URL"), "https://backup-b.example.com");
   await user.clear(screen.getByLabelText("Service token"));
   await user.type(screen.getByLabelText("Service token"), "token-b");
   await user.click(screen.getByRole("button", { name: "Connect and list backups" }));
 
+  expect(staleSignal.aborted).toBe(true);
   expect(await screen.findByRole("option", { name: /Database B/ })).toBeVisible();
   stale.resolve({ items: [{ id: "stream-a", database_name: "Database A" }] });
   await waitFor(() => expect(screen.queryByRole("option", { name: /Database A/ })).not.toBeInTheDocument());
@@ -68,4 +70,21 @@ it("ignores stale service responses and restores only with the current credentia
       database_password: "StrongPassword123",
     },
   ]);
+});
+
+it("aborts a pending backup listing when the panel unmounts", async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  apiPost.mockReturnValueOnce(pending.promise);
+  const view = render(<RemoteRestorePanel onUnlocked={vi.fn()} />);
+
+  await user.type(screen.getByLabelText("Backup service URL"), "https://backup.example.com");
+  await user.type(screen.getByLabelText("Service token"), "token");
+  await user.click(screen.getByRole("button", { name: "Connect and list backups" }));
+  const signal = apiPost.mock.calls[0][2].signal;
+  view.unmount();
+
+  expect(signal.aborted).toBe(true);
+  pending.resolve({ items: [] });
+  await Promise.resolve();
 });

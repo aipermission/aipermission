@@ -6,6 +6,7 @@ import { Notice } from "../components/ui/notice";
 import { apiPost } from "../lib/api";
 import { formatLocalTimestamp, formatRelativeAge } from "../lib/date-time";
 import { formatBytes } from "../lib/file-transfer-utils";
+import { useRequestGuard } from "../lib/request-guard";
 import {
   groupBackupVersions,
   remoteCredentialFingerprint,
@@ -24,6 +25,7 @@ export function RemoteRestorePanel({ onUnlocked }) {
   const [versionCredentialFingerprint, setVersionCredentialFingerprint] = useState("");
   const requestGeneration = useRef(0);
   const formRef = useRef(form);
+  const listRequestGuard = useRequestGuard(`remote-restore:list:${remoteCredentialFingerprint(form)}`);
 
   useEffect(
     () => () => {
@@ -52,6 +54,7 @@ export function RemoteRestorePanel({ onUnlocked }) {
 
   async function loadVersions(streamID, credentials = formRef.current, databaseName = "", generation = ++requestGeneration.current) {
     const fingerprint = remoteCredentialFingerprint(credentials);
+    const request = listRequestGuard.begin("versions");
     setState({ state: "loading_versions", error: null });
     setSelectedStreamID(streamID);
     if (databaseName) {
@@ -63,20 +66,26 @@ export function RemoteRestorePanel({ onUnlocked }) {
     setVersions([]);
     setVersionCredentialFingerprint("");
     try {
-      const response = await apiPost("/api/backup/remote/list", {
-        base_url: credentials.base_url,
-        token: credentials.token,
-        stream_id: streamID,
-      });
-      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
+      const response = await apiPost(
+        "/api/backup/remote/list",
+        {
+          base_url: credentials.base_url,
+          token: credentials.token,
+          stream_id: streamID,
+        },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent() || !remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       const nextVersions = response?.items?.[0]?.backups || [];
       setVersions(nextVersions);
       setSelectedBackupID(nextVersions[0]?.id || "");
       setVersionCredentialFingerprint(fingerprint);
       setState({ state: "ready", error: null });
     } catch (error) {
-      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
+      if (!request.isCurrent() || !remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       setState({ state: "error", error: error.message });
+    } finally {
+      request.complete();
     }
   }
 
@@ -85,6 +94,7 @@ export function RemoteRestorePanel({ onUnlocked }) {
     const credentials = { ...formRef.current };
     const fingerprint = remoteCredentialFingerprint(credentials);
     const generation = ++requestGeneration.current;
+    const request = listRequestGuard.begin("service");
     setState({ state: "connecting", error: null });
     setStreams([]);
     setSelectedStreamID("");
@@ -92,11 +102,15 @@ export function RemoteRestorePanel({ onUnlocked }) {
     setSelectedBackupID("");
     setVersionCredentialFingerprint("");
     try {
-      const response = await apiPost("/api/backup/remote/list", {
-        base_url: credentials.base_url,
-        token: credentials.token,
-      });
-      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
+      const response = await apiPost(
+        "/api/backup/remote/list",
+        {
+          base_url: credentials.base_url,
+          token: credentials.token,
+        },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent() || !remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       const nextStreams = response?.items || [];
       setStreams(nextStreams);
       if (nextStreams.length === 0) {
@@ -105,8 +119,10 @@ export function RemoteRestorePanel({ onUnlocked }) {
       }
       await loadVersions(nextStreams[0].id, credentials, nextStreams[0].database_name, generation);
     } catch (error) {
-      if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
+      if (!request.isCurrent() || !remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       setState({ state: "error", error: error.message });
+    } finally {
+      request.complete();
     }
   }
 
