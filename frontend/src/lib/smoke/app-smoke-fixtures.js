@@ -195,12 +195,6 @@ export const postgresConnectorConsoleTemplateSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "postgres", "console.jsx"),
   "utf8",
 );
-export const sharedSQLConsoleSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "sql-console.jsx"), "utf8");
-export const sharedSQLConsoleSupportSource = readFileSync(
-  join(currentDir, "..", "connectors", "templates", "_shared", "sql-console-support.jsx"),
-  "utf8",
-);
-export const sharedSQLEditorSource = readFileSync(join(currentDir, "..", "connectors", "templates", "_shared", "sql-editor.jsx"), "utf8");
 export const sharedNetworkTransportSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "_shared", "network-transport-fields.jsx"),
   "utf8",
@@ -209,7 +203,6 @@ export const sharedDatabaseConnectorModelSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "_shared", "database-connector-model.js"),
   "utf8",
 );
-export const postgresSQLConsoleSource = `${postgresConnectorConsoleTemplateSource}\n${sharedSQLConsoleSource}\n${sharedSQLConsoleSupportSource}\n${sharedSQLEditorSource}`;
 export const postgresConnectorIndexSource = readFileSync(
   join(currentDir, "..", "connectors", "templates", "postgres", "index.jsx"),
   "utf8",

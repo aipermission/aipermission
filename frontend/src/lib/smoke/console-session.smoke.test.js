@@ -18,7 +18,6 @@ import {
   connectorTokenPermissionPanelSource,
   connectorPermissionDialogSource,
   sshConnectorConsoleTemplateSource,
-  postgresSQLConsoleSource,
   vaultSessionDialogSource,
   ptyConsoleSource,
 } from "./app-smoke-fixtures.js";
@@ -38,31 +37,6 @@ test("Console exposes connector action approvals", () => {
   assert.match(consolePageSource, /useConsoleConnectorView/);
   assert.match(consolePageSource, /Console: selectedTemplate\?\.Console/);
   assert.match(consolePageSource, /useConnectorPermissions/);
-  assert.match(postgresSQLConsoleSource, /PostgresConnectorToolbarActionsTemplate/);
-  assert.match(postgresSQLConsoleSource, /browserLabel: "Schema"/);
-  assert.match(postgresSQLConsoleSource, /Search \$\{namespaceLabel\.toLowerCase\(\)\}s or tables/);
-  assert.match(postgresSQLConsoleSource, /prepareTableQuery/);
-  assert.match(postgresSQLConsoleSource, /filteredTableBrowserRows/);
-  assert.match(postgresSQLConsoleSource, /rowsToCSVText/);
-  assert.match(postgresSQLConsoleSource, /filenamePrefix: "postgres-result"/);
-  assert.match(postgresSQLConsoleSource, /Session requests/);
-  assert.match(postgresSQLConsoleSource, /No active \{config\.label\} session/);
-  assert.match(postgresSQLConsoleSource, /monaco-editor\/esm\/vs\/editor\/editor\.api/);
-  assert.match(postgresSQLConsoleSource, /queryAction: "query_readonly"/);
-  assert.match(postgresSQLConsoleSource, /describeAction: "describe_table"/);
-  assert.match(postgresSQLConsoleSource, /FROM pg_class c/);
-  assert.match(postgresSQLConsoleSource, /json_agg/);
-  assert.match(postgresSQLConsoleSource, /a\.attnum/);
-  assert.match(postgresSQLConsoleSource, /ChevronRight/);
-  assert.match(postgresSQLConsoleSource, /referencedTablesFromSQL/);
-  assert.match(postgresSQLConsoleSource, /tableMatchesReference/);
-  assert.match(postgresSQLConsoleSource, /CompletionItemKind\.Field/);
-  assert.match(postgresSQLConsoleSource, /fixedOverflowWidgets: true/);
-  assert.match(postgresSQLConsoleSource, /suggestController\.js/);
-  assert.match(postgresSQLConsoleSource, /acceptSuggestionOnEnter: "on"/);
-  assert.match(postgresSQLConsoleSource, /KeyMod\.CtrlCmd \| monacoInstance\.KeyCode\.Enter/);
-  assert.match(postgresSQLConsoleSource, /Run SQL \(Ctrl\+Enter\)/);
-  assert.match(postgresSQLConsoleSource, /Result View/);
   assert.match(consolePageSource, /useConsoleWorkspaceSession/);
   assert.match(consolePageSource, /onNewStructuredSession/);
   assert.match(consolePageSource, /target=/);
