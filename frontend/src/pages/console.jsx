@@ -1,12 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import {
-  currentConnectorTargetProfilePermissions,
-  effectiveConnectorTargetProfilePermissions,
-  selectedConnectorProfileID,
-} from "../lib/connector-permissions";
 import { useGateway } from "../lib/gateway-context";
-import { effectiveRule, permissionLifetimeLabel } from "../lib/permissions";
 import { useConnectorPermissions } from "../lib/use-connector-permissions";
 import { ConnectorActionApprovalDialog } from "../components/console/connector-action-approval-dialog";
 import { ConnectorActivityDialog } from "../components/console/connector-activity-dialog";
@@ -16,6 +10,7 @@ import { MessagesDialog } from "../components/console/messages-dialog";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 import { useConsoleMessages } from "../components/console/use-console-messages";
+import { useConsolePermissionView } from "../components/console/use-console-permission-view";
 import { useConsoleTargetSelection } from "../components/console/use-console-target-selection";
 import { useConsoleWorkspaceSession } from "../components/console/use-console-workspace-session";
 import { useConnectorApprovalDialog } from "../components/console/use-connector-approval-dialog";
@@ -92,36 +87,15 @@ export function ConsolePage() {
     allowTargetFallback: false,
   });
   const selectedTargetProfiles = targetSelection.selectedProfiles;
-  const selectedTokenOptions = useMemo(() => {
-    if (!selectedTarget) return [];
-    return tokens.data.filter((token) => {
-      if (token.revoked_at) return false;
-      const profileID = selectedConnectorProfileID(token.id, selectedTarget, selectedTargetProfiles);
-      return effectiveConnectorTargetProfilePermissions(connectorPermissionState.data[token.id] || [], selectedTarget, profileID, now).some(
-        (permission) => permission.project_enabled !== false,
-      );
-    });
-  }, [tokens.data, connectorPermissionState.data, selectedTarget, selectedTargetProfiles, now]);
   const selectedPendingConnectorApprovals = approvalDialog.selectedPendingApprovals;
-  const alwaysRunTokenPermissions = useMemo(() => {
-    if (!selectedTarget) return [];
-    return selectedTokenOptions
-      .map((token) => {
-        const profileID = selectedConnectorProfileID(token.id, selectedTarget, selectedTargetProfiles);
-        const permission = currentConnectorTargetProfilePermissions(
-          connectorPermissionState.data[token.id] || [],
-          selectedTarget,
-          profileID,
-        ).find((item) => effectiveRule(item, now) === "always_run");
-        return permission ? { token, permission } : null;
-      })
-      .filter(Boolean);
-  }, [selectedTokenOptions, connectorPermissionState.data, selectedTarget, selectedTargetProfiles, now]);
-  const temporaryAlwaysRunLabels = alwaysRunTokenPermissions
-    .map((item) => item.permission)
-    .filter((permission) => permission?.expires_at)
-    .map((permission) => permissionLifetimeLabel(permission, now));
-  const showAlwaysRunWarning = Boolean(mcpRuntime?.data?.enabled && selectedTarget && alwaysRunTokenPermissions.length > 0);
+  const { alwaysRunTokenPermissions, selectedTokenOptions, showAlwaysRunWarning, temporaryAlwaysRunLabels } = useConsolePermissionView({
+    connectorPermissions: connectorPermissionState.data,
+    mcpEnabled: mcpRuntime?.data?.enabled,
+    now,
+    profiles: selectedTargetProfiles,
+    target: selectedTarget,
+    tokens: tokens.data,
+  });
   const selectedRecoverableRunningActions = recoverableRunningActions(selectedTarget);
   const selectedRunningConnectorRequests =
     selectedTarget && selectedRecoverableRunningActions.length > 0
