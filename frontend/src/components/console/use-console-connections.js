@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import { apiPost } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
 import { consoleSessionAttachUrl, limitTranscript, parseConsoleSocketMessage } from "../app-shell-runtime";
 
 export function useConsoleConnections({ setConsoleSessions }) {
   const connectionsRef = useRef({});
   const expectedClosuresRef = useRef(new WeakSet());
+  const pendingClosuresRef = useRef(new WeakSet());
 
   const closeExpected = useCallback((connection) => {
     if (!connection) return;
@@ -114,6 +116,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
         if (connectionsRef.current[sessionID] !== socket) return;
         delete connectionsRef.current[sessionID];
         if (expectedClosuresRef.current.has(socket)) return;
+        if (pendingClosuresRef.current.has(socket)) return;
         patchSession(sessionID, (session) => ({
           status: "error",
           error: session.error || "Console connection closed unexpectedly. Reconnect to continue.",
@@ -148,13 +151,22 @@ export function useConsoleConnections({ setConsoleSessions }) {
   const closeSession = useCallback(
     async (sessionID) => {
       const connection = connectionsRef.current[sessionID];
-      if (connection) expectedClosuresRef.current.add(connection);
+      if (connection) pendingClosuresRef.current.add(connection);
       try {
         await apiPost(`/api/console/sessions/${sessionID}/close`, {});
       } catch (error) {
-        if (connection && connectionsRef.current[sessionID] === connection) expectedClosuresRef.current.delete(connection);
+        if (connection) {
+          pendingClosuresRef.current.delete(connection);
+          if (connectionsRef.current[sessionID] !== connection) {
+            patchSession(sessionID, () => ({
+              status: "error",
+              error: `Console connection closed before the session could be ended: ${errorMessage(error)}`,
+            }));
+          }
+        }
         throw error;
       }
+      if (connection) pendingClosuresRef.current.delete(connection);
       if (connectionsRef.current[sessionID] === connection) {
         closeExpected(connection);
         delete connectionsRef.current[sessionID];

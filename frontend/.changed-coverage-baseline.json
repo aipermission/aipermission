@@ -146,10 +146,10 @@
       "lines": 97.48
     },
     "src/components/console/use-console-connections.js": {
-      "statements": 72.56,
-      "branches": 67.44,
+      "statements": 76,
+      "branches": 71.11,
       "functions": 60,
-      "lines": 72.56
+      "lines": 76
     },
     "src/components/console/use-console-connector-view.js": {
       "statements": 100,

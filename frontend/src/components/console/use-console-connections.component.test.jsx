@@ -121,4 +121,66 @@ describe("useConsoleConnections", () => {
     expect(FakeWebSocket.instances[0].readyState).toBe(FakeWebSocket.CLOSED);
     expect(result.current.sessions.data[0]).toMatchObject({ status: "closed", error: null });
   });
+
+  it("reports a failed close when the socket disappears before the API rejects", async () => {
+    let rejectClose;
+    apiPost.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectClose = reject;
+        }),
+    );
+    const { result } = renderHook(() => useHarness());
+    act(() => result.current.connections.attachSession(7));
+
+    let closePromise;
+    act(() => {
+      closePromise = result.current.connections.closeSession(7);
+    });
+    const socket = FakeWebSocket.instances[0];
+    act(() => {
+      socket.readyState = FakeWebSocket.CLOSED;
+      socket.onclose();
+    });
+    expect(result.current.sessions.data[0]).toMatchObject({ status: "connecting", error: null });
+
+    await act(async () => {
+      rejectClose(new Error("close endpoint unavailable"));
+      await expect(closePromise).rejects.toThrow("close endpoint unavailable");
+    });
+
+    expect(result.current.sessions.data[0]).toMatchObject({
+      status: "error",
+      error: "Console connection closed before the session could be ended: close endpoint unavailable",
+    });
+  });
+
+  it("commits a close when the socket disappears before the API succeeds", async () => {
+    let resolveClose;
+    apiPost.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveClose = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useHarness());
+    act(() => result.current.connections.attachSession(7));
+
+    let closePromise;
+    act(() => {
+      closePromise = result.current.connections.closeSession(7);
+    });
+    const socket = FakeWebSocket.instances[0];
+    act(() => {
+      socket.readyState = FakeWebSocket.CLOSED;
+      socket.onclose();
+    });
+
+    await act(async () => {
+      resolveClose({});
+      await closePromise;
+    });
+
+    expect(result.current.sessions.data[0]).toMatchObject({ status: "closed", error: null });
+  });
 });
