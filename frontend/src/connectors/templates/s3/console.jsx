@@ -28,7 +28,7 @@ import { S3EndpointFooter } from "./endpoint-footer";
 import { S3MetadataPanel } from "./metadata-panel";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
-import { useRequestGuard } from "../_shared/request-guard";
+import { useRequestGuard } from "../../../lib/request-guard";
 
 export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
   const activeSession = session || { active: false, startedAt: "" };

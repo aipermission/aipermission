@@ -8,7 +8,7 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
-import { useRequestGuard } from "../_shared/request-guard";
+import { useRequestGuard } from "../../../lib/request-guard";
 
 const defaultQueueLimit = 250;
 const defaultPeekCount = 5;

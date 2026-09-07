@@ -7,7 +7,7 @@ import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
-import { useRequestGuard } from "../_shared/request-guard";
+import { useRequestGuard } from "../../../lib/request-guard";
 import {
   resourceKey,
   resourceSearchValues,

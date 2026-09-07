@@ -6,7 +6,7 @@ import { Notice } from "../../../components/ui/notice";
 import { apiPost } from "../../../lib/api";
 import { requireCompletedConnectorAction } from "./action-result";
 import { connectorConsoleTheme } from "./console-theme";
-import { useRequestGuard } from "./request-guard";
+import { useRequestGuard } from "../../../lib/request-guard";
 import { extractTableSuggestions, normalizeConnectorOutput, pendingMetadataReferences, tableReferenceKey } from "./sql-console-data";
 
 import {

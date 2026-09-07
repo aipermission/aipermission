@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
-import { useRequestGuard } from "../_shared/request-guard";
+import { useRequestGuard } from "../../../lib/request-guard";
 import { serverProductLabel, validateStringWrite } from "./model";
 
 const defaultPattern = "*";

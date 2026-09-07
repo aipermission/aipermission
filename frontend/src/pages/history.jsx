@@ -16,7 +16,7 @@ import {
   targetOptionLabel,
 } from "../components/history/history-components";
 import { connectorKindLabel } from "../connectors/templates/common";
-import { useRequestGuard } from "../connectors/templates/_shared/request-guard";
+import { useRequestGuard } from "../lib/request-guard";
 import { apiDelete, apiGet, apiPost } from "../lib/api";
 import {
   currentHistoryPage,

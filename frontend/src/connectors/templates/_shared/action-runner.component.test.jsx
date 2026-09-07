@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { runGuardedConnectorAction } from "./action-runner.js";
-import { createRequestGuard } from "./request-guard.js";
+import { createRequestGuard } from "../../../lib/request-guard.js";
 
 function runnerOptions(overrides = {}) {
   const setState = vi.fn();

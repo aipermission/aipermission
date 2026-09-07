@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPut } from "./api";
+import { useRequestGuard } from "./request-guard";
 
 const emptyState = {
   state: "idle",
@@ -10,103 +11,116 @@ const emptyState = {
 
 export function useConnectorPermissions(initialTokens = []) {
   const [permissionState, setPermissionState] = useState(emptyState);
-  const mountedRef = useRef(false);
-  const permissionLoadRef = useRef(0);
-  const actionLoadRefs = useRef(new Map());
-
-  useEffect(() => {
-    const actionLoads = actionLoadRefs.current;
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      permissionLoadRef.current += 1;
-      actionLoads.clear();
-    };
-  }, []);
+  const permissionRevisionRef = useRef(0);
+  const requestGuard = useRequestGuard("connector-permissions");
 
   const loadAllConnectorPermissions = useCallback(
     async (tokenItems = initialTokens) => {
-      const generation = ++permissionLoadRef.current;
+      const request = requestGuard.begin("permissions:load");
+      const revision = permissionRevisionRef.current;
       if (tokenItems.length === 0) {
-        if (mountedRef.current) setPermissionState((current) => ({ ...current, state: "ready", data: {}, error: null }));
+        if (request.isCurrent()) setPermissionState((current) => ({ ...current, state: "ready", data: {}, error: null }));
+        request.complete();
         return {};
       }
       setPermissionState((current) => ({ ...current, state: "loading", error: null }));
       try {
         const entries = await Promise.all(
           tokenItems.map(async (token) => {
-            const permissions = await apiGet(`/api/tokens/${token.id}/connector-permissions`);
+            const permissions = await apiGet(`/api/tokens/${token.id}/connector-permissions`, { signal: request.signal });
             return [token.id, permissions.items || []];
           }),
         );
         const data = Object.fromEntries(entries);
-        if (!mountedRef.current || generation !== permissionLoadRef.current) return data;
+        if (!request.isCurrent() || revision !== permissionRevisionRef.current) return data;
         setPermissionState((current) => ({ ...current, state: "ready", data, error: null }));
         return data;
       } catch (error) {
-        if (!mountedRef.current || generation !== permissionLoadRef.current) return {};
+        if (!request.isCurrent() || revision !== permissionRevisionRef.current) return {};
         setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
         return {};
+      } finally {
+        request.complete();
       }
     },
-    [initialTokens],
+    [initialTokens, requestGuard],
   );
 
-  const loadConnectorActions = useCallback(async (targetOrKind) => {
-    if (!targetOrKind) return [];
-    setPermissionState((current) => ({ ...current, error: null }));
-    let request = null;
-    try {
-      if (typeof targetOrKind === "object") {
-        const target = targetOrKind;
-        const targetID = target.target_id || target.id;
-        const profileID = target.profile_id || (target.profiles?.length === 1 ? target.profiles[0]?.id : "");
-        if (!targetID || !profileID) return [];
-        const cacheKey = connectorActionCacheKey(target, profileID);
-        const generation = (actionLoadRefs.current.get(cacheKey) || 0) + 1;
-        actionLoadRefs.current.set(cacheKey, generation);
-        request = { cacheKey, generation };
-        const result = await apiGet(`/api/connector-targets/${targetID}/profiles/${profileID}/actions`);
-        const actions = result.items || [];
-        if (!mountedRef.current || actionLoadRefs.current.get(cacheKey) !== generation) return actions;
+  const loadConnectorActions = useCallback(
+    async (targetOrKind) => {
+      if (!targetOrKind) return [];
+      setPermissionState((current) => ({ ...current, error: null }));
+      let request = null;
+      try {
+        if (typeof targetOrKind === "object") {
+          const target = targetOrKind;
+          const targetID = target.target_id || target.id;
+          const profileID = target.profile_id || (target.profiles?.length === 1 ? target.profiles[0]?.id : "");
+          if (!targetID || !profileID) return [];
+          const cacheKey = connectorActionCacheKey(target, profileID);
+          request = requestGuard.begin(`actions:${cacheKey}`);
+          const result = await apiGet(`/api/connector-targets/${targetID}/profiles/${profileID}/actions`, { signal: request.signal });
+          const actions = result.items || [];
+          if (!request.isCurrent()) return actions;
+          setPermissionState((current) => ({
+            ...current,
+            actionsByTargetRef: {
+              ...current.actionsByTargetRef,
+              [cacheKey]: actions,
+            },
+            error: null,
+          }));
+          return actions;
+        }
+        return [];
+      } catch (error) {
+        if (request && !request.isCurrent()) return [];
+        setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
+        return [];
+      } finally {
+        request?.complete();
+      }
+    },
+    [requestGuard],
+  );
+
+  const replaceTokenConnectorPermissions = useCallback(
+    async (tokenID, permissions) => {
+      permissionRevisionRef.current += 1;
+      requestGuard.invalidate("permissions:load");
+      const request = requestGuard.begin(`permissions:write:${tokenID}`);
+      try {
+        const result = await apiPut(
+          `/api/tokens/${tokenID}/connector-permissions`,
+          { permissions: permissions.map(permissionInput) },
+          { signal: request.signal },
+        );
+        const items = result.items || [];
+        if (!request.isCurrent()) return items;
         setPermissionState((current) => ({
           ...current,
-          actionsByTargetRef: {
-            ...current.actionsByTargetRef,
-            [cacheKey]: actions,
+          state: "ready",
+          data: {
+            ...current.data,
+            [tokenID]: items,
           },
           error: null,
         }));
-        return actions;
+        return items;
+      } catch (error) {
+        if (!request.isCurrent()) return [];
+        setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
+        throw error;
+      } finally {
+        if (request.isCurrent()) {
+          permissionRevisionRef.current += 1;
+          requestGuard.invalidate("permissions:load");
+        }
+        request.complete();
       }
-      return [];
-    } catch (error) {
-      if (!mountedRef.current || (request && actionLoadRefs.current.get(request.cacheKey) !== request.generation)) return [];
-      setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
-      return [];
-    }
-  }, []);
-
-  const replaceTokenConnectorPermissions = useCallback(async (tokenID, permissions) => {
-    try {
-      const result = await apiPut(`/api/tokens/${tokenID}/connector-permissions`, {
-        permissions: permissions.map(permissionInput),
-      });
-      setPermissionState((current) => ({
-        ...current,
-        state: "ready",
-        data: {
-          ...current.data,
-          [tokenID]: result.items || [],
-        },
-        error: null,
-      }));
-      return result.items || [];
-    } catch (error) {
-      setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
-      throw error;
-    }
-  }, []);
+    },
+    [requestGuard],
+  );
 
   return {
     connectorPermissionState: permissionState,
