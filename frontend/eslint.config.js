@@ -26,8 +26,8 @@ export default [
     rules: {
       ...eslint.configs.recommended.rules,
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
-      complexity: ["error", { max: 50 }],
-      "max-lines-per-function": ["error", { max: 500, skipBlankLines: true, skipComments: true, IIFEs: true }],
+      complexity: ["error", { max: 25 }],
+      "max-lines-per-function": ["error", { max: 250, skipBlankLines: true, skipComments: true, IIFEs: true }],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
     },

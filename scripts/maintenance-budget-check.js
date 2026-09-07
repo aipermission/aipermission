@@ -9,7 +9,7 @@ const sourceBudgets = [
   {
     directory: "frontend/src",
     extensions: new Set([".js", ".jsx", ".ts", ".tsx"]),
-    maxLines: 800,
+    maxLines: 750,
   },
   {
     directory: "packages/mcp/src",
