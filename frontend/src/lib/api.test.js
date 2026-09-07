@@ -257,6 +257,56 @@ test("a fresh client rejection cannot retire a retry identity used by another ac
   }
 });
 
+test("a completed uncertain attempt keeps its retry identity after another attempt is rejected", async () => {
+  const originalFetch = globalThis.fetch;
+  const restoreBrowser = installFakeBrowserRetryStorage("workspace-completed-uncertain-attempt");
+  const keys = [];
+  let releaseFirst;
+  let signalFirstStarted;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const firstStarted = new Promise((resolve) => {
+    signalFirstStarted = resolve;
+  });
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    keys.push(JSON.parse(options.body).idempotency_key);
+    calls += 1;
+    if (calls === 1) {
+      signalFirstStarted();
+      await firstGate;
+      return response({ error: "invalid request" }, 400);
+    }
+    if (calls === 2) throw new TypeError("network disconnected after dispatch");
+    return response(localActionResponse());
+  };
+  try {
+    const body = { target_ref: "fixture:completed-uncertain", action_name: "mutate", input: {}, reason: "test" };
+    const first = apiPost("/api/connector-actions/local-run", body).then(
+      () => null,
+      (error) => error,
+    );
+    await firstStarted;
+    await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /network disconnected after dispatch/);
+
+    releaseFirst();
+    assert.match((await first).message, /invalid request/);
+
+    await apiPost("/api/connector-actions/local-run", body);
+    assert.equal(keys[0], keys[1]);
+    assert.equal(keys[1], keys[2]);
+
+    await apiPost("/api/connector-actions/local-run", body);
+    assert.notEqual(keys[2], keys[3]);
+  } finally {
+    releaseFirst?.();
+    globalThis.fetch = originalFetch;
+    await resetLocalActionRetryLedger();
+    restoreBrowser();
+  }
+});
+
 test("completed retry scopes release signing keys beyond the historical scope limit", async () => {
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-completed-0");
   try {

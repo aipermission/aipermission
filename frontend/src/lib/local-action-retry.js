@@ -90,6 +90,25 @@ export async function releaseLocalActionRetryAttempt(prepared) {
   return releaseEntryAttempt(prepared);
 }
 
+export async function preserveLocalActionRetryAttempt(prepared) {
+  if (!prepared?.scope || !prepared.signature) return;
+  const changed = await updateEntryIfMatching(prepared, (entry) => ({
+    ...entry,
+    revision: entry.revision + 1,
+    updated_at: new Date().toISOString(),
+  }));
+  if (changed) return;
+  const current = await getEntry(prepared.scope, prepared.signature);
+  if (
+    current?.key === prepared.idempotencyKey &&
+    current.revision > prepared.revision &&
+    validRetryEntry(current, prepared.scope.key, prepared.signature)
+  ) {
+    return;
+  }
+  throw retryIdentityChangedError();
+}
+
 export async function listLocalActionRetryEntries() {
   const scope = currentRetryScope();
   if (readLegacyLedger(scope)) {

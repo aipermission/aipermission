@@ -2,6 +2,7 @@ import {
   completeLocalActionRetry,
   markLocalActionRetryOutcome,
   prepareLocalActionRetry,
+  preserveLocalActionRetryAttempt,
   releaseLocalActionRetryAttempt,
 } from "./local-action-retry.js";
 import { APIError } from "./errors.js";
@@ -56,9 +57,18 @@ export async function apiPost(path, body, options = {}) {
       throw new Error("Invalid connector action response from gateway.");
     }
     return data;
+  } catch (error) {
+    finalized = await preserveRetryAfterFailure(prepared.retry, finalized);
+    throw error;
   } finally {
     if (prepared.retry && !finalized) await releaseLocalActionRetryAttempt(prepared.retry);
   }
+}
+
+async function preserveRetryAfterFailure(retry, finalized) {
+  if (!retry || finalized) return finalized;
+  await preserveLocalActionRetryAttempt(retry);
+  return true;
 }
 
 const acknowledgedLocalActionStatuses = new Set([
