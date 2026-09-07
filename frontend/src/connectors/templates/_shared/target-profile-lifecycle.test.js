@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
-const standardLifecycleKinds = ["docker", "kafka", "kubernetes", "mail", "rabbitmq", "redis", "s3"];
-
 test("standard connector models keep generic target and profile CRUD in the shared lifecycle", () => {
-  for (const kind of standardLifecycleKinds) {
+  const templates = readdirSync(new URL("../", import.meta.url), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "_shared")
+    .map((entry) => entry.name)
+    .sort();
+  for (const kind of templates) {
+    const metadata = JSON.parse(readFileSync(new URL(`../${kind}/metadata.json`, import.meta.url), "utf8"));
+    assert.ok(["standard", "custom"].includes(metadata.profile_lifecycle), `${kind} must declare its profile lifecycle`);
+    if (metadata.profile_lifecycle === "custom") continue;
     const source = readFileSync(new URL(`../${kind}/model.js`, import.meta.url), "utf8");
     assert.match(source, /createTargetProfileLifecycle/, `${kind} must use the shared target/profile lifecycle`);
     assert.match(source, /connectorCredentialRows/, `${kind} must use the shared credential row contract`);

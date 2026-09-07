@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Notice } from "../../components/ui/notice";
 import { apiPost } from "../../lib/api";
+import { connectorTemplateMetadata } from "./catalog";
 
 export function HostPingButton({ host, port, mode = "direct", transportTargetRef = "", projectID = 0, label = "Ping host" }) {
   const [dialog, setDialog] = useState({ open: false, state: "idle", result: null, error: "" });
@@ -115,12 +116,16 @@ export function HostPingButton({ host, port, mode = "direct", transportTargetRef
 function pingDisabledReason({ host, port, mode, transportTargetRef, projectID }) {
   if (!String(host || "").trim()) return "Enter a host first.";
   if (!Number.isInteger(port) || port < 1 || port > 65535) return "Enter a valid port first.";
-  if (mode === "over_ssh" && !String(transportTargetRef || "").trim()) return "Select an SSH transport profile first.";
-  if (mode === "over_ssh" && (!Number.isInteger(Number(projectID)) || Number(projectID) < 1))
-    return "Select a project before testing an SSH transport.";
+  if (mode !== "direct" && !String(transportTargetRef || "").trim()) return "Select a transport profile first.";
+  if (mode !== "direct" && (!Number.isInteger(Number(projectID)) || Number(projectID) < 1))
+    return "Select a project before testing this transport.";
   return "";
 }
 
 function modeLabel(mode) {
-  return mode === "over_ssh" ? "Over SSH" : "Direct";
+  if (mode === "direct") return "Direct";
+  return (
+    Object.values(connectorTemplateMetadata).find((metadata) => metadata.network_transport?.mode === mode)?.network_transport?.label ||
+    "Connector transport"
+  );
 }

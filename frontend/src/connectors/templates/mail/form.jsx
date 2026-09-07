@@ -16,7 +16,7 @@ export function MailConnectorFormTemplate({ form, mode = "create", targets = [],
         form={form}
         targets={targets}
         onChange={onChange}
-        overSSHNotice="IMAP and SMTP hostnames resolve from the selected SSH server. The transport profile must belong to this project."
+        transportNotice="IMAP and SMTP hostnames resolve from the selected SSH server. The transport profile must belong to this project."
         directNotice="The local gateway connects to both mail endpoints. Use host.docker.internal only for services on the Docker host."
       />
       <MailEndpointFields prefix="imap" label="IMAP" form={form} onChange={onChange} />

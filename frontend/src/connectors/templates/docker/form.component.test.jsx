@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import { verifySSHProfileForm } from "../_shared/network-transport-form-test-support";
+import { verifyTransportProfileForm } from "../_shared/network-transport-form.test-support";
 import { DockerConnectorFormTemplate } from "./form";
 
-it("keeps Docker wired to the shared SSH profile contract", async () => {
-  await verifySSHProfileForm(DockerConnectorFormTemplate, { docker_command: "docker" });
+it("keeps Docker wired to the shared transport profile contract", async () => {
+  await verifyTransportProfileForm(DockerConnectorFormTemplate, { docker_command: "docker" });
 });
 
 it("edits explicit container and pattern scopes", async () => {

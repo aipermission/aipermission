@@ -99,6 +99,10 @@ function assertConnectorTemplate(kind, template) {
   if (!allowedConnectorIcons.includes(template.metadata.icon || "")) {
     throw new Error(`Connector template ${kind} metadata icon must be one of: ${allowedConnectorIcons.join(", ")}`);
   }
+  if (!["standard", "custom"].includes(template.metadata.profile_lifecycle)) {
+    throw new Error(`Connector template ${kind} metadata profile_lifecycle must be standard or custom`);
+  }
+  assertNetworkTransportMetadata(kind, template.metadata.network_transport);
   for (const slot of ["Console", "CredentialForm", "Form", "RowActions"]) {
     if (typeof template[slot] !== "function") {
       throw new Error(`Connector template ${kind} is missing ${slot} slot`);
@@ -111,6 +115,31 @@ function assertConnectorTemplate(kind, template) {
     if (typeof template.model[fn] !== "function") {
       throw new Error(`Connector template ${kind} model is missing ${fn}()`);
     }
+  }
+}
+
+function assertNetworkTransportMetadata(kind, transport) {
+  if (transport === undefined) return;
+  if (!transport || typeof transport !== "object" || Array.isArray(transport)) {
+    throw new Error(`Connector template ${kind} metadata network_transport must be an object`);
+  }
+  if (
+    !String(transport.mode || "").trim() ||
+    !String(transport.label || "").trim() ||
+    !String(transport.option_label || "").trim() ||
+    !String(transport.profile_label || "").trim()
+  ) {
+    throw new Error(`Connector template ${kind} metadata network_transport requires mode, label, option_label, and profile_label`);
+  }
+  const endpoint = transport.profile_endpoint;
+  if (
+    !endpoint ||
+    !Array.isArray(endpoint.fields) ||
+    endpoint.fields.length === 0 ||
+    endpoint.fields.some((field) => !String(field?.path || "").trim()) ||
+    !String(endpoint.separator || "").trim()
+  ) {
+    throw new Error(`Connector template ${kind} metadata network_transport requires a profile_endpoint field template`);
   }
 }
 

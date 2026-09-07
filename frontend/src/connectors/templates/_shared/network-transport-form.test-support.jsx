@@ -45,10 +45,10 @@ export async function verifyConnectionModeForm(Component, form, directNotice) {
       onChange={onChange}
     />,
   );
-  await verifySSHProfileSelection(user, onChange);
+  await verifyTransportProfileSelection(user, onChange, "SSH connector profile");
 }
 
-export async function verifySSHProfileForm(Component, form) {
+export async function verifyTransportProfileForm(Component, form) {
   const user = userEvent.setup();
   const onChange = vi.fn();
   const { container } = render(
@@ -57,11 +57,11 @@ export async function verifySSHProfileForm(Component, form) {
 
   exerciseEditableFields(container);
   expect(onChange).toHaveBeenCalledWith("name", "changed");
-  await verifySSHProfileSelection(user, onChange);
+  await verifyTransportProfileSelection(user, onChange, "Transport profile");
 }
 
-async function verifySSHProfileSelection(user, onChange) {
-  const profile = screen.getByLabelText("SSH transport profile");
+async function verifyTransportProfileSelection(user, onChange, label) {
+  const profile = screen.getByLabelText(label);
   expect(profile).toHaveValue("ssh:4:8");
   expect(screen.queryByRole("option", { name: /Other connector/ })).not.toBeInTheDocument();
   await user.selectOptions(profile, "ssh:4:8");

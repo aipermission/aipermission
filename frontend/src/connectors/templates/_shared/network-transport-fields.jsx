@@ -1,6 +1,7 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { HostPingButton } from "../host-ping-button";
+import { connectorTemplateMetadata, getConnectorMetadata } from "../catalog";
 
 export function NetworkTransportFields({
   form,
@@ -8,68 +9,63 @@ export function NetworkTransportFields({
   onChange,
   hostLabel = "Host",
   portLabel = "Port",
-  overSSHNotice,
+  transportNotice,
   directNotice,
 }) {
   return (
     <>
-      <ConnectionModeFields form={form} targets={targets} onChange={onChange} overSSHNotice={overSSHNotice} directNotice={directNotice} />
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
-        <Field>
-          <span className="flex items-center justify-between gap-2">
-            <span>{hostLabel}</span>
-            <HostPingButton
-              host={form.host}
-              port={form.port}
-              mode={form.connection_mode}
-              transportTargetRef={form.transport_target_ref}
-              projectID={form.project_id}
-            />
-          </span>
-          <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
-        </Field>
-        <Field>
-          {portLabel}
-          <Input type="number" min="1" max="65535" value={form.port} onChange={(event) => onChange("port", event.target.value)} required />
-        </Field>
-      </div>
+      <ConnectionModeFields
+        form={form}
+        targets={targets}
+        onChange={onChange}
+        transportNotice={transportNotice}
+        directNotice={directNotice}
+      />
+      <NetworkEndpointFields form={form} onChange={onChange} hostLabel={hostLabel} portLabel={portLabel} />
     </>
   );
 }
 
-export function ConnectionModeFields({ form, targets = [], onChange, overSSHNotice, directNotice }) {
-  const overSSH = form.connection_mode === "over_ssh";
+export function ConnectionModeFields({ form, targets = [], onChange, transportNotice, directNotice }) {
+  const usesTransport = form.connection_mode !== "direct";
+  const transport = networkTransportDescriptors().find((item) => item.mode === form.connection_mode);
   return (
     <>
       <Field>
         Connection mode
         <Select value={form.connection_mode} onChange={(event) => onChange("connection_mode", event.target.value)}>
           <option value="direct">Direct from this gateway</option>
-          <option value="over_ssh">Over an SSH connector profile</option>
+          {networkTransportDescriptors().map((transport) => (
+            <option value={transport.mode} key={transport.mode}>
+              {transport.option_label}
+            </option>
+          ))}
         </Select>
       </Field>
-      {overSSH ? (
-        <SSHTransportProfileField
+      {usesTransport ? (
+        <TransportProfileField
           value={form.transport_target_ref}
+          transportMode={form.connection_mode}
+          label={transport?.profile_label}
           targets={targets}
           onChange={(value) => onChange("transport_target_ref", value)}
         />
       ) : null}
-      {overSSH && overSSHNotice ? <Notice>{overSSHNotice}</Notice> : null}
-      {!overSSH && directNotice ? <Notice>{directNotice}</Notice> : null}
+      {usesTransport && transportNotice ? <Notice>{transportNotice}</Notice> : null}
+      {!usesTransport && directNotice ? <Notice>{directNotice}</Notice> : null}
     </>
   );
 }
 
-export function SSHTransportProfileField({ value, targets = [], onChange }) {
+export function TransportProfileField({ value, transportMode = "over_ssh", label = "Transport profile", targets = [], onChange }) {
   return (
     <Field>
-      SSH transport profile
+      {label}
       <Select value={value} onChange={(event) => onChange(event.target.value)} required>
         <option value="" disabled>
-          Select SSH profile
+          Select {label.toLowerCase()}
         </option>
-        {sshProfileOptions(targets).map((profile) => (
+        {transportProfileOptions(targets, transportMode).map((profile) => (
           <option value={profile.ref} key={profile.ref}>
             {profile.label}
           </option>
@@ -79,13 +75,84 @@ export function SSHTransportProfileField({ value, targets = [], onChange }) {
   );
 }
 
-export function sshProfileOptions(targets) {
-  return (targets || [])
-    .filter((target) => target.connector_kind === "ssh")
-    .flatMap((target) =>
-      (target.profiles || []).map((profile) => ({
-        ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
-        label: `${target.name} / ${profile.label} · ${target.config?.host || "host"}:${target.config?.port || 22}`,
-      })),
-    );
+export function transportProfileOptions(targets, transportMode = "over_ssh") {
+  return (targets || []).flatMap((target) => {
+    const transport = getConnectorMetadata(target.connector_kind)?.network_transport;
+    if (transport?.mode !== transportMode) return [];
+    return (target.profiles || []).map((profile) => ({
+      ref: profile.ref || `${target.connector_kind}:${target.id}:${profile.id}`,
+      label: transportProfileOptionLabel(target, profile, transport),
+    }));
+  });
+}
+
+export function NetworkEndpointFields({
+  form,
+  onChange,
+  hostLabel = "Host",
+  portLabel = "Port",
+  portPlaceholder,
+  leading = null,
+  trailing = null,
+  className = "sm:grid-cols-[minmax(0,1fr)_120px]",
+}) {
+  return (
+    <div className={`grid gap-3 ${className}`}>
+      {leading}
+      <Field>
+        <span className="flex items-center justify-between gap-2">
+          <span>{hostLabel}</span>
+          <HostPingButton
+            host={form.host}
+            port={form.port}
+            mode={form.connection_mode}
+            transportTargetRef={form.transport_target_ref}
+            projectID={form.project_id}
+          />
+        </span>
+        <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
+      </Field>
+      <Field>
+        {portLabel}
+        <Input
+          type="number"
+          min="1"
+          max="65535"
+          value={form.port}
+          onChange={(event) => onChange("port", event.target.value)}
+          placeholder={portPlaceholder}
+          required
+        />
+      </Field>
+      {trailing}
+    </div>
+  );
+}
+
+function transportProfileOptionLabel(target, profile, transport) {
+  const endpoint = (transport.profile_endpoint?.fields || [])
+    .map((field) => valueAtPath({ target, profile }, field.path) ?? field.fallback)
+    .filter((value) => value !== undefined && value !== null && value !== "")
+    .join(transport.profile_endpoint?.separator || " ");
+  return `${target.name} / ${profile.label}${endpoint ? ` · ${endpoint}` : ""}`;
+}
+
+function valueAtPath(value, path) {
+  return String(path || "")
+    .split(".")
+    .filter(Boolean)
+    .reduce((current, key) => current?.[key], value);
+}
+
+export function networkTransportDescriptors() {
+  const byMode = new Map();
+  for (const metadata of Object.values(connectorTemplateMetadata)) {
+    const transport = metadata.network_transport;
+    if (transport && !byMode.has(transport.mode)) byMode.set(transport.mode, transport);
+  }
+  return sortNetworkTransportDescriptors([...byMode.values()]);
+}
+
+export function sortNetworkTransportDescriptors(descriptors) {
+  return [...descriptors].sort((left, right) => left.option_label.localeCompare(right.option_label));
 }
