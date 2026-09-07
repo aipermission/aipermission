@@ -35,12 +35,6 @@ export default [
   // Existing large functions are pinned to their current ceiling. New source
   // uses the stricter defaults above, and each override must only move down.
   {
-    files: ["src/connectors/templates/docker/console.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 566, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
     files: ["src/connectors/templates/s3/console.jsx"],
     rules: {
       "max-lines-per-function": ["error", { max: 727, skipBlankLines: true, skipComments: true, IIFEs: true }],
