@@ -80,6 +80,10 @@ export function ConsolePage() {
   });
   const selectedTargetProfiles = targetSelection.selectedProfiles;
   const selectedPendingConnectorApprovals = approvalDialog.selectedPendingApprovals;
+  const { now, runningRequest: selectedRunningRequest } = useConsoleRecoveryState({
+    approvals: connectorActionApprovals.data,
+    selectedTarget,
+  });
   const { alwaysRunTokenPermissions, selectedTokenOptions, showAlwaysRunWarning, temporaryAlwaysRunLabels } = useConsolePermissionView({
     connectorPermissions: connectorPermissionState.data,
     mcpEnabled: mcpRuntime?.data?.enabled,
@@ -87,10 +91,6 @@ export function ConsolePage() {
     profiles: selectedTargetProfiles,
     target: selectedTarget,
     tokens: tokens.data,
-  });
-  const { now, runningRequest: selectedRunningRequest } = useConsoleRecoveryState({
-    approvals: connectorActionApprovals.data,
-    selectedTarget,
   });
   const workspaceSession = useConsoleWorkspaceSession({
     attachConsoleSession,
