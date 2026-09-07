@@ -29,8 +29,8 @@ test("Console exposes connector action approvals", () => {
   assert.match(shellSource, /\/api\/connector-action-approvals/);
   assert.doesNotMatch(shellSource, /\/api\/approvals/);
   assert.doesNotMatch(consolePageSource, /components\/console\/approval-dialog|<ApprovalDialog\b|activeApprovalSnapshot/);
-  assert.equal(consolePageSource.includes("run" + "Approval"), false);
-  assert.equal(consolePageSource.includes("decline" + "Approval"), false);
+  assert.match(consolePageSource, /useConnectorApprovalDialog/);
+  assert.doesNotMatch(consolePageSource, /\/api\/connector-action-approvals\/\$\{/);
   assert.doesNotMatch(consolePageSource, /\/api\/approvals/);
   assert.doesNotMatch(bulkCommandDialogSource, /\/api\/approvals/);
   assert.match(bulkCommandDialogSource, /\/api\/console\/command-requests\/\$\{item\.request_id\}/);
