@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { connectorActionPending } from "../_shared/action-result";
+import { connectorActionPending, connectorActionRequestID } from "../_shared/action-result";
 import { addressValues, replySubject, replyText, submissionDraftFingerprint, unknownSubmissionRetryDecision } from "./helpers";
 
 const emptyCompose = { open: false, reply: false, form: {} };
@@ -55,7 +55,7 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
       );
       if (!item) return;
       if (connectorActionPending(item)) {
-        setCompose((current) => ({ ...current, form: fields, pendingRequestID: item.id }));
+        setCompose((current) => ({ ...current, form: fields, pendingRequestID: connectorActionRequestID(item) }));
         return;
       }
       closeAfterSuccess();

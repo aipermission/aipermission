@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { apiPost } from "../../../lib/api";
-import { connectorActionCode, connectorActionError, connectorActionPending } from "../_shared/action-result";
+import { connectorActionCode, connectorActionError, connectorActionPending, connectorActionRequestID } from "../_shared/action-result";
 import { mailActionResolution, mailActionSummary } from "./helpers";
 
 const browserActions = new Set(["list_folders", "search_messages", "get_message"]);
@@ -83,9 +83,10 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
       const actionError = connectorActionError(item);
       if (actionError) throw actionFailure(actionName, actionError, item, setState, setResultDialog);
       if (connectorActionPending(item)) {
+        const requestID = connectorActionRequestID(item);
         setPendingActions((current) => ({
           ...current,
-          [item.id]: { requestID: item.id, actionName, context: pendingContext, generation },
+          [requestID]: { requestID, actionName, context: pendingContext, generation },
         }));
         const message = item.display_text || "Mail action is awaiting approval.";
         setState({ state: "idle", error: "", message, result: { actionName, summary: message, item } });

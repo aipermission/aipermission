@@ -54,7 +54,7 @@ it("loads the Mail workspace and keeps read state coherent", async () => {
 
 it("reconciles an approved outbound action without losing its draft early", async () => {
   apiPost.mockImplementation(async (_path, payload) => {
-    if (payload.action_name === "send_message") return { id: 41, status: "approval_pending", display_text: "Awaiting approval" };
+    if (payload.action_name === "send_message") return { request_id: 41, status: "approval_pending", display_text: "Awaiting approval" };
     return actionResponse(payload.action_name, payload.input);
   });
   const { result, rerender, props } = renderWorkspace();
@@ -70,6 +70,29 @@ it("reconciles an approved outbound action without losing its draft early", asyn
   });
   await waitFor(() => expect(result.current.compose.compose.open).toBe(false));
   expect(result.current.runner.state.message).toBe("Message accepted for SMTP delivery.");
+});
+
+it("fails closed when a pending action omits its request identity", async () => {
+  apiPost.mockImplementation(async (_path, payload) => {
+    if (payload.action_name === "send_message") return { id: 41, status: "approval_pending", display_text: "Awaiting approval" };
+    return actionResponse(payload.action_name, payload.input);
+  });
+  const { result } = renderWorkspace();
+  await waitFor(() => expect(result.current.mailbox.messages).toHaveLength(1));
+  act(() => result.current.openCompose());
+  await act(async () =>
+    result.current.compose.submitMessage({
+      to: ["one@example.com"],
+      cc: [],
+      bcc: [],
+      subject: "Status",
+      text_body: "Ready",
+      html_body: "",
+    }),
+  );
+
+  expect(result.current.runner.state).toMatchObject({ state: "error", error: "Pending connector action response is missing request_id." });
+  expect(result.current.compose.compose.pendingRequestID).toBeUndefined();
 });
 
 it("ignores a Mail response that completes after the target scope changes", async () => {
@@ -120,5 +143,5 @@ function actionResponse(actionName) {
     get_message: message,
     mark_read: { read: true },
   };
-  return { id: 1, status: "completed", action_name: actionName, output: outputs[actionName] || {} };
+  return { request_id: 1, status: "completed", action_name: actionName, output: outputs[actionName] || {} };
 }

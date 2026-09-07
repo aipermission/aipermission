@@ -249,7 +249,7 @@
     },
     "src/components/file-transfer/file-transfer-panels.jsx": {
       "statements": 88.18,
-      "branches": 74.35,
+      "branches": 77.5,
       "functions": 70,
       "lines": 88.18
     },
@@ -632,10 +632,10 @@
       "lines": 93.02
     },
     "src/connectors/templates/_shared/action-result.js": {
-      "statements": 90.47,
-      "branches": 83.33,
-      "functions": 75,
-      "lines": 90.47
+      "statements": 92.3,
+      "branches": 87.5,
+      "functions": 80,
+      "lines": 92.3
     },
     "src/connectors/templates/_shared/action-runner.js": {
       "statements": 97.87,
@@ -1208,16 +1208,16 @@
       "lines": 7.6
     },
     "src/connectors/templates/mail/use-mail-action-runner.js": {
-      "statements": 73.43,
-      "branches": 74.19,
+      "statements": 82.17,
+      "branches": 75,
       "functions": 37.5,
-      "lines": 73.43
+      "lines": 82.17
     },
     "src/connectors/templates/mail/use-mail-compose.js": {
-      "statements": 72.04,
-      "branches": 31.81,
+      "statements": 75.26,
+      "branches": 37.03,
       "functions": 55.55,
-      "lines": 72.04
+      "lines": 75.26
     },
     "src/connectors/templates/mail/use-mail-workspace.js": {
       "statements": 95.45,
