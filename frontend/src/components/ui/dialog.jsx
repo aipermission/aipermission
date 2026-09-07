@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
+import { useEffect, useId, useRef } from "react";
 import { Button } from "./button";
 import { cn } from "../../lib/utils";
 
@@ -27,71 +28,74 @@ export function Dialog({
 }) {
   const closeButtonRef = useRef(null);
   const onCloseRef = useRef(onClose);
+  const restoreFocusRef = useRef(null);
+  const titleID = useId();
+  const descriptionID = useId();
 
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const previous = document.activeElement;
-    if (autoFocusClose) {
-      closeButtonRef.current?.focus();
-    }
-    return () => {
-      previous?.focus?.();
-    };
-  }, [open, autoFocusClose]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKeyDown = (event) => {
-      if (!closeDisabled && closeOnEscape && event.key === "Escape") {
-        onCloseRef.current?.();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, closeOnEscape, closeDisabled]);
-
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4">
-      {!closeDisabled && closeOnOverlay ? (
-        <button type="button" className="dialog-overlay absolute inset-0 bg-stone-950/45" aria-label="Dismiss dialog" onClick={onClose} />
-      ) : (
-        <div className="dialog-overlay absolute inset-0 bg-stone-950/45" aria-hidden="true" />
-      )}
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="dialog-title"
-        className={`relative grid w-full ${sizes[size] || sizes.sm} overflow-hidden rounded-lg border border-stone-200 bg-white shadow-2xl ${className}`}
-      >
-        <header className="flex items-start justify-between gap-4 border-b border-stone-200 p-5">
-          <div>
-            <h2 id="dialog-title" className="text-lg font-semibold text-stone-950">
-              {title}
-            </h2>
-            {description ? <p className="mt-1 text-sm text-stone-500">{description}</p> : null}
-          </div>
-          <Button
-            ref={closeButtonRef}
-            type="button"
-            variant="ghost"
-            className="h-9 w-9 px-0"
-            aria-label="Close dialog"
-            onClick={onClose}
-            disabled={closeDisabled}
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !closeDisabled) onCloseRef.current?.();
+      }}
+    >
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="dialog-overlay fixed inset-0 z-50 bg-stone-950/45" data-testid="dialog-overlay" />
+        <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center p-4">
+          <DialogPrimitive.Content
+            aria-labelledby={titleID}
+            aria-describedby={description ? descriptionID : undefined}
+            className={`pointer-events-auto relative grid w-full ${sizes[size] || sizes.sm} overflow-hidden rounded-lg border border-stone-200 bg-white shadow-2xl ${className}`}
+            onOpenAutoFocus={(event) => {
+              restoreFocusRef.current = document.activeElement;
+              if (!autoFocusClose || closeDisabled) return;
+              event.preventDefault();
+              closeButtonRef.current?.focus();
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              restoreFocusRef.current?.focus?.();
+              restoreFocusRef.current = null;
+            }}
+            onEscapeKeyDown={(event) => {
+              if (closeDisabled || !closeOnEscape) event.preventDefault();
+            }}
+            onPointerDownOutside={(event) => {
+              if (closeDisabled || !closeOnOverlay) event.preventDefault();
+            }}
           >
-            <X className="h-4 w-4" />
-          </Button>
-        </header>
-        <div className={cn("p-5", bodyClassName)}>{children}</div>
-      </section>
-    </div>
+            <header className="flex items-start justify-between gap-4 border-b border-stone-200 p-5">
+              <div>
+                <DialogPrimitive.Title id={titleID} className="text-lg font-semibold text-stone-950">
+                  {title}
+                </DialogPrimitive.Title>
+                {description ? (
+                  <DialogPrimitive.Description id={descriptionID} className="mt-1 text-sm text-stone-500">
+                    {description}
+                  </DialogPrimitive.Description>
+                ) : null}
+              </div>
+              <DialogPrimitive.Close asChild>
+                <Button
+                  ref={closeButtonRef}
+                  type="button"
+                  variant="ghost"
+                  className="h-9 w-9 px-0"
+                  aria-label="Close dialog"
+                  disabled={closeDisabled}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </DialogPrimitive.Close>
+            </header>
+            <div className={cn("p-5", bodyClassName)}>{children}</div>
+          </DialogPrimitive.Content>
+        </div>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

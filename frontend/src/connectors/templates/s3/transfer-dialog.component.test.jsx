@@ -11,7 +11,7 @@ it("retains folder-relative identity in preview and multipart after prefix navig
   const user = userEvent.setup();
   apiPost.mockResolvedValue({ path: "/next// ", parent: "/", entries: [] });
   apiPostForm.mockResolvedValue({ id: 1, status: "completed", direction: "upload", items: [] });
-  const { container } = render(
+  render(
     <FileTransferDialog
       open
       runtimeTarget={{ id: 7, name: "objects" }}
@@ -27,7 +27,7 @@ it("retains folder-relative identity in preview and multipart after prefix navig
   );
   const file = new File(["data"], " invoice ", { type: "text/plain" });
   Object.defineProperty(file, "webkitRelativePath", { value: "folder// invoice " });
-  fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [file] } });
+  fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
   fireEvent.change(screen.getByLabelText("Remote folder"), { target: { value: "/prefix//" } });
   expect(screen.getByText("/prefix//folder// invoice ", { normalizer: (value) => value })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Browse" }));

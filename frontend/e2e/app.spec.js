@@ -195,6 +195,27 @@ test("renders settings retention controls", async ({ page }) => {
   await expect(page.getByText("Retention settings saved and cleanup ran.")).toBeVisible();
 });
 
+test("keeps modal focus contained and returns it to the opener", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox").fill("local-password");
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await page.getByRole("link", { name: /Settings/ }).click();
+
+  const opener = page.getByRole("button", { name: "Add provider" });
+  await opener.click();
+  const dialog = page.getByRole("dialog", { name: "Add backup provider" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Close dialog" })).toBeFocused();
+  for (let index = 0; index < 12; index += 1) {
+    await page.keyboard.press(index % 2 === 0 ? "Tab" : "Shift+Tab");
+    await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
 test("updates token connector permission from the Tokens page", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox").fill("local-password");
