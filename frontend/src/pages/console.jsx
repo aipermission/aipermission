@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { useGateway } from "../lib/gateway-context";
 import { useConnectorPermissions } from "../lib/use-connector-permissions";
 import { ConsolePageDialogs } from "../components/console/console-page-dialogs";
+import { consoleShellGridClass } from "../components/console/console-layout";
 import { ConsoleTargetSidebar, targetUsesLiveConsole } from "../components/console/console-target-sidebar";
 import { ConsoleWorkspacePanel } from "../components/console/console-workspace-panel";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
@@ -247,11 +248,4 @@ export function ConsolePage() {
       />
     </section>
   );
-}
-
-function consoleShellGridClass(targetsCompact, tokensCompact) {
-  if (targetsCompact && tokensCompact) return "grid-cols-[56px_minmax(0,1fr)_56px]";
-  if (targetsCompact) return "grid-cols-[56px_minmax(0,1fr)_360px]";
-  if (tokensCompact) return "grid-cols-[360px_minmax(0,1fr)_56px]";
-  return "grid-cols-[360px_minmax(0,1fr)_360px]";
 }
