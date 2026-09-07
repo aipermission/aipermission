@@ -8,6 +8,10 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.component.test.{js,jsx}"],
+    // Coverage merges of differently mocked modules are order-sensitive across
+    // workers. Keep the ratchet deterministic; regular test suites stay parallel.
+    fileParallelism: false,
+    maxWorkers: 1,
     setupFiles: ["./src/test/setup.js"],
     restoreMocks: true,
     unstubGlobals: true,

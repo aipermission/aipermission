@@ -21,7 +21,7 @@
     "test:coverage": "npm run test:config && npm run test:coverage:focused && npm run test:coverage:risk",
     "test:coverage:focused": "vitest run --config vitest.config.js --coverage",
     "test:coverage:risk": "vitest run --config vitest.risk.config.js --coverage",
-    "test:coverage:changed": "node --test scripts/coverage-owner-policy.test.mjs scripts/coverage-ratchet.test.mjs && node scripts/changed-coverage.mjs",
+    "test:coverage:changed": "node --test scripts/coverage-config.test.mjs scripts/coverage-owner-policy.test.mjs scripts/coverage-ratchet.test.mjs && node scripts/changed-coverage.mjs",
     "test:coverage:changed:update": "node scripts/changed-coverage.mjs --update-baseline",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --grep-invert '@high-risk|@accessibility'",
