@@ -8,6 +8,7 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
+import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { useRequestGuard } from "../../../lib/request-guard";
 
 const defaultQueueLimit = 250;
@@ -207,23 +208,16 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
 
   if (!activeSession.active) {
     return (
-      <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
-        <div className="grid place-items-center p-8 text-center">
-          <div className="grid max-w-lg gap-4">
-            <Database className={`mx-auto h-10 w-10 ${mutedClass}`} />
-            <div>
-              <h3 className="text-lg font-semibold">No active RabbitMQ session</h3>
-              <p className={`mt-2 text-sm ${mutedClass}`}>
-                Start a structured session to browse queues through the connector approval, history, and audit pipeline.
-              </p>
-            </div>
-            <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
-              Start RabbitMQ session
-            </Button>
-          </div>
-        </div>
-        <RabbitEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      </div>
+      <StructuredSessionEmpty
+        icon={Database}
+        title="No active RabbitMQ session"
+        description="Start a structured session to browse queues through the connector approval, history, and audit pipeline."
+        buttonLabel="Start RabbitMQ session"
+        onStart={onNewStructuredSession}
+        panelClass={panelClass}
+        mutedClass={mutedClass}
+        footer={<RabbitEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />}
+      />
     );
   }
 

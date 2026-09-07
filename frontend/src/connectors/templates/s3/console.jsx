@@ -28,6 +28,7 @@ import { S3EndpointFooter } from "./endpoint-footer";
 import { S3MetadataPanel } from "./metadata-panel";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
+import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { useRequestGuard } from "../../../lib/request-guard";
 
 export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
@@ -377,23 +378,16 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
 
   if (!activeSession.active) {
     return (
-      <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
-        <div className="grid place-items-center p-8 text-center">
-          <div className="grid max-w-lg gap-4">
-            <Database className={`mx-auto h-10 w-10 ${mutedClass}`} />
-            <div>
-              <h3 className="text-lg font-semibold">No active S3 session</h3>
-              <p className={`mt-2 text-sm ${mutedClass}`}>
-                Start a structured session to browse objects through the connector approval, history, and audit pipeline.
-              </p>
-            </div>
-            <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
-              Start S3 session
-            </Button>
-          </div>
-        </div>
-        <S3EndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      </div>
+      <StructuredSessionEmpty
+        icon={Database}
+        title="No active S3 session"
+        description="Start a structured session to browse objects through the connector approval, history, and audit pipeline."
+        buttonLabel="Start S3 session"
+        onStart={onNewStructuredSession}
+        panelClass={panelClass}
+        mutedClass={mutedClass}
+        footer={<S3EndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />}
+      />
     );
   }
 

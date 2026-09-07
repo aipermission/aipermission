@@ -8,6 +8,7 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
+import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { actionableOffsetPartitions, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection } from "./console-helpers";
 import { KafkaOffsetDialog, KafkaPublishDialog } from "./write-dialogs";
@@ -265,20 +266,16 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
 
   if (!activeSession.active) {
     return (
-      <div className={`grid h-full min-h-0 place-items-center p-6 ${panelClass}`}>
-        <div className="grid max-w-lg gap-4 text-center">
-          <Database className={`mx-auto h-8 w-8 ${mutedClass}`} />
-          <div>
-            <p className="font-semibold">No active {product} session</p>
-            <p className={`mt-1 text-sm ${mutedClass}`}>
-              Start a structured session to browse topics, consumer groups, lag, and bounded message samples.
-            </p>
-          </div>
-          <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
-            New session
-          </Button>
-        </div>
-      </div>
+      <StructuredSessionEmpty
+        icon={Database}
+        title={`No active ${product} session`}
+        description="Start a structured session to browse topics, consumer groups, lag, and bounded message samples."
+        buttonLabel="New session"
+        onStart={onNewStructuredSession}
+        panelClass={panelClass}
+        mutedClass={mutedClass}
+        compact
+      />
     );
   }
 

@@ -7,6 +7,7 @@ import { Checkbox, Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { connectorConsoleTheme } from "../_shared/console-theme";
+import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { serverProductLabel } from "./model";
 import { formatRedisValue, keyMetaText, useRedisBrowser } from "./use-redis-browser";
 
@@ -62,23 +63,16 @@ export function RedisConnectorConsoleTemplate({ target, approvals, theme, sessio
   } = connectorConsoleTheme(theme);
   if (!activeSession.active) {
     return (
-      <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
-        <div className="grid place-items-center p-8 text-center">
-          <div className="grid max-w-lg gap-4">
-            <Database className={`mx-auto h-10 w-10 ${mutedClass}`} />
-            <div>
-              <h3 className="text-lg font-semibold">No active {product} session</h3>
-              <p className={`mt-2 text-sm ${mutedClass}`}>
-                Start a structured session to browse {product} keys through the connector approval, history, and audit pipeline.
-              </p>
-            </div>
-            <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
-              Start {product} session
-            </Button>
-          </div>
-        </div>
-        <RedisEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      </div>
+      <StructuredSessionEmpty
+        icon={Database}
+        title={`No active ${product} session`}
+        description={`Start a structured session to browse ${product} keys through the connector approval, history, and audit pipeline.`}
+        buttonLabel={`Start ${product} session`}
+        onStart={onNewStructuredSession}
+        panelClass={panelClass}
+        mutedClass={mutedClass}
+        footer={<RedisEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />}
+      />
     );
   }
 

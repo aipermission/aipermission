@@ -24,6 +24,7 @@ import { FolderPane, MessagePane } from "./mailbox-pane";
 import { MessageDetail } from "./message-detail";
 import { DeleteMessageDialog, MoveMessageDialog, RetryUnknownSubmissionDialog } from "./message-dialogs";
 import { targetEndpoint } from "./model";
+import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 
 const defaultFolder = "INBOX";
 const defaultMessageLimit = 50;
@@ -433,23 +434,16 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
 
   if (!activeSession.active) {
     return (
-      <div className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${panelClass}`}>
-        <div className="grid place-items-center p-8 text-center">
-          <div className="grid max-w-lg gap-4">
-            <Mail className={`mx-auto h-10 w-10 ${mutedClass}`} />
-            <div>
-              <h3 className="text-lg font-semibold">No active Mail session</h3>
-              <p className={`mt-2 text-sm ${mutedClass}`}>
-                Start a structured session to browse bounded IMAP content and submit guarded SMTP actions.
-              </p>
-            </div>
-            <Button type="button" className="mx-auto" onClick={onNewStructuredSession}>
-              Start Mail session
-            </Button>
-          </div>
-        </div>
-        <MailEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />
-      </div>
+      <StructuredSessionEmpty
+        icon={Mail}
+        title="No active Mail session"
+        description="Start a structured session to browse bounded IMAP content and submit guarded SMTP actions."
+        buttonLabel="Start Mail session"
+        onStart={onNewStructuredSession}
+        panelClass={panelClass}
+        mutedClass={mutedClass}
+        footer={<MailEndpointFooter target={target} borderClass={borderClass} mutedClass={mutedClass} />}
+      />
     );
   }
 
