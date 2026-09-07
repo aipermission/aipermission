@@ -71,9 +71,8 @@ test("Console exposes connector action approvals", () => {
   assert.match(postgresSQLConsoleSource, /KeyMod\.CtrlCmd \| monacoInstance\.KeyCode\.Enter/);
   assert.match(postgresSQLConsoleSource, /Run SQL \(Ctrl\+Enter\)/);
   assert.match(postgresSQLConsoleSource, /Result View/);
-  assert.match(consolePageSource, /structuredSessionsByTarget/);
+  assert.match(consolePageSource, /useConsoleWorkspaceSession/);
   assert.match(consolePageSource, /onNewStructuredSession/);
-  assert.match(consolePageSource, /onNewStructuredSession=\{startStructuredConnectorSession\}/);
   assert.match(consolePageSource, /target=/);
   assert.match(consolePageSource, /Search connectors/);
   assert.match(consolePageSource, /Connectors/);
