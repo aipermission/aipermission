@@ -2,10 +2,8 @@ import { AlertTriangle, TerminalSquare } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import {
-  connectorTargetKey,
   currentConnectorTargetProfilePermissions,
   effectiveConnectorTargetProfilePermissions,
-  profilesForConnectorTarget,
   selectedConnectorProfileID,
 } from "../lib/connector-permissions";
 import { useGateway } from "../lib/gateway-context";
@@ -20,9 +18,6 @@ import { ConsoleRecoveryPanel } from "../components/console/console-recovery-pan
 import {
   ConsoleStatusDot,
   ConsoleTargetSidebar,
-  consoleTargetRows,
-  defaultConsoleTargetRef,
-  groupConsoleTargetsByProject,
   recoverableRunningActions,
   selectedTargetStatus,
   targetDisplayName,
@@ -34,9 +29,10 @@ import { MessagesDialog } from "../components/console/messages-dialog";
 import { NoLiveSession } from "../components/console/no-live-session";
 import { PtyConsole } from "../components/console/pty-console";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
-import { isLiveConsoleSession, isUnreadMessage } from "../components/console/helpers";
+import { isLiveConsoleSession } from "../components/console/helpers";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 import { useConsoleMessages } from "../components/console/use-console-messages";
+import { useConsoleTargetSelection } from "../components/console/use-console-target-selection";
 import { useConnectorApprovalDialog } from "../components/console/use-connector-approval-dialog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
 
@@ -71,21 +67,16 @@ export function ConsolePage() {
     useConnectorPermissions(tokens.data);
   const [targetsCompact, setTargetsCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
-  const [targetSearch, setTargetSearch] = useState("");
-  const [collapsedProjects, setCollapsedProjects] = useState({});
   const [connectorActivityOpen, setConnectorActivityOpen] = useState(false);
   const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   const [restartAction, setRestartAction] = useState({ state: "idle", error: null });
   const [newSessionError, setNewSessionError] = useState("");
   const [now, setNow] = useState(Date.now());
   const [structuredSessionsByTarget, setStructuredSessionsByTarget] = useState({});
-  const [selectedProfileByTarget, setSelectedProfileByTarget] = useState({});
   const [liveSessionNameByTarget, setLiveSessionNameByTarget] = useState({});
 
   const selectedTargetRef = searchParams.get("target");
   const sessions = consoleSessions.data || [];
-  const targetItems = useMemo(() => targets?.data || [], [targets?.data]);
-  const rawUnreadMessages = useMemo(() => messages.data.filter(isUnreadMessage), [messages.data]);
   const approvalDialog = useConnectorApprovalDialog({
     approvals: connectorActionApprovals?.data,
     selectedTargetRef,
@@ -93,19 +84,14 @@ export function ConsolePage() {
     declineApproval: declineConnectorActionApproval,
   });
   const pendingConnectorApprovals = approvalDialog.pendingApprovals;
-  const defaultTargetRef = useMemo(
-    () => defaultConsoleTargetRef(targetItems, rawUnreadMessages, pendingConnectorApprovals),
-    [targetItems, rawUnreadMessages, pendingConnectorApprovals],
-  );
-  const selectedTarget = useMemo(() => {
-    if (!targetItems.length) return null;
-    if (selectedTargetRef) {
-      const exact = targetItems.find((target) => target.ref === selectedTargetRef);
-      if (exact) return exact;
-    }
-    return targetItems.find((target) => target.ref === defaultTargetRef) || targetItems[0];
-  }, [targetItems, selectedTargetRef, defaultTargetRef]);
-  const selectedRuntimeID = targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.runtime_id || "") : "";
+  const targetSelection = useConsoleTargetSelection({
+    messages,
+    pendingApprovals: pendingConnectorApprovals,
+    selectedTargetRef,
+    setSearchParams,
+    targets,
+  });
+  const { selectedRuntimeID, selectedTarget, targetItems, unreadMessages } = targetSelection;
   const selectedConnectorTemplate = selectedTarget ? getConnectorTemplate(selectedTarget.connector_kind) : null;
   const selectedTargetUsesLiveConsole = targetUsesLiveConsole(selectedTarget);
   const SelectedConnectorConsoleTemplate = selectedConnectorTemplate?.Console || null;
@@ -118,7 +104,6 @@ export function ConsolePage() {
   const {
     selectedRuntimeTarget,
     selectedSession: runtimeSelectedSession,
-    unreadMessages,
     selectedUnreadMessages,
   } = useConsolePageState({
     liveConsoleTargets,
@@ -136,11 +121,7 @@ export function ConsolePage() {
       : null;
   const selectedSession = selectedNamedLiveSession || runtimeSelectedSession;
   const selectedSessionLive = isLiveConsoleSession(selectedSession);
-  const selectedTargetProfiles = useMemo(() => profilesForConnectorTarget(targetItems, selectedTarget), [targetItems, selectedTarget]);
-  const targetRows = useMemo(
-    () => consoleTargetRows(targetItems, selectedTarget, selectedProfileByTarget),
-    [targetItems, selectedTarget, selectedProfileByTarget],
-  );
+  const selectedTargetProfiles = targetSelection.selectedProfiles;
   const selectedTokenOptions = useMemo(() => {
     if (!selectedTarget) return [];
     return tokens.data.filter((token) => {
@@ -183,25 +164,6 @@ export function ConsolePage() {
       : [];
   const selectedRunningRequest = selectedRunningConnectorRequests[0] || null;
   const consoleBannerCount = (showAlwaysRunWarning ? 1 : 0) + (selectedRunningRequest ? 1 : 0) + (newSessionError ? 1 : 0);
-  const filteredTargets = useMemo(() => {
-    const query = targetSearch.trim().toLowerCase();
-    return targetRows.filter((target) => {
-      if (!query) return true;
-      const profiles = profilesForConnectorTarget(targetItems, target);
-      return [
-        target.project_name,
-        target.project_slug,
-        targetDisplayName(target),
-        targetSubtitle(target),
-        target.connector_kind,
-        target.ref,
-        ...profiles.map((profile) => profile.profile_label),
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query));
-    });
-  }, [targetRows, targetItems, targetSearch]);
-  const projectTargetGroups = useMemo(() => groupConsoleTargetsByProject(filteredTargets), [filteredTargets]);
   const messageDialog = useConsoleMessages({
     loadMessages,
     markRuntimeMessagesRead,
@@ -213,21 +175,6 @@ export function ConsolePage() {
   });
 
   const attachSelectedConsoleSession = useEffectEvent((sessionID) => attachConsoleSession(sessionID));
-
-  useEffect(() => {
-    if (targetItems.length === 0 || !defaultTargetRef) return;
-    if (!selectedTargetRef || !targetItems.some((target) => target.ref === selectedTargetRef)) {
-      setSearchParams({ target: selectedTarget?.ref || defaultTargetRef }, { replace: true });
-    }
-  }, [targetItems, selectedTargetRef, selectedTarget, defaultTargetRef, setSearchParams]);
-
-  useEffect(() => {
-    if (!selectedTarget?.profile_id) return;
-    const key = connectorTargetKey(selectedTarget);
-    setSelectedProfileByTarget((current) =>
-      String(current[key] || "") === String(selectedTarget.profile_id) ? current : { ...current, [key]: Number(selectedTarget.profile_id) },
-    );
-  }, [selectedTarget]);
 
   useEffect(() => {
     if (tokens.state !== "ready") return;
@@ -263,25 +210,6 @@ export function ConsolePage() {
     setRestartAction({ state: "idle", error: null });
     setNewSessionError("");
   }, [selectedRuntimeTarget?.id, selectedRunningRequest?.id]);
-
-  function selectTarget(target) {
-    if (!target) return;
-    const key = connectorTargetKey(target);
-    const profiles = profilesForConnectorTarget(targetItems, target);
-    const selectedProfileID = selectedProfileByTarget[key] || target.profile_id;
-    const profileTarget = profiles.find((profile) => Number(profile.profile_id) === Number(selectedProfileID)) || profiles[0] || target;
-    setSearchParams({ target: profileTarget.ref });
-  }
-
-  function selectTargetProfile(profileID) {
-    if (!selectedTarget) return;
-    const nextID = Number(profileID);
-    if (!Number.isFinite(nextID) || nextID <= 0) return;
-    const profileTarget = selectedTargetProfiles.find((profile) => Number(profile.profile_id) === Number(nextID));
-    if (!profileTarget) return;
-    setSelectedProfileByTarget((current) => ({ ...current, [connectorTargetKey(selectedTarget)]: nextID }));
-    setSearchParams({ target: profileTarget.ref });
-  }
 
   function openConnectorOperation(operation) {
     if (!operation?.open || !operation?.connector_kind) return false;
@@ -342,12 +270,12 @@ export function ConsolePage() {
       <ConsoleTargetSidebar
         compact={targetsCompact}
         onCompactChange={setTargetsCompact}
-        targetRows={targetRows}
-        search={targetSearch}
-        onSearch={setTargetSearch}
-        groups={projectTargetGroups}
-        collapsedProjects={collapsedProjects}
-        onToggleProject={(projectID) => setCollapsedProjects((current) => ({ ...current, [projectID]: !current[projectID] }))}
+        targetRows={targetSelection.targetRows}
+        search={targetSelection.search}
+        onSearch={targetSelection.setSearch}
+        groups={targetSelection.groups}
+        collapsedProjects={targetSelection.collapsedProjects}
+        onToggleProject={targetSelection.toggleProject}
         targetItems={targetItems}
         liveConsoleTargets={liveConsoleTargets}
         sessions={sessions}
@@ -355,10 +283,10 @@ export function ConsolePage() {
         pendingConnectorApprovals={pendingConnectorApprovals}
         connectorActionApprovals={connectorActionApprovals}
         unreadMessages={unreadMessages}
-        onSelect={selectTarget}
+        onSelect={targetSelection.selectTarget}
         targetsState={targets.state}
         targetsError={targets.error}
-        filteredTargetCount={filteredTargets.length}
+        filteredTargetCount={targetSelection.filteredTargets.length}
       />
 
       <section
@@ -401,7 +329,7 @@ export function ConsolePage() {
                 <Select
                   className={`h-8 ${theme === "light" ? "" : "border-stone-700 bg-[#1e1e1e] text-stone-100"}`}
                   value={selectedTarget?.profile_id ? String(selectedTarget.profile_id) : ""}
-                  onChange={(event) => selectTargetProfile(event.target.value)}
+                  onChange={(event) => targetSelection.selectProfile(event.target.value)}
                 >
                   {selectedTargetProfiles.map((profile) => (
                     <option key={profile.profile_id} value={profile.profile_id}>
