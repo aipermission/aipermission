@@ -81,14 +81,45 @@ describe("useConsoleMessages", () => {
 
     await act(async () => result.current.submit({ preventDefault: vi.fn() }));
 
-    expect(apiPost).toHaveBeenCalledWith("/api/messages", {
-      token_id: 5,
-      runtime_id: 3,
-      session_id: 9,
-      direction: "user_to_ai",
-      message: "Deploy completed",
-    });
+    expect(apiPost).toHaveBeenCalledWith(
+      "/api/messages",
+      {
+        token_id: 5,
+        runtime_id: 3,
+        session_id: 9,
+        direction: "user_to_ai",
+        message: "Deploy completed",
+      },
+      { signal: expect.any(AbortSignal) },
+    );
     expect(props.loadMessages).toHaveBeenCalledOnce();
     expect(result.current.text).toBe("");
+  });
+
+  it("does not let a send from a closed drawer erase a newer draft", async () => {
+    const pendingSend = deferred();
+    apiGet.mockResolvedValue([]);
+    apiPost.mockReturnValue(pendingSend.promise);
+    const { result } = renderHook(() => useConsoleMessages(baseProps()));
+    act(() => {
+      result.current.open();
+      result.current.setTokenID("5");
+      result.current.setText("old draft");
+    });
+
+    let submission;
+    act(() => {
+      submission = result.current.submit({ preventDefault: vi.fn() });
+    });
+    act(() => {
+      result.current.close();
+      result.current.open();
+      result.current.setText("new draft");
+    });
+    await act(async () => pendingSend.resolve({}));
+    await submission;
+
+    expect(result.current.text).toBe("new draft");
+    expect(result.current.state.state).not.toBe("sending");
   });
 });

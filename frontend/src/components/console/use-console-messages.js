@@ -50,6 +50,7 @@ export function useConsoleMessages({
 
   const close = useCallback(() => {
     requests.invalidate("messages");
+    requests.invalidate("send");
     setOpen(false);
     if (!runtimeID || selectedUnreadMessages.length === 0) return;
     const request = requests.begin("mark-read");
@@ -67,13 +68,17 @@ export function useConsoleMessages({
       const request = requests.begin("send");
       setState((current) => ({ ...current, state: "sending", error: null }));
       try {
-        await apiPost("/api/messages", {
-          token_id: Number(tokenID),
-          runtime_id: Number(runtimeID),
-          session_id: selectedSessionLive ? selectedSession.id : null,
-          direction: "user_to_ai",
-          message: text,
-        });
+        await apiPost(
+          "/api/messages",
+          {
+            token_id: Number(tokenID),
+            runtime_id: Number(runtimeID),
+            session_id: selectedSessionLive ? selectedSession.id : null,
+            direction: "user_to_ai",
+            message: text,
+          },
+          { signal: request.signal },
+        );
         if (!request.isCurrent()) return;
         setText("");
         await Promise.allSettled([load(), loadMessages()]);
