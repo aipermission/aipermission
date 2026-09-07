@@ -71,69 +71,119 @@ export function UnlockPage({ status, onUnlocked }) {
   return (
     <UnlockShell title={hasDatabase ? "Select database" : "Database setup"}>
       {toast ? <Toast message={toast} /> : null}
-      {databases.length > 0 ? (
-        <div className="grid gap-2">
-          <label htmlFor="unlock-database" className="text-sm font-semibold text-stone-800">
-            Database
-          </label>
-          <select
-            id="unlock-database"
-            className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-emerald-800"
-            value={selectedDatabase?.id || selectedDatabaseID}
-            onChange={(event) => setSelectedDatabaseID(event.target.value)}
-          >
-            {databases.map((database) => (
-              <option key={database.id} value={database.id}>
-                {database.name} {database.state === "unsupported_plaintext" ? "(unsupported plaintext)" : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
-      {status?.state === "session_required" ? (
+      <UnlockDatabasePicker
+        databases={databases}
+        selectedDatabase={selectedDatabase}
+        selectedDatabaseID={selectedDatabaseID}
+        onSelect={setSelectedDatabaseID}
+      />
+      <UnlockStatusNotices
+        sessionRequired={status?.state === "session_required"}
+        unsupported={selectedUnsupported}
+        migrationRequired={selectedMigrationRequired}
+      />
+      <UnlockTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
+      <UnlockActivePanel
+        activeTab={activeTab}
+        selectedDatabase={selectedDatabase}
+        unsupported={selectedUnsupported}
+        migrationRequired={selectedMigrationRequired}
+        hasDatabase={hasDatabase}
+        onMigrationRequired={(databaseID) => setMigrationRequiredIDs((current) => ({ ...current, [databaseID]: true }))}
+        onDeleted={handleDeleted}
+        onUnlocked={onUnlocked}
+      />
+    </UnlockShell>
+  );
+}
+
+function UnlockDatabasePicker({ databases, selectedDatabase, selectedDatabaseID, onSelect }) {
+  if (databases.length === 0) return null;
+  return (
+    <div className="grid gap-2">
+      <label htmlFor="unlock-database" className="text-sm font-semibold text-stone-800">
+        Database
+      </label>
+      <select
+        id="unlock-database"
+        className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-emerald-800"
+        value={selectedDatabase?.id || selectedDatabaseID}
+        onChange={(event) => onSelect(event.target.value)}
+      >
+        {databases.map((database) => (
+          <option key={database.id} value={database.id}>
+            {database.name} {database.state === "unsupported_plaintext" ? "(unsupported plaintext)" : ""}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function UnlockStatusNotices({ sessionRequired, unsupported, migrationRequired }) {
+  return (
+    <>
+      {sessionRequired ? (
         <Notice tone="warn">Your browser session is missing or expired. Enter the database password to continue.</Notice>
       ) : null}
-      {selectedUnsupported ? (
+      {unsupported ? (
         <Notice tone="bad">
           This file is a plaintext SQLite database. AIPermission only supports SQLCipher-encrypted .aipdb databases.
         </Notice>
       ) : null}
-      {selectedMigrationRequired ? (
+      {migrationRequired ? (
         <Notice tone="warn">
           This database uses the pre-0.2 schema. Open the local migration helper, migrate it into a new 0.2 database, then delete this old
           local copy when you no longer need it.
         </Notice>
       ) : null}
-      <div className={`grid rounded-md border border-stone-200 bg-stone-100 p-1 ${unlockTabsGridClass(tabs.length)}`}>
-        {tabs.map(([value, label], index) => (
-          <button
-            key={value}
-            type="button"
-            className={`min-h-10 whitespace-normal rounded px-2 py-2 text-xs font-semibold leading-tight transition sm:text-sm ${
-              tabs.length % 2 === 1 && index === tabs.length - 1 ? "col-span-2 sm:col-span-1" : ""
-            } ${activeTab === value ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"}`}
-            onClick={() => setActiveTab(value)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+    </>
+  );
+}
 
-      {activeTab === "unlock" ? (
-        <UnlockDatabasePanel
-          key={selectedDatabase?.id}
-          database={selectedDatabase}
-          unsupported={selectedUnsupported}
-          migrationRequired={selectedMigrationRequired}
-          onMigrationRequired={(databaseID) => setMigrationRequiredIDs((current) => ({ ...current, [databaseID]: true }))}
-          onDeleted={handleDeleted}
-          onUnlocked={onUnlocked}
-        />
-      ) : null}
-      {activeTab === "create" ? <UnlockCreatePanel hasDatabase={hasDatabase} onUnlocked={onUnlocked} /> : null}
-      {activeTab === "import" ? <UnlockImportPanel onUnlocked={onUnlocked} /> : null}
-      {activeTab === "remote" ? <RemoteRestorePanel onUnlocked={onUnlocked} /> : null}
-    </UnlockShell>
+function UnlockTabs({ tabs, activeTab, onSelect }) {
+  return (
+    <div className={`grid rounded-md border border-stone-200 bg-stone-100 p-1 ${unlockTabsGridClass(tabs.length)}`}>
+      {tabs.map(([value, label], index) => (
+        <button
+          key={value}
+          type="button"
+          className={`min-h-10 whitespace-normal rounded px-2 py-2 text-xs font-semibold leading-tight transition sm:text-sm ${
+            tabs.length % 2 === 1 && index === tabs.length - 1 ? "col-span-2 sm:col-span-1" : ""
+          } ${activeTab === value ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"}`}
+          onClick={() => onSelect(value)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function UnlockActivePanel({
+  activeTab,
+  selectedDatabase,
+  unsupported,
+  migrationRequired,
+  hasDatabase,
+  onMigrationRequired,
+  onDeleted,
+  onUnlocked,
+}) {
+  if (activeTab === "create") return <UnlockCreatePanel hasDatabase={hasDatabase} onUnlocked={onUnlocked} />;
+  if (activeTab === "import") return <UnlockImportPanel onUnlocked={onUnlocked} />;
+  if (activeTab === "remote") return <RemoteRestorePanel onUnlocked={onUnlocked} />;
+  if (activeTab !== "unlock") return null;
+  return (
+    <UnlockDatabasePanel
+      key={selectedDatabase?.id}
+      database={selectedDatabase}
+      unsupported={unsupported}
+      migrationRequired={migrationRequired}
+      onMigrationRequired={onMigrationRequired}
+      onDeleted={onDeleted}
+      onUnlocked={onUnlocked}
+    />
   );
 }
 
