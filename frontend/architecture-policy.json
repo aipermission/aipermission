@@ -1,4 +1,5 @@
 {
+  "sourceExtensions": [".js", ".jsx", ".mjs", ".ts", ".tsx"],
   "maxDependencyFanout": 20,
   "maxProductionModuleLines": 550
 }

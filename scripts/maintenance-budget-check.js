@@ -9,7 +9,7 @@ const sourceBudgets = [
   { directory: "backend", extensions: new Set([".go"]), maxLines: 1400 },
   {
     directory: "frontend/src",
-    extensions: new Set([".js", ".jsx", ".ts", ".tsx"]),
+    extensions: new Set(frontendArchitecturePolicy.sourceExtensions),
     maxLines: frontendArchitecturePolicy.maxProductionModuleLines,
   },
   {

@@ -18,9 +18,10 @@ test("collects static imports, re-exports, and literal dynamic imports from the 
     export { value as renamed } from "./named.js";
     export * from "./all.js";
     const lazy = import("./lazy.js");
+    const template = import(\`./template.js\`);
     const ignored = import(variable);
   `;
-  assert.deepEqual(moduleSpecifiers(source), ["./imported.js", "./named.js", "./all.js", "./lazy.js"]);
+  assert.deepEqual(moduleSpecifiers(source), ["./imported.js", "./named.js", "./all.js", "./lazy.js", "./template.js"]);
 });
 
 test("collects literal import.meta.glob patterns from the AST", () => {
@@ -44,10 +45,58 @@ test("finds dependency cycles without duplicating the same cycle", () => {
 test("detects connector literals in branches, switches, and lookup tables", () => {
   const source = `
     const direct = connectorKind === "redis";
+    const active = connector.connector_kind;
+    const aliased = active === "ssh";
     switch (connectorKind) { case "postgres": break; }
     const connectorLabels = { kafka: "Kafka" };
   `;
-  assert.deepEqual(hardCodedConnectorKinds(source, ["kafka", "postgres", "redis"]), ["kafka", "postgres", "redis"]);
+  assert.deepEqual(hardCodedConnectorKinds(source, ["kafka", "postgres", "redis", "ssh"]), ["kafka", "postgres", "redis", "ssh"]);
+});
+
+test("covers supported module extensions and rejects unclassified bridge modules", () => {
+  const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-extensions-"));
+  try {
+    for (const directory of ["helpers", "components", "connectors/templates/redis"]) {
+      mkdirSync(join(root, directory), { recursive: true });
+    }
+    writeFileSync(join(root, "App.jsx"), 'import "./helpers/bridge.mjs";\n');
+    writeFileSync(join(root, "helpers/bridge.mjs"), 'export * from "../connectors/templates/redis/model.mjs";\n');
+    writeFileSync(join(root, "connectors/templates/redis/model.mjs"), "export const model = {};\n");
+    writeFileSync(join(root, "components/a.js"), 'import "./b.mjs";\n');
+    writeFileSync(join(root, "components/b.mjs"), 'import "./a.js";\n');
+    writeFileSync(join(root, "components/oversized.mjs"), "export const line = 1;\nexport const extra = 2;\n");
+    writeFileSync(join(root, "components/unsupported.cjs"), "module.exports = {};\n");
+
+    const result = analyzeSourceTree(root, { lineBudget: 1 });
+    assert.ok(result.files.some((file) => file.endsWith("helpers/bridge.mjs")));
+    assert.ok(result.failures.some((failure) => failure.includes("helpers/bridge.mjs is not in a recognized architecture layer")));
+    assert.ok(result.failures.some((failure) => failure.includes("components/oversized.mjs has 2 lines; budget is 1")));
+    assert.ok(result.failures.some((failure) => failure.includes("components/unsupported.cjs uses unsupported executable extension .cjs")));
+    assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resolves static template imports and rejects unresolved dynamic module loads", () => {
+  const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-dynamic-"));
+  try {
+    for (const directory of ["pages", "connectors/templates/fixture"]) {
+      mkdirSync(join(root, directory), { recursive: true });
+    }
+    writeFileSync(
+      join(root, "pages/route.js"),
+      'const model = import(`../connectors/templates/fixture/model.mjs`);\nconst unknown = import(modulePath);\nconst modules = import.meta.glob(["./known.js", dynamicPattern]);\n',
+    );
+    writeFileSync(join(root, "connectors/templates/fixture/model.mjs"), "export const model = {};\n");
+
+    const result = analyzeSourceTree(root);
+    assert.ok(result.failures.some((failure) => failure.includes("pages/route.js imports connectors/templates/fixture/model.mjs")));
+    assert.ok(result.failures.some((failure) => failure.includes("pages/route.js contains a non-static dynamic import")));
+    assert.ok(result.failures.some((failure) => failure.includes("pages/route.js contains a non-static import.meta.glob pattern")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("rejects layer inversions, connector leaks, and source cycles", () => {

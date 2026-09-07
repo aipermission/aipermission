@@ -5,17 +5,24 @@ import { parse } from "espree";
 
 const architecturePolicy = JSON.parse(readFileSync(new URL("../architecture-policy.json", import.meta.url), "utf8"));
 
-const sourceExtensions = Object.freeze([".js", ".jsx"]);
+export const sourceExtensions = Object.freeze([...architecturePolicy.sourceExtensions]);
+const executableExtensions = new Set([...sourceExtensions, ".cjs", ".cts", ".mts"]);
 const genericRoots = Object.freeze(["components", "lib", "pages"]);
 
 export function analyzeSourceTree(sourceRoot, options = {}) {
   const importBudget = options.importBudget ?? architecturePolicy.maxDependencyFanout;
   const lineBudget = options.lineBudget ?? architecturePolicy.maxProductionModuleLines;
-  const files = sourceFiles(sourceRoot);
+  const files = sourceFiles(sourceRoot).filter((file) => !isTestSupport(sourceRoot, file));
   const fileSet = new Set(files);
   const graph = new Map();
   const failures = [];
   const connectorKinds = connectorTemplateKinds(sourceRoot);
+
+  for (const file of executableFiles(sourceRoot).filter((candidate) => !isTestSupport(sourceRoot, candidate))) {
+    if (!sourceExtensions.includes(extname(file))) {
+      failures.push(`${displayPath(sourceRoot, file)} uses unsupported executable extension ${extname(file)}`);
+    }
+  }
 
   for (const file of files) {
     const source = readFileSync(file, "utf8");
@@ -32,8 +39,11 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
     }
     const specifiers = moduleSpecifiers(parsed);
     const globSpecifiers = moduleGlobSpecifiers(parsed);
+    for (const unresolved of unresolvedModuleLoads(parsed)) {
+      failures.push(`${displayPath(sourceRoot, file)} contains ${unresolved}`);
+    }
     const dependencies = [
-      ...specifiers.map((specifier) => resolveSourceImport(file, specifier, fileSet)).filter(Boolean),
+      ...specifiers.map((specifier) => resolveSourceImport(sourceRoot, file, specifier, fileSet)).filter(Boolean),
       ...globSpecifiers.flatMap((specifier) => resolveSourceGlob(file, specifier, fileSet)),
     ];
     const importFanout = new Set([...specifiers.filter((specifier) => !specifier.startsWith(".")), ...dependencies]);
@@ -41,6 +51,9 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
       failures.push(`${displayPath(sourceRoot, file)} imports ${importFanout.size} modules; budget is ${importBudget}`);
     }
     graph.set(file, [...new Set(dependencies)]);
+    if (moduleLayer(sourceRoot, file, connectorKinds) === "other") {
+      failures.push(`${displayPath(sourceRoot, file)} is not in a recognized architecture layer`);
+    }
     failures.push(...boundaryFailures({ sourceRoot, file, dependencies, connectorKinds }));
     if (isConnectorAgnosticModule(sourceRoot, file, connectorKinds)) {
       for (const kind of hardCodedConnectorKinds(parsed, connectorKinds)) {
@@ -71,7 +84,10 @@ export function moduleSpecifiers(sourceOrProgram) {
     if (node.type === "ImportDeclaration" || node.type === "ExportAllDeclaration" || node.type === "ExportNamedDeclaration") {
       if (typeof node.source?.value === "string") specifiers.push(node.source.value);
     }
-    if (node.type === "ImportExpression" && typeof node.source?.value === "string") specifiers.push(node.source.value);
+    if (node.type === "ImportExpression") {
+      const specifier = staticString(node.source);
+      if (specifier !== null) specifiers.push(specifier);
+    }
   });
   return specifiers;
 }
@@ -82,15 +98,41 @@ export function moduleGlobSpecifiers(sourceOrProgram) {
   walk(program, (node) => {
     if (node.type !== "CallExpression" || !isImportMetaGlob(node.callee)) return;
     const candidate = node.arguments[0];
-    if (candidate?.type === "Literal" && typeof candidate.value === "string") {
-      specifiers.push(candidate.value);
+    const candidateValue = staticString(candidate);
+    if (candidateValue !== null) {
+      specifiers.push(candidateValue);
     } else if (candidate?.type === "ArrayExpression") {
       for (const element of candidate.elements) {
-        if (element?.type === "Literal" && typeof element.value === "string") specifiers.push(element.value);
+        const elementValue = staticString(element);
+        if (elementValue !== null) specifiers.push(elementValue);
       }
     }
   });
   return specifiers;
+}
+
+export function unresolvedModuleLoads(sourceOrProgram) {
+  const program = typeof sourceOrProgram === "string" ? parseModule(sourceOrProgram) : sourceOrProgram;
+  const failures = [];
+  walk(program, (node) => {
+    if (node.type === "ImportExpression" && staticString(node.source) === null) {
+      failures.push("a non-static dynamic import");
+    }
+    if (node.type !== "CallExpression" || !isImportMetaGlob(node.callee)) return;
+    const candidate = node.arguments[0];
+    const validArray =
+      candidate?.type === "ArrayExpression" &&
+      candidate.elements.length > 0 &&
+      candidate.elements.every((element) => staticString(element) !== null);
+    if (staticString(candidate) === null && !validArray) failures.push("a non-static import.meta.glob pattern");
+  });
+  return failures;
+}
+
+function staticString(node) {
+  if (node?.type === "Literal" && typeof node.value === "string") return node.value;
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) return node.quasis[0]?.value?.cooked ?? null;
+  return null;
 }
 
 function isImportMetaGlob(node) {
@@ -108,12 +150,13 @@ export function hardCodedConnectorKinds(sourceOrProgram, connectorKinds) {
   const program = typeof sourceOrProgram === "string" ? parseModule(sourceOrProgram) : sourceOrProgram;
   const kinds = new Set(connectorKinds);
   const found = new Set();
+  const aliases = connectorKindAliases(program);
   walk(program, (node) => {
     if (node.type === "BinaryExpression" && ["===", "!==", "==", "!="].includes(node.operator)) {
-      collectComparedKind(node.left, node.right, kinds, found);
-      collectComparedKind(node.right, node.left, kinds, found);
+      collectComparedKind(node.left, node.right, kinds, found, aliases);
+      collectComparedKind(node.right, node.left, kinds, found, aliases);
     }
-    if (node.type === "SwitchStatement" && isConnectorKindReference(node.discriminant)) {
+    if (node.type === "SwitchStatement" && isConnectorKindReference(node.discriminant, aliases)) {
       for (const switchCase of node.cases) collectKindLiteral(switchCase.test, kinds, found);
     }
     if (
@@ -132,16 +175,44 @@ export function hardCodedConnectorKinds(sourceOrProgram, connectorKinds) {
   return [...found].sort();
 }
 
-function collectComparedKind(reference, candidate, kinds, found) {
-  if (isConnectorKindReference(reference)) collectKindLiteral(candidate, kinds, found);
+function connectorKindAliases(program) {
+  const declarations = [];
+  const aliases = new Set();
+  walk(program, (node) => {
+    if (node.type !== "VariableDeclarator") return;
+    if (node.id.type === "Identifier") declarations.push([node.id.name, node.init]);
+    if (node.id.type === "ObjectPattern") {
+      for (const property of node.id.properties) {
+        const key = property.computed ? property.key?.value : property.key?.name;
+        if (["connectorKind", "connector_kind"].includes(key) && property.value?.type === "Identifier") {
+          aliases.add(property.value.name);
+        }
+      }
+    }
+  });
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [name, value] of declarations) {
+      if (!aliases.has(name) && isConnectorKindReference(value, aliases)) {
+        aliases.add(name);
+        changed = true;
+      }
+    }
+  }
+  return aliases;
+}
+
+function collectComparedKind(reference, candidate, kinds, found, aliases) {
+  if (isConnectorKindReference(reference, aliases)) collectKindLiteral(candidate, kinds, found);
 }
 
 function collectKindLiteral(node, kinds, found) {
   if (node?.type === "Literal" && typeof node.value === "string" && kinds.has(node.value)) found.add(node.value);
 }
 
-function isConnectorKindReference(node) {
-  if (node?.type === "Identifier") return ["connectorKind", "connector_kind", "kind"].includes(node.name);
+function isConnectorKindReference(node, aliases = new Set()) {
+  if (node?.type === "Identifier") return ["connectorKind", "connector_kind", "kind"].includes(node.name) || aliases.has(node.name);
   if (node?.type !== "MemberExpression") return false;
   const property = node.computed ? node.property?.value : node.property?.name;
   return property === "connectorKind" || property === "connector_kind";
@@ -194,6 +265,9 @@ function boundaryFailures({ sourceRoot, file, dependencies, connectorKinds }) {
 
 function forbiddenDependency(sourceLayer, targetLayer) {
   const targetsConnectorTemplate = targetLayer.startsWith("connector-template:");
+  if (sourceLayer === "app" && targetsConnectorTemplate) {
+    return "application entry points must use connector registry surfaces instead of concrete templates";
+  }
   if (sourceLayer === "lib" && (["components", "pages", "connector-editor"].includes(targetLayer) || targetsConnectorTemplate)) {
     return "lib must remain below UI and connector implementations";
   }
@@ -220,6 +294,7 @@ function forbiddenDependency(sourceLayer, targetLayer) {
 
 function moduleLayer(sourceRoot, file, connectorKinds) {
   const path = displayPath(sourceRoot, file);
+  if (["App.jsx", "main.jsx"].includes(path)) return "app";
   const first = path.split("/")[0];
   if (genericRoots.includes(first)) return first;
   if (path.startsWith("connectors/editor/")) return "connector-editor";
@@ -244,9 +319,9 @@ function connectorTemplateKinds(sourceRoot) {
     .sort();
 }
 
-function resolveSourceImport(importer, specifier, fileSet) {
-  if (!specifier.startsWith(".")) return null;
-  const base = resolve(dirname(importer), specifier);
+function resolveSourceImport(sourceRoot, importer, specifier, fileSet) {
+  if (!specifier.startsWith(".") && !specifier.startsWith("/src/")) return null;
+  const base = specifier.startsWith("/src/") ? resolve(sourceRoot, specifier.slice(5)) : resolve(dirname(importer), specifier);
   for (const candidate of [
     base,
     ...sourceExtensions.map((extension) => `${base}${extension}`),
@@ -269,10 +344,27 @@ function sourceFiles(directory) {
     .flatMap((entry) => {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) return sourceFiles(path);
-      if (!sourceExtensions.includes(extname(entry.name)) || entry.name.includes(".test.")) return [];
+      if (!sourceExtensions.includes(extname(entry.name)) || isTestModule(entry.name)) return [];
       return [resolve(path)];
     })
     .sort();
+}
+
+function executableFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return executableFiles(path);
+    if (!executableExtensions.has(extname(entry.name)) || isTestModule(entry.name)) return [];
+    return [resolve(path)];
+  });
+}
+
+function isTestModule(filename) {
+  return /\.test\.[^.]+$/.test(filename);
+}
+
+function isTestSupport(sourceRoot, file) {
+  return displayPath(sourceRoot, file).startsWith("test/");
 }
 
 function displayPath(sourceRoot, file) {

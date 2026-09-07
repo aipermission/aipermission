@@ -205,10 +205,13 @@ Production-size and dependency budgets are release gates, not aspirational
 documentation. Connector source files have a tighter ceiling than general Go
 files, backend package totals are bounded, and the architecture suite rejects
 new internal import fan-out or dependency cycles. The frontend gate builds an
-AST-derived graph that includes static imports, re-exports, and literal dynamic
-imports and literal `import.meta.glob` edges; it also reads one shared frontend
-architecture policy, caps production modules at 550 lines, enforces layer direction, and rejects connector-kind literals
-used for branching or lookup maps outside concrete connector templates.
+AST-derived graph that includes static imports, re-exports, static template
+imports, and literal `import.meta.glob` edges. Non-static module loads fail
+closed. The graph, ESLint, and maintenance budgets read the same supported
+source-extension inventory from the frontend architecture policy. The gate caps
+production modules at 550 lines, rejects unclassified source layers, enforces
+layer direction, and rejects connector-kind literals used for branching or
+lookup maps outside concrete connector templates.
 Composition-root exceptions must be
 explicit and should move downward when responsibilities leave the API package;
 do not raise a ceiling merely to land a feature.
