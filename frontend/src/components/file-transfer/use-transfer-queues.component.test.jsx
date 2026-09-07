@@ -28,6 +28,9 @@ function QueueHarness({ recursive = true, runtimeTarget = { id: 7 } }) {
       <button type="button" onClick={() => void queues.addRemoteFiles([{ type: "directory", path: "/remote", name: "remote" }])}>
         Expand
       </button>
+      <button type="button" onClick={() => queues.resetQueues()}>
+        Reset
+      </button>
       <p>{notice?.message}</p>
       <p data-testid="uploads">{queues.uploadQueue.map((item) => item.name).join(",")}</p>
       <p data-testid="downloads">{queues.downloadQueue.map((item) => item.path).join(",")}</p>
@@ -98,4 +101,19 @@ it("cancels recursive expansion when its queue owner unmounts", async () => {
   expect(signal.aborted).toBe(true);
   pending.resolve({ entries: [{ type: "file", path: "/remote/a.txt", name: "a.txt", size: 1 }] });
   await Promise.resolve();
+});
+
+it("does not add an old expansion to a reset queue on the same target", async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  apiPost.mockReturnValueOnce(pending.promise);
+  render(<QueueHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Expand" }));
+  const signal = apiPost.mock.calls[0][2].signal;
+  await user.click(screen.getByRole("button", { name: "Reset" }));
+  expect(signal.aborted).toBe(true);
+  pending.resolve({ entries: [{ type: "file", path: "/remote/old.txt", name: "old.txt", size: 1 }] });
+
+  await waitFor(() => expect(screen.getByTestId("downloads")).toBeEmptyDOMElement());
 });

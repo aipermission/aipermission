@@ -21,6 +21,7 @@ export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, 
   downloadQueueRef.current = downloadQueue;
 
   function reset(nextRemoteDir = defaultRemoteDir) {
+    requestGuard.invalidate("expand");
     setMode("upload");
     setRemoteDir(nextRemoteDir);
     setUploadQueue([]);
@@ -36,6 +37,7 @@ export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, 
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
+    requestGuard.invalidate("expand");
     setDownloadQueue([]);
   }
 
