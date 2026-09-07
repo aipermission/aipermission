@@ -130,9 +130,15 @@ jobs:
         env:
           FRONTEND_COVERAGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: npm run test:coverage:changed
-      - name: End-to-end test
+      - name: Browser smoke
         working-directory: frontend
-        run: npm run test:e2e
+        run: npm run test:e2e:smoke
+      - name: Accessibility browser regression
+        working-directory: frontend
+        run: npm run test:e2e:accessibility
+      - name: High-risk browser regression
+        working-directory: frontend
+        run: npm run test:e2e:high-risk
       - name: Real-backend browser test
         working-directory: frontend
         run: npm run test:e2e:real

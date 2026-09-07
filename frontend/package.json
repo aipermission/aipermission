@@ -23,6 +23,9 @@
     "test:coverage:changed": "node --test scripts/coverage-owner-policy.test.mjs && node scripts/changed-coverage.mjs",
     "test:coverage:changed:update": "node scripts/changed-coverage.mjs --update-baseline",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --grep-invert '@high-risk|@accessibility'",
+    "test:e2e:accessibility": "playwright test --grep @accessibility",
+    "test:e2e:high-risk": "playwright test --grep @high-risk",
     "test:e2e:real": "playwright test --config playwright.real.config.js",
     "preview": "vite preview --host 127.0.0.1"
   },
@@ -41,6 +44,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",

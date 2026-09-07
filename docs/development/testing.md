@@ -52,7 +52,10 @@ This runs:
   connector action and target/profile lifecycles, approval dialogs, and console
   page-state boundaries
 - frontend production build
-- frontend Playwright browser smoke for unlock, security settings, database import, settings retention, and token permission flows
+- frontend Playwright browser smoke plus explicit accessibility and high-risk
+  workflow gates for keyboard focus, responsive unlock/setup, database import,
+  token permissions, Prompt approval, structured session isolation, live-console
+  reconnect, and transfer cancellation
 - frontend Playwright lifecycle coverage against a real encrypted backend for
   Prompt approval, completion, stale-context rejection, lock/unlock, and restart
 - explicit frontend async-state ownership coverage for stale completion,

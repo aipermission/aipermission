@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
@@ -135,7 +136,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("unlocks the local UI session and renders the dashboard", async ({ page }) => {
+test("@high-risk unlocks the local UI session and renders the dashboard", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("Your browser session is missing or expired.")).toBeVisible();
   await page.getByRole("textbox").fill("local-password");
@@ -161,7 +162,7 @@ test("renders security settings and updates MCP metadata exposure", async ({ pag
   await expect(page.getByText("MCP connector targets now include endpoint metadata.")).toBeVisible();
 });
 
-test("imports a database from the unlock screen", async ({ page }) => {
+test("@high-risk imports a database from the unlock screen", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Import Database" }).click();
   await page.getByPlaceholder("Restored project").fill("Imported project");
@@ -195,7 +196,7 @@ test("renders settings retention controls", async ({ page }) => {
   await expect(page.getByText("Retention settings saved and cleanup ran.")).toBeVisible();
 });
 
-test("keeps modal focus contained and returns it to the opener", async ({ page }) => {
+test("@accessibility keeps modal focus contained and returns it to the opener", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox").fill("local-password");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
@@ -205,6 +206,7 @@ test("keeps modal focus contained and returns it to the opener", async ({ page }
   await opener.click();
   const dialog = page.getByRole("dialog", { name: "Add backup provider" });
   await expect(dialog).toBeVisible();
+  await expectNoSeriousAccessibilityViolations(page, "[role=dialog]");
   await expect(dialog.getByRole("button", { name: "Close dialog" })).toBeFocused();
   for (let index = 0; index < 12; index += 1) {
     await page.keyboard.press(index % 2 === 0 ? "Tab" : "Shift+Tab");
@@ -216,7 +218,7 @@ test("keeps modal focus contained and returns it to the opener", async ({ page }
   await expect(opener).toBeFocused();
 });
 
-test("updates token connector permission from the Tokens page", async ({ page }) => {
+test("@high-risk updates token connector permission from the Tokens page", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox").fill("local-password");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
@@ -231,7 +233,7 @@ test("updates token connector permission from the Tokens page", async ({ page })
   await expect(page.getByText("Connector permissions saved.")).toBeVisible();
 });
 
-test("updates project Vault permissions from the Tokens page", async ({ page }) => {
+test("@high-risk updates project Vault permissions from the Tokens page", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox").fill("local-password");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
@@ -274,7 +276,7 @@ test("moves an edited connector to another project", async ({ page }) => {
   expect(updatePayload?.target?.project_id).toBe(2);
 });
 
-test("reviews and runs a Prompt connector action in the selected target context", async ({ page }) => {
+test("@high-risk reviews and runs a Prompt connector action in the selected target context", async ({ page }) => {
   let pending = true;
   let runCount = 0;
   const approval = pendingApproval();
@@ -304,7 +306,7 @@ test("reviews and runs a Prompt connector action in the selected target context"
   expect(runCount).toBe(1);
 });
 
-test("keeps structured sessions isolated while switching connector profiles", async ({ page }) => {
+test("@high-risk keeps structured sessions isolated while switching connector profiles", async ({ page }) => {
   const profiles = [postgresTargetProfile(1, "admin"), postgresTargetProfile(2, "readonly")];
   await page.unroute("http://localhost:8080/api/targets");
   await page.route("http://localhost:8080/api/targets", async (route) => route.fulfill({ json: { items: profiles } }));
@@ -336,11 +338,78 @@ test("keeps structured sessions isolated while switching connector profiles", as
   await expect(page.getByRole("heading", { name: "No active Postgres session" })).toBeVisible();
 });
 
+test("@high-risk reconnects a live console after the remote session exits", async ({ page }) => {
+  let socketCount = 0;
+  let activeSocket = null;
+  let clientSocketReady = false;
+  await page.unroute("http://localhost:8080/api/console/sessions");
+  await page.route("http://localhost:8080/api/console/sessions", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ json: liveConsoleSession(11) });
+      return;
+    }
+    await route.fulfill({ json: [liveConsoleSession(10)] });
+  });
+  await page.route("http://localhost:8080/api/vault-session-options?runtime_id=1", async (route) => {
+    await route.fulfill({ json: { supported: false, items: [], defaults: [] } });
+  });
+  await page.routeWebSocket(/\/api\/console\/sessions\/\d+\/attach/, (socket) => {
+    socketCount += 1;
+    activeSocket = socket;
+    socket.onMessage(() => {
+      clientSocketReady = true;
+    });
+    socket.send(JSON.stringify({ type: "snapshot", status: "connected", data: "ready\r\n" }));
+  });
+
+  await unlock(page);
+  await page.locator('aside a[href="/console"]').click();
+  await expect.poll(() => socketCount).toBe(1);
+  await page.getByRole("textbox", { name: "Terminal input" }).press("x");
+  await expect.poll(() => clientSocketReady).toBe(true);
+  activeSocket.send(JSON.stringify({ type: "exit", status: "closed", data: "Remote shell exited." }));
+
+  await expect(page.getByRole("heading", { name: "No active shell session" })).toBeVisible();
+  await expect(page.getByText(/session is closed and cannot accept input anymore/i)).toBeVisible();
+  await page.getByRole("button", { name: "New Session", exact: true }).last().click();
+  await expect.poll(() => socketCount).toBe(2);
+  await expect(page.getByRole("heading", { name: "No active shell session" })).toBeHidden();
+});
+
+test("@high-risk cancels an active transfer from the transfer center", async ({ page }) => {
+  let canceled = false;
+  let cancelCount = 0;
+  await page.route("http://localhost:8080/api/file-transfer-batches?limit=30", async (route) => {
+    await route.fulfill({ json: { items: [transferBatch(canceled ? "canceled" : "running")] } });
+  });
+  await page.route("http://localhost:8080/api/file-transfer-batches/77/cancel", async (route) => {
+    cancelCount += 1;
+    canceled = true;
+    await route.fulfill({ json: transferBatch("canceled") });
+  });
+
+  await unlock(page);
+  await page.getByRole("button", { name: /Transfers/ }).click();
+  await expect(page.getByRole("heading", { name: "Transfer Center" })).toBeVisible();
+  await expect(page.getByText("1 active queue", { exact: true })).toBeVisible();
+  await page.getByTitle("Cancel").click();
+
+  await expect(page.getByText("0 active queues", { exact: true })).toBeVisible();
+  await expect(page.getByText("Recent", { exact: true })).toBeVisible();
+  expect(cancelCount).toBe(1);
+});
+
 async function unlock(page) {
   await page.goto("/");
   await page.getByRole("textbox").fill("local-password");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
   await expect(page.locator('aside a[href="/console"]')).toBeVisible();
+}
+
+async function expectNoSeriousAccessibilityViolations(page, include) {
+  const results = await new AxeBuilder({ page }).include(include).analyze();
+  const violations = results.violations.filter(({ impact }) => impact === "serious" || impact === "critical");
+  expect(violations, violations.map(({ id, help }) => `${id}: ${help}`).join("\n")).toEqual([]);
 }
 
 function pendingApproval() {
@@ -501,11 +570,40 @@ function targetProfile() {
     connector_kind: "ssh",
     target_id: 1,
     profile_id: 1,
+    runtime_id: 1,
     target_name: "worker-1",
     profile_label: "main",
     server_id: 1,
     config: { host: "127.0.0.1", port: 22 },
     public: { username: "root", ssh_key_id: 1 },
+  };
+}
+
+function liveConsoleSession(id) {
+  return {
+    id,
+    runtime_id: 1,
+    name: "worker-1 shell",
+    status: "connected",
+    transcript: "",
+    created_at: "2026-09-07T12:00:00Z",
+  };
+}
+
+function transferBatch(status) {
+  return {
+    id: 77,
+    runtime_id: 1,
+    target_name: "worker-1",
+    status,
+    direction: "download",
+    source: "ui",
+    total_items: 1,
+    completed_items: 0,
+    canceled_items: status === "canceled" ? 1 : 0,
+    failed_items: 0,
+    transferred_bytes: 0,
+    items: [],
   };
 }
 
