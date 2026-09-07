@@ -1,11 +1,10 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import { BackupFreshnessNotices } from "./backup-freshness-notices";
 import { AppSidebar } from "./app-sidebar";
 import {
   createPollGenerationGuard,
-  isActiveTransferBatch,
   liveConsoleRuntimeTargets,
   mergeConsoleSessionData,
   normalizeCredentialResources,
@@ -13,8 +12,7 @@ import {
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
 import { LocalActionReconciliationDialog } from "./local-action-reconciliation-dialog";
 import { useLocalActionReconciliation } from "./use-local-action-reconciliation";
-import { createFileTransferBatchActions } from "./file-transfer/file-transfer-actions";
-import { createFileTransferListState, loadCurrentFileTransferBatches } from "./file-transfer/file-transfer-list-state";
+import { useTransferCenterState } from "./file-transfer/use-transfer-center-state";
 import { TransferCenter } from "./transfer-center";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -39,14 +37,12 @@ export function Shell({ theme, setTheme }) {
   const [connectorActionApprovals, setConnectorActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [vaultActionApprovals, setVaultActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [messages, setMessages] = useState({ state: "loading", data: [], error: null });
-  const [fileTransferBatches, setFileTransferBatches] = useState({ state: "loading", data: [], error: null });
   const [databaseStatus, setDatabaseStatus] = useState({ state: "loading", data: null, error: null });
   const [mcpRuntime, setMCPRuntime] = useState({ state: "loading", data: { enabled: false, start_enabled: false }, error: null });
   const [backupFreshness, setBackupFreshness] = useState({ state: "loading", data: [], checkErrors: [], error: null });
   const [switchDialog, setSwitchDialog] = useState({ open: false, database_id: "", password: "", state: "idle", error: null });
   const [lockDialog, setLockDialog] = useState({ open: false, state: "idle", error: null });
   const [actionRetryDialog, closeActionRetryDialog] = useLocalActionReconciliation();
-  const [transferCenterOpen, setTransferCenterOpen] = useState(false);
   const [vaultSessionDialog, setVaultSessionDialog] = useState({
     open: false,
     status: "idle",
@@ -57,10 +53,10 @@ export function Shell({ theme, setTheme }) {
   });
   const [vaultActionDialog, setVaultActionDialog] = useState({ approval: null, note: "", state: "idle", error: null });
   const vaultSessionResolverRef = useRef(null);
-  const seenPendingTransferApprovalsRef = useRef(new Set());
   const seenPendingVaultApprovalsRef = useRef(new Set());
-  const fileTransferListState = useRef(createFileTransferListState()).current;
   const pollGenerationGuard = useRef(createPollGenerationGuard()).current;
+  const pollIsCurrent = useCallback((generation) => pollGenerationGuard.isCurrent(generation), [pollGenerationGuard]);
+  const transferCenter = useTransferCenterState({ pollIsCurrent });
   const {
     attachSession: attachConsoleSession,
     closeSession: closeConsoleSession,
@@ -69,10 +65,6 @@ export function Shell({ theme, setTheme }) {
     resizeSession: resizeConsoleSession,
     sendInput: sendConsoleInput,
   } = useConsoleConnections({ setConsoleSessions });
-
-  function pollIsCurrent(generation) {
-    return pollGenerationGuard.isCurrent(generation);
-  }
 
   async function loadStatus(generation) {
     try {
@@ -213,25 +205,6 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  async function loadFileTransferBatches(options = {}, generation) {
-    return loadCurrentFileTransferBatches({
-      request: () => apiGet("/api/file-transfer-batches?limit=30"),
-      pollGeneration: generation,
-      pollIsCurrent,
-      listState: fileTransferListState,
-      onItems: (items) => {
-        const pendingApprovals = items.filter((item) => item.status === "pending_approval");
-        const hasNewPendingApproval = pendingApprovals.some((item) => !seenPendingTransferApprovalsRef.current.has(item.id));
-        pendingApprovals.forEach((item) => seenPendingTransferApprovalsRef.current.add(item.id));
-        if (hasNewPendingApproval) setTransferCenterOpen(true);
-        setFileTransferBatches({ state: "ready", data: items, error: null });
-      },
-      onError: (error) => {
-        setFileTransferBatches((current) => ({ state: "error", data: options.keepData ? current.data : [], error: error.message }));
-      },
-    });
-  }
-
   async function refreshAll(generation) {
     await Promise.all([
       loadStatus(generation),
@@ -244,7 +217,7 @@ export function Shell({ theme, setTheme }) {
       loadConnectorActionApprovals(generation),
       loadVaultActionApprovals(generation),
       loadMessages(generation),
-      loadFileTransferBatches({ keepData: true }, generation),
+      transferCenter.loadBatches({ keepData: true }, generation),
     ]);
   }
 
@@ -261,7 +234,7 @@ export function Shell({ theme, setTheme }) {
       loadConnectorActionApprovals(generation),
       loadVaultActionApprovals(generation),
       loadMessages(generation),
-      loadFileTransferBatches({ keepData: true }, generation),
+      transferCenter.loadBatches({ keepData: true }, generation),
     ]);
   });
 
@@ -487,16 +460,6 @@ export function Shell({ theme, setTheme }) {
     return data;
   }
 
-  function applyFileTransferBatch(batch) {
-    setFileTransferBatches((current) => fileTransferListState.applyBatch(current, batch));
-  }
-
-  const transferBatchActions = createFileTransferBatchActions({
-    post: apiPost,
-    applyResult: applyFileTransferBatch,
-    refresh: loadFileTransferBatches,
-  });
-
   function requestLockDatabase() {
     const unlockedCount = (databaseStatus.data?.databases || []).filter((item) => item.unlocked).length;
     if (unlockedCount > 1) {
@@ -553,36 +516,35 @@ export function Shell({ theme, setTheme }) {
   const pendingVaultActionApprovalCount = vaultActionApprovals.data.filter((approval) => approval.status === "approval_pending").length;
   const unreadMessageCount = messages.data.filter(isUnreadMessage).length;
   const consoleAttentionCount = pendingConnectorActionApprovalCount + pendingVaultActionApprovalCount + unreadMessageCount;
-  const activeTransferCount = fileTransferBatches.data.filter(isActiveTransferBatch).length;
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-950">
       <AppSidebar
         pathname={location.pathname}
         consoleAttentionCount={consoleAttentionCount}
-        activeTransferCount={activeTransferCount}
+        activeTransferCount={transferCenter.activeCount}
         gatewayState={gatewayState}
         mcpRuntime={mcpRuntime}
         theme={theme}
         onSetTheme={setTheme}
         onSetMCPRuntimeEnabled={setMCPRuntimeEnabled}
-        onOpenTransferCenter={() => setTransferCenterOpen(true)}
+        onOpenTransferCenter={transferCenter.show}
         onSwitchDatabase={openSwitchDialog}
         onLockDatabase={requestLockDatabase}
       />
 
       <TransferCenter
-        open={transferCenterOpen}
-        batches={fileTransferBatches.data}
-        state={fileTransferBatches.state}
-        error={fileTransferBatches.error}
-        onClose={() => setTransferCenterOpen(false)}
-        onRefresh={() => loadFileTransferBatches({ keepData: true })}
-        onPause={transferBatchActions.pause}
-        onResume={transferBatchActions.resume}
-        onCancel={transferBatchActions.cancel}
-        onApprove={transferBatchActions.approve}
-        onDecline={transferBatchActions.decline}
+        open={transferCenter.open}
+        batches={transferCenter.batches.data}
+        state={transferCenter.batches.state}
+        error={transferCenter.batches.error}
+        onClose={transferCenter.close}
+        onRefresh={() => transferCenter.loadBatches({ keepData: true })}
+        onPause={transferCenter.actions.pause}
+        onResume={transferCenter.actions.resume}
+        onCancel={transferCenter.actions.cancel}
+        onApprove={transferCenter.actions.approve}
+        onDecline={transferCenter.actions.decline}
       />
       <VaultSessionDialog state={vaultSessionDialog} onClose={closeVaultSessionDialog} onStart={startVaultConsoleSession} />
       <VaultActionApprovalDialog

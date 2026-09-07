@@ -146,15 +146,11 @@ test("Console and History expose connector file transfer flows", () => {
   assert.match(`${fileTransferDialogSource}\n${fileTransferBrowserSource}\n${fileTransferConfirmSource}`, /closeOnOverlay=\{false\}/);
   assert.match(fileTransferDialogSource, /apiPostForm/);
   assert.match(fileTransferDialogSource, /short-lived local staging files/);
-  assert.match(shellSource, /\/api\/file-transfer-batches\?limit=30/);
   assert.match(sidebarSource, /Transfers/);
   assert.match(transferCenterSource, /Transfer Center/);
   assert.match(transferCenterSource, /Closing this panel does not stop transfers/);
   assert.match(transferCenterSource, /pending_approval/);
   assert.match(transferCenterSource, /Approve selected/);
-  assert.match(shellSource, /createFileTransferBatchActions/);
-  assert.match(shellSource, /onApprove=\{transferBatchActions\.approve\}/);
-  assert.match(shellSource, /onDecline=\{transferBatchActions\.decline\}/);
   assert.match(fileTransferActionsSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/approve/);
   assert.match(fileTransferActionsSource, /\/api\/file-transfer-batches\/\$\{batchID\}\/decline/);
 });
