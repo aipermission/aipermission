@@ -162,28 +162,37 @@ export function useVaultValueActions({ reloadItems, setAction }) {
   }
 
   function openRemove(item) {
+    guard.invalidate("remove");
     setRemove({ ...emptyRemove, open: true, item });
   }
 
   function closeRemove() {
+    guard.invalidate("remove");
     setRemove(emptyRemove);
   }
 
   async function deleteItem() {
     if (!remove.item) return;
     const item = remove.item;
+    const request = guard.begin("remove");
     setRemove((current) => ({ ...current, state: "deleting", error: null }));
     try {
-      await apiPost(`/api/vault-items/${item.id}/delete`, {
-        expected_value_version: item.value_version,
-        expected_metadata_revision: item.metadata_revision,
-      });
-      if (!mounted.current) return;
+      await apiPost(
+        `/api/vault-items/${item.id}/delete`,
+        {
+          expected_value_version: item.value_version,
+          expected_metadata_revision: item.metadata_revision,
+        },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent()) return;
       setRemove(emptyRemove);
       setAction({ state: "ready", message: "Vault item deleted from the active database.", error: null });
       await reloadItems();
     } catch (error) {
-      if (mounted.current) setRemove((current) => ({ ...current, state: "error", error: error.message }));
+      if (request.isCurrent()) setRemove((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 

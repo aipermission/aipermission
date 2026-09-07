@@ -2,7 +2,7 @@ import { KeyRound, Plus, RefreshCcw, Search } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input, Select } from "../ui/form";
 import { Notice } from "../ui/notice";
-import { VaultRow } from "../../pages/vault-components";
+import { VaultRow } from "./vault-row";
 
 export function VaultPageHeader({ loading, canCreate, onRefresh, onCreate }) {
   return (

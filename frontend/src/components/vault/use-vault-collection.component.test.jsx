@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiGet, apiPost } from "../../lib/api";
+import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { filterVaultItemsByExpiry, useVaultCollection } from "./use-vault-collection";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn() }));
@@ -16,6 +16,22 @@ function CollectionHarness() {
       <p data-testid="action">{vault.action.message || vault.action.error}</p>
       <button type="button" onClick={vault.openCreate}>
         Open
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          vault.openEdit({
+            id: 7,
+            source: "imported",
+            name: "existing_key",
+            owner_project_id: 4,
+            project_ids: [],
+            secret_type: "generic_secret",
+            metadata_revision: 3,
+          })
+        }
+      >
+        Edit
       </button>
       <button type="button" onClick={vault.closeEditor}>
         Close
@@ -33,12 +49,14 @@ function CollectionHarness() {
 beforeEach(() => {
   apiGet.mockReset();
   apiPost.mockReset();
+  apiPut.mockReset();
   apiGet.mockImplementation((path) => {
     if (path === "/api/projects") return Promise.resolve({ items: [{ id: 4, name: "My Project", slug: "my-project" }] });
     if (path.startsWith("/api/vault-items")) return Promise.resolve({ items: [{ id: 1, name: "KEY" }], total: 1 });
     throw new Error(`Unexpected path ${path}`);
   });
   apiPost.mockResolvedValue({ id: 2 });
+  apiPut.mockResolvedValue({ id: 7 });
 });
 
 it("owns debounced Vault listing and create lifecycle", async () => {
@@ -92,4 +110,21 @@ it("does not let a late create close a newly opened editor", async () => {
   await act(async () => resolveSave({ id: 2 }));
   expect(screen.getByTestId("editor")).toHaveTextContent("true:4:");
   expect(screen.getByTestId("action")).toHaveTextContent("");
+});
+
+it("updates Vault metadata without replacing the existing value", async () => {
+  const user = userEvent.setup();
+  render(<CollectionHarness />);
+  expect(await screen.findByTestId("project")).toHaveTextContent("My Project");
+
+  await user.click(screen.getByRole("button", { name: "Edit" }));
+  expect(screen.getByTestId("editor")).toHaveTextContent("true:4:existing_key");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(screen.getByTestId("action")).toHaveTextContent("Vault item updated"));
+  expect(apiPut).toHaveBeenCalledWith(
+    "/api/vault-items/7",
+    expect.objectContaining({ name: "EXISTING_KEY", expected_metadata_revision: 3 }),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
 });

@@ -23,6 +23,7 @@ function BindingsHarness({ setAction = vi.fn() }) {
       <p data-testid="state">{owner.bindings.state}</p>
       <p data-testid="item">{owner.bindings.item?.id || "none"}</p>
       <p data-testid="targets">{owner.bindings.targets.map((target) => target.name).join(",")}</p>
+      <p data-testid="bindings">{owner.bindings.data.map((binding) => binding.id).join(",")}</p>
       <button type="button" onClick={() => void owner.openBindings(itemA)}>
         Open A
       </button>
@@ -40,6 +41,9 @@ function BindingsHarness({ setAction = vi.fn() }) {
       </button>
       <button type="button" onClick={(event) => void owner.saveBinding(event)}>
         Save
+      </button>
+      <button type="button" disabled={!owner.bindings.data[0]} onClick={() => void owner.deleteBinding(owner.bindings.data[0])}>
+        Delete
       </button>
     </div>
   );
@@ -128,4 +132,40 @@ it("does not let a late save overwrite a newly opened binding dialog", async () 
   await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("ready"));
   expect(screen.getByTestId("item")).toHaveTextContent("6");
   expect(setAction).not.toHaveBeenCalled();
+});
+
+it("removes the selected binding with its revision", async () => {
+  const user = userEvent.setup();
+  const setAction = vi.fn();
+  apiGet.mockImplementation((path) =>
+    Promise.resolve(path === "/api/connector-targets/inventory" ? { items: [] } : { items: [{ id: 12, binding_revision: 4 }] }),
+  );
+  apiPost.mockResolvedValue({});
+  render(<BindingsHarness setAction={setAction} />);
+
+  await user.click(screen.getByRole("button", { name: "Open A" }));
+  expect(await screen.findByTestId("bindings")).toHaveTextContent("12");
+  await user.click(screen.getByRole("button", { name: "Delete" }));
+
+  await waitFor(() => expect(screen.getByTestId("bindings")).toHaveTextContent(""));
+  expect(apiPost).toHaveBeenCalledWith(
+    "/api/vault-default-bindings/12/delete",
+    { expected_binding_revision: 4 },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(setAction).toHaveBeenCalledWith(expect.objectContaining({ message: "Default session environment binding removed." }));
+});
+
+it("keeps the current dialog open when saving fails", async () => {
+  const user = userEvent.setup();
+  apiGet.mockResolvedValue({ items: [] });
+  apiPut.mockRejectedValue(new Error("binding conflict"));
+  render(<BindingsHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Open A" }));
+  await user.click(screen.getByRole("button", { name: "Select" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("error"));
+  expect(screen.getByTestId("item")).toHaveTextContent("5");
 });

@@ -8,10 +8,12 @@ vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
 
 function deferred() {
   let resolve;
-  const promise = new Promise((next) => {
+  let reject;
+  const promise = new Promise((next, failure) => {
     resolve = next;
+    reject = failure;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function ValueHarness({ reloadItems = vi.fn(), setAction = vi.fn() }) {
@@ -75,8 +77,32 @@ it("deletes with optimistic revisions and refreshes metadata", async () => {
   await user.click(screen.getByRole("button", { name: "Remove" }));
   await user.click(screen.getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(reloadItems).toHaveBeenCalledOnce());
-  expect(apiPost).toHaveBeenCalledWith("/api/vault-items/3/delete", { expected_value_version: 2, expected_metadata_revision: 4 });
+  expect(apiPost).toHaveBeenCalledWith(
+    "/api/vault-items/3/delete",
+    { expected_value_version: 2, expected_metadata_revision: 4 },
+    { signal: expect.any(AbortSignal) },
+  );
   expect(setAction).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("deleted") }));
+});
+
+it("does not let a closed deletion mutate a newly opened dialog", async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  const reloadItems = vi.fn();
+  const setAction = vi.fn();
+  apiPost.mockReturnValue(pending.promise);
+  render(<ValueHarness reloadItems={reloadItems} setAction={setAction} />);
+
+  await user.click(screen.getByRole("button", { name: "Remove" }));
+  await user.click(screen.getByRole("button", { name: "Delete" }));
+  const requestOptions = apiPost.mock.calls[0][2];
+  await user.click(screen.getByRole("button", { name: "Remove" }));
+  expect(requestOptions.signal.aborted).toBe(true);
+  pending.resolve({});
+
+  await waitFor(() => expect(screen.getByTestId("remove")).toHaveTextContent("idle"));
+  expect(reloadItems).not.toHaveBeenCalled();
+  expect(setAction).not.toHaveBeenCalled();
 });
 
 it("cancels a pending reveal when its dialog closes", async () => {
