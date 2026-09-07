@@ -75,8 +75,11 @@ export const consolePageSource = [
 ].join("\n");
 export const connectorsSource = [
   readFileSync(join(currentDir, "..", "pages", "connectors.jsx"), "utf8"),
+  readFileSync(join(currentDir, "..", "connectors", "editor", "connector-page-dialogs.jsx"), "utf8"),
+  readFileSync(join(currentDir, "..", "connectors", "editor", "connector-targets-table.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "connectors", "editor", "use-connector-editor.js"), "utf8"),
   readFileSync(join(currentDir, "..", "connectors", "editor", "use-connector-connection-tests.js"), "utf8"),
+  readFileSync(join(currentDir, "..", "connectors", "editor", "use-connector-inventory.js"), "utf8"),
 ].join("\n");
 export const projectsSource = readFileSync(join(currentDir, "..", "pages", "projects.jsx"), "utf8");
 export const tokensSource = readFileSync(join(currentDir, "..", "pages", "tokens.jsx"), "utf8");
