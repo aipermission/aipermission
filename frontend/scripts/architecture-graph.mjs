@@ -1,13 +1,16 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { globSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 
 import { parse } from "espree";
+
+const architecturePolicy = JSON.parse(readFileSync(new URL("../architecture-policy.json", import.meta.url), "utf8"));
 
 const sourceExtensions = Object.freeze([".js", ".jsx"]);
 const genericRoots = Object.freeze(["components", "lib", "pages"]);
 
 export function analyzeSourceTree(sourceRoot, options = {}) {
-  const importBudget = options.importBudget ?? 20;
+  const importBudget = options.importBudget ?? architecturePolicy.maxDependencyFanout;
+  const lineBudget = options.lineBudget ?? architecturePolicy.maxProductionModuleLines;
   const files = sourceFiles(sourceRoot);
   const fileSet = new Set(files);
   const graph = new Map();
@@ -16,6 +19,10 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
 
   for (const file of files) {
     const source = readFileSync(file, "utf8");
+    const lineCount = source.endsWith("\n") ? source.split("\n").length - 1 : source.split("\n").length;
+    if (lineCount > lineBudget) {
+      failures.push(`${displayPath(sourceRoot, file)} has ${lineCount} lines; budget is ${lineBudget}`);
+    }
     let parsed;
     try {
       parsed = parseModule(source);
@@ -24,10 +31,15 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
       continue;
     }
     const specifiers = moduleSpecifiers(parsed);
-    if (new Set(specifiers).size > importBudget) {
-      failures.push(`${displayPath(sourceRoot, file)} imports ${new Set(specifiers).size} modules; budget is ${importBudget}`);
+    const globSpecifiers = moduleGlobSpecifiers(parsed);
+    const dependencies = [
+      ...specifiers.map((specifier) => resolveSourceImport(file, specifier, fileSet)).filter(Boolean),
+      ...globSpecifiers.flatMap((specifier) => resolveSourceGlob(file, specifier, fileSet)),
+    ];
+    const importFanout = new Set([...specifiers.filter((specifier) => !specifier.startsWith(".")), ...dependencies]);
+    if (importFanout.size > importBudget) {
+      failures.push(`${displayPath(sourceRoot, file)} imports ${importFanout.size} modules; budget is ${importBudget}`);
     }
-    const dependencies = specifiers.map((specifier) => resolveSourceImport(file, specifier, fileSet)).filter(Boolean);
     graph.set(file, [...new Set(dependencies)]);
     failures.push(...boundaryFailures({ sourceRoot, file, dependencies, connectorKinds }));
     if (isConnectorAgnosticModule(sourceRoot, file, connectorKinds)) {
@@ -41,7 +53,7 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
     failures.push(`dependency cycle: ${cycle.map((file) => displayPath(sourceRoot, file)).join(" -> ")}`);
   }
 
-  return { failures: [...new Set(failures)].sort(), files, graph, importBudget };
+  return { failures: [...new Set(failures)].sort(), files, graph, importBudget, lineBudget };
 }
 
 export function parseModule(source) {
@@ -62,6 +74,34 @@ export function moduleSpecifiers(sourceOrProgram) {
     if (node.type === "ImportExpression" && typeof node.source?.value === "string") specifiers.push(node.source.value);
   });
   return specifiers;
+}
+
+export function moduleGlobSpecifiers(sourceOrProgram) {
+  const program = typeof sourceOrProgram === "string" ? parseModule(sourceOrProgram) : sourceOrProgram;
+  const specifiers = [];
+  walk(program, (node) => {
+    if (node.type !== "CallExpression" || !isImportMetaGlob(node.callee)) return;
+    const candidate = node.arguments[0];
+    if (candidate?.type === "Literal" && typeof candidate.value === "string") {
+      specifiers.push(candidate.value);
+    } else if (candidate?.type === "ArrayExpression") {
+      for (const element of candidate.elements) {
+        if (element?.type === "Literal" && typeof element.value === "string") specifiers.push(element.value);
+      }
+    }
+  });
+  return specifiers;
+}
+
+function isImportMetaGlob(node) {
+  if (node?.type !== "MemberExpression" || node.computed) return false;
+  return (
+    node.property?.type === "Identifier" &&
+    node.property.name === "glob" &&
+    node.object?.type === "MetaProperty" &&
+    node.object.meta?.name === "import" &&
+    node.object.property?.name === "meta"
+  );
 }
 
 export function hardCodedConnectorKinds(sourceOrProgram, connectorKinds) {
@@ -166,6 +206,12 @@ function forbiddenDependency(sourceLayer, targetLayer) {
   if (sourceLayer === "connector-shared" && targetsConnectorTemplate) {
     return "shared connector code must not depend on a concrete template";
   }
+  if (sourceLayer === "pages" && targetsConnectorTemplate) {
+    return "pages must use connector registry surfaces instead of concrete templates";
+  }
+  if (sourceLayer.startsWith("connector-template:") && ["pages", "connector-editor", "connector-registry"].includes(targetLayer)) {
+    return "connector templates must not depend on pages, editor orchestration, or their registry";
+  }
   if (sourceLayer.startsWith("connector-template:") && targetLayer.startsWith("connector-template:") && sourceLayer !== targetLayer) {
     return "connector templates must not import sibling connector internals";
   }
@@ -181,7 +227,8 @@ function moduleLayer(sourceRoot, file, connectorKinds) {
   for (const kind of connectorKinds) {
     if (path.startsWith(`connectors/templates/${kind}/`)) return `connector-template:${kind}`;
   }
-  if (path.startsWith("connectors/templates/")) return "connector-registry";
+  if (["connectors/templates/catalog.js", "connectors/templates/registry.jsx"].includes(path)) return "connector-registry";
+  if (path.startsWith("connectors/templates/")) return "connector-shared";
   return "other";
 }
 
@@ -208,6 +255,13 @@ function resolveSourceImport(importer, specifier, fileSet) {
     if (fileSet.has(candidate)) return candidate;
   }
   return null;
+}
+
+function resolveSourceGlob(importer, specifier, fileSet) {
+  if (!specifier.startsWith(".")) return [];
+  return globSync(specifier, { cwd: dirname(importer) })
+    .map((match) => resolve(dirname(importer), match))
+    .filter((match) => fileSet.has(match));
 }
 
 function sourceFiles(directory) {

@@ -80,17 +80,17 @@ Keep migration code separate from runtime compatibility code.
 
 Connector work has two classes:
 
-| Capability | Normal structured connector | Runtime-integrated connector |
-|---|---|---|
-| Examples | Postgres, Redis / Valkey, API recipes | SSH live terminal and SFTP |
-| Backend connector package | yes | yes |
-| Frontend template folder | yes | yes |
-| Shared target/profile/action permissions | yes | yes |
-| Shared approval, history, and audit | yes | yes |
-| New permission/history/audit tables | no | no |
-| Generic route branches such as `kind == "redis"` | no | no |
-| `connector_api_adapters.go` work | no | only after design review |
-| Live console / file transfer / owned credential resources | no | adapter contract required |
+| Capability                                                | Normal structured connector           | Runtime-integrated connector |
+| --------------------------------------------------------- | ------------------------------------- | ---------------------------- |
+| Examples                                                  | Postgres, Redis / Valkey, API recipes | SSH live terminal and SFTP   |
+| Backend connector package                                 | yes                                   | yes                          |
+| Frontend template folder                                  | yes                                   | yes                          |
+| Shared target/profile/action permissions                  | yes                                   | yes                          |
+| Shared approval, history, and audit                       | yes                                   | yes                          |
+| New permission/history/audit tables                       | no                                    | no                           |
+| Generic route branches such as `kind == "redis"`          | no                                    | no                           |
+| `connector_api_adapters.go` work                          | no                                    | only after design review     |
+| Live console / file transfer / owned credential resources | no                                    | adapter contract required    |
 
 If a connector cannot fit the normal structured path, treat that as a design
 review signal before adding gateway-owned adapter capabilities. Adapter
@@ -206,7 +206,8 @@ documentation. Connector source files have a tighter ceiling than general Go
 files, backend package totals are bounded, and the architecture suite rejects
 new internal import fan-out or dependency cycles. The frontend gate builds an
 AST-derived graph that includes static imports, re-exports, and literal dynamic
-imports; it also enforces layer direction and rejects connector-kind literals
+imports and literal `import.meta.glob` edges; it also reads one shared frontend
+architecture policy, caps production modules at 550 lines, enforces layer direction, and rejects connector-kind literals
 used for branching or lookup maps outside concrete connector templates.
 Composition-root exceptions must be
 explicit and should move downward when responsibilities leave the API package;

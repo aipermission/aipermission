@@ -1,0 +1,4 @@
+{
+  "maxDependencyFanout": 20,
+  "maxProductionModuleLines": 550
+}
