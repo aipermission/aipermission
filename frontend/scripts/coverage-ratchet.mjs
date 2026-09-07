@@ -34,6 +34,27 @@ export function validateCoverageBaseline(baseline, owners, floors = coverageFloo
   }
 }
 
+export function mergeCoverageMetrics(previous, actual, floors = coverageFloors) {
+  return Object.fromEntries(
+    Object.keys(floors).map((metric) => {
+      const prior = previous?.[metric];
+      const measured = actual?.[metric];
+      if (!Number.isFinite(measured)) throw new Error(`Measured coverage is missing ${metric}`);
+      return [metric, Number.isFinite(prior) ? Math.max(prior, measured) : measured];
+    }),
+  );
+}
+
+export function mergeChangedCoverageBaseline(owners, changedOwners, currentFiles, measuredFiles) {
+  const changed = new Set(changedOwners);
+  return Object.fromEntries(
+    owners.map((file) => [
+      file,
+      changed.has(file) ? mergeCoverageMetrics(currentFiles?.[file], measuredFiles[file]) : currentFiles?.[file] || measuredFiles[file],
+    ]),
+  );
+}
+
 function roundCoverage(value) {
   return Math.round(value * 100) / 100;
 }

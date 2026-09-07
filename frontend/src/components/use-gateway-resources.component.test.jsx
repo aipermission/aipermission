@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet, apiPut } from "../lib/api";
 import { useGatewayResources } from "./use-gateway-resources";
 
+// async-owner: src/components/use-gateway-activity-resources.js
+// async-owner: src/components/use-gateway-core-resources.js
+
 vi.mock("../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn() }));
 
 function deferred() {

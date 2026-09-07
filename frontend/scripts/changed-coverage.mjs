@@ -4,36 +4,46 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isBehaviorOwner, listBehaviorOwners } from "./coverage-owner-policy.mjs";
-import { coverageFloors as floors, ratchetedMetrics, validateCoverageBaseline } from "./coverage-ratchet.mjs";
+import { createCoverageReportDirectory } from "./coverage-report-directory.mjs";
+import {
+  coverageFloors as floors,
+  mergeChangedCoverageBaseline,
+  ratchetedMetrics,
+  validateCoverageBaseline,
+} from "./coverage-ratchet.mjs";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(frontendRoot, "..");
 const baselinePath = join(frontendRoot, ".changed-coverage-baseline.json");
-const summaryPath = join(frontendRoot, "coverage", "changed", "coverage-summary.json");
 const updateBaseline = process.argv.includes("--update-baseline");
-const base = updateBaseline ? null : coverageBase();
+const base = coverageBase();
+const comparison = coverageComparison(base);
 
-const changedOwners = updateBaseline ? listBehaviorOwners(frontendRoot) : findChangedOwners();
+const allOwners = listBehaviorOwners(frontendRoot);
+const changedOwners = findChangedOwners(comparison.ref);
 if (!updateBaseline && changedOwners.length === 0 && !baselineChanged()) {
   console.log("Changed frontend coverage passed: no behavior owners changed.");
   process.exit(0);
 }
 
-runCoverage();
-const coverage = readCoverageSummary();
+const reportDirectory = createCoverageReportDirectory();
+process.once("exit", reportDirectory.cleanup);
+runCoverage(reportDirectory.path);
+const coverage = readCoverageSummary(reportDirectory.path);
 
 if (updateBaseline) {
   if (process.env.CI) throw new Error("Refusing to update the changed coverage baseline in CI");
-  const files = Object.fromEntries(changedOwners.map((file) => [file, metricsFor(file, coverage)]));
+  const currentBaseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, "utf8")) : null;
+  const measuredFiles = Object.fromEntries(allOwners.map((file) => [file, metricsFor(file, coverage)]));
+  const files = mergeChangedCoverageBaseline(allOwners, changedOwners, currentBaseline?.files, measuredFiles);
   writeFileSync(baselinePath, `${JSON.stringify({ version: 2, floors, files }, null, 2)}\n`);
   console.log(`Changed frontend coverage baseline updated for ${changedOwners.length} behavior owners.`);
   process.exit(0);
 }
 
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
-const allOwners = listBehaviorOwners(frontendRoot);
 validateCoverageBaseline(baseline, allOwners);
-const baseBaseline = readBaseBaseline(base);
+const baseBaseline = comparison.baseline;
 const failures = [];
 for (const file of allOwners) {
   const actual = metricsFor(file, coverage);
@@ -67,8 +77,8 @@ if (failures.length > 0) {
 
 console.log(`Changed frontend coverage passed for ${changedOwners.length} behavior owners.`);
 
-function findChangedOwners() {
-  const output = execFileSync("git", ["diff", "--name-only", "--diff-filter=ACMR", `${base}...HEAD`, "--", "frontend/src"], {
+function findChangedOwners(ref) {
+  const output = execFileSync("git", ["diff", "--name-only", "--diff-filter=ACMR", ref, "--", "frontend/src"], {
     cwd: repositoryRoot,
     encoding: "utf8",
   });
@@ -82,18 +92,28 @@ function findChangedOwners() {
 }
 
 function readBaseBaseline(ref) {
+  const baseline = readBaselineAt(ref);
+  if (baseline === null) return null;
+  if (baseline?.version !== 2) throw new Error("Base changed coverage baseline must use version 2");
+  return baseline;
+}
+
+function readBaselineAt(ref) {
   const result = spawnSync("git", ["show", `${ref}:frontend/.changed-coverage-baseline.json`], {
     cwd: repositoryRoot,
     encoding: "utf8",
   });
   if (result.status !== 0) return null;
-  const baseline = JSON.parse(result.stdout);
-  if (baseline?.version !== 2) throw new Error("Base changed coverage baseline must use version 2");
-  return baseline;
+  return JSON.parse(result.stdout);
+}
+
+function coverageComparison(ref) {
+  const baseline = readBaseBaseline(ref);
+  return { ref, baseline };
 }
 
 function baselineChanged() {
-  const result = spawnSync("git", ["diff", "--quiet", `${base}...HEAD`, "--", "frontend/.changed-coverage-baseline.json"], {
+  const result = spawnSync("git", ["diff", "--quiet", comparison.ref, "--", "frontend/.changed-coverage-baseline.json"], {
     cwd: repositoryRoot,
   });
   if (result.status === 0) return false;
@@ -111,17 +131,22 @@ function coverageBase() {
   throw new Error("Cannot determine a base commit for changed frontend coverage");
 }
 
-function runCoverage() {
+function runCoverage(reportPath) {
   const vitest = join(frontendRoot, "node_modules", "vitest", "vitest.mjs");
-  const result = spawnSync(process.execPath, [vitest, "run", "--config", "vitest.changed.config.js", "--coverage"], {
-    cwd: frontendRoot,
-    stdio: "inherit",
-  });
+  const result = spawnSync(
+    process.execPath,
+    [vitest, "run", "--config", "vitest.changed.config.js", "--coverage", `--coverage.reportsDirectory=${reportPath}`],
+    {
+      cwd: frontendRoot,
+      stdio: "inherit",
+    },
+  );
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-function readCoverageSummary() {
+function readCoverageSummary(reportPath) {
+  const summaryPath = join(reportPath, "coverage-summary.json");
   if (!existsSync(summaryPath)) throw new Error(`Coverage summary was not created at ${summaryPath}`);
   return JSON.parse(readFileSync(summaryPath, "utf8"));
 }

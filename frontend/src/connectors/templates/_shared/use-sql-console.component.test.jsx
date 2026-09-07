@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiPost } from "../../../lib/api";
 import { useSQLConsole } from "./use-sql-console";
 
+// async-owner: src/connectors/templates/_shared/use-sql-metadata.js
+
 vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
 
 const config = {

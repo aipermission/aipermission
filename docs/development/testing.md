@@ -48,6 +48,9 @@ This runs:
 - backend vet
 - backend govulncheck
 - frontend tests
+- frontend suite-manifest validation that discovers production owners using
+  request guards, abort controllers, timers, or sockets and requires each owner
+  to name the focused regression test that exercises it
 - frontend duplicate-block comparison against the base Git revision
 - frontend per-file coverage floors for connector permission editing, shared
   connector action and target/profile lifecycles, approval dialogs, and console
@@ -90,6 +93,16 @@ file. The checked baseline is compared with the base Git revision, so a change
 cannot weaken its baseline in the same pull request. New modules must meet the
 full floor; an existing module below the floor must improve by at least one
 percentage point whenever it changes, until it reaches the floor.
+Changed-coverage runs allocate an isolated temporary report directory, so
+parallel or interrupted checks cannot reuse stale coverage artifacts. The
+IndexedDB-backed local action retry ledger has a separate Node coverage gate;
+its storage internals cannot disappear behind the browser-owner exclusion.
+
+Playwright release gates run with retries disabled and reject committed
+`test.only` calls in CI. A flaky first attempt is therefore a failure, while
+failure traces remain available for diagnosis. High-risk route fixtures assert
+the HTTP method and request body, and responsive accessibility checks run after
+every tested unlock/setup tab transition.
 
 The real-backend browser test runs the production API, SQLCipher database,
 UI-session authentication, CSRF, connector permission, approval, and history

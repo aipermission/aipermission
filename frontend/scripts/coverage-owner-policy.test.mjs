@@ -24,3 +24,13 @@ test("treats production modules as owners by default", () => {
   owners.forEach((file) => assert.equal(isBehaviorOwner(file), true, file));
   exclusions.forEach((file) => assert.equal(isBehaviorOwner(file), false, file));
 });
+
+test("leaves connector manifests to the runtime architecture gate", () => {
+  assert.equal(isBehaviorOwner("src/connectors/templates/redis/index.jsx"), false);
+  assert.equal(isBehaviorOwner("src/connectors/templates/redis/model.js"), true);
+});
+
+test("leaves retry storage internals to the enforced Node integration coverage gate", () => {
+  assert.equal(isBehaviorOwner("src/lib/local-action-retry/storage.js"), false);
+  assert.equal(isBehaviorOwner("src/lib/local-action-retry.js"), true);
+});

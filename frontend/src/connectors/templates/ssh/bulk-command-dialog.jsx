@@ -309,7 +309,7 @@ function BulkCommandResultRow({ item, selected, onSelect }) {
       onClick={onSelect}
     >
       <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.target_name}</span>
+        <span className="truncate text-sm font-semibold text-stone-950">{item.target_name || `Target ${item.target_id || "unknown"}`}</span>
         <Badge tone={statusTone(item.status)} className="shrink-0 px-2 py-0.5 text-[11px]">
           {statusLabel(item.status)}
         </Badge>
@@ -335,7 +335,7 @@ function BulkCommandResultDetail({ item }) {
     <article className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 rounded-md border border-stone-200 p-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.target_name}</p>
+          <p className="truncate text-sm font-semibold text-stone-950">{item.target_name || `Target ${item.target_id || "unknown"}`}</p>
           <p className="text-xs text-stone-500">Request #{item.request_id}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
