@@ -5,15 +5,18 @@ export const localActionRetryLedgerChangedEvent = "aipermission:local-action-ret
 
 const legacyStoragePrefix = "aipermission.local-action-retry.v2.";
 const databaseName = "aipermission-local-action-retry";
-const databaseVersion = 1;
+const databaseVersion = 2;
 const entriesStore = "entries";
 const keysStore = "keys";
+const reservationsStore = "reservations";
 const workspaceCookieName = "aipermission_workspace";
 const maxEntries = 128;
 const maxGlobalEntries = 512;
 const maxRetryScopes = 64;
+const signingReservationLifetimeMs = 2 * 60 * 1000;
 const memoryEntries = new Map();
 const memoryKeys = new Map();
+const memoryReservations = new Map();
 let memoryQueue = Promise.resolve();
 let retryDatabasePromise;
 let retryDatabase;
@@ -21,32 +24,38 @@ let retryDatabase;
 export async function prepareLocalActionRetry(body) {
   const scope = currentRetryScope();
   assertNoLegacyLedger(scope);
-  const signature = await requestSignature(scope, body || {});
-  let existing = await getEntry(scope, signature);
-  if (existing?.state === "outcome_unknown") {
-    const confirmed = await requestReconciliation(existing);
-    if (!confirmed) {
-      const error = new Error("A new external attempt was canceled. The unresolved request remains protected.");
-      error.code = "local_action_reconciliation_canceled";
-      throw error;
+  const signedRequest = await requestSignature(scope, body || {});
+  let reservationActive = true;
+  try {
+    let existing = await getEntry(scope, signedRequest.signature);
+    if (existing?.state === "outcome_unknown") {
+      const confirmed = await requestReconciliation(existing);
+      if (!confirmed) {
+        const error = new Error("A new external attempt was canceled. The unresolved request remains protected.");
+        error.code = "local_action_reconciliation_canceled";
+        throw error;
+      }
+      existing = await replaceReconciledEntry(scope, existing);
+      return {
+        scope,
+        signature: signedRequest.signature,
+        idempotencyKey: existing.key,
+        revision: existing.revision,
+        reused: false,
+      };
     }
-    existing = await replaceReconciledEntry(scope, existing);
+    const reservation = await reserveEntry(scope, signedRequest.signature, signedRequest.reservationID);
+    reservationActive = false;
     return {
       scope,
-      signature,
-      idempotencyKey: existing.key,
-      revision: existing.revision,
-      reused: false,
+      signature: signedRequest.signature,
+      idempotencyKey: reservation.entry.key,
+      revision: reservation.entry.revision,
+      reused: !reservation.created,
     };
+  } finally {
+    if (reservationActive) await releaseSigningReservation(scope, signedRequest.reservationID);
   }
-  const reservation = await reserveEntry(scope, signature);
-  return {
-    scope,
-    signature,
-    idempotencyKey: reservation.entry.key,
-    revision: reservation.entry.revision,
-    reused: !reservation.created,
-  };
 }
 
 export async function markLocalActionRetryOutcome(prepared, data) {
@@ -110,6 +119,7 @@ export async function resetLocalActionRetryLedger() {
     await withMemoryTransaction(() => {
       memoryEntries.clear();
       memoryKeys.clear();
+      memoryReservations.clear();
     });
   }
   notifyChanged();
@@ -120,49 +130,64 @@ async function requestSignature(scope, body) {
   if (!cryptoAPI?.subtle || typeof TextEncoder === "undefined") {
     throw new Error("Secure request hashing is unavailable; the connector action was not sent.");
   }
-  const key = await retrySigningKey(scope);
-  const signature = await cryptoAPI.subtle.sign("HMAC", key, new TextEncoder().encode(stableRequestSignature(body)));
-  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const reservation = await reserveSigningKey(scope);
+  try {
+    const signature = await cryptoAPI.subtle.sign("HMAC", reservation.key, new TextEncoder().encode(stableRequestSignature(body)));
+    return {
+      signature: Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+      reservationID: reservation.id,
+    };
+  } catch (error) {
+    await releaseSigningReservation(scope, reservation.id);
+    throw error;
+  }
 }
 
-async function retrySigningKey(scope) {
+async function reserveSigningKey(scope) {
   const cryptoAPI = globalThis.crypto;
   if (!cryptoAPI?.subtle) throw new Error("Secure request hashing is unavailable; the connector action was not sent.");
+  const reservation = newSigningReservation(scope);
   if (!usesIndexedDB()) {
-    if (!memoryKeys.has(scope.key)) {
-      memoryKeys.set(scope.key, await cryptoAPI.subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, false, ["sign"]));
-    }
-    return memoryKeys.get(scope.key);
+    return withMemoryTransaction(async () => {
+      if (!memoryKeys.has(scope.key)) {
+        memoryKeys.set(scope.key, await cryptoAPI.subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, false, ["sign"]));
+      }
+      const reservations = memoryReservations.get(scope.key) || new Map();
+      reservations.set(reservation.id, reservation);
+      memoryReservations.set(scope.key, reservations);
+      return { id: reservation.id, key: memoryKeys.get(scope.key) };
+    });
   }
   const database = await openRetryDatabase();
-  const existing = await requestPromise(database.transaction(keysStore).objectStore(keysStore).get(scope.key));
-  if (existing !== undefined) {
-    if (!validSigningKeyRecord(existing, scope.key)) throw storageError();
-    return existing.key;
-  }
-  const scopedEntries = await requestPromise(database.transaction(entriesStore).objectStore(entriesStore).index("scope").count(scope.key));
-  if (scopedEntries > 0) throw storageError();
-  const keyCount = await requestPromise(database.transaction(keysStore).objectStore(keysStore).count());
-  if (keyCount >= maxRetryScopes) throw ledgerFullError();
   const generated = await cryptoAPI.subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return transactionPromise(database, keysStore, "readwrite", async (store) => {
-    const current = await requestPromise(store.get(scope.key));
+  return storesTransactionPromise(database, [keysStore, entriesStore, reservationsStore], "readwrite", async (stores) => {
+    await removeExpiredSigningReservations(stores, Date.now());
+    let current = await requestPromise(stores.keys.get(scope.key));
     if (current !== undefined) {
       if (!validSigningKeyRecord(current, scope.key)) throw storageError();
-      return current.key;
+    } else {
+      const scopedEntries = await requestPromise(stores.entries.index("scope").count(scope.key));
+      if (scopedEntries > 0) throw storageError();
+      await reclaimUnusedSigningKeys(stores);
+      const keyCount = await requestPromise(stores.keys.count());
+      if (keyCount >= maxRetryScopes) throw ledgerFullError();
+      current = { scope: scope.key, key: generated, updated_at: new Date().toISOString() };
+      await requestPromise(stores.keys.add(current));
     }
-    await requestPromise(store.put({ scope: scope.key, key: generated, updated_at: new Date().toISOString() }));
-    return generated;
+    await requestPromise(stores.reservations.add(reservation));
+    return { id: reservation.id, key: current.key };
   });
 }
 
-async function reserveEntry(scope, signature) {
+async function reserveEntry(scope, signature, reservationID) {
   if (!usesIndexedDB()) {
     return withMemoryTransaction(() => {
+      requireMemorySigningReservation(scope, reservationID);
       const entries = memoryEntries.get(scope.key) || new Map();
       let entry = entries.get(signature);
       if (entry) {
         if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
+        removeMemorySigningReservation(scope, reservationID);
         return { entry: { ...entry }, created: false };
       }
       if (!entry) {
@@ -174,23 +199,27 @@ async function reserveEntry(scope, signature) {
         memoryEntries.set(scope.key, entries);
         notifyChanged();
       }
+      removeMemorySigningReservation(scope, reservationID);
       return { entry: { ...entry }, created: true };
     });
   }
   const database = await openRetryDatabase();
-  const reservation = await transactionPromise(database, entriesStore, "readwrite", async (store) => {
+  const reservation = await storesTransactionPromise(database, [entriesStore, reservationsStore], "readwrite", async (stores) => {
+    await requireSigningReservation(stores.reservations, scope, reservationID);
     const id = entryID(scope.key, signature);
-    let entry = await requestPromise(store.get(id));
+    let entry = await requestPromise(stores.entries.get(id));
     if (entry) {
       if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
+      await requestPromise(stores.reservations.delete(reservationID));
       return { entry, changed: false };
     }
-    const count = await requestPromise(store.index("scope").count(scope.key));
+    const count = await requestPromise(stores.entries.index("scope").count(scope.key));
     if (count >= maxEntries) throw ledgerFullError();
-    const globalCount = await requestPromise(store.count());
+    const globalCount = await requestPromise(stores.entries.count());
     if (globalCount >= maxGlobalEntries) throw ledgerFullError();
     entry = newRetryEntry(scope, signature);
-    await requestPromise(store.add(entry));
+    await requestPromise(stores.entries.add(entry));
+    await requestPromise(stores.reservations.delete(reservationID));
     return { entry, changed: true };
   });
   if (reservation.changed) notifyChanged();
@@ -243,17 +272,19 @@ async function deleteEntryIfMatching(scope, signature, expectedKey, expectedRevi
       if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
       entries.delete(signature);
       if (entries.size === 0) memoryEntries.delete(scope.key);
+      removeUnusedMemorySigningKey(scope);
       notifyChanged();
       return true;
     });
   }
   const database = await openRetryDatabase();
-  const changed = await transactionPromise(database, entriesStore, "readwrite", async (store) => {
+  const changed = await storesTransactionPromise(database, [entriesStore, keysStore, reservationsStore], "readwrite", async (stores) => {
     const id = entryID(scope.key, signature);
-    const entry = await requestPromise(store.get(id));
+    const entry = await requestPromise(stores.entries.get(id));
     if (!entry || entry.key !== expectedKey || entry.revision !== expectedRevision) return false;
     if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
-    await requestPromise(store.delete(id));
+    await requestPromise(stores.entries.delete(id));
+    await removeUnusedSigningKey(stores, scope.key);
     return true;
   });
   if (changed) notifyChanged();
@@ -284,6 +315,11 @@ function openRetryDatabase() {
         store.createIndex("scope", "scope", { unique: false });
       }
       if (!database.objectStoreNames.contains(keysStore)) database.createObjectStore(keysStore, { keyPath: "scope" });
+      if (!database.objectStoreNames.contains(reservationsStore)) {
+        const store = database.createObjectStore(reservationsStore, { keyPath: "id" });
+        store.createIndex("scope", "scope", { unique: false });
+        store.createIndex("expires_at", "expires_at", { unique: false });
+      }
     };
     request.onerror = () => {
       if (settled) return;
@@ -324,13 +360,17 @@ function openRetryDatabase() {
 }
 
 function transactionPromise(database, storeName, mode, operation) {
+  return storesTransactionPromise(database, [storeName], mode, (stores) => operation(stores[storeName]));
+}
+
+function storesTransactionPromise(database, storeNames, mode, operation) {
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction(storeName, mode);
-    const store = transaction.objectStore(storeName);
+    const transaction = database.transaction(storeNames, mode);
+    const stores = Object.fromEntries(storeNames.map((storeName) => [storeName, transaction.objectStore(storeName)]));
     let result;
     let operationError;
     try {
-      Promise.resolve(operation(store))
+      Promise.resolve(operation(stores))
         .then((value) => {
           result = value;
         })
@@ -417,6 +457,93 @@ function newRetryEntry(scope, signature) {
   };
 }
 
+function newSigningReservation(scope) {
+  const now = Date.now();
+  return {
+    id: newIdempotencyKey(),
+    scope: scope.key,
+    created_at: new Date(now).toISOString(),
+    expires_at: new Date(now + signingReservationLifetimeMs).toISOString(),
+  };
+}
+
+async function releaseSigningReservation(scope, reservationID) {
+  if (!reservationID) return;
+  if (!usesIndexedDB()) {
+    await withMemoryTransaction(() => {
+      removeMemorySigningReservation(scope, reservationID);
+      removeUnusedMemorySigningKey(scope);
+    });
+    return;
+  }
+  const database = await openRetryDatabase();
+  await storesTransactionPromise(database, [entriesStore, keysStore, reservationsStore], "readwrite", async (stores) => {
+    const reservation = await requestPromise(stores.reservations.get(reservationID));
+    if (reservation !== undefined) {
+      if (!validSigningReservation(reservation, scope.key, reservationID)) throw storageError();
+      await requestPromise(stores.reservations.delete(reservationID));
+    }
+    await removeUnusedSigningKey(stores, scope.key);
+  });
+}
+
+async function requireSigningReservation(store, scope, reservationID) {
+  const reservation = await requestPromise(store.get(reservationID));
+  if (!validSigningReservation(reservation, scope.key, reservationID) || Date.parse(reservation.expires_at) <= Date.now()) {
+    throw retryIdentityChangedError();
+  }
+}
+
+function requireMemorySigningReservation(scope, reservationID) {
+  const reservation = memoryReservations.get(scope.key)?.get(reservationID);
+  if (!validSigningReservation(reservation, scope.key, reservationID) || Date.parse(reservation.expires_at) <= Date.now()) {
+    removeMemorySigningReservation(scope, reservationID);
+    removeUnusedMemorySigningKey(scope);
+    throw retryIdentityChangedError();
+  }
+}
+
+function removeMemorySigningReservation(scope, reservationID) {
+  const reservations = memoryReservations.get(scope.key);
+  reservations?.delete(reservationID);
+  if (reservations?.size === 0) memoryReservations.delete(scope.key);
+}
+
+function removeUnusedMemorySigningKey(scope) {
+  if ((memoryEntries.get(scope.key)?.size || 0) > 0) return;
+  if ((memoryReservations.get(scope.key)?.size || 0) > 0) return;
+  memoryKeys.delete(scope.key);
+}
+
+async function removeExpiredSigningReservations(stores, now) {
+  const reservations = await requestPromise(stores.reservations.getAll());
+  const affectedScopes = new Set();
+  for (const reservation of reservations) {
+    if (!validSigningReservation(reservation)) throw storageError();
+    if (Date.parse(reservation.expires_at) > now) continue;
+    affectedScopes.add(reservation.scope);
+    await requestPromise(stores.reservations.delete(reservation.id));
+  }
+  for (const scope of affectedScopes) await removeUnusedSigningKey(stores, scope);
+}
+
+async function reclaimUnusedSigningKeys(stores) {
+  const records = await requestPromise(stores.keys.getAll());
+  for (const record of records) {
+    if (!validSigningKeyRecord(record, record?.scope)) throw storageError();
+    await removeUnusedSigningKey(stores, record.scope);
+  }
+}
+
+async function removeUnusedSigningKey(stores, scope) {
+  const entryCount = await requestPromise(stores.entries.index("scope").count(scope));
+  if (entryCount > 0) return false;
+  const reservationCount = await requestPromise(stores.reservations.index("scope").count(scope));
+  if (reservationCount > 0) return false;
+  await requestPromise(stores.keys.delete(scope));
+  return true;
+}
+
 async function replaceReconciledEntry(scope, expected) {
   if (!validRetryEntry(expected, scope.key)) throw retryIdentityChangedError();
   if (!usesIndexedDB()) {
@@ -473,6 +600,8 @@ function sameRetryEntry(current, expected) {
 function validSigningKeyRecord(record, scope) {
   const key = record?.key;
   return (
+    typeof scope === "string" &&
+    scope.length > 0 &&
     record?.scope === scope &&
     key !== null &&
     typeof key === "object" &&
@@ -484,10 +613,37 @@ function validSigningKeyRecord(record, scope) {
   );
 }
 
+function validSigningReservation(record, scope = "", reservationID = "") {
+  return (
+    record !== null &&
+    typeof record === "object" &&
+    typeof record.id === "string" &&
+    record.id.length > 0 &&
+    (!reservationID || record.id === reservationID) &&
+    typeof record.scope === "string" &&
+    record.scope.length > 0 &&
+    (!scope || record.scope === scope) &&
+    typeof record.created_at === "string" &&
+    Number.isFinite(Date.parse(record.created_at)) &&
+    typeof record.expires_at === "string" &&
+    Number.isFinite(Date.parse(record.expires_at))
+  );
+}
+
 function validRetryDatabaseSchema(database) {
-  if (!database.objectStoreNames.contains(entriesStore) || !database.objectStoreNames.contains(keysStore)) return false;
-  const transaction = database.transaction(entriesStore, "readonly");
-  return transaction.objectStore(entriesStore).indexNames.contains("scope");
+  if (
+    !database.objectStoreNames.contains(entriesStore) ||
+    !database.objectStoreNames.contains(keysStore) ||
+    !database.objectStoreNames.contains(reservationsStore)
+  ) {
+    return false;
+  }
+  const transaction = database.transaction([entriesStore, reservationsStore], "readonly");
+  return (
+    transaction.objectStore(entriesStore).indexNames.contains("scope") &&
+    transaction.objectStore(reservationsStore).indexNames.contains("scope") &&
+    transaction.objectStore(reservationsStore).indexNames.contains("expires_at")
+  );
 }
 
 function deleteRetryDatabase() {

@@ -3,7 +3,13 @@ import test from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
 import { apiDownload, apiPost } from "./api.js";
-import { listLocalActionRetryEntries, resetLocalActionRetryLedger, resolveLocalActionRetryEntry } from "./local-action-retry.js";
+import {
+  completeLocalActionRetry,
+  listLocalActionRetryEntries,
+  prepareLocalActionRetry,
+  resetLocalActionRetryLedger,
+  resolveLocalActionRetryEntry,
+} from "./local-action-retry.js";
 
 const fakeRetryIndexedDB = new IDBFactory();
 
@@ -136,6 +142,130 @@ test("concurrent local connector action submissions share one retry identity", a
     assert.equal(keys[0], keys[1]);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreBrowser();
+  }
+});
+
+test("completed retry scopes release signing keys beyond the historical scope limit", async () => {
+  const restoreBrowser = installFakeBrowserRetryStorage("workspace-completed-0");
+  try {
+    await resetLocalActionRetryLedger();
+    for (let index = 0; index < 70; index += 1) {
+      globalThis.document.cookie = `aipermission_workspace_3210=workspace-completed-${index}`;
+      const prepared = await prepareLocalActionRetry({ target_ref: `fixture:${index}`, action_name: "mutate" });
+      await completeLocalActionRetry(prepared);
+    }
+    const records = await readRetryDatabaseRecords();
+    assert.equal(records.entries.length, 0);
+    assert.equal(records.keys.length, 0);
+    assert.equal(records.reservations.length, 0);
+  } finally {
+    await resetLocalActionRetryLedger();
+    restoreBrowser();
+  }
+});
+
+test("retry storage upgrade preserves version-one unresolved identities", async () => {
+  const workspaceID = "workspace-version-one";
+  const restoreBrowser = installFakeBrowserRetryStorage(workspaceID);
+  try {
+    await resetLocalActionRetryLedger();
+    await seedVersionOneRetryDatabase(workspaceID);
+    const [entry] = await listLocalActionRetryEntries();
+    assert.equal(entry.scope, workspaceID);
+    assert.equal(entry.state, "pending");
+    const records = await readRetryDatabaseRecords();
+    assert.equal(records.entries.length, 1);
+    assert.equal(records.keys.length, 1);
+    assert.equal(records.reservations.length, 0);
+    assert.equal(await resolveLocalActionRetryEntry(entry), true);
+  } finally {
+    await resetLocalActionRetryLedger();
+    restoreBrowser();
+  }
+});
+
+test("unresolved retry scopes remain protected when signing-key capacity is reclaimed", async () => {
+  const restoreBrowser = installFakeBrowserRetryStorage("workspace-protected-0");
+  const prepared = [];
+  try {
+    for (let index = 0; index < 64; index += 1) {
+      globalThis.document.cookie = `aipermission_workspace_3210=workspace-protected-${index}`;
+      prepared.push(await prepareLocalActionRetry({ target_ref: `fixture:${index}`, action_name: "mutate" }));
+    }
+    globalThis.document.cookie = "aipermission_workspace_3210=workspace-protected-overflow";
+    await assert.rejects(() => prepareLocalActionRetry({ target_ref: "fixture:overflow", action_name: "mutate" }), /retry ledger is full/i);
+
+    await completeLocalActionRetry(prepared[0]);
+    const replacement = await prepareLocalActionRetry({ target_ref: "fixture:replacement", action_name: "mutate" });
+    const records = await readRetryDatabaseRecords();
+    assert.equal(records.keys.length, 64);
+    assert.equal(records.entries.length, 64);
+    assert.equal(records.reservations.length, 0);
+    await completeLocalActionRetry(replacement);
+  } finally {
+    globalThis.document.cookie = "aipermission_workspace_3210=workspace-protected-cleanup";
+    await resetLocalActionRetryLedger();
+    restoreBrowser();
+  }
+});
+
+test("a concurrent signing reservation prevents premature key reclamation", async () => {
+  const restoreBrowser = installFakeBrowserRetryStorage("workspace-signing-race");
+  const originalCrypto = globalThis.crypto;
+  let signCalls = 0;
+  let releaseSign;
+  let signalSignStarted;
+  const signStarted = new Promise((resolve) => {
+    signalSignStarted = resolve;
+  });
+  const signGate = new Promise((resolve) => {
+    releaseSign = resolve;
+  });
+  const subtle = new Proxy(originalCrypto.subtle, {
+    get(target, property) {
+      if (property === "sign") {
+        return async (...args) => {
+          signCalls += 1;
+          if (signCalls === 2) {
+            signalSignStarted();
+            await signGate;
+          }
+          return target.sign(...args);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const cryptoWithDelayedSign = new Proxy(originalCrypto, {
+    get(target, property) {
+      if (property === "subtle") return subtle;
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  Object.defineProperty(globalThis, "crypto", { configurable: true, value: cryptoWithDelayedSign });
+  try {
+    const first = await prepareLocalActionRetry({ target_ref: "fixture:first", action_name: "mutate" });
+    const secondPromise = prepareLocalActionRetry({ target_ref: "fixture:second", action_name: "mutate" });
+    await signStarted;
+    await completeLocalActionRetry(first);
+    let records = await readRetryDatabaseRecords();
+    assert.equal(records.keys.length, 1);
+    assert.equal(records.entries.length, 0);
+    assert.equal(records.reservations.length, 1);
+
+    releaseSign();
+    const second = await secondPromise;
+    await completeLocalActionRetry(second);
+    records = await readRetryDatabaseRecords();
+    assert.equal(records.keys.length, 0);
+    assert.equal(records.entries.length, 0);
+    assert.equal(records.reservations.length, 0);
+  } finally {
+    Object.defineProperty(globalThis, "crypto", { configurable: true, value: originalCrypto });
+    await resetLocalActionRetryLedger();
     restoreBrowser();
   }
 });
@@ -466,17 +596,62 @@ function rawResponse(body, status = 200) {
 }
 
 async function readRetryStoreRecords() {
+  return (await readRetryDatabaseRecords()).entries;
+}
+
+async function seedVersionOneRetryDatabase(scope) {
+  const signature = "a".repeat(64);
+  const key = await globalThis.crypto.subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const database = await new Promise((resolve, reject) => {
     const request = globalThis.indexedDB.open("aipermission-local-action-retry", 1);
+    request.onupgradeneeded = () => {
+      const entries = request.result.createObjectStore("entries", { keyPath: "id" });
+      entries.createIndex("scope", "scope", { unique: false });
+      request.result.createObjectStore("keys", { keyPath: "scope" });
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
   try {
-    return await new Promise((resolve, reject) => {
-      const request = database.transaction("entries").objectStore("entries").getAll();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(["entries", "keys"], "readwrite");
+      const now = new Date().toISOString();
+      transaction.objectStore("entries").add({
+        id: `${scope}:${signature}`,
+        scope,
+        signature,
+        key: "version-one-idempotency-key",
+        state: "pending",
+        revision: 1,
+        created_at: now,
+        updated_at: now,
+      });
+      transaction.objectStore("keys").add({ scope, key, updated_at: now });
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
+  } finally {
+    database.close();
+  }
+}
+
+async function readRetryDatabaseRecords() {
+  const database = await new Promise((resolve, reject) => {
+    const request = globalThis.indexedDB.open("aipermission-local-action-retry", 2);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    const transaction = database.transaction(["entries", "keys", "reservations"]);
+    const readAll = (storeName) =>
+      new Promise((resolve, reject) => {
+        const request = transaction.objectStore(storeName).getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    const [entries, keys, reservations] = await Promise.all([readAll("entries"), readAll("keys"), readAll("reservations")]);
+    return { entries, keys, reservations };
   } finally {
     database.close();
   }
@@ -484,7 +659,7 @@ async function readRetryStoreRecords() {
 
 async function deleteRetrySigningKey(scope) {
   const database = await new Promise((resolve, reject) => {
-    const request = globalThis.indexedDB.open("aipermission-local-action-retry", 1);
+    const request = globalThis.indexedDB.open("aipermission-local-action-retry", 2);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });

@@ -1277,9 +1277,14 @@ explicit ledger reset from Settings. Reconciliation uses an exact idempotency-ke
 and revision CAS, and a carried identity survives pre-handler authentication,
 CSRF, or locked-database errors. Missing or corrupt IndexedDB/signing-key state
 fails closed. Storage is bounded to 128 entries per workspace, 512 entries per
-origin, and 64 signing scopes. A legacy localStorage retry ledger is not
-silently migrated because its signatures were not keyed; Settings requires an
-explicit reconciliation/reset first.
+origin, and 64 active signing scopes. Completed scopes are reclaimed
+automatically. Transactional short-lived signing reservations prevent another
+tab from deleting a scope key between signature creation and retry-entry
+reservation. When all scope slots protect unresolved work, Settings identifies
+the entries that must be inspected and explicitly reconciled before a new scope
+can be created. A legacy localStorage retry ledger is not silently migrated
+because its signatures were not keyed; Settings requires an explicit
+reconciliation/reset first.
 
 `GET /api/history/targets` returns target/profile facets derived from
 `history_entries`, not only currently active connector targets. Use it for
