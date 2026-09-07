@@ -43,7 +43,7 @@ function gateway() {
     attachConsoleSession: vi.fn(),
     closeConsoleSession: vi.fn(),
     cancelConsoleCommand: vi.fn(),
-    restartConsoleSession: vi.fn(),
+    restartConsoleRuntime: vi.fn(),
     sendConsoleInput: vi.fn(),
     resizeConsoleSession: vi.fn(),
     runConnectorActionApproval: vi.fn(),

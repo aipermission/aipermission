@@ -7,7 +7,7 @@ export function useConsoleWorkspaceSession({
   attachConsoleSession,
   newConsoleSession,
   onOpenConnectorOperation,
-  restartConsoleSession,
+  restartConsoleRuntime,
   runtimeSelectedSession,
   selectedRunningRequestID,
   selectedRuntimeTarget,
@@ -82,7 +82,7 @@ export function useConsoleWorkspaceSession({
     const request = requests.begin("restart");
     setRestartAction({ state: "running", error: null });
     try {
-      await restartConsoleSession(selectedRuntimeTarget.id);
+      await restartConsoleRuntime(selectedRuntimeTarget.id);
       if (!request.isCurrent()) return;
       setRestartAction({ state: "idle", error: null });
     } catch (error) {
@@ -91,7 +91,7 @@ export function useConsoleWorkspaceSession({
     } finally {
       request.complete();
     }
-  }, [requests, restartConsoleSession, selectedRuntimeTarget]);
+  }, [requests, restartConsoleRuntime, selectedRuntimeTarget]);
 
   const startStructured = useCallback(() => {
     if (!selectedTarget || selectedTargetUsesLiveConsole) return;

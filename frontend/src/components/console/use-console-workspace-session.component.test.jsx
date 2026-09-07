@@ -15,7 +15,7 @@ function props(overrides = {}) {
     attachConsoleSession: vi.fn(),
     newConsoleSession: vi.fn(),
     onOpenConnectorOperation: vi.fn(() => false),
-    restartConsoleSession: vi.fn(),
+    restartConsoleRuntime: vi.fn(),
     runtimeSelectedSession: { id: 0, status: "idle", error: null },
     selectedRunningRequestID: null,
     selectedRuntimeTarget: null,
@@ -88,14 +88,14 @@ describe("useConsoleWorkspaceSession", () => {
   });
 
   it("surfaces restart failures without dropping the selected runtime", async () => {
-    const restartConsoleSession = vi.fn().mockRejectedValue(new Error("offline"));
+    const restartConsoleRuntime = vi.fn().mockRejectedValue(new Error("offline"));
     const { result } = renderHook(() =>
-      useConsoleWorkspaceSession(props({ restartConsoleSession, selectedRuntimeTarget: { id: 4 }, selectedTargetUsesLiveConsole: true })),
+      useConsoleWorkspaceSession(props({ restartConsoleRuntime, selectedRuntimeTarget: { id: 4 }, selectedTargetUsesLiveConsole: true })),
     );
 
     await act(async () => result.current.restart());
 
-    expect(restartConsoleSession).toHaveBeenCalledWith(4);
+    expect(restartConsoleRuntime).toHaveBeenCalledWith(4);
     expect(result.current.restartAction).toEqual({ state: "error", error: "offline" });
   });
 
