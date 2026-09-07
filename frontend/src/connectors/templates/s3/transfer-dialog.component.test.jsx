@@ -31,7 +31,11 @@ it("retains folder-relative identity in preview and multipart after prefix navig
   fireEvent.change(screen.getByLabelText("Remote folder"), { target: { value: "/prefix//" } });
   expect(screen.getByText("/prefix//folder// invoice ", { normalizer: (value) => value })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Browse" }));
-  expect(apiPost).toHaveBeenCalledWith("/api/file-transfers/browse", { runtime_id: 7, path: "/prefix//" });
+  expect(apiPost).toHaveBeenCalledWith(
+    "/api/file-transfers/browse",
+    { runtime_id: 7, path: "/prefix//" },
+    { signal: expect.any(AbortSignal) },
+  );
   await user.click(await screen.findByRole("button", { name: "Use this folder" }));
   expect(screen.getByText("/next// /folder// invoice ", { normalizer: (value) => value })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /Start upload/ }));

@@ -84,7 +84,7 @@ export const credentialsSource = [
   readFileSync(join(currentDir, "..", "pages", "credentials.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "connectors", "editor", "use-credential-profile-editor.js"), "utf8"),
 ].join("\n");
-export const fileTransferDialogSource = ["file-transfer-dialog.jsx", "use-transfer-queues.js"]
+export const fileTransferDialogSource = ["file-transfer-dialog.jsx", "use-transfer-queues.js", "use-transfer-browser.js"]
   .map((filename) => readFileSync(join(currentDir, "..", "components", "file-transfer", filename), "utf8"))
   .join("\n");
 export const fileTransferBrowserSource = readFileSync(

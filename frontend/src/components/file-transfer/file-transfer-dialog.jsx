@@ -8,26 +8,22 @@ import { Notice } from "../ui/notice";
 import { RemoteBrowserDialog } from "./file-transfer-browser-dialog";
 import { ClearDownloadDialog, OverwriteConfirmDialog, UnsavedDownloadCloseDialog } from "./file-transfer-confirm-dialogs";
 import { QueueList, QueueSummary } from "./file-transfer-queue";
+import { useTransferBrowser } from "./use-transfer-browser";
 import { useTransferQueues } from "./use-transfer-queues";
 import {
   defaultRemoteDirectory,
   fileTransferFailureText,
   fileTransferPathPolicy,
-  forgetDownloadPath,
   pendingBatchItemIDs,
-  rememberDownloadPath,
-  rememberedDownloadPath,
   suggestedArchiveName,
   transferProgress,
 } from "../../lib/file-transfer-utils";
 
 const emptyBatchState = { state: "idle", item: null, error: null };
-const emptyBrowserState = { open: false, purpose: "upload", path: "/", state: "idle", data: null, error: null };
 export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose }) {
   const defaultRemoteDir = options.defaultDirectory || defaultRemoteDirectory();
   const { joinRemotePath, normalizeRemoteDirectoryInput } = fileTransferPathPolicy(options);
   const [batch, setBatch] = useState(emptyBatchState);
-  const [browser, setBrowser] = useState(emptyBrowserState);
   const [downloadPrompted, setDownloadPrompted] = useState(false);
   const [downloadSaved, setDownloadSaved] = useState(false);
   const [overwritePrompt, setOverwritePrompt] = useState(null);
@@ -36,7 +32,6 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   const [notice, setNotice] = useState(null);
   const completedUploadRef = useRef(0);
   const batchRefreshRequestRef = useRef(0);
-  const browserRequestRef = useRef(0);
   const {
     mode,
     setMode,
@@ -60,6 +55,13 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     recursive: Boolean(options.recursive),
     joinRemotePath,
     onNotice: setNotice,
+  });
+  const { browser, openBrowser, loadBrowser, closeBrowser, setBrowserPath, useBrowserDirectory, resetBrowser } = useTransferBrowser({
+    runtimeTarget,
+    defaultRemoteDir,
+    remoteDir,
+    normalizeRemoteDirectoryInput,
+    onUseDirectory: updateRemoteDirectory,
   });
 
   const activeBatch = batch.item && ["pending", "running", "paused"].includes(batch.item.status);
@@ -109,10 +111,9 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
 
   function resetDialog(nextRemoteDir = defaultRemoteDir) {
     batchRefreshRequestRef.current += 1;
-    browserRequestRef.current += 1;
     resetQueues(nextRemoteDir);
     setBatch(emptyBatchState);
-    setBrowser(emptyBrowserState);
+    resetBrowser();
     setDownloadPrompted(false);
     setDownloadSaved(false);
     setOverwritePrompt(null);
@@ -326,54 +327,6 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
       setBatch((current) => ({ ...current, state: "error", error: error.message }));
       return false;
     }
-  }
-
-  function openBrowser(purpose) {
-    const nextPath =
-      purpose === "download"
-        ? rememberedDownloadPath(runtimeTarget, defaultRemoteDir, normalizeRemoteDirectoryInput)
-        : normalizeRemoteDirectoryInput(remoteDir || defaultRemoteDir);
-    setBrowser({ open: true, purpose, path: nextPath, state: "loading", data: null, error: null });
-    void loadBrowser(nextPath, purpose, { fallbackToDefault: purpose === "download" });
-  }
-
-  async function loadBrowser(pathValue = browser.path, purpose = browser.purpose, options = {}) {
-    if (!runtimeTarget) return;
-    const requestID = ++browserRequestRef.current;
-    const nextPath = normalizeRemoteDirectoryInput(pathValue || "/");
-    setBrowser((current) => ({ ...current, purpose, path: nextPath, state: options.append ? "loading-more" : "loading", error: null }));
-    try {
-      const data = await apiPost("/api/file-transfers/browse", {
-        runtime_id: Number(runtimeTarget.id),
-        path: nextPath,
-        ...(options.cursor ? { cursor: options.cursor } : {}),
-      });
-      if (requestID !== browserRequestRef.current) return;
-      if (purpose === "download") {
-        rememberDownloadPath(runtimeTarget, data.path || nextPath, normalizeRemoteDirectoryInput);
-      }
-      setBrowser((current) => ({
-        open: true,
-        purpose,
-        path: data.path || nextPath,
-        state: "ready",
-        data: options.append ? { ...data, entries: [...(current.data?.entries || []), ...(data.entries || [])] } : data,
-        error: null,
-      }));
-    } catch (error) {
-      if (requestID !== browserRequestRef.current) return;
-      if (purpose === "download" && options.fallbackToDefault && nextPath !== defaultRemoteDir) {
-        forgetDownloadPath(runtimeTarget);
-        void loadBrowser(defaultRemoteDir, purpose, { fallbackToDefault: false });
-        return;
-      }
-      setBrowser((current) => ({ ...current, purpose, path: nextPath, state: "error", error: error.message }));
-    }
-  }
-
-  function useBrowserDirectory(pathValue = browser.path) {
-    updateRemoteDirectory(pathValue);
-    setBrowser(emptyBrowserState);
   }
 
   function switchMode(nextMode) {
@@ -590,9 +543,9 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
         browser={browser}
         transportLabel={options.transportLabel || "the connector"}
         recursive={Boolean(options.recursive)}
-        onClose={() => setBrowser(emptyBrowserState)}
+        onClose={closeBrowser}
         onLoad={loadBrowser}
-        onPathChange={(path) => setBrowser((current) => ({ ...current, path }))}
+        onPathChange={setBrowserPath}
         onUseDirectory={useBrowserDirectory}
         onAddFiles={addRemoteFiles}
         queuedPaths={new Set(downloadQueue.map((item) => item.path))}
