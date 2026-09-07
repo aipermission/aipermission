@@ -3,12 +3,13 @@ import { useSearchParams } from "react-router";
 import { useGateway } from "../lib/gateway-context";
 import { useConnectorPermissions } from "../lib/use-connector-permissions";
 import { ConsolePageDialogs } from "../components/console/console-page-dialogs";
-import { ConsoleTargetSidebar, recoverableRunningActions, targetUsesLiveConsole } from "../components/console/console-target-sidebar";
+import { ConsoleTargetSidebar, targetUsesLiveConsole } from "../components/console/console-target-sidebar";
 import { ConsoleWorkspacePanel } from "../components/console/console-workspace-panel";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 import { useConsoleMessages } from "../components/console/use-console-messages";
 import { useConsolePermissionView } from "../components/console/use-console-permission-view";
+import { useConsoleRecoveryState } from "../components/console/use-console-recovery-state";
 import { useConsoleTargetSelection } from "../components/console/use-console-target-selection";
 import { useConsoleWorkspaceSession } from "../components/console/use-console-workspace-session";
 import { useConnectorApprovalDialog } from "../components/console/use-connector-approval-dialog";
@@ -47,7 +48,6 @@ export function ConsolePage() {
   const [tokensCompact, setTokensCompact] = useState(false);
   const [connectorActivityOpen, setConnectorActivityOpen] = useState(false);
   const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
-  const [now, setNow] = useState(Date.now());
 
   const selectedTargetRef = searchParams.get("target");
   const sessions = consoleSessions.data || [];
@@ -94,17 +94,10 @@ export function ConsolePage() {
     target: selectedTarget,
     tokens: tokens.data,
   });
-  const selectedRecoverableRunningActions = recoverableRunningActions(selectedTarget);
-  const selectedRunningConnectorRequests =
-    selectedTarget && selectedRecoverableRunningActions.length > 0
-      ? connectorActionApprovals.data.filter(
-          (approval) =>
-            approval.status === "running" &&
-            approval.target_ref === selectedTarget.ref &&
-            selectedRecoverableRunningActions.includes(approval.action_name),
-        )
-      : [];
-  const selectedRunningRequest = selectedRunningConnectorRequests[0] || null;
+  const { now, runningRequest: selectedRunningRequest } = useConsoleRecoveryState({
+    approvals: connectorActionApprovals.data,
+    selectedTarget,
+  });
   const workspaceSession = useConsoleWorkspaceSession({
     attachConsoleSession,
     newConsoleSession,
@@ -138,11 +131,6 @@ export function ConsolePage() {
     if (!selectedTarget?.ref) return;
     loadConnectorActions(selectedTarget);
   }, [selectedTarget, loadConnectorActions]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 5000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   function openConnectorOperation(operation) {
     if (!operation?.open || !operation?.connector_kind) return false;
