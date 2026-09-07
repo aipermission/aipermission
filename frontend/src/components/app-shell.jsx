@@ -19,10 +19,10 @@ import { VaultSessionDialog } from "./console/vault-session-dialog";
 import { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
-import { reconcileVaultApprovalDialog } from "../lib/vault-approval-poll";
 import { isLiveConsoleSession, isUnreadMessage, latestSessionForRuntime } from "./console/helpers";
 import { useConsoleConnections } from "./console/use-console-connections";
 import { useDatabaseLifecycle } from "./use-database-lifecycle";
+import { useVaultActionApprovals } from "./vault/use-vault-action-approvals";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
   function toggleTheme() {
@@ -34,7 +34,6 @@ export function Shell({ theme, setTheme }) {
   const [tokens, setTokens] = useState({ state: "loading", data: [], error: null });
   const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
   const [connectorActionApprovals, setConnectorActionApprovals] = useState({ state: "loading", data: [], error: null });
-  const [vaultActionApprovals, setVaultActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [messages, setMessages] = useState({ state: "loading", data: [], error: null });
   const [mcpRuntime, setMCPRuntime] = useState({ state: "loading", data: { enabled: false, start_enabled: false }, error: null });
   const [backupFreshness, setBackupFreshness] = useState({ state: "loading", data: [], checkErrors: [], error: null });
@@ -47,9 +46,7 @@ export function Shell({ theme, setTheme }) {
     sessionOptions: null,
     error: null,
   });
-  const [vaultActionDialog, setVaultActionDialog] = useState({ approval: null, note: "", state: "idle", error: null });
   const vaultSessionResolverRef = useRef(null);
-  const seenPendingVaultApprovalsRef = useRef(new Set());
   const pollGenerationGuard = useRef(createPollGenerationGuard()).current;
   const pollIsCurrent = useCallback((generation) => pollGenerationGuard.isCurrent(generation), [pollGenerationGuard]);
   const transferCenter = useTransferCenterState({ pollIsCurrent });
@@ -62,6 +59,7 @@ export function Shell({ theme, setTheme }) {
     sendInput: sendConsoleInput,
   } = useConsoleConnections({ setConsoleSessions });
   const database = useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurrent });
+  const vaultApprovals = useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions: loadConsoleSessions });
 
   async function loadStatus(generation) {
     try {
@@ -145,19 +143,6 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  async function loadVaultActionApprovals(generation) {
-    try {
-      const data = await apiGet("/api/vault-action-approvals?status=approval_pending");
-      if (!pollIsCurrent(generation)) return;
-      setVaultActionApprovals({ state: "ready", data, error: null });
-      const pending = data.filter((item) => item.status === "approval_pending");
-      setVaultActionDialog((current) => reconcileVaultApprovalDialog(current, pending, seenPendingVaultApprovalsRef.current));
-    } catch (error) {
-      if (!pollIsCurrent(generation)) return;
-      setVaultActionApprovals({ state: "error", data: [], error: error.message });
-    }
-  }
-
   async function loadMessages(generation) {
     try {
       const data = await apiGet("/api/messages");
@@ -201,7 +186,7 @@ export function Shell({ theme, setTheme }) {
       loadTokens(generation),
       loadConsoleSessions(generation),
       loadConnectorActionApprovals(generation),
-      loadVaultActionApprovals(generation),
+      vaultApprovals.load(generation),
       loadMessages(generation),
       transferCenter.loadBatches({ keepData: true }, generation),
     ]);
@@ -218,7 +203,7 @@ export function Shell({ theme, setTheme }) {
       loadTargets(generation),
       loadConsoleSessions(generation),
       loadConnectorActionApprovals(generation),
-      loadVaultActionApprovals(generation),
+      vaultApprovals.load(generation),
       loadMessages(generation),
       transferCenter.loadBatches({ keepData: true }, generation),
     ]);
@@ -399,41 +384,6 @@ export function Shell({ theme, setTheme }) {
     return item;
   }
 
-  async function runVaultActionApproval() {
-    const approval = vaultActionDialog.approval;
-    if (!approval) return;
-    setVaultActionDialog((current) => ({ ...current, state: "running", error: null }));
-    try {
-      await apiPost(`/api/vault-action-approvals/${approval.id}/run`, { user_note: vaultActionDialog.note });
-      setVaultActionDialog({ approval: null, note: "", state: "idle", error: null });
-      await Promise.all([loadVaultActionApprovals(), loadConsoleSessions()]);
-    } catch (error) {
-      await loadVaultActionApprovals();
-      setVaultActionDialog((current) => ({
-        ...current,
-        state: error.message.toLowerCase().includes("stale") || error.message.toLowerCase().includes("changed") ? "stale" : "failed",
-        error: error.message,
-      }));
-    }
-  }
-
-  async function declineVaultActionApproval() {
-    const approval = vaultActionDialog.approval;
-    if (!approval) return;
-    setVaultActionDialog((current) => ({ ...current, state: "declining", error: null }));
-    try {
-      await apiPost(`/api/vault-action-approvals/${approval.id}/decline`, { user_note: vaultActionDialog.note });
-      setVaultActionDialog({ approval: null, note: "", state: "idle", error: null });
-      await loadVaultActionApprovals();
-    } catch (error) {
-      setVaultActionDialog((current) => ({ ...current, state: "error", error: error.message }));
-    }
-  }
-
-  function closeVaultActionApproval() {
-    setVaultActionDialog({ approval: null, note: "", state: "idle", error: null });
-  }
-
   async function markRuntimeMessagesRead(runtimeID) {
     const result = await apiPost("/api/messages/read", { runtime_id: Number(runtimeID) });
     await loadMessages();
@@ -449,7 +399,7 @@ export function Shell({ theme, setTheme }) {
   const pendingConnectorActionApprovalCount = connectorActionApprovals.data.filter(
     (approval) => approval.status === "approval_pending",
   ).length;
-  const pendingVaultActionApprovalCount = vaultActionApprovals.data.filter((approval) => approval.status === "approval_pending").length;
+  const pendingVaultActionApprovalCount = vaultApprovals.approvals.data.filter((approval) => approval.status === "approval_pending").length;
   const unreadMessageCount = messages.data.filter(isUnreadMessage).length;
   const consoleAttentionCount = pendingConnectorActionApprovalCount + pendingVaultActionApprovalCount + unreadMessageCount;
 
@@ -484,13 +434,13 @@ export function Shell({ theme, setTheme }) {
       />
       <VaultSessionDialog state={vaultSessionDialog} onClose={closeVaultSessionDialog} onStart={startVaultConsoleSession} />
       <VaultActionApprovalDialog
-        approval={vaultActionDialog.approval}
-        note={vaultActionDialog.note}
-        action={vaultActionDialog}
-        onNoteChange={(note) => setVaultActionDialog((current) => ({ ...current, note }))}
-        onRun={runVaultActionApproval}
-        onDecline={declineVaultActionApproval}
-        onClose={closeVaultActionApproval}
+        approval={vaultApprovals.dialog.approval}
+        note={vaultApprovals.dialog.note}
+        action={vaultApprovals.dialog}
+        onNoteChange={vaultApprovals.setNote}
+        onRun={vaultApprovals.run}
+        onDecline={vaultApprovals.decline}
+        onClose={vaultApprovals.close}
       />
 
       <DatabaseSwitchDialog
