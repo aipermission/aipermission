@@ -48,6 +48,8 @@ export const backupRetentionPanelSource = readFileSync(
 export const shellSource = [
   readFileSync(join(currentDir, "..", "components", "app-shell.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "app-shell-runtime.js"), "utf8"),
+  readFileSync(join(currentDir, "..", "components", "use-gateway-core-resources.js"), "utf8"),
+  readFileSync(join(currentDir, "..", "components", "use-gateway-activity-resources.js"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "backup-freshness-notices.jsx"), "utf8"),
 ].join("\n");
 export const historySource = [
