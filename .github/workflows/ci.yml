@@ -108,6 +108,12 @@ jobs:
       - name: Format check
         working-directory: frontend
         run: npm run format:check
+      - name: Architecture boundaries
+        working-directory: frontend
+        run: npm run test:architecture
+      - name: Duplication budget
+        working-directory: frontend
+        run: npm run test:duplication
       - name: Test
         working-directory: frontend
         run: npm test
