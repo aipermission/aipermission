@@ -8,15 +8,14 @@ import { Notice } from "../ui/notice";
 import { RemoteBrowserDialog } from "./file-transfer-browser-dialog";
 import { ClearDownloadDialog, OverwriteConfirmDialog, UnsavedDownloadCloseDialog } from "./file-transfer-confirm-dialogs";
 import { QueueList, QueueSummary } from "./file-transfer-queue";
+import { useTransferQueues } from "./use-transfer-queues";
 import {
   defaultRemoteDirectory,
   fileTransferFailureText,
   fileTransferPathPolicy,
   forgetDownloadPath,
-  localFileID,
   pendingBatchItemIDs,
   rememberDownloadPath,
-  relocateUploadQueue,
   rememberedDownloadPath,
   suggestedArchiveName,
   transferProgress,
@@ -24,17 +23,9 @@ import {
 
 const emptyBatchState = { state: "idle", item: null, error: null };
 const emptyBrowserState = { open: false, purpose: "upload", path: "/", state: "idle", data: null, error: null };
-const maxTransferObjectBytes = 512 * 1024 * 1024;
-const maxTransferBatchBytes = 1024 * 1024 * 1024;
-const maxTransferBatchItems = 100;
-
 export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose }) {
   const defaultRemoteDir = options.defaultDirectory || defaultRemoteDirectory();
   const { joinRemotePath, normalizeRemoteDirectoryInput } = fileTransferPathPolicy(options);
-  const [mode, setMode] = useState("upload");
-  const [remoteDir, setRemoteDir] = useState(defaultRemoteDir);
-  const [uploadQueue, setUploadQueue] = useState([]);
-  const [downloadQueue, setDownloadQueue] = useState([]);
   const [batch, setBatch] = useState(emptyBatchState);
   const [browser, setBrowser] = useState(emptyBrowserState);
   const [downloadPrompted, setDownloadPrompted] = useState(false);
@@ -43,17 +34,34 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   const [clearDownloadPrompt, setClearDownloadPrompt] = useState(false);
   const [closeDownloadPrompt, setCloseDownloadPrompt] = useState(false);
   const [notice, setNotice] = useState(null);
-  const fileInputRef = useRef(null);
-  const folderInputRef = useRef(null);
-  const uploadQueueRef = useRef(uploadQueue);
-  const downloadQueueRef = useRef(downloadQueue);
   const completedUploadRef = useRef(0);
   const batchRefreshRequestRef = useRef(0);
   const browserRequestRef = useRef(0);
-  uploadQueueRef.current = uploadQueue;
-  downloadQueueRef.current = downloadQueue;
+  const {
+    mode,
+    setMode,
+    remoteDir,
+    setRemoteDir,
+    uploadQueue,
+    downloadQueue,
+    queue,
+    fileInputRef,
+    folderInputRef,
+    resetQueues,
+    clearQueue,
+    handleLocalFileChange,
+    addRemoteFiles,
+    removeQueueItem: removePendingQueueItem,
+    moveQueueItem: movePendingQueueItem,
+    updateRemoteDirectory,
+  } = useTransferQueues({
+    runtimeTarget,
+    defaultRemoteDir,
+    recursive: Boolean(options.recursive),
+    joinRemotePath,
+    onNotice: setNotice,
+  });
 
-  const queue = mode === "upload" ? uploadQueue : downloadQueue;
   const activeBatch = batch.item && ["pending", "running", "paused"].includes(batch.item.status);
   const unsavedCompletedDownload = batch.item?.direction === "download" && batch.item.status === "completed" && !downloadSaved;
   const progress = useMemo(() => transferProgress(batch.item), [batch.item]);
@@ -85,7 +93,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
       return;
     }
     setRemoteDir((current) => current || defaultRemoteDir);
-  }, [open, defaultRemoteDir]);
+  }, [open, defaultRemoteDir, setRemoteDir]);
 
   useEffect(() => {
     if (!open || batchState !== "ready" || !batchItemID || !["pending", "running", "paused"].includes(batchItemStatus)) return undefined;
@@ -102,10 +110,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   function resetDialog(nextRemoteDir = defaultRemoteDir) {
     batchRefreshRequestRef.current += 1;
     browserRequestRef.current += 1;
-    setMode("upload");
-    setRemoteDir(nextRemoteDir);
-    setUploadQueue([]);
-    setDownloadQueue([]);
+    resetQueues(nextRemoteDir);
     setBatch(emptyBatchState);
     setBrowser(emptyBrowserState);
     setDownloadPrompted(false);
@@ -115,8 +120,6 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     setCloseDownloadPrompt(false);
     setNotice(null);
     completedUploadRef.current = 0;
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    if (folderInputRef.current) folderInputRef.current.value = "";
   }
 
   function clearBatchPanel() {
@@ -142,14 +145,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
       return;
     }
     const direction = batch.item?.direction || mode;
-    if (direction === "upload") {
-      setUploadQueue([]);
-      setRemoteDir(defaultRemoteDir);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-    if (direction === "download") {
-      setDownloadQueue([]);
-    }
+    clearQueue(direction);
     setNotice(null);
     clearBatchPanel();
   }
@@ -176,92 +172,13 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     }
   }
 
-  function handleLocalFileChange(event) {
-    const files = Array.from(event.target.files || []);
-    if (files.length === 0) return;
-    const oversized = files.find((file) => file.size > maxTransferObjectBytes);
-    if (oversized) {
-      setNotice({ tone: "bad", message: `${oversized.name} exceeds the 512 MiB per-object upload limit.` });
-      event.target.value = "";
-      return;
-    }
-    const additions = files.map((file) => ({
-      id: localFileID(file),
-      file,
-      name: file.webkitRelativePath || file.name,
-      size: file.size,
-      relative_path: file.webkitRelativePath || file.name,
-      remote_path: joinRemotePath(remoteDir, file.webkitRelativePath || file.name),
-    }));
-    const existingIDs = new Set(uploadQueueRef.current.map((item) => item.id));
-    const next = [...uploadQueueRef.current, ...additions.filter((item) => !existingIDs.has(item.id))];
-    const totalSize = next.reduce((total, item) => total + Number(item.size || 0), 0);
-    if (next.length > maxTransferBatchItems || totalSize > maxTransferBatchBytes) {
-      setNotice({ tone: "bad", message: `The upload queue cannot exceed ${maxTransferBatchItems} objects or 1 GiB total size.` });
-      event.target.value = "";
-      return;
-    }
-    setNotice(null);
-    setUploadQueue(next);
-    event.target.value = "";
-  }
-
-  async function addRemoteFiles(entries) {
-    const selected = Array.isArray(entries) ? entries : [];
-    const files = selected.filter((entry) => entry?.type === "file");
-    const directories = options.recursive ? selected.filter((entry) => entry?.type === "directory") : [];
-    try {
-      for (const directory of directories) {
-        const expanded = await apiPost("/api/file-transfers/expand", {
-          runtime_id: Number(runtimeTarget.id),
-          path: directory.path,
-        });
-        files.push(...(expanded.entries || []).filter((entry) => entry?.type === "file"));
-      }
-    } catch (error) {
-      setNotice({ tone: "bad", message: error.message || "Could not expand the selected folder." });
-      return false;
-    }
-    const existing = new Set(downloadQueueRef.current.map((item) => item.path));
-    const nextFiles = [];
-    for (const entry of files) {
-      if (existing.has(entry.path)) continue;
-      existing.add(entry.path);
-      nextFiles.push(entry);
-    }
-    if (nextFiles.length === 0) return true;
-    const additions = nextFiles.map((entry) => ({
-      id: `remote-${entry.path}`,
-      path: entry.path,
-      name: entry.name,
-      size: entry.size,
-    }));
-    const nextQueue = [...downloadQueueRef.current, ...additions];
-    const nextSize = nextQueue.reduce((total, entry) => total + Number(entry.size || 0), 0);
-    const oversized = additions.find((entry) => Number(entry.size || 0) > maxTransferObjectBytes);
-    if (oversized) {
-      setNotice({ tone: "bad", message: `${oversized.name} exceeds the 512 MiB per-object download limit.` });
-      return false;
-    }
-    if (nextQueue.length > maxTransferBatchItems || nextSize > maxTransferBatchBytes) {
-      setNotice({ tone: "bad", message: `The download queue cannot exceed ${maxTransferBatchItems} objects or 1 GiB total size.` });
-      return false;
-    }
-    setDownloadQueue(nextQueue);
-    return true;
-  }
-
   function removeQueueItem(id) {
     if (batch.item?.status === "paused") {
       const nextIDs = pendingBatchItemIDs(batch.item).filter((itemID) => itemID !== Number(id));
       void updatePausedBatchQueue(nextIDs);
       return;
     }
-    if (mode === "upload") {
-      setUploadQueue((current) => current.filter((item) => item.id !== id));
-    } else {
-      setDownloadQueue((current) => current.filter((item) => item.id !== id));
-    }
+    removePendingQueueItem(id);
   }
 
   function moveQueueItem(id, direction) {
@@ -275,15 +192,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
       void updatePausedBatchQueue(next);
       return;
     }
-    const setter = mode === "upload" ? setUploadQueue : setDownloadQueue;
-    setter((current) => {
-      const index = current.findIndex((item) => item.id === id);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
-      const next = [...current];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      return next;
-    });
+    movePendingQueueItem(id, direction);
   }
 
   async function updatePausedBatchQueue(itemIDs) {
@@ -399,7 +308,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
       }
       setDownloadSaved(true);
       if (options.clearAfterSave) {
-        setDownloadQueue([]);
+        clearQueue("download");
         setNotice(null);
         clearBatchPanel();
         return true;
@@ -465,11 +374,6 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   function useBrowserDirectory(pathValue = browser.path) {
     updateRemoteDirectory(pathValue);
     setBrowser(emptyBrowserState);
-  }
-
-  function updateRemoteDirectory(pathValue) {
-    setRemoteDir(pathValue);
-    setUploadQueue((current) => relocateUploadQueue(current, pathValue, joinRemotePath));
   }
 
   function switchMode(nextMode) {
