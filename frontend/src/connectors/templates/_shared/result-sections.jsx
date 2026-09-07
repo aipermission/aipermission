@@ -1,5 +1,7 @@
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/form";
+import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { HighlightedText } from "./highlighted-text";
 
 export function ConnectorResultHeader({ title, subtitle, copyValue, search, onSearch, inputClass, searchPlaceholder = "Search" }) {
   return (
@@ -36,6 +38,27 @@ export function DarkSummaryGrid({ rows, columns = "md:grid-cols-2 xl:grid-cols-3
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+export function RawDataSection({ title, value, search, onSearch, inputClass, className = "", blockClassName = "" }) {
+  return (
+    <div className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden ${className}`}>
+      <ConnectorResultHeader
+        title={title}
+        copyValue={value}
+        search={search}
+        onSearch={onSearch}
+        inputClass={inputClass}
+        searchPlaceholder="Search raw data"
+      />
+      <TerminalBlock
+        className={`min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere] ${blockClassName}`}
+        surface="dark"
+      >
+        <HighlightedText text={value} query={search} />
+      </TerminalBlock>
     </div>
   );
 }
