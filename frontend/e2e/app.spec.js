@@ -274,6 +274,115 @@ test("moves an edited connector to another project", async ({ page }) => {
   expect(updatePayload?.target?.project_id).toBe(2);
 });
 
+test("reviews and runs a Prompt connector action in the selected target context", async ({ page }) => {
+  let pending = true;
+  let runCount = 0;
+  const approval = pendingApproval();
+  await page.unroute("http://localhost:8080/api/connector-action-approvals");
+  await page.route("http://localhost:8080/api/connector-action-approvals", async (route) => {
+    await route.fulfill({ json: pending ? [approval] : [] });
+  });
+  await page.route("http://localhost:8080/api/connector-action-approvals/42", async (route) => {
+    await route.fulfill({ json: approval });
+  });
+  await page.route("http://localhost:8080/api/connector-action-approvals/42/run", async (route) => {
+    runCount += 1;
+    pending = false;
+    await route.fulfill({ json: { ...approval, status: "completed" } });
+  });
+
+  await unlock(page);
+  await page.locator('aside a[href="/console"]').click();
+
+  const dialog = page.getByRole("dialog", { name: "ssh action approval" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Inspect service health", { exact: true })).toBeVisible();
+  await expect(dialog.locator("pre").filter({ hasText: '"command": "uptime"' }).first()).toBeVisible();
+  await dialog.getByRole("button", { name: "Run", exact: true }).click();
+
+  await expect(dialog).toBeHidden();
+  expect(runCount).toBe(1);
+});
+
+test("keeps structured sessions isolated while switching connector profiles", async ({ page }) => {
+  const profiles = [postgresTargetProfile(1, "admin"), postgresTargetProfile(2, "readonly")];
+  await page.unroute("http://localhost:8080/api/targets");
+  await page.route("http://localhost:8080/api/targets", async (route) => route.fulfill({ json: { items: profiles } }));
+  await page.route("http://localhost:8080/api/connector-targets/2/profiles/*/actions", async (route) => {
+    await route.fulfill({ json: { items: [postgresQueryAction()] } });
+  });
+  await page.route("http://localhost:8080/api/connector-actions/local-run", async (route) => {
+    await route.fulfill({ json: { request_id: 7, status: "completed", output: { rows: [] } } });
+  });
+
+  await unlock(page);
+  await page.locator('aside a[href="/console"]').click();
+  await expect(page.getByRole("heading", { name: "analytics-db" })).toBeVisible();
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const workspaceHeader = page.locator("header").filter({ has: page.getByRole("heading", { name: "analytics-db" }) });
+  const profileSelect = workspaceHeader.getByLabel("Profile");
+  await expect(profileSelect).toHaveValue("1");
+  await expect(workspaceHeader.getByRole("button", { name: "End Session" })).toBeEnabled();
+
+  await profileSelect.selectOption("2");
+  await expect(page).toHaveURL(/target=postgres%3A2%3A2/);
+  await workspaceHeader.getByRole("button", { name: "End Session" }).click();
+  await expect(page.getByRole("heading", { name: "No active Postgres session" })).toBeVisible();
+
+  await profileSelect.selectOption("1");
+  await expect(page).toHaveURL(/target=postgres%3A2%3A1/);
+  await expect(page.getByRole("heading", { name: "No active Postgres session" })).toBeHidden();
+  await profileSelect.selectOption("2");
+  await expect(page.getByRole("heading", { name: "No active Postgres session" })).toBeVisible();
+});
+
+async function unlock(page) {
+  await page.goto("/");
+  await page.getByRole("textbox").fill("local-password");
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await expect(page.locator('aside a[href="/console"]')).toBeVisible();
+}
+
+function pendingApproval() {
+  return {
+    id: 42,
+    connector_kind: "ssh",
+    target_name: "worker-1",
+    profile_label: "main",
+    target_ref: "ssh:1:1",
+    token_name: "agent",
+    action_name: "exec",
+    reason: "Inspect service health",
+    input: { command: "uptime" },
+    preview: { command: "uptime", mode: "prompt" },
+    status: "approval_pending",
+    created_at: "2026-09-07T12:00:00Z",
+  };
+}
+
+function postgresTargetProfile(profileID, label) {
+  return {
+    ref: `postgres:2:${profileID}`,
+    connector_kind: "postgres",
+    target_id: 2,
+    profile_id: profileID,
+    target_name: "analytics-db",
+    profile_label: label,
+    config: { host: "127.0.0.1", port: 5432, database: "analytics" },
+    public: { username: label },
+  };
+}
+
+function postgresQueryAction() {
+  return {
+    name: "query_readonly",
+    label: "Read query",
+    description: "Run a bounded read-only query.",
+    category: "query",
+    risk: "read",
+  };
+}
+
 function unlockedStatus() {
   return {
     state: "unlocked",
