@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useGateway } from "../lib/gateway-context";
 import { useConnectorPermissions } from "../lib/use-connector-permissions";
-import { ConnectorActionApprovalDialog } from "../components/console/connector-action-approval-dialog";
-import { ConnectorActivityDialog } from "../components/console/connector-activity-dialog";
+import { ConsolePageDialogs } from "../components/console/console-page-dialogs";
 import { ConsoleTargetSidebar, recoverableRunningActions, targetUsesLiveConsole } from "../components/console/console-target-sidebar";
 import { ConsoleWorkspacePanel } from "../components/console/console-workspace-panel";
-import { MessagesDialog } from "../components/console/messages-dialog";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
 import { useConsolePageState } from "../components/console/use-console-page-state";
 import { useConsoleMessages } from "../components/console/use-console-messages";
@@ -256,42 +254,22 @@ export function ConsolePage() {
         }}
       />
 
-      <ConnectorActionApprovalDialog
-        approval={approvalDialog.activeApproval}
-        note={approvalDialog.note}
-        action={approvalDialog.action}
-        onNoteChange={approvalDialog.setNote}
-        onRun={approvalDialog.approve}
-        onDecline={approvalDialog.decline}
-        onClose={approvalDialog.close}
+      <ConsolePageDialogs
+        activityDialog={{
+          approvals: connectorActionApprovals,
+          close: () => setConnectorActivityOpen(false),
+          open: connectorActivityOpen,
+          refresh: loadConnectorActionApprovals,
+        }}
+        approvalDialog={approvalDialog}
+        messageDialog={{ ...messageDialog, target: selectedRuntimeTarget, tokens: selectedTokenOptions }}
+        operationDialog={{
+          onChange: setConnectorOperation,
+          onComplete: completeConnectorOperation,
+          Template: ConnectorOperationTemplate,
+          value: connectorOperation,
+        }}
       />
-      <ConnectorActivityDialog
-        open={connectorActivityOpen}
-        approvals={connectorActionApprovals}
-        onRefresh={loadConnectorActionApprovals}
-        onClose={() => setConnectorActivityOpen(false)}
-      />
-      <MessagesDialog
-        open={messageDialog.isOpen}
-        target={selectedRuntimeTarget}
-        tokens={selectedTokenOptions}
-        tokenID={messageDialog.tokenID}
-        state={messageDialog.state}
-        text={messageDialog.text}
-        onTokenChange={messageDialog.setTokenID}
-        onTextChange={messageDialog.setText}
-        onSubmit={messageDialog.submit}
-        onRefresh={messageDialog.load}
-        onClose={messageDialog.close}
-      />
-      {ConnectorOperationTemplate ? (
-        <ConnectorOperationTemplate
-          value={connectorOperation}
-          credentials={[]}
-          onChange={setConnectorOperation}
-          onOperationComplete={completeConnectorOperation}
-        />
-      ) : null}
     </section>
   );
 }

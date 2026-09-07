@@ -59,6 +59,7 @@ export const historySource = [
 export const auditLogsSource = readFileSync(join(currentDir, "..", "pages", "audit-logs.jsx"), "utf8");
 export const consolePageSource = [
   readFileSync(join(currentDir, "..", "pages", "console.jsx"), "utf8"),
+  readFileSync(join(currentDir, "..", "components", "console", "console-page-dialogs.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "console", "console-workspace-panel.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "console", "console-target-sidebar.jsx"), "utf8"),
   readFileSync(join(currentDir, "..", "components", "console", "console-recovery-panel.jsx"), "utf8"),
