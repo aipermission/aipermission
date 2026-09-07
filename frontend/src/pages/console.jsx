@@ -1,7 +1,6 @@
 import { AlertTriangle, TerminalSquare } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { apiGet, apiPost } from "../lib/api";
 import {
   connectorTargetKey,
   currentConnectorTargetProfilePermissions,
@@ -37,6 +36,7 @@ import { PtyConsole } from "../components/console/pty-console";
 import { TokenPermissionPanel } from "../components/console/token-permission-panel";
 import { isLiveConsoleSession, isUnreadMessage } from "../components/console/helpers";
 import { useConsolePageState } from "../components/console/use-console-page-state";
+import { useConsoleMessages } from "../components/console/use-console-messages";
 import { useConnectorApprovalDialog } from "../components/console/use-connector-approval-dialog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
 
@@ -52,7 +52,7 @@ export function ConsolePage() {
     loadTargets,
     loadConnectorActionApprovals,
     loadMessages,
-    markMessagesRead,
+    markRuntimeMessagesRead,
     consoleSessions,
     newConsoleSession,
     attachConsoleSession,
@@ -69,12 +69,6 @@ export function ConsolePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { connectorPermissionState, loadAllConnectorPermissions, loadConnectorActions, replaceTokenConnectorPermissions } =
     useConnectorPermissions(tokens.data);
-  const messageLoadGeneration = useRef(0);
-  const selectedRuntimeIDRef = useRef("");
-  const [messagesOpen, setMessagesOpen] = useState(false);
-  const [messagesState, setMessagesState] = useState({ state: "idle", data: [], error: null });
-  const [messageText, setMessageText] = useState("");
-  const [messageTokenID, setMessageTokenID] = useState("");
   const [targetsCompact, setTargetsCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
   const [targetSearch, setTargetSearch] = useState("");
@@ -112,7 +106,6 @@ export function ConsolePage() {
     return targetItems.find((target) => target.ref === defaultTargetRef) || targetItems[0];
   }, [targetItems, selectedTargetRef, defaultTargetRef]);
   const selectedRuntimeID = targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.runtime_id || "") : "";
-  selectedRuntimeIDRef.current = selectedRuntimeID;
   const selectedConnectorTemplate = selectedTarget ? getConnectorTemplate(selectedTarget.connector_kind) : null;
   const selectedTargetUsesLiveConsole = targetUsesLiveConsole(selectedTarget);
   const SelectedConnectorConsoleTemplate = selectedConnectorTemplate?.Console || null;
@@ -209,6 +202,15 @@ export function ConsolePage() {
     });
   }, [targetRows, targetItems, targetSearch]);
   const projectTargetGroups = useMemo(() => groupConsoleTargetsByProject(filteredTargets), [filteredTargets]);
+  const messageDialog = useConsoleMessages({
+    loadMessages,
+    markRuntimeMessagesRead,
+    selectedRuntimeTarget,
+    selectedSession,
+    selectedSessionLive,
+    selectedTokenOptions,
+    selectedUnreadMessages,
+  });
 
   const attachSelectedConsoleSession = useEffectEvent((sessionID) => attachConsoleSession(sessionID));
 
@@ -279,56 +281,6 @@ export function ConsolePage() {
     if (!profileTarget) return;
     setSelectedProfileByTarget((current) => ({ ...current, [connectorTargetKey(selectedTarget)]: nextID }));
     setSearchParams({ target: profileTarget.ref });
-  }
-
-  async function loadServerMessages() {
-    if (!selectedRuntimeTarget) return;
-    const requestRuntimeID = String(selectedRuntimeTarget.id);
-    const generation = ++messageLoadGeneration.current;
-    setMessagesState((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet(`/api/messages?runtime_id=${selectedRuntimeTarget.id}`);
-      if (generation !== messageLoadGeneration.current || requestRuntimeID !== selectedRuntimeIDRef.current) return;
-      setMessagesState({ state: "ready", data, error: null });
-    } catch (error) {
-      if (generation !== messageLoadGeneration.current || requestRuntimeID !== selectedRuntimeIDRef.current) return;
-      setMessagesState({ state: "error", data: [], error: error.message });
-    }
-  }
-
-  function openMessages(preferredTokenID = "") {
-    const unreadToken = selectedUnreadMessages[0]?.token_id;
-    const firstToken = selectedTokenOptions[0];
-    const nextTokenID = preferredTokenID || unreadToken || messageTokenID || (firstToken ? String(firstToken.id) : "");
-    setMessageTokenID(nextTokenID ? String(nextTokenID) : "");
-    setMessagesOpen(true);
-    void loadServerMessages();
-  }
-
-  function closeMessages() {
-    setMessagesOpen(false);
-    if (selectedRuntimeTarget && selectedUnreadMessages.length > 0) {
-      void markMessagesRead(selectedRuntimeTarget.id);
-    }
-  }
-
-  async function sendUserMessage(event) {
-    event.preventDefault();
-    if (!selectedRuntimeTarget || !messageText.trim() || !messageTokenID) return;
-    setMessagesState((current) => ({ ...current, state: "sending", error: null }));
-    try {
-      await apiPost("/api/messages", {
-        token_id: Number(messageTokenID),
-        runtime_id: selectedRuntimeTarget.id,
-        session_id: selectedSessionLive ? selectedSession.id : null,
-        direction: "user_to_ai",
-        message: messageText,
-      });
-      setMessageText("");
-      await Promise.all([loadServerMessages(), loadMessages()]);
-    } catch (error) {
-      setMessagesState((current) => ({ ...current, state: "error", error: error.message }));
-    }
   }
 
   function openConnectorOperation(operation) {
@@ -482,7 +434,7 @@ export function ConsolePage() {
                 selectedSessionLive={selectedSessionLive}
                 selectedUnreadMessages={selectedUnreadMessages}
                 liveConsoleTargets={liveConsoleTargets.data}
-                onOpenMessages={() => openMessages()}
+                onOpenMessages={() => messageDialog.open()}
                 onRefreshSessions={loadConsoleSessions}
                 onNewSession={() => selectedRuntimeTarget && void startNewConsoleSession(selectedRuntimeTarget)}
                 onEndSession={() => selectedSession.id && void closeConsoleSession(selectedSession.id)}
@@ -579,7 +531,7 @@ export function ConsolePage() {
         loadConnectorActions={loadConnectorActions}
         replaceTokenConnectorPermissions={replaceTokenConnectorPermissions}
         onToggleCompact={() => setTokensCompact((current) => !current)}
-        onOpenMessages={(tokenID) => openMessages(tokenID)}
+        onOpenMessages={(tokenID) => messageDialog.open(tokenID)}
         onRefresh={async () => {
           const tokenItems = await loadTokens();
           await Promise.all([
@@ -606,17 +558,17 @@ export function ConsolePage() {
         onClose={() => setConnectorActivityOpen(false)}
       />
       <MessagesDialog
-        open={messagesOpen}
+        open={messageDialog.isOpen}
         target={selectedRuntimeTarget}
         tokens={selectedTokenOptions}
-        tokenID={messageTokenID}
-        state={messagesState}
-        text={messageText}
-        onTokenChange={setMessageTokenID}
-        onTextChange={setMessageText}
-        onSubmit={sendUserMessage}
-        onRefresh={loadServerMessages}
-        onClose={closeMessages}
+        tokenID={messageDialog.tokenID}
+        state={messageDialog.state}
+        text={messageDialog.text}
+        onTokenChange={messageDialog.setTokenID}
+        onTextChange={messageDialog.setText}
+        onSubmit={messageDialog.submit}
+        onRefresh={messageDialog.load}
+        onClose={messageDialog.close}
       />
       {ConnectorOperationTemplate ? (
         <ConnectorOperationTemplate
