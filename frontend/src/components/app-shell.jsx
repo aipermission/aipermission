@@ -3,12 +3,7 @@ import { Outlet, useLocation } from "react-router";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import { BackupFreshnessNotices } from "./backup-freshness-notices";
 import { AppSidebar } from "./app-sidebar";
-import {
-  createPollGenerationGuard,
-  liveConsoleRuntimeTargets,
-  mergeConsoleSessionData,
-  normalizeCredentialResources,
-} from "./app-shell-runtime";
+import { createPollGenerationGuard, liveConsoleRuntimeTargets, normalizeCredentialResources } from "./app-shell-runtime";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
 import { DatabaseLockDialog } from "./database-lock-dialog";
 import { LocalActionReconciliationDialog } from "./local-action-reconciliation-dialog";
@@ -19,8 +14,8 @@ import { VaultSessionDialog } from "./console/vault-session-dialog";
 import { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { getConnectorModel } from "../connectors/templates/registry";
-import { isLiveConsoleSession, isUnreadMessage, latestSessionForRuntime } from "./console/helpers";
-import { useConsoleConnections } from "./console/use-console-connections";
+import { isUnreadMessage } from "./console/helpers";
+import { useConsoleSessionCoordinator } from "./console/use-console-session-coordinator";
 import { useDatabaseLifecycle } from "./use-database-lifecycle";
 import { useVaultActionApprovals } from "./vault/use-vault-action-approvals";
 export function Shell({ theme, setTheme }) {
@@ -32,34 +27,17 @@ export function Shell({ theme, setTheme }) {
   const [targets, setTargets] = useState({ state: "loading", data: [], error: null });
   const [credentials, setCredentials] = useState({ state: "loading", data: [], error: null, errors: [] });
   const [tokens, setTokens] = useState({ state: "loading", data: [], error: null });
-  const [consoleSessions, setConsoleSessions] = useState({ state: "loading", data: [], error: null });
   const [connectorActionApprovals, setConnectorActionApprovals] = useState({ state: "loading", data: [], error: null });
   const [messages, setMessages] = useState({ state: "loading", data: [], error: null });
   const [mcpRuntime, setMCPRuntime] = useState({ state: "loading", data: { enabled: false, start_enabled: false }, error: null });
   const [backupFreshness, setBackupFreshness] = useState({ state: "loading", data: [], checkErrors: [], error: null });
   const [actionRetryDialog, closeActionRetryDialog] = useLocalActionReconciliation();
-  const [vaultSessionDialog, setVaultSessionDialog] = useState({
-    open: false,
-    status: "idle",
-    runtime: null,
-    options: null,
-    sessionOptions: null,
-    error: null,
-  });
-  const vaultSessionResolverRef = useRef(null);
   const pollGenerationGuard = useRef(createPollGenerationGuard()).current;
   const pollIsCurrent = useCallback((generation) => pollGenerationGuard.isCurrent(generation), [pollGenerationGuard]);
   const transferCenter = useTransferCenterState({ pollIsCurrent });
-  const {
-    attachSession: attachConsoleSession,
-    closeSession: closeConsoleSession,
-    disconnectAll: disconnectAllConsoleSessions,
-    disconnectSessions: disconnectConsoleSessions,
-    resizeSession: resizeConsoleSession,
-    sendInput: sendConsoleInput,
-  } = useConsoleConnections({ setConsoleSessions });
-  const database = useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurrent });
-  const vaultApprovals = useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions: loadConsoleSessions });
+  const consoleCoordinator = useConsoleSessionCoordinator({ pollIsCurrent });
+  const database = useDatabaseLifecycle({ disconnectAllConsoleSessions: consoleCoordinator.disconnectAll, pollIsCurrent });
+  const vaultApprovals = useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions: consoleCoordinator.loadSessions });
 
   async function loadStatus(generation) {
     try {
@@ -120,18 +98,6 @@ export function Shell({ theme, setTheme }) {
     }
   }
 
-  async function loadConsoleSessions(generation) {
-    try {
-      const data = await apiGet("/api/console/sessions");
-      if (!pollIsCurrent(generation)) return;
-      setConsoleSessions((current) => ({ state: "ready", data: mergeConsoleSessionData(data, current.data), error: null }));
-      data.filter((session) => isLiveConsoleSession(session)).forEach((session) => attachConsoleSession(session.id));
-    } catch (error) {
-      if (!pollIsCurrent(generation)) return;
-      setConsoleSessions({ state: "error", data: [], error: error.message });
-    }
-  }
-
   async function loadConnectorActionApprovals(generation) {
     try {
       const data = await apiGet("/api/connector-action-approvals");
@@ -184,7 +150,7 @@ export function Shell({ theme, setTheme }) {
       loadTargets(generation),
       loadCredentials(generation),
       loadTokens(generation),
-      loadConsoleSessions(generation),
+      consoleCoordinator.loadSessions(generation),
       loadConnectorActionApprovals(generation),
       vaultApprovals.load(generation),
       loadMessages(generation),
@@ -201,7 +167,7 @@ export function Shell({ theme, setTheme }) {
       loadStatus(generation),
       database.loadStatus(generation),
       loadTargets(generation),
-      loadConsoleSessions(generation),
+      consoleCoordinator.loadSessions(generation),
       loadConnectorActionApprovals(generation),
       vaultApprovals.load(generation),
       loadMessages(generation),
@@ -265,107 +231,6 @@ export function Shell({ theme, setTheme }) {
     }
     return { state: "ready", data: liveConsoleRuntimeTargets(targets.data, getConnectorModel), error: null };
   }, [targets.state, targets.data, targets.error]);
-
-  function upsertConsoleSession(session) {
-    setConsoleSessions((current) => {
-      const index = current.data.findIndex((item) => Number(item.id) === Number(session.id));
-      const data = [...current.data];
-      if (index === -1) {
-        data.unshift(session);
-      } else {
-        data[index] = { ...data[index], ...session };
-      }
-      return { state: "ready", data, error: null };
-    });
-  }
-
-  async function ensureConsoleSession(server) {
-    const current = latestSessionForRuntime(consoleSessions.data, server.id);
-    if (current) {
-      if (isLiveConsoleSession(current)) attachConsoleSession(current.id);
-      return current;
-    }
-    return newConsoleSession(server);
-  }
-
-  async function newConsoleSession(server, options = {}) {
-    if (options.vaultItems === undefined) {
-      try {
-        const vaultOptions = await apiGet(`/api/vault-session-options?runtime_id=${encodeURIComponent(server.id)}`);
-        if (vaultOptions.supported && ((vaultOptions.items || []).length > 0 || (vaultOptions.defaults || []).length > 0)) {
-          vaultSessionResolverRef.current?.resolve(null);
-          return new Promise((resolve, reject) => {
-            vaultSessionResolverRef.current = { resolve, reject };
-            setVaultSessionDialog({
-              open: true,
-              status: "idle",
-              runtime: server,
-              options: vaultOptions,
-              sessionOptions: options,
-              error: null,
-            });
-          });
-        }
-      } catch {
-        // Vault selection is optional for local sessions; a failed probe must not block a normal console.
-      }
-    }
-    return createConsoleSession(server, options);
-  }
-
-  async function createConsoleSession(server, options = {}) {
-    const session = await apiPost("/api/console/sessions", {
-      runtime_id: server.id,
-      name: options.name || `${server.name} shell`,
-      close_existing: options.closeExisting !== false,
-      params: options.params || undefined,
-      vault_items: options.vaultItems || undefined,
-    });
-    if (options.deferActivation) return session;
-    activateConsoleSession(session);
-    return session;
-  }
-
-  function activateConsoleSession(session) {
-    upsertConsoleSession(session);
-    window.setTimeout(() => attachConsoleSession(session.id), 0);
-  }
-
-  async function startVaultConsoleSession(vaultItems) {
-    const current = vaultSessionDialog;
-    setVaultSessionDialog((value) => ({ ...value, status: "starting", error: null }));
-    try {
-      const session = await createConsoleSession(current.runtime, {
-        ...current.sessionOptions,
-        vaultItems,
-        deferActivation: true,
-      });
-      setVaultSessionDialog({ open: false, status: "idle", runtime: null, options: null, sessionOptions: null, error: null });
-      window.setTimeout(() => activateConsoleSession(session), 0);
-      vaultSessionResolverRef.current?.resolve(session);
-      vaultSessionResolverRef.current = null;
-    } catch (error) {
-      setVaultSessionDialog((value) => ({ ...value, status: "error", error: error.message }));
-    }
-  }
-
-  function closeVaultSessionDialog() {
-    vaultSessionResolverRef.current?.resolve(null);
-    vaultSessionResolverRef.current = null;
-    setVaultSessionDialog({ open: false, status: "idle", runtime: null, options: null, sessionOptions: null, error: null });
-  }
-
-  function cancelConsoleCommand(sessionID) {
-    sendConsoleInput(sessionID, "\u0003");
-  }
-
-  async function restartConsoleRuntime(runtimeID) {
-    const affectedSessions = consoleSessions.data.filter((session) => Number(session.runtime_id) === Number(runtimeID));
-    disconnectConsoleSessions(affectedSessions.map((session) => session.id));
-    const result = await apiPost(`/api/console/runtime-surfaces/${runtimeID}/restart`, {});
-    await loadConsoleSessions();
-    return result;
-  }
 
   async function runConnectorActionApproval(requestID, userNote = "") {
     try {
@@ -432,7 +297,11 @@ export function Shell({ theme, setTheme }) {
         onApprove={transferCenter.actions.approve}
         onDecline={transferCenter.actions.decline}
       />
-      <VaultSessionDialog state={vaultSessionDialog} onClose={closeVaultSessionDialog} onStart={startVaultConsoleSession} />
+      <VaultSessionDialog
+        state={consoleCoordinator.vaultDialog}
+        onClose={consoleCoordinator.closeVaultDialog}
+        onStart={consoleCoordinator.startVaultSession}
+      />
       <VaultActionApprovalDialog
         approval={vaultApprovals.dialog.approval}
         note={vaultApprovals.dialog.note}
@@ -478,16 +347,16 @@ export function Shell({ theme, setTheme }) {
               setMCPRuntimeEnabled,
               refreshAll,
               gatewayState,
-              consoleSessions,
-              loadConsoleSessions,
-              ensureConsoleSession,
-              newConsoleSession,
-              attachConsoleSession,
-              closeConsoleSession,
-              cancelConsoleCommand,
-              restartConsoleRuntime,
-              sendConsoleInput,
-              resizeConsoleSession,
+              consoleSessions: consoleCoordinator.sessions,
+              loadConsoleSessions: consoleCoordinator.loadSessions,
+              ensureConsoleSession: consoleCoordinator.ensureSession,
+              newConsoleSession: consoleCoordinator.newSession,
+              attachConsoleSession: consoleCoordinator.attachSession,
+              closeConsoleSession: consoleCoordinator.closeSession,
+              cancelConsoleCommand: consoleCoordinator.cancelCommand,
+              restartConsoleRuntime: consoleCoordinator.restartRuntime,
+              sendConsoleInput: consoleCoordinator.sendInput,
+              resizeConsoleSession: consoleCoordinator.resizeSession,
               runConnectorActionApproval,
               declineConnectorActionApproval,
               theme,

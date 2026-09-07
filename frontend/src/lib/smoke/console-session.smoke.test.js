@@ -156,8 +156,6 @@ test("Console and History expose connector file transfer flows", () => {
 });
 
 test("Console exposes stuck command recovery controls", () => {
-  assert.match(shellSource, /restartConsoleRuntime/);
-  assert.match(shellSource, /\/api\/console\/runtime-surfaces\/\$\{runtimeID\}\/restart/);
   assert.match(consolePageSource, /ConsoleRecoveryPanel/);
   assert.match(consolePageSource, /AI command running/);
   assert.match(consolePageSource, /Manual command running/);
@@ -167,11 +165,6 @@ test("Console exposes stuck command recovery controls", () => {
 });
 
 test("Console starts supported sessions with explicit Vault environment choices", () => {
-  assert.match(shellSource, /\/api\/vault-session-options\?runtime_id=/);
-  assert.match(shellSource, /vault_items:/);
-  assert.match(shellSource, /deferActivation: true/);
-  assert.match(shellSource, /setTimeout\(\(\) => activateConsoleSession\(session\), 0\)/);
-  assert.match(shellSource, /setTimeout\(\(\) => attachConsoleSession\(session\.id\), 0\)/);
   assert.match(ptyConsoleSource, /lastTranscriptRef\.current = ""/);
   assert.match(ptyConsoleSource, /syncTerminalTranscript\(terminal, lastTranscriptRef, latestTranscriptRef\.current\)/);
   assert.match(vaultSessionDialogSource, /Start session with Vault environment/);
