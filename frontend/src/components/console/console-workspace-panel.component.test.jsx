@@ -65,7 +65,7 @@ describe("ConsoleWorkspacePanel", () => {
   it("renders the selected connector template without connector-kind branching", () => {
     render(<ConsoleWorkspacePanel {...panelProps()} />);
 
-    expect(screen.getByText("main-db")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "main-db" })).toBeInTheDocument();
     expect(screen.getByTestId("connector-console")).toHaveTextContent("active");
   });
 
