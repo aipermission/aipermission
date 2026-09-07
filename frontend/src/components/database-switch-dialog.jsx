@@ -50,12 +50,14 @@ export function DatabaseSwitchDialog({ state, databaseStatus, onChange, onClose,
 
         {!selectedIsCurrent && !selectedIsUnlocked ? (
           <div className="grid gap-2">
-            <label className="text-sm font-semibold text-stone-800">Database password</label>
+            <label htmlFor="database-switch-password" className="text-sm font-semibold text-stone-800">
+              Database password
+            </label>
             <Input
+              id="database-switch-password"
               type="password"
               value={state.password}
               onChange={(event) => onChange((dialog) => ({ ...dialog, password: event.target.value }))}
-              autoFocus
               required
             />
           </div>

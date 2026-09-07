@@ -1,4 +1,5 @@
 import eslint from "@eslint/js";
+import jsxA11y from "eslint-plugin-jsx-a11y-x";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
@@ -21,10 +22,24 @@ export default [
       globals: globals.browser,
     },
     plugins: {
+      "jsx-a11y-x": jsxA11y,
       "react-hooks": reactHooks,
+    },
+    settings: {
+      "jsx-a11y-x": {
+        components: {
+          Button: "button",
+          Checkbox: "input",
+          Field: "label",
+          Input: "input",
+          Select: "select",
+          Textarea: "textarea",
+        },
+      },
     },
     rules: {
       ...eslint.configs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       complexity: ["error", { max: 25 }],
       "max-lines-per-function": ["error", { max: 250, skipBlankLines: true, skipComments: true, IIFEs: true }],

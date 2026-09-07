@@ -8,8 +8,12 @@ export function CardHeader({ className, ...props }) {
   return <div className={cn("border-b border-stone-100 p-5", className)} {...props} />;
 }
 
-export function CardTitle({ className, ...props }) {
-  return <h2 className={cn("text-lg font-semibold text-stone-950", className)} {...props} />;
+export function CardTitle({ className, children, ...props }) {
+  return (
+    <h2 className={cn("text-lg font-semibold text-stone-950", className)} {...props}>
+      {children}
+    </h2>
+  );
 }
 
 export function CardDescription({ className, ...props }) {

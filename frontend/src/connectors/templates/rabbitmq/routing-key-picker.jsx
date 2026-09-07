@@ -52,6 +52,7 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
     <div className="relative">
       <Input
         aria-activedescendant={open ? `rabbit-routing-option-${activeIndex}` : undefined}
+        aria-controls="rabbit-routing-options"
         aria-expanded={open}
         aria-haspopup="listbox"
         role="combobox"
@@ -74,6 +75,7 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
       />
       {open ? (
         <div
+          id="rabbit-routing-options"
           className={`absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-64 overflow-auto rounded-md border p-1 shadow-xl ${styles.border} ${styles.subtlePanel}`}
           role="listbox"
         >

@@ -31,7 +31,7 @@ function VaultRevealDialog({ owner }) {
         {reveal.error ? <Notice tone="bad">{reveal.error}</Notice> : null}
         {reveal.value ? (
           <div className="grid gap-2">
-            <Textarea readOnly autoFocus className="min-h-36 font-mono" value={reveal.value} />
+            <Textarea readOnly className="min-h-36 font-mono" value={reveal.value} />
             <div className="flex justify-end">
               <Button type="button" onClick={owner.copyRevealedValue}>
                 <Copy className="h-4 w-4" />
@@ -79,7 +79,6 @@ function VaultReplaceDialog({ owner }) {
           <Field>
             New value
             <Textarea
-              autoFocus
               className="min-h-36 font-mono"
               value={replace.value}
               onChange={(event) => setReplace((current) => ({ ...current, value: event.target.value }))}
@@ -117,7 +116,6 @@ function GeneratedReplacement({ owner }) {
       <Field>
         Generator
         <Select
-          autoFocus
           value={replace.generator_kind}
           disabled={replace.preview_state === "loading" || replace.state === "saving"}
           onChange={(event) => void owner.generateReplacementPreview(replace.item, event.target.value)}
@@ -169,11 +167,7 @@ function VaultDeleteDialog({ owner }) {
         <Notice tone="warn">
           Type <strong>{remove.item?.name}</strong> to permanently delete this item from the active database.
         </Notice>
-        <Input
-          autoFocus
-          value={remove.confirm}
-          onChange={(event) => setRemove((current) => ({ ...current, confirm: event.target.value }))}
-        />
+        <Input value={remove.confirm} onChange={(event) => setRemove((current) => ({ ...current, confirm: event.target.value }))} />
         {remove.error ? <Notice tone="bad">{remove.error}</Notice> : null}
         <div className="grid gap-2 sm:grid-cols-2">
           <Button type="button" variant="outline" onClick={owner.closeRemove}>

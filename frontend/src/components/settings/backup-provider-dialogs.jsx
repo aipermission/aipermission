@@ -215,7 +215,6 @@ function ProviderEnableDialog({ state }) {
             value={backupEnablePassword}
             onChange={(event) => setBackupEnablePassword(event.target.value)}
             autoComplete="current-password"
-            autoFocus
             required
           />
           <span className="text-xs font-normal text-stone-500">

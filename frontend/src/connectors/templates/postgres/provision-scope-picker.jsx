@@ -28,6 +28,7 @@ function SchemaScopeRow({ schema, scope, onChange, preset }) {
     <div className="border-b border-stone-200 p-3 last:border-b-0">
       <label className="flex items-start gap-3 text-sm">
         <Checkbox
+          aria-label={`Select schema ${schema.name}`}
           checked={schemaState.selected}
           onChange={(event) => onChange((current) => toggleSchema(current, schema.name, event.target.checked))}
         />
@@ -72,6 +73,7 @@ function TableScopeRow({ schema, table, tableState, onChange, preset }) {
     <div className="rounded-md border border-stone-200 bg-stone-50 p-2">
       <label className="flex items-start gap-3 text-sm">
         <Checkbox
+          aria-label={`Select table ${table.name}`}
           checked={current.selected}
           onChange={(event) => onChange((scope) => toggleTable(scope, schema, table.name, event.target.checked))}
         />

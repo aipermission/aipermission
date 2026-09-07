@@ -255,7 +255,6 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
         <Field>
           Environment name
           <Input
-            autoFocus
             value={editor.name}
             onChange={(event) => update("name", event.target.value.toUpperCase())}
             placeholder="PROJECT_SERVICE_API_KEY"
@@ -364,10 +363,10 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(120px,1fr)]">
-          <Field>
-            Expires at
+          <div className="grid gap-2 text-sm font-medium text-stone-800">
+            <span>Expires at</span>
             <DateTimePicker value={editor.expires_at} onChange={(value) => update("expires_at", value)} />
-          </Field>
+          </div>
           <Field>
             Warning days
             <Input

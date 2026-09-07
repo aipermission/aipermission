@@ -106,6 +106,7 @@ function ProvisionScope({ controller }) {
         </div>
         <label className="flex items-start gap-3 rounded-md border border-stone-200 bg-white p-3 text-sm">
           <Checkbox
+            aria-label="Select all schemas, tables, and columns"
             checked={controller.scope.all_schemas}
             onChange={(event) => controller.setScope((current) => ({ ...current, all_schemas: event.target.checked }))}
           />

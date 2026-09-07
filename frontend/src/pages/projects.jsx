@@ -172,7 +172,6 @@ export function ProjectsPage() {
           <Field>
             Project name
             <Input
-              autoFocus
               value={editor.name}
               maxLength={80}
               onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))}

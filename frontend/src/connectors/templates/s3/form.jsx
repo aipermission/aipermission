@@ -59,7 +59,11 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
         </Field>
       </div>
       <label className="flex items-start gap-3 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700 dark-notice-neutral">
-        <Checkbox checked={form.path_style !== false} onChange={(event) => onChange("path_style", event.target.checked)} />
+        <Checkbox
+          aria-label="Path-style addressing"
+          checked={form.path_style !== false}
+          onChange={(event) => onChange("path_style", event.target.checked)}
+        />
         <span>
           <span className="block font-semibold">Path-style addressing</span>
           <span className="text-xs">Use /bucket/key URLs. Keep this enabled for most S3-compatible providers such as MinIO.</span>
@@ -67,6 +71,7 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
       </label>
       <label className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark-notice-warn">
         <Checkbox
+          aria-label="Verified conditional requests"
           checked={form.trust_conditional_requests === true}
           onChange={(event) => onChange("trust_conditional_requests", event.target.checked)}
         />

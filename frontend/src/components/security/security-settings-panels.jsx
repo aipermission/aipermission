@@ -52,6 +52,7 @@ export function SecurityToggleCard({ setting, value, disabled, onUpdate }) {
         <label className="flex items-start gap-3 rounded-md border border-stone-200 bg-stone-50 p-4">
           <input
             type="checkbox"
+            aria-label={copy.label}
             className="mt-1 h-4 w-4 rounded border-stone-300 accent-emerald-900"
             checked={Boolean(value)}
             disabled={disabled}

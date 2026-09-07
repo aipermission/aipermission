@@ -81,7 +81,6 @@ export function UnlockDatabasePanel({ database, unsupported, migrationRequired, 
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            autoFocus
             required
           />
         </div>
@@ -211,7 +210,6 @@ function DeleteDatabaseDialog({ database, dialog, onChange, onClose, onSubmit })
             value={dialog.confirmName}
             onChange={(event) => onChange((current) => ({ ...current, confirmName: event.target.value }))}
             placeholder={database?.name || "Database name"}
-            autoFocus
             required
           />
         </div>

@@ -126,7 +126,7 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
         <div className="grid gap-3 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
           <label className="grid gap-1.5 text-sm font-medium text-stone-700">
             Project
-            <Select value={projectID} onChange={(event) => setProjectID(event.target.value)} autoFocus>
+            <Select value={projectID} onChange={(event) => setProjectID(event.target.value)}>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name}
@@ -180,7 +180,7 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
             return (
               <div key={item.id} className="grid gap-3 border-b border-stone-200 p-3 last:border-b-0">
                 <label className="flex min-w-0 items-start gap-3">
-                  <Checkbox checked={Boolean(selection)} onChange={() => toggle(item)} />
+                  <Checkbox aria-label={`Select ${item.name}`} checked={Boolean(selection)} onChange={() => toggle(item)} />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-semibold">{item.name}</span>

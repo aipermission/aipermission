@@ -282,7 +282,13 @@ function BulkTargetPicker({ visibleTargets, selected, selectedCount, targetQuery
 function BulkTargetRow({ target, selected, onToggle }) {
   return (
     <label className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50">
-      <input type="checkbox" className="mt-1 h-4 w-4 accent-emerald-800" checked={selected} onChange={() => onToggle(target.id)} />
+      <input
+        type="checkbox"
+        aria-label={`Select ${target.name}`}
+        className="mt-1 h-4 w-4 accent-emerald-800"
+        checked={selected}
+        onChange={() => onToggle(target.id)}
+      />
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold text-stone-900">{target.name}</span>
         <span className="block truncate text-xs text-stone-500">
