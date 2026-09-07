@@ -1,4 +1,4 @@
-import { ChevronDown, Plus, RefreshCcw } from "lucide-react";
+import { RefreshCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Notice } from "../components/ui/notice";
@@ -19,7 +19,6 @@ function emptyConnectorForm(kind, options = {}) {
 export function ConnectorsPage() {
   const { targets: unifiedTargets, credentials, loadTargets: loadUnifiedTargets } = useGateway();
   const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
   const [connectorSearch, setConnectorSearch] = useState("");
@@ -95,22 +94,7 @@ export function ConnectorsPage() {
             <RefreshCcw className="h-4 w-4" />
             Refresh
           </Button>
-          <div className="relative">
-            <Button type="button" onClick={() => setAddMenuOpen((current) => !current)}>
-              <Plus className="h-4 w-4" />
-              Add connector
-              <ChevronDown className="h-4 w-4" />
-            </Button>
-            {addMenuOpen ? (
-              <AddConnectorMenu
-                catalog={catalog}
-                onAdd={(kind) => {
-                  setAddMenuOpen(false);
-                  editor.openCreate(kind);
-                }}
-              />
-            ) : null}
-          </div>
+          <AddConnectorMenu catalog={catalog} onAdd={editor.openCreate} />
         </div>
       </div>
 

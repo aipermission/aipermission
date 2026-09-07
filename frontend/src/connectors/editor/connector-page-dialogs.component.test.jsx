@@ -12,9 +12,37 @@ it("lists only connector kinds shared by the backend catalog and frontend templa
       onAdd={onAdd}
     />,
   );
-  await user.click(screen.getByRole("button", { name: /SSH/ }));
+  await user.click(screen.getByRole("button", { name: "Add connector" }));
+  await user.click(screen.getByRole("menuitem", { name: /SSH/ }));
   expect(onAdd).toHaveBeenCalledWith("ssh");
   expect(screen.queryByText("backend-only")).not.toBeInTheDocument();
+});
+
+it("owns keyboard navigation, Escape dismissal, and focus return", async () => {
+  const user = userEvent.setup();
+  const onAdd = vi.fn();
+  render(
+    <AddConnectorMenu
+      catalog={{
+        state: "ready",
+        data: [{ kind: "ssh" }, { kind: "postgres" }],
+        details: { ssh: { label: "SSH" }, postgres: { label: "Postgres" } },
+      }}
+      onAdd={onAdd}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: "Add connector" });
+  trigger.focus();
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByRole("menuitem", { name: /Postgres/ })).toHaveFocus();
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByRole("menuitem", { name: /SSH/ })).toHaveFocus();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+
+  await user.keyboard("{ArrowUp}");
+  expect(screen.getByRole("menuitem", { name: /SSH/ })).toHaveFocus();
 });
 
 it("keeps connector forms scoped to the selected project", async () => {
