@@ -24,6 +24,7 @@ import { FolderPane, MessagePane } from "./mailbox-pane";
 import { MessageDetail } from "./message-detail";
 import { DeleteMessageDialog, MoveMessageDialog, RetryUnknownSubmissionDialog } from "./message-dialogs";
 import { targetEndpoint } from "./model";
+import { ConnectorEndpointFooter } from "../_shared/endpoint-footer";
 import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 
 const defaultFolder = "INBOX";
@@ -606,10 +607,7 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
 
 function MailEndpointFooter({ target, borderClass = "", mutedClass }) {
   return (
-    <div className={`flex min-w-0 items-center justify-between gap-3 ${borderClass}`}>
-      <span className={`truncate font-mono text-xs ${mutedClass}`}>{target.ref}</span>
-      <span className={`truncate text-xs ${mutedClass}`}>{targetEndpoint({ target })}</span>
-    </div>
+    <ConnectorEndpointFooter leading={target.ref} trailing={targetEndpoint({ target })} borderClass={borderClass} mutedClass={mutedClass} />
   );
 }
 

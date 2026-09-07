@@ -8,6 +8,7 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
+import { ConnectorEndpointFooter } from "../_shared/endpoint-footer";
 import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { useRequestGuard } from "../../../lib/request-guard";
 
@@ -693,12 +694,13 @@ function publishHelpText(activeQueue) {
 
 function RabbitEndpointFooter({ target, borderClass, mutedClass }) {
   return (
-    <div className={`flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-xs ${borderClass}`}>
-      <span className={`truncate font-mono ${mutedClass}`}>{target.ref}</span>
-      <span className={`truncate ${mutedClass}`}>
-        {target.config?.scheme || "http"}://{target.config?.host}:{target.config?.port || 15672} · vhost {target.config?.vhost || "/"}
-      </span>
-    </div>
+    <ConnectorEndpointFooter
+      leading={target.ref}
+      trailing={`${target.config?.scheme || "http"}://${target.config?.host}:${target.config?.port || 15672} · vhost ${target.config?.vhost || "/"}`}
+      borderClass={borderClass}
+      mutedClass={mutedClass}
+      className="border-t px-3 py-2"
+    />
   );
 }
 

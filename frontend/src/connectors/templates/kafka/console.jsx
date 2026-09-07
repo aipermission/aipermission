@@ -8,6 +8,7 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
+import { ConnectorEndpointFooter } from "../_shared/endpoint-footer";
 import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { actionableOffsetPartitions, detailMatchesSelection, offsetSelectionValue, parseOffsetSelection } from "./console-helpers";
@@ -485,22 +486,27 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
           </div>
         </section>
       </div>
-      <div className={`flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-xs ${borderClass}`}>
-        <span className={`truncate font-mono ${mutedClass}`}>{target.ref}</span>
-        <span className={`flex items-center gap-2 truncate ${mutedClass}`}>
-          {latestAction ? (
-            <Badge tone={latestAction.status === "completed" ? "good" : latestAction.status === "failed" ? "bad" : "warn"}>
-              {latestAction.action_name}
-            </Badge>
-          ) : (
-            <Activity className="h-3.5 w-3.5" />
-          )}
-          {String(target.config?.bootstrap_brokers || "")
-            .split(/[\s,]+/)
-            .filter(Boolean)
-            .join(", ")}
-        </span>
-      </div>
+      <ConnectorEndpointFooter
+        leading={target.ref}
+        borderClass={borderClass}
+        mutedClass={mutedClass}
+        className="border-t px-3 py-2"
+        trailing={
+          <>
+            {latestAction ? (
+              <Badge tone={latestAction.status === "completed" ? "good" : latestAction.status === "failed" ? "bad" : "warn"}>
+                {latestAction.action_name}
+              </Badge>
+            ) : (
+              <Activity className="h-3.5 w-3.5" />
+            )}
+            {String(target.config?.bootstrap_brokers || "")
+              .split(/[\s,]+/)
+              .filter(Boolean)
+              .join(", ")}
+          </>
+        }
+      />
       <KafkaPublishDialog
         value={publishDialog}
         theme={theme}

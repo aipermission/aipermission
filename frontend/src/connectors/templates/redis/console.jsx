@@ -7,6 +7,7 @@ import { Checkbox, Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { connectorConsoleTheme } from "../_shared/console-theme";
+import { ConnectorEndpointFooter } from "../_shared/endpoint-footer";
 import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { serverProductLabel } from "./model";
 import { formatRedisValue, keyMetaText, useRedisBrowser } from "./use-redis-browser";
@@ -378,11 +379,12 @@ function ValuePanel({ keyResult, valueDraft, onValueDraft, inputClass }) {
 
 function RedisEndpointFooter({ target, borderClass, mutedClass }) {
   return (
-    <div className={`flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-xs ${borderClass}`}>
-      <span className={`truncate font-mono ${mutedClass}`}>{target.ref}</span>
-      <span className={`truncate ${mutedClass}`}>
-        {serverProductLabel(target)} · {target.config?.host}:{target.config?.port} db {target.config?.database || 0}
-      </span>
-    </div>
+    <ConnectorEndpointFooter
+      leading={target.ref}
+      trailing={`${serverProductLabel(target)} · ${target.config?.host}:${target.config?.port} db ${target.config?.database || 0}`}
+      borderClass={borderClass}
+      mutedClass={mutedClass}
+      className="border-t px-3 py-2"
+    />
   );
 }
