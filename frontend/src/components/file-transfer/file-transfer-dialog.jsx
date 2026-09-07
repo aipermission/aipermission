@@ -1,6 +1,6 @@
 import { Download, FolderOpen, Pause, Play, RefreshCcw, Upload } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { apiDownload, apiGet, apiPost, apiPostForm } from "../../lib/api";
+import { useEffect, useEffectEvent, useState } from "react";
+import { apiDownload } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Field, Input } from "../ui/form";
@@ -9,29 +9,18 @@ import { RemoteBrowserDialog } from "./file-transfer-browser-dialog";
 import { ClearDownloadDialog, OverwriteConfirmDialog, UnsavedDownloadCloseDialog } from "./file-transfer-confirm-dialogs";
 import { QueueList, QueueSummary } from "./file-transfer-queue";
 import { useTransferBrowser } from "./use-transfer-browser";
+import { useTransferBatch } from "./use-transfer-batch";
 import { useTransferQueues } from "./use-transfer-queues";
-import {
-  defaultRemoteDirectory,
-  fileTransferFailureText,
-  fileTransferPathPolicy,
-  pendingBatchItemIDs,
-  suggestedArchiveName,
-  transferProgress,
-} from "../../lib/file-transfer-utils";
+import { defaultRemoteDirectory, fileTransferFailureText, fileTransferPathPolicy } from "../../lib/file-transfer-utils";
 
-const emptyBatchState = { state: "idle", item: null, error: null };
 export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose }) {
   const defaultRemoteDir = options.defaultDirectory || defaultRemoteDirectory();
   const { joinRemotePath, normalizeRemoteDirectoryInput } = fileTransferPathPolicy(options);
-  const [batch, setBatch] = useState(emptyBatchState);
   const [downloadPrompted, setDownloadPrompted] = useState(false);
   const [downloadSaved, setDownloadSaved] = useState(false);
-  const [overwritePrompt, setOverwritePrompt] = useState(null);
   const [clearDownloadPrompt, setClearDownloadPrompt] = useState(false);
   const [closeDownloadPrompt, setCloseDownloadPrompt] = useState(false);
   const [notice, setNotice] = useState(null);
-  const completedUploadRef = useRef(0);
-  const batchRefreshRequestRef = useRef(0);
   const {
     mode,
     setMode,
@@ -63,27 +52,40 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     normalizeRemoteDirectoryInput,
     onUseDirectory: updateRemoteDirectory,
   });
-
-  const activeBatch = batch.item && ["pending", "running", "paused"].includes(batch.item.status);
+  const {
+    batch,
+    setBatch,
+    activeBatch,
+    progress,
+    canStart,
+    overwritePrompt,
+    setOverwritePrompt,
+    resetBatch,
+    clearBatch,
+    refreshBatch,
+    updatePausedBatchQueue,
+    pausedQueueWithout,
+    movePausedQueueItem,
+    startQueue: startBatchQueue,
+    pauseBatch,
+    resumeBatch,
+    cancelBatch,
+  } = useTransferBatch({
+    open,
+    runtimeTarget,
+    mode,
+    remoteDir,
+    uploadQueue,
+    downloadQueue,
+    queue,
+    onNotice: setNotice,
+    onUploadCompleted: options.onUploadCompleted,
+  });
   const unsavedCompletedDownload = batch.item?.direction === "download" && batch.item.status === "completed" && !downloadSaved;
-  const progress = useMemo(() => transferProgress(batch.item), [batch.item]);
-  const canStart = runtimeTarget && queue.length > 0 && !batch.item && batch.state !== "starting";
   const closeDisabled = Boolean(activeBatch) || ["starting", "pausing", "resuming", "canceling", "downloading"].includes(batch.state);
-  const batchItemID = batch.item?.id;
-  const batchItemStatus = batch.item?.status;
-  const batchState = batch.state;
   const resetDialogForEffect = useEffectEvent((nextRemoteDir) => resetDialog(nextRemoteDir));
-  const refreshBatchForEffect = useEffectEvent((id, options) => refreshBatch(id, options));
   const updateCompletedBatchNotice = useEffectEvent(() => {
     if (!batch.item || batch.item.status !== "completed") return;
-    if (batch.item.direction === "upload") {
-      setNotice({ tone: "good", message: "Upload queue completed. Review the summary, then clear when ready." });
-      if (completedUploadRef.current !== batch.item.id) {
-        completedUploadRef.current = batch.item.id;
-        void options.onUploadCompleted?.();
-      }
-      return;
-    }
     if (batch.item.direction === "download" && !downloadPrompted && !downloadSaved) {
       setNotice({ tone: "good", message: "Download queue completed. Click Save download to choose where to save it." });
     }
@@ -98,21 +100,12 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
   }, [open, defaultRemoteDir, setRemoteDir]);
 
   useEffect(() => {
-    if (!open || batchState !== "ready" || !batchItemID || !["pending", "running", "paused"].includes(batchItemStatus)) return undefined;
-    const timer = window.setInterval(() => {
-      void refreshBatchForEffect(batchItemID, { silent: true });
-    }, 900);
-    return () => window.clearInterval(timer);
-  }, [open, batchItemID, batchItemStatus, batchState]);
-
-  useEffect(() => {
     updateCompletedBatchNotice();
   }, [batch.item?.id, batch.item?.status, batch.item?.direction, downloadPrompted, downloadSaved]);
 
   function resetDialog(nextRemoteDir = defaultRemoteDir) {
-    batchRefreshRequestRef.current += 1;
     resetQueues(nextRemoteDir);
-    setBatch(emptyBatchState);
+    resetBatch();
     resetBrowser();
     setDownloadPrompted(false);
     setDownloadSaved(false);
@@ -120,11 +113,10 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     setClearDownloadPrompt(false);
     setCloseDownloadPrompt(false);
     setNotice(null);
-    completedUploadRef.current = 0;
   }
 
   function clearBatchPanel() {
-    setBatch(emptyBatchState);
+    clearBatch();
     setDownloadPrompted(false);
     setDownloadSaved(false);
     setOverwritePrompt(null);
@@ -151,31 +143,9 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     clearBatchPanel();
   }
 
-  async function refreshBatch(id = batch.item?.id, options = {}) {
-    if (!id) return;
-    const requestID = ++batchRefreshRequestRef.current;
-    if (!options.silent) {
-      setBatch((current) => ({ ...current, state: "loading", error: null }));
-    }
-    try {
-      const item = await apiGet(`/api/file-transfer-batches/${id}`);
-      if (requestID !== batchRefreshRequestRef.current) return;
-      setBatch((current) => {
-        if (options.silent && !["idle", "loading", "ready"].includes(current.state)) return current;
-        return { state: "ready", item, error: null };
-      });
-    } catch (error) {
-      if (requestID !== batchRefreshRequestRef.current) return;
-      setBatch((current) => {
-        if (options.silent && !["idle", "loading", "ready"].includes(current.state)) return current;
-        return { ...current, state: "error", error: error.message };
-      });
-    }
-  }
-
   function removeQueueItem(id) {
     if (batch.item?.status === "paused") {
-      const nextIDs = pendingBatchItemIDs(batch.item).filter((itemID) => itemID !== Number(id));
+      const nextIDs = pausedQueueWithout(id);
       void updatePausedBatchQueue(nextIDs);
       return;
     }
@@ -184,115 +154,17 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
 
   function moveQueueItem(id, direction) {
     if (batch.item?.status === "paused") {
-      const ids = pendingBatchItemIDs(batch.item);
-      const index = ids.indexOf(Number(id));
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) return;
-      const next = [...ids];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      void updatePausedBatchQueue(next);
+      const next = movePausedQueueItem(id, direction);
+      if (next) void updatePausedBatchQueue(next);
       return;
     }
     movePendingQueueItem(id, direction);
   }
 
-  async function updatePausedBatchQueue(itemIDs) {
-    if (!batch.item) return;
-    setBatch((current) => ({ ...current, state: "updating", error: null }));
-    try {
-      const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/queue`, { item_ids: itemIDs });
-      setBatch({ state: "ready", item, error: null });
-    } catch (error) {
-      setBatch((current) => ({ ...current, state: "error", error: error.message }));
-    }
-  }
-
   async function startQueue(options = {}) {
-    if (!runtimeTarget || queue.length === 0) return;
-    if (mode === "upload") {
-      await startUploadBatch(options);
-    } else {
-      await startDownloadBatch();
-    }
-  }
-
-  async function startUploadBatch(options = {}) {
-    const formData = new FormData();
-    formData.append("runtime_id", String(runtimeTarget.id));
-    formData.append("remote_dir", remoteDir);
-    formData.append("overwrite", options.overwrite ? "true" : "false");
-    uploadQueue.forEach((item) => formData.append("files", item.file, item.name));
-    formData.append("relative_paths", JSON.stringify(uploadQueue.map((item) => item.relative_path || item.name)));
-    setNotice(null);
-    setOverwritePrompt(null);
     setDownloadPrompted(false);
     setDownloadSaved(false);
-    setBatch({ state: "starting", item: null, error: null });
-    try {
-      const item = await apiPostForm("/api/file-transfers/upload-batch", formData);
-      setBatch({ state: "ready", item, error: null });
-    } catch (error) {
-      if (error.status === 409 && error.data?.code === "remote_files_exist") {
-        setBatch(emptyBatchState);
-        setOverwritePrompt(error.data.conflicts || []);
-        return;
-      }
-      setBatch({ state: "error", item: null, error: error.message });
-    }
-  }
-
-  async function startDownloadBatch() {
-    setNotice(null);
-    setDownloadPrompted(false);
-    setDownloadSaved(false);
-    setBatch({ state: "starting", item: null, error: null });
-    try {
-      const item = await apiPost("/api/file-transfers/download-batch", {
-        runtime_id: Number(runtimeTarget.id),
-        remote_paths: downloadQueue.map((item) => item.path),
-        archive_name: downloadQueue.length > 1 ? suggestedArchiveName() : "",
-      });
-      setBatch({ state: "ready", item, error: null });
-    } catch (error) {
-      setBatch({ state: "error", item: null, error: error.message });
-    }
-  }
-
-  async function pauseBatch() {
-    if (!batch.item) return;
-    batchRefreshRequestRef.current += 1;
-    setBatch((current) => ({ ...current, state: "pausing", error: null }));
-    try {
-      const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/pause`, {});
-      setBatch({ state: "ready", item, error: null });
-    } catch (error) {
-      setBatch((current) => ({ ...current, state: "error", error: error.message }));
-    }
-  }
-
-  async function resumeBatch() {
-    if (!batch.item) return;
-    batchRefreshRequestRef.current += 1;
-    setBatch((current) => ({ ...current, state: "resuming", error: null }));
-    try {
-      const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/resume`, {});
-      setBatch({ state: "ready", item, error: null });
-    } catch (error) {
-      setBatch((current) => ({ ...current, state: "error", error: error.message }));
-    }
-  }
-
-  async function cancelBatch() {
-    if (!batch.item) return;
-    batchRefreshRequestRef.current += 1;
-    setBatch((current) => ({ ...current, state: "canceling", error: null }));
-    try {
-      const item = await apiPost(`/api/file-transfer-batches/${batch.item.id}/cancel`, {});
-      setBatch({ state: "ready", item, error: null });
-      setNotice({ tone: "warn", message: "Transfer queue canceled." });
-    } catch (error) {
-      setBatch((current) => ({ ...current, state: "error", error: error.message }));
-    }
+    await startBatchQueue(options);
   }
 
   async function saveDownloadBatch(options = {}) {

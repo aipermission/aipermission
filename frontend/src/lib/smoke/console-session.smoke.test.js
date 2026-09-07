@@ -136,9 +136,9 @@ test("Console and History expose connector file transfer flows", () => {
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/browse/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfers\/expand/);
   assert.match(fileTransferBrowserSource, /Load more/);
-  assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/pause/);
-  assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/resume/);
-  assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/cancel/);
+  assert.match(fileTransferDialogSource, /transitionBatch\("pausing", "pause"\)/);
+  assert.match(fileTransferDialogSource, /transitionBatch\("resuming", "resume"\)/);
+  assert.match(fileTransferDialogSource, /transitionBatch\("canceling", "cancel"/);
   assert.match(fileTransferDialogSource, /\/api\/file-transfer-batches\/\$\{batch\.item\.id\}\/queue/);
   assert.match(fileTransferDialogSource, /remote_files_exist/);
   assert.match(fileTransferConfirmSource, /Overwrite all/);
