@@ -11,8 +11,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
-import { apiGet } from "../lib/api";
+import { useMemo, useState } from "react";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -32,6 +31,7 @@ import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
 import { useConnectorEditor } from "../connectors/editor/use-connector-editor";
 import { connectorTestKey, useConnectorConnectionTests } from "../connectors/editor/use-connector-connection-tests";
+import { targetProfileSelectionKey, useConnectorInventory } from "../connectors/editor/use-connector-inventory";
 
 function emptyConnectorForm(kind, options = {}) {
   return getConnectorModel(kind)?.emptyForm?.(options) || { connector_kind: kind };
@@ -39,28 +39,16 @@ function emptyConnectorForm(kind, options = {}) {
 
 export function ConnectorsPage() {
   const { targets: unifiedTargets, credentials, loadTargets: loadUnifiedTargets } = useGateway();
-  const [catalog, setCatalog] = useState({ state: "loading", data: [], details: {}, error: null });
-  const [targets, setTargets] = useState({ state: "loading", data: [], error: null });
-  const [projects, setProjects] = useState({ state: "loading", data: [], error: null });
   const defaultConnectorKind = supportedConnectorKinds[0] || "";
   const [connectorOperation, setConnectorOperation] = useState({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const [profileSelections, setProfileSelections] = useState({});
   const [toast, setToast] = useState("");
   const [connectorSearch, setConnectorSearch] = useState("");
   const [collapsedProjects, setCollapsedProjects] = useState({});
-  const catalogWarnings = useMemo(() => connectorCatalogWarnings(catalog), [catalog]);
-  const availableConnectorKinds = useMemo(() => {
-    if (catalog.state !== "ready") return [];
-    const backendKinds = new Set(catalog.data.map((item) => item.kind));
-    return supportedConnectorKinds.filter((kind) => backendKinds.has(kind) && catalog.details[kind]);
-  }, [catalog]);
+  const inventory = useConnectorInventory({ loadUnifiedTargets });
+  const { catalog, targets, projects, profileSelections, availableConnectorKinds, warnings: catalogWarnings, defaultProjectID } = inventory;
 
   const firstCredentialID = useMemo(() => (credentials.data[0] ? String(credentials.data[0].id) : ""), [credentials.data]);
-  const defaultProjectID = useMemo(
-    () => projects.data.find((project) => project.slug === "ungrouped")?.id || projects.data[0]?.id || "",
-    [projects.data],
-  );
   const editor = useConnectorEditor({
     defaultKind: defaultConnectorKind,
     firstCredentialID,
@@ -87,75 +75,8 @@ export function ConnectorsPage() {
       }),
     [availableConnectorKinds, catalog.data],
   );
-  const refreshConnectorsForEffect = useEffectEvent(() => refreshConnectors());
-  const reconcileProfileSelections = useEffectEvent(() => {
-    setProfileSelections((current) => {
-      const next = {};
-      for (const target of targets.data || []) {
-        const key = targetProfileSelectionKey(target);
-        const profiles = target.profiles || [];
-        const currentID = current[key];
-        if (profiles.length === 0) continue;
-        next[key] = profiles.some((profile) => String(profile.id) === String(currentID)) ? String(currentID) : String(profiles[0].id);
-      }
-      return next;
-    });
-  });
-  const targetProfileSignature = targets.data
-    .map((target) => `${target.connector_kind}:${target.id}:${(target.profiles || []).map((profile) => profile.id).join(",")}`)
-    .join("|");
-
-  useEffect(() => {
-    void loadCatalog();
-    void refreshConnectorsForEffect();
-  }, []);
-
-  useEffect(() => {
-    reconcileProfileSelections();
-  }, [targetProfileSignature]);
-
   async function refreshConnectors() {
-    await Promise.all([loadTargets(), loadProjects(), loadUnifiedTargets()]);
-  }
-
-  async function loadProjects() {
-    setProjects((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet("/api/projects");
-      setProjects({ state: "ready", data: data.items || [], error: null });
-    } catch (error) {
-      setProjects({ state: "error", data: [], error: error.message });
-    }
-  }
-
-  async function loadCatalog() {
-    try {
-      const data = await apiGet("/api/connectors");
-      const details = {};
-      const detailFailures = [];
-      await Promise.allSettled(
-        (data.items || []).map(async (item) => {
-          try {
-            details[item.kind] = await apiGet(`/api/connectors/${item.kind}`);
-          } catch (error) {
-            detailFailures.push({ kind: item.kind, error: error.message || "failed to load connector details" });
-          }
-        }),
-      );
-      setCatalog({ state: "ready", data: data.items || [], details, detailFailures, error: null });
-    } catch (error) {
-      setCatalog({ state: "error", data: [], details: {}, detailFailures: [], error: error.message });
-    }
-  }
-
-  async function loadTargets() {
-    setTargets((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet("/api/connector-targets/inventory");
-      setTargets({ state: "ready", data: data.items || [], error: null });
-    } catch (error) {
-      setTargets({ state: "error", data: [], error: error.message });
-    }
+    await inventory.refresh();
   }
 
   function showUnderConstruction(label) {
@@ -164,7 +85,7 @@ export function ConnectorsPage() {
   }
 
   function selectProfile(target, profileID) {
-    setProfileSelections((current) => ({ ...current, [targetProfileSelectionKey(target)]: String(profileID || "") }));
+    inventory.selectProfile(target, profileID);
   }
 
   function openConnectorOperation(operation) {
@@ -475,10 +396,6 @@ function ProjectTargetRows({ project, targets, collapsed, onToggle, ...rowProps 
   );
 }
 
-function targetProfileSelectionKey(target) {
-  return `${target?.connector_kind || ""}:${target?.id || ""}`;
-}
-
 function ConnectorTargetRow(props) {
   const {
     target,
@@ -661,25 +578,6 @@ function AddConnectorMenu({ catalog, onAdd }) {
       </div>
     </div>
   );
-}
-
-function connectorCatalogWarnings(catalog) {
-  if (catalog.state !== "ready") return [];
-  const backendKinds = new Set(catalog.data.map((item) => item.kind));
-  const frontendKinds = new Set(supportedConnectorKinds);
-  const backendOnly = [...backendKinds].filter((kind) => !frontendKinds.has(kind)).sort();
-  const frontendOnly = [...frontendKinds].filter((kind) => !backendKinds.has(kind)).sort();
-  const warnings = [];
-  if (backendOnly.length > 0) {
-    warnings.push(`Backend connector catalog has no matching frontend template: ${backendOnly.join(", ")}.`);
-  }
-  if (frontendOnly.length > 0) {
-    warnings.push(`Frontend connector template has no matching backend connector: ${frontendOnly.join(", ")}.`);
-  }
-  for (const failure of catalog.detailFailures || []) {
-    warnings.push(`Backend connector detail failed for ${failure.kind}: ${failure.error}.`);
-  }
-  return warnings;
 }
 
 function DeleteConnectorDialog({ value, state, onDelete, onClose }) {
