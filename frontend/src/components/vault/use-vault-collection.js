@@ -30,6 +30,7 @@ export function useVaultCollection() {
   const [filters, setFilters] = useState({ project_id: "", query: "", expiry: "all" });
   const [editor, setEditor] = useState(emptyVaultEditor);
   const [action, setAction] = useState({ state: "idle", message: "", error: null });
+  const filtersRef = useRef(filters);
   const searchTimer = useRef(null);
   const guard = useRequestGuard("vault-collection");
   const loadItems = useCallback(async () => {
@@ -50,6 +51,16 @@ export function useVaultCollection() {
   const loadProjects = useCallback(async () => {
     await loadProjectOptions(guard, setProjects);
   }, [guard]);
+  const updateFilters = useCallback(
+    (patch) => {
+      const current = filtersRef.current;
+      const next = { ...current, ...patch };
+      if (next.project_id !== current.project_id || next.query !== current.query) guard.invalidate("items");
+      filtersRef.current = next;
+      setFilters(next);
+    },
+    [guard],
+  );
   const visibleItems = useMemo(() => filterVaultItemsByExpiry(items.data, filters.expiry), [items.data, filters.expiry]);
 
   useEffect(() => {
@@ -61,9 +72,10 @@ export function useVaultCollection() {
 
   useEffect(() => {
     window.clearTimeout(searchTimer.current);
+    guard.invalidate("items");
     searchTimer.current = window.setTimeout(() => void loadItems(), 200);
     return () => window.clearTimeout(searchTimer.current);
-  }, [loadItems]);
+  }, [guard, loadItems]);
 
   function openCreate() {
     guard.invalidate("editor-mutation");
@@ -141,7 +153,7 @@ export function useVaultCollection() {
     items,
     projects,
     filters,
-    setFilters,
+    setFilters: updateFilters,
     visibleItems,
     editor,
     setEditor,

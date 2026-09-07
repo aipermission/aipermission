@@ -6,12 +6,24 @@ import { filterVaultItemsByExpiry, useVaultCollection } from "./use-vault-collec
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn() }));
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((next, failure) => {
+    resolve = next;
+    reject = failure;
+  });
+  return { promise, resolve, reject };
+}
+
 function CollectionHarness() {
   const vault = useVaultCollection();
   return (
     <div>
       <p data-testid="items">{vault.items.data.map((item) => item.name).join(",")}</p>
       <p data-testid="project">{vault.projects.data[0]?.name || ""}</p>
+      <p data-testid="query">{vault.filters.query}</p>
+      <p data-testid="items-state">{`${vault.items.state}:${vault.items.error || ""}`}</p>
       <p data-testid="editor">{`${vault.editor.open}:${vault.editor.owner_project_id}:${vault.editor.name}`}</p>
       <p data-testid="action">{vault.action.message || vault.action.error}</p>
       <button type="button" onClick={vault.openCreate}>
@@ -41,6 +53,9 @@ function CollectionHarness() {
       </button>
       <button type="button" onClick={(event) => void vault.saveItem(event)}>
         Save
+      </button>
+      <button type="button" onClick={() => vault.setFilters({ query: "current" })}>
+        Filter
       </button>
     </div>
   );
@@ -127,4 +142,33 @@ it("updates Vault metadata without replacing the existing value", async () => {
     expect.objectContaining({ name: "EXISTING_KEY", expected_metadata_revision: 3 }),
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   );
+});
+
+it.each([
+  ["success", (pending) => pending.resolve({ items: [{ id: 9, name: "STALE" }], total: 1 })],
+  ["error", (pending) => pending.reject(new Error("stale failure"))],
+])("invalidates a stale Vault list %s as soon as filters change", async (_outcome, settle) => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  apiGet.mockImplementation((path) => {
+    if (path === "/api/projects") return Promise.resolve({ items: [{ id: 4, name: "My Project", slug: "my-project" }] });
+    if (path === "/api/vault-items") return pending.promise;
+    if (path === "/api/vault-items?q=current") return Promise.resolve({ items: [{ id: 10, name: "CURRENT" }], total: 1 });
+    throw new Error(`Unexpected path ${path}`);
+  });
+
+  render(<CollectionHarness />);
+  await waitFor(() =>
+    expect(apiGet).toHaveBeenCalledWith("/api/vault-items", expect.objectContaining({ signal: expect.any(AbortSignal) })),
+  );
+  const staleSignal = apiGet.mock.calls.find(([path]) => path === "/api/vault-items")[1].signal;
+
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  expect(screen.getByTestId("query")).toHaveTextContent("current");
+  expect(staleSignal.aborted).toBe(true);
+  settle(pending);
+
+  await waitFor(() => expect(screen.getByTestId("items")).toHaveTextContent("CURRENT"));
+  expect(screen.getByTestId("items")).not.toHaveTextContent("STALE");
+  expect(screen.getByTestId("items-state")).not.toHaveTextContent("stale failure");
 });

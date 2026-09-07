@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost } from "../../lib/api";
@@ -22,6 +22,7 @@ function ValueHarness({ reloadItems = vi.fn(), setAction = vi.fn() }) {
   return (
     <div>
       <p data-testid="reveal">{`${values.reveal.state}:${values.reveal.value}`}</p>
+      <p data-testid="reveal-feedback">{`${values.reveal.copied}:${values.reveal.error || ""}`}</p>
       <p data-testid="replace">{`${values.replace.preview_state}:${values.replace.preview_value}`}</p>
       <p data-testid="remove">{values.remove.state}</p>
       <button type="button" onClick={() => void values.openReveal(item)}>
@@ -30,11 +31,20 @@ function ValueHarness({ reloadItems = vi.fn(), setAction = vi.fn() }) {
       <button type="button" onClick={values.closeReveal}>
         Close reveal
       </button>
+      <button type="button" onClick={() => void values.copyRevealedValue()}>
+        Copy reveal
+      </button>
       <button type="button" onClick={() => values.openReplace(item)}>
         Replace
       </button>
+      <button type="button" onClick={values.closeReplace}>
+        Close replace
+      </button>
       <button type="button" onClick={() => void values.generateReplacementPreview(item, "hex_secret")}>
         Preview
+      </button>
+      <button type="button" onClick={(event) => void values.replaceValue(event)}>
+        Save replacement
       </button>
       <button type="button" onClick={() => values.openRemove(item)}>
         Remove
@@ -116,4 +126,52 @@ it("cancels a pending reveal when its dialog closes", async () => {
   expect(requestOptions.signal.aborted).toBe(true);
   pending.resolve({ value: "stale-secret" });
   await waitFor(() => expect(screen.getByTestId("reveal")).toHaveTextContent("idle:"));
+});
+
+it.each(["resolve", "reject"])("ignores a stale clipboard %s after the reveal dialog is reopened", async (outcome) => {
+  const user = userEvent.setup();
+  const clipboard = deferred();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: vi.fn().mockReturnValue(clipboard.promise) },
+  });
+  apiPost.mockResolvedValue({ value: "secret" });
+  render(<ValueHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Reveal" }));
+  await screen.findByText("ready:secret");
+  await user.click(screen.getByRole("button", { name: "Copy reveal" }));
+  await user.click(screen.getByRole("button", { name: "Close reveal" }));
+  await user.click(screen.getByRole("button", { name: "Reveal" }));
+  await screen.findByText("ready:secret");
+
+  await act(async () => {
+    if (outcome === "resolve") clipboard.resolve();
+    else clipboard.reject(new Error("denied"));
+    await clipboard.promise.catch(() => undefined);
+  });
+
+  expect(navigator.clipboard.writeText).toHaveBeenCalledOnce();
+  expect(screen.getByTestId("reveal-feedback")).toHaveTextContent("false:");
+});
+
+it("does not let a closed replacement save mutate a reopened dialog", async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  const reloadItems = vi.fn();
+  const setAction = vi.fn();
+  apiPost.mockReturnValue(pending.promise);
+  render(<ValueHarness reloadItems={reloadItems} setAction={setAction} />);
+
+  await user.click(screen.getByRole("button", { name: "Replace" }));
+  await user.click(screen.getByRole("button", { name: "Save replacement" }));
+  const requestOptions = apiPost.mock.calls[0][2];
+  await user.click(screen.getByRole("button", { name: "Close replace" }));
+  await user.click(screen.getByRole("button", { name: "Replace" }));
+  expect(requestOptions.signal.aborted).toBe(true);
+  pending.resolve({});
+
+  await waitFor(() => expect(screen.getByTestId("replace")).toHaveTextContent("idle:"));
+  expect(reloadItems).not.toHaveBeenCalled();
+  expect(setAction).not.toHaveBeenCalled();
 });

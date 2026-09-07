@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
 
@@ -22,19 +22,12 @@ export function useVaultValueActions({ reloadItems, setAction }) {
   const [reveal, setReveal] = useState(emptyReveal);
   const [replace, setReplace] = useState(emptyVaultReplace);
   const [remove, setRemove] = useState(emptyRemove);
-  const mounted = useRef(true);
   const guard = useRequestGuard("vault-values");
   const closeReveal = useCallback(() => {
     guard.invalidate("reveal");
+    guard.invalidate("clipboard");
     setReveal(emptyReveal);
   }, [guard]);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!reveal.open || !reveal.value) return undefined;
@@ -52,6 +45,7 @@ export function useVaultValueActions({ reloadItems, setAction }) {
   }, [replace.open, replace.preview_value, guard]);
 
   async function openReveal(item) {
+    guard.invalidate("clipboard");
     const request = guard.begin("reveal");
     setReveal({ open: true, item, state: "loading", value: "", error: null, copied: false });
     try {
@@ -66,20 +60,25 @@ export function useVaultValueActions({ reloadItems, setAction }) {
 
   async function copyRevealedValue() {
     if (!reveal.value) return;
+    const request = guard.begin("clipboard");
     try {
       await navigator.clipboard.writeText(reveal.value);
-      if (mounted.current) setReveal((current) => ({ ...current, copied: true }));
+      if (request.isCurrent()) setReveal((current) => ({ ...current, copied: true }));
     } catch {
-      if (mounted.current) setReveal((current) => ({ ...current, error: "Clipboard access failed." }));
+      if (request.isCurrent()) setReveal((current) => ({ ...current, error: "Clipboard access failed." }));
+    } finally {
+      request.complete();
     }
   }
 
   function openReplace(item) {
+    guard.invalidate("replace-value");
     setReplace({ ...emptyVaultReplace, open: true, item });
   }
 
   function closeReplace() {
     guard.invalidate("replace-preview");
+    guard.invalidate("replace-value");
     setReplace(emptyVaultReplace);
   }
 
@@ -136,16 +135,21 @@ export function useVaultValueActions({ reloadItems, setAction }) {
     event.preventDefault();
     if (!replace.item) return;
     const snapshot = replace;
+    const request = guard.begin("replace-value");
     setReplace((current) => ({ ...current, state: "saving", error: null }));
     try {
-      await apiPost(`/api/vault-items/${snapshot.item.id}/value`, {
-        source: snapshot.source,
-        value: snapshot.source === "imported" ? snapshot.value : "",
-        generator_kind: snapshot.source === "generated" ? snapshot.generator_kind : "",
-        preview_token: snapshot.source === "generated" ? snapshot.preview_token : "",
-        expected_value_version: snapshot.item.value_version,
-      });
-      if (!mounted.current) return;
+      await apiPost(
+        `/api/vault-items/${snapshot.item.id}/value`,
+        {
+          source: snapshot.source,
+          value: snapshot.source === "imported" ? snapshot.value : "",
+          generator_kind: snapshot.source === "generated" ? snapshot.generator_kind : "",
+          preview_token: snapshot.source === "generated" ? snapshot.preview_token : "",
+          expected_value_version: snapshot.item.value_version,
+        },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent()) return;
       setReplace(emptyVaultReplace);
       setAction({
         state: "ready",
@@ -157,7 +161,9 @@ export function useVaultValueActions({ reloadItems, setAction }) {
       });
       await reloadItems();
     } catch (error) {
-      if (mounted.current) setReplace((current) => ({ ...current, state: "error", error: error.message }));
+      if (request.isCurrent()) setReplace((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 

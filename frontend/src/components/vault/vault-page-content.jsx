@@ -28,7 +28,7 @@ export function VaultPageHeader({ loading, canCreate, onRefresh, onCreate }) {
 export function VaultFilters({ filters, projects, onChange }) {
   return (
     <div className="grid gap-3 border-y border-stone-200 py-4 md:grid-cols-[220px_minmax(0,1fr)_180px]">
-      <Select value={filters.project_id} onChange={(event) => onChange((current) => ({ ...current, project_id: event.target.value }))}>
+      <Select value={filters.project_id} onChange={(event) => onChange({ project_id: event.target.value })}>
         <option value="">All projects</option>
         {projects.map((project) => (
           <option key={project.id} value={project.id}>
@@ -41,11 +41,11 @@ export function VaultFilters({ filters, projects, onChange }) {
         <Input
           className="pl-9"
           value={filters.query}
-          onChange={(event) => onChange((current) => ({ ...current, query: event.target.value }))}
+          onChange={(event) => onChange({ query: event.target.value })}
           placeholder="Search name, provider, environment, or description"
         />
       </div>
-      <Select value={filters.expiry} onChange={(event) => onChange((current) => ({ ...current, expiry: event.target.value }))}>
+      <Select value={filters.expiry} onChange={(event) => onChange({ expiry: event.target.value })}>
         <option value="all">All expiry states</option>
         <option value="warning">Expiring soon</option>
         <option value="expired">Expired</option>

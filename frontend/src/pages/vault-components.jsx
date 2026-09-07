@@ -17,23 +17,17 @@ export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave
   }, [state.item, projects]);
   const selectedTarget = state.targets.find((target) => String(target.id) === String(state.target_id));
   const current = selectedBinding(state);
+  const selectionIdentity = state.open
+    ? [state.item?.id, state.source_project_id, state.target_id, state.profile_id, current?.id || "new"].join(":")
+    : "closed";
+  const selectedReplaceExisting = current?.replace_existing || false;
 
   useEffect(() => {
-    if (!state.open) return;
-    const nextReplace = current?.replace_existing || false;
-    if (state.replace_existing !== nextReplace) {
-      onChange((value) => ({ ...value, replace_existing: nextReplace }));
-    }
-  }, [
-    state.open,
-    state.source_project_id,
-    state.target_id,
-    state.profile_id,
-    state.replace_existing,
-    current?.id,
-    current?.replace_existing,
-    onChange,
-  ]);
+    if (selectionIdentity === "closed") return;
+    onChange((value) =>
+      value.replace_existing === selectedReplaceExisting ? value : { ...value, replace_existing: selectedReplaceExisting },
+    );
+  }, [selectionIdentity, selectedReplaceExisting, onChange]);
 
   function update(key, value) {
     onChange((currentState) => ({ ...currentState, [key]: value, error: null }));
