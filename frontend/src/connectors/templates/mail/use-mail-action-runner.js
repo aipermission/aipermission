@@ -99,7 +99,12 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
     } catch (error) {
       if (generation === requestGeneration.current && actionScope === currentScope.current) {
         const message = error.message || "Mail action failed.";
-        setState({ state: "error", error: message, message: "", result: error.actionResult || { actionName, summary: message, item: null } });
+        setState({
+          state: "error",
+          error: message,
+          message: "",
+          result: error.actionResult || { actionName, summary: message, item: null },
+        });
       }
       throw error;
     }

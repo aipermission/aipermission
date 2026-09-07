@@ -74,13 +74,12 @@ it("reconciles an approved outbound action without losing its draft early", asyn
 
 it("ignores a Mail response that completes after the target scope changes", async () => {
   let resolveFolders;
-  apiPost.mockImplementation(
-    (_path, payload) =>
-      payload.action_name === "list_folders"
-        ? new Promise((resolve) => {
-            resolveFolders = resolve;
-          })
-        : Promise.resolve(actionResponse(payload.action_name, payload.input)),
+  apiPost.mockImplementation((_path, payload) =>
+    payload.action_name === "list_folders"
+      ? new Promise((resolve) => {
+          resolveFolders = resolve;
+        })
+      : Promise.resolve(actionResponse(payload.action_name, payload.input)),
   );
   const { result, rerender, props } = renderWorkspace();
   await waitFor(() => expect(resolveFolders).toBeTypeOf("function"));

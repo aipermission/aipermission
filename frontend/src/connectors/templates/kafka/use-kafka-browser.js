@@ -166,5 +166,9 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
 function filterItems(items, query) {
   const needle = query.trim().toLowerCase();
   if (!needle) return items;
-  return items.filter((item) => String(item.name || "").toLowerCase().includes(needle));
+  return items.filter((item) =>
+    String(item.name || "")
+      .toLowerCase()
+      .includes(needle),
+  );
 }

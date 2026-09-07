@@ -73,7 +73,10 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
         aria-label="Search queue routing keys"
       />
       {open ? (
-        <div className={`absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-64 overflow-auto rounded-md border p-1 shadow-xl ${styles.border} ${styles.subtlePanel}`} role="listbox">
+        <div
+          className={`absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-64 overflow-auto rounded-md border p-1 shadow-xl ${styles.border} ${styles.subtlePanel}`}
+          role="listbox"
+        >
           {options.map((option, index) => (
             <button
               key={`${option.kind}:${option.label}`}

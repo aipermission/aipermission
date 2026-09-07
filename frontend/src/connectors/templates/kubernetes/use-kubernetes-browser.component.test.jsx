@@ -87,9 +87,7 @@ it("discards resource lists that arrive after the connector target changes", asy
   await waitFor(() => expect(pending.has("kubernetes:2:2")).toBe(true));
 
   await act(async () =>
-    pending.get("kubernetes:1:1")(
-      completed("list_workloads", { workloads: [{ kind: "Deployment", namespace: "old", name: "stale" }] }),
-    ),
+    pending.get("kubernetes:1:1")(completed("list_workloads", { workloads: [{ kind: "Deployment", namespace: "old", name: "stale" }] })),
   );
   expect(result.current.activeResources).toEqual([]);
   await act(async () => pending.get("kubernetes:2:2")(completed("list_workloads", { workloads: [] })));

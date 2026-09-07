@@ -3,7 +3,11 @@ export function filterQueues(queues, pattern) {
     .trim()
     .toLowerCase();
   if (!needle) return queues;
-  return queues.filter((queue) => String(queue.name || "").toLowerCase().includes(needle));
+  return queues.filter((queue) =>
+    String(queue.name || "")
+      .toLowerCase()
+      .includes(needle),
+  );
 }
 
 export function uniqueQueueNames(queues) {

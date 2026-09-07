@@ -179,7 +179,15 @@ function MailToolbar(props) {
       </div>
       <div className="flex items-center gap-2">
         {imapEnabled ? (
-          <Button type="button" variant="outline" className="h-8 w-8 px-0" title="Refresh mailbox" aria-label="Refresh mailbox" onClick={() => props.onRefresh()} disabled={busy}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-8 w-8 px-0"
+            title="Refresh mailbox"
+            aria-label="Refresh mailbox"
+            onClick={() => props.onRefresh()}
+            disabled={busy}
+          >
             <RefreshCcw className={`h-4 w-4 ${state.state === "loading" ? "animate-spin" : ""}`} />
           </Button>
         ) : null}
@@ -198,7 +206,9 @@ function SMTPOnlyPanel({ busy, outboundPending, smtpEnabled, onCompose, borderCl
       <div className={`grid max-w-lg gap-3 rounded-md border p-6 ${borderClass} ${subtlePanelClass}`}>
         <PenLine className={`mx-auto h-9 w-9 ${mutedClass}`} />
         <h3 className="text-base font-semibold">SMTP-only Mail profile</h3>
-        <p className={`text-sm ${mutedClass}`}>Mailbox browsing is disabled for this profile. Compose remains available through the configured SMTP connection.</p>
+        <p className={`text-sm ${mutedClass}`}>
+          Mailbox browsing is disabled for this profile. Compose remains available through the configured SMTP connection.
+        </p>
         <Button type="button" className="mx-auto" onClick={onCompose} disabled={busy || outboundPending || !smtpEnabled}>
           <PenLine className="h-4 w-4" />
           Compose message
@@ -209,5 +219,7 @@ function SMTPOnlyPanel({ busy, outboundPending, smtpEnabled, onCompose, borderCl
 }
 
 function MailEndpointFooter({ target, borderClass = "", mutedClass }) {
-  return <ConnectorEndpointFooter leading={target.ref} trailing={targetEndpoint({ target })} borderClass={borderClass} mutedClass={mutedClass} />;
+  return (
+    <ConnectorEndpointFooter leading={target.ref} trailing={targetEndpoint({ target })} borderClass={borderClass} mutedClass={mutedClass} />
+  );
 }

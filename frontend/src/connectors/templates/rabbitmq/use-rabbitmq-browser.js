@@ -19,7 +19,13 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   const [messages, setMessages] = useState([]);
   const [peekCount, setPeekCount] = useState(defaultPeekCount);
   const [detailMode, setDetailMode] = useState("inspect");
-  const [publish, setPublish] = useState({ exchange: "amq.default", customRoutingKey: false, routingKey: "", payload: "", properties: defaultProperties });
+  const [publish, setPublish] = useState({
+    exchange: "amq.default",
+    customRoutingKey: false,
+    routingKey: "",
+    payload: "",
+    properties: defaultProperties,
+  });
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const scopeKey = `${target.ref}:${activeSession.startedAt || "inactive"}`;
   const requestGuard = useRequestGuard(scopeKey);

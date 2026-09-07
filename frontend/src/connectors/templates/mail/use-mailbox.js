@@ -117,13 +117,7 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     if (destination) input.destination_folder = destination;
     const context = { messageKey: messageRefKey(selectedMessage), folder: selectedFolder };
     try {
-      const item = await runMailAction(
-        actionName,
-        input,
-        `manual Mail workspace ${actionName.replaceAll("_", " ")}`,
-        "updating",
-        context,
-      );
+      const item = await runMailAction(actionName, input, `manual Mail workspace ${actionName.replaceAll("_", " ")}`, "updating", context);
       if (!item || connectorActionPending(item)) return;
       applyMoveResult(context);
       await loadMessages(selectedFolder, { reset: true });

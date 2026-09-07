@@ -29,7 +29,8 @@ function useHarness() {
 it("loads Kafka topics and ignores detail from a superseded selection", async () => {
   const pending = new Map();
   apiPost.mockImplementation((_path, payload) => {
-    if (payload.action_name !== "describe_topic") return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+    if (payload.action_name !== "describe_topic")
+      return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
     return new Promise((resolve) => pending.set(payload.input.topic, resolve));
   });
   const { result } = renderHook(useHarness);

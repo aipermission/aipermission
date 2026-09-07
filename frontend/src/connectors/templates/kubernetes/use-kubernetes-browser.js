@@ -84,7 +84,12 @@ export function useKubernetesBrowser(props) {
   }
 
   async function refreshNamespaces() {
-    const item = await runAction({ actionName: "list_namespaces", reason: "manual Kubernetes browser namespace list", busy: "loading", channel: "namespaces" });
+    const item = await runAction({
+      actionName: "list_namespaces",
+      reason: "manual Kubernetes browser namespace list",
+      busy: "loading",
+      channel: "namespaces",
+    });
     if (item) setNamespaces(Array.isArray(item.output?.namespaces) ? item.output.namespaces : []);
   }
 
@@ -93,7 +98,13 @@ export function useKubernetesBrowser(props) {
     const input = {};
     if (config.key !== "nodes" && nextNamespace) input.namespace = nextNamespace;
     if (config.key === "events") input.limit = 250;
-    const item = await runAction({ actionName: config.action, input, reason: `manual Kubernetes browser ${config.key} list`, busy: "loading", channel: `list:${config.key}` });
+    const item = await runAction({
+      actionName: config.action,
+      input,
+      reason: `manual Kubernetes browser ${config.key} list`,
+      busy: "loading",
+      channel: `list:${config.key}`,
+    });
     if (!item) return;
     const next = Array.isArray(item.output?.[config.output]) ? item.output[config.output] : [];
     setResources((current) => ({ ...current, [config.key]: next }));
@@ -116,8 +127,14 @@ export function useKubernetesBrowser(props) {
     if (nextMode === "console") onSelectLiveSessionName?.(kubernetesConsoleSessionName(target, resource));
     if (tab === "events") setDetail({ output: { resource } });
     else if (tab === "nodes") await describeResource({ resource_type: "node", name: resource.name });
-    else if (tab === "workloads") await describeResource({ resource_type: resourceTypeForWorkload(resource), namespace: resource.namespace, name: resource.name });
-    else if (tab === "services" || tab === "ingress") await describeResource({ resource_type: tab === "services" ? "service" : "ingress", namespace: resource.namespace, name: resource.name });
+    else if (tab === "workloads")
+      await describeResource({ resource_type: resourceTypeForWorkload(resource), namespace: resource.namespace, name: resource.name });
+    else if (tab === "services" || tab === "ingress")
+      await describeResource({
+        resource_type: tab === "services" ? "service" : "ingress",
+        namespace: resource.namespace,
+        name: resource.name,
+      });
     else if (tab === "pods") {
       const described = await describeResource({ resource_type: "pod", namespace: resource.namespace, name: resource.name });
       if (described && nextMode !== "console") await readLogs(resource);
@@ -125,14 +142,26 @@ export function useKubernetesBrowser(props) {
   }
 
   async function describeResource(input) {
-    const item = await runAction({ actionName: "describe_resource", input, reason: "manual Kubernetes browser resource detail", busy: "reading", channel: "detail" });
+    const item = await runAction({
+      actionName: "describe_resource",
+      input,
+      reason: "manual Kubernetes browser resource detail",
+      busy: "reading",
+      channel: "detail",
+    });
     if (item) setDetail(item);
     return item;
   }
 
   async function readLogs(resource = selectedResource) {
     if (!resource || tab !== "pods") return;
-    const item = await runAction({ actionName: "get_logs", input: { namespace: resource.namespace, pod: resource.name, tail: 300 }, reason: "manual Kubernetes browser pod logs", busy: "reading", channel: "detail" });
+    const item = await runAction({
+      actionName: "get_logs",
+      input: { namespace: resource.namespace, pod: resource.name, tail: 300 },
+      reason: "manual Kubernetes browser pod logs",
+      busy: "reading",
+      channel: "detail",
+    });
     if (!item) return;
     setLogs(item.output?.logs || item.display_text || "");
     setViewMode("details");
@@ -185,15 +214,44 @@ export function useKubernetesBrowser(props) {
   }
 
   return {
-    tab, activeTab, namespace, namespaces, filter, setFilter, activeResources, filteredResources, selectedKey, selectedResource,
-    detail, logs, resultSearch, setResultSearch, viewMode, state, latestAction, selectedPodConsoleLive,
-    consolePending: pendingConsoleName === expectedConsoleName, runAction, refreshResource, selectResource, readLogs,
-    openPodConsole, startPodConsole, switchTab, changeNamespace,
+    tab,
+    activeTab,
+    namespace,
+    namespaces,
+    filter,
+    setFilter,
+    activeResources,
+    filteredResources,
+    selectedKey,
+    selectedResource,
+    detail,
+    logs,
+    resultSearch,
+    setResultSearch,
+    viewMode,
+    state,
+    latestAction,
+    selectedPodConsoleLive,
+    consolePending: pendingConsoleName === expectedConsoleName,
+    runAction,
+    refreshResource,
+    selectResource,
+    readLogs,
+    openPodConsole,
+    startPodConsole,
+    switchTab,
+    changeNamespace,
   };
 }
 
 function filterResources(tab, resources, filter) {
   const query = filter.trim().toLowerCase();
   if (!query) return resources;
-  return resources.filter((item) => resourceSearchValues(tab, item).some((value) => String(value || "").toLowerCase().includes(query)));
+  return resources.filter((item) =>
+    resourceSearchValues(tab, item).some((value) =>
+      String(value || "")
+        .toLowerCase()
+        .includes(query),
+    ),
+  );
 }
