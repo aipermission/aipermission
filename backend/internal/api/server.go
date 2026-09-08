@@ -93,6 +93,7 @@ type databaseRuntime struct {
 	retentionDone      chan struct{}
 	actionRecovery     connectorActionRecoveryWorker
 	databaseOwnership  *dbpkg.DatabaseOwnership
+	finalization       transferjobs.FinalizationLifetime
 }
 
 type serverOptions struct {
@@ -183,6 +184,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		credBoundaries:  map[int64]connectorCredentialBoundary{},
 		vaultLeases:     vaultsessions.NewStore(),
 	}
+	runtime.finalization = transferjobs.NewFinalizationLifetime()
 	var err error
 	runtime.workspaceUUID, err = projectvault.EnsureWorkspaceUUID(context.Background(), database)
 	if err != nil {

@@ -388,8 +388,11 @@ func (s *Store) UpdatePendingBatchItemSizes(ctx context.Context, batchID int64, 
 	if err := recalculateBatch(ctx, tx, batchID); err != nil {
 		return err
 	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, batchID); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit file transfer batch size update: %w", err)
 	}
-	return s.syncBatchTransferHistory(ctx, batchID)
+	return nil
 }

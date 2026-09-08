@@ -8,7 +8,7 @@ import (
 
 func (s *Store) MarkRunning(ctx context.Context, id int64) (bool, error) {
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	return s.updateTransferWithHistory(ctx, id, "mark file transfer running", `
 		UPDATE file_transfers
 		SET status = ?, started_at = COALESCE(started_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?)`,
@@ -20,19 +20,6 @@ func (s *Store) MarkRunning(ctx context.Context, id int64) (bool, error) {
 		StatusPendingApproval,
 		StatusPaused,
 	)
-	if err != nil {
-		return false, fmt.Errorf("mark file transfer running: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read file transfer running rows: %w", err)
-	}
-	if rows > 0 {
-		if err := s.syncTransferHistory(ctx, id); err != nil {
-			return false, err
-		}
-	}
-	return rows > 0, nil
 }
 
 func (s *Store) UpdateProgress(ctx context.Context, id int64, transferred int64, size int64) error {
@@ -50,7 +37,7 @@ func (s *Store) UpdateProgressStats(ctx context.Context, id int64, transferred i
 		bytesPerSecond = 0
 	}
 	now := nowString()
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.updateTransferWithHistory(ctx, id, "update file transfer progress", `
 		UPDATE file_transfers
 		SET transferred_bytes = ?, size_bytes = CASE WHEN ? > 0 THEN ? ELSE size_bytes END,
 			bytes_per_second = ?, eta_seconds = ?, updated_at = ?
@@ -65,15 +52,12 @@ func (s *Store) UpdateProgressStats(ctx context.Context, id int64, transferred i
 		StatusRunning,
 		StatusPaused,
 	)
-	if err != nil {
-		return fmt.Errorf("update file transfer progress: %w", err)
-	}
-	return s.syncTransferHistory(ctx, id)
+	return err
 }
 
 func (s *Store) Complete(ctx context.Context, id int64, transferred int64, checksum string) (bool, error) {
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	return s.updateTransferWithHistory(ctx, id, "complete file transfer", `
 		UPDATE file_transfers
 		SET status = ?, transferred_bytes = CASE WHEN ? >= 0 THEN ? ELSE transferred_bytes END,
 			checksum_sha256 = ?, error = '', failure_kind = '',
@@ -89,19 +73,6 @@ func (s *Store) Complete(ctx context.Context, id int64, transferred int64, check
 		StatusRunning,
 		StatusPaused,
 	)
-	if err != nil {
-		return false, fmt.Errorf("complete file transfer: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read completed file transfer rows: %w", err)
-	}
-	if rows > 0 {
-		if err := s.syncTransferHistory(ctx, id); err != nil {
-			return false, err
-		}
-	}
-	return rows > 0, nil
 }
 
 func (s *Store) Fail(ctx context.Context, id int64, errorText string) (bool, error) {
@@ -111,7 +82,7 @@ func (s *Store) Fail(ctx context.Context, id int64, errorText string) (bool, err
 func (s *Store) FailWithKind(ctx context.Context, id int64, errorText string, failureKind string) (bool, error) {
 	failureKind = normalizeFailureKind(failureKind)
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	return s.updateTransferWithHistory(ctx, id, "fail file transfer", `
 		UPDATE file_transfers
 		SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?, ?)`,
@@ -126,24 +97,11 @@ func (s *Store) FailWithKind(ctx context.Context, id int64, errorText string, fa
 		StatusRunning,
 		StatusPaused,
 	)
-	if err != nil {
-		return false, fmt.Errorf("fail file transfer: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read failed file transfer rows: %w", err)
-	}
-	if rows > 0 {
-		if err := s.syncTransferHistory(ctx, id); err != nil {
-			return false, err
-		}
-	}
-	return rows > 0, nil
 }
 
 func (s *Store) Cancel(ctx context.Context, id int64, errorText string) (bool, error) {
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	return s.updateTransferWithHistory(ctx, id, "cancel file transfer", `
 		UPDATE file_transfers
 		SET status = ?, error = ?, failure_kind = '', completed_at = COALESCE(completed_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?, ?)`,
@@ -157,19 +115,6 @@ func (s *Store) Cancel(ctx context.Context, id int64, errorText string) (bool, e
 		StatusRunning,
 		StatusPaused,
 	)
-	if err != nil {
-		return false, fmt.Errorf("cancel file transfer: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read canceled file transfer rows: %w", err)
-	}
-	if rows > 0 {
-		if err := s.syncTransferHistory(ctx, id); err != nil {
-			return false, err
-		}
-	}
-	return rows > 0, nil
 }
 
 func normalizeFailureKind(value string) string {
@@ -183,7 +128,7 @@ func normalizeFailureKind(value string) string {
 
 func (s *Store) Pause(ctx context.Context, id int64) (bool, error) {
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	return s.updateTransferWithHistory(ctx, id, "pause file transfer", `
 		UPDATE file_transfers
 		SET status = ?, updated_at = ?
 		WHERE id = ? AND status = ?`,
@@ -192,17 +137,30 @@ func (s *Store) Pause(ctx context.Context, id int64) (bool, error) {
 		id,
 		StatusRunning,
 	)
+}
+
+func (s *Store) updateTransferWithHistory(ctx context.Context, id int64, operation string, query string, args ...any) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("pause file transfer: %w", err)
+		return false, fmt.Errorf("begin %s: %w", operation, err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", operation, err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("read paused file transfer rows: %w", err)
+		return false, fmt.Errorf("read %s rows: %w", operation, err)
 	}
-	if rows > 0 {
-		if err := s.syncTransferHistory(ctx, id); err != nil {
-			return false, err
-		}
+	if rows == 0 {
+		return false, nil
 	}
-	return rows > 0, nil
+	if err := syncTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit %s: %w", operation, err)
+	}
+	return true, nil
 }

@@ -384,7 +384,16 @@ func (s *Store) DeleteSourceRef(ctx context.Context, sourceRefType string, sourc
 	if s == nil || s.db == nil {
 		return fmt.Errorf("history store is not configured")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	return DeleteSourceRefWithExecutor(ctx, s.db, sourceRefType, sourceRefID)
+}
+
+// DeleteSourceRefWithExecutor lets canonical deletion and projection cleanup
+// commit in one caller-owned database transaction.
+func DeleteSourceRefWithExecutor(ctx context.Context, executor CommandProjectionExecutor, sourceRefType string, sourceRefID int64) error {
+	if executor == nil {
+		return fmt.Errorf("history executor is not configured")
+	}
+	_, err := executor.ExecContext(ctx, `
 		DELETE FROM history_entries
 		WHERE source_ref_type = ? AND source_ref_id = ?`,
 		sourceRefType,

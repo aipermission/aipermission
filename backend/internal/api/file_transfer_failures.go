@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 )
 
 var errFileTransferTimedOut = errors.New("file transfer timed out")
@@ -22,13 +22,9 @@ func (s fileTransferHandlers) failFileTransfer(runtime *databaseRuntime, transfe
 	} else {
 		message = boundary.Redact(message)
 	}
-	changed, writeErr := runtime.fileTransfers.FailWithKind(context.Background(), transferID, message, failureKind)
-	if writeErr != nil {
-		log.Printf("fail file transfer failed transfer=%d error=%v", transferID, writeErr)
-	}
-	if !changed {
-		return
-	}
+	s.persistFileTransferTerminal(runtime, transferID, func(ctx context.Context) (bool, error) {
+		return runtime.fileTransfers.FailWithKind(ctx, transferID, message, failureKind)
+	})
 }
 
 func (s fileTransferHandlers) finishFileTransferError(runtime *databaseRuntime, transferID int64, ctx context.Context, err error) {
@@ -46,7 +42,7 @@ func (s fileTransferHandlers) finishFileTransferError(runtime *databaseRuntime, 
 	}
 }
 
-func (s fileTransferHandlers) finishFileTransferBatchError(runtime *databaseRuntime, batchID int64, ctx context.Context, err error) {
+func (s fileTransferHandlers) finishFileTransferBatchError(runtime *databaseRuntime, batchID int64, ctx context.Context, err error) bool {
 	message := fileTransferFailureMessage(err)
 	batch, readErr := runtime.fileTransfers.GetBatch(context.Background(), batchID)
 	if readErr != nil {
@@ -57,24 +53,23 @@ func (s fileTransferHandlers) finishFileTransferBatchError(runtime *databaseRunt
 		message = boundary.Redact(message)
 	}
 	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
-		if _, writeErr := runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, message, filetransfer.FailureKindOutcomeUnknown); writeErr != nil {
-			log.Printf("mark file transfer batch outcome unknown failed batch=%d error=%v", batchID, writeErr)
-		}
-		return
+		return s.persistFileTransferBatchTerminal(runtime, batchID, func(ctx context.Context) (bool, error) {
+			return runtime.fileTransfers.FailBatchWithKind(ctx, batchID, message, filetransfer.FailureKindOutcomeUnknown)
+		})
 	}
 	switch classifyFileTransferInterruption(ctx, err) {
 	case fileTransferTimedOut:
-		if _, writeErr := runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, "file transfer batch timed out", filetransfer.FailureKindTimeout); writeErr != nil {
-			log.Printf("mark file transfer batch timed out failed batch=%d error=%v", batchID, writeErr)
-		}
+		return s.persistFileTransferBatchTerminal(runtime, batchID, func(ctx context.Context) (bool, error) {
+			return runtime.fileTransfers.FailBatchWithKind(ctx, batchID, "file transfer batch timed out", filetransfer.FailureKindTimeout)
+		})
 	case fileTransferCanceledByUser:
-		if _, writeErr := runtime.fileTransfers.CancelBatch(context.Background(), batchID, "canceled by local user"); writeErr != nil {
-			log.Printf("cancel file transfer batch failed batch=%d error=%v", batchID, writeErr)
-		}
+		return s.persistFileTransferBatchTerminal(runtime, batchID, func(ctx context.Context) (bool, error) {
+			return runtime.fileTransfers.CancelBatch(ctx, batchID, "canceled by local user")
+		})
 	default:
-		if _, writeErr := runtime.fileTransfers.FailBatchWithKind(context.Background(), batchID, message, filetransfer.FailureKindUnknown); writeErr != nil {
-			log.Printf("fail file transfer batch failed batch=%d error=%v", batchID, writeErr)
-		}
+		return s.persistFileTransferBatchTerminal(runtime, batchID, func(ctx context.Context) (bool, error) {
+			return runtime.fileTransfers.FailBatchWithKind(ctx, batchID, message, filetransfer.FailureKindUnknown)
+		})
 	}
 }
 
@@ -97,14 +92,23 @@ func classifyFileTransferInterruption(ctx context.Context, err error) fileTransf
 }
 
 func (s fileTransferHandlers) cancelFileTransferRecord(runtime *databaseRuntime, transferID int64, message string) {
-	changed, err := runtime.fileTransfers.Cancel(context.Background(), transferID, message)
-	if err != nil {
-		log.Printf("cancel file transfer failed transfer=%d error=%v", transferID, err)
-		return
-	}
-	if !changed {
-		return
-	}
+	s.persistFileTransferTerminal(runtime, transferID, func(ctx context.Context) (bool, error) {
+		return runtime.fileTransfers.Cancel(ctx, transferID, message)
+	})
+}
+
+func (s fileTransferHandlers) persistFileTransferTerminal(runtime *databaseRuntime, transferID int64, persist func(context.Context) (bool, error)) bool {
+	return transferjobs.PersistTerminal(runtime.finalization.Context(), "file transfer", transferID, persist, func(ctx context.Context) (string, error) {
+		item, err := runtime.fileTransfers.Get(ctx, transferID)
+		return item.Status, err
+	})
+}
+
+func (s fileTransferHandlers) persistFileTransferBatchTerminal(runtime *databaseRuntime, batchID int64, persist func(context.Context) (bool, error)) bool {
+	return transferjobs.PersistTerminal(runtime.finalization.Context(), "file transfer batch", batchID, persist, func(ctx context.Context) (string, error) {
+		item, err := runtime.fileTransfers.GetBatch(ctx, batchID)
+		return item.Status, err
+	})
 }
 
 func fileTransferFailureMessage(err error) string {

@@ -53,8 +53,13 @@ func (s fileTransferHandlers) cleanupBatchTemps(runtime *databaseRuntime, batchI
 		}
 	}
 }
-
-func (s fileTransferHandlers) scheduleBatchItemTempCleanup(batch filetransfer.BatchRecord) {
+func (s fileTransferHandlers) cleanupBatchTempsIfDurable(runtime *databaseRuntime, batchID int64, durable bool) {
+	if durable {
+		s.cleanupBatchTemps(runtime, batchID)
+	}
+}
+func (s fileTransferHandlers) scheduleBatchTempCleanup(batch filetransfer.BatchRecord) {
+	s.scheduleTransferTempCleanup(batch.ArchivePath)
 	for _, item := range batch.Items {
 		s.scheduleTransferTempCleanup(item.TempPath)
 	}

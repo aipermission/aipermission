@@ -159,16 +159,16 @@ func (s fileTransferHandlers) cancelFileTransferBatch(w http.ResponseWriter, r *
 	if !ok {
 		return
 	}
-	runtime.transferJobs.Batches.Cancel(id)
-	if control := runtime.transferJobs.Batches.Control(id); control != nil {
-		control.Resume()
-	}
 	changed, err := runtime.fileTransfers.CancelBatch(context.Background(), id, "canceled by local user")
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
 	if changed {
+		runtime.transferJobs.Batches.Cancel(id)
+		if control := runtime.transferJobs.Batches.Control(id); control != nil {
+			control.Resume()
+		}
 		s.cleanupBatchTemps(runtime, id)
 	}
 	item, err := runtime.fileTransfers.GetBatch(r.Context(), id)
