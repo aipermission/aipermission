@@ -28,7 +28,7 @@ func FuzzValidateReadOnly(f *testing.F) {
 		if err != nil {
 			return
 		}
-		checkSQL, parseErr := validationSQL(strings.TrimSpace(stripTrailingStatementTerminator(stripLeadingComments(sql))))
+		checkSQL, parseErr := validationSQL(strings.TrimSpace(stripTrailingStatementTerminator(sql)), DialectANSI)
 		if parseErr != nil {
 			t.Fatalf("accepted SQL failed validation scan: %v", parseErr)
 		}

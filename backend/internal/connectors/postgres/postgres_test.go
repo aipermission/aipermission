@@ -266,6 +266,11 @@ func TestPrepareReadonlyQueryRejectsUnsafeSQL(t *testing.T) {
 		"notify events, 'changed'",
 		"set statement_timeout = 0",
 		"execute prepared_query",
+		"select pg_notify('events', 'changed')",
+		"select dblink_exec('dbname=other', 'delete from users')",
+		"select lo_export(123, '/tmp/export')",
+		"select public.custom_read_function()",
+		`select "pg_notify"('events', 'changed')`,
 	} {
 		_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
 			Target:     connectors.TargetView{Ref: "postgres:7:11", ConnectorKind: Kind},
@@ -274,6 +279,23 @@ func TestPrepareReadonlyQueryRejectsUnsafeSQL(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatalf("expected %q to be rejected", sql)
+		}
+	}
+}
+
+func TestPrepareReadonlyQueryAcceptsApprovedPostgresFunctions(t *testing.T) {
+	for _, sql := range []string{
+		"select count(*), max(created_at) from users",
+		"select pg_catalog.lower(email) from users",
+		"select jsonb_build_object('id', id) from users",
+	} {
+		_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+			Target:     connectors.TargetView{Ref: "postgres:7:11", ConnectorKind: Kind},
+			ActionName: ActionQueryReadonly,
+			Input:      map[string]any{"sql": sql},
+		})
+		if err != nil {
+			t.Fatalf("expected %q to be accepted: %v", sql, err)
 		}
 	}
 }

@@ -214,9 +214,15 @@ value is supplied by the live-console adapter, not a generic target id and not
 an invitation to create connector-specific mirrors.
 
 The Postgres connector is a read-oriented MVP. It uses read-only transactions,
-statement timeouts, row caps, and output byte caps, but it is not a replacement
-for database roles. Operators should use dedicated read-only Postgres users for
-AI profiles.
+an audited `pg_catalog` read-function allowlist, statement timeouts, row caps,
+and output byte caps, but it is not a replacement for database roles. Unknown
+or extension-provided functions fail closed. Operators should use dedicated
+read-only Postgres users for AI profiles.
+Explicit `OPERATOR(...)`, `CAST(...)`, and `::type` expressions are rejected
+because their implementations can resolve to user-defined code outside the
+audited function allowlist. Database roles must also deny execution of
+untrusted schema-owned routines; the connector cannot replace database-side
+privilege boundaries.
 
 The ClickHouse connector follows the same structured SQL surface through the
 native protocol. It uses the generic network transport for Direct and Over SSH

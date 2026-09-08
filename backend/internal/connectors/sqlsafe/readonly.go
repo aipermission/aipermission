@@ -8,9 +8,25 @@ import (
 	"strings"
 )
 
+type Dialect uint8
+
+type FunctionCall struct {
+	Schema string
+	Name   string
+}
+
+const (
+	DialectANSI Dialect = iota
+	DialectPostgreSQL
+)
+
 // ValidateReadOnly rejects empty, oversized, multi-statement, write-like, or
 // unsupported SQL while ignoring terms inside comments and quoted values.
 func ValidateReadOnly(sql string, actionName string, maxBytes int, allowedPrefixes []string, allowedDescription string, disallowedTerms *regexp.Regexp) error {
+	return ValidateReadOnlyDialect(sql, actionName, maxBytes, allowedPrefixes, allowedDescription, disallowedTerms, DialectANSI)
+}
+
+func ValidateReadOnlyDialect(sql string, actionName string, maxBytes int, allowedPrefixes []string, allowedDescription string, disallowedTerms *regexp.Regexp, dialect Dialect) error {
 	if strings.TrimSpace(sql) == "" {
 		return fmt.Errorf("%s sql is required", actionName)
 	}
@@ -21,11 +37,11 @@ func ValidateReadOnly(sql string, actionName string, maxBytes int, allowedPrefix
 		return fmt.Errorf("%s sql contains invalid null byte", actionName)
 	}
 
-	normalized := strings.TrimSpace(stripTrailingStatementTerminator(stripLeadingComments(sql)))
+	normalized := strings.TrimSpace(stripTrailingStatementTerminator(sql))
 	if normalized == "" {
 		return fmt.Errorf("%s sql is required", actionName)
 	}
-	checkSQL, err := validationSQL(normalized)
+	checkSQL, err := validationSQL(normalized, dialect)
 	if err != nil {
 		return fmt.Errorf("%s sql is malformed: %w", actionName, err)
 	}
@@ -54,7 +70,61 @@ func hasAllowedPrefix(sql string, prefixes []string) bool {
 	return false
 }
 
-func validationSQL(sql string) (string, error) {
+func validationSQL(sql string, dialect Dialect) (string, error) {
+	return normalizedSQL(sql, dialect, false)
+}
+
+// PostgreSQLFunctionCalls returns function-shaped identifiers outside comments
+// and quoted values. Quoted function identifiers are represented by a sentinel
+// so callers can reject them without confusing their contents with SQL terms.
+func PostgreSQLFunctionCalls(sql string) ([]FunctionCall, error) {
+	normalized, err := normalizedSQL(sql, DialectPostgreSQL, true)
+	if err != nil {
+		return nil, err
+	}
+	matches := functionCallPattern.FindAllStringSubmatch(normalized, -1)
+	calls := make([]FunctionCall, 0, len(matches))
+	for _, match := range matches {
+		name := strings.TrimSpace(match[2])
+		if isFunctionSyntaxKeyword(name) {
+			continue
+		}
+		calls = append(calls, FunctionCall{Schema: strings.TrimSpace(match[1]), Name: name})
+	}
+	return calls, nil
+}
+
+// ValidatePostgreSQLResolutionSyntax rejects explicit operator and cast syntax
+// whose implementation can resolve to user-defined code outside the visible
+// function-call allowlist.
+func ValidatePostgreSQLResolutionSyntax(sql string) error {
+	normalized, err := normalizedSQL(sql, DialectPostgreSQL, true)
+	if err != nil {
+		return err
+	}
+	if postgresOperatorPattern.MatchString(normalized) {
+		return fmt.Errorf("explicit operators are not allowed")
+	}
+	if strings.Contains(normalized, "::") || postgresCastPattern.MatchString(normalized) {
+		return fmt.Errorf("explicit casts are not allowed")
+	}
+	return nil
+}
+
+var functionCallPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])(?:([\pL_][\pL\pN_$]*|quoted_identifier)\s*\.\s*)?([\pL_][\pL\pN_$]*|quoted_identifier)\s*\(`)
+var postgresOperatorPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])operator\s*\(`)
+var postgresCastPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])cast\s*\(`)
+
+func isFunctionSyntaxKeyword(value string) bool {
+	switch strings.ToLower(value) {
+	case "as", "cast", "exists", "filter", "from", "group", "in", "over", "select", "values", "when", "where", "with", "within":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizedSQL(sql string, dialect Dialect, preserveQuotedIdentifiers bool) (string, error) {
 	var out strings.Builder
 	out.Grow(len(sql))
 	for i := 0; i < len(sql); {
@@ -67,7 +137,20 @@ func validationSQL(sql string) (string, error) {
 		case strings.HasPrefix(sql[i:], "/*"):
 			out.WriteString("  ")
 			i += 2
-			for i < len(sql) && !strings.HasPrefix(sql[i:], "*/") {
+			depth := 1
+			for i < len(sql) && depth > 0 {
+				if dialect == DialectPostgreSQL && strings.HasPrefix(sql[i:], "/*") {
+					out.WriteString("  ")
+					i += 2
+					depth++
+					continue
+				}
+				if strings.HasPrefix(sql[i:], "*/") {
+					out.WriteString("  ")
+					i += 2
+					depth--
+					continue
+				}
 				if sql[i] == '\n' {
 					out.WriteByte('\n')
 				} else {
@@ -75,27 +158,28 @@ func validationSQL(sql string) (string, error) {
 				}
 				i++
 			}
-			if strings.HasPrefix(sql[i:], "*/") {
-				out.WriteString("  ")
-				i += 2
-			} else {
+			if depth > 0 {
 				return "", fmt.Errorf("unterminated block comment")
 			}
 		case sql[i] == '\'':
 			var closed bool
-			i, closed = maskQuoted(sql, i, '\'', &out)
+			i, closed = maskQuoted(sql, i, '\'', postgresEscapeStringAt(sql, i, dialect), &out)
 			if !closed {
 				return "", fmt.Errorf("unterminated single-quoted value")
 			}
 		case sql[i] == '"':
 			var closed bool
-			i, closed = maskQuoted(sql, i, '"', &out)
+			if preserveQuotedIdentifiers {
+				i, closed = maskQuotedIdentifier(sql, i, &out)
+			} else {
+				i, closed = maskQuoted(sql, i, '"', false, &out)
+			}
 			if !closed {
 				return "", fmt.Errorf("unterminated quoted identifier")
 			}
 		case sql[i] == '`':
 			var closed bool
-			i, closed = maskQuoted(sql, i, '`', &out)
+			i, closed = maskQuoted(sql, i, '`', false, &out)
 			if !closed {
 				return "", fmt.Errorf("unterminated quoted identifier")
 			}
@@ -121,7 +205,22 @@ func validationSQL(sql string) (string, error) {
 	return out.String(), nil
 }
 
-func maskQuoted(sql string, start int, quote byte, out *strings.Builder) (int, bool) {
+func maskQuotedIdentifier(sql string, start int, out *strings.Builder) (int, bool) {
+	out.WriteString("quoted_identifier")
+	for i := start + 1; i < len(sql); i++ {
+		if sql[i] != '"' {
+			continue
+		}
+		if i+1 < len(sql) && sql[i+1] == '"' {
+			i++
+			continue
+		}
+		return i + 1, true
+	}
+	return len(sql), false
+}
+
+func maskQuoted(sql string, start int, quote byte, backslashEscapes bool, out *strings.Builder) (int, bool) {
 	i := start
 	if i < len(sql) {
 		out.WriteByte(' ')
@@ -132,6 +231,19 @@ func maskQuoted(sql string, start int, quote byte, out *strings.Builder) (int, b
 			out.WriteByte('\n')
 		} else {
 			out.WriteByte(' ')
+		}
+		if backslashEscapes && sql[i] == '\\' {
+			i++
+			if i >= len(sql) {
+				return i, false
+			}
+			if sql[i] == '\n' {
+				out.WriteByte('\n')
+			} else {
+				out.WriteByte(' ')
+			}
+			i++
+			continue
 		}
 		if sql[i] == quote {
 			if i+1 < len(sql) && sql[i+1] == quote {
@@ -145,6 +257,17 @@ func maskQuoted(sql string, start int, quote byte, out *strings.Builder) (int, b
 		i++
 	}
 	return i, false
+}
+
+func postgresEscapeStringAt(sql string, quote int, dialect Dialect) bool {
+	if dialect != DialectPostgreSQL || quote < 1 || (sql[quote-1] != 'e' && sql[quote-1] != 'E') {
+		return false
+	}
+	return quote < 2 || !isIdentifierByte(sql[quote-2])
+}
+
+func isIdentifierByte(ch byte) bool {
+	return ch == '_' || ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z'
 }
 
 func dollarQuoteEnd(sql string, start int) (int, bool) {
@@ -174,28 +297,6 @@ func validDollarQuoteTag(tag string) bool {
 		}
 	}
 	return true
-}
-
-func stripLeadingComments(sql string) string {
-	for {
-		sql = strings.TrimSpace(sql)
-		switch {
-		case strings.HasPrefix(sql, "--"):
-			lineEnd := strings.IndexByte(sql, '\n')
-			if lineEnd < 0 {
-				return ""
-			}
-			sql = sql[lineEnd+1:]
-		case strings.HasPrefix(sql, "/*"):
-			commentEnd := strings.Index(sql, "*/")
-			if commentEnd < 0 {
-				return sql
-			}
-			sql = sql[commentEnd+2:]
-		default:
-			return sql
-		}
-	}
 }
 
 func stripTrailingStatementTerminator(sql string) string {
