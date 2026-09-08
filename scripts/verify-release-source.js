@@ -16,9 +16,9 @@ const requiredChecks = [
   "Container Scan",
   "Analyze (go)",
   "Analyze (javascript-typescript)",
+  "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
 ];
 const advisoryWorkflows = [
-  ["connector-conformance.yml", "Connector conformance"],
   ["native-dependency-freshness.yml", "Native dependency freshness"],
 ];
 const releaseTagPattern = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
