@@ -39,6 +39,35 @@ describe("useConnectorPermissions", () => {
     expect(result.current.connectorPermissionState.data).toEqual({ 2: [{ action_name: "new" }] });
   });
 
+  it("rejects a strict permission refresh when a newer load supersedes it", async () => {
+    const stale = deferred();
+    apiGet.mockReturnValueOnce(stale.promise);
+    const { result } = renderHook(() => useConnectorPermissions());
+
+    let strictRefresh;
+    await act(async () => {
+      strictRefresh = result.current.loadAllConnectorPermissions([{ id: 1 }], { requireCurrent: true });
+      await result.current.loadAllConnectorPermissions([]);
+      stale.resolve({ items: [{ action_name: "stale" }] });
+      await expect(strictRefresh).rejects.toThrow("Permission refresh was superseded");
+    });
+
+    expect(result.current.connectorPermissionState.data).toEqual({});
+  });
+
+  it("rejects a strict permission refresh when the current request fails", async () => {
+    apiGet.mockRejectedValueOnce(new Error("permission service unavailable"));
+    const { result } = renderHook(() => useConnectorPermissions());
+
+    await act(async () => {
+      await expect(result.current.loadAllConnectorPermissions([{ id: 1 }], { requireCurrent: true })).rejects.toThrow(
+        "permission service unavailable",
+      );
+    });
+
+    expect(result.current.connectorPermissionState).toMatchObject({ state: "error", error: "permission service unavailable" });
+  });
+
   it("keeps the newest action catalog for the same target profile", async () => {
     const first = deferred();
     const second = deferred();
