@@ -1,7 +1,7 @@
 import { ChevronDown, Plus } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { ActionMenu } from "../../components/ui/action-menu";
 import { Dialog } from "../../components/ui/dialog";
 import { Drawer } from "../../components/ui/drawer";
 import { Field, Select } from "../../components/ui/form";
@@ -11,128 +11,45 @@ import { ConnectorIcon, connectorKindLabel, connectorSummary } from "../template
 import { ConnectorTemplateNotFound, getConnectorModel } from "../templates/registry";
 
 export function AddConnectorMenu({ catalog, onAdd }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  const triggerRef = useRef(null);
-  const menuRef = useRef(null);
-  const initialFocusRef = useRef("first");
-  const menuID = useId();
   const backendKinds = new Set(catalog.data.map((item) => item.kind));
   const availableKinds = supportedConnectorKinds.filter((kind) => backendKinds.has(kind) && catalog.details[kind]);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const items = menuRef.current?.querySelectorAll('[role="menuitem"]') || [];
-    const initialItem = initialFocusRef.current === "last" ? items[items.length - 1] : items[0];
-    (initialItem || menuRef.current)?.focus();
-    initialFocusRef.current = "first";
-    function dismissOutside(event) {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    }
-    document.addEventListener("pointerdown", dismissOutside);
-    return () => document.removeEventListener("pointerdown", dismissOutside);
-  }, [open]);
-
-  function close({ restoreFocus = false } = {}) {
-    setOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
-  }
-
-  function handleMenuKeyDown(event) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close({ restoreFocus: true });
-      return;
-    }
-    if (event.key === "Tab") {
-      close();
-      return;
-    }
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    const items = [...(menuRef.current?.querySelectorAll('[role="menuitem"]') || [])];
-    if (items.length === 0) return;
-    const current = items.indexOf(document.activeElement);
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-    items[next].focus();
-  }
-
   return (
-    <div ref={rootRef} className="relative">
-      <Button
-        ref={triggerRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuID : undefined}
-        onClick={() => {
-          initialFocusRef.current = "first";
-          setOpen((current) => !current);
-        }}
-        onKeyDown={(event) => {
-          if (!open && ["ArrowDown", "ArrowUp"].includes(event.key)) {
-            event.preventDefault();
-            event.stopPropagation();
-            initialFocusRef.current = event.key === "ArrowUp" ? "last" : "first";
-            setOpen(true);
-          }
-        }}
-      >
-        <Plus className="h-4 w-4" />
-        Add connector
-        <ChevronDown className="h-4 w-4" />
-      </Button>
-      {open ? (
-        <div
-          ref={menuRef}
-          id={menuID}
-          role="menu"
-          aria-label="Connector types"
-          tabIndex={-1}
-          className="absolute right-0 top-12 z-40 max-h-[70vh] w-[360px] overflow-y-auto rounded-lg border border-stone-200 bg-white p-2 shadow-xl dark-panel"
-          onKeyDown={handleMenuKeyDown}
-        >
-          <div className="grid gap-1">
-            {availableKinds.map((kind) => {
-              const detail = catalog.details[kind];
-              return (
-                <button
-                  type="button"
-                  role="menuitem"
-                  tabIndex={-1}
-                  key={kind}
-                  className="grid gap-2 rounded-md px-3 py-3 text-left transition hover:bg-stone-50 focus:bg-stone-50 focus:outline-none dark-panel-subtle"
-                  onClick={() => {
-                    close({ restoreFocus: true });
-                    onAdd(kind);
-                  }}
-                >
-                  <span className="flex items-center justify-between gap-3">
-                    <span className="inline-flex min-w-0 items-center gap-2 font-semibold text-stone-900">
-                      <ConnectorIcon kind={kind} className="h-4 w-4 shrink-0 text-stone-500" />
-                      <span className="truncate">{detail?.label || connectorKindLabel(kind)}</span>
-                    </span>
-                    <Badge tone="neutral">{detail?.version || "0.1"}</Badge>
-                  </span>
-                  <span className="text-xs leading-5 text-stone-500">{connectorSummary(kind)}</span>
-                </button>
-              );
-            })}
-            {catalog.state === "loading" ? <p className="px-3 py-2 text-sm text-stone-500">Loading connector catalog...</p> : null}
-            {catalog.state === "ready" && availableKinds.length === 0 ? (
-              <p className="px-3 py-2 text-sm text-stone-500">
-                No connector type is available in both the backend catalog and frontend templates.
-              </p>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </div>
+    <ActionMenu
+      trigger={
+        <>
+          <Plus className="h-4 w-4" />
+          Add connector
+          <ChevronDown className="h-4 w-4" />
+        </>
+      }
+      items={availableKinds}
+      renderItem={(kind) => {
+        const detail = catalog.details[kind];
+        return (
+          <>
+            <span className="flex items-center justify-between gap-3">
+              <span className="inline-flex min-w-0 items-center gap-2 font-semibold text-stone-900">
+                <ConnectorIcon kind={kind} className="h-4 w-4 shrink-0 text-stone-500" />
+                <span className="truncate">{detail?.label || connectorKindLabel(kind)}</span>
+              </span>
+              <Badge tone="neutral">{detail?.version || "0.1"}</Badge>
+            </span>
+            <span className="text-xs leading-5 text-stone-500">{connectorSummary(kind)}</span>
+          </>
+        );
+      }}
+      onSelect={onAdd}
+      label="Connector types"
+      panelClassName="w-[min(360px,calc(100vw-32px))]"
+      empty={
+        <p className="px-3 py-2 text-sm text-stone-500">
+          {catalog.state === "loading"
+            ? "Loading connector catalog..."
+            : "No connector type is available in both the backend catalog and frontend templates."}
+        </p>
+      }
+    />
   );
 }
 

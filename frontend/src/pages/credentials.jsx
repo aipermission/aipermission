@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
+import { ActionMenu } from "../components/ui/action-menu";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
@@ -26,7 +27,6 @@ export function CredentialsPage() {
     return supportedConnectorKinds.filter((kind) => backendKinds.has(kind));
   }, [connectorCatalog.data]);
   const defaultConnectorKind = availableConnectorKinds[0] || supportedConnectorKinds[0] || "";
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [deleteRequest, setDeleteRequest] = useState({ open: false, row: null, dialog: null, attempted: false });
   const editor = useCredentialProfileEditor({
     defaultKind: defaultConnectorKind,
@@ -95,7 +95,6 @@ export function CredentialsPage() {
   }
 
   function openCredentialEditor(row) {
-    setAddMenuOpen(false);
     editor.openEdit(row);
   }
 
@@ -122,22 +121,7 @@ export function CredentialsPage() {
           <h1 className="text-lg font-semibold">Credentials</h1>
           <p className="text-sm text-stone-500">Create connector credential profiles for built-in and future connectors.</p>
         </div>
-        <div className="relative">
-          <Button type="button" onClick={() => setAddMenuOpen((current) => !current)}>
-            <Plus className="h-4 w-4" />
-            Add credential
-            <ChevronDown className="h-4 w-4" />
-          </Button>
-          {addMenuOpen ? (
-            <AddCredentialMenu
-              kinds={availableConnectorKinds}
-              onAdd={(kind) => {
-                setAddMenuOpen(false);
-                editor.openCreate(kind);
-              }}
-            />
-          ) : null}
-        </div>
+        <AddCredentialMenu kinds={availableConnectorKinds} onAdd={editor.openCreate} />
       </div>
 
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
@@ -269,27 +253,31 @@ function DeleteCredentialDialog({ value, state, onClose, onDelete }) {
   );
 }
 
-function AddCredentialMenu({ kinds, onAdd }) {
+export function AddCredentialMenu({ kinds, onAdd }) {
   return (
-    <div className="absolute right-0 top-11 z-30 w-80 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl">
-      {kinds.length === 0 ? (
-        <div className="px-4 py-3 text-sm text-stone-500">No backend-supported connector templates are available.</div>
-      ) : null}
-      {kinds.map((kind) => (
-        <button
-          className="flex w-full gap-3 border-b border-stone-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-stone-50"
-          key={kind}
-          type="button"
-          onClick={() => onAdd(kind)}
-        >
+    <ActionMenu
+      trigger={
+        <>
+          <Plus className="h-4 w-4" />
+          Add credential
+          <ChevronDown className="h-4 w-4" />
+        </>
+      }
+      items={kinds}
+      renderItem={(kind) => (
+        <span className="flex gap-3">
           <ConnectorIcon kind={kind} className="mt-0.5 h-4 w-4 shrink-0 text-emerald-900" />
           <span className="min-w-0">
             <span className="block font-semibold">{connectorKindLabel(kind)}</span>
             <span className="mt-1 block text-xs text-stone-500">{connectorSummary(kind)}</span>
           </span>
-        </button>
-      ))}
-    </div>
+        </span>
+      )}
+      onSelect={onAdd}
+      label="Credential connector types"
+      panelClassName="w-[min(320px,calc(100vw-32px))]"
+      empty={<div className="px-2 py-1 text-sm text-stone-500">No backend-supported connector templates are available.</div>}
+    />
   );
 }
 
