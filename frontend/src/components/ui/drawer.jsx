@@ -1,25 +1,17 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { useEffect, useId, useRef } from "react";
 import { Button } from "./button";
+import { useDialogFrame } from "./use-dialog-frame";
 import { cn } from "../../lib/utils";
 
 export function Drawer({ open, title, description, children, onClose, bodyClassName, className }) {
-  const closeButtonRef = useRef(null);
-  const onCloseRef = useRef(onClose);
-  const restoreFocusRef = useRef(null);
-  const titleID = useId();
-  const descriptionID = useId();
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
+  const { closeButtonRef, descriptionID, titleID, requestClose, handleOpenAutoFocus, handleCloseAutoFocus } = useDialogFrame({ onClose });
 
   return (
     <DialogPrimitive.Root
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) onCloseRef.current?.();
+        if (!nextOpen) requestClose();
       }}
     >
       <DialogPrimitive.Portal>
@@ -32,16 +24,8 @@ export function Drawer({ open, title, description, children, onClose, bodyClassN
             "animate-in slide-in-from-right",
             className,
           )}
-          onOpenAutoFocus={(event) => {
-            restoreFocusRef.current = document.activeElement;
-            event.preventDefault();
-            closeButtonRef.current?.focus();
-          }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            restoreFocusRef.current?.focus?.();
-            restoreFocusRef.current = null;
-          }}
+          onOpenAutoFocus={handleOpenAutoFocus}
+          onCloseAutoFocus={handleCloseAutoFocus}
         >
           <header className="flex items-start justify-between gap-4 border-b border-stone-200 p-5">
             <div>

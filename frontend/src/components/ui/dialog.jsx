@@ -1,7 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { useEffect, useId, useRef } from "react";
 import { Button } from "./button";
+import { useDialogFrame } from "./use-dialog-frame";
 import { cn } from "../../lib/utils";
 
 const sizes = {
@@ -26,21 +26,17 @@ export function Dialog({
   closeOnEscape = true,
   closeDisabled = false,
 }) {
-  const closeButtonRef = useRef(null);
-  const onCloseRef = useRef(onClose);
-  const restoreFocusRef = useRef(null);
-  const titleID = useId();
-  const descriptionID = useId();
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
+  const { closeButtonRef, descriptionID, titleID, requestClose, handleOpenAutoFocus, handleCloseAutoFocus } = useDialogFrame({
+    onClose,
+    autoFocusClose,
+    closeDisabled,
+  });
 
   return (
     <DialogPrimitive.Root
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen && !closeDisabled) onCloseRef.current?.();
+        if (!nextOpen) requestClose();
       }}
     >
       <DialogPrimitive.Portal>
@@ -50,17 +46,8 @@ export function Dialog({
             aria-labelledby={titleID}
             aria-describedby={description ? descriptionID : undefined}
             className={`pointer-events-auto relative grid w-full ${sizes[size] || sizes.sm} overflow-hidden rounded-lg border border-stone-200 bg-white shadow-2xl ${className}`}
-            onOpenAutoFocus={(event) => {
-              restoreFocusRef.current = document.activeElement;
-              if (!autoFocusClose || closeDisabled) return;
-              event.preventDefault();
-              closeButtonRef.current?.focus();
-            }}
-            onCloseAutoFocus={(event) => {
-              event.preventDefault();
-              restoreFocusRef.current?.focus?.();
-              restoreFocusRef.current = null;
-            }}
+            onOpenAutoFocus={handleOpenAutoFocus}
+            onCloseAutoFocus={handleCloseAutoFocus}
             onEscapeKeyDown={(event) => {
               if (closeDisabled || !closeOnEscape) event.preventDefault();
             }}
