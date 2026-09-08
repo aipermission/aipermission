@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { verifyConnectionModeForm } from "../_shared/network-transport-form-test-support";
+import { verifyConnectionModeForm } from "../_shared/network-transport-form.test-support";
 import { S3ConnectorFormTemplate } from "./form";
 import { emptyForm, formFromTarget, s3TargetConfigFromForm } from "./model";
 

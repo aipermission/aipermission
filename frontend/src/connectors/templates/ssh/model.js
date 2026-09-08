@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../lib/api";
+import { defaultTargetProfile } from "../_shared/target-profile-lifecycle";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
 
 const emptySSHCredentialForm = { name: "main", key_type: "ed25519" };
@@ -20,19 +21,21 @@ export function emptyForm({ firstCredentialID = "" } = {}) {
 }
 
 export function formFromTarget({ target, profile, server }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+  const selectedProfile = defaultTargetProfile(target, profile);
   const profilePublic = selectedProfile.public || {};
+  const config = target?.config || {};
+  const fallback = server || {};
   return {
     connector_kind: "ssh",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
-    name: target?.name || server?.name || "",
-    host: target?.config?.host || server?.host || "",
-    port: target?.config?.port || server?.port || 22,
-    username: profilePublic.username || server?.username || "root",
-    ssh_key_id: String(profilePublic.ssh_key_id || server?.ssh_key_id || ""),
-    description: target?.config?.description || server?.description || "",
-    startup_input_after_connect: target?.config?.startup_input_after_connect || server?.startup_input_after_connect || "",
-    force_shell_command: target?.config?.force_shell_command || server?.force_shell_command || "",
+    name: target?.name || fallback.name || "",
+    host: config.host || fallback.host || "",
+    port: config.port || fallback.port || 22,
+    username: profilePublic.username || fallback.username || "root",
+    ssh_key_id: String(profilePublic.ssh_key_id || fallback.ssh_key_id || ""),
+    description: config.description || fallback.description || "",
+    startup_input_after_connect: config.startup_input_after_connect || fallback.startup_input_after_connect || "",
+    force_shell_command: config.force_shell_command || fallback.force_shell_command || "",
     setup_later: false,
   };
 }

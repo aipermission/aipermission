@@ -24,8 +24,11 @@ export function richTextToPlainText(root) {
       for (const child of node.childNodes || []) visit(child);
       return;
     }
+    visitElement(node);
+  }
 
-    const tag = String(node.tagName || node.nodeName || "").toLowerCase();
+  function visitElement(node) {
+    const tag = nodeTag(node);
     if (tag === "br") {
       newline();
       return;
@@ -45,6 +48,10 @@ export function richTextToPlainText(root) {
 
   for (const child of root?.childNodes || []) visit(child);
   return normalizePlainText(chunks.join(""));
+}
+
+function nodeTag(node) {
+  return String(node.tagName || node.nodeName || "").toLowerCase();
 }
 
 export function plainTextToHTML(value) {

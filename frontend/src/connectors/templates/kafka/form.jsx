@@ -27,7 +27,7 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
         form={form}
         targets={targets}
         onChange={onChange}
-        overSSHNotice="Every broker address advertised by the cluster is reached through the selected SSH transport. Broker hostnames must resolve on that remote host."
+        transportNotice="Every broker address advertised by the cluster is reached through the selected SSH transport. Broker hostnames must resolve on that remote host."
         directNotice="The gateway must reach bootstrap and advertised broker addresses. For a broker on the Docker host, use host.docker.internal instead of localhost."
       />
       <Field>

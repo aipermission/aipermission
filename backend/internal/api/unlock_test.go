@@ -22,6 +22,7 @@ import (
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -118,15 +119,15 @@ func TestDatabaseInitializationErrorIncludesLatestMigrationSnapshot(t *testing.T
 }
 
 func TestDatabaseInitializationFailureDoesNotConsumePasswordAttempts(t *testing.T) {
-	limiter := newConfiguredAuthRateLimiter(1, authRateLimitLockoutFailures)
+	limiter := runtimecontrol.NewAuth(1, authRateLimitLockoutFailures)
 	attempt := databasePasswordAttempt{limiter: limiter, key: "unlock:test"}
 	attempt.failure()
 	recordDatabaseUnlockAttempt(attempt, fmt.Errorf("%w: rewrite failed", errDatabaseInitialization))
-	if delay := limiter.delay(attempt.key); delay != 0 {
+	if delay := limiter.Delay(attempt.key); delay != 0 {
 		t.Fatalf("initialization failure retained password backoff: %s", delay)
 	}
 	recordDatabaseUnlockAttempt(attempt, fmt.Errorf("%w: validation failed", errDatabaseAuthentication))
-	if delay := limiter.delay(attempt.key); delay == 0 {
+	if delay := limiter.Delay(attempt.key); delay == 0 {
 		t.Fatal("authentication failure did not consume password attempt")
 	}
 }
@@ -534,9 +535,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 		t.Fatalf("delete locked database with wrong password should fail, got %d %s", response.Code, response.Body.String())
 	}
 	limitKey := databasePasswordRateLimitScope + ":127.0.0.1"
-	server.authLimiter.mu.Lock()
-	failures := server.authLimiter.entries[limitKey].failures
-	server.authLimiter.mu.Unlock()
+	failures := server.authLimiter.FailureCount(limitKey)
 	if failures != 1 {
 		t.Fatalf("wrong password recorded %d shared failures, want 1", failures)
 	}
@@ -546,10 +545,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "OldPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
 		t.Fatalf("delete locked database failed: %d %s", response.Code, response.Body.String())
 	}
-	server.authLimiter.mu.Lock()
-	_, limited := server.authLimiter.entries[limitKey]
-	server.authLimiter.mu.Unlock()
-	if limited {
+	if failures := server.authLimiter.FailureCount(limitKey); failures != 0 {
 		t.Fatal("successful password verification did not clear shared backoff")
 	}
 	if dbpkg.Exists(path) {

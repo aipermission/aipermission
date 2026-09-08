@@ -1,7 +1,6 @@
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { formatBytes } from "../../../lib/file-transfer-utils";
-import { HighlightedText } from "../_shared/highlighted-text";
-import { ConnectorResultHeader, DarkSummaryGrid } from "../_shared/result-sections";
+import { ConnectorResultHeader, DarkSummaryGrid, RawDataSection } from "../_shared/result-sections";
 
 export function S3MetadataPanel({
   metadata,
@@ -45,27 +44,21 @@ export function S3MetadataPanel({
       ];
   const rawValue = JSON.stringify(metadata, null, 2);
   return (
-    <div className="grid min-h-0 grid-rows-[auto_minmax(0,450px)_auto_minmax(0,1fr)] overflow-hidden">
+    <div className="grid min-h-0 grid-rows-[auto_minmax(0,450px)_minmax(0,1fr)] overflow-hidden">
       <ConnectorResultHeader
         title={isBucketInfo ? "Bucket summary" : "Object summary"}
         subtitle={isBucketInfo ? "visible listing stats" : "metadata"}
       />
       <DarkSummaryGrid rows={cards} />
-      <div className="mt-3">
-        <ConnectorResultHeader
-          title="S3 raw data"
-          copyValue={rawValue}
-          search={metadataSearch}
-          onSearch={onMetadataSearch}
-          inputClass={inputClass}
-          searchPlaceholder="Search raw data"
-        />
-      </div>
-      <div className="mt-2 grid min-h-0 overflow-hidden">
-        <TerminalBlock className="min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]" surface="dark">
-          <HighlightedText text={rawValue} query={metadataSearch} />
-        </TerminalBlock>
-      </div>
+      <RawDataSection
+        title="S3 raw data"
+        value={rawValue}
+        search={metadataSearch}
+        onSearch={onMetadataSearch}
+        inputClass={inputClass}
+        className="mt-3"
+        blockClassName="mt-2"
+      />
     </div>
   );
 }

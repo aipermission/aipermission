@@ -28,6 +28,7 @@ export function RemoteBrowserDialog({
   if (!browser.open) return null;
   const entries = browser.data?.entries || [];
   const canUseCurrentDirectory = browser.purpose === "upload";
+  const currentDirectoryReady = browser.state === "ready" && Boolean(browser.data?.path);
   const selectedList = Object.values(selectedFiles);
   const selectedCount = selectedList.length;
 
@@ -91,7 +92,7 @@ export function RemoteBrowserDialog({
             Refresh
           </Button>
           {canUseCurrentDirectory ? (
-            <Button type="button" className="h-10" onClick={() => onUseDirectory(browser.path)}>
+            <Button type="button" className="h-10" onClick={() => onUseDirectory(browser.data.path)} disabled={!currentDirectoryReady}>
               Use this folder
             </Button>
           ) : null}
@@ -130,6 +131,7 @@ export function RemoteBrowserDialog({
                     {browser.purpose === "download" && (entry.type === "file" || (recursive && entry.type === "directory")) ? (
                       <input
                         type="checkbox"
+                        aria-label={`Select ${entry.name}`}
                         className="h-4 w-4 rounded border-stone-300 accent-emerald-700"
                         checked={Boolean(selectedFiles[entry.path]) || queuedPaths?.has(entry.path)}
                         disabled={queuedPaths?.has(entry.path)}

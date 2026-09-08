@@ -1,90 +1,13 @@
-import { Edit3, Eye, Link2, Plus, RotateCw, Trash2, X } from "lucide-react";
+import { Link2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo } from "react";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DateTimePicker } from "../components/ui/date-time-picker";
 import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Checkbox, Field, Input, Select, Textarea } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
-import { formatRelativeAge } from "../lib/date-time";
-
-const secretTypes = [
-  ["generic_secret", "Generic secret"],
-  ["api_key", "API key"],
-  ["access_token", "Access token"],
-  ["password", "Password"],
-  ["client_secret", "Client secret"],
-  ["webhook_hmac", "Webhook / HMAC secret"],
-  ["connection", "Connection string"],
-];
-
-export const generatorKinds = [
-  ["random_token", "Random token (32 bytes)"],
-  ["hex_secret", "Hex secret (32 bytes)"],
-  ["password", "Password (32 characters)"],
-  ["long_hmac_secret", "Long HMAC secret (64 bytes)"],
-  ["uuid_v4", "UUID v4 (identifier)"],
-];
-
-export function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindings, onDelete }) {
-  const projectNames = [
-    item.owner_project_name,
-    ...(item.project_ids || []).map((id) => projects.find((project) => Number(project.id) === Number(id))?.name).filter(Boolean),
-  ];
-  const visibleTags = (item.tags || []).slice(0, 3);
-  const hiddenTagCount = Math.max(0, (item.tags || []).length - visibleTags.length);
-  const expiry = expiryState(item);
-  return (
-    <tr className="hover:bg-stone-50">
-      <td className="px-4 py-3">
-        <p className="truncate font-mono text-xs font-semibold text-stone-950">{item.name}</p>
-        <p className="mt-1 truncate text-xs text-stone-500">
-          {[item.provider, item.environment].filter(Boolean).join(" / ") || "Local secret"}
-        </p>
-        {visibleTags.length > 0 ? (
-          <div className="mt-2 flex min-w-0 flex-wrap gap-1" title={(item.tags || []).join(", ")}>
-            {visibleTags.map((tag) => (
-              <Badge key={tag} tone="neutral" className="max-w-32 truncate px-2 py-0.5 font-medium">
-                {tag}
-              </Badge>
-            ))}
-            {hiddenTagCount > 0 ? (
-              <Badge tone="neutral" className="px-2 py-0.5 font-medium">
-                +{hiddenTagCount}
-              </Badge>
-            ) : null}
-          </div>
-        ) : null}
-      </td>
-      <td className="px-4 py-3">
-        <Badge tone="neutral">{secretTypeLabel(item.secret_type)}</Badge>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-wrap gap-1">
-          {projectNames.map((name, index) => (
-            <Badge key={`${name}-${index}`} tone={index === 0 ? "good" : "neutral"}>
-              {name}
-            </Badge>
-          ))}
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <Badge tone={expiry.tone}>{expiry.label}</Badge>
-      </td>
-      <td className="px-4 py-3 text-xs text-stone-500">{item.last_used_at ? formatRelativeAge(item.last_used_at) : "Never"}</td>
-      <td className="px-4 py-3">
-        <div className="flex justify-end gap-2">
-          <IconButton title="Default session bindings" icon={Link2} onClick={onBindings} />
-          <IconButton title="Reveal and copy" icon={Eye} onClick={onReveal} />
-          <IconButton title="Replace local value" icon={RotateCw} onClick={onReplace} />
-          <IconButton title="Edit metadata" icon={Edit3} onClick={onEdit} />
-          <IconButton title="Delete" icon={Trash2} onClick={onDelete} />
-        </div>
-      </td>
-    </tr>
-  );
-}
+import { selectedBinding } from "../components/vault/vault-binding-utils";
+import { vaultGeneratorKinds, vaultSecretTypes } from "../components/vault/vault-options";
 
 export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave, onDelete }) {
   const allowedProjects = useMemo(() => {
@@ -94,23 +17,17 @@ export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave
   }, [state.item, projects]);
   const selectedTarget = state.targets.find((target) => String(target.id) === String(state.target_id));
   const current = selectedBinding(state);
+  const selectionIdentity = state.open
+    ? [state.item?.id, state.source_project_id, state.target_id, state.profile_id, current?.id || "new"].join(":")
+    : "closed";
+  const selectedReplaceExisting = current?.replace_existing || false;
 
   useEffect(() => {
-    if (!state.open) return;
-    const nextReplace = current?.replace_existing || false;
-    if (state.replace_existing !== nextReplace) {
-      onChange((value) => ({ ...value, replace_existing: nextReplace }));
-    }
-  }, [
-    state.open,
-    state.source_project_id,
-    state.target_id,
-    state.profile_id,
-    state.replace_existing,
-    current?.id,
-    current?.replace_existing,
-    onChange,
-  ]);
+    if (selectionIdentity === "closed") return;
+    onChange((value) =>
+      value.replace_existing === selectedReplaceExisting ? value : { ...value, replace_existing: selectedReplaceExisting },
+    );
+  }, [selectionIdentity, selectedReplaceExisting, onChange]);
 
   function update(key, value) {
     onChange((currentState) => ({ ...currentState, [key]: value, error: null }));
@@ -213,17 +130,6 @@ export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave
   );
 }
 
-export function selectedBinding(state) {
-  return (
-    state.data.find(
-      (item) =>
-        Number(item.source_project_id) === Number(state.source_project_id) &&
-        Number(item.target_id) === Number(state.target_id) &&
-        Number(item.profile_id) === Number(state.profile_id),
-    ) || null
-  );
-}
-
 function IconButton({ title, icon: Icon, onClick }) {
   return (
     <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} onClick={onClick}>
@@ -282,7 +188,6 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
         <Field>
           Environment name
           <Input
-            autoFocus
             value={editor.name}
             onChange={(event) => update("name", event.target.value.toUpperCase())}
             placeholder="PROJECT_SERVICE_API_KEY"
@@ -310,7 +215,7 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
           <Field>
             Generator
             <Select value={editor.generator_kind} onChange={(event) => update("generator_kind", event.target.value)}>
-              {generatorKinds.map(([value, label]) => (
+              {vaultGeneratorKinds.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -323,7 +228,7 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
           <Field>
             Secret type
             <Select value={editor.secret_type} onChange={(event) => update("secret_type", event.target.value)}>
-              {secretTypes.map(([value, label]) => (
+              {vaultSecretTypes.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -391,10 +296,10 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(120px,1fr)]">
-          <Field>
-            Expires at
+          <div className="grid gap-2 text-sm font-medium text-stone-800">
+            <span>Expires at</span>
             <DateTimePicker value={editor.expires_at} onChange={(value) => update("expires_at", value)} />
-          </Field>
+          </div>
           <Field>
             Warning days
             <Input
@@ -478,18 +383,4 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
       </form>
     </Drawer>
   );
-}
-
-function secretTypeLabel(value) {
-  return secretTypes.find(([type]) => type === value)?.[1] || value;
-}
-
-function expiryState(item) {
-  if (!item.expires_at) return { tone: "neutral", label: "Never" };
-  const expiresAt = Date.parse(item.expires_at);
-  const now = Date.now();
-  if (expiresAt <= now) return { tone: "bad", label: "Expired" };
-  const days = Math.max(1, Math.ceil((expiresAt - now) / 86400000));
-  if (days <= Number(item.expiry_warning_days || 14)) return { tone: "warn", label: `${days}d left` };
-  return { tone: "good", label: new Date(expiresAt).toLocaleDateString() };
 }

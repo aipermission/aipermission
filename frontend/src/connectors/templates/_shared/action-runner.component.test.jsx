@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { runGuardedConnectorAction } from "./action-runner.js";
-import { createRequestGuard } from "./request-guard.js";
+import { createRequestGuard } from "../../../lib/request-guard.js";
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 function runnerOptions(overrides = {}) {
   const setState = vi.fn();
@@ -21,13 +29,49 @@ function runnerOptions(overrides = {}) {
 }
 
 describe("runGuardedConnectorAction", () => {
+  it("keeps a newer channel's visible state when an older channel completes", async () => {
+    const list = deferred();
+    const detail = deferred();
+    const requestGuard = createRequestGuard("target:1");
+    const setState = vi.fn();
+    const first = runGuardedConnectorAction({
+      ...runnerOptions().options,
+      requestGuard,
+      channel: "list",
+      busy: "loading-list",
+      setState,
+      post: () => list.promise,
+    });
+    const second = runGuardedConnectorAction({
+      ...runnerOptions().options,
+      requestGuard,
+      channel: "detail",
+      busy: "loading-detail",
+      setState,
+      post: () => detail.promise,
+    });
+
+    list.resolve({ status: "completed", output: { list: true } });
+    await expect(first).resolves.toMatchObject({ status: "completed" });
+    expect(setState).toHaveBeenLastCalledWith({ state: "loading-detail", error: "", message: "" });
+
+    detail.resolve({ status: "completed", output: { detail: true }, display_text: "Detail ready" });
+    await expect(second).resolves.toMatchObject({ status: "completed" });
+    expect(setState).toHaveBeenLastCalledWith({ state: "idle", error: "", message: "Detail ready" });
+  });
+
   it("ignores a response after the target scope changes", async () => {
     let resolveResponse;
-    const post = () => new Promise((resolve) => (resolveResponse = resolve));
+    let requestSignal;
+    const post = (_path, _body, options) => {
+      requestSignal = options.signal;
+      return new Promise((resolve) => (resolveResponse = resolve));
+    };
     const { setState, options } = runnerOptions({ post });
     const result = runGuardedConnectorAction(options);
 
     options.requestGuard.setScope("target:2");
+    expect(requestSignal.aborted).toBe(true);
     resolveResponse({ status: "completed", output: { ok: true } });
 
     await expect(result).resolves.toBeNull();

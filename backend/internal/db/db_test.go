@@ -119,6 +119,9 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !tableExists(t, database, "file_transfer_batches") {
 		t.Fatalf("file_transfer_batches table was not created")
 	}
+	if !tableExists(t, database, "file_transfer_start_idempotency") {
+		t.Fatalf("file_transfer_start_idempotency table was not created")
+	}
 	if !tableExists(t, database, "backup_providers") {
 		t.Fatalf("backup_providers table was not created")
 	}

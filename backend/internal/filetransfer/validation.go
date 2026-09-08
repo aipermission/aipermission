@@ -85,6 +85,7 @@ func normalizeBatchCreateRequest(request CreateBatchRequest) (CreateBatchRequest
 	if err := validatePathLike("archive_name", request.ArchiveName, false); err != nil {
 		return request, err
 	}
+	request.Items = append([]CreateRequest(nil), request.Items...)
 	for i := range request.Items {
 		request.Items[i].BatchID = 0
 		request.Items[i].QueueIndex = i

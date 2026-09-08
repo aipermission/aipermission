@@ -176,7 +176,7 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if s.vaultRequestLimiter == nil ||
-		!s.vaultRequestLimiter.allow("vault-request:"+auth.runtime.id+":"+strconv.FormatInt(auth.TokenID, 10)) {
+		!s.vaultRequestLimiter.Allow("vault-request:"+auth.runtime.id+":"+strconv.FormatInt(auth.TokenID, 10)) {
 		writeError(w, http.StatusTooManyRequests, "Vault action request rate limit exceeded; retry later")
 		return
 	}

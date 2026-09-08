@@ -80,17 +80,17 @@ Keep migration code separate from runtime compatibility code.
 
 Connector work has two classes:
 
-| Capability | Normal structured connector | Runtime-integrated connector |
-|---|---|---|
-| Examples | Postgres, Redis / Valkey, API recipes | SSH live terminal and SFTP |
-| Backend connector package | yes | yes |
-| Frontend template folder | yes | yes |
-| Shared target/profile/action permissions | yes | yes |
-| Shared approval, history, and audit | yes | yes |
-| New permission/history/audit tables | no | no |
-| Generic route branches such as `kind == "redis"` | no | no |
-| `connector_api_adapters.go` work | no | only after design review |
-| Live console / file transfer / owned credential resources | no | adapter contract required |
+| Capability                                                | Normal structured connector           | Runtime-integrated connector |
+| --------------------------------------------------------- | ------------------------------------- | ---------------------------- |
+| Examples                                                  | Postgres, Redis / Valkey, API recipes | SSH live terminal and SFTP   |
+| Backend connector package                                 | yes                                   | yes                          |
+| Frontend template folder                                  | yes                                   | yes                          |
+| Shared target/profile/action permissions                  | yes                                   | yes                          |
+| Shared approval, history, and audit                       | yes                                   | yes                          |
+| New permission/history/audit tables                       | no                                    | no                           |
+| Generic route branches such as `kind == "redis"`          | no                                    | no                           |
+| `connector_api_adapters.go` work                          | no                                    | only after design review     |
+| Live console / file transfer / owned credential resources | no                                    | adapter contract required    |
 
 If a connector cannot fit the normal structured path, treat that as a design
 review signal before adding gateway-owned adapter capabilities. Adapter
@@ -204,9 +204,25 @@ edits must not rewrite ciphertext or advance the secret revision.
 Production-size and dependency budgets are release gates, not aspirational
 documentation. Connector source files have a tighter ceiling than general Go
 files, backend package totals are bounded, and the architecture suite rejects
-new internal import fan-out or dependency cycles. Composition-root exceptions
-must be explicit and should move downward when responsibilities leave the API
-package; do not raise a ceiling merely to land a feature.
+new internal import fan-out or dependency cycles. The frontend gate builds an
+AST-derived graph that includes static imports, re-exports, static template
+imports, and literal `import.meta.glob` edges. Non-static module loads fail
+closed. The graph, ESLint, and maintenance budgets read the same supported
+source-extension inventory from the frontend architecture policy. The gate caps
+production modules at 550 lines, rejects unclassified source layers, enforces
+layer direction, and rejects connector-kind literals used for branching or
+lookup maps outside concrete connector templates.
+Composition-root exceptions must be
+explicit and should move downward when responsibilities leave the API package;
+do not raise a ceiling merely to land a feature.
+
+The changed-coverage gate owns browser component behavior. Retry-storage
+internals are instead exercised through the Node IndexedDB integration suite in
+`frontend/src/lib/api.test.js`; the public retry facade remains in the browser
+coverage ratchet. Async-state owners are registered beside their focused tests
+in `frontend/test-suite-manifests.mjs`; the release gate discovers guarded,
+abortable, timer-driven, and socket-driven production modules and rejects an
+owner without an explicit test mapping.
 
 ## Frontend Boundaries
 

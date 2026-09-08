@@ -1,6 +1,6 @@
 import { Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { SSHTransportProfileField } from "../_shared/network-transport-fields";
+import { TransportConnectorIdentityFields } from "../_shared/network-transport-fields";
 
 export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }) {
   return (
@@ -9,15 +9,7 @@ export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }
         Kubernetes uses bounded kubectl templates over an SSH connector profile. Start with read-only actions and keep rollout restart in
         Prompt mode.
       </Notice>
-      <Field>
-        Connector name
-        <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} required />
-      </Field>
-      <SSHTransportProfileField
-        value={form.transport_target_ref}
-        targets={targets}
-        onChange={(value) => onChange("transport_target_ref", value)}
-      />
+      <TransportConnectorIdentityFields form={form} targets={targets} onChange={onChange} />
       <div className="grid gap-3 sm:grid-cols-3">
         <Field>
           kubectl command

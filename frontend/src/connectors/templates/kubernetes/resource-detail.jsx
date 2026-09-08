@@ -1,7 +1,7 @@
 import { LoaderCircle } from "lucide-react";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { HighlightedText } from "../_shared/highlighted-text";
-import { ConnectorResultHeader } from "../_shared/result-sections";
+import { ConnectorResultHeader, RawDataSection } from "../_shared/result-sections";
 import { resourceSubtitle } from "./helpers";
 
 export function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearch, inputClass, mutedClass }) {
@@ -19,7 +19,7 @@ export function KubernetesResourceDetail({ tab, resource, detail, logs, search, 
   const topCopyValue = tab === "pods" ? logs : kubernetesMetadataText(tab, resource);
   const showLogSurface = tab === "pods";
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,600px)_auto_minmax(0,1fr)] overflow-hidden">
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,600px)_minmax(0,1fr)] overflow-hidden">
       <ConnectorResultHeader
         title={topTitle}
         subtitle={topSubtitle}
@@ -49,21 +49,15 @@ export function KubernetesResourceDetail({ tab, resource, detail, logs, search, 
           ) : null}
         </div>
       )}
-      <div className="mt-3">
-        <ConnectorResultHeader
-          title="Kubernetes raw data"
-          copyValue={rawValue}
-          search={search}
-          onSearch={onSearch}
-          inputClass={inputClass}
-          searchPlaceholder="Search raw data"
-        />
-      </div>
-      <div className="mt-2 grid h-full min-h-0 overflow-hidden">
-        <TerminalBlock className="h-full min-h-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]" surface="dark">
-          <HighlightedText text={rawValue} query={search} />
-        </TerminalBlock>
-      </div>
+      <RawDataSection
+        title="Kubernetes raw data"
+        value={rawValue}
+        search={search}
+        onSearch={onSearch}
+        inputClass={inputClass}
+        className="mt-3"
+        blockClassName="mt-2 h-full"
+      />
     </div>
   );
 }

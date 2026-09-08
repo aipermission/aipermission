@@ -79,7 +79,7 @@ export function ProjectsPage() {
     <section className="mx-auto grid w-full max-w-6xl gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold">Projects</h3>
+          <h1 className="text-lg font-semibold">Projects</h1>
           <p className="text-sm text-stone-500">Organize connector targets and control which projects each AI token can see.</p>
         </div>
         <div className="flex gap-2">
@@ -172,7 +172,6 @@ export function ProjectsPage() {
           <Field>
             Project name
             <Input
-              autoFocus
               value={editor.name}
               maxLength={80}
               onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
@@ -94,7 +95,7 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	if page.Query != "" {
 		like := "%" + page.Query + "%"
-		if ftsQuery := buildFTSQuery(page.Query); ftsQuery != "" {
+		if ftsQuery := history.FTS(page.Query); ftsQuery != "" {
 			where = append(where, `(a.id IN (SELECT rowid FROM audit_logs_fts WHERE audit_logs_fts MATCH ?) OR COALESCE(t.name, '') LIKE ? OR COALESCE(project.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
 			args = append(args, ftsQuery, like, like, like, like)
 		} else {

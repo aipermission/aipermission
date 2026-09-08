@@ -1,6 +1,14 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api.js";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.js";
 
+const lifecycleFunctions = new WeakSet();
+const standardLifecycleFunctions = ["credentialFormProps", "deleteCredential", "deleteTarget", "save", "saveCredential", "test"];
+
+export function defaultTargetProfile(target, profile, fallback = {}) {
+  if (profile) return profile;
+  return target?.profiles?.length === 1 ? target.profiles[0] : fallback;
+}
+
 export function createTargetProfileLifecycle({
   connectorKind,
   connectorLabel,
@@ -89,7 +97,13 @@ export function createTargetProfileLifecycle({
     return { ok: data.ok, error: data.message || null, data };
   }
 
-  return { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test };
+  const lifecycle = { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test };
+  standardLifecycleFunctions.forEach((name) => lifecycleFunctions.add(lifecycle[name]));
+  return lifecycle;
+}
+
+export function usesStandardTargetProfileLifecycle(model) {
+  return standardLifecycleFunctions.every((name) => typeof model?.[name] === "function" && lifecycleFunctions.has(model[name]));
 }
 
 export function connectorCredentialRows({

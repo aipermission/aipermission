@@ -1,4 +1,4 @@
-import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
+import { connectorCredentialRows, createTargetProfileLifecycle, defaultTargetProfile } from "../_shared/target-profile-lifecycle";
 import { credentialPayload, targetEndpoint as brokerEndpoint } from "./model-helpers";
 
 export { credentialPayload } from "./model-helpers";
@@ -35,23 +35,25 @@ export function emptyForm() {
 }
 
 export function formFromTarget({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+  const selectedProfile = defaultTargetProfile(target, profile);
+  const config = target?.config || {};
+  const profilePublic = selectedProfile.public || {};
   return {
     connector_kind: "kafka",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
-    name: target.name || "",
-    server_family: target.config?.server_family || "kafka",
-    connection_mode: target.config?.connection_mode || "direct",
-    bootstrap_brokers: target.config?.bootstrap_brokers || "127.0.0.1:9092",
-    transport_target_ref: target.config?.transport_target_ref || "",
-    tls_enabled: Boolean(target.config?.tls_enabled),
-    allow_insecure_plain_sasl: Boolean(target.config?.allow_insecure_plain_sasl),
-    tls_server_name: target.config?.tls_server_name || "",
-    tls_ca_pem: target.config?.tls_ca_pem || "",
+    name: target?.name || "",
+    server_family: config.server_family || "kafka",
+    connection_mode: config.connection_mode || "direct",
+    bootstrap_brokers: config.bootstrap_brokers || "127.0.0.1:9092",
+    transport_target_ref: config.transport_target_ref || "",
+    tls_enabled: Boolean(config.tls_enabled),
+    allow_insecure_plain_sasl: Boolean(config.allow_insecure_plain_sasl),
+    tls_server_name: config.tls_server_name || "",
+    tls_ca_pem: config.tls_ca_pem || "",
     profile_label: selectedProfile.label || "monitor",
-    sasl_mechanism: selectedProfile.public?.mechanism || "none",
-    existing_sasl_mechanism: selectedProfile.public?.mechanism || "none",
-    username: selectedProfile.public?.username || "",
+    sasl_mechanism: profilePublic.mechanism || "none",
+    existing_sasl_mechanism: profilePublic.mechanism || "none",
+    username: profilePublic.username || "",
     password: "",
     risk_label: selectedProfile.risk_label || defaultRiskLabel,
   };

@@ -41,46 +41,42 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 	}
 	ctx, cancel := context.WithTimeout(ctx, connectorNetworkDialTimeout)
 	defer cancel()
-	switch mode {
-	case "direct":
+	if !connectors.UsesConnectorTransport(mode, "direct") {
 		return dialDirectConnectorTCP(ctx, request.Host, request.Port)
-	case "over_ssh":
-		targetRef := strings.TrimSpace(request.TransportTargetRef)
-		if targetRef == "" {
-			return nil, fmt.Errorf("transport target ref is required for over_ssh")
-		}
-		kind, _, _, ok := connectortargets.ParseConnectorTargetRef(targetRef)
-		if !ok {
-			return nil, connectortargets.ErrInvalidTargetRef
-		}
-		if transport.runtime == nil || transport.runtime.database == nil {
-			return nil, fmt.Errorf("database runtime is not available")
-		}
-		release, err := transport.approved.acquire(ctx, transport.runtime, connectors.NetworkTransportCapabilityName, targetRef)
-		if err != nil {
-			return nil, err
-		}
-		defer release()
-		store := connectortargets.NewStore(transport.runtime.database)
-		var projectErr error
-		if strings.TrimSpace(request.SourceTargetRef) != "" {
-			projectErr = store.ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef)
-		} else if request.SourceProjectID > 0 {
-			projectErr = store.ValidateTransportProject(ctx, request.SourceProjectID, targetRef)
-		} else {
-			return nil, fmt.Errorf("source target or project identity is required for over_ssh")
-		}
-		if projectErr != nil {
-			return nil, projectErr
-		}
-		adapter, _ := transport.server.connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
-		if adapter == nil {
-			return nil, fmt.Errorf("%s connector does not expose TCP transport", kind)
-		}
-		return adapter.DialConnectorTCP(ctx, connectorPeerGatewayPort{server: transport.server}, connectorLiveRuntime(transport.runtime, kind), targetRef, "tcp", address)
-	default:
-		return nil, fmt.Errorf("unsupported connection mode %q", mode)
 	}
+	targetRef := strings.TrimSpace(request.TransportTargetRef)
+	if targetRef == "" {
+		return nil, fmt.Errorf("transport target ref is required for connection mode %q", mode)
+	}
+	kind, _, _, ok := connectortargets.ParseConnectorTargetRef(targetRef)
+	if !ok {
+		return nil, connectortargets.ErrInvalidTargetRef
+	}
+	if transport.runtime == nil || transport.runtime.database == nil {
+		return nil, fmt.Errorf("database runtime is not available")
+	}
+	release, err := transport.approved.acquire(ctx, transport.runtime, connectors.NetworkTransportCapabilityName, targetRef)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	store := connectortargets.NewStore(transport.runtime.database)
+	var projectErr error
+	if strings.TrimSpace(request.SourceTargetRef) != "" {
+		projectErr = store.ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef)
+	} else if request.SourceProjectID > 0 {
+		projectErr = store.ValidateTransportProject(ctx, request.SourceProjectID, targetRef)
+	} else {
+		return nil, fmt.Errorf("source target or project identity is required for connector transport")
+	}
+	if projectErr != nil {
+		return nil, projectErr
+	}
+	adapter, _ := transport.server.connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
+	if adapter == nil {
+		return nil, fmt.Errorf("%s connector does not expose TCP transport", kind)
+	}
+	return adapter.DialConnectorTCP(ctx, connectorPeerGatewayPort{server: transport.server}, connectorLiveRuntime(transport.runtime, kind), targetRef, "tcp", address)
 }
 
 func networkDialAddress(host string, port int) (string, error) {

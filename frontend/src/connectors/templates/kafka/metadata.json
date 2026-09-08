@@ -4,5 +4,6 @@
   "summary": "Kafka-compatible metadata, bounded message inspection, guarded single-message publish, and inactive-group offset control through direct or SSH-transported profiles.",
   "version": "0.3",
   "icon": "database",
-  "badge_tone": "warn"
+  "badge_tone": "warn",
+  "profile_lifecycle": "standard"
 }

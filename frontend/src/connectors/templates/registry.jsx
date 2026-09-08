@@ -1,5 +1,7 @@
 import { Notice } from "../../components/ui/notice";
 import { allowedConnectorIcons, connectorTemplateMetadata, getConnectorMetadata } from "./catalog";
+import { assertNetworkTransportMetadata, uniqueNetworkTransportDescriptors } from "./_shared/network-transport-contract";
+import { usesStandardTargetProfileLifecycle } from "./_shared/target-profile-lifecycle";
 
 const templateModules = import.meta.glob("./*/index.jsx", { eager: true });
 
@@ -82,6 +84,7 @@ function assertConnectorTemplateRegistration() {
   for (const kind of registryKinds) {
     assertConnectorTemplate(kind, connectorTemplates[kind]);
   }
+  uniqueNetworkTransportDescriptors(Object.entries(connectorTemplateMetadata));
 }
 
 function assertConnectorTemplate(kind, template) {
@@ -99,6 +102,10 @@ function assertConnectorTemplate(kind, template) {
   if (!allowedConnectorIcons.includes(template.metadata.icon || "")) {
     throw new Error(`Connector template ${kind} metadata icon must be one of: ${allowedConnectorIcons.join(", ")}`);
   }
+  if (!["standard", "custom"].includes(template.metadata.profile_lifecycle)) {
+    throw new Error(`Connector template ${kind} metadata profile_lifecycle must be standard or custom`);
+  }
+  assertNetworkTransportMetadata(kind, template.metadata.network_transport);
   for (const slot of ["Console", "CredentialForm", "Form", "RowActions"]) {
     if (typeof template[slot] !== "function") {
       throw new Error(`Connector template ${kind} is missing ${slot} slot`);
@@ -111,6 +118,9 @@ function assertConnectorTemplate(kind, template) {
     if (typeof template.model[fn] !== "function") {
       throw new Error(`Connector template ${kind} model is missing ${fn}()`);
     }
+  }
+  if (template.metadata.profile_lifecycle === "standard" && !usesStandardTargetProfileLifecycle(template.model)) {
+    throw new Error(`Connector template ${kind} standard profile lifecycle must use the shared executable contract`);
   }
 }
 

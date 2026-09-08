@@ -80,7 +80,7 @@ These rules are part of the connector contract:
   reusable adapter contract has been reviewed. Use connector action requests and
   unified history by default.
 - Route pages render through frontend templates. Do not add `if kind ===
-  "redis"` branches to generic pages.
+"redis"` branches to generic pages.
 
 Connector-specific gateway capabilities live behind adapter contracts in
 `internal/connectorapi` and are registered through the connector adapter
@@ -338,7 +338,8 @@ bundle discovers `index.jsx` and `metadata.json` through `import.meta.glob`.
 
 Expected files:
 
-- `metadata.json`: label, summary, icon, version, and badge tone
+- `metadata.json`: label, summary, icon, version, badge tone, profile lifecycle,
+  and optional transport-provider capability metadata
 - `model.js`: display helpers, target subtitle, profile labels, operations, and
   whether the target uses a live terminal
 - `form.jsx`: add/edit connector target form
@@ -348,23 +349,63 @@ Expected files:
 
 Template slots:
 
-| File or export | Required | Use it for |
-|---|---:|---|
-| `metadata.json` | yes | Connector label, version, summary, icon, and badge tone. |
-| `model.js` | yes | Display helpers, target/profile labels, endpoint text, test/delete behavior, and whether the target uses a live terminal. |
-| `form.jsx` | yes | Add/edit target fields for the connector target schema. |
-| `credential-form.jsx` | yes | Add/edit credential profile fields for the credential schema. |
-| `list-item.jsx` | yes | Connector-specific row operations on the Connectors page. Do not put generic Edit/Delete/Test actions here. |
-| `console.jsx` | yes | Structured activity surface or live-console template for the Console page. |
-| `CredentialRowActions` | optional | Extra credential-row actions, such as copying an SSH install command. |
-| `ToolbarActions` | optional | Connector-specific Console toolbar actions, such as Files or Bulk for SSH. |
-| `Operations` | optional | Connector-specific dialogs/operations launched from list rows. |
+| File or export         | Required | Use it for                                                                                                                |
+| ---------------------- | -------: | ------------------------------------------------------------------------------------------------------------------------- |
+| `metadata.json`        |      yes | Connector label, version, summary, icon, and badge tone.                                                                  |
+| `model.js`             |      yes | Display helpers, target/profile labels, endpoint text, test/delete behavior, and whether the target uses a live terminal. |
+| `form.jsx`             |      yes | Add/edit target fields for the connector target schema.                                                                   |
+| `credential-form.jsx`  |      yes | Add/edit credential profile fields for the credential schema.                                                             |
+| `list-item.jsx`        |      yes | Connector-specific row operations on the Connectors page. Do not put generic Edit/Delete/Test actions here.               |
+| `console.jsx`          |      yes | Structured activity surface or live-console template for the Console page.                                                |
+| `CredentialRowActions` | optional | Extra credential-row actions, such as copying an SSH install command.                                                     |
+| `ToolbarActions`       | optional | Connector-specific Console toolbar actions, such as Files or Bulk for SSH.                                                |
+| `Operations`           | optional | Connector-specific dialogs/operations launched from list rows.                                                            |
 
 Allowed metadata icons are `database`, `key`, `mail`, and `server`. Add another icon
 only when the shared template registry and docs are updated together.
 
+A connector that implements the backend `TCPTransportAdapter` may advertise
+the matching frontend transport profile selector with a `network_transport`
+descriptor. Its `mode` must be the backend-owned `connection_mode` value and
+its labels are display text. Every endpoint field must read from public
+`target.name`, `target.config.*`, `profile.label`, or `profile.public.*` data
+and declare a non-secret scalar `fallback` used when that value is absent.
+Advertising this metadata without the matching backend adapter is a contract
+error and must be covered by connector conformance tests. Two transport
+providers may share a mode only when their complete descriptors are identical;
+conflicting labels or endpoint templates fail the frontend registry contract.
+
+```json
+{
+  "network_transport": {
+    "mode": "over_ssh",
+    "label": "SSH",
+    "option_label": "Over an SSH connector profile",
+    "profile_label": "SSH connector profile",
+    "profile_endpoint": {
+      "fields": [
+        { "path": "target.config.host", "fallback": "host" },
+        { "path": "target.config.port", "fallback": 22 }
+      ],
+      "separator": ":"
+    }
+  }
+}
+```
+
+`profile_endpoint` keeps provider-specific endpoint identity out of the shared
+transport selector. Each field reads a public target/profile path and may
+provide a non-secret display fallback; the shared UI joins those values with
+the declared separator.
+
 `model.js` is the connector UI contract. Keep these exports small and
 connector-local:
+
+Set `profile_lifecycle` in `metadata.json` to `standard` when the model uses
+the shared target/profile CRUD lifecycle. Use `custom` only for connectors
+that own materially different provisioning or cleanup behavior. The
+architecture gate discovers every template directory and fails when this
+declaration is missing or a standard model bypasses the shared lifecycle.
 
 For the standard target plus credential-profile lifecycle, use
 `createTargetProfileLifecycle` and `connectorCredentialRows` from
@@ -374,24 +415,24 @@ create/update/delete/test routes into each model. Keep a custom lifecycle only
 when the remote system has materially different cleanup or provisioning
 semantics, and cover that exception with focused tests.
 
-| Export | Required | Purpose |
-|---|---:|---|
-| `emptyForm` | yes | Initial add-target form state. |
-| `formFromTarget` | yes | Convert saved target/profile data into edit form state. |
-| `save` | yes | Create or update the target plus default profile. Use shared target/profile helpers where possible. |
-| `deleteTarget` | yes | Invoke generic target delete/archive, plus connector-specific cleanup options when needed. |
-| `test` | yes | Run the saved target/profile connection test. |
-| `targetDisplayName` / `targetSubtitle` / `targetEndpoint` | yes | Labels used by generic target lists and console headers. |
-| `targetProfileLabel` | yes | Profile label shown in the Console token panel. |
-| `activeCredential` | yes | Pick the credential/profile shown as active for a selected target profile. |
-| `submitDisabled` / `submitLabel` | yes | Add/edit form affordances for connector-specific validation and copy. |
-| `syncForm` | yes | Reconcile connector form state when async resources, such as credential rows, load. |
-| `usesLiveConsole` | yes | `true` only for adapters that own a live terminal runtime. |
-| `deleteDialog` | yes | Copy and action buttons for target deletion. |
-| `emptyCredentialState`, `credentialStateFromRow`, `credentialFormProps`, `saveCredential`, `deleteCredential`, `credentialRows` | yes | Generic Credentials page integration. |
-| `credentialHint`, `canEdit`, `canDelete` | yes | Generic row affordances. |
-| `operationFromError` | optional | Convert connector-specific API errors into connector-owned retry operations. |
-| `hostKeyActionFromError`, `resumeHostKeyAction` | optional SSH-only | SSH uses these for host-key approval retry. Non-SSH connectors should not add no-op host-key stubs. |
+| Export                                                                                                                          |          Required | Purpose                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------------: | --------------------------------------------------------------------------------------------------- |
+| `emptyForm`                                                                                                                     |               yes | Initial add-target form state.                                                                      |
+| `formFromTarget`                                                                                                                |               yes | Convert saved target/profile data into edit form state.                                             |
+| `save`                                                                                                                          |               yes | Create or update the target plus default profile. Use shared target/profile helpers where possible. |
+| `deleteTarget`                                                                                                                  |               yes | Invoke generic target delete/archive, plus connector-specific cleanup options when needed.          |
+| `test`                                                                                                                          |               yes | Run the saved target/profile connection test.                                                       |
+| `targetDisplayName` / `targetSubtitle` / `targetEndpoint`                                                                       |               yes | Labels used by generic target lists and console headers.                                            |
+| `targetProfileLabel`                                                                                                            |               yes | Profile label shown in the Console token panel.                                                     |
+| `activeCredential`                                                                                                              |               yes | Pick the credential/profile shown as active for a selected target profile.                          |
+| `submitDisabled` / `submitLabel`                                                                                                |               yes | Add/edit form affordances for connector-specific validation and copy.                               |
+| `syncForm`                                                                                                                      |               yes | Reconcile connector form state when async resources, such as credential rows, load.                 |
+| `usesLiveConsole`                                                                                                               |               yes | `true` only for adapters that own a live terminal runtime.                                          |
+| `deleteDialog`                                                                                                                  |               yes | Copy and action buttons for target deletion.                                                        |
+| `emptyCredentialState`, `credentialStateFromRow`, `credentialFormProps`, `saveCredential`, `deleteCredential`, `credentialRows` |               yes | Generic Credentials page integration.                                                               |
+| `credentialHint`, `canEdit`, `canDelete`                                                                                        |               yes | Generic row affordances.                                                                            |
+| `operationFromError`                                                                                                            |          optional | Convert connector-specific API errors into connector-owned retry operations.                        |
+| `hostKeyActionFromError`, `resumeHostKeyAction`                                                                                 | optional SSH-only | SSH uses these for host-key approval retry. Non-SSH connectors should not add no-op host-key stubs. |
 
 Connection tests should return stable generic statuses: `ok`, `failed_config`,
 `failed_network`, `failed_tls`, `failed_auth`, `failed_permission`, or

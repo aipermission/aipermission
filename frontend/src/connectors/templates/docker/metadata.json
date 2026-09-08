@@ -4,5 +4,6 @@
   "summary": "Bounded container inventory, logs, inspect, and lifecycle actions through an SSH transport profile.",
   "version": "0.2",
   "icon": "server",
-  "badge_tone": "neutral"
+  "badge_tone": "neutral",
+  "profile_lifecycle": "standard"
 }

@@ -1,36 +1,28 @@
 import { KeyRound, PanelRightClose, PanelRightOpen, RefreshCcw, TicketCheck } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   connectorTargetProfileLifetime,
-  connectorTargetKey,
   currentConnectorTargetProfilePermissions,
-  matchesConnectorTargetProfile,
   matchesConnectorTargetProfileAction,
-  profilesForConnectorTarget,
-  readStoredConnectorProfileID,
   selectedConnectorProfile,
-  selectedConnectorProfileID,
-  writeStoredConnectorProfileID,
 } from "../../lib/connector-permissions";
-import {
-  connectorActionRiskDescription,
-  connectorActionRiskGroupLabel,
-  connectorActionRiskLabel,
-  connectorActionRiskOrder,
-  connectorActionRiskTone,
-  normalizeConnectorActionRisk,
-} from "../../lib/connector-action-risks";
+import { connectorActionRiskLabel, connectorActionRiskTone } from "../../lib/connector-action-risks";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
 import { effectiveRule, expiresAtFromLifetime, maskedToken, permissionLifetimeLabel, ruleLabel } from "../../lib/permissions";
-import { getConnectorModel } from "../../connectors/templates/registry";
 import { Badge, CountBadge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
-import { apiGet } from "../../lib/api";
-import { updateTokenProjectVisibility } from "../../lib/project-scopes";
-import { errorMessage } from "../../lib/errors";
+import {
+  groupActions,
+  groupActionsByRisk,
+  inferPermissionMode,
+  matchesPermissionMutationError,
+  ruleForActions,
+  targetSupportsMessages,
+  tokenProfileModeKey,
+} from "./connector-token-permission-model";
+import { useConnectorTokenPermissionState } from "./use-connector-token-permission-state";
 
 export function ConnectorTokenPermissionPanel({
   tokens,
@@ -46,323 +38,50 @@ export function ConnectorTokenPermissionPanel({
   onRefresh,
   onOpenMessages,
 }) {
-  const activeTokens = useMemo(() => tokens.data.filter((token) => !token.revoked_at), [tokens.data]);
-  const [savingKey, setSavingKey] = useState("");
-  const [openTokenID, setOpenTokenID] = useState(null);
-  const [profileByToken, setProfileByToken] = useState({});
-  const [permissionModeByKey, setPermissionModeByKey] = useState({});
-  const [projectScopesByToken, setProjectScopesByToken] = useState({});
-  const [projectScopeError, setProjectScopeError] = useState("");
-  const [permissionMutationError, setPermissionMutationError] = useState(null);
-  const compactPanelRef = useRef(null);
-  const permissionMutationRetryRef = useRef(null);
-  const permissionMutationActiveRef = useRef(false);
-  const tokenIDsKey = activeTokens.map((token) => token.id).join(",");
-  const load = connectorPermissionState || { state: "idle", data: {}, actionsByTargetRef: {}, error: null };
-  const permissionsByToken = useMemo(() => load.data || {}, [load.data]);
-  const targetProfiles = useMemo(() => profilesForConnectorTarget(targets?.data || [], selectedTarget), [targets?.data, selectedTarget]);
-  const targetProfileSignature = targetProfiles.map((profile) => profile.profile_id).join(",");
-  const loadConnectorPermissionsForEffect = useEffectEvent(() => loadConnectorPermissions());
-  const selectedTargetKey = connectorTargetKey(selectedTarget);
-
-  useEffect(() => {
-    setPermissionMutationError(null);
-    permissionMutationRetryRef.current = null;
-  }, [selectedTargetKey]);
-
-  useEffect(() => {
-    if (!selectedTarget) {
-      setProfileByToken({});
-      setPermissionMutationError(null);
-      permissionMutationRetryRef.current = null;
-      return;
-    }
-    void loadConnectorPermissionsForEffect();
-  }, [selectedTarget, targetProfileSignature, tokenIDsKey]);
-
-  useEffect(() => {
-    if (!selectedTarget || targetProfiles.length === 0) return;
-    setProfileByToken((current) => {
-      const next = { ...current };
-      let changed = false;
-      for (const token of activeTokens) {
-        const stored = readStoredConnectorProfileID(selectedTarget, token.id);
-        const fallbackID = selectedTarget.profile_id || (targetProfiles.length === 1 ? targetProfiles[0].profile_id : "");
-        const currentID = current[token.id] || stored || fallbackID;
-        const valid = targetProfiles.some((profile) => Number(profile.profile_id) === Number(currentID));
-        const nextID = valid ? Number(currentID) : fallbackID ? Number(fallbackID) : "";
-        if (String(next[token.id] || "") !== String(nextID || "")) {
-          next[token.id] = nextID;
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-  }, [selectedTarget, targetProfiles, activeTokens]);
-
-  useEffect(() => {
-    if (!openTokenID) return undefined;
-
-    function closeOnOutsidePointer(event) {
-      if (!compactPanelRef.current?.contains(event.target)) {
-        setOpenTokenID(null);
-      }
-    }
-
-    function closeOnEscape(event) {
-      if (event.key === "Escape") {
-        setOpenTokenID(null);
-      }
-    }
-
-    window.addEventListener("pointerdown", closeOnOutsidePointer);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("pointerdown", closeOnOutsidePointer);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [openTokenID]);
-
-  const selectedCountByToken = useMemo(() => {
-    const result = {};
-    for (const token of activeTokens) {
-      const profileID = selectedConnectorProfileID(token.id, selectedTarget, targetProfiles, profileByToken);
-      result[token.id] = currentConnectorTargetProfilePermissions(permissionsByToken[token.id] || [], selectedTarget, profileID).length;
-    }
-    return result;
-  }, [activeTokens, permissionsByToken, selectedTarget, targetProfiles, profileByToken]);
-
-  async function loadConnectorPermissions() {
-    if (!selectedTarget) return;
-    setProjectScopeError("");
-    const profilesToLoad = targetProfiles.length > 0 ? targetProfiles : [selectedTarget];
-    await Promise.all([
-      ...profilesToLoad.map((profile) => loadConnectorActions?.({ ...selectedTarget, profile_id: profile.profile_id || profile.id })),
-      loadAllConnectorPermissions?.(activeTokens),
-      ...activeTokens.map(async (token) => {
-        try {
-          const result = await apiGet(`/api/tokens/${token.id}/project-scopes`);
-          setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
-        } catch (error) {
-          setProjectScopeError(error.message || "Failed to load token project scopes.");
-        }
-      }),
-    ]);
-  }
-
-  function projectEnabledForToken(tokenID) {
-    const scope = (projectScopesByToken[tokenID] || []).find((item) => Number(item.project_id) === Number(selectedTarget?.project_id));
-    return scope ? Boolean(scope.enabled) : false;
-  }
-
-  async function setProjectVisibility(token, enabled) {
-    if (!selectedTarget?.project_id) return;
-    const key = `${token.id}:project:${selectedTarget.project_id}`;
-    setSavingKey(key);
-    setProjectScopeError("");
-    try {
-      const scopes = projectScopesByToken[token.id] || [];
-      const result = await updateTokenProjectVisibility(token.id, scopes, selectedTarget.project_id, enabled);
-      setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
-      await loadAllConnectorPermissions?.(activeTokens);
-    } catch (error) {
-      setProjectScopeError(error.message || "Failed to update token project scope.");
-    } finally {
-      setSavingKey("");
-    }
-  }
-
-  async function refreshPanel() {
-    await onRefresh?.();
-    await loadConnectorPermissions();
-  }
-
-  function selectProfile(token, profileID) {
-    const nextID = Number(profileID);
-    if (!Number.isFinite(nextID) || nextID <= 0) return;
-    setProfileByToken((current) => ({ ...current, [token.id]: nextID }));
-    writeStoredConnectorProfileID(selectedTarget, token.id, nextID);
-    void loadConnectorActions?.({ ...selectedTarget, profile_id: nextID });
-  }
-
-  async function setConnectorRules(token, profileID, selectedActions, rule, keySuffix) {
-    if (!selectedTarget || permissionMutationActiveRef.current) return;
-    permissionMutationActiveRef.current = true;
-    const key = `${token.id}:${profileID}:${keySuffix}`;
-    setSavingKey(key);
-    setPermissionMutationError(null);
-    permissionMutationRetryRef.current = () => setConnectorRules(token, profileID, selectedActions, rule, keySuffix);
-    try {
-      const existing = permissionsByToken[token.id] || [];
-      const actionNames = new Set(selectedActions.map((action) => action.name));
-      const preserved = existing.filter(
-        (permission) => !matchesConnectorTargetProfile(permission, selectedTarget, profileID) || !actionNames.has(permission.action_name),
-      );
-      const expiresAt = rule === "blocked" ? "" : connectorTargetProfileLifetime(existing, selectedTarget, profileID)?.expires_at || "";
-      const next = rule
-        ? [
-            ...preserved,
-            ...selectedActions.map((action) => ({
-              target_id: selectedTarget.target_id,
-              profile_id: profileID,
-              action_name: action.name,
-              execution_rule: rule,
-              expires_at: expiresAt,
-            })),
-          ]
-        : preserved;
-      await replaceTokenConnectorPermissions?.(token.id, next);
-      const actions = load.actionsByTargetRef?.[connectorActionCacheKey(selectedTarget, profileID)] || selectedActions;
-      const modeKey = tokenProfileModeKey(token.id, selectedTarget, profileID);
-      const nextMode = inferPermissionMode(next, selectedTarget, profileID, actions);
-      setPermissionModeByKey((current) => ({ ...current, [modeKey]: nextMode }));
-      permissionMutationRetryRef.current = null;
-    } catch (error) {
-      setPermissionMutationError(
-        permissionMutationFailure(
-          token,
-          profileID,
-          selectedActions.map((action) => action.name).join(", "),
-          error,
-          targetProfiles,
-          selectedTargetKey,
-        ),
-      );
-    } finally {
-      permissionMutationActiveRef.current = false;
-      setSavingKey("");
-    }
-  }
-
-  async function setConnectorRule(token, profileID, action, rule) {
-    await setConnectorRules(token, profileID, [action], rule, action.name);
-  }
-
-  async function setProfileLifetime(token, profileID, expiresAt) {
-    if (!selectedTarget || permissionMutationActiveRef.current) return;
-    permissionMutationActiveRef.current = true;
-    const key = `${token.id}:${profileID}:lifetime`;
-    setSavingKey(key);
-    setPermissionMutationError(null);
-    permissionMutationRetryRef.current = () => setProfileLifetime(token, profileID, expiresAt);
-    try {
-      const existing = permissionsByToken[token.id] || [];
-      const next = existing.map((permission) => {
-        if (!matchesConnectorTargetProfile(permission, selectedTarget, profileID)) return permission;
-        if (effectiveRule(permission) === "blocked") return { ...permission, expires_at: "" };
-        return { ...permission, expires_at: expiresAt || "" };
-      });
-      await replaceTokenConnectorPermissions?.(token.id, next);
-      permissionMutationRetryRef.current = null;
-    } catch (error) {
-      setPermissionMutationError(permissionMutationFailure(token, profileID, "lifetime", error, targetProfiles, selectedTargetKey));
-    } finally {
-      permissionMutationActiveRef.current = false;
-      setSavingKey("");
-    }
-  }
-
-  function renderTokenActions(token, profile, compactPopover = false) {
-    const permissions = permissionsByToken[token.id] || [];
-    const actions = load.actionsByTargetRef?.[connectorActionCacheKey(selectedTarget, profile.profile_id)] || [];
-    const activePermissions = currentConnectorTargetProfilePermissions(permissions, selectedTarget, profile.profile_id);
-    const lifetimeValue = connectorTargetProfileLifetime(permissions, selectedTarget, profile.profile_id);
-    const lifetimeEditable = activePermissions.some((permission) => effectiveRule(permission) !== "blocked");
-    const categoryGroups = groupActions(actions);
-    const riskGroups = groupActionsByRisk(actions);
-    const modeKey = tokenProfileModeKey(token.id, selectedTarget, profile.profile_id);
-    const inferredPermissionMode = inferPermissionMode(permissions, selectedTarget, profile.profile_id, actions);
-    const permissionMode = permissionModeByKey[modeKey] || inferredPermissionMode;
-    const projectEnabled = projectEnabledForToken(token.id);
-    return (
-      <div className="grid gap-2">
-        {matchesPermissionMutationError(permissionMutationError, token.id, profile.profile_id, selectedTargetKey) ? (
-          <PermissionMutationError value={permissionMutationError} onRetry={() => permissionMutationRetryRef.current?.()} />
-        ) : null}
-        <ProjectVisibilityControl
-          projectName={selectedTarget.project_name || "Ungrouped"}
-          enabled={projectEnabled}
-          saving={Boolean(savingKey)}
-          onChange={(enabled) => setProjectVisibility(token, enabled)}
-        />
-        <ProfileLifetimeControls
-          value={lifetimeValue}
-          saving={Boolean(savingKey)}
-          disabled={!lifetimeEditable}
-          onSetPermanent={() => setProfileLifetime(token, profile.profile_id, "")}
-          onSetTemporary={(lifetime) => setProfileLifetime(token, profile.profile_id, expiresAtFromLifetime(lifetime))}
-        />
-        {actions.length > 0 ? (
-          <PermissionModeTabs
-            value={permissionMode}
-            onChange={(mode) => setPermissionModeByKey((current) => ({ ...current, [modeKey]: mode }))}
-          />
-        ) : null}
-        {permissionMode === "basic" && actions.length > 0 ? (
-          <PermissionRuleGroup
-            title="All operations"
-            description={`${actions.length} connector action${actions.length === 1 ? "" : "s"}`}
-            rule={ruleForActions(permissions, selectedTarget, profile.profile_id, actions)}
-            saving={Boolean(savingKey)}
-            onSetRule={(rule) => setConnectorRules(token, profile.profile_id, actions, rule, "all")}
-          />
-        ) : null}
-        {permissionMode === "grouped" && actions.length > 0 ? (
-          <div className="grid gap-2">
-            {riskGroups.map((group) => (
-              <PermissionRuleGroup
-                key={group.key}
-                title={group.name}
-                description={group.description}
-                rule={ruleForActions(permissions, selectedTarget, profile.profile_id, group.actions)}
-                saving={Boolean(savingKey)}
-                disabled={group.actions.length === 0}
-                onSetRule={(rule) => setConnectorRules(token, profile.profile_id, group.actions, rule, group.key)}
-              />
-            ))}
-          </div>
-        ) : null}
-        {permissionMode === "advanced"
-          ? categoryGroups.map((group) => (
-              <div key={group.name} className="grid gap-2">
-                {categoryGroups.length > 1 ? (
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">{group.name}</p>
-                ) : null}
-                {group.actions.map((action) => {
-                  const permission = permissions.find((item) =>
-                    matchesConnectorTargetProfileAction(item, selectedTarget, profile.profile_id, action.name),
-                  );
-                  const rule = effectiveRule(permission) || "";
-                  return (
-                    <ActionPermissionCard
-                      key={action.name}
-                      action={action}
-                      rule={rule}
-                      saving={Boolean(savingKey)}
-                      compactPopover={compactPopover}
-                      onSetRule={(nextRule) => setConnectorRule(token, profile.profile_id, action, nextRule)}
-                    />
-                  );
-                })}
-              </div>
-            ))
-          : null}
-        {load.state === "ready" && actions.length === 0 ? <Notice>No actions exposed by this connector.</Notice> : null}
-      </div>
-    );
-  }
+  const panel = useConnectorTokenPermissionState({
+    connectorPermissionState,
+    loadAllConnectorPermissions,
+    loadConnectorActions,
+    onRefresh,
+    replaceTokenConnectorPermissions,
+    selectedTarget,
+    targets,
+    tokens,
+  });
+  const {
+    activeTokens,
+    compactPanelRef,
+    load,
+    openTokenID,
+    profileByToken,
+    projectScopeError,
+    refreshPanel,
+    savingKey,
+    selectProfile,
+    selectedCountByToken,
+    setOpenTokenID,
+    tokenTriggerRef,
+    targetProfiles,
+  } = panel;
 
   if (compact) {
     return (
       <aside
         ref={compactPanelRef}
-        className="relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-visible rounded-lg border border-stone-200 bg-white"
+        className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-visible rounded-lg border border-stone-200 bg-white"
       >
         <header className="grid gap-2 border-b border-stone-200 p-2">
           <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Expand tokens" onClick={onToggleCompact}>
             <PanelRightOpen className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" className="h-9 w-9 px-0" title="Refresh connector permissions" onClick={refreshPanel}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 w-9 px-0"
+            title="Refresh connector permissions"
+            onClick={refreshPanel}
+            disabled={Boolean(savingKey)}
+          >
             <RefreshCcw className="h-4 w-4" />
           </Button>
         </header>
@@ -376,24 +95,44 @@ export function ConnectorTokenPermissionPanel({
                 <button
                   type="button"
                   className={`relative grid h-10 w-10 place-items-center rounded-md border text-stone-700 transition hover:bg-stone-100 ${selectedCount > 0 ? "border-emerald-700" : "border-stone-300"}`}
-                  title={`${token.name}: ${selectedCount} connector grants`}
-                  onClick={() => setOpenTokenID(open ? null : token.id)}
+                  title={selectedTarget ? `${token.name}: ${selectedCount} connector grants` : "Select a connector first"}
+                  disabled={!selectedTarget}
+                  aria-expanded={open}
+                  aria-controls={`connector-token-popover-${token.id}`}
+                  onClick={(event) => {
+                    tokenTriggerRef.current = event.currentTarget;
+                    setOpenTokenID(open ? null : token.id);
+                  }}
                 >
                   <KeyRound className="h-4 w-4" />
                   {selectedCount > 0 ? <CountBadge className="absolute -right-1 -top-1">{selectedCount}</CountBadge> : null}
                 </button>
                 {open ? (
-                  <div className="absolute right-full top-0 z-30 mr-2 grid max-h-[70vh] w-96 gap-3 overflow-auto rounded-lg border border-stone-200 bg-white p-3 shadow-xl">
+                  <div
+                    id={`connector-token-popover-${token.id}`}
+                    className="absolute right-full top-0 z-30 mr-2 grid max-h-[70vh] w-96 gap-3 overflow-auto rounded-lg border border-stone-200 bg-white p-3 shadow-xl"
+                  >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-stone-900">{token.name}</p>
-                      <p className="mt-1 text-xs text-stone-500">{selectedTarget.target_name}</p>
+                      <p className="mt-1 text-xs text-stone-500">{selectedTarget?.target_name || "Select a connector"}</p>
                     </div>
                     <ProfileSelect
                       profiles={targetProfiles}
                       value={profile?.profile_id}
                       onChange={(profileID) => selectProfile(token, profileID)}
+                      disabled={Boolean(panel.savingKey)}
                     />
-                    {profile ? renderTokenActions(token, profile, true) : <Notice>No credential profiles for this connector.</Notice>}
+                    {profile ? (
+                      <TokenPermissionActions
+                        panel={panel}
+                        selectedTarget={selectedTarget}
+                        token={token}
+                        profile={profile}
+                        compactPopover
+                      />
+                    ) : (
+                      <Notice>No credential profiles for this connector.</Notice>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -405,7 +144,7 @@ export function ConnectorTokenPermissionPanel({
   }
 
   return (
-    <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
+    <aside className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
       <header className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -415,16 +154,18 @@ export function ConnectorTokenPermissionPanel({
           <p className="mt-1 truncate text-xs text-stone-500">{selectedTarget ? selectedTarget.target_name : "Select a connector"}</p>
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse tokens" onClick={onToggleCompact}>
-            <PanelRightClose className="h-4 w-4" />
-          </Button>
+          {onToggleCompact ? (
+            <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse tokens" onClick={onToggleCompact}>
+              <PanelRightClose className="h-4 w-4" />
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
             className="h-9 w-9 px-0"
             title="Refresh connector permissions"
             onClick={refreshPanel}
-            disabled={load.state === "loading"}
+            disabled={load.state === "loading" || Boolean(savingKey)}
           >
             <RefreshCcw className="h-4 w-4" />
           </Button>
@@ -478,8 +219,13 @@ export function ConnectorTokenPermissionPanel({
                   profiles={targetProfiles}
                   value={profile?.profile_id}
                   onChange={(profileID) => selectProfile(token, profileID)}
+                  disabled={Boolean(panel.savingKey)}
                 />
-                {profile ? renderTokenActions(token, profile) : <Notice>No credential profiles for this connector.</Notice>}
+                {profile ? (
+                  <TokenPermissionActions panel={panel} selectedTarget={selectedTarget} token={token} profile={profile} />
+                ) : (
+                  <Notice>No credential profiles for this connector.</Notice>
+                )}
               </section>
             );
           })}
@@ -487,6 +233,138 @@ export function ConnectorTokenPermissionPanel({
       </div>
     </aside>
   );
+}
+
+function TokenPermissionActions({ panel, selectedTarget, token, profile, compactPopover = false }) {
+  const {
+    load,
+    permissionModeByKey,
+    permissionMutationError,
+    permissionsByToken,
+    projectEnabledForToken,
+    projectScopeReadyForToken,
+    retryPermissionMutation,
+    savingKey,
+    selectedTargetKey,
+    setConnectorRule,
+    setConnectorRules,
+    setPermissionModeByKey,
+    setProfileLifetime,
+    setProjectVisibility,
+  } = panel;
+  const permissions = permissionsByToken[token.id] || [];
+  const actions = load.actionsByTargetRef?.[connectorActionCacheKey(selectedTarget, profile.profile_id)] || [];
+  const activePermissions = currentConnectorTargetProfilePermissions(permissions, selectedTarget, profile.profile_id);
+  const lifetimeValue = connectorTargetProfileLifetime(permissions, selectedTarget, profile.profile_id);
+  const lifetimeEditable = activePermissions.some((permission) => effectiveRule(permission) !== "blocked");
+  const categoryGroups = groupActions(actions);
+  const riskGroups = groupActionsByRisk(actions);
+  const modeKey = tokenProfileModeKey(token.id, selectedTarget, profile.profile_id);
+  const permissionMode = permissionModeByKey[modeKey] || inferPermissionMode(permissions, selectedTarget, profile.profile_id, actions);
+  const saving = Boolean(savingKey);
+
+  return (
+    <div className="grid gap-2">
+      {matchesPermissionMutationError(permissionMutationError, token.id, profile.profile_id, selectedTargetKey) ? (
+        <PermissionMutationError value={permissionMutationError} onRetry={retryPermissionMutation} />
+      ) : null}
+      <ProjectVisibilityControl
+        projectName={selectedTarget.project_name || "Ungrouped"}
+        enabled={projectEnabledForToken(token.id)}
+        ready={projectScopeReadyForToken(token.id)}
+        saving={saving}
+        onChange={(enabled) => setProjectVisibility(token, enabled)}
+      />
+      <ProfileLifetimeControls
+        value={lifetimeValue}
+        saving={saving}
+        disabled={!lifetimeEditable}
+        onSetPermanent={() => setProfileLifetime(token, profile.profile_id, "")}
+        onSetTemporary={(lifetime) => setProfileLifetime(token, profile.profile_id, expiresAtFromLifetime(lifetime))}
+      />
+      {actions.length > 0 ? (
+        <PermissionModeTabs
+          value={permissionMode}
+          disabled={saving}
+          onChange={(mode) => setPermissionModeByKey((current) => ({ ...current, [modeKey]: mode }))}
+        />
+      ) : null}
+      {permissionMode === "basic" && actions.length > 0 ? (
+        <PermissionRuleGroup
+          title="All operations"
+          description={`${actions.length} connector action${actions.length === 1 ? "" : "s"}`}
+          rule={ruleForActions(permissions, selectedTarget, profile.profile_id, actions)}
+          saving={saving}
+          onSetRule={(rule) => setConnectorRules(token, profile.profile_id, actions, rule, "all")}
+        />
+      ) : null}
+      {permissionMode === "grouped" && actions.length > 0 ? (
+        <GroupedPermissionRules
+          groups={riskGroups}
+          permissions={permissions}
+          profile={profile}
+          saving={saving}
+          selectedTarget={selectedTarget}
+          setConnectorRules={setConnectorRules}
+          token={token}
+        />
+      ) : null}
+      {permissionMode === "advanced" ? (
+        <AdvancedPermissionRules
+          compactPopover={compactPopover}
+          groups={categoryGroups}
+          permissions={permissions}
+          profile={profile}
+          saving={saving}
+          selectedTarget={selectedTarget}
+          setConnectorRule={setConnectorRule}
+          token={token}
+        />
+      ) : null}
+      {load.state === "ready" && actions.length === 0 ? <Notice>No actions exposed by this connector.</Notice> : null}
+    </div>
+  );
+}
+
+function GroupedPermissionRules({ groups, permissions, profile, saving, selectedTarget, setConnectorRules, token }) {
+  return (
+    <div className="grid gap-2">
+      {groups.map((group) => (
+        <PermissionRuleGroup
+          key={group.key}
+          title={group.name}
+          description={group.description}
+          rule={ruleForActions(permissions, selectedTarget, profile.profile_id, group.actions)}
+          saving={saving}
+          disabled={group.actions.length === 0}
+          onSetRule={(rule) => setConnectorRules(token, profile.profile_id, group.actions, rule, group.key)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AdvancedPermissionRules({ compactPopover, groups, permissions, profile, saving, selectedTarget, setConnectorRule, token }) {
+  return groups.map((group) => (
+    <div key={group.name} className="grid gap-2">
+      {groups.length > 1 ? <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">{group.name}</p> : null}
+      {group.actions.map((action) => {
+        const permission = permissions.find((item) =>
+          matchesConnectorTargetProfileAction(item, selectedTarget, profile.profile_id, action.name),
+        );
+        return (
+          <ActionPermissionCard
+            key={action.name}
+            action={action}
+            rule={effectiveRule(permission) || ""}
+            saving={saving}
+            compactPopover={compactPopover}
+            onSetRule={(rule) => setConnectorRule(token, profile.profile_id, action, rule)}
+          />
+        );
+      })}
+    </div>
+  ));
 }
 
 function PermissionMutationError({ value, onRetry }) {
@@ -503,22 +381,7 @@ function PermissionMutationError({ value, onRetry }) {
   );
 }
 
-function permissionMutationFailure(token, profileID, operation, error, profiles, targetKey) {
-  const profile = profiles.find((item) => Number(item.profile_id) === Number(profileID));
-  const profileLabel = profile?.profile_label || `profile ${profileID}`;
-  return {
-    tokenID: Number(token.id),
-    profileID: Number(profileID),
-    targetKey,
-    message: `${token.name} / ${profileLabel}: failed to update ${operation}. ${errorMessage(error, "Unknown error.")}`,
-  };
-}
-
-function matchesPermissionMutationError(value, tokenID, profileID, targetKey) {
-  return value?.targetKey === targetKey && Number(value?.tokenID) === Number(tokenID) && Number(value?.profileID) === Number(profileID);
-}
-
-function ProjectVisibilityControl({ projectName, enabled, saving, onChange }) {
+function ProjectVisibilityControl({ projectName, enabled, ready, saving, onChange }) {
   return (
     <div
       className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs ${enabled ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}
@@ -529,25 +392,25 @@ function ProjectVisibilityControl({ projectName, enabled, saving, onChange }) {
           {enabled ? "Visible to this token through MCP" : "Hidden from this token's MCP target list"}
         </p>
       </div>
-      <Button type="button" variant="outline" className="h-8 shrink-0 px-2 text-xs" disabled={saving} onClick={() => onChange(!enabled)}>
-        {saving ? "Saving..." : enabled ? "Hide" : "Enable"}
+      <Button
+        type="button"
+        variant="outline"
+        className="h-8 shrink-0 px-2 text-xs"
+        disabled={saving || !ready}
+        onClick={() => onChange(!enabled)}
+      >
+        {!ready ? "Loading..." : saving ? "Saving..." : enabled ? "Hide" : "Enable"}
       </Button>
     </div>
   );
 }
 
-function targetSupportsMessages(target) {
-  if (!target?.runtime_id) return false;
-  const model = getConnectorModel(target.connector_kind);
-  return Boolean(model?.usesLiveConsole?.({ target }));
-}
-
-function ProfileSelect({ profiles, value, onChange }) {
+function ProfileSelect({ profiles, value, onChange, disabled = false }) {
   if (profiles.length === 0) return null;
   return (
     <label className="grid gap-1 text-xs font-semibold text-stone-600">
       Profile
-      <Select value={value ? String(value) : ""} onChange={(event) => onChange(event.target.value)}>
+      <Select value={value ? String(value) : ""} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
         <option value="">Select profile</option>
         {profiles.map((profile) => (
           <option key={profile.profile_id} value={profile.profile_id}>
@@ -585,7 +448,7 @@ function ProfileLifetimeControls({ value, saving, disabled, onSetPermanent, onSe
   );
 }
 
-function PermissionModeTabs({ value, onChange }) {
+function PermissionModeTabs({ value, onChange, disabled = false }) {
   const modes = [
     { id: "basic", label: "Basic", title: "Apply one rule to every connector action." },
     { id: "grouped", label: "Grouped", title: "Apply separate rules to read and write actions." },
@@ -597,6 +460,7 @@ function PermissionModeTabs({ value, onChange }) {
         <button
           key={mode.id}
           type="button"
+          disabled={disabled}
           title={mode.title}
           className={`h-8 rounded px-2 text-xs font-semibold transition ${
             value === mode.id ? "permission-button-active bg-emerald-950 text-white" : "text-stone-600 hover:bg-stone-100"
@@ -612,7 +476,11 @@ function PermissionModeTabs({ value, onChange }) {
 
 function PermissionRuleGroup({ title, description, rule, saving, disabled = false, onSetRule }) {
   return (
-    <div className="dark-panel-subtle grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2">
+    <div
+      role="group"
+      aria-label={`${title} permission`}
+      className="dark-panel-subtle grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2"
+    >
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold text-stone-900">{title}</p>
@@ -644,7 +512,11 @@ function PermissionRuleGroup({ title, description, rule, saving, disabled = fals
 
 function ActionPermissionCard({ action, rule, saving, compactPopover, onSetRule }) {
   return (
-    <div className={`grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2 ${compactPopover ? "" : "dark-panel-subtle"}`}>
+    <div
+      role="group"
+      aria-label={`${action.name} permission`}
+      className={`grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2 ${compactPopover ? "" : "dark-panel-subtle"}`}
+    >
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate font-mono text-xs font-semibold text-stone-900">{action.name}</p>
@@ -668,60 +540,4 @@ function ActionPermissionCard({ action, rule, saving, compactPopover, onSetRule 
       </div>
     </div>
   );
-}
-
-function ruleForActions(permissions, target, profileID, actions) {
-  if (!target || actions.length === 0) return "";
-  const rules = actions.map((action) => {
-    const permission = permissions.find((item) => matchesConnectorTargetProfileAction(item, target, profileID, action.name));
-    return effectiveRule(permission) || "";
-  });
-  const unique = new Set(rules);
-  if (unique.size <= 1) return rules[0] || "";
-  return "mixed";
-}
-
-function inferPermissionMode(permissions, target, profileID, actions) {
-  if (!target || actions.length === 0) return "basic";
-  const allRule = ruleForActions(permissions, target, profileID, actions);
-  if (allRule !== "mixed") return "basic";
-  const riskGroups = groupActionsByRisk(actions).filter((group) => group.actions.length > 0);
-  if (riskGroups.length === 0) return "basic";
-  const groupRules = riskGroups.map((group) => ruleForActions(permissions, target, profileID, group.actions));
-  if (groupRules.every((rule) => rule !== "mixed")) return "grouped";
-  return "advanced";
-}
-
-function tokenProfileModeKey(tokenID, target, profileID) {
-  return `${tokenID}:${target?.connector_kind || ""}:${target?.target_id || ""}:${profileID || ""}`;
-}
-
-function groupActions(actions) {
-  const order = [];
-  const groups = new Map();
-  for (const action of actions) {
-    const name = action.category || "actions";
-    if (!groups.has(name)) {
-      groups.set(name, []);
-      order.push(name);
-    }
-    groups.get(name).push(action);
-  }
-  return order.map((name) => ({ name, actions: groups.get(name) || [] }));
-}
-
-function groupActionsByRisk(actions) {
-  const grouped = new Map(connectorActionRiskOrder.map((risk) => [risk, []]));
-  for (const action of actions) {
-    grouped.get(normalizeConnectorActionRisk(action.risk)).push(action);
-  }
-  return connectorActionRiskOrder.map((risk) => {
-    const groupActions = grouped.get(risk) || [];
-    return {
-      key: risk,
-      name: connectorActionRiskGroupLabel(risk),
-      description: connectorActionRiskDescription(risk, groupActions.length),
-      actions: groupActions,
-    };
-  });
 }

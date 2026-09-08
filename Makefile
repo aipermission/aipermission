@@ -1,4 +1,4 @@
-.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-coverage frontend-changed-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -11,7 +11,10 @@ help:
 		'  make rest-contract   Regenerate the incremental typed OpenAPI contract' \
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
+		'  make frontend-architecture  Enforce frontend dependency boundaries and budgets' \
+		'  make frontend-async-race  Exercise async state ownership regressions' \
 		'  make frontend-coverage  Enforce critical frontend per-file coverage floors' \
+		'  make frontend-changed-coverage  Ratchet coverage for changed behavior owners' \
 		'  make frontend-e2e-real  Run critical browser flows against a real encrypted backend' \
 		'  make recovery-drill   Exercise encrypted backup, restore, migration, and restart recovery' \
 		'  make bounded-fuzz     Fuzz critical parsers and security boundaries with a fixed time budget' \
@@ -78,8 +81,23 @@ frontend-format-check:
 frontend-test:
 	cd frontend && npm test
 
+frontend-test-config:
+	cd frontend && npm run test:config
+
+frontend-async-race:
+	cd frontend && npm run test:async-race
+
+frontend-architecture:
+	cd frontend && npm run test:architecture
+
+frontend-duplication:
+	cd frontend && npm run test:duplication
+
 frontend-coverage:
 	cd frontend && npm run test:coverage
+
+frontend-changed-coverage:
+	cd frontend && npm run test:coverage:changed
 
 frontend-e2e:
 	cd frontend && npm run test:e2e
@@ -122,7 +140,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz frontend-lint frontend-format-check frontend-test frontend-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-test frontend-coverage frontend-changed-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build

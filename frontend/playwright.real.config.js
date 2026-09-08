@@ -2,17 +2,19 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e-real",
+  reporter: [["line"], ["./scripts/no-skipped-playwright-reporter.mjs"]],
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  forbidOnly: true,
+  retries: 0,
   expect: {
     timeout: 8_000,
   },
   use: {
     baseURL: "http://127.0.0.1:4174",
     screenshot: "only-on-failure",
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
   },
   projects: [
     {

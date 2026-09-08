@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -137,6 +138,10 @@ func (s consoleHandlers) bulkConsoleTarget(ctx context.Context, runtime *databas
 	target, profile, err := connectortargets.NewStore(runtime.database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return bulkConsoleTarget{}, err
+	}
+	actionAdapter, ok := s.connectorAPIAdapterFor(target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
+	if !ok || strings.TrimSpace(actionAdapter.LiveConsoleActionName()) == "" {
+		return bulkConsoleTarget{}, connectortargets.ErrInvalidTargetRef
 	}
 	name := target.Name
 	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {

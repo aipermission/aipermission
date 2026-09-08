@@ -20,7 +20,7 @@ export function ClickHouseConnectorFormTemplate({ form, mode = "create", targets
         onChange={onChange}
         hostLabel="ClickHouse host"
         portLabel="Native port"
-        overSSHNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:9000 when ClickHouse only listens on the remote machine."
+        transportNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:9000 when ClickHouse only listens on the remote machine."
         directNotice="For ClickHouse running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost."
       />
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">

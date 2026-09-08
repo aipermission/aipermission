@@ -17,7 +17,7 @@ export function PostgresConnectorFormTemplate({ form, mode = "create", targets =
         form={form}
         targets={targets}
         onChange={onChange}
-        overSSHNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:5432 when Postgres only listens on the remote machine."
+        transportNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:5432 when Postgres only listens on the remote machine."
         directNotice="For Postgres running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost."
       />
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">

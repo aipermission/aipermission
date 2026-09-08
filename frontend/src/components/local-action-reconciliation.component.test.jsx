@@ -3,6 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it, vi } from "vitest";
 import { scopedUICookieName } from "../lib/ui-cookie";
+import {
+  completeLocalActionRetry,
+  listLocalActionRetryEntries,
+  markLocalActionRetryOutcome,
+  prepareLocalActionRetry,
+  resetLocalActionRetryLedger,
+  resolveLocalActionRetryEntry,
+} from "../lib/local-action-retry";
 import { LocalActionReconciliationDialog } from "./local-action-reconciliation-dialog";
 import { LocalActionRetryPanel } from "./settings/local-action-retry-panel";
 
@@ -52,5 +60,39 @@ describe("local connector action reconciliation", () => {
     expect(window.localStorage.getItem("aipermission.local-action-retry.v2.test-workspace")).toBeNull();
     if (originalIndexedDB === undefined) delete globalThis.indexedDB;
     else globalThis.indexedDB = originalIndexedDB;
+  });
+
+  it("preserves retry identity until completion or explicit outcome reconciliation", async () => {
+    const originalIndexedDB = globalThis.indexedDB;
+    globalThis.indexedDB = new IDBFactory();
+    document.cookie = `${scopedUICookieName("aipermission_workspace")}=retry-lifecycle; Path=/`;
+    try {
+      await resetLocalActionRetryLedger();
+      const body = { target_ref: "fixture:1:1", action_name: "mutate", input: { value: 1 } };
+      const prepared = await prepareLocalActionRetry(body);
+      const reused = await prepareLocalActionRetry(body);
+
+      expect(prepared.reused).toBe(false);
+      expect(reused.reused).toBe(true);
+      expect(reused.idempotencyKey).toBe(prepared.idempotencyKey);
+      expect(await listLocalActionRetryEntries()).toHaveLength(1);
+      expect(await resolveLocalActionRetryEntry((await listLocalActionRetryEntries())[0])).toBe(false);
+
+      await completeLocalActionRetry(reused);
+      expect(await listLocalActionRetryEntries()).toHaveLength(1);
+      await completeLocalActionRetry(prepared);
+      expect(await listLocalActionRetryEntries()).toEqual([]);
+
+      const uncertain = await prepareLocalActionRetry({ ...body, input: { value: 2 } });
+      await markLocalActionRetryOutcome(uncertain, { request_id: 91, assistant_hint: "Inspect external state." });
+      const [entry] = await listLocalActionRetryEntries();
+      expect(entry).toMatchObject({ state: "outcome_unknown", request_id: 91, assistant_hint: "Inspect external state." });
+      expect(await resolveLocalActionRetryEntry(entry)).toBe(true);
+      expect(await listLocalActionRetryEntries()).toEqual([]);
+    } finally {
+      await resetLocalActionRetryLedger();
+      if (originalIndexedDB === undefined) delete globalThis.indexedDB;
+      else globalThis.indexedDB = originalIndexedDB;
+    }
   });
 });

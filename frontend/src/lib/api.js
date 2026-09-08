@@ -1,4 +1,11 @@
-import { completeLocalActionRetry, markLocalActionRetryOutcome, prepareLocalActionRetry } from "./local-action-retry.js";
+import {
+  completeLocalActionRetry,
+  markLocalActionRetryOutcome,
+  prepareLocalActionRetry,
+  preserveLocalActionRetryAttempt,
+  releaseLocalActionRetryAttempt,
+} from "./local-action-retry.js";
+import { APIError } from "./errors.js";
 import { scopedUICookieName } from "./ui-cookie.js";
 
 const viteEnv = import.meta.env || {};
@@ -6,45 +13,62 @@ const viteEnv = import.meta.env || {};
 export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
-export async function apiGet(path) {
-  const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
+export async function apiGet(path, options = {}) {
+  const response = await fetch(`${apiUrl}${path}`, { signal: options.signal, credentials: "include" });
   return readResponse(response);
 }
 
 export async function apiPost(path, body, options = {}) {
   const prepared = await preparePostBody(path, body);
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: "POST",
-    headers: csrfHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(prepared.body),
-    signal: options.signal,
-    credentials: "include",
-  });
-  let data;
+  let finalized = false;
   try {
-    data = await readResponse(response, { requireJSON: Boolean(prepared.retry) });
-  } catch (error) {
-    if (prepared.retry && error?.data?.status === "outcome_unknown") {
-      await markLocalActionRetryOutcome(prepared.retry, error.data);
-    } else if (prepared.retry && !prepared.retry.reused && response.status >= 400 && response.status < 500) {
-      // A gateway 4xx is a definitive pre-dispatch rejection unless the
-      // key predates this attempt. A carried key may represent an external
-      // side effect whose response was lost, so pre-handler auth/lock errors
-      // cannot retire it.
-      await completeLocalActionRetry(prepared.retry);
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: "POST",
+      headers: csrfHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(prepared.body),
+      signal: options.signal,
+      credentials: "include",
+    });
+    let data;
+    try {
+      data = await readResponse(response, { requireJSON: Boolean(prepared.retry) });
+    } catch (error) {
+      if (prepared.retry && error?.data?.status === "outcome_unknown") {
+        await markLocalActionRetryOutcome(prepared.retry, error.data);
+        finalized = true;
+      } else if (prepared.retry && !prepared.retry.reused && response.status >= 400 && response.status < 500) {
+        // A gateway 4xx is a definitive pre-dispatch rejection unless the
+        // key predates this attempt. Another active attempt still keeps the
+        // shared identity protected.
+        await completeLocalActionRetry(prepared.retry);
+        finalized = true;
+      }
+      throw error;
     }
+    if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status !== "outcome_unknown") {
+      await completeLocalActionRetry(prepared.retry);
+      finalized = true;
+    }
+    if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status === "outcome_unknown") {
+      await markLocalActionRetryOutcome(prepared.retry, data);
+      finalized = true;
+    }
+    if (prepared.retry && response.ok && !isAcknowledgedLocalActionResponse(data)) {
+      throw new Error("Invalid connector action response from gateway.");
+    }
+    return data;
+  } catch (error) {
+    finalized = await preserveRetryAfterFailure(prepared.retry, finalized);
     throw error;
+  } finally {
+    if (prepared.retry && !finalized) await releaseLocalActionRetryAttempt(prepared.retry);
   }
-  if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status !== "outcome_unknown") {
-    await completeLocalActionRetry(prepared.retry);
-  }
-  if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status === "outcome_unknown") {
-    await markLocalActionRetryOutcome(prepared.retry, data);
-  }
-  if (prepared.retry && response.ok && !isAcknowledgedLocalActionResponse(data)) {
-    throw new Error("Invalid connector action response from gateway.");
-  }
-  return data;
+}
+
+async function preserveRetryAfterFailure(retry, finalized) {
+  if (!retry || finalized) return finalized;
+  await preserveLocalActionRetryAttempt(retry);
+  return true;
 }
 
 const acknowledgedLocalActionStatuses = new Set([
@@ -87,18 +111,24 @@ export async function apiPostForm(path, formData, options = {}) {
   return readResponse(response);
 }
 
-export async function apiPut(path, body) {
+export async function apiPut(path, body, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
     method: "PUT",
     headers: csrfHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
+    signal: options.signal,
     credentials: "include",
   });
   return readResponse(response);
 }
 
-export async function apiDelete(path) {
-  const response = await fetch(`${apiUrl}${path}`, { method: "DELETE", headers: csrfHeaders(), credentials: "include" });
+export async function apiDelete(path, options = {}) {
+  const response = await fetch(`${apiUrl}${path}`, {
+    method: "DELETE",
+    headers: csrfHeaders(),
+    signal: options.signal,
+    credentials: "include",
+  });
   if (response.status === 204) {
     return null;
   }
@@ -118,13 +148,13 @@ export async function apiDownload(path, filename, options = {}) {
       throw error;
     }
   }
-  const response = await fetch(`${apiUrl}${path}`, { credentials: "include" });
+  const response = await fetch(`${apiUrl}${path}`, { signal: options.signal, credentials: "include" });
   if (!response.ok) {
     return readResponse(response);
   }
   if (saveHandle && response.body && typeof response.body.pipeTo === "function") {
     const writable = await saveHandle.createWritable();
-    await response.body.pipeTo(writable);
+    await response.body.pipeTo(writable, { signal: options.signal });
     return { saved: true, method: "picker" };
   }
   const blob = await response.blob();
@@ -144,10 +174,12 @@ async function readResponse(response, options = {}) {
     if (response.status === 401 && data?.error === "ui session required" && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("aipermission:ui-session-required"));
     }
-    const error = new Error(data?.error || `Request failed with ${response.status}`);
-    error.status = response.status;
-    error.data = data;
-    throw error;
+    throw new APIError(data?.error || `Request failed with ${response.status}`, {
+      status: response.status,
+      code: data?.code || data?.status || "",
+      details: data?.details || null,
+      data,
+    });
   }
   return data;
 }

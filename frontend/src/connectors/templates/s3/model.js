@@ -1,4 +1,4 @@
-import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
+import { connectorCredentialRows, createTargetProfileLifecycle, defaultTargetProfile } from "../_shared/target-profile-lifecycle";
 
 const emptyS3CredentialForm = {
   target_id: "",
@@ -39,22 +39,24 @@ export function emptyForm() {
 }
 
 export function formFromTarget({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+  const selectedProfile = defaultTargetProfile(target, profile);
+  const config = target?.config || {};
+  const profilePublic = selectedProfile.public || {};
   return {
     connector_kind: "s3",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
-    name: target.name || "",
-    connection_mode: target.config?.connection_mode || "direct",
-    scheme: target.config?.scheme || "https",
-    host: target.config?.host || "s3.amazonaws.com",
-    port: target.config?.port || 443,
-    region: target.config?.region || "us-east-1",
-    bucket: target.config?.bucket || "",
-    path_style: target.config?.path_style !== false,
-    trust_conditional_requests: target.config?.trust_conditional_requests === true,
-    transport_target_ref: target.config?.transport_target_ref || "",
+    name: target?.name || "",
+    connection_mode: config.connection_mode || "direct",
+    scheme: config.scheme || "https",
+    host: config.host || "s3.amazonaws.com",
+    port: config.port || 443,
+    region: config.region || "us-east-1",
+    bucket: config.bucket || "",
+    path_style: config.path_style !== false,
+    trust_conditional_requests: config.trust_conditional_requests === true,
+    transport_target_ref: config.transport_target_ref || "",
     profile_label: selectedProfile.label || "default",
-    access_key_id: selectedProfile.public?.access_key_id || "",
+    access_key_id: profilePublic.access_key_id || "",
     secret_access_key: "",
     session_token: "",
     risk_label: selectedProfile.risk_label || "object storage",

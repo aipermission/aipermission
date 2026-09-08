@@ -60,6 +60,8 @@ export function AppSidebar({
   onOpenTransferCenter,
   onSwitchDatabase,
   onLockDatabase,
+  embedded = false,
+  onNavigate,
 }) {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [mcpAction, setMCPAction] = useState({ state: "idle", error: null });
@@ -87,7 +89,13 @@ export function AppSidebar({
   }
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 overflow-y-auto border-r border-stone-200 bg-white lg:block">
+    <aside
+      className={
+        embedded
+          ? "h-full w-full overflow-y-auto bg-white"
+          : "fixed inset-y-0 left-0 z-20 hidden w-72 overflow-y-auto border-r border-stone-200 bg-white lg:block"
+      }
+    >
       <div className="flex h-full flex-col">
         <div className="border-b border-stone-200 p-5">
           <div className="flex items-center gap-3">
@@ -106,7 +114,7 @@ export function AppSidebar({
             const badgeCount = item.to === "/console" ? consoleAttentionCount : 0;
             return (
               <Button key={item.to} asChild variant={active ? "default" : "ghost"} className="justify-start">
-                <Link to={item.to}>
+                <Link to={item.to} onClick={onNavigate}>
                   <Icon className="h-4 w-4" />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   {badgeCount > 0 ? <CountBadge className="ml-auto">{badgeCount}</CountBadge> : null}

@@ -13,6 +13,7 @@ frontend/dist/
 frontend/coverage/
 frontend/test-results/
 frontend/playwright-report/
+frontend/.jscpd/
 packages/mcp/node_modules/
 packages/mcp/dist/
 packages/mcp/coverage/

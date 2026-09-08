@@ -12,9 +12,9 @@
   },
   "database": {
     "encrypted": true,
-    "schema_version": 27,
-    "supported_schema_version": 27,
-    "migration_count": 27,
+    "schema_version": 28,
+    "supported_schema_version": 28,
+    "migration_count": 28,
     "migration_state": "current",
     "sqlcipher_version": "test"
   },
