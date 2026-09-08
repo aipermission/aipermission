@@ -73,10 +73,6 @@ func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchReco
 	return filetransfer.CreateDownloadArchive(root, batch)
 }
 
-func uniqueArchiveEntryName(name, remotePath, archiveRoot string, used map[string]int) string {
-	return filetransfer.UniqueArchiveEntryName(name, remotePath, archiveRoot, used)
-}
-
 func relativeArchiveEntryPath(remotePath, archiveRoot string) string {
 	return filetransfer.RelativeArchiveEntryPath(remotePath, archiveRoot)
 }

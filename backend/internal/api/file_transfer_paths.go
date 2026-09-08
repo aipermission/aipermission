@@ -68,5 +68,5 @@ func transferUploadPath(adapter any, directory, relative string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	return joinRemoteRelativePath(directory, name), nil
+	return normalizeRemoteFilePath(joinRemoteRelativePath(directory, name))
 }

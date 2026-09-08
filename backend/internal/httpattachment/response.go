@@ -4,11 +4,12 @@ package httpattachment
 import (
 	"mime"
 	"net/http"
-	"path/filepath"
 	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/localfilename"
 )
 
-const MaxFilenameRunes = 180
+const MaxFilenameRunes = localfilename.MaxRunes
 
 func SetHeaders(w http.ResponseWriter, filename, contentType string) {
 	filename = SafeFilename(filename, "aipermission-download")
@@ -23,31 +24,5 @@ func SetHeaders(w http.ResponseWriter, filename, contentType string) {
 }
 
 func SafeFilename(value, fallback string) string {
-	if value = normalizeFilename(value); value != "" {
-		return value
-	}
-	if fallback = normalizeFilename(fallback); fallback != "" {
-		return fallback
-	}
-	return "aipermission-download"
-}
-
-func normalizeFilename(value string) string {
-	value = strings.ReplaceAll(value, "\\", "/")
-	value = filepath.Base(strings.TrimSpace(value))
-	value = strings.Map(func(character rune) rune {
-		if character < 0x20 || character == 0x7f {
-			return -1
-		}
-		return character
-	}, value)
-	value = strings.TrimSpace(value)
-	if value == "" || value == "." || value == "/" {
-		return ""
-	}
-	runes := []rune(value)
-	if len(runes) > MaxFilenameRunes {
-		value = string(runes[:MaxFilenameRunes])
-	}
-	return value
+	return localfilename.Safe(value, fallback)
 }

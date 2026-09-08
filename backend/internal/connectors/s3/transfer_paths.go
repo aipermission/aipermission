@@ -5,6 +5,9 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/aipermission/aipermission/backend/internal/archivepath"
+	"github.com/aipermission/aipermission/backend/internal/localfilename"
 )
 
 // Transfer locators add exactly one slash to the opaque bucket key.
@@ -51,12 +54,18 @@ func ParentTransferPath(directory string) string {
 // ZIP hierarchy cannot represent these components without renaming identities.
 // Single downloads have a separately reported safe local filename.
 func ValidateDownloadPaths(paths []string) error {
+	tracker := archivepath.NewTracker()
 	for _, locator := range paths {
-		for _, part := range strings.Split(strings.TrimPrefix(locator, "/"), "/") {
-			if part == "" || strings.HasPrefix(part, ".") || len([]rune(part)) > 160 || strings.TrimSpace(part) != part || strings.HasSuffix(part, ".") || strings.ContainsAny(part, "\\:<>\"|?*\x00") {
+		parts := strings.Split(strings.TrimPrefix(locator, "/"), "/")
+		for _, part := range parts {
+			if part == "" || strings.HasPrefix(part, ".") || localfilename.Safe(part, "") != part {
 				return fmt.Errorf("S3 keys cannot be mapped losslessly into this ZIP hierarchy; download these objects individually")
 			}
 		}
+		if tracker.ConflictIndex(parts) >= 0 {
+			return fmt.Errorf("S3 keys cannot be mapped losslessly into this ZIP hierarchy; download these objects individually")
+		}
+		tracker.Register(parts)
 	}
 	return nil
 }
