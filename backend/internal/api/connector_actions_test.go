@@ -78,13 +78,24 @@ func TestConnectorNetworkTransportFailsClosedWithoutSourceIdentity(t *testing.T)
 	transport := connectorNetworkTransport{runtime: &databaseRuntime{database: database}}
 
 	_, err := transport.DialConnectorTCP(context.Background(), connectors.NetworkDialRequest{
-		Mode:               "over_ssh",
+		Mode:               "over_fixture",
 		Host:               "127.0.0.1",
 		Port:               5432,
 		TransportTargetRef: "ssh:1:1",
 	})
 	if err == nil || !strings.Contains(err.Error(), "source target or project identity is required") {
 		t.Fatalf("expected missing source identity error, got %v", err)
+	}
+}
+
+func TestConnectorCommandTransportAcceptsConnectorOwnedModes(t *testing.T) {
+	transport := connectorCommandTransport{}
+	_, err := transport.RunConnectorCommand(t.Context(), connectors.CommandRunRequest{
+		Mode:    "over_fixture",
+		Command: "fixture status",
+	})
+	if err == nil || !strings.Contains(err.Error(), `transport target ref is required for command mode "over_fixture"`) {
+		t.Fatalf("custom command transport mode error = %v", err)
 	}
 }
 

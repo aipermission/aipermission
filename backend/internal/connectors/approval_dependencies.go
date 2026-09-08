@@ -12,15 +12,23 @@ func NetworkTransportDependencies(target TargetView) []ApprovalDependency {
 // CommandTransportDependencies binds an action to the connector-owned command
 // transport target selected by the connector configuration.
 func CommandTransportDependencies(target TargetView) []ApprovalDependency {
-	return transportDependencies(target, CommandTransportCapabilityName, "over_ssh")
+	return transportDependencies(target, CommandTransportCapabilityName, "connector")
 }
 
-func transportDependencies(target TargetView, purpose string, defaultMode string) []ApprovalDependency {
-	mode := strings.TrimSpace(stringConfigValue(target.Config, "connection_mode"))
+// UsesConnectorTransport reports whether a connection mode delegates work to
+// the connector referenced by transport_target_ref. Direct transport is the
+// only gateway-owned mode; connector implementations may define any other
+// reviewed mode without teaching core its name.
+func UsesConnectorTransport(mode string, defaultMode string) bool {
+	mode = strings.TrimSpace(mode)
 	if mode == "" {
 		mode = defaultMode
 	}
-	if mode != "over_ssh" {
+	return mode != "direct"
+}
+
+func transportDependencies(target TargetView, purpose string, defaultMode string) []ApprovalDependency {
+	if !UsesConnectorTransport(stringConfigValue(target.Config, "connection_mode"), defaultMode) {
 		return nil
 	}
 	return []ApprovalDependency{{
