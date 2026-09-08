@@ -41,7 +41,24 @@ func validateReadonlySQL(sql string) error {
 }
 
 func protectReadonlyFunctionResolution(ctx context.Context, tx pgx.Tx) error {
-	_, err := tx.Exec(ctx, `SELECT set_config('search_path', 'pg_catalog,' || current_setting('search_path'), true)`)
+	var exposesCustomImplicitCast bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_catalog.pg_cast AS cast_rule
+			JOIN pg_catalog.pg_proc AS cast_function ON cast_function.oid = cast_rule.castfunc
+			WHERE cast_rule.castcontext = 'i'
+				AND cast_rule.castfunc >= 16384
+				AND pg_catalog.has_function_privilege(current_user, cast_rule.castfunc, 'EXECUTE')
+				AND pg_catalog.has_type_privilege(current_user, cast_rule.castsource, 'USAGE')
+				AND pg_catalog.has_type_privilege(current_user, cast_rule.casttarget, 'USAGE')
+		)`).Scan(&exposesCustomImplicitCast); err != nil {
+		return fmt.Errorf("inspect postgres implicit cast policy: %w", err)
+	}
+	if exposesCustomImplicitCast {
+		return fmt.Errorf("postgres read-only execution is unavailable because this profile can execute a custom implicit cast")
+	}
+	_, err := tx.Exec(ctx, `SELECT set_config('search_path', 'pg_catalog', true)`)
 	if err != nil {
 		return fmt.Errorf("protect postgres read-only function resolution: %w", err)
 	}

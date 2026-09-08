@@ -224,6 +224,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 		Usage: []string{
 			"Use get_schemas and get_tables before composing SQL when the database shape is unknown.",
 			"Use describe_table for columns before querying application data.",
+			"Schema-qualify application tables in query_readonly, for example public.orders.",
 			"Use query_readonly only for SELECT, WITH, SHOW, or EXPLAIN-style reads and include a short reason.",
 			"Prefer small max_rows values and ask for approval before reading sensitive business data.",
 		},

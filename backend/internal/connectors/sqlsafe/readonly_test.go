@@ -117,13 +117,55 @@ func TestPostgreSQLFunctionCallsExposeQuotedIdentifiers(t *testing.T) {
 	}
 }
 
-func TestPostgreSQLFunctionCallsExposeNonASCIIIdentifiers(t *testing.T) {
-	calls, err := PostgreSQLFunctionCalls(`SELECT şüpheli()`)
+func TestPostgreSQLFunctionCallsExposeSchemaQualifiedSyntaxKeywordNames(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls(`SELECT public.select(), audit.where()`)
 	if err != nil {
 		t.Fatalf("function calls: %v", err)
 	}
-	if len(calls) != 1 || calls[0].Name != "şüpheli" {
+	want := []FunctionCall{
+		{Schema: "public", Name: "select"},
+		{Schema: "audit", Name: "where"},
+	}
+	if len(calls) != len(want) || calls[0] != want[0] || calls[1] != want[1] {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestPostgreSQLFunctionCallsExposeNonASCIIIdentifiers(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls("SELECT şüpheli(), a\u0301(), count(pg_notify('events', 'payload')), pg_catalog.lower(trim(name))")
+	if err != nil {
+		t.Fatalf("function calls: %v", err)
+	}
+	want := []FunctionCall{
+		{Name: "şüpheli"},
+		{Name: "a\u0301"},
+		{Name: "count"},
+		{Name: "pg_notify"},
+		{Schema: "pg_catalog", Name: "lower"},
+		{Name: "trim"},
+	}
+	if len(calls) != len(want) {
 		t.Fatalf("calls = %#v", calls)
+	}
+	for index := range want {
+		if calls[index] != want[index] {
+			t.Fatalf("call[%d] = %#v, want %#v", index, calls[index], want[index])
+		}
+	}
+}
+
+func TestPostgreSQLDialectRejectsNumericDollarQuoteAsStatementMask(t *testing.T) {
+	err := ValidateReadOnlyDialect(
+		`SELECT $1$; DROP TABLE users; SELECT $1$`,
+		"query_readonly",
+		20000,
+		[]string{"select"},
+		"SELECT",
+		testDisallowedTerms,
+		DialectPostgreSQL,
+	)
+	if err == nil || !strings.Contains(err.Error(), "single statement") {
+		t.Fatalf("expected single statement error, got %v", err)
 	}
 }
 
@@ -144,6 +186,27 @@ func TestValidatePostgreSQLResolutionSyntaxRejectsExplicitOperatorsAndCasts(t *t
 	} {
 		if err := ValidatePostgreSQLResolutionSyntax(query); err != nil {
 			t.Fatalf("safe query rejected: %q: %v", query, err)
+		}
+	}
+}
+
+func TestValidatePostgreSQLResolutionSyntaxRejectsQualifiedTypedLiterals(t *testing.T) {
+	for _, query := range []string{
+		`SELECT public.custom_type 'value'`,
+		`SELECT "public"."custom_type" 'value'`,
+		`SELECT public.custom_type E'value'`,
+		`SELECT public.custom_type $tag$value$tag$`,
+	} {
+		if err := ValidatePostgreSQLResolutionSyntax(query); err == nil {
+			t.Fatalf("accepted schema-qualified typed literal %q", query)
+		}
+	}
+	for _, query := range []string{
+		`SELECT DATE '2026-09-09'`,
+		`SELECT 'public.custom_type ''value'''`,
+	} {
+		if err := ValidatePostgreSQLResolutionSyntax(query); err != nil {
+			t.Fatalf("rejected safe typed literal %q: %v", query, err)
 		}
 	}
 }
