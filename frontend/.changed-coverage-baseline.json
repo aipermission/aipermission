@@ -10,10 +10,10 @@
   },
   "files": {
     "src/App.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 83.87,
+      "branches": 81.25,
+      "functions": 75,
+      "lines": 92
     },
     "src/components/app-mobile-navigation.jsx": {
       "statements": 75,
@@ -70,10 +70,10 @@
       "lines": 96.66
     },
     "src/components/console/connector-token-permission-panel.jsx": {
-      "statements": 86.48,
-      "branches": 76.69,
-      "functions": 78.72,
-      "lines": 85.91
+      "statements": 89.18,
+      "branches": 82.97,
+      "functions": 82.97,
+      "lines": 88.73
     },
     "src/components/console/console-layout.js": {
       "statements": 100,
@@ -160,10 +160,10 @@
       "lines": 71.95
     },
     "src/components/console/use-connector-token-permission-state.js": {
-      "statements": 92.46,
-      "branches": 61.46,
-      "functions": 94.82,
-      "lines": 98.1
+      "statements": 94.03,
+      "branches": 66.39,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/console/use-console-connections.js": {
       "statements": 81.96,
@@ -676,10 +676,10 @@
       "lines": 93.33
     },
     "src/connectors/templates/_shared/action-runner.js": {
-      "statements": 92.59,
+      "statements": 92.72,
       "branches": 70.83,
       "functions": 100,
-      "lines": 97.61
+      "lines": 97.67
     },
     "src/connectors/templates/_shared/console-theme.js": {
       "statements": 0,
@@ -1360,34 +1360,40 @@
       "lines": 0
     },
     "src/connectors/templates/rabbitmq/publish-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 1,
+      "branches": 1,
+      "functions": 1,
+      "lines": 1
     },
     "src/connectors/templates/rabbitmq/queue-browser.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 46.66,
+      "branches": 24,
+      "functions": 55.55,
+      "lines": 53.84
     },
     "src/connectors/templates/rabbitmq/queue-detail.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 1,
+      "branches": 1,
+      "functions": 1,
+      "lines": 1
     },
     "src/connectors/templates/rabbitmq/routing-key-picker.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 1,
+      "branches": 1,
+      "functions": 1,
+      "lines": 1
     },
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.js": {
-      "statements": 80.17,
-      "branches": 53.42,
-      "functions": 80,
-      "lines": 87.5
+      "statements": 90.84,
+      "branches": 66.01,
+      "functions": 95.23,
+      "lines": 93.45
+    },
+    "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.js": {
+      "statements": 96.42,
+      "branches": 86.66,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/redis/browser-helpers.js": {
       "statements": 57.69,
@@ -1714,10 +1720,10 @@
       "lines": 100
     },
     "src/lib/permissions.js": {
-      "statements": 60.31,
-      "branches": 55.55,
-      "functions": 80,
-      "lines": 73.8
+      "statements": 100,
+      "branches": 98.14,
+      "functions": 100,
+      "lines": 100
     },
     "src/lib/project-scopes.js": {
       "statements": 100,
@@ -1768,10 +1774,10 @@
       "lines": 100
     },
     "src/lib/use-connector-permissions.js": {
-      "statements": 82.97,
-      "branches": 63.49,
-      "functions": 83.33,
-      "lines": 88
+      "statements": 87,
+      "branches": 70.42,
+      "functions": 88.88,
+      "lines": 90
     },
     "src/lib/use-media-query.js": {
       "statements": 75,
@@ -1864,10 +1870,10 @@
       "lines": 100
     },
     "src/pages/remote-restore-panel.jsx": {
-      "statements": 81.25,
-      "branches": 63.75,
-      "functions": 80.95,
-      "lines": 85.43
+      "statements": 87.17,
+      "branches": 71.95,
+      "functions": 100,
+      "lines": 91.58
     },
     "src/pages/security.jsx": {
       "statements": 100,
@@ -1888,28 +1894,28 @@
       "lines": 75.53
     },
     "src/pages/unlock-create-panel.jsx": {
-      "statements": 90.47,
-      "branches": 84.61,
-      "functions": 75,
-      "lines": 93.75
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/pages/unlock-database-panel.jsx": {
-      "statements": 74.57,
-      "branches": 57.5,
-      "functions": 70.58,
-      "lines": 81.63
+      "statements": 97.95,
+      "branches": 86.11,
+      "functions": 100,
+      "lines": 100
     },
     "src/pages/unlock-import-panel.jsx": {
       "statements": 100,
-      "branches": 83.33,
+      "branches": 87.5,
       "functions": 100,
       "lines": 100
     },
     "src/pages/unlock.jsx": {
-      "statements": 91.93,
+      "statements": 95.58,
       "branches": 85.96,
-      "functions": 95.83,
-      "lines": 96.15
+      "functions": 100,
+      "lines": 100
     },
     "src/pages/use-history-page-state.js": {
       "statements": 84.41,
@@ -1922,6 +1928,12 @@
       "branches": 0,
       "functions": 71.42,
       "lines": 77.14
+    },
+    "src/pages/use-unlock-lifecycle-mutation.js": {
+      "statements": 95.23,
+      "branches": 87.5,
+      "functions": 100,
+      "lines": 100
     },
     "src/pages/vault-components.jsx": {
       "statements": 35.38,
