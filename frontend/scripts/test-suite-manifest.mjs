@@ -1,7 +1,10 @@
 import { globSync, readFileSync } from "node:fs";
-import { basename, dirname, extname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { analyzeSourceTree } from "./architecture-graph.mjs";
+import { testReachesOwner } from "./async-owner-manifest.mjs";
+import { isAsyncStateOwner } from "./async-owner-policy.mjs";
 import { asyncStateOwnerTests, asyncStateTestIncludes, riskCoverageTestIncludes } from "../test-suite-manifests.mjs";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,11 +21,12 @@ if (missing.length > 0) {
   missing.forEach((entry) => console.error(`- ${entry}`));
   process.exit(1);
 }
-const asyncOwnerMarkers =
-  /\b(?:useRequestGuard|createRequestGuard|AbortController|WebSocket|setInterval|cooldownTimers)\b|\brequestGuard\.(?:begin|invalidate)\s*\(|\bsetTimeout\s*\(\s*poll\b/;
-const detectedAsyncOwners = globSync("src/**/*.{js,jsx}", { cwd: frontendRoot })
-  .filter((file) => !/\.(?:component\.)?test\.[jt]sx?$/.test(file))
-  .filter((file) => asyncOwnerMarkers.test(readFileSync(resolve(frontendRoot, file), "utf8")))
+const sourceRoot = resolve(frontendRoot, "src");
+const sourceAnalysis = analyzeSourceTree(sourceRoot);
+const sourceFiles = new Set(sourceAnalysis.files);
+const detectedAsyncOwners = sourceAnalysis.files
+  .map((file) => `src/${file.slice(sourceRoot.length + 1).replaceAll("\\", "/")}`)
+  .filter((file) => isAsyncStateOwner(readFileSync(resolve(frontendRoot, file), "utf8")))
   .sort();
 const declaredAsyncOwners = Object.keys(asyncStateOwnerTests).sort();
 const unowned = detectedAsyncOwners.filter((file) => !Object.hasOwn(asyncStateOwnerTests, file));
@@ -34,17 +38,20 @@ if (unowned.length > 0 || stale.length > 0) {
   process.exit(1);
 }
 const unsupportedMappings = Object.entries(asyncStateOwnerTests).flatMap(([owner, tests]) => {
-  const ownerStem = basename(owner, extname(owner));
-  const marker = `async-owner: ${owner}`;
-  return tests.some((testFile) => {
-    const source = readFileSync(resolve(frontendRoot, testFile), "utf8");
-    return source.includes(ownerStem) || source.includes(marker);
-  })
+  return tests.some((testFile) =>
+    testReachesOwner({
+      graph: sourceAnalysis.graph,
+      ownerPath: resolve(frontendRoot, owner),
+      sourceFiles,
+      sourceRoot,
+      testPath: resolve(frontendRoot, testFile),
+    }),
+  )
     ? []
     : [owner];
 });
 if (unsupportedMappings.length > 0) {
-  console.error("Frontend async-state owner mappings lack direct imports or explicit coverage markers:");
+  console.error("Frontend async-state owner mappings lack an import-graph path from their declared tests:");
   unsupportedMappings.forEach((file) => console.error(`- unsupported owner mapping: ${file}`));
   process.exit(1);
 }

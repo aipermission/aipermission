@@ -16,7 +16,7 @@
     "test": "npm run test:unit && npm run test:component",
     "test:unit": "node scripts/run-tests.mjs",
     "test:component": "vitest run --config vitest.config.js",
-    "test:config": "node scripts/test-suite-manifest.mjs",
+    "test:config": "node --test scripts/async-owner-manifest.test.mjs scripts/async-owner-policy.test.mjs && node scripts/test-suite-manifest.mjs",
     "test:async-race": "npm run test:config && node --test src/lib/request-guard.test.js src/components/app-shell-runtime.test.js && vitest run --config vitest.async.config.js",
     "test:coverage": "npm run test:config && npm run test:coverage:focused && npm run test:coverage:risk && npm run test:coverage:retry",
     "test:coverage:focused": "vitest run --config vitest.config.js --coverage",

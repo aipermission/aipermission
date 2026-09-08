@@ -1,6 +1,7 @@
 import { RefreshCcw, Search } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
+import { useRequestGuard } from "../lib/request-guard";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -31,27 +32,21 @@ export function AuditLogsPage() {
     error: null,
   });
   const [selected, setSelected] = useState(null);
+  const requests = useRequestGuard("audit-logs");
+  const loadProjectsForEffect = useEffectEvent(() => loadAuditProjects(requests, setProjects));
   const loadAuditLogsForEffect = useEffectEvent((offset) => loadAuditLogs(offset));
 
   useEffect(() => {
-    void loadProjects();
+    void loadProjectsForEffect();
   }, []);
 
   useEffect(() => {
+    requests.invalidate("list");
     const timer = window.setTimeout(() => {
       void loadAuditLogsForEffect(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.projectID, filters.actor, filters.connectorKind, filters.targetID]);
-
-  async function loadProjects() {
-    try {
-      const data = await apiGet("/api/projects");
-      setProjects({ state: "ready", data: data.items || [], error: null });
-    } catch (error) {
-      setProjects({ state: "error", data: [], error: error.message });
-    }
-  }
+  }, [filters.query, filters.projectID, filters.actor, filters.connectorKind, filters.targetID, requests]);
 
   const targetOptions = useMemo(() => {
     const options = new Map();
@@ -90,6 +85,7 @@ export function AuditLogsPage() {
   );
 
   async function loadAuditLogs(offset = state.offset) {
+    const request = requests.begin("list");
     setState((current) => ({ ...current, state: "loading", error: null }));
     const params = new URLSearchParams({
       limit: String(state.limit),
@@ -102,7 +98,8 @@ export function AuditLogsPage() {
     if (filters.targetID && !filters.targetID.startsWith("runtime:")) params.set("target_id", filters.targetID);
     if (filters.targetID?.startsWith("runtime:")) params.set("runtime_id", filters.targetID.slice("runtime:".length));
     try {
-      const data = await apiGet(`/api/audit-logs?${params.toString()}`);
+      const data = await apiGet(`/api/audit-logs?${params.toString()}`, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setState({
         state: "ready",
         data: data.items || [],
@@ -113,17 +110,25 @@ export function AuditLogsPage() {
         error: null,
       });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 
   async function openAuditItem(item) {
+    const request = requests.begin("detail");
     setSelected(item);
     try {
-      const detail = await apiGet(`/api/audit-logs/${item.id}`);
+      const detail = await apiGet(`/api/audit-logs/${item.id}`, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setSelected(detail);
     } catch {
+      if (!request.isCurrent()) return;
       setSelected(item);
+    } finally {
+      request.complete();
     }
   }
 
@@ -266,6 +271,20 @@ export function AuditLogsPage() {
       <AuditDialog item={selected} onClose={() => setSelected(null)} />
     </section>
   );
+}
+
+async function loadAuditProjects(requests, setProjects) {
+  const request = requests.begin("projects");
+  try {
+    const data = await apiGet("/api/projects", { signal: request.signal });
+    if (!request.isCurrent()) return;
+    setProjects({ state: "ready", data: data.items || [], error: null });
+  } catch (error) {
+    if (!request.isCurrent()) return;
+    setProjects({ state: "error", data: [], error: error.message });
+  } finally {
+    request.complete();
+  }
 }
 
 function AuditStat({ label, value, tone = "neutral" }) {

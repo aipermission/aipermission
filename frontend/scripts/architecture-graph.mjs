@@ -319,7 +319,7 @@ function connectorTemplateKinds(sourceRoot) {
     .sort();
 }
 
-function resolveSourceImport(sourceRoot, importer, specifier, fileSet) {
+export function resolveSourceImport(sourceRoot, importer, specifier, fileSet) {
   if (!specifier.startsWith(".") && !specifier.startsWith("/src/")) return null;
   const base = specifier.startsWith("/src/") ? resolve(sourceRoot, specifier.slice(5)) : resolve(dirname(importer), specifier);
   for (const candidate of [

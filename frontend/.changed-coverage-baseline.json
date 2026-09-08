@@ -1768,10 +1768,10 @@
       "lines": 0
     },
     "src/pages/audit-logs.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 55.42,
+      "branches": 47.87,
+      "functions": 57.14,
+      "lines": 66.93
     },
     "src/pages/connectors.jsx": {
       "statements": 0,

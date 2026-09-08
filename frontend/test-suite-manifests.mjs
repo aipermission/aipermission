@@ -1,5 +1,9 @@
 export const asyncStateOwnerTests = {
+  "src/components/app-shell.jsx": ["src/components/app-shell.component.test.jsx"],
   "src/components/console/use-connector-approval-dialog.js": ["src/components/console/use-connector-approval-dialog.component.test.jsx"],
+  "src/components/console/use-connector-token-permission-state.js": [
+    "src/components/console/connector-token-permission-panel.component.test.jsx",
+  ],
   "src/components/console/use-console-connections.js": ["src/components/console/use-console-connections.component.test.jsx"],
   "src/components/console/use-console-messages.js": ["src/components/console/use-console-messages.component.test.jsx"],
   "src/components/console/use-console-recovery-state.js": ["src/components/console/use-console-recovery-state.component.test.jsx"],
@@ -12,6 +16,8 @@ export const asyncStateOwnerTests = {
   "src/components/file-transfer/use-transfer-download.js": ["src/components/file-transfer/use-transfer-download.component.test.jsx"],
   "src/components/file-transfer/use-transfer-queues.js": ["src/components/file-transfer/use-transfer-queues.component.test.jsx"],
   "src/components/settings/maintenance-console-panel.jsx": ["src/components/settings/maintenance-console-panel.component.test.jsx"],
+  "src/components/tokens/connector-permission-dialog.jsx": ["src/components/tokens/connector-permission-dialog.component.test.jsx"],
+  "src/components/tokens/vault-permission-dialog.jsx": ["src/components/tokens/vault-permission-dialog.component.test.jsx"],
   "src/components/use-gateway-activity-resources.js": ["src/components/use-gateway-resources.component.test.jsx"],
   "src/components/use-gateway-core-resources.js": ["src/components/use-gateway-resources.component.test.jsx"],
   "src/components/vault/use-vault-action-approvals.js": ["src/components/vault/use-vault-action-approvals.component.test.jsx"],
@@ -19,7 +25,6 @@ export const asyncStateOwnerTests = {
   "src/components/vault/use-vault-collection.js": ["src/components/vault/use-vault-collection.component.test.jsx"],
   "src/components/vault/use-vault-value-actions.js": ["src/components/vault/use-vault-value-actions.component.test.jsx"],
   "src/connectors/editor/use-connector-inventory.js": ["src/connectors/editor/use-connector-inventory.component.test.jsx"],
-  "src/connectors/editor/use-connector-connection-tests.js": ["src/connectors/editor/use-connector-connection-tests.component.test.jsx"],
   "src/connectors/templates/_shared/action-runner.js": ["src/connectors/templates/_shared/action-runner.component.test.jsx"],
   "src/connectors/templates/_shared/use-sql-metadata.js": ["src/connectors/templates/_shared/use-sql-console.component.test.jsx"],
   "src/connectors/templates/_shared/use-sql-console.js": ["src/connectors/templates/_shared/use-sql-console.component.test.jsx"],
@@ -28,6 +33,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/kubernetes/use-kubernetes-browser.js": [
     "src/connectors/templates/kubernetes/use-kubernetes-browser.component.test.jsx",
   ],
+  "src/connectors/templates/mail/use-mail-action-runner.js": ["src/connectors/templates/mail/use-mail-action-runner.component.test.jsx"],
   "src/connectors/templates/postgres/use-postgres-backup-restore.js": [
     "src/connectors/templates/postgres/use-postgres-backup-restore.component.test.jsx",
   ],
@@ -39,10 +45,13 @@ export const asyncStateOwnerTests = {
   ],
   "src/connectors/templates/redis/use-redis-browser.js": ["src/connectors/templates/redis/use-redis-browser.component.test.jsx"],
   "src/connectors/templates/s3/use-s3-browser.js": ["src/connectors/templates/s3/use-s3-browser.component.test.jsx"],
+  "src/connectors/templates/s3/use-s3-upload.js": ["src/connectors/templates/s3/use-s3-browser.component.test.jsx"],
   "src/connectors/templates/ssh/bulk-command-dialog.jsx": ["src/connectors/templates/ssh/bulk-command-dialog.component.test.jsx"],
   "src/lib/request-guard.js": ["src/lib/request-guard.test.js"],
+  "src/lib/load-project-options.js": ["src/connectors/editor/use-connector-inventory.component.test.jsx"],
   "src/lib/use-connector-permissions.js": ["src/lib/use-connector-permissions.component.test.jsx"],
   "src/pages/remote-restore-panel.jsx": ["src/pages/remote-restore-panel.component.test.jsx"],
+  "src/pages/audit-logs.jsx": ["src/pages/audit-logs.component.test.jsx"],
   "src/pages/unlock-create-panel.jsx": ["src/pages/unlock.component.test.jsx"],
   "src/pages/unlock-database-panel.jsx": ["src/pages/unlock.component.test.jsx"],
   "src/pages/unlock-import-panel.jsx": ["src/pages/unlock.component.test.jsx"],

@@ -49,8 +49,9 @@ This runs:
 - backend govulncheck
 - frontend tests
 - frontend suite-manifest validation that discovers production owners using
-  request guards, abort controllers, timers, or sockets and requires each owner
-  to name the focused regression test that exercises it
+  request/generation guards, abort controllers, polling timers, or sockets and
+  requires each owner to name a focused regression test that reaches it through
+  the real import graph; comments and filename substrings do not satisfy the gate
 - frontend duplicate-block comparison against the base Git revision
 - frontend per-file coverage floors for connector permission editing, shared
   connector action and target/profile lifecycles, approval dialogs, and console
