@@ -6,6 +6,7 @@ import { isAsyncStateOwner } from "./async-owner-policy.mjs";
 test("discovers request guards, sockets, abort controllers, timers, and generation guards", () => {
   for (const source of [
     "const requests = useRequestGuard('scope');",
+    "const action = useAsyncAction();",
     "const requests = createRequestGuard('scope');",
     "const guard = createPollGenerationGuard();",
     "const controller = new AbortController();",
@@ -15,6 +16,8 @@ test("discovers request guards, sockets, abort controllers, timers, and generati
     "setTimeout(() => apiGet('/status'), 250);",
     "setInterval(refresh, 1000);",
     "++requestGeneration.current;",
+    "requestGeneration.current = requestID;",
+    "backupRecordsRequest.current = requestID;",
     "requests.begin('load');",
     "requestGuard.invalidate('load');",
   ]) {

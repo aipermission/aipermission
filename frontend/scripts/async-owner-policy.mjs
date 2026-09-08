@@ -1,6 +1,6 @@
 import { parseModule } from "./architecture-graph.mjs";
 
-const asyncCalls = new Set(["createPollGenerationGuard", "createRequestGuard", "setInterval", "useRequestGuard"]);
+const asyncCalls = new Set(["createPollGenerationGuard", "createRequestGuard", "setInterval", "useAsyncAction", "useRequestGuard"]);
 const asyncConstructors = new Set(["AbortController", "WebSocket"]);
 
 export function isAsyncStateOwner(sourceOrProgram) {
@@ -18,7 +18,8 @@ export function isAsyncStateOwner(sourceOrProgram) {
         found = true;
     }
     if (node.type === "NewExpression" && asyncConstructors.has(calledName(node.callee))) found = true;
-    if (node.type === "UpdateExpression" && /request.*generation|generation.*request/i.test(referenceName(node.argument))) found = true;
+    if (node.type === "UpdateExpression" && isAsyncGenerationReference(node.argument)) found = true;
+    if (node.type === "AssignmentExpression" && isAsyncGenerationReference(node.left)) found = true;
   });
   return found;
 }
@@ -46,6 +47,11 @@ function calledName(callee) {
 function requestGuardReceiver(callee) {
   if (callee?.type !== "MemberExpression") return false;
   return /request|guard/i.test(referenceName(callee.object));
+}
+
+function isAsyncGenerationReference(node) {
+  const name = referenceName(node);
+  return /(?:request|generation)/i.test(name) && /\.current$/i.test(name);
 }
 
 function referenceName(node) {
