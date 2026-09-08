@@ -15,7 +15,7 @@ import {
   shortBackupStreamID,
 } from "./remote-restore-helpers";
 
-export function RemoteRestorePanel({ onUnlocked }) {
+export function RemoteRestorePanel({ runLifecycleMutation }) {
   const [form, setForm] = useState({ base_url: "", token: "", database_name: "", database_password: "" });
   const [state, setState] = useState({ state: "idle", error: null });
   const [streams, setStreams] = useState([]);
@@ -26,6 +26,7 @@ export function RemoteRestorePanel({ onUnlocked }) {
   const requestGeneration = useRef(0);
   const formRef = useRef(form);
   const listRequestGuard = useRequestGuard(`remote-restore:list:${remoteCredentialFingerprint(form)}`);
+  const restoring = state.state === "restoring";
 
   useEffect(
     () => () => {
@@ -35,6 +36,7 @@ export function RemoteRestorePanel({ onUnlocked }) {
   );
 
   function updateField(field, value) {
+    if (restoring) return;
     const nextForm = { ...formRef.current, [field]: value };
     formRef.current = nextForm;
     setForm(nextForm);
@@ -134,20 +136,25 @@ export function RemoteRestorePanel({ onUnlocked }) {
     const generation = ++requestGeneration.current;
     setState({ state: "restoring", error: null });
     try {
-      await apiPost("/api/backup/remote/restore", {
-        base_url: credentials.base_url,
-        token: credentials.token,
-        stream_id: selectedStreamID,
-        backup_id: selectedBackupID,
-        database_name: form.database_name,
-        database_password: form.database_password,
+      await runLifecycleMutation("remote-restore", async (signal) => {
+        await apiPost(
+          "/api/backup/remote/restore",
+          {
+            base_url: credentials.base_url,
+            token: credentials.token,
+            stream_id: selectedStreamID,
+            backup_id: selectedBackupID,
+            database_name: form.database_name,
+            database_password: form.database_password,
+          },
+          { signal },
+        );
       });
       if (remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) {
         const emptyForm = { base_url: "", token: "", database_name: "", database_password: "" };
         formRef.current = emptyForm;
         setForm(emptyForm);
       }
-      await onUnlocked();
     } catch (error) {
       if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
       setState({ state: "error", error: error.message });
@@ -173,93 +180,23 @@ export function RemoteRestorePanel({ onUnlocked }) {
       <RemoteServiceForm form={form} state={state.state} hasStreams={streams.length > 0} onChange={updateField} onSubmit={connectService} />
 
       {streams.length > 0 ? (
-        <form className="grid gap-4 border-t border-stone-200 pt-4" onSubmit={restoreRemoteBackup}>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-semibold text-stone-800">
-              Database stream
-              <select
-                className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-emerald-800"
-                value={selectedStreamID}
-                onChange={(event) => {
-                  const stream = streams.find((item) => item.id === event.target.value);
-                  void loadVersions(event.target.value, form, stream?.database_name || "");
-                }}
-                disabled={state.state === "loading_versions" || state.state === "restoring"}
-              >
-                {streams.map((stream) => (
-                  <option key={stream.id} value={stream.id}>
-                    {stream.database_name} · {shortBackupStreamID(stream.id)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-semibold text-stone-800">
-              Backup version
-              <select
-                className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-emerald-800"
-                value={selectedBackupID}
-                onChange={(event) => setSelectedBackupID(event.target.value)}
-                disabled={state.state === "loading_versions" || state.state === "restoring" || versions.length === 0}
-              >
-                {versions.length === 0 ? <option value="">No backups available</option> : null}
-                {versionGroups.map((group) => (
-                  <optgroup key={group.source} label={`Source ${shortBackupSourceID(group.source)}`}>
-                    {group.items.map((version) => (
-                      <option key={version.id} value={version.id}>
-                        {formatRelativeAge(version.created_at)} · {formatLocalTimestamp(version.created_at)} ·{" "}
-                        {formatBytes(version.size_bytes)}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-          </div>
-          {selectedVersion ? <RemoteBackupDetails version={selectedVersion} /> : null}
-          {selectedStream ? (
-            <div className="grid gap-2">
-              <label htmlFor="remote-backup-database-name" className="text-sm font-semibold text-stone-800">
-                New local database name
-              </label>
-              <Input
-                id="remote-backup-database-name"
-                value={form.database_name}
-                onChange={(event) => updateField("database_name", event.target.value)}
-                required
-              />
-              <p className="text-xs text-stone-500">
-                Remote stream {shortBackupStreamID(selectedStream.id)} remains unchanged; this name is only for the restored local copy.
-              </p>
-            </div>
-          ) : null}
-          <div className="grid gap-2">
-            <label htmlFor="remote-backup-database-password" className="text-sm font-semibold text-stone-800">
-              Backup database password
-            </label>
-            <Input
-              id="remote-backup-database-password"
-              type="password"
-              value={form.database_password}
-              onChange={(event) => updateField("database_password", event.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </div>
-          <Button
-            type="submit"
-            disabled={
-              !selectedBackupID ||
-              !form.database_name.trim() ||
-              !form.database_password ||
-              state.state === "restoring" ||
-              state.state === "loading_versions" ||
-              versionCredentialFingerprint !== remoteCredentialFingerprint(form)
-            }
-          >
-            <CloudDownload className="h-4 w-4" />
-            {state.state === "restoring" ? "Restoring..." : "Restore encrypted database"}
-          </Button>
-        </form>
+        <RemoteBackupSelectionForm
+          form={form}
+          loadVersions={loadVersions}
+          onChange={updateField}
+          onSubmit={restoreRemoteBackup}
+          restoring={restoring}
+          selectedBackupID={selectedBackupID}
+          selectedStream={selectedStream}
+          selectedStreamID={selectedStreamID}
+          selectedVersion={selectedVersion}
+          setSelectedBackupID={setSelectedBackupID}
+          state={state.state}
+          streams={streams}
+          versionCredentialFingerprint={versionCredentialFingerprint}
+          versionGroups={versionGroups}
+          versions={versions}
+        />
       ) : state.state === "ready" ? (
         <Notice>No backup streams were found for this service token.</Notice>
       ) : null}
@@ -269,7 +206,117 @@ export function RemoteRestorePanel({ onUnlocked }) {
   );
 }
 
+function RemoteBackupSelectionForm({
+  form,
+  loadVersions,
+  onChange,
+  onSubmit,
+  restoring,
+  selectedBackupID,
+  selectedStream,
+  selectedStreamID,
+  selectedVersion,
+  setSelectedBackupID,
+  state,
+  streams,
+  versionCredentialFingerprint,
+  versionGroups,
+  versions,
+}) {
+  return (
+    <form className="grid gap-4 border-t border-stone-200 pt-4" onSubmit={onSubmit}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="grid gap-2 text-sm font-semibold text-stone-800">
+          Database stream
+          <select
+            className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-emerald-800"
+            value={selectedStreamID}
+            onChange={(event) => {
+              const stream = streams.find((item) => item.id === event.target.value);
+              void loadVersions(event.target.value, form, stream?.database_name || "");
+            }}
+            disabled={state === "loading_versions" || restoring}
+          >
+            {streams.map((stream) => (
+              <option key={stream.id} value={stream.id}>
+                {stream.database_name} · {shortBackupStreamID(stream.id)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-stone-800">
+          Backup version
+          <select
+            className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-normal outline-none focus:border-emerald-800"
+            value={selectedBackupID}
+            onChange={(event) => setSelectedBackupID(event.target.value)}
+            disabled={state === "loading_versions" || restoring || versions.length === 0}
+          >
+            {versions.length === 0 ? <option value="">No backups available</option> : null}
+            {versionGroups.map((group) => (
+              <optgroup key={group.source} label={`Source ${shortBackupSourceID(group.source)}`}>
+                {group.items.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {formatRelativeAge(version.created_at)} · {formatLocalTimestamp(version.created_at)} · {formatBytes(version.size_bytes)}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+      </div>
+      {selectedVersion ? <RemoteBackupDetails version={selectedVersion} /> : null}
+      {selectedStream ? (
+        <div className="grid gap-2">
+          <label htmlFor="remote-backup-database-name" className="text-sm font-semibold text-stone-800">
+            New local database name
+          </label>
+          <Input
+            id="remote-backup-database-name"
+            value={form.database_name}
+            onChange={(event) => onChange("database_name", event.target.value)}
+            disabled={restoring}
+            required
+          />
+          <p className="text-xs text-stone-500">
+            Remote stream {shortBackupStreamID(selectedStream.id)} remains unchanged; this name is only for the restored local copy.
+          </p>
+        </div>
+      ) : null}
+      <div className="grid gap-2">
+        <label htmlFor="remote-backup-database-password" className="text-sm font-semibold text-stone-800">
+          Backup database password
+        </label>
+        <Input
+          id="remote-backup-database-password"
+          type="password"
+          value={form.database_password}
+          onChange={(event) => onChange("database_password", event.target.value)}
+          disabled={restoring}
+          autoComplete="current-password"
+          required
+        />
+      </div>
+      <Button
+        type="submit"
+        disabled={
+          !selectedBackupID ||
+          !form.database_name.trim() ||
+          !form.database_password ||
+          restoring ||
+          state === "loading_versions" ||
+          versionCredentialFingerprint !== remoteCredentialFingerprint(form)
+        }
+      >
+        <CloudDownload className="h-4 w-4" />
+        {restoring ? "Restoring..." : "Restore encrypted database"}
+      </Button>
+    </form>
+  );
+}
+
 function RemoteServiceForm({ form, state, hasStreams, onChange, onSubmit }) {
+  const restoring = state === "restoring";
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
       <div className="grid gap-2">
@@ -283,6 +330,7 @@ function RemoteServiceForm({ form, state, hasStreams, onChange, onSubmit }) {
           onChange={(event) => onChange("base_url", event.target.value)}
           placeholder="https://backups.example.com"
           autoComplete="off"
+          disabled={restoring}
           required
         />
       </div>
@@ -296,10 +344,11 @@ function RemoteServiceForm({ form, state, hasStreams, onChange, onSubmit }) {
           value={form.token}
           onChange={(event) => onChange("token", event.target.value)}
           autoComplete="off"
+          disabled={restoring}
           required
         />
       </div>
-      <Button type="submit" variant="outline" disabled={state === "connecting" || state === "loading_versions" || state === "restoring"}>
+      <Button type="submit" variant="outline" disabled={state === "connecting" || state === "loading_versions" || restoring}>
         <RefreshCw className={`h-4 w-4 ${state === "connecting" ? "animate-spin" : ""}`} />
         {state === "connecting" ? "Connecting..." : hasStreams ? "Refresh remote backups" : "Connect and list backups"}
       </Button>

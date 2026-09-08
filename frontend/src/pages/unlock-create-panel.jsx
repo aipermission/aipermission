@@ -5,33 +5,29 @@ import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiPost } from "../lib/api";
 import { isValidDatabasePassword } from "../lib/password";
-import { useRequestGuard } from "../lib/request-guard";
 
-export function UnlockCreatePanel({ hasDatabase, onUnlocked }) {
+export function UnlockCreatePanel({ hasDatabase, runLifecycleMutation }) {
   const [form, setForm] = useState({ database_name: "", password: "", confirm_password: "" });
   const [state, setState] = useState({ state: "idle", error: null });
-  const requestGuard = useRequestGuard("unlock:create");
   const passwordValid = isValidDatabasePassword(form.password);
 
   async function createDatabase(event) {
     event.preventDefault();
-    const request = requestGuard.begin("submit");
     setState({ state: "saving", error: null });
     try {
-      await apiPost(
-        "/api/unlock/setup",
-        {
-          password: form.password,
-          confirm_password: form.confirm_password,
-          database_name: form.database_name,
-        },
-        { signal: request.signal },
+      await runLifecycleMutation("create", (signal) =>
+        apiPost(
+          "/api/unlock/setup",
+          {
+            password: form.password,
+            confirm_password: form.confirm_password,
+            database_name: form.database_name,
+          },
+          { signal },
+        ),
       );
-      if (request.isCurrent()) await onUnlocked();
     } catch (error) {
-      if (request.isCurrent()) setState({ state: "error", error: error.message });
-    } finally {
-      request.complete();
+      setState({ state: "error", error: error.message });
     }
   }
 

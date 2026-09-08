@@ -23,11 +23,13 @@ export default function App() {
   const { theme, setTheme } = useTheme();
   const [unlock, setUnlock] = useState({ state: "loading", data: null, error: null });
 
-  async function loadUnlockStatus() {
+  async function loadUnlockStatus(signal) {
     try {
-      const data = await apiGet("/api/unlock/status");
+      const data = await apiGet("/api/unlock/status", { signal });
+      if (signal?.aborted) return;
       setUnlock({ state: "ready", data, error: null });
     } catch (error) {
+      if (signal?.aborted) return;
       setUnlock({ state: "error", data: null, error: error.message });
     }
   }

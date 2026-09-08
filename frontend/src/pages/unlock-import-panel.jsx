@@ -4,12 +4,10 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiPostForm } from "../lib/api";
-import { useRequestGuard } from "../lib/request-guard";
 
-export function UnlockImportPanel({ onUnlocked }) {
+export function UnlockImportPanel({ runLifecycleMutation }) {
   const [form, setForm] = useState({ database_name: "", file: null, database_password: "" });
   const [state, setState] = useState({ state: "idle", error: null });
-  const requestGuard = useRequestGuard("unlock:import");
 
   async function importDatabase(event) {
     event.preventDefault();
@@ -17,19 +15,15 @@ export function UnlockImportPanel({ onUnlocked }) {
       setState({ state: "error", error: "Database file is required" });
       return;
     }
-    const request = requestGuard.begin("submit");
     setState({ state: "importing", error: null });
     try {
       const formData = new FormData();
       formData.set("sqlite", form.file, form.file.name);
       formData.set("database_password", form.database_password);
       formData.set("database_name", form.database_name);
-      await apiPostForm("/api/backup/import", formData, { signal: request.signal });
-      if (request.isCurrent()) await onUnlocked();
+      await runLifecycleMutation("import", (signal) => apiPostForm("/api/backup/import", formData, { signal }));
     } catch (error) {
-      if (request.isCurrent()) setState({ state: "error", error: error.message });
-    } finally {
-      request.complete();
+      setState({ state: "error", error: error.message });
     }
   }
 

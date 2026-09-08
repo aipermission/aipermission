@@ -5,6 +5,7 @@ import { RemoteRestorePanel } from "./remote-restore-panel";
 import { UnlockCreatePanel } from "./unlock-create-panel";
 import { UnlockDatabasePanel } from "./unlock-database-panel";
 import { UnlockImportPanel } from "./unlock-import-panel";
+import { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation";
 
 function unlockTabsGridClass(tabCount) {
   return tabCount === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3";
@@ -22,6 +23,7 @@ export function UnlockPage({ status, onUnlocked }) {
   const [activeTab, setActiveTab] = useState(hasDatabase ? "unlock" : "create");
   const [toast, setToast] = useState("");
   const toastTimerRef = useRef(null);
+  const lifecycleMutation = useUnlockLifecycleMutation(onUnlocked);
 
   useEffect(() => {
     const nextID = status?.database_id || databases[0]?.id || "default";
@@ -58,14 +60,13 @@ export function UnlockPage({ status, onUnlocked }) {
     }, 2400);
   }
 
-  async function handleDeleted(databaseID) {
+  function handleDeleted(databaseID) {
     setMigrationRequiredIDs((current) => {
       const next = { ...current };
       delete next[databaseID];
       return next;
     });
     showToast("Local database deleted.");
-    await onUnlocked();
   }
 
   return (
@@ -75,6 +76,7 @@ export function UnlockPage({ status, onUnlocked }) {
         databases={databases}
         selectedDatabase={selectedDatabase}
         selectedDatabaseID={selectedDatabaseID}
+        disabled={Boolean(lifecycleMutation.activeMutation)}
         onSelect={setSelectedDatabaseID}
       />
       <UnlockStatusNotices
@@ -82,7 +84,7 @@ export function UnlockPage({ status, onUnlocked }) {
         unsupported={selectedUnsupported}
         migrationRequired={selectedMigrationRequired}
       />
-      <UnlockTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
+      <UnlockTabs tabs={tabs} activeTab={activeTab} disabled={Boolean(lifecycleMutation.activeMutation)} onSelect={setActiveTab} />
       <UnlockActivePanel
         activeTab={activeTab}
         selectedDatabase={selectedDatabase}
@@ -91,13 +93,13 @@ export function UnlockPage({ status, onUnlocked }) {
         hasDatabase={hasDatabase}
         onMigrationRequired={(databaseID) => setMigrationRequiredIDs((current) => ({ ...current, [databaseID]: true }))}
         onDeleted={handleDeleted}
-        onUnlocked={onUnlocked}
+        runLifecycleMutation={lifecycleMutation.runMutation}
       />
     </UnlockShell>
   );
 }
 
-function UnlockDatabasePicker({ databases, selectedDatabase, selectedDatabaseID, onSelect }) {
+function UnlockDatabasePicker({ databases, selectedDatabase, selectedDatabaseID, disabled, onSelect }) {
   if (databases.length === 0) return null;
   return (
     <div className="grid gap-2">
@@ -108,6 +110,7 @@ function UnlockDatabasePicker({ databases, selectedDatabase, selectedDatabaseID,
         id="unlock-database"
         className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-emerald-800"
         value={selectedDatabase?.id || selectedDatabaseID}
+        disabled={disabled}
         onChange={(event) => onSelect(event.target.value)}
       >
         {databases.map((database) => (
@@ -141,7 +144,7 @@ function UnlockStatusNotices({ sessionRequired, unsupported, migrationRequired }
   );
 }
 
-function UnlockTabs({ tabs, activeTab, onSelect }) {
+function UnlockTabs({ tabs, activeTab, disabled, onSelect }) {
   return (
     <div className={`grid rounded-md border border-stone-200 bg-stone-100 p-1 ${unlockTabsGridClass(tabs.length)}`}>
       {tabs.map(([value, label], index) => (
@@ -151,6 +154,7 @@ function UnlockTabs({ tabs, activeTab, onSelect }) {
           className={`min-h-10 whitespace-normal rounded px-2 py-2 text-xs font-semibold leading-tight transition sm:text-sm ${
             tabs.length % 2 === 1 && index === tabs.length - 1 ? "col-span-2 sm:col-span-1" : ""
           } ${activeTab === value ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"}`}
+          disabled={disabled}
           onClick={() => onSelect(value)}
         >
           {label}
@@ -168,11 +172,11 @@ function UnlockActivePanel({
   hasDatabase,
   onMigrationRequired,
   onDeleted,
-  onUnlocked,
+  runLifecycleMutation,
 }) {
-  if (activeTab === "create") return <UnlockCreatePanel hasDatabase={hasDatabase} onUnlocked={onUnlocked} />;
-  if (activeTab === "import") return <UnlockImportPanel onUnlocked={onUnlocked} />;
-  if (activeTab === "remote") return <RemoteRestorePanel onUnlocked={onUnlocked} />;
+  if (activeTab === "create") return <UnlockCreatePanel hasDatabase={hasDatabase} runLifecycleMutation={runLifecycleMutation} />;
+  if (activeTab === "import") return <UnlockImportPanel runLifecycleMutation={runLifecycleMutation} />;
+  if (activeTab === "remote") return <RemoteRestorePanel runLifecycleMutation={runLifecycleMutation} />;
   if (activeTab !== "unlock") return null;
   return (
     <UnlockDatabasePanel
@@ -182,7 +186,7 @@ function UnlockActivePanel({
       migrationRequired={migrationRequired}
       onMigrationRequired={onMigrationRequired}
       onDeleted={onDeleted}
-      onUnlocked={onUnlocked}
+      runLifecycleMutation={runLifecycleMutation}
     />
   );
 }
