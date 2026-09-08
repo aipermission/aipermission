@@ -555,6 +555,51 @@ func TestStoreApprovesPendingTransferBatchItems(t *testing.T) {
 	}
 }
 
+func TestApproveBatchRollsBackWhenHistoryProjectionFails(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	runtimeID := insertTestServer(t, database)
+	store := NewStore(database)
+	ctx := context.Background()
+	batch, err := store.CreateBatch(ctx, CreateBatchRequest{
+		RuntimeID: runtimeID,
+		Direction: DirectionDownload,
+		Source:    SourceMCP,
+		Status:    StatusPendingApproval,
+		Items:     []CreateRequest{{RemotePath: "/tmp/a.log", FileName: "a.log", TempPath: "/tmp/a"}},
+	})
+	if err != nil {
+		t.Fatalf("create pending approval batch: %v", err)
+	}
+	if _, err := database.Exec(`
+		CREATE TRIGGER reject_approved_transfer_history
+		BEFORE UPDATE OF status ON history_entries
+		WHEN NEW.status = 'pending'
+		BEGIN SELECT RAISE(ABORT, 'injected approval history failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.ApproveBatch(ctx, batch.ID, BatchApprovalRequest{ApprovedItemIDs: []int64{batch.Items[0].ID}}); err == nil {
+		t.Fatal("approval should fail when its history projection cannot commit")
+	}
+	rolledBack, err := store.GetBatch(ctx, batch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rolledBack.Status != StatusPendingApproval || rolledBack.Items[0].Status != StatusPendingApproval {
+		t.Fatalf("approval escaped rollback: %#v", rolledBack)
+	}
+	if _, err := database.Exec(`DROP TRIGGER reject_approved_transfer_history`); err != nil {
+		t.Fatal(err)
+	}
+	approved, _, err := store.ApproveBatch(ctx, batch.ID, BatchApprovalRequest{ApprovedItemIDs: []int64{batch.Items[0].ID}})
+	if err != nil || approved.Status != StatusPending || approved.Items[0].Status != StatusPending {
+		t.Fatalf("retry approval = %#v, %v", approved, err)
+	}
+}
+
 func TestStoreUpdatesPendingBatchItemSizesAtomically(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {

@@ -21,6 +21,9 @@ func (s *Store) Create(ctx context.Context, request CreateRequest) (Record, erro
 	if err != nil {
 		return Record{}, err
 	}
+	if err := syncTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return Record{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Record{}, fmt.Errorf("commit file transfer: %w", err)
 	}
@@ -55,6 +58,9 @@ func (s *Store) CreateIdempotent(ctx context.Context, request CreateRequest, cla
 	}
 	id, err := insertTransfer(ctx, tx, normalized, StatusPending, nowString())
 	if err != nil {
+		return Record{}, false, err
+	}
+	if err := syncTransferHistoryWithExecutor(ctx, tx, id); err != nil {
 		return Record{}, false, err
 	}
 	if err := completeIdempotencyClaim(ctx, tx, claim, id); err != nil {
@@ -100,14 +106,7 @@ func insertTransfer(ctx context.Context, tx *sql.Tx, request CreateRequest, stat
 }
 
 func (s *Store) createdTransfer(ctx context.Context, id int64) (Record, error) {
-	item, err := s.Get(ctx, id)
-	if err != nil {
-		return Record{}, err
-	}
-	if err := s.syncTransferHistory(ctx, id); err != nil {
-		return Record{}, err
-	}
-	return item, nil
+	return s.Get(ctx, id)
 }
 
 func (s *Store) Get(ctx context.Context, id int64) (Record, error) {

@@ -9,10 +9,14 @@ import (
 )
 
 func (s *Store) syncTransferHistory(ctx context.Context, id int64) error {
+	return syncTransferHistoryWithExecutor(ctx, s.db, id)
+}
+
+func syncTransferHistoryWithExecutor(ctx context.Context, executor history.CommandProjectionExecutor, id int64) error {
 	if id < 1 {
 		return nil
 	}
-	return history.NewStore(s.db).SyncFileTransfer(ctx, id)
+	return history.SyncFileTransferWithExecutor(ctx, executor, id)
 }
 
 // SyncHistory repairs the derived history projection after a canonical transfer update.

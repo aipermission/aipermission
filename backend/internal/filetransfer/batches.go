@@ -90,6 +90,9 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 	if err != nil {
 		return BatchRecord{}, err
 	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, batchID); err != nil {
+		return BatchRecord{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return BatchRecord{}, fmt.Errorf("commit file transfer batch: %w", err)
 	}
@@ -124,6 +127,9 @@ func (s *Store) CreateBatchIdempotent(ctx context.Context, request CreateBatchRe
 	}
 	batchID, err := insertBatch(ctx, tx, normalized, nowString())
 	if err != nil {
+		return BatchRecord{}, false, err
+	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, batchID); err != nil {
 		return BatchRecord{}, false, err
 	}
 	if err := completeIdempotencyClaim(ctx, tx, claim, batchID); err != nil {
@@ -179,14 +185,7 @@ func insertBatch(ctx context.Context, tx *sql.Tx, request CreateBatchRequest, no
 }
 
 func (s *Store) createdBatch(ctx context.Context, batchID int64) (BatchRecord, error) {
-	batch, err := s.GetBatch(ctx, batchID)
-	if err != nil {
-		return BatchRecord{}, err
-	}
-	if err := s.syncBatchTransferHistory(ctx, batchID); err != nil {
-		return BatchRecord{}, err
-	}
-	return batch, nil
+	return s.GetBatch(ctx, batchID)
 }
 
 func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
