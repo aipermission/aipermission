@@ -89,12 +89,12 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		t.Fatal(err)
 	}
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
-	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", updateProjectCapabilitiesRequest{
+	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{
 		Capabilities: []projectCapabilityInput{
 			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead, ExecutionRule: projectcapabilities.RuleAlwaysRun},
 			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultItemGenerate, ExecutionRule: projectcapabilities.RuleApprovalRequired},
 		},
-	})
+	}))
 	if capabilities.Code != http.StatusOK {
 		t.Fatalf("set Vault capabilities: %d %s", capabilities.Code, capabilities.Body.String())
 	}
@@ -249,11 +249,11 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		t.Fatalf("cancel Vault action: %d %s", cancel.Code, cancel.Body.String())
 	}
 
-	revokedCapabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", updateProjectCapabilitiesRequest{
+	revokedCapabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{
 		Capabilities: []projectCapabilityInput{
 			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead, ExecutionRule: projectcapabilities.RuleAlwaysRun},
 		},
-	})
+	}))
 	if revokedCapabilities.Code != http.StatusOK {
 		t.Fatalf("revoke Vault generation capability: %d %s", revokedCapabilities.Code, revokedCapabilities.Body.String())
 	}
@@ -275,12 +275,12 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	capabilities := performJSON(fixture.server.Handler(), http.MethodPut,
-		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/project-capabilities", "",
-		updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{
+	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
+	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "",
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{
 			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead, ExecutionRule: projectcapabilities.RuleAlwaysRun},
 			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultItemGenerate, ExecutionRule: projectcapabilities.RuleAlwaysRun},
-		}},
+		}}),
 	)
 	if capabilities.Code != http.StatusOK {
 		t.Fatalf("set always Vault capabilities: %d %s", capabilities.Code, capabilities.Body.String())
@@ -378,24 +378,26 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	scopePath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-scopes"
 	if response := performJSON(
 		fixture.server.Handler(),
 		http.MethodPut,
-		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/project-scopes",
+		scopePath,
 		"",
-		updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}},
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}),
 	); response.Code != http.StatusOK {
 		t.Fatalf("set project scope: %d %s", response.Code, response.Body.String())
 	}
+	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
 	if response := performJSON(
 		fixture.server.Handler(),
 		http.MethodPut,
-		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/project-capabilities",
+		capabilityPath,
 		"",
-		updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
 			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultSessionApply,
 			ExecutionRule: projectcapabilities.RuleAlwaysRun,
-		}}},
+		}}}),
 	); response.Code != http.StatusOK {
 		t.Fatalf("set Vault capability: %d %s", response.Code, response.Body.String())
 	}
@@ -550,25 +552,27 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	scopePath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-scopes"
 	scope := performJSON(
 		fixture.server.Handler(),
 		http.MethodPut,
-		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/project-scopes",
+		scopePath,
 		"",
-		updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}},
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}),
 	)
 	if scope.Code != http.StatusOK {
 		t.Fatalf("set project scope: %d %s", scope.Code, scope.Body.String())
 	}
+	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
 	capabilities := performJSON(
 		fixture.server.Handler(),
 		http.MethodPut,
-		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/project-capabilities",
+		capabilityPath,
 		"",
-		updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
 			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultSessionApply,
 			ExecutionRule: projectcapabilities.RuleAlwaysRun,
-		}}},
+		}}}),
 	)
 	if capabilities.Code != http.StatusOK {
 		t.Fatalf("set Always session capability: %d %s", capabilities.Code, capabilities.Body.String())
@@ -642,9 +646,9 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	hidden := performJSON(
 		fixture.server.Handler(),
 		http.MethodPut,
-		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/project-scopes",
+		scopePath,
 		"",
-		updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{}},
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{}}),
 	)
 	if hidden.Code != http.StatusOK {
 		t.Fatalf("hide Vault source project: %d %s", hidden.Code, hidden.Body.String())

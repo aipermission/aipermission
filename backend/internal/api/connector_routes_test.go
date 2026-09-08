@@ -284,7 +284,8 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	permissionExpiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
-	updatePermissions := performJSON(handler, http.MethodPut, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions", "", updateConnectorPermissionsRequest{
+	permissionPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/connector-permissions"
+	updatePermissions := performJSON(handler, http.MethodPut, permissionPath, "", withCurrentAuthorizationRevision(t, handler, permissionPath, updateConnectorPermissionsRequest{
 		Permissions: []connectorPermissionInput{
 			{
 				TargetID:      target.ID,
@@ -294,7 +295,7 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 				ExpiresAt:     permissionExpiresAt,
 			},
 		},
-	})
+	}))
 	if updatePermissions.Code != http.StatusOK {
 		t.Fatalf("update connector permissions failed: %d %s", updatePermissions.Code, updatePermissions.Body.String())
 	}
@@ -322,7 +323,7 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	if listWithStalePermission.Code != http.StatusOK || strings.Contains(listWithStalePermission.Body.String(), "removed_action") || !strings.Contains(listWithStalePermission.Body.String(), "query_readonly") {
 		t.Fatalf("stale connector permission should be filtered without hiding supported permissions: %d %s", listWithStalePermission.Code, listWithStalePermission.Body.String())
 	}
-	badPermission := performJSON(handler, http.MethodPut, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions", "", updateConnectorPermissionsRequest{
+	badPermission := performJSON(handler, http.MethodPut, permissionPath, "", withCurrentAuthorizationRevision(t, handler, permissionPath, updateConnectorPermissionsRequest{
 		Permissions: []connectorPermissionInput{
 			{
 				TargetID:      target.ID,
@@ -331,7 +332,7 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 				ExecutionRule: string(connectortargets.ActionPermissionAlwaysRun),
 			},
 		},
-	})
+	}))
 	if badPermission.Code != http.StatusBadRequest {
 		t.Fatalf("unsupported connector action should fail, got %d %s", badPermission.Code, badPermission.Body.String())
 	}

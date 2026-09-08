@@ -27,7 +27,7 @@ describe("ConnectorPermissionDialog", () => {
   beforeEach(() => {
     apiGet.mockReset();
     apiPut.mockReset();
-    apiPut.mockResolvedValue({ items: [] });
+    apiPut.mockResolvedValue({ items: [], revision: "permissions-r3" });
   });
 
   it("does not submit permissions loaded for a previously open token", async () => {
@@ -41,7 +41,7 @@ describe("ConnectorPermissionDialog", () => {
         firstSignal = options.signal;
         return firstPermissions.promise;
       }
-      if (path === "/api/tokens/2/connector-permissions") return { items: [] };
+      if (path === "/api/tokens/2/connector-permissions") return { items: [], revision: "permissions-r2" };
       throw new Error(`Unexpected GET ${path}`);
     });
 
@@ -58,8 +58,30 @@ describe("ConnectorPermissionDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Save connector permissions" }));
     await waitFor(() =>
-      expect(apiPut).toHaveBeenCalledWith("/api/tokens/2/connector-permissions", { permissions: [] }, { signal: expect.any(AbortSignal) }),
+      expect(apiPut).toHaveBeenCalledWith(
+        "/api/tokens/2/connector-permissions",
+        { permissions: [], expected_revision: "permissions-r2" },
+        { signal: expect.any(AbortSignal) },
+      ),
     );
+  });
+
+  it("shows a stale revision conflict without reporting a successful save", async () => {
+    const user = userEvent.setup();
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connector-targets/inventory") return inventory;
+      if (path === "/api/tokens/2/connector-permissions") return { items: [], revision: "permissions-r2" };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    apiPut.mockRejectedValueOnce(new Error("connector permissions changed; reload before saving"));
+
+    render(<ConnectorPermissionDialog token={{ id: 2, name: "second" }} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await screen.findByText("My Server");
+    await user.click(screen.getByRole("button", { name: "Save connector permissions" }));
+
+    expect(await screen.findByText("connector permissions changed; reload before saving")).toBeInTheDocument();
+    expect(screen.queryByText("Connector permissions saved.")).not.toBeInTheDocument();
   });
 });
 

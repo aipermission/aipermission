@@ -5,8 +5,11 @@ import { responsiveViewportMatrix } from "../scripts/playwright-gate-manifest.mj
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
   let connectorPermissions = [];
+  let connectorPermissionRevision = "connector-permissions-1";
   let projectCapabilities = [];
+  let projectCapabilityRevision = "project-capabilities-1";
   let enabledProjectIDs = [1];
+  let projectScopeRevision = "project-scopes-1";
   let mcpRuntimeEnabled = false;
   await page.route("http://localhost:8080/api/unlock/status", async (route) => {
     await route.fulfill({
@@ -128,26 +131,30 @@ test.beforeEach(async ({ page }) => {
       const body = route.request().postDataJSON();
       expect(body).toEqual({
         permissions: [{ target_id: 1, profile_id: 1, action_name: "exec", execution_rule: "approval_required" }],
+        expected_revision: connectorPermissionRevision,
       });
       connectorPermissions = body.permissions || [];
-      await route.fulfill({ json: { items: connectorPermissions } });
+      connectorPermissionRevision = "connector-permissions-2";
+      await route.fulfill({ json: { items: connectorPermissions, revision: connectorPermissionRevision } });
       return;
     }
     expect(route.request().method()).toBe("GET");
-    await route.fulfill({ json: { items: connectorPermissions } });
+    await route.fulfill({ json: { items: connectorPermissions, revision: connectorPermissionRevision } });
   });
   await page.route("http://localhost:8080/api/tokens/1/project-scopes", async (route) => {
     if (route.request().method() === "PUT") {
       const body = route.request().postDataJSON();
-      expect(Object.keys(body)).toEqual(["enabled_project_ids"]);
+      expect(Object.keys(body).sort()).toEqual(["enabled_project_ids", "expected_revision"]);
       expect(Array.isArray(body.enabled_project_ids)).toBe(true);
       expect(body.enabled_project_ids.every(Number.isInteger)).toBe(true);
       expect(body.enabled_project_ids.every((id) => id === 1 || id === 2)).toBe(true);
+      expect(body.expected_revision).toBe(projectScopeRevision);
       enabledProjectIDs = body.enabled_project_ids;
+      projectScopeRevision = "project-scopes-2";
     } else {
       expect(route.request().method()).toBe("GET");
     }
-    await route.fulfill({ json: { items: [projectScope(enabledProjectIDs.includes(1))] } });
+    await route.fulfill({ json: { items: [projectScope(enabledProjectIDs.includes(1))], revision: projectScopeRevision } });
   });
   await page.route("http://localhost:8080/api/tokens/1/project-capabilities", async (route) => {
     if (route.request().method() === "PUT") {
@@ -157,6 +164,7 @@ test.beforeEach(async ({ page }) => {
           { project_id: 1, capability_name: "vault.metadata.read", execution_rule: "always_run" },
           { project_id: 1, capability_name: "vault.item.generate", execution_rule: "always_run" },
         ],
+        expected_revision: projectCapabilityRevision,
       });
       projectCapabilities = body.capabilities.map((capability) => ({
         ...capability,
@@ -166,10 +174,13 @@ test.beforeEach(async ({ page }) => {
         project_enabled: enabledProjectIDs.includes(capability.project_id),
         revision: 1,
       }));
+      projectCapabilityRevision = "project-capabilities-2";
     } else {
       expect(route.request().method()).toBe("GET");
     }
-    await route.fulfill({ json: { definitions: projectCapabilityDefinitions(), items: projectCapabilities } });
+    await route.fulfill({
+      json: { definitions: projectCapabilityDefinitions(), items: projectCapabilities, revision: projectCapabilityRevision },
+    });
   });
 });
 

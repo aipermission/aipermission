@@ -10,7 +10,7 @@ describe("VaultPermissionDialog", () => {
   beforeEach(() => {
     apiGet.mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") {
-        return { items: [{ project_id: 3, project_name: "My Project", enabled: true }] };
+        return { items: [{ project_id: 3, project_name: "My Project", enabled: true }], revision: "scope-1" };
       }
       if (path === "/api/tokens/7/project-capabilities") {
         return {
@@ -23,6 +23,7 @@ describe("VaultPermissionDialog", () => {
             },
           ],
           items: [],
+          revision: "capability-1",
         };
       }
       throw new Error(`Unexpected GET ${path}`);
@@ -37,6 +38,7 @@ describe("VaultPermissionDialog", () => {
         },
       ],
       items: [{ project_id: 3, capability: "vault.inject", execution_rule: "always_run", expires_at: null }],
+      revision: "capability-2",
     });
   });
 
@@ -61,6 +63,7 @@ describe("VaultPermissionDialog", () => {
               expires_at: undefined,
             },
           ],
+          expected_revision: "capability-1",
         },
         { signal: expect.any(AbortSignal) },
       ),
@@ -73,7 +76,7 @@ describe("VaultPermissionDialog", () => {
     const onSaved = vi.fn();
     apiPut.mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") {
-        return { items: [{ project_id: 3, project_name: "My Project", enabled: false }] };
+        return { items: [{ project_id: 3, project_name: "My Project", enabled: false }], revision: "scope-2" };
       }
       return {
         definitions: [
@@ -85,6 +88,7 @@ describe("VaultPermissionDialog", () => {
           },
         ],
         items: [{ project_id: 3, capability: "vault.inject", execution_rule: "approval_required", expires_at: "future" }],
+        revision: "capability-2",
       };
     });
     render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={onSaved} />);
@@ -92,7 +96,11 @@ describe("VaultPermissionDialog", () => {
     await screen.findByText("Inject secrets");
     await user.click(screen.getByRole("checkbox", { name: "My Project project visibility" }));
     await waitFor(() =>
-      expect(apiPut).toHaveBeenCalledWith("/api/tokens/7/project-scopes", { enabled_project_ids: [] }, { signal: expect.any(AbortSignal) }),
+      expect(apiPut).toHaveBeenCalledWith(
+        "/api/tokens/7/project-scopes",
+        { enabled_project_ids: [], expected_revision: "scope-1" },
+        { signal: expect.any(AbortSignal) },
+      ),
     );
 
     await user.click(screen.getByRole("button", { name: "Prompt" }));
@@ -113,11 +121,14 @@ describe("VaultPermissionDialog", () => {
         return firstScopes.promise;
       }
       if (path === "/api/tokens/1/project-capabilities") return firstCapabilities.promise;
-      if (path === "/api/tokens/2/project-scopes") return { items: [{ project_id: 4, project_name: "Second", enabled: true }] };
+      if (path === "/api/tokens/2/project-scopes") {
+        return { items: [{ project_id: 4, project_name: "Second", enabled: true }], revision: "scope-2" };
+      }
       if (path === "/api/tokens/2/project-capabilities") {
         return {
           definitions: [{ name: "vault.inject", label: "Inject secrets", description: "Inject values.", allowed_rules: ["always_run"] }],
           items: [],
+          revision: "capability-2",
         };
       }
       throw new Error(`Unexpected GET ${path}`);
@@ -139,7 +150,11 @@ describe("VaultPermissionDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Save Vault capabilities" }));
     await waitFor(() =>
-      expect(apiPut).toHaveBeenCalledWith("/api/tokens/2/project-capabilities", { capabilities: [] }, { signal: expect.any(AbortSignal) }),
+      expect(apiPut).toHaveBeenCalledWith(
+        "/api/tokens/2/project-capabilities",
+        { capabilities: [], expected_revision: "capability-2" },
+        { signal: expect.any(AbortSignal) },
+      ),
     );
   });
 });

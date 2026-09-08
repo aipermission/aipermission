@@ -59,9 +59,9 @@ test("runs approval, stale rejection, lock, and restart against the real backend
     expect(request.status).toBe("approval_pending");
     await expect(page.getByRole("dialog", { name: "e2e action approval" })).toBeVisible();
 
-    await uiRequest(page, `/api/tokens/${fixture.token.id}/connector-permissions`, "PUT", {
-      permissions: [{ target_id: fixture.targetID, profile_id: fixture.profileID, action_name: "echo", execution_rule: "blocked" }],
-    });
+    await setConnectorPermissions(page, fixture.token.id, [
+      { target_id: fixture.targetID, profile_id: fixture.profileID, action_name: "echo", execution_rule: "blocked" },
+    ]);
     await page.getByRole("button", { name: "Run", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "e2e action approval" }).getByText(/approval context changed/i)).toBeVisible();
     await page.getByRole("button", { name: "OK", exact: true }).click();
@@ -94,10 +94,18 @@ async function seedConnectorFixture(page) {
   });
   const token = await uiRequest(page, "/api/tokens", "POST", { name: "real-browser-agent" });
   const profile = target.profiles[0];
-  await uiRequest(page, `/api/tokens/${token.id}/connector-permissions`, "PUT", {
-    permissions: [{ target_id: target.id, profile_id: profile.id, action_name: "echo", execution_rule: "approval_required" }],
-  });
+  await setConnectorPermissions(page, token.id, [
+    { target_id: target.id, profile_id: profile.id, action_name: "echo", execution_rule: "approval_required" },
+  ]);
   return { token, targetID: target.id, profileID: profile.id, targetRef: `e2e:${target.id}:${profile.id}` };
+}
+
+async function setConnectorPermissions(page, tokenID, permissions) {
+  const current = await uiRequest(page, `/api/tokens/${tokenID}/connector-permissions`, "GET");
+  return uiRequest(page, `/api/tokens/${tokenID}/connector-permissions`, "PUT", {
+    permissions,
+    expected_revision: current.revision,
+  });
 }
 
 async function callConnectorAction(page, token, targetRef, message) {

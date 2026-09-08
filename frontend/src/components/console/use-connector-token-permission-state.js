@@ -33,6 +33,7 @@ export function useConnectorTokenPermissionState({
   const [profileByToken, setProfileByToken] = useState({});
   const [permissionModeByKey, setPermissionModeByKey] = useState({});
   const [projectScopesByToken, setProjectScopesByToken] = useState({});
+  const [projectScopeRevisionByToken, setProjectScopeRevisionByToken] = useState({});
   const [projectScopeStateByToken, setProjectScopeStateByToken] = useState({});
   const [projectScopeError, setProjectScopeError] = useState("");
   const [permissionMutationError, setPermissionMutationError] = useState(null);
@@ -59,6 +60,7 @@ export function useConnectorTokenPermissionState({
     if (!selectedTarget) {
       setProfileByToken({});
       setProjectScopesByToken({});
+      setProjectScopeRevisionByToken({});
       setProjectScopeStateByToken({});
       setPermissionMutationError(null);
       permissionMutationRetryRef.current = null;
@@ -111,6 +113,7 @@ export function useConnectorTokenPermissionState({
           const result = await apiGet(`/api/tokens/${token.id}/project-scopes`, { signal: request.signal });
           if (!request.isCurrent()) return;
           setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
+          setProjectScopeRevisionByToken((current) => ({ ...current, [token.id]: result.revision || "" }));
           setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "ready" }));
         } catch (error) {
           if (!request.isCurrent()) return;
@@ -140,9 +143,13 @@ export function useConnectorTokenPermissionState({
     setProjectScopeError("");
     try {
       const scopes = projectScopesByToken[token.id] || [];
-      const result = await updateTokenProjectVisibility(token.id, scopes, selectedTarget.project_id, enabled, { signal: request.signal });
+      const result = await updateTokenProjectVisibility(token.id, scopes, selectedTarget.project_id, enabled, {
+        expectedRevision: projectScopeRevisionByToken[token.id],
+        signal: request.signal,
+      });
       if (!request.isCurrent()) return;
       setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
+      setProjectScopeRevisionByToken((current) => ({ ...current, [token.id]: result.revision || "" }));
       setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "ready" }));
       await loadAllConnectorPermissions?.(activeTokens);
     } catch (error) {
@@ -174,7 +181,11 @@ export function useConnectorTokenPermissionState({
     await runPermissionMutation({
       key: `${token.id}:${profileID}:${keySuffix}`,
       retry: () => setConnectorRules(token, profileID, selectedActions, rule, keySuffix),
-      failure: (error) => permissionMutationFailure(token, profileID, selectedActions.map((action) => action.name).join(", "), error),
+      failure: (error) =>
+        createPermissionMutationFailure(token, profileID, selectedActions.map((action) => action.name).join(", "), error, {
+          targetProfiles,
+          selectedTargetKey,
+        }),
       mutate: async () => {
         const existing = permissionsByToken[token.id] || [];
         const actionNames = new Set(selectedActions.map((action) => action.name));
@@ -210,7 +221,7 @@ export function useConnectorTokenPermissionState({
     await runPermissionMutation({
       key: `${token.id}:${profileID}:lifetime`,
       retry: () => setProfileLifetime(token, profileID, expiresAt),
-      failure: (error) => permissionMutationFailure(token, profileID, "lifetime", error),
+      failure: (error) => createPermissionMutationFailure(token, profileID, "lifetime", error, { targetProfiles, selectedTargetKey }),
       mutate: async () => {
         const existing = permissionsByToken[token.id] || [];
         const next = existing.map((permission) => {
@@ -241,16 +252,6 @@ export function useConnectorTokenPermissionState({
     }
   }
 
-  function permissionMutationFailure(token, profileID, operation, error) {
-    const profile = targetProfiles.find((item) => Number(item.profile_id) === Number(profileID));
-    return {
-      tokenID: Number(token.id),
-      profileID: Number(profileID),
-      targetKey: selectedTargetKey,
-      message: `${token.name} / ${profile?.profile_label || `profile ${profileID}`}: failed to update ${operation}. ${errorMessage(error, "Unknown error.")}`,
-    };
-  }
-
   return {
     activeTokens,
     compactPanelRef,
@@ -277,6 +278,16 @@ export function useConnectorTokenPermissionState({
     setProjectVisibility,
     targetProfiles,
     tokenTriggerRef,
+  };
+}
+
+function createPermissionMutationFailure(token, profileID, operation, error, { targetProfiles, selectedTargetKey }) {
+  const profile = targetProfiles.find((item) => Number(item.profile_id) === Number(profileID));
+  return {
+    tokenID: Number(token.id),
+    profileID: Number(profileID),
+    targetKey: selectedTargetKey,
+    message: `${token.name} / ${profile?.profile_label || `profile ${profileID}`}: failed to update ${operation}. ${errorMessage(error, "Unknown error.")}`,
   };
 }
 

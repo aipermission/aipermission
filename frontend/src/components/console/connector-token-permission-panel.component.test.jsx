@@ -53,7 +53,16 @@ beforeEach(() => {
   window.localStorage.clear();
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 })),
+    vi.fn(
+      async (_url, options = {}) =>
+        new Response(
+          JSON.stringify({
+            items: [{ project_id: 3, enabled: options.method !== "PUT" }],
+            revision: options.method === "PUT" ? "scope-2" : "scope-1",
+          }),
+          { status: 200 },
+        ),
+    ),
   );
 });
 
@@ -190,7 +199,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringMatching(/\/api\/tokens\/5\/project-scopes$/),
-        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [] }) }),
+        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [], expected_revision: "scope-1" }) }),
       ),
     );
   });
@@ -209,7 +218,9 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     await user.click(loading);
     expect(fetch.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
 
-    projectScopes.resolve(new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 }));
+    projectScopes.resolve(
+      new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }], revision: "scope-1" }), { status: 200 }),
+    );
     expect(await screen.findByRole("button", { name: "Hide" })).toBeEnabled();
   });
 
@@ -233,6 +244,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
               { project_id: 3, enabled: false },
               { project_id: 4, enabled: true },
             ],
+            revision: "scope-3",
           }),
           {
             status: 200,
@@ -247,6 +259,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
               { project_id: 3, enabled: true },
               { project_id: 4, enabled: true },
             ],
+            revision: "scope-1",
           }),
           { status: 200 },
         );
@@ -265,6 +278,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
             { project_id: 3, enabled: true },
             { project_id: 4, enabled: true },
           ],
+          revision: "scope-2",
         }),
         { status: 200 },
       ),
@@ -274,7 +288,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         expect.stringMatching(/\/api\/tokens\/5\/project-scopes$/),
-        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [4] }) }),
+        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [4], expected_revision: "scope-2" }) }),
       ),
     );
   });
@@ -283,7 +297,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     const user = userEvent.setup();
     fetch.mockImplementation(async (_url, options = {}) => {
       if (options.method === "PUT") throw new Error("scope update unavailable");
-      return new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 });
+      return new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }], revision: "scope-1" }), { status: 200 });
     });
     renderPanel();
 

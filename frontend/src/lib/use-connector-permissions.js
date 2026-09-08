@@ -5,6 +5,7 @@ import { useRequestGuard } from "./request-guard";
 const emptyState = {
   state: "idle",
   data: {},
+  revisionsByToken: {},
   actionsByTargetRef: {},
   error: null,
 };
@@ -12,6 +13,7 @@ const emptyState = {
 export function useConnectorPermissions(initialTokens = []) {
   const [permissionState, setPermissionState] = useState(emptyState);
   const permissionRevisionRef = useRef(0);
+  const serverRevisionsRef = useRef({});
   const requestGuard = useRequestGuard("connector-permissions");
 
   const loadAllConnectorPermissions = useCallback(
@@ -19,7 +21,10 @@ export function useConnectorPermissions(initialTokens = []) {
       const request = requestGuard.begin("permissions:load");
       const revision = permissionRevisionRef.current;
       if (tokenItems.length === 0) {
-        if (request.isCurrent()) setPermissionState((current) => ({ ...current, state: "ready", data: {}, error: null }));
+        if (request.isCurrent()) {
+          serverRevisionsRef.current = {};
+          setPermissionState((current) => ({ ...current, state: "ready", data: {}, revisionsByToken: {}, error: null }));
+        }
         request.complete();
         return {};
       }
@@ -28,12 +33,14 @@ export function useConnectorPermissions(initialTokens = []) {
         const entries = await Promise.all(
           tokenItems.map(async (token) => {
             const permissions = await apiGet(`/api/tokens/${token.id}/connector-permissions`, { signal: request.signal });
-            return [token.id, permissions.items || []];
+            return [token.id, permissions.items || [], permissions.revision || ""];
           }),
         );
-        const data = Object.fromEntries(entries);
+        const data = Object.fromEntries(entries.map(([tokenID, items]) => [tokenID, items]));
+        const revisionsByToken = Object.fromEntries(entries.map(([tokenID, _items, revision]) => [tokenID, revision]));
         if (!request.isCurrent() || revision !== permissionRevisionRef.current) return data;
-        setPermissionState((current) => ({ ...current, state: "ready", data, error: null }));
+        serverRevisionsRef.current = revisionsByToken;
+        setPermissionState((current) => ({ ...current, state: "ready", data, revisionsByToken, error: null }));
         return data;
       } catch (error) {
         if (!request.isCurrent() || revision !== permissionRevisionRef.current) return {};
@@ -90,19 +97,25 @@ export function useConnectorPermissions(initialTokens = []) {
       requestGuard.invalidate("permissions:load");
       const request = requestGuard.begin(`permissions:write:${tokenID}`);
       try {
+        const expectedRevision = serverRevisionsRef.current[tokenID] || "";
         const result = await apiPut(
           `/api/tokens/${tokenID}/connector-permissions`,
-          { permissions: permissions.map(permissionInput) },
+          { permissions: permissions.map(permissionInput), expected_revision: expectedRevision },
           { signal: request.signal },
         );
         const items = result.items || [];
         if (!request.isCurrent()) return items;
+        serverRevisionsRef.current = { ...serverRevisionsRef.current, [tokenID]: result.revision || "" };
         setPermissionState((current) => ({
           ...current,
           state: "ready",
           data: {
             ...current.data,
             [tokenID]: items,
+          },
+          revisionsByToken: {
+            ...current.revisionsByToken,
+            [tokenID]: result.revision || "",
           },
           error: null,
         }));

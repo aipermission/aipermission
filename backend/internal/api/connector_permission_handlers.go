@@ -14,7 +14,8 @@ import (
 )
 
 type updateConnectorPermissionsRequest struct {
-	Permissions []connectorPermissionInput `json:"permissions"`
+	Permissions      []connectorPermissionInput `json:"permissions"`
+	ExpectedRevision string                     `json:"expected_revision"`
 }
 
 type connectorPermissionInput struct {
@@ -57,12 +58,23 @@ func (s tokenHandlers) listTokenConnectorPermissions(w http.ResponseWriter, r *h
 		handleTokenError(w, err)
 		return
 	}
-	permissions, err := activeSupportedConnectorPermissions(r.Context(), runtime, tokenID)
+	store := connectortargets.NewStore(runtime.database)
+	rawPermissions, err := store.ListActionPermissions(r.Context(), tokenID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": connectorPermissionResponses(permissions)})
+	permissions, err := filterSupportedConnectorPermissions(r.Context(), runtime, rawPermissions)
+	if err != nil {
+		handleConnectorTargetError(w, err)
+		return
+	}
+	revision, err := connectorPermissionsRevision(rawPermissions)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": connectorPermissionResponses(permissions), "revision": revision})
 }
 
 func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +104,16 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 	changed, err := s.mutateTokenWithVaultInvalidation(r.Context(), runtime, tokenID, "token.connector_permissions.updated", func() any {
 		return map[string]any{"token_id": tokenID, "permissions": connectorPermissionResponses(permissions)}
 	}, "connector action permission changed; send a fresh request", func(tx *sql.Tx) (bool, error) {
-		nextPermissions, mutationChanged, replaceErr := connectortargets.NewTxStore(tx).ReplaceActionPermissionsWithChange(r.Context(), tokenID, inputs)
+		txStore := connectortargets.NewTxStore(tx)
+		current, currentErr := txStore.ListActionPermissions(r.Context(), tokenID)
+		if currentErr != nil {
+			return false, currentErr
+		}
+		currentRevision, revisionErr := connectorPermissionsRevision(current)
+		if _, revisionErr = requireAuthorizationRevision(request.ExpectedRevision, currentRevision, revisionErr); revisionErr != nil {
+			return false, revisionErr
+		}
+		nextPermissions, mutationChanged, replaceErr := txStore.ReplaceActionPermissionsWithChange(r.Context(), tokenID, inputs)
 		permissions = nextPermissions
 		return mutationChanged, replaceErr
 	})
@@ -101,11 +122,19 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 		return
 	}
 	if err != nil {
+		if handleAuthorizationRevisionError(w, err) {
+			return
+		}
 		handleConnectorTargetError(w, err)
 		return
 	}
+	revision, revisionErr := connectorPermissionsRevision(permissions)
+	if revisionErr != nil {
+		writeInternalError(w)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"items": connectorPermissionResponses(permissions), "changed": changed,
+		"items": connectorPermissionResponses(permissions), "changed": changed, "revision": revision,
 	})
 }
 
@@ -162,6 +191,11 @@ func supportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime
 	if err != nil {
 		return nil, err
 	}
+	return filterSupportedConnectorPermissions(ctx, runtime, permissions)
+}
+
+func filterSupportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, permissions []connectortargets.ActionPermission) ([]connectortargets.ActionPermission, error) {
+	store := connectortargets.NewStore(runtime.database)
 	registry := runtime.connectorRegistry()
 	type actionCatalog struct {
 		names map[string]bool

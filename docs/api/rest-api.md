@@ -112,11 +112,18 @@ after its active connector targets have been moved elsewhere; `Ungrouped`
 cannot be archived.
 
 Token project scopes are an MCP visibility boundary above target/profile/action
-permissions. `GET` returns every active project with its enabled state. `PUT`
-accepts `{"enabled_project_ids":[1,2]}` and replaces the token's project scope.
+permissions. `GET` returns every active project with its enabled state plus a
+`revision`. `PUT` accepts
+`{"enabled_project_ids":[1,2],"expected_revision":"..."}` and replaces the
+token's project scope.
 Disabling a project hides all of its connector targets from MCP discovery and
 prevents connector actions for that project, while preserving the underlying
 per-action grants for later re-enablement.
+
+Project capability responses use the same `revision` / `expected_revision`
+contract. These three full-list authorization APIs reject a missing revision
+with `400 Bad Request` and a stale revision with `409 Conflict`; callers must
+reload instead of overwriting a newer authorization edit.
 
 Project capabilities are separate from connector action permissions. The
 capability response includes the supported definitions and the token's
@@ -977,6 +984,7 @@ deny state; omitted permissions and `blocked` both prevent execution.
 
 ```json
 {
+  "expected_revision": "current-revision-from-get",
   "permissions": [
     {
       "target_id": 7,
@@ -993,7 +1001,9 @@ deny state; omitted permissions and `blocked` both prevent execution.
 permission set for the token. Each grant binds one connector target, one
 credential profile, and one connector action. The response includes safe
 metadata such as target name, profile label, connector kind, and target ref; it
-never includes credential secrets.
+never includes credential secrets. `GET` and successful `PUT` responses include
+the current authorization `revision`; every `PUT` must carry that value as
+`expected_revision` so stale forms cannot erase a newer permission change.
 
 `expires_at` is optional and must be an RFC3339 timestamp in the future when
 present. It creates a temporary token action permission grant. Expired grants

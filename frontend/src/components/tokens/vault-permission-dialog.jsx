@@ -15,6 +15,8 @@ const emptyLoad = {
   projects: [],
   definitions: [],
   capabilities: [],
+  scopeRevision: "",
+  capabilityRevision: "",
   error: null,
 };
 
@@ -65,10 +67,13 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
         ...project,
         enabled: Boolean(nextDraft[project.project_id]),
       }));
-      const result = await updateTokenProjectVisibility(tokenID, projectsWithDraft, projectID, enabled, { signal: request.signal });
+      const result = await updateTokenProjectVisibility(tokenID, projectsWithDraft, projectID, enabled, {
+        expectedRevision: load.scopeRevision,
+        signal: request.signal,
+      });
       if (!request.isCurrent()) return;
       const projects = result.items || [];
-      setLoad((current) => ({ ...current, projects }));
+      setLoad((current) => ({ ...current, projects, scopeRevision: result.revision || "" }));
       setScopeDraft(Object.fromEntries(projects.map((project) => [project.project_id, Boolean(project.enabled)])));
       setScopeSave({ state: "ready", error: null });
       await onSaved?.();
@@ -110,7 +115,11 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
     setSave({ state: "saving", error: null });
     try {
       const capabilities = vaultCapabilitiesFromDraft(load.projects, load.definitions, capabilityDraft);
-      const result = await apiPut(`/api/tokens/${tokenID}/project-capabilities`, { capabilities }, { signal: request.signal });
+      const result = await apiPut(
+        `/api/tokens/${tokenID}/project-capabilities`,
+        { capabilities, expected_revision: load.capabilityRevision },
+        { signal: request.signal },
+      );
       if (!request.isCurrent()) return;
       const definitions = result.definitions || load.definitions;
       const items = result.items || [];
@@ -118,6 +127,7 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
         ...current,
         definitions,
         capabilities: items,
+        capabilityRevision: result.revision || "",
       }));
       setCapabilityDraft(vaultCapabilityDraftFromItems(items, definitions));
       setSave({ state: "ready", error: null });
@@ -267,7 +277,15 @@ async function loadVaultPermissionData({ tokenID, requests, setLoad, setScopeDra
     const projects = projectScopes.items || [];
     const definitions = projectCapabilities.definitions || [];
     const capabilities = projectCapabilities.items || [];
-    setLoad({ state: "ready", projects, definitions, capabilities, error: null });
+    setLoad({
+      state: "ready",
+      projects,
+      definitions,
+      capabilities,
+      scopeRevision: projectScopes.revision || "",
+      capabilityRevision: projectCapabilities.revision || "",
+      error: null,
+    });
     setScopeDraft(Object.fromEntries(projects.map((project) => [project.project_id, Boolean(project.enabled)])));
     setCapabilityDraft(vaultCapabilityDraftFromItems(capabilities, definitions));
   } catch (error) {

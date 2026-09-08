@@ -108,12 +108,12 @@ func TestMCPStopStalesPendingVaultActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
-	response := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", updateProjectCapabilitiesRequest{
+	response := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{
 		Capabilities: []projectCapabilityInput{{
 			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultItemGenerate,
 			ExecutionRule: projectcapabilities.RuleApprovalRequired,
 		}},
-	})
+	}))
 	if response.Code != http.StatusOK {
 		t.Fatalf("set Vault capability: %d %s", response.Code, response.Body.String())
 	}
@@ -197,7 +197,10 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 		{path: tokenPath + "/project-capabilities", body: capabilityRequest, expectChanged: true},
 		{path: tokenPath + "/connector-permissions", body: permissionRequest, expectChanged: true},
 	} {
-		response := performJSON(fixture.server.Handler(), http.MethodPut, setup.path, "", setup.body)
+		response := performJSON(
+			fixture.server.Handler(), http.MethodPut, setup.path, "",
+			withCurrentAuthorizationRevision(t, fixture.server.Handler(), setup.path, setup.body),
+		)
 		expected := `"changed":` + strconv.FormatBool(setup.expectChanged)
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("initial authorization update %s: %d %s", setup.path, response.Code, response.Body.String())
@@ -251,7 +254,10 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 		{path: tokenPath + "/project-capabilities", body: capabilityRequest},
 		{path: tokenPath + "/connector-permissions", body: permissionRequest},
 	} {
-		response := performJSON(fixture.server.Handler(), http.MethodPut, update.path, "", update.body)
+		response := performJSON(
+			fixture.server.Handler(), http.MethodPut, update.path, "",
+			withCurrentAuthorizationRevision(t, fixture.server.Handler(), update.path, update.body),
+		)
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"changed":false`) {
 			t.Fatalf("no-op authorization update %s: %d %s", update.path, response.Code, response.Body.String())
 		}
@@ -343,15 +349,16 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 		t.Fatalf("create lease failure trigger: %v", err)
 	}
 
+	permissionPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/connector-permissions"
 	response := performJSON(
 		fixture.server.Handler(),
 		http.MethodPut,
-		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/connector-permissions",
+		permissionPath,
 		"",
-		updateConnectorPermissionsRequest{Permissions: []connectorPermissionInput{{
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), permissionPath, updateConnectorPermissionsRequest{Permissions: []connectorPermissionInput{{
 			TargetID: target.TargetID, ProfileID: target.ProfileID,
 			ActionName: sshconnector.ActionExec, ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
-		}}},
+		}}}),
 	)
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("authorization update should fail atomically: %d %s", response.Code, response.Body.String())

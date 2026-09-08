@@ -14,6 +14,7 @@ const emptyLoad = {
   targets: [],
   actionsByProfile: {},
   permissions: [],
+  revision: "",
   error: null,
 };
 
@@ -104,11 +105,18 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
         .filter(Boolean);
       const result = await apiPut(
         `/api/tokens/${tokenID}/connector-permissions`,
-        { permissions: [...preserved, ...connectorPermissions] },
+        {
+          permissions: [...preserved, ...connectorPermissions],
+          expected_revision: load.revision,
+        },
         { signal: request.signal },
       );
       if (!request.isCurrent()) return;
-      setLoad((current) => ({ ...current, permissions: result.items || [] }));
+      setLoad((current) => ({
+        ...current,
+        permissions: result.items || [],
+        revision: result.revision || current.revision,
+      }));
       await onSaved?.();
       if (!request.isCurrent()) return;
       setSave({ state: "ready", error: null });
@@ -272,6 +280,7 @@ async function loadConnectorPermissionData({ tokenID, requests, setLoad, setDraf
       targets,
       actionsByProfile,
       permissions: permissionItems,
+      revision: permissions.revision || "",
       error: null,
     });
     setDraft(

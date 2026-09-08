@@ -83,6 +83,33 @@ describe("useConnectorPermissions", () => {
     expect(result.current.connectorPermissionState.data[1]).toEqual([{ action_name: "write", execution_rule: "always" }]);
   });
 
+  it("submits the server revision and advances it after a permission update", async () => {
+    apiGet.mockResolvedValueOnce({ items: [], revision: "permissions-1" });
+    apiPut.mockResolvedValueOnce({ items: [{ action_name: "read" }], revision: "permissions-2" });
+    const { result } = renderHook(() => useConnectorPermissions());
+
+    await act(async () => result.current.loadAllConnectorPermissions([{ id: 1 }]));
+    await act(async () => result.current.replaceTokenConnectorPermissions(1, [{ target_id: 7, profile_id: 9, action_name: "read" }]));
+
+    expect(apiPut).toHaveBeenCalledWith(
+      "/api/tokens/1/connector-permissions",
+      {
+        permissions: [
+          {
+            target_id: 7,
+            profile_id: 9,
+            action_name: "read",
+            execution_rule: undefined,
+            expires_at: undefined,
+          },
+        ],
+        expected_revision: "permissions-1",
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(result.current.connectorPermissionState.revisionsByToken[1]).toBe("permissions-2");
+  });
+
   it("keeps only the newest mutation result for one token", async () => {
     const first = deferred();
     const second = deferred();

@@ -23,12 +23,12 @@ func TestTokenProjectCapabilityRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
-	response := performJSON(fixture.server.Handler(), http.MethodPut, path, "", updateProjectCapabilitiesRequest{
+	response := performJSON(fixture.server.Handler(), http.MethodPut, path, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), path, updateProjectCapabilitiesRequest{
 		Capabilities: []projectCapabilityInput{{
 			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead,
 			ExecutionRule: projectcapabilities.RuleAlwaysRun,
 		}},
-	})
+	}))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), projectcapabilities.VaultMetadataRead) {
 		t.Fatalf("update project capabilities: %d %s", response.Code, response.Body.String())
 	}
@@ -58,12 +58,12 @@ func TestTokenProjectCapabilityRouteAcceptsAlwaysApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response := performJSON(fixture.server.Handler(), http.MethodPut,
-		"/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/project-capabilities", "",
-		updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
+	path := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
+	response := performJSON(fixture.server.Handler(), http.MethodPut, path, "",
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), path, updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
 			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultSessionApply,
 			ExecutionRule: projectcapabilities.RuleAlwaysRun,
-		}}},
+		}}}),
 	)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected always apply to succeed, got %d %s", response.Code, response.Body.String())
