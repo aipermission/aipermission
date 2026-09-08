@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 const (
@@ -75,7 +76,7 @@ func (s *Server) listCommandRequestSummaries(ctx context.Context, runtime *datab
 	args := []any{filter.Source, filter.Source, filter.TokenID, filter.TokenID, filter.RuntimeID, filter.RuntimeID, filter.Status, filter.Status}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
-		if ftsQuery := buildFTSQuery(filter.Query); ftsQuery != "" {
+		if ftsQuery := history.FTS(filter.Query); ftsQuery != "" {
 			where = append(where, `(cr.id IN (SELECT rowid FROM command_requests_fts WHERE command_requests_fts MATCH ?) OR COALESCE(ct.name, '') LIKE ? OR COALESCE(tok.name, '') LIKE ?)`)
 			args = append(args, ftsQuery, like, like)
 		} else {

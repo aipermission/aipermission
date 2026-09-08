@@ -1,21 +1,21 @@
-package api
+package history
 
 import (
 	"strings"
 	"unicode"
 )
 
-const maxFTSSearchTerms = 8
+const maxTerms = 8
 
-func buildFTSQuery(query string) string {
-	terms := searchTerms(query, maxFTSSearchTerms)
+func FTS(query string) string {
+	terms := Terms(query, maxTerms)
 	if len(terms) == 0 {
 		return ""
 	}
 	return strings.Join(terms, " ")
 }
 
-func searchTerms(query string, limit int) []string {
+func Terms(query string, limit int) []string {
 	var terms []string
 	var builder strings.Builder
 	flush := func() {
@@ -25,7 +25,6 @@ func searchTerms(query string, limit int) []string {
 		terms = append(terms, strings.ToLower(builder.String()))
 		builder.Reset()
 	}
-
 	for _, r := range query {
 		if unicode.IsLetter(r) || unicode.IsNumber(r) {
 			builder.WriteRune(r)
