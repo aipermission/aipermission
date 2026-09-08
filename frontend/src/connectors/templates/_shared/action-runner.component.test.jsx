@@ -80,13 +80,16 @@ describe("runGuardedConnectorAction", () => {
 
   it("keeps approval pending separate from completion and refreshes activity", async () => {
     const onRefreshActivity = vi.fn();
+    const onPending = vi.fn();
     const { setState, options } = runnerOptions({
-      post: async () => ({ status: "approval_pending", display_text: "Waiting for approval" }),
+      post: async () => ({ request_id: 42, status: "approval_pending", display_text: "Waiting for approval" }),
       onRefreshActivity,
+      onPending,
     });
 
     await expect(runGuardedConnectorAction(options)).resolves.toBeNull();
     await vi.waitFor(() => expect(onRefreshActivity).toHaveBeenCalledOnce());
+    expect(onPending).toHaveBeenCalledWith(expect.objectContaining({ request_id: 42, status: "approval_pending" }));
     expect(setState).toHaveBeenLastCalledWith({ state: "idle", error: "", message: "Waiting for approval" });
   });
 

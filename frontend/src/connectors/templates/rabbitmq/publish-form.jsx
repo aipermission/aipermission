@@ -29,6 +29,7 @@ export function RabbitPublishForm({ browser, styles }) {
             onChange={(event) => setPublish({ exchange: event.target.value })}
             placeholder="amq.default"
             aria-label="Publish exchange"
+            disabled={browser.publishLocked}
           />
         </FieldBlock>
         <FieldBlock
@@ -50,6 +51,7 @@ export function RabbitPublishForm({ browser, styles }) {
                 setPublish({ customRoutingKey: true, routingKey: browser.publish.routingKey.trim() ? browser.publish.routingKey : "" })
               }
               styles={styles}
+              disabled={browser.publishLocked}
             />
             {browser.publish.customRoutingKey ? (
               <Input
@@ -58,6 +60,7 @@ export function RabbitPublishForm({ browser, styles }) {
                 onChange={(event) => setPublish({ routingKey: event.target.value })}
                 placeholder="Custom routing key"
                 aria-label="Custom routing key"
+                disabled={browser.publishLocked}
               />
             ) : null}
           </div>
@@ -74,6 +77,7 @@ export function RabbitPublishForm({ browser, styles }) {
           onChange={(event) => setPublish({ properties: event.target.value })}
           placeholder='{"content_type":"application/json"}'
           aria-label="Publish properties JSON"
+          disabled={browser.publishLocked}
         />
       </FieldBlock>
       <FieldBlock
@@ -88,13 +92,16 @@ export function RabbitPublishForm({ browser, styles }) {
           onChange={(event) => setPublish({ payload: event.target.value })}
           placeholder='{"type":"test","ok":true}'
           aria-label="Publish payload"
+          disabled={browser.publishLocked}
         />
       </FieldBlock>
       <div className="flex justify-end">
         <Button
           type="submit"
           className="h-9 px-4 text-sm"
-          disabled={browser.state.state !== "idle" || !browser.publish.routingKey.trim() || !browser.publish.payload}
+          disabled={
+            browser.publishLocked || browser.state.state !== "idle" || !browser.publish.routingKey.trim() || !browser.publish.payload
+          }
         >
           <Send className="h-4 w-4" />
           Publish message

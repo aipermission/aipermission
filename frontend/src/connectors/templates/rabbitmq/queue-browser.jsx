@@ -27,20 +27,14 @@ export function QueueBrowser({ browser, styles }) {
               title="Refresh queues"
               aria-label="Refresh queues"
               onClick={browser.refreshQueues}
-              disabled={browser.state.state !== "idle"}
+              disabled={browser.state.state !== "idle" || browser.publishLocked}
             >
               <RefreshCcw className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
       </div>
-      <form
-        className={`grid gap-2 border-b p-3 ${styles.border}`}
-        onSubmit={(event) => {
-          event.preventDefault();
-          browser.applyVhost();
-        }}
-      >
+      <div className={`grid gap-2 border-b p-3 ${styles.border}`}>
         <div className="relative">
           <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${styles.muted}`} />
           <Input
@@ -50,19 +44,25 @@ export function QueueBrowser({ browser, styles }) {
             placeholder="Filter queues"
           />
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <form
+          className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            browser.applyVhost();
+          }}
+        >
           <Input
             className={styles.input}
             value={browser.vhostDraft}
             onChange={(event) => browser.setVhostDraft(event.target.value)}
             placeholder="vhost"
-            disabled={browser.state.state === "publishing"}
+            disabled={browser.publishLocked}
           />
-          <Button type="submit" variant="outline" className="h-9" disabled={browser.state.state === "publishing"}>
+          <Button type="submit" variant="outline" className="h-9" disabled={browser.publishLocked}>
             {browser.state.state === "loading" ? "Loading" : "Refresh"}
           </Button>
-        </div>
-      </form>
+        </form>
+      </div>
       <div className="min-h-0 overflow-auto p-2">
         {browser.filteredQueues.map((queue) => (
           <button
@@ -71,6 +71,7 @@ export function QueueBrowser({ browser, styles }) {
             aria-pressed={browser.activeQueue === queue.name}
             className={`mb-1 grid w-full gap-1 rounded-md border px-3 py-2 text-left text-sm transition ${browser.activeQueue === queue.name ? styles.activeRow : `${styles.border} ${styles.rowHover}`}`}
             onClick={() => browser.selectQueue(queue.name)}
+            disabled={browser.publishLocked}
           >
             <span className="truncate font-mono text-xs font-semibold" title={queue.name}>
               {queue.name}

@@ -69,7 +69,13 @@ function DetailToolbar({ browser, styles }) {
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {publishing ? (
-          <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => browser.setDetailMode("inspect")}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-8 px-3 text-xs"
+            onClick={() => browser.setDetailMode("inspect")}
+            disabled={browser.publishLocked}
+          >
             Back to detail
           </Button>
         ) : (
@@ -86,7 +92,7 @@ function DetailToolbar({ browser, styles }) {
             <Button
               type="button"
               className="h-8 px-3 text-xs"
-              disabled={!browser.activeQueue || browser.state.state !== "idle"}
+              disabled={browser.publishLocked || !browser.activeQueue || browser.state.state !== "idle"}
               onClick={browser.peekMessages}
             >
               <Eye className="h-3.5 w-3.5" />
@@ -96,7 +102,7 @@ function DetailToolbar({ browser, styles }) {
               type="button"
               variant="outline"
               className="h-8 px-3 text-xs"
-              disabled={browser.state.state !== "idle"}
+              disabled={browser.publishLocked || browser.state.state !== "idle"}
               onClick={browser.startPublish}
             >
               <Send className="h-3.5 w-3.5" />

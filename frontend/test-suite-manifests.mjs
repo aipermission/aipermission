@@ -53,6 +53,9 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/rabbitmq/use-rabbitmq-browser.js": [
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.component.test.jsx",
   ],
+  "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.js": [
+    "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.component.test.jsx",
+  ],
   "src/connectors/templates/redis/use-redis-browser.js": ["src/connectors/templates/redis/use-redis-browser.component.test.jsx"],
   "src/connectors/templates/s3/use-s3-browser.js": ["src/connectors/templates/s3/use-s3-browser.component.test.jsx"],
   "src/connectors/templates/s3/use-s3-upload.js": ["src/connectors/templates/s3/use-s3-browser.component.test.jsx"],

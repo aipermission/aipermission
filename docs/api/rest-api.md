@@ -1389,6 +1389,10 @@ Deleting a label removes its history-entry relationships. The history records re
 Approval-required connector actions use connector action request endpoints.
 `GET /api/connector-action-approvals?status=approval_pending` lists pending
 connector requests for the local UI with their stored redacted previews.
+The local UI can recover ownership of an unresolved action outside the bounded
+activity feed with `target_ref`, `action_name`, and `active=true`; active means
+`approval_pending`, `running`, or `outcome_unknown`, and a fully scoped query
+returns at most the newest matching request.
 `GET /api/connector-action-approvals/{id}` transiently decrypts the exact
 bounded prepared preview from its encrypted execution envelope for a pending
 request so the operator can review what will run. This detail endpoint requires

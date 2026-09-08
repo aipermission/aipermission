@@ -14,6 +14,7 @@ export async function runGuardedConnectorAction({
   setState,
   onRefreshActivity,
   onCompleted,
+  onPending,
   suppressError = false,
   successMessage,
   post = apiPost,
@@ -35,7 +36,7 @@ export async function runGuardedConnectorAction({
     );
     if (!request.isCurrent()) return null;
     const item = requireCompletedConnectorAction(response, `${product} action failed.`);
-    if (!item) return handlePendingAction({ response, product, canUpdateState, setState, onRefreshActivity });
+    if (!item) return handlePendingAction({ response, product, canUpdateState, setState, onRefreshActivity, onPending });
     return await handleCompletedAction({ item, request, canUpdateState, setState, onRefreshActivity, onCompleted, successMessage });
   } catch (error) {
     if (!request.isCurrent()) return null;
@@ -53,8 +54,9 @@ export async function runGuardedConnectorAction({
   }
 }
 
-function handlePendingAction({ response, product, canUpdateState, setState, onRefreshActivity }) {
+function handlePendingAction({ response, product, canUpdateState, setState, onRefreshActivity, onPending }) {
   const message = response.display_text || `${product} action is awaiting approval.`;
+  onPending?.(response);
   if (canUpdateState()) setState({ state: "idle", error: "", message });
   void Promise.resolve()
     .then(() => onRefreshActivity?.())

@@ -589,6 +589,20 @@ func TestStoreActionRequestApprovalHelpers(t *testing.T) {
 	if declined.Status != connectors.ResultDeclined || declined.CompletedAt == nil || declined.Error != "not this profile" {
 		t.Fatalf("unexpected declined request: %#v", declined)
 	}
+	active, err := store.ListActionRequests(ctx, ActionRequestFilter{
+		ConnectorKind: "postgres",
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "query_readonly",
+		Active:        true,
+		Limit:         1,
+	})
+	if err != nil {
+		t.Fatalf("list active scoped requests: %v", err)
+	}
+	if len(active) != 1 || active[0].ID != request.ID || active[0].Status != connectors.ResultRunning {
+		t.Fatalf("unexpected active scoped requests: %#v", active)
+	}
 }
 
 func TestStoreInvalidateActionRequestsForTargetSeparatesRunningOutcome(t *testing.T) {
