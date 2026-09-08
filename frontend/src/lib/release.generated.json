@@ -1,6 +1,20 @@
 {
-  "version": "0.2.45",
+  "version": "0.2.46",
   "entries": [
+    {
+      "version": "0.2.46",
+      "label": "Dependency maintenance after frontend hardening",
+      "sections": [
+        {
+          "title": "Maintenance",
+          "items": [
+            "Frontend icons, routing, interaction tests, and lint globals now use their reviewed maintenance releases.",
+            "The MCP lint environment and backend compression runtime now use their reviewed maintenance releases.",
+            "The Go container baseline remains on the coordinated Go 1.26.6 toolchain until its compiler, CI, tooling, and image update can be validated together."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.45",
       "label": "Frontend architecture and concurrent workflow correctness",
@@ -252,35 +266,6 @@
           "items": [
             "The MCP package now locks the supported-client compatibility matrix, setup lifecycle, package contents, and real protocol negotiation with focused regression coverage.",
             "Client setup documentation now distinguishes native skills, legacy rule formats, local and hosted client boundaries, project scope, Node.js requirements, and Windows execution guidance."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.38",
-      "label": "Release pipeline and runtime isolation hardening",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Frontend connector forms now share one tested network transport field implementation without changing connector-owned behavior.",
-            "JavaScript workspaces now use package-local lockfiles as the canonical dependency boundary for reproducible frontend and MCP builds."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "The local maintenance console now runs with an isolated environment and supervised process lifecycle so database credentials, proxy settings, and stale child processes do not escape their intended boundary.",
-            "Container releases now build immutable source candidates, verify the exact source commit, and promote only validated image digests to public version and latest tags.",
-            "MCP configuration and installed skill files now use private, atomic file handling with package-level lint, format, test, build, and audit gates.",
-            "The frontend runtime image now upgrades Expat to the patched Alpine package that closes CVE-2026-66046 and CVE-2026-76641."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Frontend risk coverage now exercises approval dialogs, transfers, unlock and restore flows, maintenance console lifecycle, and connector transport forms across asynchronous failure paths.",
-            "Release automation now verifies pinned release images, package lock ownership, MCP package quality, and container publication workflow behavior before promotion."
           ]
         }
       ]

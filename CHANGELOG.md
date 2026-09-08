@@ -9,6 +9,17 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.46] - 2026-09-08
+
+### Maintenance
+
+- Frontend icons, routing, interaction tests, and lint globals now use their reviewed
+  maintenance releases.
+- The MCP lint environment and backend compression runtime now use their reviewed
+  maintenance releases.
+- The Go container baseline remains on the coordinated Go 1.26.6 toolchain until its
+  compiler, CI, tooling, and image update can be validated together.
+
 ## [0.2.45] - 2026-09-08
 
 ### Added
